@@ -366,6 +366,7 @@
     f(136, BOT_TOP + 15, 128, LANE_B - BOT_TOP - 19, '#e8d8b0'); for (let y = BOT_TOP + 18; y < LANE_B - 4; y += 4) f(136, y, 128, 1, '#d4c294');
     f(136, BOT_TOP + 15, 128, 2, '#c9b48a');
     for (const wx of [148, 232]) { f(wx - 1, BOT_TOP + 18, 22, 15, '#2a1d14'); f(wx, BOT_TOP + 19, 20, 13, '#6b4320'); f(wx + 1, BOT_TOP + 20, 18, 11, '#5fa8e8'); f(wx + 2, BOT_TOP + 21, 6, 2, '#d8f0ff'); f(wx + 10, BOT_TOP + 20, 1, 11, '#6b4320'); f(wx + 1, BOT_TOP + 25, 18, 1, '#6b4320'); f(wx - 2, BOT_TOP + 32, 24, 2, '#8b5a2b'); }
+    f(198, LANE_B - 34, 4, 3, '#3a3a40'); f(199, LANE_B - 33, 2, 1, '#ffd43b'); // the porch lamp
     f(189, LANE_B - 29, 22, 25, '#2a1d14'); f(190, LANE_B - 28, 20, 24, '#6b4320'); f(191, LANE_B - 27, 18, 23, '#8b5a2b'); f(193, LANE_B - 25, 6, 9, '#7a5230'); f(201, LANE_B - 25, 6, 9, '#7a5230'); f(205, LANE_B - 16, 2, 2, '#f0b429');
     f(124, LANE_B - 4, 152, 10, '#a8703c'); for (let x = 128; x < 276; x += 8) f(x, LANE_B - 4, 1, 10, '#8b5a2b'); f(124, LANE_B - 4, 152, 1, '#c98d4f'); f(124, LANE_B + 5, 152, 1, '#6b4320');
     f(186, LANE_B + 6, 28, 4, '#8b5a2b'); f(186, LANE_B + 9, 28, 1, '#6b4320');
@@ -904,8 +905,8 @@
         const s = f.state === 'working' ? stOf(f.field) : null;
         if (s) return { group: `st:${s.key}`, at: used => { const off = [doing(f)?.spot ?? 0, 0, -26, 26, -13, 13].find(o => !used.includes(o)) ?? 0; used.push(off); return [s.cx + off, s.lane]; }, zone: `st:${s.key}:${doing(f)?.prop ?? ''}` };
         if (f.state === 'working') return { group: 'meadow', cap: Math.min(8, rows * 2), at: i => [i % 2 ? 36 : 16, TOP + 30 + Math.floor(i / 2) * 37 + (i % 2) * 12], zone: 'meadow' };
-        if (f.state === 'waiting') return { group: 'desk', cap: 4, at: i => [136 + 18 * i, LANE_B], zone: 'desk' };
-        if (f.state === 'turn') return { group: 'turn', cap: 4, at: i => [264 - 18 * i, LANE_B], zone: 'turn' };
+        if (f.state === 'waiting') return { group: 'desk', cap: 3, at: i => [142 + 24 * i, LANE_B], zone: 'desk' }; // the porch: 3 waiting on the left,
+        if (f.state === 'turn') return { group: 'turn', cap: 3, at: i => [258 - 24 * i, LANE_B], zone: 'turn' }; // 3 with their turn on the right, apart
         if (f.state === 'stale') return { group: 'storage', cap: 4, at: i => [308 + 26 * i, LANE_B - 2], zone: 'storage' };
         return { group: 'charge', cap: 4, at: i => [20 + 26 * i, LANE_B], zone: 'charge' };
       },
@@ -939,7 +940,7 @@
         if (z === 'meadow') return 'works in the wild meadow (no repo)';
         return `${doing(f)?.verb ?? 'working'} in the ${fieldByKey(f.field)?.name ?? ''} field`;
       },
-      hud(still, zoom = 1, saysOn = true, skyMode = 'live', follow = false, canFollow = false) {
+      hud(still, zoom = 1, saysOn = true, skyMode = 'live', follow = false, canFollow = false, restingHidden = null) {
         const need = scene.farmers.filter(a => a.state === 'waiting' || a.question).length;
         const w = t => pxt(t, '#fff3d6', '#2a1d14');
         return `<span title="One coin for every tool step since you opened this page"><b class="coin"></b>${w(String(game.coins))}</span>
@@ -948,6 +949,7 @@
           <span title="${esc(seasonTip())}">${{ spring: '🌱', summer: '☀️', autumn: '🍂', winter: '❄️' }[season]} ${w(season)}</span>
           <span class="px-zoom" title="Zoom the farm inside its frame (or ⌘/Ctrl + scroll, or pinch); drag to move around when zoomed in"><button type="button" data-farm-zoom="-1" aria-label="Zoom out">${w('-')}</button><button type="button" data-farm-zoom="0" title="Show the whole farm">${w(`${Math.round(zoom * 100)}%`)}</button><button type="button" data-farm-zoom="1" aria-label="Zoom in">${w('+')}</button></span>
           <button type="button" data-farm-follow${canFollow ? '' : ' disabled'} title="${canFollow ? 'Keep the farmer you picked in the middle of the view (zooms in); dragging the view turns it off' : 'Pick a farmer first, then Follow keeps it in view'}">${w(`Follow: ${follow ? 'on' : 'off'}`)}</button>
+          <button type="button" data-farm-resting title="Idle farmers (under the tree) and stale ones (scarecrows): show them, or hide them to keep the farm to the agents at work">${w(restingHidden === null ? 'Resting: shown' : `Resting: hidden (${restingHidden})`)}</button>
           <button type="button" data-farm-bubbles title="Speech bubbles with what each farmer last said. × hides one; its 💬 shows it again">${w(`Bubbles: ${saysOn ? 'on' : 'off'}`)}</button>
           <button type="button" data-farm-sky title="The sky: live follows your clock (dawn, day, dusk, night); or hold it at day or night">${w(`Sky: ${skyMode}`)}</button>
           <button type="button" class="px-motion" data-farm-motion title="Walking and animation on the farm">${w(`Motion: ${still ? 'off' : 'on'}`)}</button>
@@ -994,7 +996,8 @@
       /** Lights that glow at night: [x, y, reach, the lit shape]. */
       lights() {
         const { BOT_TOP } = L;
-        return [[25, 12, 7, [24, 11, 2, 1]], [158, BOT_TOP + 25, 16, [149, BOT_TOP + 20, 18, 11, true]], [242, BOT_TOP + 25, 16, [233, BOT_TOP + 20, 18, 11, true]]];
+        const { LANE_B } = L;
+        return [[25, 12, 7, [24, 11, 2, 1]], [158, BOT_TOP + 25, 16, [149, BOT_TOP + 20, 18, 11, true]], [242, BOT_TOP + 25, 16, [233, BOT_TOP + 20, 18, 11, true]], [200, LANE_B - 26, 30, [199, LANE_B - 33, 2, 1]]];
       },
       fieldAt(x, y) { return L.ST.find(s => Math.abs(x - s.cx) <= 46 && y >= s.rowTop - 18 && y <= s.rowTop + 50)?.key ?? null; },
       items: () => [[L.BOT_TOP + 30, drawTree], [L.LANE_B + 6, drawPosts]],
@@ -1018,7 +1021,13 @@
         const [ox, oy] = pixelOrigin(b, 16), rp = rpAt(ox, oy), T = PXG.T;
         if (f.hot) { rp(11, 3 + Math.floor((T * 6) % 4), 1, 2, '#8fd3ff'); rp(2, 4 + Math.floor((T * 6 + 2) % 4), 1, 2, '#8fd3ff'); rp(4, 7, 1, 1, '#ff6b6b'); rp(9, 7, 1, 1, '#ff6b6b'); }
         if (f.state === 'working' && !b.walk) { const act = doing(f); if (act) drawProp(act.prop, rp, T, act.flag); }
-        if (f.state === 'waiting') bubble(rp, 14, -6 - blink(3), '!');
+        if (f.state === 'waiting') {
+          bubble(rp, 14, -6 - blink(3), '!');
+          const x = Math.round(b.x), y = Math.round(b.y); // a ring at its feet that pulses: it needs you
+          PXG.ctx.globalAlpha = 0.45 + 0.35 * Math.sin(PXG.T * 5);
+          px(x - 9, y + 1, 18, 1, '#e04a3a'); px(x - 11, y, 2, 1, '#e04a3a'); px(x + 9, y, 2, 1, '#e04a3a'); px(x - 9, y - 1, 1, 1, '#e04a3a'); px(x + 8, y - 1, 1, 1, '#e04a3a');
+          PXG.ctx.globalAlpha = 1;
+        }
         if (f.state === 'turn') { // a basket of produce
           if (b.walk) { rp(3, 10, 8, 4, '#a8703c'); rp(3, 10, 8, 1, '#c98d4f'); rp(4, 9, 2, 1, '#e76f51'); rp(7, 9, 2, 1, '#f4a261'); rp(6, 8, 1, 1, '#3f9b3a'); }
           else {
@@ -1140,6 +1149,8 @@
     let skyMode = SKIES.includes(stored('tracker-farm-sky')) ? stored('tracker-farm-sky') : 'live';
     let bgSeason = null;
     let follow = false; // keep the picked farmer in the middle of the view
+    let restingShown = stored('tracker-farm-resting') !== 'hidden'; // idle and stale farmers on the farm, or not
+    const resting = f => f.state === 'idle' || f.state === 'stale';
     let glide = null; // a zoom easing in: { from: scale, start, ox, oy }
     let pad = { x: 0, t: 0, b: 0 }; // the frame's spare room, in world pixels: more sky above, more meadow below and beside
     const extOf = () => ({ x0: -pad.x, x1: W + pad.x, y0: -pad.t, y1: th.layout().H + pad.b });
@@ -1154,6 +1165,7 @@
     function targets() {
       const out = new Map(), count = {}, used = new Map(), over = { desk: 0, turn: 0, storage: 0, charge: 0, meadow: 0 };
       for (const f of scene.farmers) {
+        if (!restingShown && resting(f)) continue;
         const s = th.slots(f);
         let at;
         if (s.group.startsWith('st:')) {
@@ -1187,7 +1199,7 @@
       ov.appendChild(el);
       setTimeout(() => el.remove(), 1700);
     }
-    function renderHud() { if (hudEl) hudEl.innerHTML = th.hud(still, zoom, saysOn, skyMode, follow, Boolean(selectedId && bots.has(selectedId))); }
+    function renderHud() { if (hudEl) hudEl.innerHTML = th.hud(still, zoom, saysOn, skyMode, follow, Boolean(selectedId && bots.has(selectedId)), restingShown ? null : scene.farmers.filter(resting).length); }
     /**
      * Zoom changes the farm inside the frame, never the frame. The farm point under `at` (a point of
      * the frame: its middle, or the pointer) stays where it is.
@@ -1399,6 +1411,7 @@
       PXG.ext = extOf();
       const sky = skyNow();
       PXG.lights = [...th.lights()];
+      for (const f of scene.farmers) if (f.state === 'waiting' || f.state === 'turn') { const b = bots.get(f.id); if (b) PXG.lights.push([b.x, b.y - 14, 18, null]); } // lit at night: they need you
       drawSky(sky, T, th.hot());
       ctx.drawImage(bg, -pad.x, 0);
       th.ground();
@@ -1544,6 +1557,14 @@
       if (sign) { e.stopPropagation(); opts.onOpenField?.(sign.dataset.farmField); return; }
       if (e.target.closest?.('[data-farm-motion]')) { e.stopPropagation(); setStill(!still); return; }
       if (e.target.closest?.('[data-farm-follow]')) { e.stopPropagation(); setFollow(!follow); return; }
+      if (e.target.closest?.('[data-farm-resting]')) {
+        e.stopPropagation();
+        restingShown = !restingShown;
+        keep('tracker-farm-resting', restingShown ? 'shown' : 'hidden');
+        if (still) redrawStill(); else { sync(false); draw(); }
+        renderHud();
+        return;
+      }
       if (e.target.closest?.('[data-farm-sky]')) {
         e.stopPropagation();
         skyMode = SKIES[(SKIES.indexOf(skyMode) + 1) % SKIES.length];

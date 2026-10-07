@@ -104,6 +104,10 @@ const modeName = mode => (MODES.find(([m]) => m === mode)?.[1] ?? { manual: 'Ask
 
 /** A terminal session's bar: its permission mode, Restart in… another mode, and End session. */
 function sessionBarHtml(a) {
+  if (a.kind === 'background' && a.state === 'stale' && a.cliId) { // an old background session: it can only be removed
+    return `<div class="sessbar"><span class="chip c-plain" data-tip="A background session with no activity for a day or more">background · stale</span>
+      <button type="button" class="act mini" data-remove-session="${esc(a.id)}" data-tip="Delete this background session and its conversation (claude rm)">Remove</button></div>`;
+  }
   if (a.kind !== 'interactive' || !a.pid) return '';
   const mode = a.mode, bypass = mode === 'bypassPermissions';
   const options = MODES.map(([m, label]) => `<option value="${m}"${m === mode ? ' disabled' : ''}>${esc(label)}${m === mode ? ' (now)' : ''}</option>`).join('');

@@ -56,6 +56,7 @@ mkdirSync(join(claudeDir, 'projects', '-farm-repo'), { recursive: true });
 const worker = spawn('sleep', ['600'], { stdio: 'ignore' }); // live pids for the other sessions
 const doneA = spawn('sleep', ['600'], { stdio: 'ignore' });
 const doneB = spawn('sleep', ['600'], { stdio: 'ignore' });
+const resting = spawn('sleep', ['600'], { stdio: 'ignore' }); // an idle session: nothing said yet
 const now = Date.now();
 const iso = ms => new Date(ms).toISOString();
 const line = (ms, message, type = 'assistant') => JSON.stringify({ type, timestamp: iso(ms), cwd: repo, message });
@@ -79,6 +80,7 @@ const sessions = {
     line(now - 80_000, { model: 'claude-haiku', content: [{ type: 'text', text: 'I updated the README and the changelog. Everything is committed and the tests pass on every platform.' }] }),
     JSON.stringify({ type: 'system', subtype: 'turn_duration', timestamp: iso(now - 79_000), durationMs: 1000 }),
   ] },
+  'ui-idle': { pid: resting.pid, status: 'idle', lines: [] },
   'ui-done-b': { pid: doneB.pid, status: 'idle', lines: [
     line(now - 70_000, { content: 'Prepare the release' }, 'user'),
     line(now - 60_000, { model: 'claude-haiku', content: [{ type: 'text', text: 'The build is green on all three platforms and the release notes are ready for you to read.' }] }),
@@ -187,6 +189,14 @@ try {
   check(await until("document.getElementById('main').dataset.view === 'farm' && document.querySelectorAll('.px-tag').length >= 2"), 'the farm shows both farmers');
   check(await until("[...document.querySelectorAll('.px-tag')].some(t => t.textContent.startsWith('ui-asker') && t.classList.contains('st-waiting'))"), 'the waiting agent is on the porch');
   check(/1 needs you/.test(await js("document.querySelector('.px-hud')?.textContent ?? ''")), 'the farm says one needs you');
+  const porch = JSON.parse(await js("JSON.stringify(['ui-done-a', 'ui-done-b', 'ui-asker'].map(id => (r => r.left + r.width / 2)(document.querySelector(`.px-tag[data-farmer='${id}']`).getBoundingClientRect())))"));
+  const cs0 = await js("(c => c.getBoundingClientRect().width / (400 + 2 * Number(c.dataset.pad.split(',')[0])))(document.querySelector('#farm canvas'))");
+  check(Math.abs(porch[0] - porch[1]) >= 22 * cs0 - 1, `farmers on the porch stand apart, none hidden behind another (${Math.round(Math.abs(porch[0] - porch[1]) / cs0)} apart)`);
+  check(await until("!!document.querySelector('.px-tag[data-farmer=\"ui-idle\"]')"), 'an idle farmer rests under the tree');
+  await js("document.querySelector('[data-farm-resting]').click()");
+  check(await until("!document.querySelector('.px-tag[data-farmer=\"ui-idle\"]') && /Resting: hidden \\([1-9]\\d*\\)/.test(document.querySelector('[data-farm-resting]').textContent)"), 'the Resting switch hides idle and stale farmers, and says how many');
+  await js("document.querySelector('[data-farm-resting]').click()");
+  check(await until("!!document.querySelector('.px-tag[data-farmer=\"ui-idle\"]')"), 'and shows them again');
   check(!/energy/i.test(await js("document.querySelector('.px-hud')?.textContent ?? ''")) && /5-hour 34%/.test(await js("document.getElementById('hstats').textContent")), 'the farm has no vague energy bar; the plan stays in the top bar');
   check(await until("[...document.querySelectorAll('.px-lab')].some(l => l.textContent.startsWith('farm-repo'))"), 'the repo is a field');
   await js("document.querySelector('[data-farm-help]').click()");
@@ -321,6 +331,7 @@ try {
   worker.kill();
   doneA.kill();
   doneB.kill();
+  resting.kill();
   clearInterval(fakeMod);
   await handle.stop();
   rmSync(temp, { recursive: true, force: true, maxRetries: 5, retryDelay: 200 });

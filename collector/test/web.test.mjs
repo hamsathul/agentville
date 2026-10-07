@@ -1138,3 +1138,17 @@ test("a session whose mode is not known yet says so, rather than guessing", () =
   assert.match(page.side(), /mode not known yet/);
   assert.doesNotMatch(page.side(), /Ask first<\/span>/);
 });
+
+test("a stale background session's panel offers Remove, and removes it only after you confirm", async () => {
+  const page = loadPage();
+  page.push(richSnapshot([richAgent({ id: 'b1', kind: 'background', state: 'stale', cliId: 'abc123', pid: undefined, now: undefined })]));
+  await page.openAgent('b1');
+  assert.match(page.side(), /data-remove-session="b1"/);
+  assert.doesNotMatch(page.side(), /data-end-session/);
+  await page.clickButton('rm-btn', { removeSession: 'b1' });
+  assert.match(page.el('confirm-text').textContent, /Remove busy-one\?/);
+  assert.deepEqual(page.posts, []);
+  await page.clickButton('confirm-yes', { confirm: 'yes' });
+  await new Promise(r => setTimeout(r, 0));
+  assert.deepEqual(page.posts, [{ path: '/api/actions/rm', body: { ids: ['b1'] } }]);
+});

@@ -300,6 +300,7 @@ document.addEventListener('click', async e => {
   const d = el.dataset;
   if (d.confirm) { settleConfirm(d.confirm === 'yes'); return; }
   if (d.endSession) { void endSessionFlow(d.endSession); return; } // not awaited: the confirm box waits for you
+  if (d.removeSession) { void removeFlow(d.removeSession); return; }
   if (el.id === 'view-list' || el.id === 'view-farm') { setView(el.id === 'view-farm' ? 'farm' : 'list'); return; }
   if (el.id === 'side-toggle') { setFarmSide(!farmSide); return; }
   if (d.farmTab) { setFarmTab(d.farmTab); return; }
@@ -422,6 +423,15 @@ async function endSessionFlow(id) {
   if (!(await confirmBox(`End ${a.name}? Claude stops now; the conversation is kept, so you can resume it from ＋ Session. Its iTerm or Terminal window closes too.`, 'End session'))) return;
   const r = await post('/api/actions/end', { agentId: id });
   notice(r.ok ? `Ended ${a.name}${r.closedWindow ? ' and closed its window' : ''}.` : `Could not end ${a.name}: ${r.error}`);
+}
+/** Remove a stale background session: after you confirm, `claude rm` deletes it. */
+async function removeFlow(id) {
+  const a = snap?.agents.find(x => x.id === id);
+  if (!a) return;
+  if (!(await confirmBox(`Remove ${a.name}? This deletes the background session and its conversation (claude rm). It can't be undone.`, 'Remove'))) return;
+  const r = await post('/api/actions/rm', { ids: [id] });
+  const res = r.results?.[0];
+  notice(res?.ok ? `Removed ${a.name}.` : `Could not remove ${a.name}: ${res?.error ?? r.error ?? 'unknown error'}`);
 }
 /** Restart in a mode: after you confirm, ends the session and resumes it in a new window in that mode. */
 async function restartFlow(id, mode) {
