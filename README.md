@@ -1,228 +1,456 @@
 # Agent Tracker
 
-A live view of every AI coding agent working on your Mac: Claude Code sessions (interactive
-and background), their subagents and background jobs, and Codex. It shows who is waiting on
-you, what each agent is doing right now, which repos two agents are writing to at once, and
-how much CPU and memory each one uses.
+**A live dashboard for every AI coding agent on your Mac**: Claude Code sessions (interactive
+and background), their subagents and background jobs, and Codex. See who is waiting on you, what
+each agent is doing right now and what it costs. Answer, message and steer them from one page,
+and watch them work as farmers on a pixel farm.
 
-- **Dashboard** at <http://localhost:7777>, served only to this machine, laid out like an
-  editor in three columns. **Left:** compact agent rows, waiting ones first, then working ones
-  (each with a live tool ticker); idle and stale agents fold away, and repos sit below. The
-  agents' memory and CPU are in the top bar, with your Claude plan's usage (the 5-hour and
-  weekly limits, and when they reset, as Claude Code reports them). **Centre:** the agent you picked (the one at
-  work, until you pick another) with its activity feed, charts, subagents, the repos it
-  touched and its process tree. **Right:** an explorer of the agent's working folder, with git status letters (M, U, D) and a dot on
-  files the agent edited or read. Repos are marked with their branch (and a ✗ when their
-  last deploy failed), including several repos inside one folder. Above the folder, the
-  explorer shows the session's **Scratchpad** (its working files under Claude Code's temp
-  folder) and its **Memory**: the conversation summary it carries after a compaction, the
-  CLAUDE.md files it loads, and the project's auto memory. Click a file to open it read-only
-  in a tab: markdown is rendered, code gets line numbers.
-  **Answer from the dashboard:** a waiting agent shows its question with clickable options (or
-  an "Other" box), and a permission prompt shows the command with **Allow** / **Deny**.
-  **Message any session** like a chat: type under "Now" and press Enter (Shift+Enter for a new line). It arrives
-  as your own prompt; if the agent is busy, it is read when the current step ends. **Attach
-  screenshots** by pasting (⌘V) or dropping them on the box, or with 📎: up to 6 images,
-  10 MB each; the agent opens them with its Read tool.
-  **Questions in replies:** when an agent ends its turn by asking something ("Should I push?"),
-  the dashboard shows it as a question: an "asks you" chip, a card with the question (one-click
-  **Yes** / **No…** for yes/no questions), a "?" on the farm's porch, and the tab title count.
-  **Reply** on any of the agent's messages quotes it into your answer. The **Conversation**
-  thread sits under the message box, newest first; **Show all** loads the session's whole
-  history (or open the **Full transcript**).
-  **Read and reply:** specs, plans and other markdown files the agent wrote or read are also
-  listed under "Documents". In any open file, select a passage and **Quote** it (code quotes
-  carry their line numbers), then reply; the agent gets it as a message about that file.
-- **Pixel farm view** (☰ List | 🌾 Farm in the top bar): the same live data as a little farm.
-  Every agent is a farmer and every repo a field: a raised bed in one fenced grid (empty beds wait
-  for more repos), with the barn, silo and farmhouse along the top, the yard down the left and a
-  forest all round, seen from slightly above. Each farmer has its own hat, hair and clothes (its
-  name shows when you hover it); each field its own crop (the seed packet on its side), soil and
-  frame, and a pennant when it is on a branch other than main. A farmer that needs you walks to
-  your porch in front of the farmhouse and waves a red "!"; one whose turn it is brings a basket. Working farmers stand in the field
-  of the repo they write to, holding a tool for their current step: an almanac when reading, a
-  spyglass when searching, a magnifier over the crops for tests, a hammer for a build, a
-  wheelbarrow for installs, a crate for a commit, a cart to market for a push (with a flag for a
-  deploy), a lantern for a server, and more (ⓘ lists them all). Crops grow through six stages as
-  the context fills, from seeds to ripe. Above each field,
-  hay bales are uncommitted files, crates unpushed commits and a mailbox commits behind; the
-  weather is the last deploy, from GitHub Actions or a deploy an agent ran itself (a deploy
-  script over ssh, rsync, vercel…), whichever is newer (rainbow, rain, windmill; a run GitHub never
-  started for billing reasons shows no rain: "⏸ Actions didn't run") and a rope marks two agents in one repo.
-  Hearts show context left, chickens are subagents and an Explore subagent is a dog. Click a
-  farmer to open the sidebar beside the farm (or toggle it with ◨ Sidebar). Its tabs: **Agent**
-  (answer its question or permission prompt, message it with screenshots, the conversation newest
-  first), **Activity** (its tool steps), **Files** (its folder, scratchpad and memory) and **Diary**
-  (who went where). Speech bubbles over the farmers show what each last said (its question when
-  it waits on you); × hides one to a 💬 that shows it again, and the Bubbles switch hides or shows them all. The farm fills the window, its controls over the edges like a game's: top left, a panel with what the top bar and count cards say in the list view (waiting on you, working, your turn, collisions, each opening the first agent in that state; the agents' RAM and CPU, the plan's limits; a "needs you" button), which folds by its title; top right, the dashboard's own buttons (List, Session, Sidebar, theme); and along the bottom, under the fields' fence, a slim row of switches ending in − / + to zoom inside the frame (or ⌘/Ctrl + scroll, or a pinch). With room to spare, the farm sits beside the panel rather than under it; you drag or scroll to move around. Click a field for a close-up of the files agents touched there.
-  The farm also shows what Claude Code is doing beyond the tools: a thought cloud while the model
-  thinks, a chore board with the session's task list, a scroll on the porch for a plan to approve,
-  a blueprint in plan mode, a red and white scarf in bypass-permissions mode, a pin on the hat for
-  the model and speed lines in fast mode, a purse for what the session has cost, carts on the road
-  for web and connector (MCP) calls, a pump for a background command, a hammock for a session that
-  wakes up by itself (/loop), a harvest when the conversation is compacted, a greenhouse for a
-  worktree, one project's repos side by side under its sign, and a market stall with your open pull
-  requests (from gh). Click the buildings: the barn starts or resumes a session, the farmhouse lists
-  who is on your porch, the silo shows your plan's usage, the henhouse the subagents, the notice
-  board your projects' CLAUDE.md and memory. The Bell switch chimes (and sends a desktop notice when
-  the page is in the background) when an agent starts waiting on you.
-  The farm is drawn in one palette, with shadows, textured ground and a pixel font for names
-  and signs. The light follows your clock (cloud shadows drift over by day; at night the windows,
-  lamps and lanterns glow and fireflies come out; the Sky switch holds it at day or night), farmers face where they walk, rain falls on a field whose
-  deploy failed, and dust, splashes and chimney smoke move with the work. The silo's grain is
-  your plan's weekly usage, the season follows its 5-hour limit (spring when fresh, winter when
-  nearly used up), and the henhouse's eggs are subagents that finished lately. Follow keeps the
-  farmer you picked in view.
-  It pauses when hidden and follows the system's reduce-motion setting.
-- **Start or resume sessions** (＋ Session in the top bar): start Claude Code in a folder you
-  have worked in, or resume a session from the last 30 days by its title and last message. It
-  opens a new Terminal or iTerm window (the `terminal` setting) running `claude` or
-  `claude --resume <id>` there, in the permission mode you pick (ask first, accept edits, plan,
-  auto, or bypass permissions with `--dangerously-skip-permissions`), with the model and effort
-  you pick for that session only (`--model`, `--effort`); sessions still running
-  are marked and not offered. The window closes when Claude exits. The first time, macOS asks
-  to let the tracker control that app.
-- **Agents talking to each other:** when one session messages another (Claude Code's
-  SendMessage between sessions), both conversations show the message (from or to whom), and on
-  the farm a pigeon carries it from one farmer to the other, noted in the diary.
-- **End or restart a session:** a terminal session's panel shows its permission mode (as of the
-  last message you sent it), **End session** (after you confirm: Claude stops cleanly and its
-  iTerm or Terminal window closes; the conversation can be resumed) and **Restart in…** another
-  mode (it ends and resumes straight away in a new window, the conversation carrying on).
-- **Switch a session's model or effort:** its bar shows the model it is on and its effort; pick
-  another and, after you confirm, the session runs `/model` or `/effort` itself after its current
-  turn, as if you typed it (what Claude Code said comes back to the bar). As when you type it,
-  Claude Code saves the model, and an effort from low to xhigh, as your default for new sessions;
-  `max` is for that session only.
-- **The working line:** a working session's panel shows the line its terminal shows,
-  `✻ Slithering… (5m 31s · ↓ 28.5k tokens · thinking with xhigh effort)`: how long the turn has
-  run and the tokens it has received (from the transcript), and the line's word, what the turn is
-  doing and the effort its requests go out with (from the mod, 0.5.0 on). The farm's tooltip says
-  it too, and its thought cloud follows it.
-- **Side questions (/btw):** ask a session something on the side from its panel. It is answered
-  from the conversation so far, with no tools, even while the session works, and nothing is added
-  to the conversation; the answer shows under the box. Switching and side questions need mod 0.5.0
-  in the session: run `/reload-plugins` in a session started before it, or resume it.
-- **Claude Code mod:** `/tracker` opens a side pane, the status line shows
-  `⚑ 1 waiting · 2 working`, and toasts appear when another agent needs you. The mod is also
-  what lets the dashboard answer a session's questions and permission prompts and send it messages,
-  and it reports the session's usage (`$.session.usage()`): its cost so far, shown on the agent,
-  and the plan's limits, shown in the top bar. Sessions started before mod 0.4.0 show neither.
-- **macOS notifications** when an agent needs you, finishes, collides with another agent in
-  the same repo, or runs hot on CPU or memory. Each event notifies once.
+![The farm view: every agent a farmer, every repo a field](docs/farm.png)
 
-Everything stays on your machine. The collector has no dependencies and listens on
-`127.0.0.1` only.
+<sub>The farm view, from a demo with made-up sessions. Every farmer is an agent and every field a
+repo. Two farmers wait on your porch, one has finished, and the rest work in their fields with the
+tool for their current step.</sub>
+
+Everything runs on your machine. The collector is a small Node program with no dependencies.
+It listens on `127.0.0.1` only and reads what Claude Code already writes to disk.
+
+## Contents
+
+- [What it can do](#what-it-can-do)
+- [Requirements](#requirements)
+- [Install](#install)
+- [Using it](#using-it)
+  - [The list view](#the-list-view)
+  - [Answering and messaging agents](#answering-and-messaging-agents)
+  - [Side questions (/btw)](#side-questions-btw)
+  - [Model, effort and permission mode](#model-effort-and-permission-mode)
+  - [Starting, resuming, ending and restarting sessions](#starting-resuming-ending-and-restarting-sessions)
+  - [Files, documents and quoting](#files-documents-and-quoting)
+  - [The farm view](#the-farm-view)
+  - [Notifications and the bell](#notifications-and-the-bell)
+  - [Inside Claude Code: the mod](#inside-claude-code-the-mod)
+- [Configuration](#configuration)
+- [Commands](#commands)
+- [How it works](#how-it-works)
+- [Privacy and security](#privacy-and-security)
+- [Troubleshooting](#troubleshooting)
+- [Known limits](#known-limits)
+- [Development](#development)
+- [License](#license)
+
+## What it can do
+
+**See everything at once**
+- Every Claude Code session on the Mac (terminal and background) and Codex, sorted by what needs
+  you: **waiting on you**, **working**, **your turn**, **idle** and **stale**.
+- What each one is doing right now: the tool it is running, the working line its terminal shows
+  (`✻ Slithering… (5m 31s · ↓ 28.5k tokens · thinking with xhigh effort)`) and its recent steps.
+- Its subagents, background jobs, task list, model, effort, permission mode, context left and
+  cost so far.
+- Your plan's usage (the 5-hour and weekly limits, and when they reset), and the CPU and memory
+  your agents use.
+- Collisions: two agents writing to the same repo at the same time.
+- Each repo's branch, uncommitted files, unpushed commits, last deploy (GitHub Actions or a
+  deploy an agent ran itself) and open pull requests.
+
+**Respond without switching windows**
+- Answer an agent's question (with its options) or a permission prompt (**Allow** / **Deny**).
+- Message any session like a chat, with screenshots; it arrives as your own prompt.
+- Ask a session a side question (`/btw`) without interrupting or adding to its conversation.
+
+**Steer your sessions**
+- Start a new session in a folder you've worked in, or resume one from the last 30 days, in the
+  permission mode, model and effort you choose.
+- Switch a running session's model or effort, restart it in another permission mode, or end it
+  (its terminal window closes too).
+
+**Read what they wrote**
+- Browse an agent's folder with git status, its scratchpad and its memory (CLAUDE.md, auto
+  memory, the summary it keeps after a compaction).
+- Open specs and plans it wrote, quote a passage and reply about it.
+
+**Get told when it matters**
+- macOS notifications when an agent needs you, finishes, collides with another or runs hot.
+- A bell in the page, and a count in the tab title.
+- Inside Claude Code: a `/tracker` pane, a status line and toasts.
+
+**Watch it as a farm** (optional)
+- A pixel farm where every agent is a farmer and every repo a field. Crops grow as context
+  fills, weather shows the last deploy, a cart runs to town for each web call, and you click
+  the barn to start a session.
 
 ## Requirements
 
-- macOS (it uses launchd, `ps` and `osascript`)
-- Node.js 22 or newer (nvm installs are found automatically)
-- Claude Code; the mod needs a build with function-hook mods (tested on 2.1.291)
-- Optional: `gh`, signed in, to show GitHub Actions deploy status for repos you list (a failed
-  deploy links to its run and gives GitHub's reason, such as a billing stop)
+- **macOS.** The service runs under launchd, and the tracker uses `ps` and `osascript`.
+- **Node.js 22 or newer.** An nvm install is found automatically.
+- **Claude Code.** The mod needs a build with plugin mods; it is tested on 2.1.293.
+- **Optional: the GitHub CLI (`gh`)**, signed in, for deploy status and pull requests.
 
 ## Install
+
+### 1. Get the code and the command
 
 ```bash
 git clone https://github.com/hamsathul/agent-tracker.git ~/tools/agent-tracker
 cd ~/tools/agent-tracker
-cp config.example.json config.json       # optional: edit thresholds, deployRepos, …
-ln -sf "$PWD/bin/agent-tracker" ~/.local/bin/agent-tracker
-agent-tracker install                    # launchd service; starts at login
-agent-tracker open                       # opens the dashboard
+mkdir -p ~/.local/bin
+ln -sf "$PWD/bin/agent-tracker" ~/.local/bin/agent-tracker   # ~/.local/bin must be on your PATH
 ```
 
-To load the mod in every Claude Code session, add the mod folder to `~/.claude/settings.json`
-(use your own clone path):
+### 2. Start the service
+
+```bash
+agent-tracker install     # a launchd service: starts now and at every login
+agent-tracker status      # "http ok on :7777"
+agent-tracker open        # opens http://localhost:7777
+```
+
+The dashboard already shows your sessions, their activity and their repos.
+
+### 3. Load the mod in Claude Code (recommended)
+
+The mod lets the dashboard answer, message and steer a session. It also reports the session's
+cost, plan usage and working line. Add the `mod` folder to `~/.claude/settings.json`, using your
+own clone path:
 
 ```json
-{ "env": { "CLAUDE_CODE_PLUGIN_DIRS": "/path/to/agent-tracker/mod" } }
+{ "env": { "CLAUDE_CODE_PLUGIN_DIRS": "/Users/you/tools/agent-tracker/mod" } }
 ```
 
-New sessions then have `/tracker`. The mod reads `state/state.json`, which the collector writes
-next to the `mod/` folder.
+New sessions load it. In a session that is already running, type `/reload-plugins`. A session
+with the mod shows **📡 dashboard answers on** on the dashboard, and `/tracker` opens its pane.
 
-## Commands
+### 4. Optional: deploys and pull requests
 
-`agent-tracker install | uninstall | start | stop | restart | status | open | logs`
+Install the GitHub CLI and sign in (`gh auth login`). The tracker then:
+- shows open pull requests (with their checks) for every repo whose `origin` is on GitHub;
+- shows the latest GitHub Actions run for the repos you list in `deployRepos` (see
+  [Configuration](#configuration)).
 
-## Configuration
+A deploy an agent runs itself (a deploy script over ssh, `rsync`, `vercel --prod`…) shows without
+`gh`.
 
-`config.json` is re-read when you save it; a changed `port` needs `agent-tracker restart`.
-Without a `config.json`, the defaults in `config.example.json` apply.
+### 5. Optional: settings
 
-| Key | Meaning |
-|---|---|
-| `pollMs`, `agentsCliPollMs`, `gitPollMs`, `deployPollMs` | How often each source is read |
-| `staleAfterHours` | Quiet this long and an agent counts as stale (default 24) |
-| `collisionWindowMin` | How far back writes count towards a collision (default 30) |
-| `permissionDashboardSec` | How long a permission prompt is offered on the dashboard before the terminal shows it (default 15; 0 = terminal only) |
-| `permissionGuessSec` | A tool call with no result for this long, with an idle process, shows as "probably a permission prompt" |
-| `memoryAlertGb`, `cpuAlertPct`, `cpuAlertSustainSec` | Resource alert thresholds |
-| `notify` | Turn each notification type on or off: `waiting`, `collision`, `yourTurn`, `memory`, `cpu` |
-| `modToasts` | Toasts inside Claude Code sessions |
-| `deployRepos` | Checkout path → `owner/repo` whose latest GitHub Actions run is shown, e.g. `{ "/Users/me/code/api": "me/api" }`. With no agent in it, such a repo is listed only while its deploy runs |
-| `terminal` | Where ＋ Session opens: `"Terminal"` (default) or `"iTerm"` |
+```bash
+cp config.example.json config.json   # then edit; it is re-read when you save it
+```
 
-## How it works
+### First run: macOS permissions
 
-`collector/` reads these sources:
-- `~/.claude/sessions/*.json`, the live session registry
-- `claude agents --json`, every 30 s
-- transcript files under `~/.claude/projects/` (only new bytes; at most a bounded tail)
-- `ps`
-- `git`, with `GIT_OPTIONAL_LOCKS=0` so it never takes `index.lock` in a checkout another
-  agent is committing to (it never runs `fetch`)
-- `gh`
+- **Automation.** The first time you start, resume or end a session from the dashboard, macOS
+  asks to let the tracker control Terminal (or iTerm). Allow it, or later under System Settings →
+  Privacy & Security → Automation.
+- **Notifications.** Allow notifications if macOS asks. The page's bell asks the browser
+  separately, the first time you switch it on.
 
-From these it works out each agent's state:
+### Update and uninstall
+
+```bash
+cd ~/tools/agent-tracker && git pull && agent-tracker restart   # update; then /reload-plugins in open sessions
+agent-tracker uninstall                                          # remove the service
+```
+
+To remove it completely, also delete the `CLAUDE_CODE_PLUGIN_DIRS` entry from
+`~/.claude/settings.json` and the clone folder.
+
+## Using it
+
+Open <http://localhost:7777>. **☰ List** and **🌾 Farm** at the top switch between the two
+views; both show the same live data, updated every few seconds.
+
+### The list view
+
+The page is laid out like an editor, in three columns:
+
+- **Left: the agents.** Waiting ones come first, then the working ones with a live ticker of
+  their current tool. Idle and stale agents fold away. Your repos sit below, each with its branch,
+  last deploy, pull requests and the agents in it.
+- **Centre: the agent you picked** (the one at work until you pick another). It shows:
+  - its state, folder and model;
+  - its controls: permission mode, model, effort, Restart in…, End session;
+  - CPU, memory, context left and cost;
+  - **Now**: its working line and current tool;
+  - the message box, side questions and the conversation, newest first;
+  - its activity, subagents, the repos it touched and its process tree.
+- **Right: the explorer.** The agent's folder with git status letters (M, U, D) and a dot on files
+  it edited or read, its **Scratchpad** and its **Memory**.
+
+Along the top: your agents' memory and CPU, your plan's 5-hour and weekly usage, and four cards:
+**Waiting on you**, **Working**, **Your turn** and **Collisions**. The tab title counts the agents
+that need you, e.g. `(2) Agent Tracker`.
 
 | State | Meaning |
 |---|---|
-| waiting | a pending question or plan approval, or probably a permission prompt |
-| working | the agent is busy |
-| your turn | it finished a turn and is waiting for your next prompt |
-| stale | no activity for `staleAfterHours` |
-| idle | nothing happening |
+| **waiting** | It needs you: a question, a plan to approve, or a permission prompt |
+| **working** | It is busy |
+| **your turn** | It finished its turn (if it asked you something, the question shows) |
+| **idle** | Nothing happening |
+| **stale** | No activity for a day (`staleAfterHours`) |
 
-It also tracks which repos each agent is touching and flags collisions. The result goes to
-`state/state.json` and is served as the dashboard, `/api/state` and a Server-Sent Events
-stream. Action endpoints require a per-install token and a same-origin request.
+### Answering and messaging agents
+
+These need the mod in that session.
+
+- **Questions.** A waiting agent's question shows with its options, plus an "Other" box. Pick and
+  send; the session carries on as if you had answered in its terminal.
+- **Permission prompts.** These show the command with **Allow** / **Deny**. The dashboard has the
+  first 15 seconds (`permissionDashboardSec`); then the terminal asks as usual.
+- **Questions in replies.** When an agent ends its turn by asking something ("Should I push?"),
+  it gets an "asks you" chip and a card, with one-click **Yes** / **No…** for yes/no questions.
+- **Messages.** Type in the box under **Now** and press Enter (Shift+Enter for a new line). It
+  arrives as your own prompt; a busy agent reads it when its current step ends.
+- **Screenshots.** Paste (⌘V), drop on the box or use 📎: up to 6 images of 10 MB each. The agent
+  opens them with its Read tool.
+- **Reply** on any of the agent's messages to quote it into yours. **Show all** loads the
+  session's whole history, and **Full transcript** opens it in a new tab.
+
+### Side questions (/btw)
+
+The **Side question** box asks the session something on the side, like `/btw` in its terminal.
+It is answered from the conversation so far, with no tools, even while the session is busy, and
+nothing is added to the conversation. The answer appears under the box.
+
+### Model, effort and permission mode
+
+Each terminal session's bar shows its **permission mode**, its **model** (e.g. *Opus 5.5*) and its
+**effort**.
+
+- **Model and effort.** Pick another and confirm. The session runs `/model` or `/effort` itself
+  after its current turn, as if you had typed it, and what Claude Code replied shows in the bar.
+  As when you type them, Claude Code saves the model, and an effort from *low* to *xhigh*, as your
+  default for new sessions. *max* stays with that session.
+- **Restart in…** another permission mode (ask first, accept edits, plan, auto, or bypass
+  permissions). The session ends and resumes straight away in a new terminal window, and the
+  conversation carries on.
+
+Switching and side questions need mod 0.5.0 or newer. For a session started before you updated,
+run `/reload-plugins` in it.
+
+### Starting, resuming, ending and restarting sessions
+
+- **＋ Session** starts Claude Code in a folder you have worked in, or resumes a session from the
+  last 30 days, found by its title and last message.
+  - You pick the permission mode, model and effort. Model and effort apply to that session only
+    (`--model`, `--effort`), not your defaults.
+  - It opens a new Terminal or iTerm window (the `terminal` setting), and the window closes when
+    Claude exits.
+- **End session** stops Claude cleanly after you confirm and closes its terminal window. You can
+  resume the conversation later.
+- A stale background session can be **removed** (`claude rm`).
+
+### Files, documents and quoting
+
+- Click a file in the explorer to open it read-only in a tab: markdown is rendered, and code gets
+  line numbers.
+- **Documents** lists the specs, plans and other markdown files the agent wrote or read.
+- In any open file, select a passage and **Quote** it, then reply. Quotes from code keep their
+  line numbers, and the agent gets your reply as a message about that file.
+
+### The farm view
+
+The same live data, as a farm. It fills the window, and its controls sit around the edges like a
+game's.
+
+![The farm at night](docs/farm-night.png)
+
+**The layout.** Along the top are the barn, the silo and your farmhouse, with **your porch** in
+front of it. Below them are the fields, one raised bed per repo, in a fenced grid that grows to 18
+beds. The yard down the left holds the henhouse, the meadow, the pond and the shade tree, and a
+forest surrounds the farm.
+
+**Reading the farm.** The **i** button opens the full legend, including every tool a farmer
+can hold.
+
+| You see | It means |
+|---|---|
+| A farmer on the porch waving a red **!** | It is waiting on you (a scroll: a plan to approve) |
+| A farmer on the porch with a basket | Its turn ended (a **?** bubble: it asked you something) |
+| A farmer in a field, holding a tool | It is working in that repo. The tool is its step: almanac = reading, spyglass = searching, hoe = editing, magnifier = tests, hammer = build, crate = commit, cart = push (with a flag: deploy)… |
+| A thought cloud | It is thinking between steps |
+| A chore board beside it | Its task list, ticked as items are done (its name says e.g. 3/7) |
+| Hearts in its name | Context left. Crops grow as context fills, from seeds to ripe |
+| **Harvest!** | Its conversation was compacted, so the field starts again from seed |
+| A pin on its hat | Its model: purple Opus, blue Sonnet, green Haiku, orange Fable |
+| Speed lines / a red-and-white scarf / a blueprint | Fast mode / bypass permissions / plan mode |
+| A purse | What it has cost (gold from $50) |
+| Chickens, a dog | Its subagents (the dog: an Explore subagent) |
+| A pump by a bed | A background command still running |
+| A farmer in a hammock | It will wake up by itself (`/loop`), with when |
+| Under the shade tree / a scarecrow | Idle / stale |
+| A cart on the road | A web or connector (MCP) call, labelled with where it goes |
+| A pigeon | One session messaging another |
+| Hay / crates / a mailbox above a field | Uncommitted files / unpushed commits / commits behind |
+| Rainbow / rain / windmill over a field | Last deploy passed / failed / running |
+| Rope with orange flags | Two agents writing to the same repo |
+| A blue pennant / a greenhouse | A branch other than main / a worktree, beside its repo |
+| Stones round some beds, with a sign | One project's repos, side by side |
+| The market stall | Open pull requests as crates, tagged by their checks. **Sold!** means one was merged |
+| The silo's grain / the season | Your plan's weekly usage / its 5-hour limit (winter when nearly used up) |
+| Eggs, hens in the run | Subagents that finished lately / more running than farmers can lead |
+
+**Controls.**
+- **Top left, the panel.** The money spent and harvests, then waiting on you, working, your turn
+  and collisions (click one to open its first agent), then RAM, CPU and plan gauges and a
+  **needs you** button. Click its title to fold it away.
+- **Top right.** List, ＋ Session, Sidebar and the theme.
+- **Bottom.** Follow (keep the picked farmer in view), Resting (hide idle and stale farmers),
+  Bubbles, Sky (live, day or night), Motion, Bell, Help, and zoom.
+- **Mouse.** ⌘/Ctrl + scroll or a pinch zooms, drag moves around, and a minimap appears while you
+  are zoomed in.
+
+**Click things.** Click a farmer to open its sidebar, with Agent, Activity, Files and Diary tabs,
+or a field for a close-up of the files agents touched there. Click a building for the rest:
+
+| Building | Opens |
+|---|---|
+| Barn | Start or resume a session (the new farmer walks out of its door) |
+| Farmhouse | Who is on your porch, with a button to open each |
+| Silo | Your plan's usage and when each limit resets |
+| Henhouse | The subagents and how each is going |
+| Notice board | Each project's CLAUDE.md and memory |
+| Market stall | The pull requests, with links |
+
+The light follows your clock: cloud shadows by day, and lit windows, lanterns and fireflies at
+night. The farm pauses when its tab is hidden and follows the system's reduce-motion setting.
+
+### Notifications and the bell
+
+- **macOS notifications** come from the collector: an agent needs you, finished its turn,
+  collides with another in the same repo, or runs hot on CPU or memory. Each event notifies
+  once; turn types on or off with `notify`.
+- **The bell** (the farm's Bell switch) chimes in the page whenever an agent starts waiting on
+  you, in either view. When the page is in the background, it also sends a desktop notice.
+
+### Inside Claude Code: the mod
+
+In every session that loads it:
+- `/tracker` opens a side pane listing all agents.
+- The status line reads `⚑ 1 waiting · 2 working`.
+- Toasts appear when another agent needs you.
+
+The mod also does the dashboard's work inside the session:
+- delivers your answers and messages;
+- runs model and effort switches;
+- answers side questions;
+- reports the session's cost, plan usage and working line.
+
+## Configuration
+
+`config.json` sits next to `config.example.json` and is re-read when you save it. A changed
+`port` needs `agent-tracker restart`. Without a `config.json`, the defaults apply.
+
+| Key | Meaning (default) |
+|---|---|
+| `port` | The dashboard's port (7777) |
+| `pollMs`, `agentsCliPollMs`, `gitPollMs`, `deployPollMs`, `prPollMs` | How often each source is read: sessions (3 s), `claude agents` (30 s), git (10 s), deploys (60 s), pull requests (2 min) |
+| `staleAfterHours` | Quiet this long and an agent is stale (24) |
+| `collisionWindowMin` | How far back writes count towards a collision (30) |
+| `permissionDashboardSec` | How long a permission prompt is offered on the dashboard before the terminal asks (15; 0 = terminal only) |
+| `permissionGuessSec` | A tool call with no result for this long, with an idle process, counts as "probably a permission prompt" (20) |
+| `memoryAlertGb`, `cpuAlertPct`, `cpuAlertSustainSec` | When an agent counts as running hot (2 GB; 90% for 120 s) |
+| `notify` | Each notification on or off: `waiting`, `collision`, `yourTurn`, `memory`, `cpu` |
+| `modToasts` | Toasts inside Claude Code sessions (on) |
+| `deployRepos` | Checkout path → `owner/repo` whose latest GitHub Actions run is shown, e.g. `{ "/Users/you/code/api": "you/api" }` |
+| `terminal` | Where sessions open: `"Terminal"` or `"iTerm"` |
+
+## Commands
+
+| Command | Does |
+|---|---|
+| `agent-tracker install` | Installs and starts the launchd service (it starts at login) |
+| `agent-tracker uninstall` | Stops and removes the service |
+| `agent-tracker start` / `stop` / `restart` | Starts, stops or restarts the collector |
+| `agent-tracker status` | Whether the service runs and the dashboard answers |
+| `agent-tracker open` | Opens the dashboard |
+| `agent-tracker logs` | The last lines of its logs |
+
+## How it works
+
+The **collector** (`collector/`) is a Node program run by launchd. Every few seconds it reads:
+- `~/.claude/sessions/*.json`: the live session registry;
+- `claude agents --json`: background sessions;
+- the transcripts under `~/.claude/projects/` (only the new bytes of each);
+- `ps`: processes, CPU and memory, and each session's start flags;
+- `git` in each repo, with `GIT_OPTIONAL_LOCKS=0`, so it never takes `index.lock` from an agent
+  that is committing (it never fetches);
+- `gh`, for deploys and pull requests.
+
+From these it works out each agent's state, current step, task list, subagents, touched files and
+collisions. It writes the result to `state/state.json` and serves it as the dashboard, the
+`/api/state` endpoint and a stream of server-sent events.
+
+The **mod** (`mod/`) is a Claude Code plugin. It reads `state/state.json` for its pane, status
+line and toasts, and writes a small check-in file every 2 seconds. When the dashboard asks for
+something (an answer, a message, a model switch, a side question), the collector leaves a file
+for that session's mod. The mod picks it up and does it inside the session.
+
+The **dashboard** (`web/`) is plain HTML and JavaScript, served by the collector. The farm is a
+canvas, with its text drawn as HTML on top so it stays crisp.
+
+## Privacy and security
+
+- Everything stays on your Mac. The collector listens on `127.0.0.1` only and sends nothing
+  anywhere. The exception is `gh`, which asks GitHub about your own repos.
+- File contents, folder listings, past sessions and field close-ups are served only with a
+  per-install token that the page carries. Every action (answer, message, start, end, switch…)
+  also needs a same-origin request.
+- The explorer shows what git shows. Ignored files (`node_modules`, `.env`, build output) and
+  files that look like secrets (`.env*`, keys) are neither listed nor served.
+- Screenshots you send are kept under `state/uploads/` for 7 days.
+
+## Troubleshooting
+
+| Problem | Try |
+|---|---|
+| The dashboard doesn't load | `agent-tracker status`, then `agent-tracker logs`. Check that nothing else uses the port |
+| A session shows "dashboard answers off" | Its mod isn't loaded. Check `CLAUDE_CODE_PLUGIN_DIRS` in `~/.claude/settings.json`, then type anything in the session or `/reload-plugins` |
+| "runs an older tracker mod" | `/reload-plugins` in that session, or resume it |
+| No cost, plan usage or working line | These come from the mod (0.4.0 or newer; the working line from 0.5.0) in a running session |
+| No pull requests or deploy weather | `gh auth status`. Pull requests need a GitHub `origin`; Actions runs need the repo in `deployRepos` |
+| ＋ Session or End session does nothing | Allow the tracker to control Terminal or iTerm: System Settings → Privacy & Security → Automation |
+| The bell is silent | Click the page once (browsers block sound until you do), and allow notifications |
 
 ## Known limits
 
-- The explorer shows what git shows: files git ignores (`node_modules`, `.env`, build output)
-  are neither listed nor served, and nor are files that look like secrets (`.env*`, keys). In
-  a folder that isn't a repo, dependency and hidden folders are skipped. It stays off for an
-  agent working in your home folder. Files over 2 MB and binary files aren't shown; at most
-  5,000 files are listed.
-- Screenshots are saved under `state/uploads/` (kept for 7 days) and the message names them
-  for the agent to open: a plugin's prompt can't carry an image itself.
-- "Documents" and the explorer's dots come from the agent's Write, Edit and Read tool calls
-  (not shell commands). After the collector restarts, a long session's list starts from its
-  recent history.
-- Only sessions that load the mod can be answered or messaged from the dashboard. While a permission prompt
-  is offered there, the terminal shows a spinner; after `permissionDashboardSec` it shows the
-  normal prompt.
-- "Probably a permission prompt" is a guess: a tool call with no result for 20 s while the
-  process is idle. A long, quiet network wait can trigger it.
-- Background shell jobs and workflows show as `unknown` once started; their completion isn't
-  tracked.
+- Only sessions that load the mod can be answered, messaged or switched from the dashboard.
+- "Probably a permission prompt" is a guess: a tool call with no result for 20 s while the process
+  is idle. A long, quiet network wait can look the same.
+- Switching a session's model or effort from the dashboard also changes your default for new
+  sessions, as typing `/model` or `/effort` does.
+- "Thinking" on the farm comes from the mod's working line. Without the mod, it is a guess (working
+  with no tool call open).
+- A project is a folder holding sibling repos. Your home folder and catch-all folders like `~/code`
+  or `~/tools` are never a project.
+- The explorer skips files over 2 MB and binary files, lists at most 5,000 files, and stays off for
+  an agent working in your home folder.
+- "Documents" and the explorer's dots come from the agent's Write, Edit and Read tool calls (not
+  shell commands).
 - claude.ai cloud sessions and Remote Control sessions on other machines aren't visible locally.
 
-## Tests
+## Development
 
-```bash
-npm test                    # collector + dashboard (node:test)
-npm run test:ui             # the dashboard and the farm in headless Chrome, on a fixture
-claude plugin test mod      # the Claude Code mod
-scripts/e2e-answer.sh       # answering, messaging (with a screenshot, and to a busy session), the reader
+```
+collector/   the collector: sources/, transcript/, derive/, server.mjs; its tests in test/
+web/         the dashboard: index.html, app.js, panels.js, farm.js…
+mod/         the Claude Code mod: hooks/register.tsx; its tests in tests/
+bin/         the agent-tracker command and the launchd entry point
+launchd/     the service definition
+scripts/     end-to-end checks
+docs/        screenshots
 ```
 
-GitHub Actions runs `npm test` and `npm run test:ui` on every push to `main` and on pull
-requests. The mod's tests need a Claude Code build with mods, and `scripts/e2e-answer.sh`
-needs real sessions, so those two run locally.
+```bash
+npm test                    # collector and dashboard (node:test)
+npm run test:ui             # the dashboard and the farm in headless Chrome, on a fixture
+claude plugin test mod      # the Claude Code mod
+scripts/e2e-answer.sh       # answering and messaging real sessions
+npm start                   # run the collector in the foreground (stop the service first)
+```
+
+GitHub Actions runs `npm test` and `npm run test:ui` on every push to `main` and on pull requests.
+The mod's tests need Claude Code, and `scripts/e2e-answer.sh` needs real sessions, so those two run
+locally.
 
 ## License
 
