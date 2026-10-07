@@ -16,10 +16,24 @@ const TOOLS = {
 const cmd = words => new RegExp(`(?:^|[;&|(]\\s*|\\$\\(\\s*)(?:sudo\\s+)?(?:${words})(?=\\s|$)`);
 const PM = '(?:npm|pnpm|yarn|bun)';
 
-// First match wins: shipping beats packing, packing beats checking, and so on.
+// Commands that ship code themselves. "deploy" only counts as a script or task name, never as part
+// of a host, folder or log file name.
+const SHIPS = [
+  /\b(?:vercel|netlify)\b.*(?:--prod|\bdeploy\b)|\bvercel\s+--prod\b/, /\b(?:fly|flyctl|firebase|serverless|sam|cdk|wrangler)\s+deploy\b/,
+  /\bkubectl\s+(?:apply|rollout|set\s+image)\b|\bhelm\s+(?:upgrade|install)\b|\bterraform\s+apply\b/, /\bdocker\s+push\b/,
+  new RegExp(`\\b(?:${PM}|cargo|twine)\\s+publish\\b`),
+  /(?:^|[\s;&|('"/])(?:\.\/)?[\w.-]*deploy[\w.-]*\.sh\b/, new RegExp(`\\b${PM}\\s+(?:run\\s+)?deploy\\b`), /\bmake\s+deploy\b/,
+  /\b(?:rsync|scp)\b[^|;&]*\s[\w.@-]+:/, // copying to a server
+];
+// Run on a server (over ssh), these ship too: bringing containers up, restarting services.
+const SHIPS_ON_SERVER = [/\bdocker[\s-]compose\s+up\b|\bdocker-compose\s+up\b/, /\bpm2\s+(?:restart|reload|start)\b/, /\bsystemctl\s+(?:restart|reload|start)\b/, /\bdocker\s+(?:run|restart)\b/];
+const ASKS_CI = /\bgh\s+workflow\s+run\b/; // a deploy too, but CI does it: its run says how it went
+const SSH = cmd('ssh');
+const shipsItself = c => SHIPS.some(p => p.test(c)) || (SSH.test(c) && SHIPS_ON_SERVER.some(p => p.test(c)));
+
+// After deploys, first match wins: shipping beats packing, packing beats checking, and so on.
+// Over ssh the rest of the line is the command run on the server, so it is read the same way.
 const SHELL = [
-  ['deploy', [/\b(?:vercel|netlify)\b.*(?:--prod|\bdeploy\b)|\bvercel\s+--prod\b/, /\b(?:fly|flyctl|firebase|serverless|sam|cdk|wrangler)\s+deploy\b/, /\bgh\s+workflow\s+run\b/,
-    /\bkubectl\s+(?:apply|rollout|set\s+image)\b|\bhelm\s+(?:upgrade|install)\b|\bterraform\s+apply\b/, /\bdocker\s+push\b/, cmd('ssh|rsync|scp'), new RegExp(`\\b(?:${PM}|cargo|twine)\\s+publish\\b`), /\bdeploy\b/]],
   ['push', [/\bgit\s+push\b/, /\bgh\s+pr\s+(?:create|merge)\b/]],
   ['commit', [/\bgit\s+(?:commit|add|stash|tag)\b/]],
   ['pull', [/\bgit\s+(?:pull|fetch|clone|merge|rebase|cherry-pick)\b/]],
@@ -35,7 +49,8 @@ const SHELL = [
   ['delete', [cmd('rm|rmdir|trash'), /\bgit\s+(?:rm|clean)\b/, /\bfind\b.*\s-delete\b/]],
   ['web', [cmd('curl|wget|http|https|xh')]],
   ['search', [cmd('grep|egrep|rg|ag|ack|find|fd|locate')]],
-  ['read', [cmd('cat|head|tail|less|more|ls|tree|wc|stat|file|du|bat|jq|yq|open'), /\bgit\s+(?:status|log|diff|show|blame|branch)\b/]],
+  ['read', [cmd('cat|head|tail|less|more|ls|tree|wc|stat|file|du|bat|jq|yq|open'), /\bgit\s+(?:status|log|diff|show|blame|branch)\b/,
+    /\b(?:psql|mysql|sqlite3|mongosh|redis-cli)\b/, /\bdocker(?:[\s-]compose)?\s+(?:logs|ps)\b/]],
 ];
 
 // A description in plain words, for a command that says nothing clear.
@@ -47,8 +62,14 @@ const SAID = [
 
 function shellStep(command) {
   const c = String(command ?? '');
+  if (shipsItself(c) || ASKS_CI.test(c)) return 'deploy';
   for (const [step, patterns] of SHELL) if (patterns.some(p => p.test(c))) return step;
   return 'shell';
+}
+
+/** Whether a tool call ships code itself (a deploy script over ssh, rsync to a server, vercel --prod…), so how it ends is how the deploy went. */
+export function isDirectDeploy(name, input) {
+  return name === 'Bash' && shipsItself(String(input?.command ?? ''));
 }
 
 /** The kind of work a tool call is: one of STEPS. */

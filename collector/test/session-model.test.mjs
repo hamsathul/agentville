@@ -206,3 +206,17 @@ test('tool steps carry the kind of work, and so does the pending one', () => {
   const m = modelOf(prompt(1, 'go'), toolUse(2, 'a', 'Bash', { command: 'npm test' }), toolResult(3, 'a'), toolUse(4, 'b', 'Bash', { command: 'git push' }));
   assert.deepEqual(m.feed.filter(f => f.kind === 'tool').map(f => f.step), ['push', 'test']);
 });
+
+test('a finished call remembers whether it worked and when it ended', () => {
+  const m = modelOf(prompt(1, 'go'), toolUse(2, 'a', 'Bash', { command: './deploy.sh' }), toolResult(9, 'a'), toolUse(10, 'b', 'Bash', { command: 'false' }), toolResult(11, 'b', true), toolUse(12, 'c', 'Bash', { command: 'sleep 9' }));
+  assert.deepEqual(m.calls.map(c => [c.id, c.ok, c.endedAt]), [['a', true, at(9)], ['b', false, at(11)], ['c', undefined, undefined]]);
+});
+
+test("a background command has not worked or failed when it starts, only when its notice says so; its job says the same", () => {
+  const notice = (sec, id, status) => JSON.stringify({ type: 'user', timestamp: new Date(at(sec)).toISOString(), origin: { kind: 'task-notification' }, message: { content: `<task-notification>\n<tool-use-id>${id}</tool-use-id>\n<status>${status}</status>\n</task-notification>` } });
+  const m = modelOf(prompt(1, 'go'), toolUse(2, 'bg', 'Bash', { command: './deploy.sh', run_in_background: true }), toolResult(2, 'bg'), toolUse(3, 'bg2', 'Bash', { command: './other.sh', run_in_background: true }), toolResult(3, 'bg2'));
+  assert.equal(m.calls[0].ok, undefined, 'started, not finished');
+  m.applyLines([notice(40, 'bg', 'completed'), notice(41, 'bg2', 'failed')]);
+  assert.deepEqual(m.calls.map(c => [c.id, c.ok, c.endedAt]), [['bg', true, at(40)], ['bg2', false, at(41)]]);
+  assert.deepEqual([...m.children.values()].map(c => c.state), ['done', 'failed']);
+});

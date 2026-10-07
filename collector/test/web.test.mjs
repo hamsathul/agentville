@@ -1019,10 +1019,10 @@ test('the farm sidebar has Agent, Files and Diary tabs; the choice is remembered
 test('a failed deploy chip links to the run on GitHub and says why on hover', () => {
   const page = loadPage();
   const snap = richSnapshot([richAgent()]);
-  snap.repos = [{ path: '/w', name: 'w', branch: 'main', agentIds: ['r1'], deploy: { status: 'completed', conclusion: 'failure', sha: '6131f98', workflow: 'Deploy Backend', url: 'https://github.com/o/r/actions/runs/99', reason: 'The job was not started because recent account payments have failed.' } }];
+  snap.repos = [{ path: '/w', name: 'w', branch: 'main', agentIds: ['r1'], lastDeploy: { source: 'actions', state: 'failed', label: '✗ deploy failed', detail: 'Deploy Backend failure at 6131f98: Process completed with exit code 1.', url: 'https://github.com/o/r/actions/runs/99' } }];
   page.push(snap);
-  assert.match(page.el('rail').innerHTML, /<a class="chip c-crit" href="https:\/\/github\.com\/o\/r\/actions\/runs\/99" target="_blank" rel="noopener"[^>]*data-tip="Deploy Backend failed at 6131f98: The job was not started because recent account payments have failed\."[^>]*>✗ deploy failed/);
-  snap.repos[0].deploy.url = 'javascript:alert(1)';
+  assert.match(page.el('rail').innerHTML, /<a class="chip c-crit" href="https:\/\/github\.com\/o\/r\/actions\/runs\/99" target="_blank" rel="noopener"[^>]*data-tip="Deploy Backend failure at 6131f98: Process completed with exit code 1\."[^>]*>✗ deploy failed/);
+  snap.repos[0].lastDeploy.url = 'javascript:alert(1)';
   page.push(snap);
   assert.doesNotMatch(page.el('rail').innerHTML, /href="javascript/);
 });
@@ -1085,4 +1085,20 @@ test("an agent's panel shows what its session has cost so far", async () => {
   assert.match(page.side(), /Cost[\s\S]*\$2\.50/);
   page.push(richSnapshot([richAgent()]));
   assert.doesNotMatch(page.side(), />Cost</);
+});
+
+test("a repo card shows its last deploy as the collector words it: direct, blocked, failed", () => {
+  const page = loadPage();
+  const snap = richSnapshot([richAgent()]);
+  snap.repos = [
+    { path: '/code/a', name: 'a', branch: 'main', dirty: 0, ahead: 0, behind: 0, agentIds: ['r1'], lastDeploy: { source: 'direct', state: 'ok', label: '✓ deployed directly', detail: 'busy-one deployed it directly: Run the deploy' } },
+    { path: '/code/b', name: 'b', branch: 'main', dirty: 0, ahead: 0, behind: 0, agentIds: ['r1'], lastDeploy: { source: 'actions', state: 'blocked', label: "⏸ Actions didn't run", detail: 'Deploy never started: spending limit', url: 'https://github.com/o/b/actions/runs/1' } },
+  ];
+  page.push(snap);
+  const rail = page.el('rail').innerHTML;
+  assert.match(rail, /✓ deployed directly/);
+  assert.match(rail, /busy-one deployed it directly/);
+  assert.match(rail, /⏸ Actions didn&#39;t run|⏸ Actions didn't run/);
+  assert.match(rail, /href="https:\/\/github.com\/o\/b\/actions\/runs\/1"/);
+  assert.doesNotMatch(rail, /deploy failed/);
 });

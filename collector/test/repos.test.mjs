@@ -43,3 +43,14 @@ test('the home folder and / are nobody\'s repo; the busiest repo comes first', (
   ], opts({ lookup: cwd => (cwd === '/Users/me' ? '/Users/me' : cwd) }));
   assert.deepEqual(paths(repos), ['/code/b', '/code/a']);
 });
+
+test("each repo says how its last deploy went, the Actions run's or a direct one's, whichever is newer", () => {
+  const deployRepos = { '/code/api': 'o/api' };
+  const deploys = new Map([['/code/api', { status: 'completed', conclusion: 'failure', blocked: true, at: NOW - 10 * 60_000, sha: 'abc' }]]);
+  const directs = new Map([['/code/api', { at: NOW - 5 * 60_000, ok: true, by: 'api-1', summary: 'Run the deploy' }]]);
+  const [repo] = reposFor([agent('a', { cwd: '/code/api' })], opts({ deployRepos, deploys, directs }));
+  assert.equal(repo.lastDeploy.label, '✓ deployed directly');
+  assert.equal(repo.deploy.blocked, true, 'the Actions run stays for the close-up');
+  const idle = reposFor([], opts({ deployRepos, deploys: new Map([['/code/api', { status: 'in_progress', at: NOW - 10 * 60_000 }]]), directs })); // a stuck run, older than the direct deploy
+  assert.deepEqual(paths(idle), [], 'nobody there and the newest deploy is done: not listed');
+});

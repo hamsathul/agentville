@@ -2,6 +2,8 @@ import { run } from '../lib/exec.mjs';
 
 const RUN_FIELDS = 'status,conclusion,headSha,createdAt,workflowName,url,displayTitle,databaseId';
 const reasons = new Map(); // run id → why it failed (GitHub's annotation), asked once per run
+// GitHub's words when it refuses to start a job (billing, spending limit), not a failure of the deploy itself.
+const BLOCKED = /job was not started|spending limit|account payments|billing/i;
 
 export function parseRunList(stdout) {
   const list = JSON.parse(stdout);
@@ -42,6 +44,9 @@ export async function deployStatus(repo, runner = run, cache = reasons) {
   const res = await runner('gh', ['run', 'list', '-R', repo, '--limit', '1', '--json', RUN_FIELDS], { timeoutMs: 20000 });
   if (res.code !== 0) throw new Error(`gh run list failed for ${repo}: ${res.stderr.trim().slice(0, 200)}`);
   const d = parseRunList(res.stdout);
-  if (d?.conclusion === 'failure' && d.id) d.reason = await failureReason(repo, d.id, runner, cache);
+  if (d?.conclusion === 'failure' && d.id) {
+    d.reason = await failureReason(repo, d.id, runner, cache);
+    d.blocked = BLOCKED.test(d.reason ?? ''); // GitHub never started it: not a failed deploy
+  }
   return d;
 }

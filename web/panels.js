@@ -99,18 +99,14 @@ function listHtml() {
 
 /** A repo's last deploy, linked to its run on GitHub; a failure says why on hover when GitHub said. */
 const runLink = url => (typeof url === 'string' && url.startsWith('https://github.com/') ? url : null);
+/** A repo's last deploy (the collector's lastDeploy: the newer of its Actions run and a deploy an agent ran itself). */
 function deployChip(d) {
   if (!d) return '';
-  const href = runLink(d.url);
-  const chip = (cls, tip, text) => (href
-    ? `<a class="chip ${cls}" href="${esc(href)}" target="_blank" rel="noopener" data-tip="${esc(tip)}">${text}</a>`
-    : `<span class="chip ${cls}" data-tip="${esc(tip)}">${text}</span>`);
-  if (d.status === 'completed') {
-    return d.conclusion === 'success' ? chip('c-good', `${d.workflow ?? 'Deploy'} passed at ${d.sha}`, '✓ deployed')
-      : d.conclusion === 'failure' ? chip('c-crit', `${d.workflow ?? 'Deploy'} failed at ${d.sha}${d.reason ? `: ${d.reason}` : ''}`, '✗ deploy failed')
-      : chip('c-plain', `${d.workflow ?? 'Deploy'} ${d.conclusion ?? 'finished'} at ${d.sha}`, esc(d.conclusion ?? 'done'));
-  }
-  return chip('c-warn live-dot', `${d.workflow ?? 'Deploy'} ${d.status} · ${d.sha}`, 'deploying');
+  const href = d.url ? runLink(d.url) : null;
+  const cls = { ok: 'c-good', failed: 'c-crit', running: 'c-warn live-dot' }[d.state] ?? 'c-plain';
+  return href
+    ? `<a class="chip ${cls}" href="${esc(href)}" target="_blank" rel="noopener" data-tip="${esc(d.detail ?? '')}">${esc(d.label)}</a>`
+    : `<span class="chip ${cls}" data-tip="${esc(d.detail ?? '')}">${esc(d.label)}</span>`;
 }
 
 function railHtml() {
@@ -129,7 +125,7 @@ function railHtml() {
     const dirtyMeter = r.dirty === undefined ? '' : `<div class="m" style="margin-top:8px"><span class="ml">Changes</span>${meter(Math.min(dirty, 20) / 20, severityOf(dirty / 20, 0.5, 0.9), `${dirty} uncommitted file${dirty === 1 ? '' : 's'}`)}<span class="mv">${dirty ? `${dirty} uncommitted` : 'clean ✓'}</span></div>`;
     const sync = r.ahead === undefined ? '' : `<span class="chip c-plain" data-tip="against origin, as of the last fetch">↑${r.ahead} ↓${r.behind}</span>`;
     const agents = r.agentIds.length ? `<span class="chip ${colliding.has(r.path) ? 'c-serious' : 'c-plain'}">${r.agentIds.length} agent${r.agentIds.length > 1 ? 's' : ''}</span>` : '';
-    return `<div class="card${colliding.has(r.path) ? ' collide' : ''}" title="${esc(r.path)}"><div class="top"><b>${esc(r.name)}</b><span class="chip c-plain">⎇ ${esc(r.branch ?? '?')}</span>${deployChip(r.deploy)}</div>${dirtyMeter}<div class="badges">${sync}${agents}${who(r.agentIds)}</div></div>`;
+    return `<div class="card${colliding.has(r.path) ? ' collide' : ''}" title="${esc(r.path)}"><div class="top"><b>${esc(r.name)}</b><span class="chip c-plain">⎇ ${esc(r.branch ?? '?')}</span>${deployChip(r.lastDeploy)}</div>${dirtyMeter}<div class="badges">${sync}${agents}${who(r.agentIds)}</div></div>`;
   }).join('') || '<div class="empty">No repos touched in the last 30 minutes.</div>';
   return html;
 }

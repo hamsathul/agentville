@@ -10,6 +10,12 @@ export function cleanPrompt(text) {
   return t;
 }
 
+/** A background command's notices: which call each was and how it ended (completed, failed, killed…). */
+function taskNotices(text) {
+  return [...text.matchAll(/<task-notification>[\s\S]*?<tool-use-id>([^<]+)<\/tool-use-id>[\s\S]*?<status>([a-z]+)<\/status>/g)]
+    .map(n => ({ kind: 'task_done', toolUseId: n[1].trim(), status: n[2] }));
+}
+
 /** Normalises one transcript JSON object into { at, events }. */
 export function parseEntry(obj) {
   if (!obj || typeof obj !== 'object') return { at: null, events: [] };
@@ -27,6 +33,7 @@ export function parseEntry(obj) {
       events.push({ kind: 'turn_start' });
     } else if (obj.isMeta !== true) {
       const text = typeof content === 'string' ? content : blocks.filter(b => b?.type === 'text').map(b => b.text ?? '').join('\n');
+      events.push(...taskNotices(text));
       // The person typed it, or sent it from the dashboard (the mod submits it as the user's own words).
       const isHuman = !obj.origin || obj.origin.kind === 'human' || obj.origin.asUser === true;
       const clean = cleanPrompt(text);
@@ -43,6 +50,8 @@ export function parseEntry(obj) {
       }
     }
     if (typeof obj.message?.model === 'string') events.push({ kind: 'model', model: obj.message.model, usage: obj.message.usage });
+  } else if (obj.type === 'queue-operation' && obj.operation === 'enqueue' && typeof obj.content === 'string') {
+    events.push(...taskNotices(obj.content)); // a notice that waited for a busy session: queued when the job ended
   } else if (obj.type === 'system' && obj.subtype === 'turn_duration') {
     events.push({ kind: 'turn_end' });
   } else if (obj.type === 'ai-title' && typeof obj.aiTitle === 'string') {

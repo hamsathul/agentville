@@ -79,7 +79,7 @@ export class SessionModel {
         this.#push({ at: when, kind: 'reply', text: this.lastReply, body: bodyOf(ev.text) });
         break;
       case 'tool_use': {
-        const call = { id: ev.id, name: ev.name, input: ev.input, at: when, cwd: ev.cwd };
+        const call = { id: ev.id, name: ev.name, input: ev.input, at: when, cwd: ev.cwd, background: ev.input?.run_in_background === true };
         this.finalReply = null;
         this.pending.set(ev.id, call);
         this.calls.push(call);
@@ -100,6 +100,9 @@ export class SessionModel {
       case 'tool_result': {
         const call = this.pending.get(ev.toolUseId);
         this.pending.delete(ev.toolUseId);
+        // How a call ended (a deploy command's outcome is the deploy's). A background command only
+        // started here: its notice says how it ended (task_done).
+        if (call && !(call.background && ev.ok)) { call.ok = ev.ok; call.endedAt = when; }
         const item = this.openItems.get(ev.toolUseId);
         if (item) {
           item.ok = ev.ok;
@@ -108,6 +111,13 @@ export class SessionModel {
         }
         const child = this.children.get(ev.toolUseId);
         if (child) child.state = !ev.ok ? 'failed' : child.kind === 'subagent' && !child.isBackground ? 'done' : 'unknown';
+        break;
+      }
+      case 'task_done': {
+        const call = this.calls.findLast(c => c.id === ev.toolUseId);
+        if (call?.background && call.endedAt === undefined && ev.status !== 'running') { call.ok = ev.status === 'completed'; call.endedAt = when; } // the first notice says it
+        const job = this.children.get(ev.toolUseId);
+        if (job?.kind === 'bgjob') job.state = ev.status === 'completed' ? 'done' : ev.status === 'running' ? 'running' : 'failed';
         break;
       }
       case 'turn_end':

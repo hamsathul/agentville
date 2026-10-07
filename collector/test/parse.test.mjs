@@ -73,3 +73,19 @@ test('clip collapses whitespace and adds an ellipsis', () => {
 test('a compaction summary opens a turn but is not the last prompt', () => {
   assert.deepEqual(kinds({ type: 'user', isCompactSummary: true, isVisibleInTranscriptOnly: true, message: { content: 'This session is being continued from a previous conversation that ran out of context.' } }), ['turn_start']);
 });
+
+test("a background command's notice says how it ended", () => {
+  const notice = id => `<task-notification>\n<task-id>b1</task-id>\n<tool-use-id>${id}</tool-use-id>\n<output-file>/tmp/b1.output</output-file>\n<status>completed</status>\n<summary>Background command "Deploy" completed (exit code 0)</summary>\n</task-notification>`;
+  const r = parseEntry({ type: 'user', origin: { kind: 'task-notification' }, message: { content: notice('toolu_A') } });
+  assert.deepEqual(r.events, [{ kind: 'task_done', toolUseId: 'toolu_A', status: 'completed' }, { kind: 'turn_start' }]);
+  const failed = notice('toolu_B').replace('<status>completed', '<status>failed');
+  assert.deepEqual(parseEntry({ type: 'user', origin: { kind: 'task-notification' }, message: { content: [{ type: 'text', text: failed }] } }).events[0], { kind: 'task_done', toolUseId: 'toolu_B', status: 'failed' });
+});
+
+test('a notice queued while the session was busy counts too, from when it was queued', () => {
+  const content = '<task-notification>\n<tool-use-id>toolu_Q</tool-use-id>\n<status>completed</status>\n</task-notification>';
+  const r = parseEntry({ type: 'queue-operation', operation: 'enqueue', timestamp: '2026-10-07T13:26:00.000Z', content });
+  assert.deepEqual(r.events, [{ kind: 'task_done', toolUseId: 'toolu_Q', status: 'completed' }]);
+  assert.equal(r.at, Date.parse('2026-10-07T13:26:00.000Z'));
+  assert.deepEqual(parseEntry({ type: 'queue-operation', operation: 'remove', content }).events, []);
+});

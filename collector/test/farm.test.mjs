@@ -213,3 +213,11 @@ test("a farmer's tooltip says what its session has cost so far", () => {
   const scene = plain(toScene(snapOf([agent('a', { usage: { costUsd: 3.456 } }), agent('b')], []), { cpuAlertPct: 90 }));
   assert.deepEqual(scene.farmers.map(f => f.cost), [3.456, null]);
 });
+
+test("a field's weather follows its last deploy, direct or Actions; a run GitHub never started brings none", () => {
+  const { toScene } = load();
+  const r = (name, lastDeploy) => repo(`/code/${name}`, { lastDeploy });
+  const scene = plain(toScene(snapOf([], [r('a', { state: 'ok', source: 'direct', label: '✓ deployed directly' }), r('b', { state: 'blocked', label: "⏸ Actions didn't run" }), r('c', { state: 'failed' }), r('d', { state: 'running' }), r('e', null)]), { cpuAlertPct: 90 }));
+  assert.deepEqual(scene.fields.map(f => f.weather), ['rainbow', null, 'rain', 'windmill', null]);
+  assert.equal(scene.fields[1].lastDeploy.label, "⏸ Actions didn't run");
+});

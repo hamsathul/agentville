@@ -22,6 +22,7 @@ import { applySince, buildAgent, countStates, sortAgents } from './derive/agent.
 import { findCollisions } from './derive/collisions.mjs';
 import { reposFor } from './derive/repos.mjs';
 import { planReadings, planUsage } from './derive/plan.mjs';
+import { noteDirectDeploys } from './derive/deploys.mjs';
 import { AlertEngine, notifyMac } from './alerts.mjs';
 import { createTrackerServer } from './server.mjs';
 import { renderTranscriptPage } from './transcript-page.mjs';
@@ -92,6 +93,7 @@ export async function startCollector({ root, claudeDir = join(homedir(), '.claud
   const resolver = new RepoResolver();
   const repoInfo = new Map();
   const deploys = new Map();
+  const directDeploys = new Map(); // repo → the newest deploy an agent ran itself ({ at, ok, by, summary }), kept while the collector runs
   const alerts = new AlertEngine({ cfg, notify, startedAt: Date.now() });
   const timers = [];
   const watchers = [];
@@ -274,6 +276,10 @@ export async function startCollector({ root, claudeDir = join(homedir(), '.claud
         childModels: rec?.childModels, offer: offers.get(base.id), beacon: beacons.get(base.id), repoOf: p => resolver.lookup(p), now, cfg, home,
       });
       agents.push(applySince(agent, prevAgents.get(agent.id), now));
+      if (rec) { // deploys it ran itself (a script over ssh, rsync…), its subagents' too
+        const known = [...repoInfo.keys(), ...Object.keys(cfg.deployRepos)];
+        for (const m of [rec.model, ...(rec.childModels?.values() ?? [])]) noteDirectDeploys(directDeploys, { calls: m.calls, by: agent.name, lookup: p => resolver.lookup(p), known, folder: agent.cwd });
+      }
     }
     const liveIds = new Set(agents.map(a => a.id));
     for (const id of [...cpuHist.keys()]) if (!liveIds.has(id)) cpuHist.delete(id);
@@ -288,7 +294,7 @@ export async function startCollector({ root, claudeDir = join(homedir(), '.claud
       sources: { ...sources },
       counts: countStates(agents, collisions),
       agents: sortAgents(agents),
-      repos: reposFor(agents, { deployRepos: cfg.deployRepos, repoInfo, deploys, lookup: p => resolver.lookup(p), home }),
+      repos: reposFor(agents, { deployRepos: cfg.deployRepos, repoInfo, deploys, directs: directDeploys, lookup: p => resolver.lookup(p), home }),
       plan: planUsage(planReadings(beacons, agents), now),
       collisions,
     };

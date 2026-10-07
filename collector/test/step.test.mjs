@@ -1,7 +1,7 @@
 // What kind of step a tool call is: the farm draws a different tool for each kind.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { STEPS, stepOf } from '../derive/step.mjs';
+import { STEPS, isDirectDeploy, stepOf } from '../derive/step.mjs';
 
 test('tools map to the kind of work they do', () => {
   const cases = [
@@ -42,4 +42,25 @@ test('an unclear command falls back to its description', () => {
 
 test('every step kind is listed', () => {
   assert.deepEqual([...STEPS].sort(), ['agent', 'ask', 'build', 'commit', 'delete', 'deploy', 'edit', 'install', 'lint', 'other', 'plan', 'pull', 'push', 'read', 'search', 'serve', 'shell', 'test', 'web', 'write']);
+});
+
+test('over ssh, the command run on the server decides; "deploy" in a name is not a deploy', () => {
+  const cases = {
+    deploy: [`ssh prod 'cd /srv/app && ./deploy-zero-downtime.sh --backend' > /tmp/deploy-backend.log 2>&1`, 'npm run deploy', 'make deploy', 'ssh prod "pm2 reload api"',
+      'ssh prod "cd /srv/app && docker compose up -d --build"', 'scp dist.tar.gz prod:/srv/', 'ssh prod "sudo systemctl restart api"'],
+    read: [`ssh prod-deployment 'cd /srv/app-deployment && docker compose exec -T db sh -c "psql -U app -c \"select 1\""'`, 'psql -U app -c "select count(*) from users"',
+      "ssh prod 'docker compose logs --tail 50 api'", 'tail -15 /tmp/deploy-frontend.log'],
+    search: ['grep -v "^ " notes/manual-vps-deploy-behavior.md'],
+    pull: ["ssh prod 'cd /srv/app/backend && git log -1 --oneline && git fetch -q origin'"],
+    shell: ['ssh prod', "ssh prod 'uptime'"],
+  };
+  for (const [step, commands] of Object.entries(cases)) for (const command of commands) assert.equal(stepOf('Bash', { command }), step, command);
+});
+
+test('a direct deploy is a deploy command that ships something itself (not one that asks CI to)', () => {
+  assert.equal(isDirectDeploy('Bash', { command: "ssh prod 'cd /srv && ./deploy.sh'" }), true);
+  assert.equal(isDirectDeploy('Bash', { command: 'vercel --prod' }), true);
+  assert.equal(isDirectDeploy('Bash', { command: 'gh workflow run deploy.yml' }), false);
+  assert.equal(isDirectDeploy('Bash', { command: "ssh prod 'docker compose logs api'" }), false);
+  assert.equal(isDirectDeploy('Edit', { file_path: 'deploy.sh' }), false);
 });

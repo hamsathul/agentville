@@ -51,9 +51,14 @@
     return Math.min(1, tokens / (tokens > 200_000 ? 1_000_000 : 200_000));
   }
 
-  /** Weather over a field, from its last deploy (same rules as the list view's deploy chip). */
+  /**
+   * Weather over a field, from its last deploy (same rules as the list view's deploy chip): the
+   * collector's lastDeploy (the newer of the Actions run and a direct deploy), or a bare Actions run.
+   * A run GitHub never started (billing) brings no weather.
+   */
   function weatherOf(deploy) {
     if (!deploy) return null;
+    if (deploy.state) return { running: 'windmill', ok: 'rainbow', failed: 'rain' }[deploy.state] ?? null;
     if (deploy.status !== 'completed') return 'windmill';
     return deploy.conclusion === 'success' ? 'rainbow' : deploy.conclusion === 'failure' ? 'rain' : null;
   }
@@ -94,7 +99,7 @@
     return {
       fields: repos.map(r => ({
         key: r.path, name: r.name, branch: r.branch ?? null, dirty: r.dirty ?? 0, ahead: r.ahead ?? 0, behind: r.behind ?? 0,
-        weather: weatherOf(r.deploy), deploy: r.deploy ?? null,
+        weather: weatherOf(r.lastDeploy !== undefined ? r.lastDeploy : r.deploy), deploy: r.deploy ?? null, lastDeploy: r.lastDeploy ?? null,
         crop: CROPS[pick(r.path, 7, CROPS.length)], fence: FENCES[pick(r.path, 8, FENCES.length)], soil: SOILS[pick(r.path, 9, SOILS.length)],
         pennant: Boolean(r.branch) && r.branch !== '(detached)' && !isMain(r.branch),
         collision: (snap.collisions ?? []).find(c => c.repo === r.path)?.severity ?? null,
@@ -659,9 +664,9 @@
         for (const s of ST) {
           const f = fieldByKey(s.key);
           const branch = f.branch === '(detached)' ? ' <span style="opacity:.75">?</span>' : f.branch && !isMain(f.branch) ? ` <span style="opacity:.7">${esc(clip(f.branch, 14))}</span>` : '';
-          const d = f.deploy, why = d?.reason ? `: ${d.reason}` : '';
-          const weather = f.weather === 'rain' ? ' <span class="dep-bad">✗ deploy failed</span>' : f.weather === 'windmill' ? ' <span class="dep-run">◌ deploying</span>' : f.weather === 'rainbow' ? ' <span class="dep-ok">✓ deployed</span>' : '';
-          const tip = [f.key, f.branch && `on ${f.branch}`, d && `${d.workflow ?? 'Deploy'} ${d.status === 'completed' ? d.conclusion : d.status} at ${d.sha}${why}`, 'Click to see the files agents touched here'].filter(Boolean).join(' · ');
+          const d = f.lastDeploy;
+          const weather = d ? ` <span class="${{ ok: 'dep-ok', failed: 'dep-bad', running: 'dep-run' }[d.state] ?? 'dep-dim'}">${esc(d.label)}</span>` : '';
+          const tip = [f.key, f.branch && `on ${f.branch}`, d?.detail, 'Click to see the files agents touched here'].filter(Boolean).join(' · ');
           lab(s.cx, s.rowTop + 50, `<button type="button" class="px-field" data-farm-field="${esc(f.key)}" title="${esc(tip)}">${esc(clip(f.name, 18))}${branch}${weather}${f.collision ? ' ⚠ crowded' : ''}</button>`, f.collision ? 'bad' : '');
           if (f.behind > 0) lab(s.cx - 40, s.rowTop - 17, `↓${f.behind}`, 'cnt', `${f.behind} commit${f.behind === 1 ? '' : 's'} behind the remote`);
           if (f.ahead > 0) lab(s.cx - 23, s.rowTop - 7 - Math.ceil(Math.min(f.ahead, 16) / 8) * 6, `↑${f.ahead}`, 'cnt', `${f.ahead} unpushed commit${f.ahead === 1 ? '' : 's'}`);
@@ -690,7 +695,7 @@
       <b>Farmers</b><span>one per agent; each has its own hat, hair and clothes, and its shirt is the agent's colour in the list</span>
       <b>Speech bubbles</b><span>what a farmer asked or last said; × hides one to a 💬 (click it to show the bubble again); a new message brings it back by itself. The Bubbles switch hides or shows them all</span>
       <b>Above a field</b><span>hay = uncommitted files, crates = unpushed commits, mailbox = behind the remote</span>
-      <b>Weather</b><span>the repo's last deploy: rainbow = deployed, rain = deploy failed (hover its sign for GitHub's reason; the close-up links to the run), windmill = deploying; rope = two agents writing one repo</span>
+      <b>Weather</b><span>the repo's last deploy, from GitHub Actions or a deploy an agent ran itself (a deploy script over ssh, rsync, vercel…), whichever is newer: rainbow = deployed, rain = deploy failed (hover its sign for why; the close-up links to the run), windmill = deploying. A run GitHub never started (billing, spending limit) brings no weather: ⏸ Actions didn't run. Rope = two agents writing one repo</span>
       <b>Hearts, crops</b><span>hearts = context left. Crops grow as the context fills: seeds, sprouts, young plants, in flower, ripening, then ripe with a sparkle (golden wheat, red tomatoes, sunflowers in bloom…) when it is nearly full. Chickens = subagents, the dog = an Explore subagent</span>
       <b>Shade tree, scarecrows</b><span>idle agents nap under the tree; stale ones stand as scarecrows; the meadow is for agents outside any repo</span>
       <b>Click</b><span>a farmer to answer or message it in the sidebar; a field for the files agents touched there</span>
@@ -1256,18 +1261,17 @@
     }
     function sideList() {
       const field = view.field(key) ?? {};
-      const deploy = field.deploy ? (field.deploy.status === 'completed' ? field.deploy.conclusion : field.deploy.status) : '';
+      const ld = field.lastDeploy; // the newer of the Actions run and a deploy an agent ran itself
       const piles = [
         field.dirty ? `<span class="pile"><b class="i-bale"></b>${field.dirty} uncommitted</span>` : '',
         field.ahead ? `<span class="pile"><b class="i-crate"></b>${field.ahead} unpushed</span>` : '',
         field.behind ? `<span class="pile"><b class="i-mail"></b>${field.behind} behind</span>` : '',
-        deploy ? (() => {
-          const href = typeof field.deploy.url === 'string' && field.deploy.url.startsWith('https://github.com/') ? field.deploy.url : null;
-          const tip = `${field.deploy.workflow ?? 'Deploy'} at ${field.deploy.sha}${field.deploy.reason ? `: ${field.deploy.reason}` : ''}`;
-          const text = `deploy ${esc(deploy)}${href ? ' ↗' : ''}`;
-          return href ? `<a class="pile ${deploy === 'failure' ? 'bad' : ''}" href="${esc(href)}" target="_blank" rel="noopener" title="${esc(tip)}">${text}</a>` : `<span class="pile ${deploy === 'failure' ? 'bad' : ''}" title="${esc(tip)}">${text}</span>`;
+        ld ? (() => {
+          const href = typeof ld.url === 'string' && ld.url.startsWith('https://github.com/') ? ld.url : null;
+          const cls = `pile ${ld.state === 'failed' ? 'bad' : ''}`, text = `${esc(ld.label)}${href ? ' ↗' : ''}`;
+          return href ? `<a class="${cls}" href="${esc(href)}" target="_blank" rel="noopener" title="${esc(ld.detail)}">${text}</a>` : `<span class="${cls}" title="${esc(ld.detail)}">${text}</span>`;
         })() : '',
-        field.deploy?.reason ? `<div class="fv-why">${esc(field.deploy.reason)}</div>` : '',
+        ld && ld.state !== 'ok' && ld.detail ? `<div class="fv-why">${esc(ld.detail)}</div>` : '',
       ].join('');
       const who = f => f.agents.map(a => `<i style="background:${view.farmerColor(a.id)}" title="${esc(view.farmerName(a.id) ?? a.id)}"></i>`).join('');
       const rows = groups().map(([dir, list]) => `<li class="fv-d">${esc(dir)}</li>` + list.map(f => `<li><button type="button" class="fv-f ${sel === f.path ? 'on' : ''}" data-fv-file="${esc(f.path)}"><span class="k k-${kind(f)}"></span><span class="ell">${esc(nameIn(dir, f.path))}</span><span class="who">${who(f)}</span><time>${ago(f.at)}</time></button></li>`).join('')).join('');

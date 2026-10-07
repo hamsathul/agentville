@@ -43,7 +43,9 @@ how much CPU and memory each one uses.
   deploy), a lantern for a server, and more (ⓘ lists them all). Crops grow through six stages as
   the context fills, from seeds to ripe. Above each field,
   hay bales are uncommitted files, crates unpushed commits and a mailbox commits behind; the
-  weather is the last deploy (rainbow, rain, windmill) and a rope marks two agents in one repo.
+  weather is the last deploy, from GitHub Actions or a deploy an agent ran itself (a deploy
+  script over ssh, rsync, vercel…), whichever is newer (rainbow, rain, windmill; a run GitHub never
+  started for billing reasons shows no rain: "⏸ Actions didn't run") and a rope marks two agents in one repo.
   Hearts show context left, chickens are subagents and an Explore subagent is a dog. Click a
   farmer to open the sidebar beside the farm (or toggle it with ◨ Sidebar). Its tabs: **Agent**
   (answer its question or permission prompt, message it with screenshots, the conversation newest
