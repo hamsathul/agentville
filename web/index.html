@@ -41,7 +41,7 @@
 [hidden] { display: none !important; } /* e.g. the Sidebar button outside the farm: .act would show it */
 html, body { height: 100%; }
 body { margin: 0; display: flex; flex-direction: column; font: 13px/1.45 system-ui, -apple-system, "Segoe UI", sans-serif; background: var(--page); color: var(--text); }
-header.top { flex: none; z-index: 3; display: flex; flex-wrap: wrap; gap: 10px; align-items: center; padding: 10px 18px; background: color-mix(in srgb, var(--page) 88%, transparent); backdrop-filter: blur(10px); border-bottom: 1px solid var(--line); }
+header.top { flex: none; z-index: 3; display: flex; flex-wrap: nowrap; gap: 10px; align-items: center; padding: 10px 18px; background: color-mix(in srgb, var(--page) 88%, transparent); backdrop-filter: blur(10px); border-bottom: 1px solid var(--line); }
 .brand { display: flex; align-items: center; gap: 9px; font-weight: 700; font-size: 15px; letter-spacing: .01em; }
 .brand svg { width: 22px; height: 22px; display: block; }
 .live { display: inline-flex; align-items: center; gap: 6px; font-size: 11px; font-weight: 700; color: var(--good-text); text-transform: uppercase; letter-spacing: .1em; }
@@ -126,7 +126,9 @@ header.top { flex: none; z-index: 3; display: flex; flex-wrap: wrap; gap: 10px; 
 .grp { flex: 1; display: flex; align-items: center; gap: 4px; border: 0; background: none; padding: 2px 0; font: inherit; font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: .08em; color: var(--muted); cursor: pointer; text-align: left; }
 .grp-n { margin-left: 4px; color: var(--faint); }
 .act.mini { padding: 2px 8px; font-size: 12px; margin: 0; }
-.hstats { display: flex; align-items: center; gap: 16px; flex-wrap: wrap; }
+.hstats { display: flex; align-items: center; justify-content: flex-end; gap: 4px 16px; flex-wrap: wrap; flex: 0 1 auto; min-width: 0; } /* the meters wrap inside the bar, so the buttons stay on its first line */
+header.top > .seg, header.top > button { flex: none; white-space: nowrap; }
+@media (max-width: 1100px) { header.top { flex-wrap: wrap; } }
 #meta { flex: 1 1 0; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; text-align: right; } /* gives way before the buttons wrap */
 .hstat { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; white-space: nowrap; }
 .hstat .meter { width: 64px; }
