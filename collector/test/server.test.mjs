@@ -23,6 +23,7 @@ async function start() {
       rm: async ids => { calls.push(['rm', ids]); return { results: [] }; },
       answer: async body => { calls.push(['answer', body]); return { ok: true }; },
       permit: async body => { calls.push(['permit', body]); return { ok: true }; },
+      message: async body => { calls.push(['message', body]); return { ok: true }; },
     },
   });
   const port = await srv.listen();
@@ -131,5 +132,15 @@ test('answers and permission decisions are posted to their actions, guarded like
   assert.equal((await post('/api/actions/answer', answer)).status, 200);
   assert.equal((await post('/api/actions/permit', { agentId: 's1', toolUseId: 'toolu_B', decision: 'allow' })).status, 200);
   assert.deepEqual(calls, [['answer', answer], ['permit', { agentId: 's1', toolUseId: 'toolu_B', decision: 'allow' }]]);
+  await srv.close();
+});
+
+test('chat messages are posted to their action, guarded like the others', async () => {
+  const { srv, port, calls } = await start();
+  const origin = `http://127.0.0.1:${port}`;
+  const body = JSON.stringify({ agentId: 's1', text: 'hello' });
+  assert.equal((await request(port, { method: 'POST', path: '/api/actions/message', headers: { origin, 'content-type': 'application/json' }, body })).status, 403);
+  assert.equal((await request(port, { method: 'POST', path: '/api/actions/message', headers: { 'x-tracker-token': 'tok', origin, 'content-type': 'application/json' }, body })).status, 200);
+  assert.deepEqual(calls, [['message', { agentId: 's1', text: 'hello' }]]);
   await srv.close();
 });

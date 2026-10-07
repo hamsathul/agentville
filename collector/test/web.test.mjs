@@ -318,3 +318,49 @@ test("the drawer says whether the session's mod is listening for dashboard answe
   await page.openAgent('r2');
   assert.match(page.side(), /dashboard answers off/);
 });
+
+test('the drawer has a message box under Now that sends a chat message to the session', async () => {
+  const page = loadPage();
+  page.push(richSnapshot([richAgent({ mod: { version: '0.3.0', live: true } })]));
+  await page.openAgent('r1');
+  const side = page.side();
+  assert.match(side, /id="msg-text"/);
+  assert.ok(side.indexOf('id="msg-text"') > side.indexOf('>Now<'));
+  page.edit('input', { tagName: 'TEXTAREA', value: 'Also update the README', dataset: { msgAgent: 'r1' } });
+  await page.clickButton('msg-send', { agent: 'r1' });
+  assert.deepEqual(page.posts, [{ path: '/api/actions/message', body: { agentId: 'r1', text: 'Also update the README' } }]);
+});
+
+test('a half-typed message survives the drawer refreshing', async () => {
+  const page = loadPage();
+  page.push(richSnapshot([richAgent({ mod: { version: '0.3.0', live: true } })]));
+  await page.openAgent('r1');
+  page.edit('input', { tagName: 'TEXTAREA', value: 'draft text', dataset: { msgAgent: 'r1' } });
+  page.push(richSnapshot([richAgent({ mod: { version: '0.3.0', live: true } })]));
+  assert.match(page.side(), />draft text<\/textarea>/);
+});
+
+test('the message box is disabled, with the reason, when the session is not listening', async () => {
+  const page = loadPage();
+  page.push(richSnapshot([richAgent({ mod: undefined })]));
+  await page.openAgent('r1');
+  assert.match(page.side(), /<textarea[^>]*disabled/);
+  assert.match(page.side(), /isn't listening/);
+});
+
+test('Activity comes right after Now in the drawer, before the charts', async () => {
+  const page = loadPage();
+  page.push(richSnapshot([richAgent({ mod: { version: '0.3.0', live: true } })]));
+  await page.openAgent('r1');
+  const side = page.side();
+  const now = side.indexOf('>Now<'), activity = side.indexOf('>Activity<'), charts = side.indexOf('>Last 10 minutes<');
+  assert.ok(now > 0 && now < activity && activity < charts, `${now} ${activity} ${charts}`);
+});
+
+test('the number tiles are a compact single row', () => {
+  const page = loadPage();
+  page.push(richSnapshot([richAgent()]));
+  const kpis = page.el('kpis').innerHTML;
+  assert.doesNotMatch(kpis, /kpi-top/);
+  assert.match(kpis, /<b class="val">1<\/b>/);
+});

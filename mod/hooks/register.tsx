@@ -26,7 +26,7 @@ const DASHBOARD_REASON = 'Answered from the Agent Tracker dashboard'
 type Offer = { stateDir: string; sessionId: string; isLive: boolean; windowSec: number; now: number }
 type Waited = { kind: 'answer'; text: string } | { kind: 'withdrawn' } | { kind: 'timeout' }
 
-const MOD_VERSION = '0.2.0'
+const MOD_VERSION = '0.3.0'
 
 let latest: TrackerView = EMPTY
 let selfId = ''
@@ -52,6 +52,33 @@ export async function offerContext($: any): Promise<Offer> {
   return { stateDir: stateDirFor($.plugin.root), sessionId, isLive: Boolean(sessionId) && isFresh(latest, now), windowSec: dashboardWindowSec(latest, now), now }
 }
 
+/**
+ * Chat messages sent from the dashboard wait in <state>/messages/<sessionId>/. Each is submitted as
+ * the person's own words (queued if a turn is running), oldest first, then removed, which tells
+ * the collector it was delivered.
+ */
+export async function deliverMessages($: any, stateDir: string, sessionId: string) {
+  const inbox = `${stateDir}/messages/${sessionId}`
+  let entries: { name: string }[]
+  try {
+    entries = await $.fs.list(inbox)
+  } catch {
+    return
+  }
+  for (const name of entries.map(e => e.name).filter(n => n.endsWith('.json')).sort()) {
+    const path = `${inbox}/${name}`
+    let text = ''
+    try {
+      const value = JSON.parse(await $.fs.read(path))?.text
+      text = typeof value === 'string' ? value.trim() : ''
+    } catch {
+      text = ''
+    }
+    if (text) await $.prompt.submit({ text, asUser: true })
+    await removeFiles($, [path])
+  }
+}
+
 /** Reads the collector's state for the pane, status line and toasts, and leaves a beacon saying this session's mod is listening. */
 async function pollOnce($: any) {
   const now = await $.clock.now()
@@ -63,7 +90,10 @@ async function pollOnce($: any) {
       for (const agent of newlyWaiting(previous, snapshot, selfId, toasted)) $.ui.toast(`${agent.name}: ${agent.stateReason}`)
     }
     previous = snapshot
-    if (selfId) await $.fs.write(`${stateDirFor($.plugin.root)}/mods/${selfId}.json`, JSON.stringify({ sessionId: selfId, version: MOD_VERSION, at: now }))
+    if (selfId) {
+      await $.fs.write(`${stateDirFor($.plugin.root)}/mods/${selfId}.json`, JSON.stringify({ sessionId: selfId, version: MOD_VERSION, at: now }))
+      await deliverMessages($, stateDirFor($.plugin.root), selfId)
+    }
   } catch (err) {
     fresh = { snapshot: null, readAt: now, error: String(err) }
   }

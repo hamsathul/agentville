@@ -120,3 +120,16 @@ export function readBeacons(dir, now) {
   }
   return beacons;
 }
+
+const SESSION_ID = /^[A-Za-z0-9-]{1,64}$/;
+
+/** Queues a chat message for a session's mod: state/messages/<sessionId>/<time>-<n>.json, written whole. */
+export function writeMessageFile(dir, sessionId, text) {
+  if (!SESSION_ID.test(sessionId)) throw new Error('not a session id');
+  const inbox = join(dir, sessionId);
+  mkdirSync(inbox, { recursive: true });
+  const file = join(inbox, `${Date.now()}-${Math.random().toString(36).slice(2, 8)}.json`);
+  writeFileSync(`${file}.tmp`, JSON.stringify({ text, at: Date.now() }));
+  renameSync(`${file}.tmp`, file);
+  return file;
+}

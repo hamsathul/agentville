@@ -161,3 +161,47 @@ test('a session resumed in another folder is read from its newest transcript cop
     await handle.stop();
   }
 });
+
+test('a chat message is handed to the session through its mod, with delivery confirmed', async () => {
+  const root = mkdtempSync(join(tmpdir(), 'tracker-root-msg-'));
+  mkdirSync(join(root, 'web'));
+  writeFileSync(join(root, 'web', 'index.html'), '<html></html>');
+  writeFileSync(join(root, 'config.json'), JSON.stringify({ port: 0, deployRepos: {} }));
+  const claudeDir = mkdtempSync(join(tmpdir(), 'tracker-claude-msg-'));
+  mkdirSync(join(claudeDir, 'sessions'));
+  mkdirSync(join(claudeDir, 'projects', '-w'), { recursive: true });
+  writeFileSync(join(claudeDir, 'sessions', `${process.pid}.json`), JSON.stringify({ pid: process.pid, sessionId: 'sess-msg', cwd: '/w', name: 'chatty', status: 'idle' }));
+  writeFileSync(join(claudeDir, 'projects', '-w', 'sess-msg.jsonl'), `${JSON.stringify({ type: 'user', timestamp: new Date().toISOString(), message: { content: 'hi' } })}\n`);
+  mkdirSync(join(root, 'state', 'mods'), { recursive: true });
+  const beacon = () => writeFileSync(join(root, 'state', 'mods', 'sess-msg.json'), JSON.stringify({ sessionId: 'sess-msg', version: '0.3.0', at: Date.now() }));
+  beacon();
+  const received = [];
+  let modAlive = true;
+  const inbox = join(root, 'state', 'messages', 'sess-msg');
+  const fakeMod = setInterval(() => {
+    if (!modAlive || !existsSync(inbox)) return;
+    for (const name of readdirSync(inbox).sort()) {
+      if (!name.endsWith('.json')) continue;
+      received.push(JSON.parse(readFileSync(join(inbox, name), 'utf8')).text);
+      unlinkSync(join(inbox, name));
+    }
+  }, 50);
+  const handle = await startCollector({ root, claudeDir, claudeBin: '/usr/bin/false', notify: () => {}, log: () => {}, deliveryTimeoutMs: 600 });
+  try {
+    assert.equal(handle.getSnapshot().agents.find(a => a.id === 'sess-msg').mod.live, true);
+    assert.match((await handle.actions.message({ agentId: 'sess-msg', text: '   ' })).error, /Type a message/);
+    assert.match((await handle.actions.message({ agentId: 'nope', text: 'hi' })).error, /not found/);
+    assert.deepEqual(await handle.actions.message({ agentId: 'sess-msg', text: 'Please also update the README.' }), { ok: true });
+    assert.deepEqual(received, ['Please also update the README.']);
+    modAlive = false;
+    const undelivered = await handle.actions.message({ agentId: 'sess-msg', text: 'second' });
+    assert.equal(undelivered.ok, false);
+    assert.equal(existsSync(inbox) && readdirSync(inbox).length, 0);
+    writeFileSync(join(root, 'state', 'mods', 'sess-msg.json'), JSON.stringify({ sessionId: 'sess-msg', version: '0.3.0', at: Date.now() - 60_000 }));
+    await handle.reloadConfig();
+    assert.match((await handle.actions.message({ agentId: 'sess-msg', text: 'hi' })).error, /isn't listening/);
+  } finally {
+    clearInterval(fakeMod);
+    await handle.stop();
+  }
+});

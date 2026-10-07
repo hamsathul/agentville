@@ -1,6 +1,6 @@
 import { expect, test } from 'claude-code/testing'
 
-import { answerFromDashboard, offerContext, permitFromDashboard } from '../hooks/register'
+import { answerFromDashboard, deliverMessages, offerContext, permitFromDashboard } from '../hooks/register'
 
 // The hook bodies only call $.fs.write and $.process.run, so a small stand-in records them.
 type Run = { exitCode: number; stdout: string; stderr: string }
@@ -132,4 +132,41 @@ test('with no collector state at all, the mod stays out of the way', async () =>
   const offer = await offerContext($)
   expect(offer.isLive).toBe(false)
   expect(offer.windowSec).toBe(0)
+})
+
+function inbox$(files: Record<string, string>) {
+  const submitted: { text: string; asUser?: boolean }[] = []
+  const removed: string[] = []
+  const $ = {
+    fs: {
+      list: async () => Object.keys(files).map(name => ({ name, kind: 'file' })),
+      read: async (path: string) => {
+        const text = files[path.split('/').pop() ?? '']
+        if (text === undefined) throw new Error('ENOENT')
+        return text
+      },
+    },
+    prompt: { submit: async (input: { text: string; asUser?: boolean }) => { submitted.push(input); return { text: input.text } } },
+    process: { run: async (argv: string[]) => { removed.push(...argv.slice(2)); return ok() } },
+  }
+  return { $, submitted, removed }
+}
+
+test('dashboard chat messages are submitted as the person’s own words, oldest first, then removed', async () => {
+  const f = inbox$({ '2000-b.json': '{"text":"second"}', '1000-a.json': '{"text":"first"}', '3000-c.json.tmp': '{"text":"half"}' })
+  await deliverMessages(f.$, '/repo/state', 's1')
+  expect(f.submitted).toEqual([{ text: 'first', asUser: true }, { text: 'second', asUser: true }])
+  expect(f.removed).toEqual(['/repo/state/messages/s1/1000-a.json', '/repo/state/messages/s1/2000-b.json'])
+})
+
+test('an unreadable or empty message is discarded without being sent', async () => {
+  const f = inbox$({ '1000-a.json': '{ broken', '2000-b.json': '{"text":"   "}' })
+  await deliverMessages(f.$, '/repo/state', 's1')
+  expect(f.submitted).toEqual([])
+  expect(f.removed).toEqual(['/repo/state/messages/s1/1000-a.json', '/repo/state/messages/s1/2000-b.json'])
+})
+
+test('no inbox folder means nothing to deliver', async () => {
+  const $ = { fs: { list: async () => { throw new Error('ENOENT') } } }
+  await deliverMessages($, '/repo/state', 's1')
 })

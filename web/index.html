@@ -53,12 +53,17 @@ header.top { position: sticky; top: 0; z-index: 3; display: flex; flex-wrap: wra
 @keyframes pulse { 50% { opacity: .3; } }
 .wrap { display: grid; gap: 14px; padding: 16px 18px 28px; }
 .kpis { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; }
-.kpi { position: relative; overflow: hidden; background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 12px 14px 12px 18px; }
+.kpi { position: relative; overflow: hidden; display: flex; align-items: center; gap: 8px; min-width: 0; background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 7px 12px 7px 15px; }
 .kpi::before { content: ''; position: absolute; inset: 0 auto 0 0; width: 4px; background: var(--k); }
-.kpi.hot { box-shadow: 0 0 0 1px color-mix(in srgb, var(--k) 50%, transparent), 0 0 26px -8px var(--k); }
-.kpi-top { display: flex; align-items: center; gap: 6px; color: var(--muted); font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: .08em; }
-.kpi .val { font-size: 36px; font-weight: 650; line-height: 1.1; margin-top: 4px; }
-.kpi .sub { color: var(--faint); font-size: 12px; min-height: 17px; }
+.kpi.hot { box-shadow: 0 0 0 1px color-mix(in srgb, var(--k) 50%, transparent), 0 0 22px -8px var(--k); }
+.kpi-label { color: var(--muted); font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: .07em; white-space: nowrap; }
+.kpi .val { font-size: 20px; font-weight: 650; line-height: 1; }
+.kpi .sub { color: var(--faint); font-size: 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
+.compose textarea { width: 100%; min-height: 58px; resize: vertical; padding: 8px 10px; border: 1px solid var(--line); border-radius: 10px; background: var(--page); color: var(--text); font: inherit; }
+.compose textarea:focus { outline: 2px solid var(--accent); outline-offset: -1px; }
+.compose textarea:disabled { opacity: .55; }
+.compose-row { display: flex; align-items: center; gap: 8px; margin-top: 6px; font-size: 12px; }
+.compose-row .act { margin: 0; }
 .k-waiting { --k: var(--crit); } .k-working { --k: var(--good); } .k-turn { --k: var(--warn); } .k-collide { --k: var(--serious); }
 .fleet { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.5fr) minmax(0, .8fr); gap: 12px; }
 .panel { background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 12px 14px; }
@@ -147,6 +152,7 @@ main.with-drawer { grid-template-columns: minmax(0, 1fr) minmax(0, 1.3fr); }
 .act { display: inline-flex; align-items: center; gap: 5px; font: inherit; font-weight: 600; padding: 5px 11px; border: 1px solid var(--line); border-radius: 8px; background: var(--panel-2); color: var(--text); cursor: pointer; margin: 0 6px 6px 0; text-decoration: none; }
 .act:hover { border-color: color-mix(in srgb, var(--text) 30%, transparent); }
 .act.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+.act:disabled { opacity: .45; cursor: not-allowed; }
 .ask { border: 1px solid color-mix(in srgb, var(--crit) 60%, transparent); background: color-mix(in srgb, var(--crit) 9%, transparent); border-radius: 12px; padding: 11px 13px; margin: 12px 0; box-shadow: 0 0 28px -12px var(--crit); }
 .ask fieldset { border: 0; padding: 0; margin: 0 0 10px; }
 .ask legend { font-weight: 650; margin-bottom: 5px; padding: 0; }
@@ -202,6 +208,7 @@ const GROUPS = [['waiting', 'Waiting on you'], ['working', 'Working'], ['yourTur
 const STATE_CHIP = { waiting: '❓ Waiting on you', working: '▶ Working', yourTurn: '↩ Your turn', stale: '◌ Stale', idle: '◌ Idle' };
 let snap = null;
 const drafts = new Map(); // toolUseId → { picks: Map<question index, Set<label>>, other: Map<question index, text> }
+const msgDrafts = new Map(); // agent id → half-typed chat message
 let selected = null;
 let showStale = false;
 const openChildren = new Map();
@@ -352,7 +359,7 @@ function kpisHtml() {
     ['k-turn', '↩', 'Your turn', c.yourTurn, `${c.idle} idle · ${c.stale} stale`, false],
     ['k-collide', '⚠', 'Collisions', c.collisions, c.collisions ? 'two agents writing one repo' : 'none', c.collisions > 0],
   ];
-  return tiles.map(([k, icon, label, val, sub, hot]) => `<div class="kpi ${k}${hot ? ' hot' : ''}"><div class="kpi-top"><span>${icon}</span>${label}</div><div class="val">${val}</div><div class="sub">${sub}</div></div>`).join('');
+  return tiles.map(([k, icon, label, val, sub, hot]) => `<div class="kpi ${k}${hot ? ' hot' : ''}"><span>${icon}</span><span class="kpi-label">${label}</span><b class="val">${val}</b><span class="sub">${sub}</span></div>`).join('');
 }
 
 function fleetHtml() {
@@ -508,6 +515,34 @@ function askHtml(a) {
   return `<div class="ask"><div class="sec" style="margin-top:0">❓ Needs your answer</div>${questions}<button class="act primary" id="ask-send" ${ids}>Send answer</button></div>`;
 }
 
+/** Chat box: sends a message into the session as the person's own words (queued if it is busy). */
+function composeHtml(a) {
+  if (a.kind === 'codex') return '';
+  const live = Boolean(a.mod?.live);
+  const hint = !live ? "This session isn't listening for dashboard messages yet. Send it anything in its terminal once, or start a new session."
+    : a.state === 'working' ? `${esc(a.name)} is busy: your message waits until its current step ends. ⌘↩ sends.`
+    : 'Sent as your own message. ⌘↩ sends.';
+  return `<div class="compose" style="margin-top:10px"><textarea id="msg-text" data-msg-agent="${esc(a.id)}" rows="2" placeholder="Message ${esc(a.name)}…"${live ? '' : ' disabled'}>${esc(msgDrafts.get(a.id) ?? '')}</textarea>
+    <div class="compose-row"><span class="faint">${hint}</span><span class="grow"></span><button class="act primary" id="msg-send" data-agent="${esc(a.id)}"${live ? '' : ' disabled'}>Send</button></div></div>`;
+}
+
+async function sendMessage(agentId, button) {
+  const text = (msgDrafts.get(agentId) ?? '').trim();
+  if (!text) {
+    notice('Type a message first.');
+    return;
+  }
+  const agent = snap?.agents.find(a => a.id === agentId);
+  if (button) {
+    button.disabled = true;
+    button.textContent = 'Sending…';
+  }
+  const r = await post('/api/actions/message', { agentId, text });
+  if (r.ok) msgDrafts.delete(agentId);
+  notice(r.ok ? (agent?.state === 'working' ? `Queued for ${agent.name}: it reads it when its current step ends.` : `Sent to ${agent?.name ?? 'the session'}.`) : `Could not send: ${r.error}`);
+  render();
+}
+
 function drawerHtml(a) {
   const color = colorOf(a.id);
   const h = a.proc?.history;
@@ -536,10 +571,10 @@ function drawerHtml(a) {
         : ' <span class="chip c-plain" data-tip="The Agent Tracker mod in this session isn\'t listening. It starts with the next message you send the session, or with a new session.">dashboard answers off</span>'}</div>
     ${a.state === 'stale' ? '' : `<div style="margin-top:8px">${metricsHtml(a)}</div>`}
     <div class="sec">Now</div>${a.now ? `<div class="now mono"><span class="pulse"></span> ${esc(a.now.tool)} ${esc(a.now.summary)} · <b data-since="${a.now.startedAt}"></b></div>` : `<div class="muted">${esc(a.stateReason)}</div>`}
-    ${a.lastPrompt ? `<div class="sec">Last prompt</div><div>“${esc(a.lastPrompt)}”</div>` : ''}
+    ${composeHtml(a)}
+    <div class="sec">Activity</div><div class="feed">${a.feed.map(feedRow).join('') || '<div class="empty">No activity yet.</div>'}</div>
     ${charts ? `<div class="sec">Last 10 minutes</div>${charts}` : ''}
     ${a.kind === 'codex' ? '' : `<div class="sec">Tool calls · last 30 minutes</div>${timelineChart(a.timeline)}`}
-    <div class="sec">Activity</div><div class="feed">${a.feed.map(feedRow).join('') || '<div class="empty">No activity yet.</div>'}</div>
     <div class="sec">Subagents &amp; background jobs</div>${children}
     <div class="sec">Touching</div>${touching}
     <div class="sec">Process</div><div>${proc}</div>
@@ -650,6 +685,7 @@ document.addEventListener('click', async e => {
   }
   const el = e.target.closest('button');
   if (!el) return;
+  if (el.id === 'msg-send') { await sendMessage(el.dataset.agent, el); return; }
   if (el.id === 'ask-send') {
     el.disabled = true;
     el.textContent = 'Sending…';
@@ -721,8 +757,18 @@ document.addEventListener('change', e => {
   else picks.delete(t.value);
   d.picks.set(qi, picks);
 });
+document.addEventListener('keydown', e => {
+  if (e.key === 'Enter' && (e.metaKey || e.ctrlKey) && e.target?.id === 'msg-text') {
+    e.preventDefault();
+    sendMessage(e.target.dataset.msgAgent, $('msg-send'));
+  }
+});
 document.addEventListener('input', e => {
   const t = e.target;
+  if (t?.dataset?.msgAgent !== undefined) {
+    msgDrafts.set(t.dataset.msgAgent, t.value);
+    return;
+  }
   if (!t?.dataset?.tool || t.dataset.q === undefined || t.type !== 'text') return;
   draftFor(t.dataset.tool).other.set(Number(t.dataset.q), t.value);
 });

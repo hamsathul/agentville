@@ -11,7 +11,7 @@ import { readAgentsCli } from './sources/agents-cli.mjs';
 import { childrenIndex, findCodexRoots, findPidByArg, readPs, treeStats } from './sources/ps.mjs';
 import { RepoResolver, repoStatus } from './sources/git.mjs';
 import { deployStatus } from './sources/gh.mjs';
-import { readBeacons, readPending, validateAnswers, writeAnswerFile } from './sources/pending.mjs';
+import { readBeacons, readPending, validateAnswers, writeAnswerFile, writeMessageFile } from './sources/pending.mjs';
 import { applySince, buildAgent, countStates, sortAgents } from './derive/agent.mjs';
 import { findCollisions } from './derive/collisions.mjs';
 import { AlertEngine, notifyMac } from './alerts.mjs';
@@ -52,7 +52,8 @@ export async function startCollector({ root, claudeDir = join(homedir(), '.claud
   const pendingDir = join(stateDir, 'pending');
   const answersDir = join(stateDir, 'answers');
   const modsDir = join(stateDir, 'mods');
-  for (const dir of [stateDir, pendingDir, answersDir, modsDir]) mkdirSync(dir, { recursive: true });
+  const messagesDir = join(stateDir, 'messages');
+  for (const dir of [stateDir, pendingDir, answersDir, modsDir, messagesDir]) mkdirSync(dir, { recursive: true });
   const configPath = join(root, 'config.json');
 
   const sources = {};
@@ -343,14 +344,17 @@ export async function startCollector({ root, claudeDir = join(homedir(), '.claud
   // happen within the timeout, the session isn't listening: withdraw it and say so.
   async function deliver(toolUseId, payload) {
     writeAnswerFile(answersDir, toolUseId, payload);
-    const file = join(answersDir, `${toolUseId}.json`);
+    return confirmDelivery(join(answersDir, `${toolUseId}.json`), "The session didn't take the answer. Please answer it in its terminal.");
+  }
+
+  async function confirmDelivery(file, failure) {
     const deadline = Date.now() + deliveryTimeoutMs;
     while (Date.now() < deadline) {
       if (!existsSync(file)) return { ok: true };
       await new Promise(r => setTimeout(r, 100));
     }
     try { unlinkSync(file); } catch { /* taken at the last moment */ }
-    return { ok: false, error: "The session didn't take the answer. Please answer it in its terminal." };
+    return { ok: false, error: failure };
   }
 
   const askFor = (agentId, toolUseId, kind) => {
@@ -359,6 +363,16 @@ export async function startCollector({ root, claudeDir = join(homedir(), '.claud
   };
 
   const actions = {
+    async message(body) {
+      const agent = snapshot?.agents.find(a => a.id === body?.agentId);
+      if (!agent || agent.kind === 'codex') return { ok: false, error: 'That session was not found.' };
+      const text = typeof body.text === 'string' ? body.text.trim() : '';
+      if (!text) return { ok: false, error: 'Type a message first.' };
+      if (text.length > 20_000) return { ok: false, error: 'That message is too long (20,000 characters at most).' };
+      if (!agent.mod?.live) return { ok: false, error: "That session isn't listening for dashboard messages yet. Send it anything in its terminal once, or start a new session." };
+      const file = writeMessageFile(messagesDir, agent.id, text);
+      return confirmDelivery(file, "The session didn't pick up the message. Please send it in its terminal.");
+    },
     async answer(body) {
       const ask = askFor(body?.agentId, body?.toolUseId, 'question');
       if (!ask) return { ok: false, error: 'That question is no longer waiting.' };

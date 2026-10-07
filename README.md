@@ -10,9 +10,11 @@ how much CPU and memory each one uses.
   Click an agent to see its activity feed, subagents, the repos it touched and its process tree.
   **Answer from the dashboard:** a waiting agent shows its question with clickable options (or
   an "Other" box), and a permission prompt shows the command with **Allow** / **Deny**.
+  **Message any session** like a chat: type under "Now" and press Send (or ⌘↩). It arrives
+  as your own prompt; if the agent is busy, it is read when the current step ends.
 - **Claude Code mod:** `/tracker` opens a side pane, the status line shows
   `⚑ 1 waiting · 2 working`, and toasts appear when another agent needs you. The mod is also
-  what lets the dashboard answer a session's questions and permission prompts.
+  what lets the dashboard answer a session's questions and permission prompts and send it messages.
 - **macOS notifications** when an agent needs you, finishes, collides with another agent in
   the same repo, or runs hot on CPU or memory. Each event notifies once.
 
@@ -95,7 +97,7 @@ stream. Action endpoints require a per-install token and a same-origin request.
 
 ## Known limits
 
-- Only sessions that load the mod can be answered from the dashboard. While a permission prompt
+- Only sessions that load the mod can be answered or messaged from the dashboard. While a permission prompt
   is offered there, the terminal shows a spinner; after `permissionDashboardSec` it shows the
   normal prompt.
 - "Probably a permission prompt" is a guess: a tool call with no result for 20 s while the
@@ -109,7 +111,7 @@ stream. Action endpoints require a per-install token and a same-origin request.
 ```bash
 npm test                    # collector + dashboard (node:test)
 claude plugin test mod      # the Claude Code mod
-scripts/e2e-answer.sh       # answering from the dashboard, with two short real sessions
+scripts/e2e-answer.sh       # answering and messaging from the dashboard, with short real sessions
 ```
 
 ## License
