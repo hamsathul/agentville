@@ -109,6 +109,7 @@ stream. Action endpoints require a per-install token and a same-origin request.
 ```bash
 npm test                    # collector + dashboard (node:test)
 claude plugin test mod      # the Claude Code mod
+scripts/e2e-answer.sh       # answering from the dashboard, with two short real sessions
 ```
 
 ## License
