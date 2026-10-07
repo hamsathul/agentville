@@ -880,7 +880,7 @@ test('the conversation shows your prompts and the replies as a thread, oldest fi
   const side = page.side();
   assert.match(side, /class="bub you"[^>]*>[\s\S]*?Fix the build\nplease[\s\S]*?class="bub agent"[^>]*>[\s\S]*?<p>Done\. All &lt;b&gt;tests&lt;\/b&gt; pass\.<\/p>/);
   const now = side.indexOf('>Now<'), chat = side.indexOf('>Conversation<'), box = side.indexOf('id="msg-text"'), activity = side.indexOf('>Activity<');
-  assert.ok(now < chat && chat < box && box < activity, `${now} ${chat} ${box} ${activity}`);
+  assert.ok(now < box && box < chat && chat < activity, `${now} ${box} ${chat} ${activity}`);
   const feed = side.slice(activity);
   assert.match(feed, /npm test/);
   assert.match(feed, /web\/index\.html/);
@@ -954,4 +954,13 @@ test('the farm sidebar shows the question card too', () => {
   const page = loadPage({ farm: f.farm, stored: { 'tracker-view': 'farm', 'tracker-farm-side': 'open' } });
   page.push(turnSnapshot([asking()]));
   assert.match(page.el('farm-agent').innerHTML, /class="qcard"[\s\S]*Should I push them to main\?/);
+});
+
+test('in the farm sidebar too: Now, the question, the message box, then the conversation and activity', () => {
+  const f = fakeFarm();
+  const page = loadPage({ farm: f.farm, stored: { 'tracker-view': 'farm', 'tracker-farm-side': 'open' } });
+  page.push(turnSnapshot([asking({ feed: chatty().feed })]));
+  const side = page.el('farm-agent').innerHTML;
+  const at = [side.indexOf('>Now<'), side.indexOf('class="qcard"'), side.indexOf('id="msg-text"'), side.indexOf('>Conversation<'), side.indexOf('>Activity')];
+  assert.ok(at.every((v, i) => v >= 0 && (i === 0 || v > at[i - 1])), at.join(' '));
 });

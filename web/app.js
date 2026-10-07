@@ -29,8 +29,8 @@ function overviewHtml(a) {
     ${a.state === 'stale' ? '' : `<div style="margin-top:8px">${metricsHtml(a)}</div>`}
     <div class="sec">Now</div>${a.now ? `<div class="now mono"><span class="pulse"></span> ${esc(a.now.tool)} ${esc(a.now.summary)} · <b data-since="${a.now.startedAt}"></b></div>` : `<div class="muted">${esc(a.stateReason)}</div>`}
     ${questionHtml(a)}
-    ${conversationHtml(a)}
     ${composeHtml(a)}
+    ${conversationHtml(a)}
     ${activityHtml(a)}
     ${docsHtml(a)}
     ${charts ? `<div class="sec">Last 10 minutes</div>${charts}` : ''}
@@ -166,10 +166,10 @@ function farmSideHtml(a) {
   return `<div class="fs-head"><span class="swatch" style="background:${color}"></span><span class="name">${esc(a.name)}</span><span class="chip c-${a.state}">${STATE_CHIP[a.state] ?? esc(a.state)} · <span data-since="${a.stateSince}"></span></span><span class="grow"></span><button class="act mini" id="fs-list" type="button" data-tip="Show this agent in the list view">☰ List</button></div>
     <div class="muted" style="margin-top:4px">${esc(short(a.cwd))}${a.model ? ` · ${esc(a.model)}` : ''}</div>
     ${askHtml(a)}
-    ${questionHtml(a)}
     <div class="sec">Now</div>${now}
-    ${conversationHtml(a)}
+    ${questionHtml(a)}
     ${composeHtml(a)}
+    ${conversationHtml(a)}
     ${activityHtml(a)}`;
 }
 
