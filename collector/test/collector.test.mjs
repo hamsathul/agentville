@@ -471,3 +471,36 @@ test("an agent's own repo stays on the dashboard even when it touched no files l
     await handle.stop();
   }
 });
+
+test("after a restart, files from early in a long transcript come back in the background", async () => {
+  const root = mkdtempSync(join(tmpdir(), 'tracker-root-backfill-'));
+  mkdirSync(join(root, 'web'));
+  writeFileSync(join(root, 'web', 'index.html'), '<html></html>');
+  writeFileSync(join(root, 'config.json'), JSON.stringify({ port: 0, deployRepos: {}, pollMs: 200 }));
+  const claudeDir = mkdtempSync(join(tmpdir(), 'tracker-claude-backfill-'));
+  mkdirSync(join(claudeDir, 'sessions'));
+  mkdirSync(join(claudeDir, 'projects', '-w'), { recursive: true });
+  writeFileSync(join(claudeDir, 'sessions', `${process.pid}.json`), JSON.stringify({ pid: process.pid, sessionId: 'sess-long', cwd: '/w', name: 'long', status: 'idle' }));
+  const now = Date.now();
+  const iso = ms => new Date(ms).toISOString();
+  const filler = 'x'.repeat(2000);
+  const lines = [
+    JSON.stringify({ type: 'user', timestamp: iso(now - 7200_000), cwd: '/w', message: { content: 'write the spec' } }),
+    JSON.stringify({ type: 'assistant', timestamp: iso(now - 7100_000), cwd: '/w', message: { model: 'm', content: [{ type: 'tool_use', id: 'tw', name: 'Write', input: { file_path: '/w/docs/early-spec.md', content: '# Early' } }] } }),
+  ];
+  for (let i = 0; i < 200; i++) lines.push(JSON.stringify({ type: 'assistant', timestamp: iso(now - 7000_000 + i * 1000), cwd: '/w', message: { model: 'm', content: [{ type: 'text', text: filler }] } }));
+  lines.push(JSON.stringify({ type: 'assistant', timestamp: iso(now - 5000), cwd: '/w', message: { model: 'm', content: [{ type: 'tool_use', id: 'tr', name: 'Read', input: { file_path: '/w/late.md' } }] } }));
+  writeFileSync(join(claudeDir, 'projects', '-w', 'sess-long.jsonl'), lines.join('\n') + '\n');
+  const handle = await startCollector({ root, claudeDir, claudeBin: '/usr/bin/false', notify: () => {}, log: () => {}, home: '/nowhere' });
+  try {
+    let docs = [];
+    for (let i = 0; i < 50; i++) {
+      docs = handle.getSnapshot().agents.find(a => a.id === 'sess-long')?.docs.map(d => d.path) ?? [];
+      if (docs.includes('/w/docs/early-spec.md')) break;
+      await new Promise(r => setTimeout(r, 100));
+    }
+    assert.deepEqual(docs, ['/w/late.md', '/w/docs/early-spec.md']);
+  } finally {
+    await handle.stop();
+  }
+});

@@ -10,6 +10,7 @@ export class TailReader {
     this.initialBytes = initialBytes;
     this.maxChunkBytes = maxChunkBytes;
     this.offsets = new Map();
+    this.starts = new Map(); // where the first read of each file began: the part before it was skipped
   }
 
   read(path) {
@@ -28,6 +29,7 @@ export class TailReader {
       if (known === undefined || size - known > this.maxChunkBytes) {
         offset = Math.max(0, size - this.initialBytes);
         dropFirst = offset > 0;
+        if (known === undefined) this.starts.set(path, offset);
       } else if (size < known) {
         offset = 0;
       } else {
@@ -53,7 +55,13 @@ export class TailReader {
     }
   }
 
+  /** Byte offset where the first read of this file began (0 = read from the start), or undefined if never read. */
+  startOf(path) {
+    return this.starts.get(path);
+  }
+
   forget(path) {
     this.offsets.delete(path);
+    this.starts.delete(path);
   }
 }

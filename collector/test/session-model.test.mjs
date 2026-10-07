@@ -132,3 +132,19 @@ test("a subagent remembers its type, so the farm can draw an Explore subagent as
   assert.equal(m.children.get('g1').agentType, undefined);
   assert.equal(m.children.get('b1').agentType, undefined);
 });
+
+test('files found earlier in the transcript are merged in as older, never overriding newer ones', () => {
+  const m = modelOf(prompt(10, 'go'), toolUse(11, 'a', 'Read', { file_path: '/w/spec.md' }), toolUse(12, 'b', 'Edit', { file_path: '/w/b.ts' }));
+  m.addEarlierFiles([
+    { name: 'Write', input: { file_path: '/w/spec.md' }, at: at(1), cwd: '/w' },
+    { name: 'Read', input: { file_path: '/w/old.md' }, at: at(2), cwd: '/w' },
+    { name: 'Edit', input: { file_path: 'rel.ts' }, at: at(3), cwd: '/w' },
+  ]);
+  assert.deepEqual(m.touchedFiles(), [
+    { path: '/w/b.ts', wrote: true, at: at(12) },
+    { path: '/w/spec.md', wrote: true, at: at(11) },
+    { path: '/w/rel.ts', wrote: true, at: at(3) },
+    { path: '/w/old.md', wrote: false, at: at(2) },
+  ]);
+  assert.deepEqual(m.documents().map(d => d.path), ['/w/spec.md', '/w/old.md']);
+});

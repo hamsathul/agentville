@@ -6,6 +6,7 @@ import { loadConfig, mergeConfig } from './config.mjs';
 import { run } from './lib/exec.mjs';
 import { TailReader } from './lib/tail-reader.mjs';
 import { SessionModel } from './transcript/session-model.mjs';
+import { earlierFileCalls } from './transcript/backfill.mjs';
 import { readRegistry } from './sources/registry.mjs';
 import { readAgentsCli } from './sources/agents-cli.mjs';
 import { childrenIndex, findCodexRoots, findPidByArg, readPs, treeStats } from './sources/ps.mjs';
@@ -130,6 +131,26 @@ export async function startCollector({ root, claudeDir = join(homedir(), '.claud
     return rec;
   }
 
+  // After a restart only the tail of each transcript is read. The file calls in the part it
+  // skipped are found in the background, one transcript at a time, so the session's documents,
+  // explorer marks and field close-ups keep its earlier files.
+  const backfilled = new Set();
+  let backfills = Promise.resolve();
+  let stopped = false;
+  function queueBackfill(model, path) {
+    if (backfilled.has(path)) return;
+    const start = tail.startOf(path);
+    if (start === undefined) return;
+    backfilled.add(path);
+    if (start === 0) return;
+    backfills = backfills.then(async () => {
+      const calls = await earlierFileCalls(path, start);
+      if (stopped) return;
+      model.addEarlierFiles(calls);
+      scheduleLight();
+    }).catch(err => log(`backfill of ${path} failed: ${err?.stack ?? err}`));
+  }
+
   function readSubagents(sessionId, rec, now) {
     const wanted = [...rec.model.children.values()].filter(c => c.kind === 'subagent' && (c.state === 'running' || now - c.startedAt < SUBAGENT_LOOKBACK_MS));
     if (!wanted.length) return;
@@ -151,6 +172,7 @@ export async function startCollector({ root, claudeDir = join(homedir(), '.claud
       if (!path) continue;
       if (!rec.childModels.has(child.id)) rec.childModels.set(child.id, new SessionModel());
       rec.childModels.get(child.id).applyLines(tail.read(path));
+      queueBackfill(rec.childModels.get(child.id), path);
     }
   }
 
@@ -253,6 +275,7 @@ export async function startCollector({ root, claudeDir = join(homedir(), '.claud
       const rec = sessionRecord(id, now);
       if (!rec.path) continue;
       rec.model.applyLines(tail.read(rec.path));
+      queueBackfill(rec.model, rec.path);
       readSubagents(id, rec, now);
     }
 
@@ -547,11 +570,13 @@ export async function startCollector({ root, claudeDir = join(homedir(), '.claud
   log(`collector started on 127.0.0.1:${port}`);
 
   async function stop() {
+    stopped = true;
     for (const t of timers.splice(0)) clearInterval(t);
     clearTimeout(lightTimer);
     clearTimeout(configTimer);
     for (const w of watchers) w.close();
     await chain;
+    await backfills;
     await server.close();
   }
 

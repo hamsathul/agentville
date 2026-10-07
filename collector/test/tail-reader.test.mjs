@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { appendFileSync, mkdtempSync, writeFileSync } from 'node:fs';
+import { appendFileSync, mkdtempSync, statSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { TailReader } from '../lib/tail-reader.mjs';
@@ -74,4 +74,17 @@ test('multi-byte characters survive being split across reads', () => {
   assert.deepEqual(r.read(f), []);
   appendFileSync(f, Buffer.concat([e.subarray(1), Buffer.from('\n')]));
   assert.deepEqual(r.read(f), ['é']);
+});
+
+test('the reader says where it started, so the part it skipped can be read later', () => {
+  const small = tmpFile();
+  writeFileSync(small, 'a\nb\n');
+  const r = new TailReader({ initialBytes: 8 });
+  r.read(small);
+  assert.equal(r.startOf(small), 0);
+  const big = tmpFile();
+  writeFileSync(big, 'line-one\nline-two\nline-three\n');
+  r.read(big);
+  assert.equal(r.startOf(big), statSync(big).size - 8);
+  assert.equal(r.startOf('/never/read'), undefined);
 });

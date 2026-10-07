@@ -131,6 +131,20 @@ export class SessionModel {
     if (this.files.size > this.fileCap) this.files.delete(this.files.keys().next().value);
   }
 
+  /** File calls from before the part of the transcript that was read, oldest first: merged in as older. */
+  addEarlierFiles(calls) {
+    const earlier = new SessionModel({ fileCap: this.fileCap });
+    for (const call of calls) earlier.#noteFile(call);
+    const merged = new Map(earlier.files);
+    for (const [path, f] of this.files) {
+      const prev = merged.get(path);
+      merged.delete(path);
+      merged.set(path, { path, wrote: f.wrote || Boolean(prev?.wrote), at: Math.max(f.at, prev?.at ?? 0) });
+    }
+    while (merged.size > this.fileCap) merged.delete(merged.keys().next().value);
+    this.files = merged;
+  }
+
   /** Every file touched, newest first. */
   touchedFiles() {
     return [...this.files.values()].reverse();
