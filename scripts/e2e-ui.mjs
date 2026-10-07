@@ -51,7 +51,9 @@ writeFileSync(join(repo, 'docs', 'plan.md'), '# Plan\n\n- grow pumpkins\n');
 const claudeDir = join(temp, 'claude');
 mkdirSync(join(claudeDir, 'sessions'), { recursive: true });
 mkdirSync(join(claudeDir, 'projects', '-farm-repo'), { recursive: true });
-const worker = spawn('sleep', ['600'], { stdio: 'ignore' }); // a live pid for the second session
+const worker = spawn('sleep', ['600'], { stdio: 'ignore' }); // live pids for the other sessions
+const doneA = spawn('sleep', ['600'], { stdio: 'ignore' });
+const doneB = spawn('sleep', ['600'], { stdio: 'ignore' });
 const now = Date.now();
 const iso = ms => new Date(ms).toISOString();
 const line = (ms, message, type = 'assistant') => JSON.stringify({ type, timestamp: iso(ms), cwd: repo, message });
@@ -69,9 +71,20 @@ const sessions = {
     line(now - 30_000, { content: 'Run the tests' }, 'user'),
     use(now - 5_000, 'toolu_B1', 'Bash', { command: 'npm test' }),
   ] },
+  // Two finished sessions: they stand side by side on the porch, each with a speech bubble.
+  'ui-done-a': { pid: doneA.pid, status: 'idle', lines: [
+    line(now - 90_000, { content: 'Update the docs' }, 'user'),
+    line(now - 80_000, { model: 'claude-haiku', content: [{ type: 'text', text: 'I updated the README and the changelog. Everything is committed and the tests pass on every platform.' }] }),
+    JSON.stringify({ type: 'system', subtype: 'turn_duration', timestamp: iso(now - 79_000), durationMs: 1000 }),
+  ] },
+  'ui-done-b': { pid: doneB.pid, status: 'idle', lines: [
+    line(now - 70_000, { content: 'Prepare the release' }, 'user'),
+    line(now - 60_000, { model: 'claude-haiku', content: [{ type: 'text', text: 'The build is green on all three platforms and the release notes are ready for you to read.' }] }),
+    JSON.stringify({ type: 'system', subtype: 'turn_duration', timestamp: iso(now - 59_000), durationMs: 1000 }),
+  ] },
 };
 for (const [id, s] of Object.entries(sessions)) {
-  writeFileSync(join(claudeDir, 'sessions', `${s.pid}.json`), JSON.stringify({ pid: s.pid, sessionId: id, cwd: repo, name: id, status: 'busy' }));
+  writeFileSync(join(claudeDir, 'sessions', `${s.pid}.json`), JSON.stringify({ pid: s.pid, sessionId: id, cwd: repo, name: id, status: s.status ?? 'busy' }));
   writeFileSync(join(claudeDir, 'projects', '-farm-repo', `${id}.jsonl`), `${s.lines.join('\n')}\n`);
 }
 
@@ -148,10 +161,29 @@ try {
   check(await js("!document.querySelector('.px-help').open"), 'the info dialog closes');
 
   check(await until("[...document.querySelectorAll('.px-say')].some(b => b.textContent.includes('Which crop next?'))"), "the waiting farmer's question is in a speech bubble over its head");
+  check(await until("document.querySelectorAll('.px-say').length >= 3"), 'the two finished farmers have bubbles too');
+  await sleep(4000); // let everyone reach the porch
+  const overlaps = await js(`(() => {
+    const boxes = [...document.querySelectorAll('.px-say, .px-tag:not(.st-idle):not(.st-stale)')].map(el => ({ el, r: el.getBoundingClientRect() }));
+    const out = [];
+    for (let i = 0; i < boxes.length; i++) for (let j = i + 1; j < boxes.length; j++) {
+      const a = boxes[i], b = boxes[j];
+      if (!a.el.classList.contains('px-say') && !b.el.classList.contains('px-say')) continue; // tags among themselves are lifted already
+      const ix = Math.min(a.r.right, b.r.right) - Math.max(a.r.left, b.r.left), iy = Math.min(a.r.bottom, b.r.bottom) - Math.max(a.r.top, b.r.top);
+      if (ix > 1 && iy > 1) out.push((a.el.dataset.say || a.el.textContent).slice(0, 12) + ' × ' + (b.el.dataset.say || b.el.textContent).slice(0, 12));
+    }
+    return out.join(', ');
+  })()`);
+  check(overlaps === '', `speech bubbles overlap neither each other nor name tags${overlaps ? `: ${overlaps}` : ''}`);
+  if (process.env.SHOTS) { // optional: SHOTS=<folder> saves a picture of the farm at this point
+    const shot = await send('Page.captureScreenshot', { format: 'png' });
+    writeFileSync(join(process.env.SHOTS, 'farm-bubbles.png'), Buffer.from(shot.result.data, 'base64'));
+  }
   check(await js("[...document.querySelectorAll('.px-say')].some(b => b.textContent.includes('One question before I go on'))") === false, 'a waiting farmer shows its question, not its older reply');
-  await js("document.querySelector('.px-say [data-say-close]').click()");
-  check(await until("!document.querySelector('.px-say')"), 'the bubble closes with its ×');
-  check(await js("document.querySelector('.px-say')") === null, 'and stays closed while the agent says nothing new');
+  await js(`document.querySelector('.px-say[data-say="ui-asker"] [data-say-close]').click()`);
+  check(await until(`!document.querySelector('.px-say[data-say="ui-asker"]')`), 'the bubble closes with its ×');
+  await sleep(1000);
+  check(await js(`!document.querySelector('.px-say[data-say="ui-asker"]') && document.querySelectorAll('.px-say').length === 2`), 'it stays closed while the agent says nothing new; the others stay');
   const width = () => js("parseFloat(document.querySelector('#farm canvas').style.width)");
   const fit = await width();
   await js("document.querySelector('[data-farm-zoom=\"1\"]').click()");
@@ -184,6 +216,8 @@ try {
   ws?.close();
   chrome.kill();
   worker.kill();
+  doneA.kill();
+  doneB.kill();
   clearInterval(fakeMod);
   await handle.stop();
   rmSync(temp, { recursive: true, force: true });

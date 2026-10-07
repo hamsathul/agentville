@@ -522,8 +522,40 @@
         s.el.className = `px-say st-${f.state}${f.question ? ' q' : ''}`;
         s.el.title = `${f.name}: ${text} (click to open it in the sidebar)`;
         s.text = text;
+        s.w = null; // measured again
       }
-      s.el.style.transform = `translate(${Math.round(b.x * cs)}px, ${Math.round((b.y - th.SH * SC - 3 - b.lift) * cs) - 18}px) translate(-50%, -100%)`;
+      s.x = Math.round(b.x * cs);
+      s.bottom = Math.round((b.y - th.SH * SC - 3 - b.lift) * cs) - 18; // just above its farmer's name tag
+      s.seen = true;
+    }
+    /**
+     * Keeps speech bubbles off each other and off name tags: from left to right, a bubble that
+     * would land on one already placed is lifted above it, with a line down to its farmer.
+     */
+    function layoutBubbles() {
+      const placed = [];
+      for (const b of bots.values()) {
+        if (!b.tag || b.tag.classList.contains('st-idle') || b.tag.classList.contains('st-stale')) continue;
+        if (b.tagW == null) { b.tagW = b.tag.offsetWidth; b.tagH = b.tag.offsetHeight; }
+        const x = Math.round(b.x * cs), bottom = Math.round((b.y - th.SH * SC - 3 - b.lift) * cs);
+        placed.push({ left: x - b.tagW / 2, right: x + b.tagW / 2, top: bottom - b.tagH, bottom });
+      }
+      const list = [...says.values()].filter(s => s.seen);
+      for (const s of list) if (s.w == null) { s.w = s.el.offsetWidth; s.h = s.el.offsetHeight; }
+      list.sort((p, q) => p.x - q.x || q.bottom - p.bottom);
+      list.forEach((s, i) => {
+        const left = s.x - s.w / 2;
+        let bottom = s.bottom;
+        for (let guard = 0; guard < 30; guard++) {
+          const hit = placed.find(r => left < r.right + 3 && left + s.w > r.left - 3 && bottom - s.h < r.bottom + 3 && bottom > r.top - 3);
+          if (!hit) break;
+          bottom = hit.top - 6;
+        }
+        placed.push({ left, right: left + s.w, top: bottom - s.h, bottom });
+        s.el.style.setProperty('--lead', `${s.bottom - bottom}px`);
+        s.el.style.zIndex = String(40 - Math.min(i, 30) + (s.bottom - bottom > 0 ? 0 : 10)); // lifted ones sit behind
+        s.el.style.transform = `translate(${Math.round(left)}px, ${Math.round(bottom - s.h)}px)`;
+      });
     }
     function addLog(f, text) {
       log.unshift({ at: Date.now(), state: f.state, html: `<b>${esc(f.name)}</b> ${esc(text)}` });
@@ -614,6 +646,7 @@
         if (b.tagText !== f.state + text + tip + sel) {
           b.tag.className = `px-tag st-${f.state}${sel ? ' sel' : ''}`;
           b.tag.textContent = text;
+          b.tagW = null;
           b.tag.title = tip;
           b.tagText = f.state + text + tip + sel;
         }
@@ -621,6 +654,8 @@
         placeBubble(f, b);
       }
       for (const [id, s] of says) if (!bots.has(id)) { s.el.remove(); says.delete(id); }
+      layoutBubbles();
+      for (const s of says.values()) s.seen = false;
     }
     const visible = () => Boolean(host?.isConnected) && host.offsetParent !== null && !document.hidden;
     function frame(now) {

@@ -334,13 +334,17 @@ a.chip { text-decoration: none; }
 .px-hud .px-zoom { padding: 0; gap: 0; overflow: hidden; }
 .px-hud .px-zoom button { border: 0; border-radius: 0; box-shadow: none; background: transparent; padding: 1px 8px; min-width: 24px; justify-content: center; }
 .px-hud .px-zoom button + button { border-left: 1px solid #c98d4f; }
-.px-say { position: absolute; left: 0; top: 0; z-index: 2; width: max-content; max-width: 200px; padding: 5px 20px 6px 9px; background: #fffdf4; color: #2b2116; border: 2px solid #2a1d14; border-radius: 9px; font: 600 11px/1.3 system-ui, sans-serif; pointer-events: auto; cursor: pointer; box-shadow: 0 2px 0 rgba(0, 0, 0, .25); }
-.px-say::after { content: ''; position: absolute; left: 50%; bottom: -9px; margin-left: -6px; border: 6px solid transparent; border-top-color: #2a1d14; border-bottom: 0; }
-.px-say span { display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
+.px-say { position: absolute; left: 0; top: 0; z-index: 2; width: max-content; max-width: 180px; padding: 4px 19px 5px 8px; background: #fffdf4; color: #2b2116; border: 2px solid #2a1d14; border-radius: 9px; font: 600 11px/1.3 system-ui, sans-serif; pointer-events: auto; cursor: pointer; box-shadow: 0 2px 0 rgba(0, 0, 0, .25); }
+.px-say::before { content: ''; position: absolute; left: 50%; top: 100%; width: 2px; height: var(--lead, 0px); margin-left: -1px; background: #2a1d14; } /* a lifted bubble's line down to its farmer */
+.px-say::after { content: ''; position: absolute; left: 50%; top: calc(100% + var(--lead, 0px)); margin-left: -6px; border: 6px solid transparent; border-top-color: #2a1d14; border-bottom: 0; }
+.px-say span { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+.px-say:hover { z-index: 60 !important; }
+.px-say:hover span { -webkit-line-clamp: 8; }
 .px-say .x { position: absolute; top: 0; right: 2px; border: 0; background: none; color: #7a6a55; font-size: 14px; line-height: 1; padding: 2px 3px; cursor: pointer; }
 .px-say .x:hover { color: #2b2116; }
 .px-say.st-waiting { background: #ffe9e6; border-color: #b3261e; }
 .px-say.st-waiting::after { border-top-color: #b3261e; }
+.px-say.st-waiting::before { background: #b3261e; }
 .px-say.q { background: #fff4cc; }
 .px-stage canvas { display: block; image-rendering: pixelated; cursor: pointer; }
 .px-ov { position: absolute; inset: 0; pointer-events: none; }
