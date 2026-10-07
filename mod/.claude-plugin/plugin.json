@@ -1,0 +1,9 @@
+{
+  "name": "agent-tracker",
+  "version": "0.1.0",
+  "description": "Pane, status line and toasts for the local Agent Tracker",
+  "types": "./types/index.d.ts",
+  "author": {
+    "name": "Hamsathul Haris"
+  }
+}

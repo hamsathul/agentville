@@ -1,0 +1,310 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Agent Tracker</title>
+<style>
+:root {
+  --bg: #f5f5f7; --panel: #ffffff; --line: #d9d9de; --text: #1d1d1f; --muted: #6e6e73; --faint: #a1a1a6;
+  --red: #d70015; --red-bg: rgba(255, 59, 48, .12); --amber: #b25000; --amber-bg: rgba(255, 159, 10, .16);
+  --green: #1f8a3b; --green-bg: rgba(52, 199, 89, .14); --blue: #0066cc; --blue-bg: rgba(10, 132, 255, .12);
+}
+@media (prefers-color-scheme: dark) {
+  :root { --bg: #161618; --panel: #222225; --line: #3a3a3e; --text: #f2f2f4; --muted: #a1a1a6; --faint: #6e6e73;
+    --red: #ff6961; --amber: #ffb340; --green: #4cd964; --blue: #64a8ff; }
+}
+* { box-sizing: border-box; }
+body { margin: 0; font: 13px/1.4 -apple-system, BlinkMacSystemFont, system-ui, sans-serif; background: var(--bg); color: var(--text); }
+header { position: sticky; top: 0; z-index: 2; display: flex; flex-wrap: wrap; gap: 8px; align-items: center; padding: 10px 16px; background: var(--panel); border-bottom: 1px solid var(--line); }
+h1 { font-size: 14px; margin: 0 8px 0 0; }
+.pill { display: inline-block; padding: 2px 8px; border-radius: 999px; font-size: 12px; font-weight: 600; white-space: nowrap; }
+.p-waiting { background: var(--red-bg); color: var(--red); }
+.p-working { background: var(--green-bg); color: var(--green); }
+.p-yourTurn { background: var(--blue-bg); color: var(--blue); }
+.p-stale, .p-idle { border: 1px solid var(--line); color: var(--muted); }
+.p-collision { background: var(--amber-bg); color: var(--amber); }
+.p-err { background: var(--red-bg); color: var(--red); font-weight: 500; }
+.grow { flex: 1; }
+.muted { color: var(--muted); }
+.mono { font-family: ui-monospace, Menlo, monospace; font-size: 12px; }
+main { display: grid; grid-template-columns: minmax(0, 1fr) 300px; gap: 16px; padding: 16px; }
+main.with-drawer { grid-template-columns: minmax(0, 1fr) minmax(0, 1.2fr); }
+@media (max-width: 860px) { main, main.with-drawer { grid-template-columns: 1fr; } }
+.sec { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); margin: 14px 0 6px; }
+.row { display: block; width: 100%; text-align: left; font: inherit; color: inherit; background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 8px 10px; margin-bottom: 6px; cursor: pointer; }
+.row:hover { border-color: var(--faint); }
+.row.sel { outline: 2px solid var(--blue); outline-offset: -1px; }
+.row.waiting { border-left: 4px solid var(--red); }
+.row.stale { opacity: .6; }
+.top { display: flex; gap: 8px; align-items: baseline; min-width: 0; }
+.name { font-weight: 600; }
+.ticker { display: flex; gap: 6px; align-items: center; margin-top: 3px; color: var(--muted); overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.pulse { width: 7px; height: 7px; border-radius: 50%; background: var(--green); flex: none; animation: pulse 1.2s infinite; }
+@keyframes pulse { 50% { opacity: .25; } }
+.card { background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 8px 10px; margin-bottom: 6px; }
+.card.collide { border-color: var(--amber); }
+.drawer { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 12px 14px; align-self: start; position: sticky; top: 64px; max-height: calc(100vh - 80px); overflow: auto; }
+.now { border: 1px solid var(--green); background: var(--green-bg); border-radius: 6px; padding: 6px 8px; }
+.feed > div { display: grid; grid-template-columns: 64px minmax(0, 1fr) auto; gap: 8px; padding: 3px 0; border-bottom: 1px dashed var(--line); }
+.feed .t { color: var(--faint); }
+.ok { color: var(--green); }
+.bad { color: var(--red); }
+.spark { display: inline-flex; align-items: flex-end; gap: 2px; height: 24px; vertical-align: bottom; }
+.spark i { width: 4px; background: var(--blue); opacity: .75; border-radius: 1px; }
+.act { display: inline-block; font: inherit; padding: 4px 10px; border: 1px solid var(--line); border-radius: 6px; background: var(--bg); color: var(--text); cursor: pointer; margin: 0 6px 6px 0; text-decoration: none; }
+.act:hover { border-color: var(--faint); }
+.banner { display: none; padding: 8px 16px; background: var(--amber-bg); color: var(--amber); font-weight: 600; }
+.banner.show { display: block; }
+dialog { border: 1px solid var(--line); border-radius: 10px; background: var(--panel); color: var(--text); max-width: 480px; }
+dialog::backdrop { background: rgba(0, 0, 0, .35); }
+.child { margin: 4px 0; }
+.empty { color: var(--faint); padding: 4px 2px; }
+</style>
+</head>
+<body>
+<header>
+  <h1>Agent Tracker</h1>
+  <span id="counts"></span>
+  <span class="grow"></span>
+  <span id="errors"></span>
+  <span id="meta" class="muted"></span>
+</header>
+<div id="banner" class="banner">Disconnected from the collector — retrying…</div>
+<div id="notice" class="banner"></div>
+<main id="main">
+  <section id="list"></section>
+  <aside id="side"></aside>
+</main>
+<dialog id="cleanup">
+  <h3>Remove stale background sessions</h3>
+  <p class="muted">Runs <span class="mono">claude rm</span> for each one you tick. Removal is permanent: the session and its conversation are deleted.</p>
+  <form method="dialog">
+    <div id="cleanup-list"></div>
+    <p><button class="act" value="cancel">Cancel</button><button class="act" value="go">Remove selected</button></p>
+  </form>
+</dialog>
+<script>
+const TOKEN = '__TRACKER_TOKEN__';
+const GROUPS = [['waiting', 'Waiting on you'], ['working', 'Working'], ['yourTurn', 'Your turn'], ['stale', 'Stale (no activity for 24h+)'], ['idle', 'Idle']];
+let snap = null;
+let selected = null;
+let showStale = false;
+const openChildren = new Map();
+
+const $ = id => document.getElementById(id);
+const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+const clock = ms => new Date(ms).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+const ago = ms => (!ms ? '' : Date.now() - ms < 86_400_000 ? clock(ms) : new Date(ms).toLocaleDateString([], { month: 'short', day: 'numeric' }));
+const gb = mb => (mb >= 1024 ? `${(mb / 1024).toFixed(1)} GB` : `${mb} MB`);
+const short = p => String(p ?? '').replace(/^\/Users\/[^/]+/, '~');
+const shellQuote = s => `'${String(s).replace(/'/g, `'\\''`)}'`;
+
+function elapsed(from) {
+  const s = Math.max(0, Math.floor((Date.now() - from) / 1000));
+  const m = Math.floor(s / 60);
+  return m >= 60 ? `${Math.floor(m / 60)}h${String(m % 60).padStart(2, '0')}m` : `${m}:${String(s % 60).padStart(2, '0')}`;
+}
+
+function updateTimers() {
+  for (const el of document.querySelectorAll('[data-since]')) el.textContent = elapsed(Number(el.dataset.since));
+  if (snap) {
+    const ram = snap.agents.reduce((t, a) => t + (a.proc?.rssMb ?? 0), 0);
+    const age = Math.max(0, Math.round((Date.now() - snap.generatedAt) / 1000));
+    $('meta').textContent = `agents RAM ${gb(ram)} · tracker ${snap.collector.cpu}% CPU, ${snap.collector.rssMb} MB · updated ${age}s ago`;
+  }
+}
+
+function render() {
+  if (!snap) return;
+  const c = snap.counts;
+  $('counts').innerHTML = [['waiting', `${c.waiting} waiting on you`], ['working', `${c.working} working`], ['yourTurn', `${c.yourTurn} your turn`], ['stale', `${c.stale} stale`], ['idle', `${c.idle} idle`]]
+    .map(([k, t]) => `<span class="pill p-${k}">${t}</span>`).join(' ')
+    + (c.collisions ? ` <span class="pill p-collision">${c.collisions} collision${c.collisions > 1 ? 's' : ''}</span>` : '');
+  $('errors').innerHTML = Object.entries(snap.sources).filter(([, s]) => !s.ok)
+    .map(([n, s]) => `<span class="pill p-err" title="${esc(s.error)}">${esc(n)}: ${esc(String(s.error).slice(0, 40))}</span>`).join(' ');
+  $('list').innerHTML = listHtml();
+  const agent = selected && snap.agents.find(a => a.id === selected);
+  $('main').classList.toggle('with-drawer', Boolean(agent));
+  $('side').className = agent ? 'drawer' : '';
+  $('side').innerHTML = agent ? drawerHtml(agent) : railHtml();
+  updateTimers();
+}
+
+function rowHtml(a) {
+  const ticker = a.state === 'waiting' ? `❓ ${esc(a.stateReason)} · <span data-since="${a.stateSince}"></span>`
+    : a.now ? `<span class="pulse"></span><span class="mono">${esc(a.now.tool)} ${esc(a.now.summary)} · <span data-since="${a.now.startedAt}"></span></span>`
+    : a.state === 'yourTurn' ? esc(a.lastReply ?? 'finished')
+    : esc(a.stateReason);
+  const right = a.state === 'stale' ? `<span class="muted">${ago(a.lastActivityAt)}</span>` : a.proc ? `<span class="muted">${gb(a.proc.rssMb)}</span>` : '';
+  return `<button class="row ${a.state}${a.id === selected ? ' sel' : ''}" data-id="${esc(a.id)}">
+    <div class="top"><span class="name">${esc(a.name)}</span><span class="muted">${esc(short(a.cwd))}${a.kind === 'background' ? ' · bg' : ''}</span><span class="grow"></span>${right}</div>
+    <div class="ticker">${ticker}</div></button>`;
+}
+
+function listHtml() {
+  let html = '';
+  for (const [state, title] of GROUPS) {
+    const agents = snap.agents.filter(a => a.state === state);
+    if (state === 'stale') {
+      if (!agents.length) continue;
+      html += `<div class="sec">${title} · ${agents.length} <button class="act" id="toggle-stale">${showStale ? 'Hide' : 'Show'}</button><button class="act" id="open-cleanup">Clean up stale…</button></div>`;
+      if (showStale) html += agents.map(rowHtml).join('');
+      continue;
+    }
+    if (!agents.length && state !== 'waiting') continue;
+    html += `<div class="sec">${title}</div>${agents.length ? agents.map(rowHtml).join('') : '<div class="empty">Nobody is waiting on you.</div>'}`;
+  }
+  return html;
+}
+
+function railHtml() {
+  const colliding = new Set(snap.collisions.map(c => c.repo));
+  const nameOf = id => esc(snap.agents.find(a => a.id === id)?.name ?? id);
+  let html = '<div class="sec">Collisions</div>';
+  html += snap.collisions.length
+    ? snap.collisions.map(c => `<div class="card collide"><b>${esc(c.repo.split('/').pop())}</b> <span class="pill p-collision">${esc(c.severity)}</span><div class="muted">${esc(c.reason)} · since ${clock(c.since)}</div><div>${c.agentIds.map(nameOf).join(', ')}</div></div>`).join('')
+    : '<div class="empty">None.</div>';
+  html += '<div class="sec">Repos</div>';
+  html += snap.repos.map(r => {
+    const aheadBehind = r.ahead === undefined ? '' : ` · ↑${r.ahead} ↓${r.behind}`;
+    const dirty = r.dirty === undefined ? '?' : r.dirty ? `${r.dirty} uncommitted` : 'clean';
+    const deploy = r.deploy ? `<div class="muted">deploy: ${esc(r.deploy.status)}${r.deploy.conclusion ? ` (${esc(r.deploy.conclusion)})` : ''} · ${esc(r.deploy.sha)}</div>` : '';
+    const count = r.agentIds.length ? ` <span class="pill ${colliding.has(r.path) ? 'p-collision' : 'p-idle'}">${r.agentIds.length} agent${r.agentIds.length > 1 ? 's' : ''}</span>` : '';
+    return `<div class="card${colliding.has(r.path) ? ' collide' : ''}" title="${esc(r.path)}"><b>${esc(r.name)}</b>${count}<div class="muted">${esc(r.branch ?? '?')} · ${dirty}${aheadBehind}</div>${deploy}</div>`;
+  }).join('') || '<div class="empty">No repos touched in the last 30 min.</div>';
+  return html;
+}
+
+function feedRow(f) {
+  const what = f.kind === 'tool' ? `🔧 <b>${esc(f.tool)}</b> ${esc(f.text)}` : f.kind === 'prompt' ? `👤 ${esc(f.text)}` : `💬 ${esc(f.text)}`;
+  const result = f.kind !== 'tool' ? '' : f.ok === undefined ? '…' : f.ok ? `✓ ${f.durationMs !== undefined ? `${(f.durationMs / 1000).toFixed(1)}s` : ''}` : '✗';
+  return `<div><span class="t mono">${clock(f.at)}</span><span>${what}</span><span class="${f.ok === false ? 'bad' : 'ok'}">${result}</span></div>`;
+}
+
+function drawerHtml(a) {
+  const children = a.children.length ? a.children.map(c => {
+    const isOpen = openChildren.has(c.id);
+    const feed = isOpen ? `<div class="feed">${(openChildren.get(c.id) ?? []).map(feedRow).join('') || '<div class="empty">No activity.</div>'}</div>` : '';
+    return `<div class="child"><button class="act" data-child="${esc(c.id)}">${isOpen ? '▾' : '▸'}</button><b>${esc(c.kind)}</b> ${esc(c.label)} <span class="pill p-${c.state === 'running' ? 'working' : 'idle'}">${esc(c.state)}${c.now ? ` · ${esc(c.now.tool)}` : ''}</span>${feed}</div>`;
+  }).join('') : '<div class="empty">None.</div>';
+  const touching = a.touching.length
+    ? a.touching.slice(0, 12).map(t => `<span class="pill p-idle" title="${esc(t.path)}">${esc(short(t.repo ?? t.path))} · ${esc(t.mode)}</span>`).join(' ')
+    : '<div class="empty">Nothing in the last 30 min.</div>';
+  const spark = a.proc ? `<span class="spark">${a.proc.cpuHistory.map(v => `<i style="height:${Math.max(2, Math.min(100, v))}%"></i>`).join('')}</span>` : '';
+  const proc = a.proc
+    ? `${spark} CPU ${a.proc.cpu}% · RAM ${gb(a.proc.rssMb)} · ${a.proc.childCount} child process${a.proc.childCount === 1 ? '' : 'es'}${a.proc.children.length ? ` (${esc(a.proc.children.join(', '))})` : ''}`
+    : '<span class="muted">No process found.</span>';
+  const resume = a.kind === 'codex' ? '' : `cd ${shellQuote(a.cwd)} && claude --resume ${a.id}`;
+  return `<div class="top"><span class="name" style="font-size:15px">${esc(a.name)}</span><span class="pill p-${a.state}">${esc(a.state)} · <span data-since="${a.stateSince}"></span></span><span class="grow"></span><button class="act" id="close-drawer">✕</button></div>
+    <div class="muted">${esc(short(a.cwd))} · ${esc(a.kind)}${a.model ? ` · ${esc(a.model)}` : ''}${a.contextTokens ? ` · context ${Math.round(a.contextTokens / 1000)}k tokens` : ''}</div>
+    <div class="sec">Now</div>${a.now ? `<div class="now mono"><span class="pulse" style="display:inline-block"></span> ${esc(a.now.tool)} ${esc(a.now.summary)} · <b data-since="${a.now.startedAt}"></b></div>` : `<div class="muted">${esc(a.stateReason)}</div>`}
+    ${a.lastPrompt ? `<div class="sec">Last prompt</div><div>“${esc(a.lastPrompt)}”</div>` : ''}
+    <div class="sec">Activity</div><div class="feed">${a.feed.map(feedRow).join('') || '<div class="empty">No activity yet.</div>'}</div>
+    <div class="sec">Subagents &amp; background jobs</div>${children}
+    <div class="sec">Touching</div>${touching}
+    <div class="sec">Process</div><div>${proc}</div>
+    <div class="sec">Actions</div>
+    ${a.kind === 'background' && a.cliId ? '<button class="act" id="act-open">Open session</button>' : ''}
+    ${resume ? `<button class="act" id="act-copy" data-text="${esc(resume)}">Copy resume command</button>` : ''}
+    ${a.kind === 'codex' ? '' : `<a class="act" href="/agent/${encodeURIComponent(a.id)}/transcript" target="_blank" rel="noopener">Full transcript</a>`}`;
+}
+
+async function post(path, body) {
+  try {
+    const r = await fetch(path, { method: 'POST', headers: { 'content-type': 'application/json', 'x-tracker-token': TOKEN }, body: JSON.stringify(body) });
+    return await r.json();
+  } catch (err) {
+    return { ok: false, error: String(err) };
+  }
+}
+
+function notice(text) {
+  $('notice').textContent = text;
+  $('notice').classList.add('show');
+  setTimeout(() => $('notice').classList.remove('show'), 6000);
+}
+
+function openCleanup() {
+  const stale = snap.agents.filter(a => a.state === 'stale' && a.kind === 'background');
+  $('cleanup-list').innerHTML = stale.length
+    ? stale.map(a => `<label style="display:block;margin:4px 0"><input type="checkbox" value="${esc(a.id)}"> ${esc(a.name)} <span class="muted">· ${esc(short(a.cwd))} · last active ${ago(a.lastActivityAt)}</span></label>`).join('')
+    : '<p class="empty">No stale background sessions.</p>';
+  $('cleanup').showModal();
+}
+
+$('cleanup').addEventListener('close', async () => {
+  if ($('cleanup').returnValue !== 'go') return;
+  const ids = [...$('cleanup-list').querySelectorAll('input:checked')].map(i => i.value);
+  if (!ids.length) return;
+  const r = await post('/api/actions/rm', { ids });
+  const failed = (r.results ?? []).filter(x => !x.ok);
+  notice(failed.length ? `Could not remove ${failed.length}: ${failed.map(f => f.error).join('; ')}` : `Removed ${ids.length} stale session${ids.length > 1 ? 's' : ''}.`);
+});
+
+document.addEventListener('click', async e => {
+  const row = e.target.closest('.row[data-id]');
+  if (row) {
+    selected = row.dataset.id === selected ? null : row.dataset.id;
+    openChildren.clear();
+    render();
+    return;
+  }
+  const el = e.target.closest('button');
+  if (!el) return;
+  if (el.id === 'close-drawer') { selected = null; render(); }
+  else if (el.id === 'toggle-stale') { showStale = !showStale; render(); }
+  else if (el.id === 'open-cleanup') openCleanup();
+  else if (el.id === 'act-copy') { await navigator.clipboard.writeText(el.dataset.text); notice('Resume command copied.'); }
+  else if (el.id === 'act-open') { const r = await post(`/api/actions/open/${encodeURIComponent(selected)}`, {}); notice(r.ok ? 'Opened in Terminal.' : `Could not open: ${r.error}`); }
+  else if (el.dataset.child) {
+    const id = el.dataset.child;
+    if (openChildren.has(id)) openChildren.delete(id);
+    else {
+      const r = await fetch(`/api/agent/${encodeURIComponent(selected)}:${encodeURIComponent(id)}/feed?limit=30`);
+      openChildren.set(id, r.ok ? await r.json() : []);
+    }
+    render();
+  }
+});
+
+// Snapshots arrive every few seconds. Re-rendering replaces the DOM, which would wipe a
+// text selection (copying a path or prompt) and swallow a click that straddles it, so a
+// snapshot waits while text is selected or the pointer is down.
+let isPointerDown = false;
+let isRenderPending = false;
+const hasSelection = () => {
+  const s = window.getSelection?.();
+  return Boolean(s && !s.isCollapsed && s.toString() !== '');
+};
+function requestRender() {
+  if (isPointerDown || hasSelection()) {
+    isRenderPending = true;
+    return;
+  }
+  isRenderPending = false;
+  render();
+}
+document.addEventListener('pointerdown', () => { isPointerDown = true; });
+document.addEventListener('pointerup', () => {
+  isPointerDown = false;
+  setTimeout(() => { if (isRenderPending) requestRender(); }, 0);
+});
+document.addEventListener('selectionchange', () => { if (isRenderPending && !hasSelection()) requestRender(); });
+
+function connect() {
+  const events = new EventSource('/api/events');
+  events.addEventListener('snapshot', ev => {
+    snap = JSON.parse(ev.data);
+    $('banner').classList.remove('show');
+    if (selected && !snap.agents.some(a => a.id === selected)) selected = null;
+    requestRender();
+  });
+  events.onerror = () => $('banner').classList.add('show');
+}
+
+setInterval(updateTimers, 1000);
+connect();
+</script>
+</body>
+</html>

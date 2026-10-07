@@ -1,0 +1,50 @@
+#!/bin/bash
+# Control the Agent Tracker login service.
+set -eo pipefail
+SELF="$(readlink -f "$0")"
+ROOT="$(cd "$(dirname "$SELF")/.." && pwd)"
+LABEL="local.agent-tracker"
+PLIST="$HOME/Library/LaunchAgents/$LABEL.plist"
+DOMAIN="gui/$(id -u)"
+PORT="$(/usr/bin/plutil -extract port raw "$ROOT/config.json" 2>/dev/null || echo 7777)"
+
+case "${1:-status}" in
+  install)
+    mkdir -p "$ROOT/logs" "$HOME/Library/LaunchAgents"
+    sed "s#__ROOT__#$ROOT#g" "$ROOT/launchd/$LABEL.plist" > "$PLIST"
+    launchctl bootout "$DOMAIN/$LABEL" 2>/dev/null || true
+    launchctl bootstrap "$DOMAIN" "$PLIST"
+    echo "installed; starts at login. Dashboard: http://localhost:$PORT"
+    ;;
+  uninstall)
+    launchctl bootout "$DOMAIN/$LABEL" 2>/dev/null || true
+    rm -f "$PLIST"
+    echo "removed"
+    ;;
+  start)
+    launchctl bootstrap "$DOMAIN" "$PLIST" 2>/dev/null || launchctl kickstart "$DOMAIN/$LABEL"
+    echo "started"
+    ;;
+  stop)
+    launchctl bootout "$DOMAIN/$LABEL"
+    echo "stopped (starts again at next login; 'agent-tracker start' to start now)"
+    ;;
+  restart)
+    launchctl kickstart -k "$DOMAIN/$LABEL"
+    echo "restarted"
+    ;;
+  status)
+    launchctl print "$DOMAIN/$LABEL" 2>/dev/null | grep -E '^\s+(state|pid) =' || echo "service not loaded"
+    if curl -fsS "http://127.0.0.1:$PORT/api/state" -o /dev/null; then echo "http ok on :$PORT"; else echo "http not answering on :$PORT"; fi
+    ;;
+  open)
+    open "http://localhost:$PORT"
+    ;;
+  logs)
+    tail -n 50 "$ROOT/logs/collector.log" "$ROOT/logs/launchd.log" 2>/dev/null
+    ;;
+  *)
+    echo "usage: agent-tracker install|uninstall|start|stop|restart|status|open|logs" >&2
+    exit 2
+    ;;
+esac

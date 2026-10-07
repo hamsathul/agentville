@@ -1,0 +1,22 @@
+{
+  "name": "agent-tracker",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Local dashboard of every AI agent working on this Mac",
+  "scripts": {
+    "test": "node --test \"collector/test/*.test.mjs\"",
+    "start": "node collector/index.mjs"
+  },
+  "engines": {
+    "node": ">=22"
+  },
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/hamsathul/agent-tracker.git"
+  },
+  "os": [
+    "darwin"
+  ]
+}

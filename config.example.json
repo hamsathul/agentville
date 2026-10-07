@@ -1,0 +1,16 @@
+{
+  "port": 7777,
+  "pollMs": 3000,
+  "agentsCliPollMs": 30000,
+  "gitPollMs": 10000,
+  "deployPollMs": 60000,
+  "staleAfterHours": 24,
+  "collisionWindowMin": 30,
+  "permissionGuessSec": 20,
+  "memoryAlertGb": 2,
+  "cpuAlertPct": 90,
+  "cpuAlertSustainSec": 120,
+  "notify": { "waiting": true, "collision": true, "yourTurn": true, "memory": true, "cpu": true },
+  "modToasts": true,
+  "deployRepos": {}
+}
