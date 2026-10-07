@@ -222,6 +222,8 @@ try {
   const frameBox = () => js("JSON.stringify((({ left, top, width, height }) => [left, top, width, height].map(Math.round))(document.querySelector('#farm .px-view').getBoundingClientRect()))");
   const view = expr => js(`(v => ${expr})(document.querySelector('#farm .px-view'))`);
   check(await js("(() => { const v = document.querySelector('#farm .px-view').getBoundingClientRect(), c = document.querySelector('#farm canvas').getBoundingClientRect(); return c.width <= v.width + 1 && c.height <= v.height + 1 && v.bottom <= innerHeight && document.documentElement.scrollHeight <= innerHeight; })()"), 'at 100% the whole farm fits in a frame that fits the screen');
+  const fill = JSON.parse(await js("(() => { const v = document.querySelector('#farm .px-view'), c = v.querySelector('canvas').getBoundingClientRect(), r = v.getBoundingClientRect(); return JSON.stringify({ frame: [r.width, r.height].map(Math.round), farm: [c.width, c.height].map(Math.round), pad: v.querySelector('canvas').dataset.pad }); })()"));
+  check(fill.frame[0] - fill.farm[0] < 12 && fill.frame[1] - fill.farm[1] < 12, `and the farm fills the frame: its spare room is more sky and meadow, not empty frame (${JSON.stringify(fill)})`);
   const fit = await width(), frame = await frameBox();
   await js("document.querySelector('[data-farm-zoom=\"1\"]').click()");
   await js("document.querySelector('[data-farm-zoom=\"1\"]').click()");
@@ -266,7 +268,8 @@ try {
   })`);
   check(allBack, `switching them back on shows them all, hidden ones too${sayState ? ` (now: ${sayState})` : ''}`);
 
-  const closeUp = "(() => { const c = document.querySelector('#farm canvas'); const r = c.getBoundingClientRect(), cs = r.width / 400; c.dispatchEvent(new MouseEvent('click', { bubbles: true, clientX: r.left + 70 * cs, clientY: r.top + 48 * cs })); })()";
+  // a farm point to the screen: the canvas also holds the extra sky and meadow round the farm (data-pad)
+  const closeUp = "(() => { const c = document.querySelector('#farm canvas'); const [px, pt] = c.dataset.pad.split(',').map(Number), r = c.getBoundingClientRect(), cs = r.width / (400 + 2 * px); c.dispatchEvent(new MouseEvent('click', { bubbles: true, clientX: r.left + (70 + px) * cs, clientY: r.top + (48 + pt) * cs })); })()";
   await js(closeUp);
   const closeUpOpen = await until("[...document.querySelectorAll('.fv-f')].map(b => b.textContent).join(' ').includes('app.ts')");
   const closeUpState = closeUpOpen ? '' : await js(`JSON.stringify({ fv: !!document.querySelector('.fv-back'), files: [...document.querySelectorAll('.fv-f')].length, canvas: (r => [r.left, r.top, r.width, r.height].map(Math.round))(document.querySelector('#farm canvas').getBoundingClientRect()), stage: document.querySelector('#farm .px-stage').style.transform, side: document.getElementById('main').dataset.side, sel: document.querySelector('.px-tag.sel')?.dataset.farmer, tags: [...document.querySelectorAll('.px-tag')].map(t => t.dataset.farmer + '@' + Math.round(t.getBoundingClientRect().left)) })`);

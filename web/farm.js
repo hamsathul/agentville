@@ -150,7 +150,7 @@
     const m = Math.max(0, (Date.now() - ms) / 60_000);
     return m < 1 ? 'now' : m < 60 ? `${Math.round(m)}m` : m < 1440 ? `${Math.round(m / 60)}h` : `${Math.round(m / 1440)}d`;
   };
-  const PXG = { ctx: null, T: 0, k: 1, lights: null }; // the canvas being drawn now, the animation clock, device pixels per world pixel, lights to glow at night
+  const PXG = { ctx: null, T: 0, k: 1, lights: null, ext: null }; // ext: the world drawn, past the farm's own edges when the frame has room // the canvas being drawn now, the animation clock, device pixels per world pixel, lights to glow at night
   const px = (x, y, w, h, c) => { PXG.ctx.fillStyle = ink(c); PXG.ctx.fillRect(x, y, w, h); };
   const SC = 1.5; // characters are drawn at 1.5×: one sprite pixel = 1.5 world pixels
   const blink = (hz, n = 2) => Math.floor(PXG.T * hz) % n;
@@ -245,10 +245,10 @@
   }
   /** The sky band, every frame: its colours by the hour, stars, the sun or moon on its arc, drifting clouds. */
   function drawSky(sky, T, hot) {
-    const [top, mid, low] = SKY[sky.phase];
-    px(0, 0, W, 6, top); px(0, 6, W, 5, mid); px(0, 11, W, 6, low);
-    if (sky.light < 0.6) for (let i = 0; i < 22; i++) { // stars
-      const x = (i * 97 + 13) % W, y = (i * 37) % 12;
+    const [top, mid, low] = SKY[sky.phase], { x0, x1, y0 } = PXG.ext ?? { x0: 0, x1: W, y0: 0 }, EW = x1 - x0;
+    px(x0, y0, EW, 6 - y0, top); px(x0, 6, EW, 5, mid); px(x0, 11, EW, 6, low);
+    if (sky.light < 0.6) for (let i = 0, n = Math.round(22 * (EW / W) * (1 - y0 / 17)); i < n; i++) { // stars
+      const x = x0 + ((i * 97 + 13) % EW), y = y0 + ((i * 37) % (12 - y0));
       if ((i + Math.floor(T * 1.3 + i * 0.7)) % 5) px(x, y, 1, 1, i % 3 ? '#e6eef5' : '#ffe8a3');
     }
     if (sky.sun) {
@@ -262,7 +262,8 @@
       if (hot) { PXG.ctx.globalAlpha = 0.35; px(x - 7, y - 7, 14, 14, '#ff5a1f'); PXG.ctx.globalAlpha = 1; }
     }
     const tones = sky.light > 0.5 ? ['#ffffff', '#f4ecd8', '#c3cbd2'] : sky.light > 0.1 ? ['#ffd8a8', '#f4b6c2', '#d55181'] : ['#5f6b7a', '#3a3a40', '#2c3a5a'];
-    for (const [x0, y, w, sp] of [[60, 3, 24, 2.2], [210, 5, 28, 1.6], [330, 2, 18, 2.8]]) drawCloud(Math.round(((x0 + T * sp) % (W + 60)) - 30), y, w, tones);
+    const clouds = [[60, 3, 24, 2.2], [210, 5, 28, 1.6], [330, 2, 18, 2.8], [140, -14, 30, 1.2], [290, -26, 22, 1.9], [20, -38, 26, 1.4], [370, -50, 20, 2.4]];
+    for (const [cx, y, w, sp] of clouds) if (y >= y0 - 4) drawCloud(Math.round(x0 + ((cx - x0 + T * sp) % (EW + 60)) - 30), y, w, tones);
   }
   /**
    * Night falls over everything drawn so far (a tint, warm at dawn and dusk), then the lights glow:
@@ -274,7 +275,8 @@
     ctx.globalCompositeOperation = 'multiply';
     ctx.globalAlpha = Math.min(0.7, dark * 0.7);
     ctx.fillStyle = sky.phase === 'night' ? '#3c4a8c' : '#c26a7a';
-    ctx.fillRect(0, 0, W, H);
+    const e = PXG.ext ?? { x0: 0, x1: W, y0: 0, y1: H };
+    ctx.fillRect(e.x0, e.y0, e.x1 - e.x0, e.y1 - e.y0);
     ctx.globalAlpha = 1;
     ctx.globalCompositeOperation = 'source-over';
     ctx.fillStyle = '#ffe8a3';
@@ -310,23 +312,31 @@
   };
 
   /** The land: everything that does not move, drawn once (and again when the season turns). The sky shows through above. */
-  function drawLand(f, L, season = 'summer') {
-    const { H, BOT_TOP, LANE_B } = L, S = SEASONS[season] ?? SEASONS.summer;
-    // grass in three tones, with tufts and a few flowers
-    for (let y = 16; y < H; y += 2) for (let x = 0; x < W; x += 2) { const n = noise(x, y); f(x, y, 2, 2, n < 170 ? S.grass[0] : n < 820 ? S.grass[1] : n < 1000 ? S.grass[2] : S.grass[3]); }
-    for (let y = 18; y < H - 2; y += 5) for (let x = 2; x < W - 2; x += 7) {
+  function drawLand(f, L, season = 'summer', ext = { x0: 0, x1: W, y1: L.H }) {
+    const { H, BOT_TOP, LANE_B } = L, S = SEASONS[season] ?? SEASONS.summer, { x0, x1, y1 } = ext, EW = x1 - x0;
+    // grass in three tones, with tufts and a few flowers (out to the frame's edges)
+    for (let y = 16; y < y1; y += 2) for (let x = x0 - (x0 & 1); x < x1; x += 2) { const n = noise(x, y); f(x, y, 2, 2, n < 170 ? S.grass[0] : n < 820 ? S.grass[1] : n < 1000 ? S.grass[2] : S.grass[3]); }
+    for (let y = 18; y < y1 - 2; y += 5) for (let x = x0 + 2; x < x1 - 2; x += 7) {
       const n = noise(x + 7, y + 3);
       if (n < 120) { f(x, y, 1, 2, S.tuft); f(x + 2, y, 1, 2, S.tuft); f(x + 1, y + 1, 1, 2, S.tuft); }
       else if (n < 135 && S.flowers.length) { f(x, y + 1, 1, 1, S.tuft); f(x, y, 1, 1, S.flowers[n % S.flowers.length]); }
     }
+    // beyond the farm (when the frame has room): its boundary fence below, and bushes
+    if (y1 > H + 8) { for (let x = x0; x < x1; x += 12) { f(x, H + 3, 2, 8, '#6b4320'); f(x, H + 3, 1, 8, '#8b5a2b'); } f(x0, H + 5, EW, 1, '#8b5a2b'); f(x0, H + 8, EW, 1, '#8b5a2b'); f(x0, H + 6, EW, 1, '#4e3626'); }
+    for (let i = 0; i < 60; i++) {
+      const bx = x0 + (noise(i, 77) % Math.max(1, EW)), by = 18 + (noise(77, i) % Math.max(1, y1 - 24));
+      if ((bx >= -2 && bx < W + 2 && by < H + 12) || by > y1 - 8) continue; // only out past the farm
+      f(bx - 1, by + 4, 11, 1, '#1f3d1a'); f(bx, by, 9, 5, S.canopy[0]); f(bx + 1, by - 1, 6, 2, S.canopy[1]); f(bx + 2, by - 1, 3, 1, S.canopy[2]);
+      if (S.snow) f(bx + 1, by - 1, 7, 1, '#ffffff'); else if (i % 3 === 0) f(bx + 3, by + 1, 1, 1, S.flowers[0] ?? '#e04a3a');
+    }
     // a row of trees along the top, behind the fence
-    for (let x = 0; x < W; x += 10) {
-      const y = 14 + ((x / 10) % 3) * 2, c = S.canopy[(x / 10) % 2 ? 1 : 0];
+    for (let x = x0 - (((x0 % 10) + 10) % 10); x < x1; x += 10) {
+      const j = Math.round(x / 10), y = 14 + (((j % 3) + 3) % 3) * 2, c = S.canopy[Math.abs(j) % 2 ? 1 : 0];
       f(x, y, 12, 12, c); f(x + 2, y, 6, 1, S.canopy[2]); f(x, y + 11, 12, 1, '#24361f');
       if (S.snow) f(x + 1, y, 9, 2, '#f4f8fb');
     }
-    for (let x = 0; x < W; x += 12) { f(x, 23, 2, 8, '#6b4320'); f(x, 23, 1, 8, '#8b5a2b'); f(x + 2, 24, 1, 7, '#2f5a2a'); }
-    f(0, 25, W, 1, '#8b5a2b'); f(0, 28, W, 1, '#8b5a2b'); f(0, 26, W, 1, '#4e3626'); f(0, 29, W, 1, '#4e3626');
+    for (let x = x0 - (((x0 % 12) + 12) % 12); x < x1; x += 12) { f(x, 23, 2, 8, '#6b4320'); f(x, 23, 1, 8, '#8b5a2b'); f(x + 2, 24, 1, 7, '#2f5a2a'); }
+    f(x0, 25, EW, 1, '#8b5a2b'); f(x0, 28, EW, 1, '#8b5a2b'); f(x0, 26, EW, 1, '#4e3626'); f(x0, 29, EW, 1, '#4e3626');
     // barn, top left: new farmers walk out of its door; a lamp over it glows at night
     f(1, 5, 48, 28, '#2a1d14'); f(2, 6, 46, 26, '#b23a2e'); f(-2, 3, 54, 4, '#6b2a22'); f(6, 0, 38, 3, '#6b2a22'); f(-2, 6, 54, 1, '#4e3626');
     for (let y = 8; y < 32; y += 4) f(2, y, 46, 1, '#9c3127');
@@ -346,7 +356,7 @@
       for (let yy = y; yy < y + h; yy += 3) for (let xx = x + 1; xx < x + w - 1; xx += 3) { const n = noise(xx, yy); if (n < 90) f(xx, yy, 1, 1, '#c9a46a'); else if (n < 140) f(xx, yy, 1, 1, '#9a7442'); else if (n < 150) f(xx, yy, 2, 1, '#8a8f96'); }
     };
     for (const c of CORR) { dirt(c - 7, TOP, 14, BOT_TOP - TOP + 4); f(c - 7, TOP, 1, BOT_TOP - TOP + 4, '#9a7442'); f(c + 6, TOP, 1, BOT_TOP - TOP + 4, '#9a7442'); f(c + 7, TOP, 1, BOT_TOP - TOP + 4, '#3f7d3a'); }
-    dirt(0, BOT_TOP - 2, W, 7); f(0, BOT_TOP - 2, W, 1, '#9a7442'); f(0, BOT_TOP + 5, W, 1, '#8a7140');
+    dirt(x0, BOT_TOP - 2, EW, 7); f(x0, BOT_TOP - 2, EW, 1, '#9a7442'); f(x0, BOT_TOP + 5, EW, 1, '#8a7140');
     // the farmhouse with your porch; its windows light up at night, its chimney smokes while agents work
     f(124, BOT_TOP + 7, 152, 9, '#2a1d14');
     f(130, BOT_TOP + 8, 140, 6, '#8a3b2e'); f(130, BOT_TOP + 8, 140, 1, '#b23a2e'); f(126, BOT_TOP + 12, 148, 3, '#6b2a22');
@@ -942,7 +952,7 @@
           <button type="button" class="px-motion" data-farm-motion title="Walking and animation on the farm">${w(`Motion: ${still ? 'off' : 'on'}`)}</button>
           <button type="button" class="px-info" data-farm-help title="How to read the farm" aria-label="How to read the farm">i</button>`;
       },
-      bg(f, season) { drawLand(f, L, season); },
+      bg(f, season, ext) { drawLand(f, L, season, ext); },
       ground() { drawScenery(); L.ST.forEach(drawPlot); L.ST.forEach(drawPiles); },
       season: () => season,
       /** Particles a farmer gives off: dust when walking; splashes, clods, sparks, chips from its tool. */
@@ -966,7 +976,8 @@
         const { BOT_TOP, H } = L;
         if (season === 'spring' && Math.random() < dt * 3) add({ x: rand(22, 92), y: BOT_TOP + rand(-8, 10), vx: rand(3, 9), vy: rand(5, 9), g: 0, life: 3, max: 3, size: 1, color: '#f4b6c2', sway: 3 });
         if (season === 'autumn' && Math.random() < dt * 4) add({ x: rand(20, 94), y: BOT_TOP + rand(-8, 12), vx: rand(2, 8), vy: rand(6, 11), g: 0, life: 3.2, max: 3.2, size: 1.5, color: ['#c8681a', '#e9a23b', '#b5562f'][Math.floor(rand(0, 3))], sway: 4 });
-        if (season === 'winter' && Math.random() < dt * 28) add({ x: rand(0, W), y: -2, vx: rand(-2, 2), vy: rand(9, 16), g: 0, life: H / 10, max: H / 10, size: rand(1, 1.6), color: '#ffffff', sway: 2, alpha: 0.9 });
+        const e = PXG.ext ?? { x0: 0, x1: W, y0: 0, y1: H };
+        if (season === 'winter' && Math.random() < dt * 28 * ((e.x1 - e.x0) / W)) add({ x: rand(e.x0, e.x1), y: e.y0 - 2, vx: rand(-2, 2), vy: rand(9, 16), g: 0, life: (e.y1 - e.y0) / 10, max: (e.y1 - e.y0) / 10, size: rand(1, 1.6), color: '#ffffff', sway: 2, alpha: 0.9 });
         if (scene.farmers.some(a => a.state === 'working') && Math.random() < dt * 2.2) {
           add({ x: 244 + rand(-1, 1), y: L.BOT_TOP - 5, vx: rand(2, 6), vy: rand(-9, -6), g: 0, life: 2.6, max: 2.6, size: 2, grow: 1.4, color: '#c3cbd2', alpha: 0.55 });
         }
@@ -1129,6 +1140,8 @@
     let bgSeason = null;
     let follow = false; // keep the picked farmer in the middle of the view
     let glide = null; // a zoom easing in: { from: scale, start, ox, oy }
+    let pad = { x: 0, t: 0, b: 0 }; // the frame's spare room, in world pixels: more sky above, more meadow below and beside
+    const extOf = () => ({ x0: -pad.x, x1: W + pad.x, y0: -pad.t, y1: th.layout().H + pad.b });
     const skyNow = () => skyAt(skyMode === 'day' ? new Date(2000, 0, 1, 12) : skyMode === 'night' ? new Date(2000, 0, 1, 23) : new Date());
     let wheel = 0;
     const says = new Map(); // farmer id → { el, text }
@@ -1209,7 +1222,7 @@
       const b = follow && selectedId ? bots.get(selectedId) : null;
       if (!b || !viewEl || drag?.moving) return;
       const stage = canvas.parentElement;
-      const tx = b.x * cs + stage.offsetLeft - viewEl.clientWidth / 2, ty = (b.y - 14) * cs + stage.offsetTop - viewEl.clientHeight / 2;
+      const tx = (b.x + pad.x) * cs + stage.offsetLeft - viewEl.clientWidth / 2, ty = (b.y - 14 + pad.t) * cs + stage.offsetTop - viewEl.clientHeight / 2;
       const ease = (cur, t) => { const d = t - cur, stepBy = dt ? d * Math.min(1, dt * 3.5) : d; return cur + (Math.abs(stepBy) < 1 ? Math.sign(d) * Math.min(1, Math.abs(d)) : stepBy); };
       viewEl.scrollLeft = ease(viewEl.scrollLeft, tx);
       viewEl.scrollTop = ease(viewEl.scrollTop, ty);
@@ -1218,7 +1231,7 @@
       follow = on && Boolean(selectedId && bots.has(selectedId));
       if (follow && zoom < 2) {
         const b = bots.get(selectedId), stage = canvas.parentElement;
-        setZoom(0, [b.x * cs + stage.offsetLeft - viewEl.scrollLeft, b.y * cs + stage.offsetTop - viewEl.scrollTop], 2);
+        setZoom(0, [(b.x + pad.x) * cs + stage.offsetLeft - viewEl.scrollLeft, (b.y + pad.t) * cs + stage.offsetTop - viewEl.scrollTop], 2);
       }
       renderHud();
       if (follow && still) followTick(0);
@@ -1382,10 +1395,11 @@
       PXG.T = T;
       PXG.k = backing;
       if (th.season() !== bgSeason) bg = buildBg(); // the season turned: new grass and trees
+      PXG.ext = extOf();
       const sky = skyNow();
       PXG.lights = [...th.lights()];
       drawSky(sky, T, th.hot());
-      ctx.drawImage(bg, 0, 0);
+      ctx.drawImage(bg, -pad.x, 0);
       th.ground();
       for (const f of scene.farmers) { const b = bots.get(f.id); if (b) th.shadows(b); }
       const items = th.items();
@@ -1465,11 +1479,12 @@
     function buildBg() {
       const { H } = th.layout();
       const c = document.createElement('canvas');
-      c.width = W;
-      c.height = H;
+      c.width = W + 2 * pad.x;
+      c.height = H + pad.b;
       const g = c.getContext('2d');
+      g.translate(pad.x, 0);
       bgSeason = th.season();
-      th.bg((x, y, w, h, col) => { g.fillStyle = ink(col); g.fillRect(x, y, w, h); }, bgSeason);
+      th.bg((x, y, w, h, col) => { g.fillStyle = ink(col); g.fillRect(x, y, w, h); }, bgSeason, extOf());
       return c;
     }
     function resize() {
@@ -1479,15 +1494,24 @@
       // change it); zoom scales the farm inside. The backing store is a whole multiple of the art,
       // at most ~24M pixels, and image-rendering: pixelated keeps the pixels square when scaled.
       const fw = viewEl?.offsetWidth || W, fh = viewEl?.offsetHeight || 0;
-      const fit = Math.max(0.5, Math.min(6, (fw - 4) / W, fh > 60 ? (fh - 4) / H : Infinity));
+      const fit = Math.max(0.5, Math.min(6, (fw - 2) / W, fh > 60 ? (fh - 2) / H : Infinity));
+      // The frame's spare room is more farm, not empty frame: sky above and meadow below, or meadow beside.
+      const spareW = Math.max(0, (fw - 2) / fit - W), spareH = fh > 60 ? Math.floor(Math.max(0, (fh - 2) / fit - H)) : 0;
+      const was = `${pad.x},${pad.t},${pad.b}`;
+      pad = { x: Math.floor(spareW / 2), t: Math.floor(spareH * 0.4), b: spareH - Math.floor(spareH * 0.4) };
+      const EW = W + 2 * pad.x, EH = H + pad.t + pad.b;
       cs = Math.max(0.25, Math.min(18, fit * zoom));
-      const k = Math.max(1, Math.min(Math.ceil(cs * dpr), Math.floor(Math.sqrt(24e6 / (W * H)))));
+      const k = Math.max(1, Math.min(Math.ceil(cs * dpr), Math.floor(Math.sqrt(24e6 / (EW * EH)))));
       backing = k;
-      canvas.width = W * k;
-      canvas.height = H * k;
-      canvas.style.width = `${W * cs}px`;
-      canvas.style.height = `${H * cs}px`;
-      ctx.setTransform(k, 0, 0, k, 0, 0);
+      canvas.width = EW * k;
+      canvas.height = EH * k;
+      canvas.style.width = `${EW * cs}px`;
+      canvas.style.height = `${EH * cs}px`;
+      canvas.dataset.pad = `${pad.x},${pad.t}`; // where the farm sits in the canvas (for tests)
+      ov.style.left = `${pad.x * cs}px`; // names and labels keep the farm's own coordinates
+      ov.style.top = `${pad.t * cs}px`;
+      if (was !== `${pad.x},${pad.t},${pad.b}`) bg = buildBg(); // the land grows with the frame
+      ctx.setTransform(k, 0, 0, k, pad.x * k, pad.t * k);
       ctx.imageSmoothingEnabled = false;
       labelKey = '';
       layoutLabels();
@@ -1561,7 +1585,7 @@
       if (e.target.closest?.('[data-farm-help-close]') || e.target === help) { e.stopPropagation(); help.close(); return; } // × or a click on the backdrop
       if (help?.contains(e.target)) return;
       if (e.target !== canvas) return;
-      const r = canvas.getBoundingClientRect(), on = r.width / W || cs, x = (e.clientX - r.left) / on, y = (e.clientY - r.top) / on; // the size on screen: right even while a zoom glides
+      const r = canvas.getBoundingClientRect(), on = r.width / (W + 2 * pad.x) || cs, x = (e.clientX - r.left) / on - pad.x, y = (e.clientY - r.top) / on - pad.t; // the size on screen: right even while a zoom glides
       for (const [id, b] of bots) if (Math.abs(x - b.x) <= 7 * SC + 1 && y >= b.y - th.SH * SC - 1 && y <= b.y + 1) { opts.onPickAgent?.(id); return; }
       const key = th.fieldAt(x, y);
       if (key) opts.onOpenField?.(key);
