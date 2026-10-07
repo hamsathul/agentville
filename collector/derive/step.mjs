@@ -2,10 +2,10 @@
 // a different tool for each kind. Shell commands are read for what they do; when a command says
 // nothing clear, its description is read instead.
 
-export const STEPS = ['edit', 'write', 'read', 'search', 'web', 'test', 'lint', 'build', 'install', 'commit', 'push', 'deploy', 'pull', 'serve', 'delete', 'agent', 'plan', 'ask', 'shell', 'other'];
+export const STEPS = ['edit', 'write', 'read', 'search', 'web', 'mcp', 'skill', 'test', 'lint', 'build', 'install', 'commit', 'push', 'deploy', 'pull', 'serve', 'delete', 'agent', 'plan', 'ask', 'shell', 'other'];
 
 const TOOLS = {
-  Edit: 'edit', MultiEdit: 'edit', NotebookEdit: 'edit', Write: 'write', Read: 'read', NotebookRead: 'read', Skill: 'read',
+  Edit: 'edit', MultiEdit: 'edit', NotebookEdit: 'edit', Write: 'write', Read: 'read', NotebookRead: 'read', Skill: 'skill',
   Grep: 'search', Glob: 'search', LS: 'search', WebSearch: 'web', WebFetch: 'web',
   Agent: 'agent', Task: 'agent', Workflow: 'agent',
   TodoWrite: 'plan', TaskCreate: 'plan', TaskUpdate: 'plan', TaskList: 'plan', EnterPlanMode: 'plan', ExitPlanMode: 'plan',
@@ -81,5 +81,21 @@ export function stepOf(name, input = {}) {
   }
   if (TOOLS[name]) return TOOLS[name];
   if (/^mcp__.*(?:chrome|playwright|browser|puppeteer)/i.test(name ?? '')) return 'web';
+  if (/^mcp__/.test(name ?? '')) return 'mcp'; // a connector: Gmail, Linear, a database…
   return 'other';
+}
+
+/**
+ * Who a call goes out to, for the web and connector steps: the MCP server ("Gmail", "playwright"),
+ * the site a fetch reads, or "web search". Undefined for the rest.
+ */
+export function serviceOf(name, input = {}) {
+  const n = String(name ?? '');
+  const server = n.match(/^mcp__(.+?)__/)?.[1];
+  if (server) return server.replace(/^claude_ai_/, '').replace(/^plugin_[^_]+_/, '').replace(/_/g, ' ').slice(0, 32);
+  if (n === 'WebSearch') return 'web search';
+  if (n === 'WebFetch') {
+    try { return new URL(String(input?.url ?? '')).hostname.replace(/^www\./, '').slice(0, 40); } catch { return 'the web'; }
+  }
+  return undefined;
 }

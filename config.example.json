@@ -4,6 +4,7 @@
   "agentsCliPollMs": 30000,
   "gitPollMs": 10000,
   "deployPollMs": 60000,
+  "prPollMs": 120000,
   "staleAfterHours": 24,
   "collisionWindowMin": 30,
   "permissionGuessSec": 20,

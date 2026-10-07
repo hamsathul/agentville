@@ -29,6 +29,14 @@ function taskNotices(text) {
     .map(n => ({ kind: 'task_done', toolUseId: n[1].trim(), status: n[2] }));
 }
 
+/** The id of the task a TaskCreate call made: its result's task, or "Task #7 created…" in its text. */
+function createdTaskId(obj, block) {
+  const id = obj.toolUseResult?.task?.id;
+  if (typeof id === 'string' || Number.isInteger(id)) return String(id);
+  const text = typeof block.content === 'string' ? block.content : Array.isArray(block.content) ? block.content.map(c => c?.text ?? '').join(' ') : '';
+  return text.match(/^Task #([\w-]+) created/)?.[1];
+}
+
 /** Normalises one transcript JSON object into { at, events }. */
 export function parseEntry(obj) {
   if (!obj || typeof obj !== 'object') return { at: null, events: [] };
@@ -41,7 +49,12 @@ export function parseEntry(obj) {
     const blocks = Array.isArray(content) ? content : [];
     const results = blocks.filter(b => b?.type === 'tool_result');
     if (results.length) {
-      for (const b of results) events.push({ kind: 'tool_result', toolUseId: b.tool_use_id, ok: b.is_error !== true });
+      for (const b of results) {
+        const ev = { kind: 'tool_result', toolUseId: b.tool_use_id, ok: b.is_error !== true };
+        const taskId = results.length === 1 ? createdTaskId(obj, b) : undefined; // a task list item made by TaskCreate
+        if (taskId) ev.taskId = taskId;
+        events.push(ev);
+      }
     } else if (obj.isCompactSummary === true || obj.isVisibleInTranscriptOnly === true) {
       events.push({ kind: 'turn_start' });
     } else if (obj.isMeta !== true) {
@@ -73,6 +86,9 @@ export function parseEntry(obj) {
     events.push({ kind: 'mode', mode: obj.permissionMode.slice(0, 40) }); // written as the mode is set or changed (Shift+Tab)
   } else if (obj.type === 'system' && obj.subtype === 'turn_duration') {
     events.push({ kind: 'turn_end' });
+  } else if (obj.type === 'system' && obj.subtype === 'compact_boundary') { // the conversation was compacted
+    const meta = obj.compactMetadata ?? {};
+    events.push({ kind: 'compact', ...(typeof meta.trigger === 'string' ? { trigger: meta.trigger } : {}), ...(Number.isFinite(meta.preTokens) ? { preTokens: meta.preTokens } : {}) });
   } else if (obj.type === 'ai-title' && typeof obj.aiTitle === 'string') {
     events.push({ kind: 'title', text: obj.aiTitle });
   }

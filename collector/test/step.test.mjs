@@ -1,14 +1,14 @@
 // What kind of step a tool call is: the farm draws a different tool for each kind.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { STEPS, isDirectDeploy, stepOf } from '../derive/step.mjs';
+import { STEPS, isDirectDeploy, serviceOf, stepOf } from '../derive/step.mjs';
 
 test('tools map to the kind of work they do', () => {
   const cases = [
-    ['Edit', 'edit'], ['MultiEdit', 'edit'], ['NotebookEdit', 'edit'], ['Write', 'write'], ['Read', 'read'], ['Skill', 'read'],
+    ['Edit', 'edit'], ['MultiEdit', 'edit'], ['NotebookEdit', 'edit'], ['Write', 'write'], ['Read', 'read'], ['Skill', 'skill'],
     ['Grep', 'search'], ['Glob', 'search'], ['WebSearch', 'web'], ['WebFetch', 'web'], ['mcp__claude-in-chrome__navigate', 'web'], ['mcp__playwright__browser_click', 'web'],
     ['Agent', 'agent'], ['Task', 'agent'], ['Workflow', 'agent'], ['TodoWrite', 'plan'], ['TaskCreate', 'plan'], ['EnterPlanMode', 'plan'],
-    ['AskUserQuestion', 'ask'], ['Monitor', 'serve'], ['mcp__notion__search', 'other'], ['SomethingNew', 'other'], [undefined, 'other'],
+    ['AskUserQuestion', 'ask'], ['Monitor', 'serve'], ['mcp__notion__search', 'mcp'], ['mcp__claude_ai_Gmail__search_threads', 'mcp'], ['SomethingNew', 'other'], [undefined, 'other'],
   ];
   for (const [tool, step] of cases) assert.equal(stepOf(tool, {}), step, String(tool));
 });
@@ -41,7 +41,7 @@ test('an unclear command falls back to its description', () => {
 });
 
 test('every step kind is listed', () => {
-  assert.deepEqual([...STEPS].sort(), ['agent', 'ask', 'build', 'commit', 'delete', 'deploy', 'edit', 'install', 'lint', 'other', 'plan', 'pull', 'push', 'read', 'search', 'serve', 'shell', 'test', 'web', 'write']);
+  assert.deepEqual([...STEPS].sort(), ['agent', 'ask', 'build', 'commit', 'delete', 'deploy', 'edit', 'install', 'lint', 'mcp', 'other', 'plan', 'pull', 'push', 'read', 'search', 'serve', 'shell', 'skill', 'test', 'web', 'write']);
 });
 
 test('over ssh, the command run on the server decides; "deploy" in a name is not a deploy', () => {
@@ -63,4 +63,14 @@ test('a direct deploy is a deploy command that ships something itself (not one t
   assert.equal(isDirectDeploy('Bash', { command: 'gh workflow run deploy.yml' }), false);
   assert.equal(isDirectDeploy('Bash', { command: "ssh prod 'docker compose logs api'" }), false);
   assert.equal(isDirectDeploy('Edit', { file_path: 'deploy.sh' }), false);
+});
+
+test('a web or connector call says who it goes out to', () => {
+  assert.equal(serviceOf('mcp__claude_ai_Gmail__search_threads'), 'Gmail');
+  assert.equal(serviceOf('mcp__plugin_discord_discord__reply'), 'discord');
+  assert.equal(serviceOf('mcp__playwright__browser_click'), 'playwright');
+  assert.equal(serviceOf('WebFetch', { url: 'https://www.example.com/a?b' }), 'example.com');
+  assert.equal(serviceOf('WebFetch', { url: 'not a url' }), 'the web');
+  assert.equal(serviceOf('WebSearch', { query: 'x' }), 'web search');
+  assert.equal(serviceOf('Bash', { command: 'ls' }), undefined);
 });

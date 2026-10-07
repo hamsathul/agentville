@@ -6,6 +6,7 @@ export const DEFAULTS = Object.freeze({
   agentsCliPollMs: 30000,
   gitPollMs: 10000,
   deployPollMs: 60000,
+  prPollMs: 120000, // pull requests, for the farm's market stall
   staleAfterHours: 24,
   collisionWindowMin: 30,
   permissionGuessSec: 20,

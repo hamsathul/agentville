@@ -4,7 +4,7 @@ import { execFileSync } from 'node:child_process';
 import { mkdirSync, mkdtempSync, realpathSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { basename, join } from 'node:path';
-import { RepoResolver, repoStatus } from '../sources/git.mjs';
+import { RepoResolver, githubSlug, mainOf, repoStatus } from '../sources/git.mjs';
 
 const ID = { GIT_AUTHOR_NAME: 't', GIT_AUTHOR_EMAIL: 't@t', GIT_COMMITTER_NAME: 't', GIT_COMMITTER_EMAIL: 't@t' };
 const git = (cwd, ...args) => execFileSync('git', args, { cwd, env: { ...process.env, ...ID } });
@@ -83,4 +83,23 @@ test('an expired entry keeps being served (so collisions do not blink) and is fl
   assert.equal(r.needsRefresh(repo), true);
   await r.topOf(repo);
   assert.equal(r.needsRefresh(repo), false);
+});
+
+test('a worktree knows its main checkout; a repo of its own has none', async () => {
+  const repo = makeRepo();
+  const wt = join(tmp('tracker-wt-'), 'feature');
+  git(repo, 'worktree', 'add', '-q', '-b', 'feature', wt);
+  const s = await repoStatus(wt);
+  assert.equal(s.worktree, true);
+  assert.equal(s.main, repo);
+  assert.equal(await mainOf(repo), null);
+  assert.equal((await repoStatus(repo)).worktree, undefined);
+});
+
+test("a checkout's GitHub repo comes from its origin, over https or ssh", async () => {
+  const runner = url => async () => ({ code: 0, stdout: `${url}\n`, stderr: '' });
+  assert.equal(await githubSlug('/r1', runner('https://github.com/acme/shop-api.git')), 'acme/shop-api');
+  assert.equal(await githubSlug('/r2', runner('git@github.com:acme/shop.web')), 'acme/shop.web');
+  assert.equal(await githubSlug('/r3', runner('https://gitlab.com/acme/x.git')), null);
+  assert.equal(await githubSlug('/r4', async () => ({ code: 2, stdout: '', stderr: 'no origin' })), null);
 });

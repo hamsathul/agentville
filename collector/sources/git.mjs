@@ -58,9 +58,30 @@ export class RepoResolver {
   }
 }
 
+const worktrees = new Map(); // top → the main checkout it is a worktree of, or null (it never changes)
+/** The main checkout a worktree belongs to (its shared .git's folder), or null for a repo's own checkout. */
+export async function mainOf(top, runner = run) {
+  if (worktrees.has(top)) return worktrees.get(top);
+  const res = await runner('git', ['-C', top, 'rev-parse', '--path-format=absolute', '--git-dir', '--git-common-dir'], { env: GIT_ENV, timeoutMs: 5000 });
+  const [dir, common] = res.code === 0 ? res.stdout.trim().split('\n') : [];
+  const main = dir && common && dir !== common && basename(common) === '.git' ? dirname(common) : null;
+  if (res.code === 0) worktrees.set(top, main);
+  return main;
+}
+
+const slugs = new Map(); // top → "owner/name" on GitHub, or null
+/** The GitHub repo a checkout pushes to (its origin), as "owner/name", or null. */
+export async function githubSlug(top, runner = run) {
+  if (slugs.has(top)) return slugs.get(top);
+  const res = await runner('git', ['-C', top, 'remote', 'get-url', 'origin'], { env: GIT_ENV, timeoutMs: 5000 });
+  const slug = res.code === 0 ? res.stdout.trim().match(/github\.com[:/]([\w.-]+\/[\w.-]+?)(?:\.git)?\/?$/)?.[1] ?? null : null;
+  slugs.set(top, slug);
+  return slug;
+}
+
 export async function repoStatus(top, runner = run) {
   const git = args => runner('git', ['-C', top, ...args], { env: GIT_ENV, timeoutMs: 8000 });
-  const [branch, status] = await Promise.all([git(['branch', '--show-current']), git(['status', '--porcelain'])]);
+  const [branch, status, main] = await Promise.all([git(['branch', '--show-current']), git(['status', '--porcelain']), mainOf(top, runner)]);
   if (status.code !== 0) throw new Error(`git status failed in ${top}: ${status.stderr.trim().slice(0, 200)}`);
   let ahead;
   let behind;
@@ -78,5 +99,6 @@ export async function repoStatus(top, runner = run) {
     dirty: status.stdout.split('\n').filter(Boolean).length,
     ahead,
     behind,
+    ...(main ? { worktree: true, main } : {}),
   };
 }

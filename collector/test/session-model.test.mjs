@@ -235,3 +235,54 @@ test('messages between sessions go into the conversation: from another session, 
   assert.deepEqual(mail, [['out', 'aed8a9f3e491b8ac1', 'Fix round 1', true], ['out', 'shop-api-3', 'Holding until you say so.', false], ['in', 'shop-api-3', 'Hold the deploy.', false]]);
   assert.equal(m.history(50).find(f => f.kind === 'peer' && f.dir === 'out' && !f.helper).summary, 'Holding');
 });
+
+// The task list: TaskCreate's result names the item, TaskUpdate moves it on; TodoWrite sends the whole list.
+const taskResult = (sec, id, taskId) => JSON.stringify({ type: 'user', timestamp: new Date(at(sec)).toISOString(), message: { role: 'user', content: [{ type: 'tool_result', tool_use_id: id, content: `Task #${taskId} created successfully: x` }] }, toolUseResult: { task: { id: taskId, subject: 'x' } } });
+
+test('the task list follows TaskCreate and TaskUpdate: items are made, started, finished and deleted', () => {
+  const m = modelOf(
+    prompt(0, 'go'),
+    toolUse(1, 'c1', 'TaskCreate', { subject: 'Write the parser', activeForm: 'Writing the parser' }), taskResult(2, 'c1', '1'),
+    toolUse(3, 'c2', 'TaskCreate', { subject: 'Test it', activeForm: 'Testing it' }), taskResult(4, 'c2', '2'),
+    toolUse(5, 'c3', 'TaskCreate', { subject: 'Scratch' }), taskResult(6, 'c3', '3'),
+    toolUse(7, 'u1', 'TaskUpdate', { taskId: '1', status: 'completed' }), toolResult(8, 'u1'),
+    toolUse(9, 'u2', 'TaskUpdate', { taskId: '2', status: 'in_progress' }), toolResult(10, 'u2'),
+    toolUse(11, 'u3', 'TaskUpdate', { taskId: '3', status: 'deleted' }), toolResult(12, 'u3'),
+    toolUse(13, 'u4', 'TaskUpdate', { taskId: '99', status: 'completed' }), toolResult(14, 'u4'), // one from before what was read: no subject to show
+  );
+  assert.deepEqual(m.tasks().map(t => [t.id, t.subject, t.status]), [['1', 'Write the parser', 'completed'], ['2', 'Test it', 'in_progress']]);
+});
+
+test('a TodoWrite list replaces the whole task list', () => {
+  const m = modelOf(prompt(0, 'go'), toolUse(1, 'w1', 'TodoWrite', { todos: [{ content: 'Plan', status: 'completed', activeForm: 'Planning' }, { content: 'Build', status: 'in_progress', activeForm: 'Building' }, { content: 'Ship', status: 'weird' }] }));
+  assert.deepEqual(m.tasks().map(t => [t.subject, t.status, t.activeForm]), [['Plan', 'completed', 'Planning'], ['Build', 'in_progress', 'Building'], ['Ship', 'pending', '']]);
+});
+
+test('compactions are counted, the latest remembered', () => {
+  const compact = sec => JSON.stringify({ type: 'system', subtype: 'compact_boundary', timestamp: new Date(at(sec)).toISOString(), compactMetadata: { trigger: 'auto', preTokens: 180000 } });
+  const m = modelOf(prompt(0, 'go'), compact(10), reply(11, 'on'), compact(40));
+  assert.equal(m.compactions, 2);
+  assert.equal(m.lastCompactAt, at(40));
+});
+
+test('fast mode is read from the latest reply', () => {
+  const fast = speed => JSON.stringify({ type: 'assistant', timestamp: new Date(at(3)).toISOString(), message: { model: 'claude-opus-5-5', role: 'assistant', content: [{ type: 'text', text: 'hi' }], usage: { input_tokens: 1, speed } } });
+  assert.equal(modelOf(prompt(0, 'go'), fast('fast')).fast, true);
+  assert.equal(modelOf(prompt(0, 'go'), fast('fast'), fast('standard')).fast, false);
+});
+
+test('a scheduled wake-up is remembered until the next turn begins', () => {
+  const wake = toolUse(5, 'w1', 'ScheduleWakeup', { delaySeconds: 1200, reason: 'watching CI', prompt: '/loop check' });
+  const waiting = modelOf(prompt(0, '/loop check'), wake, toolResult(6, 'w1'), turnEnd(7));
+  assert.equal(waiting.wakeAt, at(5) + 1_200_000);
+  const woken = modelOf(prompt(0, '/loop check'), wake, toolResult(6, 'w1'), turnEnd(7), JSON.stringify({ type: 'user', timestamp: new Date(at(1300)).toISOString(), origin: { kind: 'scheduled' }, message: { content: '/loop check' } }));
+  assert.equal(woken.wakeAt, 0);
+  assert.equal(modelOf(prompt(0, '/loop check'), wake, toolResult(6, 'w1'), turnEnd(7), prompt(30, 'actually stop')).wakeAt, 0, 'you spoke first');
+});
+
+test('task changes and compactions from earlier in the transcript come before the ones read', () => {
+  const m = modelOf(prompt(0, 'go'), toolUse(5, 'u1', 'TaskUpdate', { taskId: '1', status: 'completed' }));
+  m.addEarlierTasks({ ops: [{ op: 'create', id: '1', subject: 'Early task', activeForm: '', at: at(-50) }], compactions: 3, lastCompactAt: at(-20) });
+  assert.deepEqual(m.tasks().map(t => [t.subject, t.status]), [['Early task', 'completed']]);
+  assert.equal(m.compactions, 3);
+});

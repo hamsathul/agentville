@@ -1,6 +1,6 @@
 import { basename } from 'node:path';
 import { summarizeTool } from '../transcript/summarize.mjs';
-import { stepOf } from './step.mjs';
+import { serviceOf, stepOf } from './step.mjs';
 import { collectTouches } from './touches.mjs';
 import { STATE_ORDER, deriveCodexState, deriveState } from './state.mjs';
 import { trailingQuestion } from './question.mjs';
@@ -14,7 +14,23 @@ const DOCS_MAX = 20;
 
 export function nowOf(model) {
   const p = model?.latestPending();
-  return p ? { tool: p.name, summary: summarizeTool(p.name, p.input), step: stepOf(p.name, p.input), startedAt: p.at } : undefined;
+  if (!p) return undefined;
+  const service = serviceOf(p.name, p.input);
+  return { tool: p.name, summary: summarizeTool(p.name, p.input), step: stepOf(p.name, p.input), startedAt: p.at, ...(service ? { service } : {}) };
+}
+
+const TASKS_SHOWN = 12;
+/** The session's task list in short: how many are done, what it is on now, and the items. Undefined without one. */
+export function tasksOf(model) {
+  const list = model?.tasks?.() ?? [];
+  if (!list.length) return undefined;
+  const current = list.find(t => t.status === 'in_progress');
+  return {
+    done: list.filter(t => t.status === 'completed').length,
+    total: list.length,
+    ...(current ? { current: current.activeForm || current.subject } : {}),
+    items: list.slice(0, TASKS_SHOWN).map(t => ({ text: t.subject, status: t.status })),
+  };
 }
 
 export function childrenOf(model, childModels, now) {
@@ -83,7 +99,12 @@ export function buildAgent({ base, model, registry, proc, command, cpuHistory = 
     cwd: base.cwd,
     pid: base.pid,
     model: model?.model ?? undefined,
+    fast: model?.fast || undefined,
     contextTokens: model?.contextTokens ?? undefined,
+    tasks: tasksOf(model),
+    compactions: model?.compactions || undefined,
+    lastCompactAt: model?.lastCompactAt || undefined,
+    wakeAt: model?.wakeAt > now ? model.wakeAt : undefined, // a /loop or scheduled wake-up still to come
     state: derived.state,
     stateReason: derived.reason,
     sinceHint: derived.since,

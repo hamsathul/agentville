@@ -44,7 +44,7 @@ test('the conversation before a byte offset is found too: your prompts (typed or
     ['prompt', 'typed ask', 0], ['reply', 'A reply', 1], ['prompt', 'sent from the dashboard', 4],
   ]);
   assert.deepEqual(h.files.map(c => c.input.file_path), ['/w/a.md']);
-  assert.deepEqual(await earlierHistory('/no/such/file', 100), { files: [], said: [] });
+  assert.deepEqual(await earlierHistory('/no/such/file', 100), { files: [], said: [], tasks: { ops: [], compactions: 0, lastCompactAt: 0 } });
 });
 
 test('messages between sessions before the offset are found too', async () => {
@@ -57,4 +57,19 @@ test('messages between sessions before the offset are found too', async () => {
   writeFileSync(f, head);
   const h = await earlierHistory(f, Buffer.byteLength(head));
   assert.deepEqual(h.said.map(s => [s.kind, s.dir, s.other, s.text]), [['peer', 'in', 'docs-2', 'All clear.'], ['peer', 'out', 'docs-2', 'Thanks, deploying now.']]);
+});
+
+test('the task list and compactions before a byte offset are found too', async () => {
+  const f = join(mkdtempSync(join(tmpdir(), 'tracker-backfill-')), 's.jsonl');
+  const t = sec => new Date(Date.UTC(2026, 9, 7, 10, 0, sec)).toISOString();
+  const head = [
+    use(1, 'TaskCreate', { subject: 'Early task', activeForm: 'Doing the early task' }),
+    JSON.stringify({ type: 'user', timestamp: t(2), message: { content: [{ type: 'tool_result', tool_use_id: 't1', content: 'Task #4 created successfully: Early task' }] }, toolUseResult: { task: { id: '4', subject: 'Early task' } } }),
+    JSON.stringify({ type: 'system', subtype: 'compact_boundary', timestamp: t(3), compactMetadata: { trigger: 'auto' } }),
+    use(4, 'TaskUpdate', { taskId: '4', status: 'in_progress' }),
+  ].join('\n') + '\n';
+  writeFileSync(f, head);
+  const h = await earlierHistory(f, Buffer.byteLength(head));
+  assert.deepEqual(h.tasks.ops.map(o => [o.op, o.id, o.subject ?? o.status]), [['create', '4', 'Early task'], ['update', '4', 'in_progress']]);
+  assert.equal(h.tasks.compactions, 1);
 });

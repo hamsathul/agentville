@@ -10,8 +10,8 @@ import { earlierHistory } from './transcript/backfill.mjs';
 import { readRegistry } from './sources/registry.mjs';
 import { readAgentsCli } from './sources/agents-cli.mjs';
 import { childrenIndex, findCodexRoots, findPidByArg, readPs, treeStats } from './sources/ps.mjs';
-import { GIT_ENV, RepoResolver, repoStatus } from './sources/git.mjs';
-import { deployStatus } from './sources/gh.mjs';
+import { GIT_ENV, RepoResolver, githubSlug, repoStatus } from './sources/git.mjs';
+import { deployStatus, pullRequests } from './sources/gh.mjs';
 import { confirmDelivery, readBeacons, readPending, validateAnswers, writeAnswerFile, writeMessageFile } from './sources/pending.mjs';
 import { listFolder, parsePorcelain, readFolderFile } from './sources/files.mjs';
 import { repoFiles } from './derive/repo-files.mjs';
@@ -101,6 +101,7 @@ export async function startCollector({ root, claudeDir = join(homedir(), '.claud
   const resolver = new RepoResolver();
   const repoInfo = new Map();
   const deploys = new Map();
+  const prs = new Map(); // repo → { open, merged } pull requests
   const directDeploys = new Map(); // repo → the newest deploy an agent ran itself ({ at, ok, by, summary }), kept while the collector runs
   const alerts = new AlertEngine({ cfg, notify, startedAt: Date.now() });
   const timers = [];
@@ -161,6 +162,7 @@ export async function startCollector({ root, claudeDir = join(homedir(), '.claud
       if (stopped) return;
       model.addEarlierFiles(earlier.files);
       model.addEarlierSaid(earlier.said);
+      model.addEarlierTasks(earlier.tasks);
       scheduleLight();
     }).catch(err => log(`backfill of ${path} failed: ${err?.stack ?? err}`));
   }
@@ -302,7 +304,7 @@ export async function startCollector({ root, claudeDir = join(homedir(), '.claud
       sources: { ...sources },
       counts: countStates(agents, collisions),
       agents: sortAgents(agents),
-      repos: reposFor(agents, { deployRepos: cfg.deployRepos, repoInfo, deploys, directs: directDeploys, lookup: p => resolver.lookup(p), home }),
+      repos: reposFor(agents, { deployRepos: cfg.deployRepos, repoInfo, deploys, directs: directDeploys, prs, lookup: p => resolver.lookup(p), home }),
       plan: planUsage(planReadings(beacons, agents), now),
       collisions,
     };
@@ -342,12 +344,29 @@ export async function startCollector({ root, claudeDir = join(homedir(), '.claud
     if (failed) markFail('gh', failed); else markOk('gh');
   }
 
+  // Pull requests of the repos on the dashboard (its origin on GitHub, or deployRepos' name for it);
+  // a worktree's are its main checkout's.
+  async function pollPullRequests() {
+    let failed = null, asked = 0;
+    for (const r of snapshot?.repos ?? []) {
+      if (r.worktree) continue;
+      try {
+        const slug = cfg.deployRepos[r.path] ?? await githubSlug(r.path);
+        if (!slug) { prs.delete(r.path); continue; }
+        asked++;
+        prs.set(r.path, await pullRequests(slug));
+      } catch (err) { failed = err; }
+    }
+    if (failed) markFail('prs', failed); else if (asked) markOk('prs');
+  }
+
   function startTimers() {
     for (const t of timers.splice(0)) clearInterval(t);
     timers.push(setInterval(() => schedule(true), cfg.pollMs));
     timers.push(setInterval(() => void pollAgents(), cfg.agentsCliPollMs));
     timers.push(setInterval(() => void pollGit(), cfg.gitPollMs));
     timers.push(setInterval(() => void pollDeploys(), cfg.deployPollMs));
+    timers.push(setInterval(() => void pollPullRequests(), cfg.prPollMs));
     timers.push(setInterval(() => pruneUploads(uploadsDir, Date.now()), 3_600_000));
   }
 
@@ -635,6 +654,7 @@ export async function startCollector({ root, claudeDir = join(homedir(), '.claud
   pruneUploads(uploadsDir, Date.now());
   void pollGit();
   void pollDeploys();
+  timers.push(setTimeout(() => void pollPullRequests(), 8000)); // once the first snapshot lists the repos
   log(`collector started on 127.0.0.1:${port}`);
 
   async function stop() {

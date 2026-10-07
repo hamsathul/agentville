@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { DEFAULTS } from '../config.mjs';
-import { applySince, buildAgent, countStates, modeOf, sortAgents } from '../derive/agent.mjs';
+import { applySince, buildAgent, countStates, modeOf, nowOf, sortAgents, tasksOf } from '../derive/agent.mjs';
 import { at, modelOf, prompt, reply, title, toolResult, toolUse, turnEnd } from './fixtures.mjs';
 
 const cfg = { ...DEFAULTS };
@@ -218,4 +218,26 @@ test("a session's mode: the flag its process started with, unless the transcript
   assert.equal(modeOf(null, 'claude --permission-mode=plan', started), 'plan');
   assert.equal(modeOf(null, 'claude', started), undefined);
   assert.equal(modeOf(logged('auto', at(5)), undefined, undefined), 'auto');
+});
+
+test("an agent's task list in short: done of total, what it is on now, the items", () => {
+  const m = modelOf(prompt(0, 'go'), toolUse(1, 'w1', 'TodoWrite', { todos: [{ content: 'Plan', status: 'completed', activeForm: 'Planning' }, { content: 'Build', status: 'in_progress', activeForm: 'Building it' }, { content: 'Ship', status: 'pending' }] }));
+  assert.deepEqual(tasksOf(m), { done: 1, total: 3, current: 'Building it', items: [{ text: 'Plan', status: 'completed' }, { text: 'Build', status: 'in_progress' }, { text: 'Ship', status: 'pending' }] });
+  assert.equal(tasksOf(modelOf(prompt(0, 'go'))), undefined);
+});
+
+test('a connector or web call says where it goes, for the farm\'s road to town', () => {
+  assert.equal(nowOf(modelOf(prompt(0, 'go'), toolUse(1, 'm1', 'mcp__claude_ai_Gmail__search_threads', { query: 'x' }))).service, 'Gmail');
+  assert.equal(nowOf(modelOf(prompt(0, 'go'), toolUse(1, 'm1', 'Read', { file_path: '/w/a' }))).service, undefined);
+});
+
+test('the snapshot carries the task list, compactions, fast mode and a wake-up still to come', () => {
+  const compact = JSON.stringify({ type: 'system', subtype: 'compact_boundary', timestamp: new Date(at(2)).toISOString(), compactMetadata: { trigger: 'manual' } });
+  const m = modelOf(prompt(0, 'go'), compact, toolUse(3, 'w1', 'ScheduleWakeup', { delaySeconds: 600 }), toolResult(4, 'w1'), turnEnd(5));
+  const a = buildAgent({ base: base(), model: m, now: at(10), cfg, repoOf, home: '/h' });
+  assert.equal(a.compactions, 1);
+  assert.equal(a.lastCompactAt, at(2));
+  assert.equal(a.wakeAt, at(3) + 600_000);
+  assert.equal(a.fast, undefined);
+  assert.equal(buildAgent({ base: base(), model: m, now: at(700), cfg, repoOf, home: '/h' }).wakeAt, undefined, 'its time passed');
 });

@@ -54,3 +54,10 @@ test("each repo says how its last deploy went, the Actions run's or a direct one
   const idle = reposFor([], opts({ deployRepos, deploys: new Map([['/code/api', { status: 'in_progress', at: NOW - 10 * 60_000 }]]), directs })); // a stuck run, older than the direct deploy
   assert.deepEqual(paths(idle), [], 'nobody there and the newest deploy is done: not listed');
 });
+
+test("a repo carries its pull requests, for the farm's market stall", () => {
+  const prs = new Map([['/code/app', { open: [{ number: 3, title: 'x', checks: 'ok' }], merged: [] }]]);
+  const repos = reposFor([agent('a', { touching: [{ repo: '/code/app' }, { repo: '/code/api' }] })], opts({ prs }));
+  assert.equal(repos.find(r => r.path === '/code/app').prs.open[0].number, 3);
+  assert.equal(repos.find(r => r.path === '/code/api').prs, undefined);
+});

@@ -7,6 +7,8 @@ const CHILD_KIND = { Agent: 'subagent', Task: 'subagent', Workflow: 'workflow' }
 const DOC_FILE = /\.(md|markdown|mdx)$/i;
 const FILE_MODE = { Write: 'write', Edit: 'write', MultiEdit: 'write', NotebookEdit: 'write', Read: 'read' };
 const DOCS_KEPT = 40;
+const TASK_OPS_KEPT = 400;
+const TASK_STATUS = new Set(['pending', 'in_progress', 'completed']);
 const BODY_MAX = 20_000; // a prompt or reply is kept whole for the conversation view, up to this (a pasted dump stops here)
 const bodyOf = text => {
   const t = String(text ?? '').trim();
@@ -38,6 +40,11 @@ export class SessionModel {
     this.title = null;
     this.model = null;
     this.contextTokens = null;
+    this.fast = false; // the latest reply came in fast mode
+    this.taskOps = []; // the task list as it was made and changed (TaskCreate, TaskUpdate, TodoWrite), oldest first
+    this.compactions = 0; // times the conversation was compacted
+    this.lastCompactAt = 0;
+    this.wakeAt = 0; // when a session that scheduled a wake-up (/loop) comes back by itself
   }
 
   applyLines(lines) {
@@ -63,6 +70,7 @@ export class SessionModel {
   #applyEvent(ev, when) {
     switch (ev.kind) {
       case 'prompt':
+        this.wakeAt = 0; // you spoke first
         this.#abandonPending();
         this.lastPrompt = firstLine(ev.text);
         this.lastPromptAt = when;
@@ -71,6 +79,7 @@ export class SessionModel {
         this.#push({ at: when, kind: 'prompt', text: this.lastPrompt, body: bodyOf(ev.text) });
         break;
       case 'turn_start':
+        if (!this.turnOpen) this.wakeAt = 0; // a new turn: the wake-up came (or something else woke it)
         this.turnOpen = true;
         break;
       case 'reply':
@@ -86,6 +95,8 @@ export class SessionModel {
         this.calls.push(call);
         if (this.calls.length > this.callCap) this.calls.splice(0, this.calls.length - this.callCap);
         this.#noteFile(call);
+        this.#noteTasks(ev.name, ev.input, when);
+        if (ev.name === 'ScheduleWakeup' && Number.isFinite(ev.input?.delaySeconds) && ev.input.delaySeconds > 0) this.wakeAt = when + ev.input.delaySeconds * 1000;
         const item = { at: when, kind: 'tool', tool: ev.name, step: stepOf(ev.name, ev.input), text: summarizeTool(ev.name, ev.input) };
         this.openItems.set(ev.id, item);
         this.#push(item);
@@ -108,6 +119,7 @@ export class SessionModel {
         // How a call ended (a deploy command's outcome is the deploy's). A background command only
         // started here: its notice says how it ended (task_done).
         if (call && !(call.background && ev.ok)) { call.ok = ev.ok; call.endedAt = when; }
+        if (call?.name === 'TaskCreate' && ev.taskId) this.#taskOp({ op: 'create', id: ev.taskId, subject: firstLine(call.input?.subject ?? ''), activeForm: firstLine(call.input?.activeForm ?? ''), at: when });
         const item = this.openItems.get(ev.toolUseId);
         if (item) {
           item.ok = ev.ok;
@@ -142,8 +154,12 @@ export class SessionModel {
         this.permissionMode = ev.mode;
         this.permissionModeAt = when; // entries without a time count as the last activity before them
         break;
+      case 'compact':
+        this.compactions += 1;
+        this.lastCompactAt = when;
+        break;
       case 'model':
-        if (!ev.model.startsWith('<')) this.model = ev.model;
+        if (!ev.model.startsWith('<')) { this.model = ev.model; this.fast = ev.usage?.speed === 'fast'; }
         if (ev.usage) {
           const total = (ev.usage.input_tokens ?? 0) + (ev.usage.cache_read_input_tokens ?? 0) + (ev.usage.cache_creation_input_tokens ?? 0);
           if (total > 0) this.contextTokens = total;
@@ -152,6 +168,44 @@ export class SessionModel {
       default:
         break;
     }
+  }
+
+  /** Task list changes from a tool call: an update to one item, or a whole to-do list (TodoWrite). A new item comes with TaskCreate's result. */
+  #noteTasks(name, input, when) {
+    if (name === 'TaskUpdate' && input?.taskId !== undefined) {
+      this.#taskOp({ op: 'update', id: String(input.taskId), ...(typeof input.status === 'string' ? { status: input.status } : {}), ...(typeof input.subject === 'string' ? { subject: firstLine(input.subject) } : {}), ...(typeof input.activeForm === 'string' ? { activeForm: firstLine(input.activeForm) } : {}), at: when });
+    } else if (name === 'TodoWrite' && Array.isArray(input?.todos)) {
+      this.#taskOp({ op: 'todos', list: input.todos.slice(0, 50).map(t => ({ subject: firstLine(t?.content ?? ''), activeForm: firstLine(t?.activeForm ?? ''), status: TASK_STATUS.has(t?.status) ? t.status : 'pending' })), at: when });
+    }
+  }
+
+  #taskOp(op) {
+    this.taskOps.push(op);
+    if (this.taskOps.length > TASK_OPS_KEPT) this.taskOps.splice(0, this.taskOps.length - TASK_OPS_KEPT);
+  }
+
+  /** The task list now, in the order items were made: [{ id, subject, activeForm, status }]. */
+  tasks() {
+    const list = new Map();
+    for (const op of this.taskOps) {
+      if (op.op === 'todos') { list.clear(); op.list.forEach((t, i) => list.set(`todo-${i}`, { id: `todo-${i}`, ...t })); }
+      else if (op.op === 'create') list.set(op.id, { id: op.id, subject: op.subject, activeForm: op.activeForm, status: 'pending' });
+      else if (op.op === 'update' && list.has(op.id)) {
+        if (op.status === 'deleted') { list.delete(op.id); continue; }
+        const t = list.get(op.id);
+        if (TASK_STATUS.has(op.status)) t.status = op.status;
+        if (op.subject) t.subject = op.subject;
+        if (op.activeForm) t.activeForm = op.activeForm;
+      }
+    }
+    return [...list.values()];
+  }
+
+  /** Task list changes and compactions from before the part of the transcript that was read: they come first. */
+  addEarlierTasks({ ops = [], compactions = 0, lastCompactAt = 0 } = {}) {
+    this.taskOps = [...ops, ...this.taskOps].slice(-TASK_OPS_KEPT);
+    this.compactions += compactions;
+    if (!this.lastCompactAt) this.lastCompactAt = lastCompactAt;
   }
 
   /** Files the session wrote or read with its file tools, for the explorer and the document list. */

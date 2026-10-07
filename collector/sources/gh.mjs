@@ -40,6 +40,28 @@ async function failureReason(repo, id, runner, cache) {
   return reason;
 }
 
+/** A pull request's checks in one word: failed if any failed, running while any runs, else ok; null without checks. */
+export function checksOf(rollup) {
+  if (!Array.isArray(rollup) || !rollup.length) return null;
+  const states = rollup.map(c => String(c?.conclusion || c?.state || c?.status || '').toUpperCase());
+  if (states.some(s => /^(FAILURE|ERROR|TIMED_OUT|CANCELLED|ACTION_REQUIRED|STARTUP_FAILURE)$/.test(s))) return 'failed';
+  if (states.some(s => !s || /^(PENDING|IN_PROGRESS|QUEUED|EXPECTED|WAITING|REQUESTED)$/.test(s))) return 'running';
+  return 'ok';
+}
+
+const clipTitle = t => (typeof t === 'string' ? t.slice(0, 120) : '');
+/** A repo's open pull requests (with their checks) and the last few merged: { open, merged }. */
+export async function pullRequests(repo, runner = run) {
+  const res = await runner('gh', ['pr', 'list', '-R', repo, '--state', 'open', '--limit', '10', '--json', 'number,title,url,isDraft,headRefName,statusCheckRollup'], { timeoutMs: 20000 });
+  if (res.code !== 0) throw new Error(`gh pr list failed for ${repo}: ${res.stderr.trim().slice(0, 200)}`);
+  const merged = await runner('gh', ['pr', 'list', '-R', repo, '--state', 'merged', '--limit', '3', '--json', 'number,title,url,mergedAt'], { timeoutMs: 20000 });
+  const list = text => { try { const v = JSON.parse(text); return Array.isArray(v) ? v : []; } catch { return []; } };
+  return {
+    open: list(res.stdout).map(p => ({ number: p.number, title: clipTitle(p.title), url: typeof p.url === 'string' ? p.url : undefined, draft: p.isDraft === true, branch: typeof p.headRefName === 'string' ? p.headRefName : undefined, checks: checksOf(p.statusCheckRollup) })),
+    merged: merged.code === 0 ? list(merged.stdout).map(p => ({ number: p.number, title: clipTitle(p.title), url: typeof p.url === 'string' ? p.url : undefined, at: Date.parse(p.mergedAt) || undefined })) : [],
+  };
+}
+
 export async function deployStatus(repo, runner = run, cache = reasons) {
   const res = await runner('gh', ['run', 'list', '-R', repo, '--limit', '1', '--json', RUN_FIELDS], { timeoutMs: 20000 });
   if (res.code !== 0) throw new Error(`gh run list failed for ${repo}: ${res.stderr.trim().slice(0, 200)}`);
