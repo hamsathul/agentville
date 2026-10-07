@@ -11,7 +11,7 @@ import { readAgentsCli } from './sources/agents-cli.mjs';
 import { childrenIndex, findCodexRoots, findPidByArg, readPs, treeStats } from './sources/ps.mjs';
 import { RepoResolver, repoStatus } from './sources/git.mjs';
 import { deployStatus } from './sources/gh.mjs';
-import { readPending, validateAnswers, writeAnswerFile } from './sources/pending.mjs';
+import { readBeacons, readPending, validateAnswers, writeAnswerFile } from './sources/pending.mjs';
 import { applySince, buildAgent, countStates, sortAgents } from './derive/agent.mjs';
 import { findCollisions } from './derive/collisions.mjs';
 import { AlertEngine, notifyMac } from './alerts.mjs';
@@ -47,11 +47,12 @@ function loadToken(path) {
   return token;
 }
 
-export async function startCollector({ root, claudeDir = join(homedir(), '.claude'), claudeBin = 'claude', home = homedir(), port: portOverride, notify = notifyMac, log = makeLogger(join(root, 'logs')) }) {
+export async function startCollector({ root, claudeDir = join(homedir(), '.claude'), claudeBin = 'claude', home = homedir(), port: portOverride, deliveryTimeoutMs = 5000, notify = notifyMac, log = makeLogger(join(root, 'logs')) }) {
   const stateDir = join(root, 'state');
   const pendingDir = join(stateDir, 'pending');
   const answersDir = join(stateDir, 'answers');
-  for (const dir of [stateDir, pendingDir, answersDir]) mkdirSync(dir, { recursive: true });
+  const modsDir = join(stateDir, 'mods');
+  for (const dir of [stateDir, pendingDir, answersDir, modsDir]) mkdirSync(dir, { recursive: true });
   const configPath = join(root, 'config.json');
 
   const sources = {};
@@ -221,6 +222,7 @@ export async function startCollector({ root, claudeDir = join(homedir(), '.claud
     }
     const bases = computeBases();
     const { bySession: offers, expired } = readPending(pendingDir, now);
+    const beacons = readBeacons(modsDir, now);
     for (const path of expired) {
       try { unlinkSync(path); } catch { /* the mod may have removed it already */ }
     }
@@ -245,7 +247,7 @@ export async function startCollector({ root, claudeDir = join(homedir(), '.claud
       const rec = base.kind === 'codex' ? undefined : sessions.get(base.id);
       const agent = buildAgent({
         base, model: rec?.model ?? null, registry: base.registry, proc, cpuHistory: cpuHist.get(base.id) ?? [],
-        childModels: rec?.childModels, offer: offers.get(base.id), repoOf: p => resolver.lookup(p), now, cfg, home,
+        childModels: rec?.childModels, offer: offers.get(base.id), beacon: beacons.get(base.id), repoOf: p => resolver.lookup(p), now, cfg, home,
       });
       agents.push(applySince(agent, prevAgents.get(agent.id), now));
     }
@@ -337,6 +339,20 @@ export async function startCollector({ root, claudeDir = join(homedir(), '.claud
     return renderTranscriptPage(agent?.name ?? id, model.feed);
   }
 
+  // The mod deletes the answer file once it has handed the answer to Claude. If that doesn't
+  // happen within the timeout, the session isn't listening: withdraw it and say so.
+  async function deliver(toolUseId, payload) {
+    writeAnswerFile(answersDir, toolUseId, payload);
+    const file = join(answersDir, `${toolUseId}.json`);
+    const deadline = Date.now() + deliveryTimeoutMs;
+    while (Date.now() < deadline) {
+      if (!existsSync(file)) return { ok: true };
+      await new Promise(r => setTimeout(r, 100));
+    }
+    try { unlinkSync(file); } catch { /* taken at the last moment */ }
+    return { ok: false, error: "The session didn't take the answer. Please answer it in its terminal." };
+  }
+
   const askFor = (agentId, toolUseId, kind) => {
     const ask = snapshot?.agents.find(a => a.id === agentId)?.ask;
     return ask && ask.kind === kind && ask.toolUseId === toolUseId ? ask : undefined;
@@ -348,15 +364,13 @@ export async function startCollector({ root, claudeDir = join(homedir(), '.claud
       if (!ask) return { ok: false, error: 'That question is no longer waiting.' };
       const checked = validateAnswers(ask.questions, body.answers);
       if (checked.error) return { ok: false, error: checked.error };
-      writeAnswerFile(answersDir, ask.toolUseId, { answers: checked.answers });
-      return { ok: true };
+      return deliver(ask.toolUseId, { answers: checked.answers });
     },
     async permit(body) {
       const ask = askFor(body?.agentId, body?.toolUseId, 'permission');
       if (!ask || ask.expiresAt <= Date.now()) return { ok: false, error: 'That permission prompt is no longer waiting.' };
       if (body.decision !== 'allow' && body.decision !== 'deny') return { ok: false, error: 'Choose Allow or Deny.' };
-      writeAnswerFile(answersDir, ask.toolUseId, { decision: body.decision });
-      return { ok: true };
+      return deliver(ask.toolUseId, { decision: body.decision });
     },
     async open(id) {
       const agent = ID_RE.test(id) ? snapshot?.agents.find(a => a.id === id || a.cliId === id) : undefined;

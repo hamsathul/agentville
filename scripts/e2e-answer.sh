@@ -9,12 +9,15 @@ PORT="$(/usr/bin/plutil -extract port raw "$ROOT/config.json" 2>/dev/null || ech
 BASE="http://127.0.0.1:$PORT"
 TOKEN="$(cat "$ROOT/state/token")"
 WORK="$(mktemp -d)"
+# Claude Code runs mkdir in temp folders without asking, so the permission test uses a home folder.
+PERMIT_DIR="$HOME/.agent-tracker-e2e-$$"
 IDS=()
 
 fail() { echo "FAIL: $*" >&2; exit 1; }
 cleanup() {
   for id in "${IDS[@]}"; do claude rm "$id" >/dev/null 2>&1 || true; done
   rm -rf "$WORK"
+  rmdir "$PERMIT_DIR" 2>/dev/null || true
 }
 trap cleanup EXIT
 
@@ -66,15 +69,15 @@ transcript_has "$QS" '\"Pick a colour?\"=\"Blue\"' || fail "Claude never receive
 echo "   ok: Claude received \"Blue\""
 
 echo "2/2 permission prompt allowed from the dashboard"
-P=$(start e2e-permit "Run exactly this one Bash command and nothing else: mkdir $WORK/allowed   Then reply DONE. Do not read or change any other files.")
+P=$(start e2e-permit "Run exactly this one Bash command and nothing else: mkdir $PERMIT_DIR   Then reply DONE. Do not read or change any other files.")
 [ -n "$P" ] || fail "could not start the permission session"
 IDS+=("$P")
 PS="$(session_of "$P")"
 PID_="$(wait_ask "$PS" permission)" || fail "the permission prompt never reached the dashboard"
 R="$(post /api/actions/permit "{\"agentId\":\"$PS\",\"toolUseId\":\"$PID_\",\"decision\":\"allow\"}")"
 [ "$R" = '{"ok":true}' ] || fail "decision refused: $R"
-for _ in $(seq 1 60); do [ -d "$WORK/allowed" ] && break; sleep 1; done
-[ -d "$WORK/allowed" ] || fail "the allowed command never ran"
+for _ in $(seq 1 60); do [ -d "$PERMIT_DIR" ] && break; sleep 1; done
+[ -d "$PERMIT_DIR" ] || fail "the allowed command never ran"
 echo "   ok: the command ran"
 
 for id in "${IDS[@]}"; do

@@ -1,6 +1,6 @@
 import { expect, test } from 'claude-code/testing'
 
-import { answerFromDashboard, permitFromDashboard } from '../hooks/register'
+import { answerFromDashboard, offerContext, permitFromDashboard } from '../hooks/register'
 
 // The hook bodies only call $.fs.write and $.process.run, so a small stand-in records them.
 type Run = { exitCode: number; stdout: string; stderr: string }
@@ -88,4 +88,48 @@ test('calls that would not prompt, questions, a zero window or a stopped collect
   expect(await check({ tool: 'Bash', tool_use_id: 'toolu_D', input: {} }, 'ask', { ...OFFER, isLive: false })).toBe('ask')
   expect(await check({ tool: 'Bash', input: {} }, 'ask')).toBe('ask')
   expect(f.writes).toEqual([])
+})
+
+test('while waiting, the mod refreshes its offer every second so the dashboard knows it is alive', async () => {
+  let script = ''
+  const f = fake$(argv => { script = argv[2] ?? ''; return ok(JSON.stringify({ answers: { 'Pick a colour?': 'Blue' } })) })
+  await answerFromDashboard(f.$, ask('toolu_T5'), never, OFFER)
+  expect(/touch "\$2"/.test(script)).toBe(true)
+})
+
+test('a dashboard wait that fails is logged, the terminal still answers, and the offer is withdrawn', async () => {
+  const logs: string[] = []
+  const f = fake$(() => { throw new Error('process refused') })
+  const $ = { ...f.$, ui: { log: (text: string) => { logs.push(text) } } }
+  const terminal = { result: { questions: QUESTIONS, answers: { 'Pick a colour?': 'Red' } } }
+  const out = await answerFromDashboard($, ask('toolu_T6'), async () => { for (let i = 0; i < 10; i++) await Promise.resolve(); return terminal }, OFFER)
+  expect(out).toEqual(terminal)
+  expect(logs.some(l => l.includes('process refused'))).toBe(true)
+  expect(f.removed[0]).toEqual(['/repo/state/pending/toolu_T6.json', '/repo/state/answers/toolu_T6.json'])
+})
+
+test('the mod checks the collector itself when a question arrives, even if its poll never started', async () => {
+  const fresh = JSON.stringify({ generatedAt: 50_000, settings: { modToasts: true, permissionDashboardSec: 15 }, counts: {}, agents: [], collisions: [] })
+  const reads: string[] = []
+  const $ = {
+    plugin: { root: '/repo/mod' },
+    clock: { now: async () => 52_000 },
+    session: { id: async () => 's9' },
+    fs: { read: async (path: string) => { reads.push(path); return fresh } },
+  }
+  const offer = await offerContext($)
+  expect(offer).toEqual({ stateDir: '/repo/state', sessionId: 's9', isLive: true, windowSec: 15, now: 52_000 })
+  expect(reads).toEqual(['/repo/state/state.json'])
+})
+
+test('with no collector state at all, the mod stays out of the way', async () => {
+  const $ = {
+    plugin: { root: '/repo/mod' },
+    clock: { now: async () => 500_000 },
+    session: { id: async () => 's9' },
+    fs: { read: async () => { throw new Error('ENOENT') } },
+  }
+  const offer = await offerContext($)
+  expect(offer.isLive).toBe(false)
+  expect(offer.windowSec).toBe(0)
 })

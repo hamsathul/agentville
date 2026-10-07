@@ -1,6 +1,6 @@
 {
   "name": "agent-tracker",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Pane, status line and toasts for the local Agent Tracker",
   "types": "./types/index.d.ts",
   "author": {

@@ -1,4 +1,4 @@
-import { mkdirSync, readFileSync, readdirSync, renameSync, writeFileSync } from 'node:fs';
+import { mkdirSync, readFileSync, readdirSync, renameSync, statSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 
 // The mod writes state/pending/<toolUseId>.json when it offers a question or a permission
@@ -6,6 +6,7 @@ import { join } from 'node:path';
 export const TOOL_USE_ID = /^toolu_[A-Za-z0-9]+$/;
 const MAX_ANSWER = 2000;
 const DAY_MS = 24 * 3_600_000;
+const ORPHAN_MS = 10 * 60_000; // an offer nobody has refreshed for this long belongs to a wait that died
 
 const text = (value, max) => (typeof value === 'string' ? value.slice(0, max) : '');
 
@@ -40,14 +41,16 @@ export function readPending(dir, now) {
     if (!TOOL_USE_ID.test(id)) continue;
     const path = join(dir, name);
     let entry;
+    let heartbeatAt;
     try {
       entry = JSON.parse(readFileSync(path, 'utf8'));
+      heartbeatAt = statSync(path).mtimeMs; // the waiting mod touches its offer every second
     } catch {
       continue;
     }
     if (entry?.toolUseId !== id || typeof entry.sessionId !== 'string' || !entry.sessionId) continue;
     const createdAt = Number(entry.createdAt) || 0;
-    if (now - createdAt > DAY_MS) {
+    if (now - createdAt > DAY_MS || now - heartbeatAt > ORPHAN_MS) {
       expired.push(path);
       continue;
     }
@@ -55,14 +58,14 @@ export function readPending(dir, now) {
     if (entry.kind === 'question') {
       const questions = cleanQuestions(entry.questions);
       if (!questions) continue;
-      item = { kind: 'question', toolUseId: id, createdAt, questions };
+      item = { kind: 'question', toolUseId: id, createdAt, heartbeatAt, questions };
     } else if (entry.kind === 'permission') {
       const expiresAt = Number(entry.expiresAt) || 0;
       if (expiresAt <= now) {
         expired.push(path);
         continue;
       }
-      item = { kind: 'permission', toolUseId: id, tool: text(entry.tool, 100), summary: text(entry.summary, 500), createdAt, expiresAt };
+      item = { kind: 'permission', toolUseId: id, tool: text(entry.tool, 100), summary: text(entry.summary, 500), createdAt, heartbeatAt, expiresAt };
     } else {
       continue;
     }
@@ -91,4 +94,29 @@ export function writeAnswerFile(dir, toolUseId, payload) {
   const file = join(dir, `${toolUseId}.json`);
   writeFileSync(`${file}.tmp`, JSON.stringify(payload));
   renameSync(`${file}.tmp`, file);
+}
+
+const BEACON_LIVE_MS = 10_000;
+
+/** The mod in each session writes state/mods/<sessionId>.json every 2 s while it is listening. */
+export function readBeacons(dir, now) {
+  let names;
+  try {
+    names = readdirSync(dir);
+  } catch (err) {
+    if (err.code === 'ENOENT') return new Map();
+    throw err;
+  }
+  const beacons = new Map();
+  for (const name of names) {
+    if (!name.endsWith('.json')) continue;
+    try {
+      const b = JSON.parse(readFileSync(join(dir, name), 'utf8'));
+      if (typeof b.sessionId !== 'string' || !b.sessionId) continue;
+      beacons.set(b.sessionId, { version: text(b.version, 20), live: now - (Number(b.at) || 0) < BEACON_LIVE_MS });
+    } catch {
+      // half-written: next tick
+    }
+  }
+  return beacons;
 }

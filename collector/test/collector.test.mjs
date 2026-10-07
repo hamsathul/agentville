@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdirSync, mkdtempSync, readFileSync, utimesSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, unlinkSync, utimesSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { startCollector } from '../collector.mjs';
@@ -87,7 +87,19 @@ test('questions and permission prompts offered by the mod can be answered throug
   mkdirSync(join(root, 'state', 'pending'), { recursive: true });
   writeFileSync(join(root, 'state', 'pending', 'toolu_Q1.json'), JSON.stringify({ kind: 'question', toolUseId: 'toolu_Q1', sessionId: 'sess-ask', createdAt: now - 4000, questions }));
 
-  const handle = await startCollector({ root, claudeDir, claudeBin: '/usr/bin/false', notify: () => {}, log: () => {} });
+  // Stands in for the mod inside the session: takes each answer file as it appears.
+  const delivered = [];
+  let modAlive = true;
+  const answersDir = join(root, 'state', 'answers');
+  const fakeMod = setInterval(() => {
+    if (!modAlive || !existsSync(answersDir)) return;
+    for (const name of readdirSync(answersDir)) {
+      if (!name.endsWith('.json')) continue;
+      delivered.push([name, JSON.parse(readFileSync(join(answersDir, name), 'utf8'))]);
+      unlinkSync(join(answersDir, name));
+    }
+  }, 50);
+  const handle = await startCollector({ root, claudeDir, claudeBin: '/usr/bin/false', notify: () => {}, log: () => {}, deliveryTimeoutMs: 600 });
   try {
     const snap = handle.getSnapshot();
     assert.equal(snap.settings.permissionDashboardSec, 15);
@@ -96,8 +108,14 @@ test('questions and permission prompts offered by the mod can be answered throug
 
     assert.equal((await handle.actions.answer({ agentId: 'sess-ask', toolUseId: 'toolu_Other', answers: { 'Pick a colour?': 'Blue' } })).ok, false);
     assert.match((await handle.actions.answer({ agentId: 'sess-ask', toolUseId: 'toolu_Q1', answers: {} })).error, /every question/);
+    modAlive = false;
+    const undelivered = await handle.actions.answer({ agentId: 'sess-ask', toolUseId: 'toolu_Q1', answers: { 'Pick a colour?': 'Blue' } });
+    assert.equal(undelivered.ok, false);
+    assert.match(undelivered.error, /terminal/);
+    assert.equal(existsSync(join(answersDir, 'toolu_Q1.json')), false);
+    modAlive = true;
     assert.deepEqual(await handle.actions.answer({ agentId: 'sess-ask', toolUseId: 'toolu_Q1', answers: { 'Pick a colour?': 'Blue' } }), { ok: true });
-    assert.deepEqual(JSON.parse(readFileSync(join(root, 'state', 'answers', 'toolu_Q1.json'), 'utf8')), { answers: { 'Pick a colour?': 'Blue' } });
+    assert.deepEqual(delivered.at(-1), ['toolu_Q1.json', { answers: { 'Pick a colour?': 'Blue' } }]);
 
     writeFileSync(join(root, 'state', 'pending', 'toolu_P1.json'), JSON.stringify({ kind: 'permission', toolUseId: 'toolu_P1', sessionId: 'sess-ask', tool: 'Bash', summary: 'mkdir /tmp/x', createdAt: Date.now(), expiresAt: Date.now() + 15_000 }));
     await handle.reloadConfig();
@@ -105,8 +123,9 @@ test('questions and permission prompts offered by the mod can be answered throug
     assert.equal(waiting.stateReason, 'permission needed: Bash');
     assert.equal((await handle.actions.permit({ agentId: 'sess-ask', toolUseId: 'toolu_P1', decision: 'maybe' })).ok, false);
     assert.deepEqual(await handle.actions.permit({ agentId: 'sess-ask', toolUseId: 'toolu_P1', decision: 'allow' }), { ok: true });
-    assert.deepEqual(JSON.parse(readFileSync(join(root, 'state', 'answers', 'toolu_P1.json'), 'utf8')), { decision: 'allow' });
+    assert.deepEqual(delivered.at(-1), ['toolu_P1.json', { decision: 'allow' }]);
   } finally {
+    clearInterval(fakeMod);
     await handle.stop();
   }
 });

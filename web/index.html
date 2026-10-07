@@ -483,7 +483,12 @@ function draftFor(toolUseId) {
 /** The answer form at the top of a waiting agent's drawer. */
 function askHtml(a) {
   const ask = a.ask;
-  if (!ask) return '';
+  if (!ask) {
+    return a.state === 'waiting'
+      ? `<div class="ask"><div class="sec" style="margin-top:0">${a.stateReason === 'question pending' ? '❓' : '🔐'} Waiting on you</div><div>${askLine(a)}</div>
+          <div class="muted" style="margin-top:6px">The dashboard can't answer this one, so answer it in its terminal. (Its session isn't listening for dashboard answers: it may have started before the Agent Tracker mod was installed.)</div></div>`
+      : '';
+  }
   const ids = `data-agent="${esc(a.id)}" data-tool="${esc(ask.toolUseId)}"`;
   if (ask.kind === 'permission') {
     return `<div class="ask"><div class="sec" style="margin-top:0">🔐 Permission needed</div>
@@ -525,7 +530,10 @@ function drawerHtml(a) {
   const resume = a.kind === 'codex' ? '' : `cd ${shellQuote(a.cwd)} && claude --resume ${a.id}`;
   return `<div class="head"><span class="swatch" style="background:${color}"></span><span class="name">${esc(a.name)}</span><span class="chip c-${a.state}">${STATE_CHIP[a.state] ?? esc(a.state)} · <span data-since="${a.stateSince}"></span></span><span class="grow"></span><button class="act" id="close-drawer" style="margin:0">✕</button></div>
     ${askHtml(a)}
-    <div class="muted" style="margin-top:6px">${esc(short(a.cwd))} · ${esc(a.kind)}${a.model ? ` · ${esc(a.model)}` : ''}</div>
+    <div class="muted" style="margin-top:6px">${esc(short(a.cwd))} · ${esc(a.kind)}${a.model ? ` · ${esc(a.model)}` : ''}
+      ${a.kind === 'codex' ? '' : a.mod?.live
+        ? ' <span class="chip c-good" data-tip="This session can be answered from the dashboard">📡 dashboard answers on</span>'
+        : ' <span class="chip c-plain" data-tip="The Agent Tracker mod in this session isn\'t listening. It starts with the next message you send the session, or with a new session.">dashboard answers off</span>'}</div>
     ${a.state === 'stale' ? '' : `<div style="margin-top:8px">${metricsHtml(a)}</div>`}
     <div class="sec">Now</div>${a.now ? `<div class="now mono"><span class="pulse"></span> ${esc(a.now.tool)} ${esc(a.now.summary)} · <b data-since="${a.now.startedAt}"></b></div>` : `<div class="muted">${esc(a.stateReason)}</div>`}
     ${a.lastPrompt ? `<div class="sec">Last prompt</div><div>“${esc(a.lastPrompt)}”</div>` : ''}
@@ -642,9 +650,16 @@ document.addEventListener('click', async e => {
   }
   const el = e.target.closest('button');
   if (!el) return;
-  if (el.id === 'ask-send') { await sendAnswer(el.dataset.agent, el.dataset.tool); return; }
+  if (el.id === 'ask-send') {
+    el.disabled = true;
+    el.textContent = 'Sending…';
+    await sendAnswer(el.dataset.agent, el.dataset.tool);
+    return;
+  }
   if (el.id === 'ask-allow' || el.id === 'ask-deny') {
     const decision = el.id === 'ask-allow' ? 'allow' : 'deny';
+    el.disabled = true;
+    el.textContent = decision === 'allow' ? 'Allowing…' : 'Denying…';
     const r = await post('/api/actions/permit', { agentId: el.dataset.agent, toolUseId: el.dataset.tool, decision });
     notice(r.ok ? (decision === 'allow' ? 'Allowed.' : 'Denied.') : `Could not send: ${r.error}`);
     return;

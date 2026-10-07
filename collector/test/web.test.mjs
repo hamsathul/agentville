@@ -300,3 +300,21 @@ test('the CPU panel states its headline as a share of the whole Mac', () => {
   assert.match(fleet, /CPU used by agents<span class="pv">20% of this Mac</);
   assert.match(fleet, /200% of one core · 10 cores/);
 });
+
+test('a waiting question the dashboard cannot answer says to answer it in the terminal', async () => {
+  const page = loadPage();
+  page.push(askSnapshot(undefined));
+  await page.openAgent('w1');
+  assert.match(page.side(), /answer it in its terminal/);
+  assert.doesNotMatch(page.side(), /id="ask-send"/);
+});
+
+test("the drawer says whether the session's mod is listening for dashboard answers", async () => {
+  const page = loadPage();
+  page.push(richSnapshot([richAgent({ mod: { version: '0.2.0', live: true } }), richAgent({ id: 'r2', name: 'old', mod: undefined })]));
+  await page.openAgent('r1');
+  assert.match(page.side(), /dashboard answers on/);
+  await page.openAgent('r1');
+  await page.openAgent('r2');
+  assert.match(page.side(), /dashboard answers off/);
+});

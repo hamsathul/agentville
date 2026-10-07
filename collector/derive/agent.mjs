@@ -31,17 +31,22 @@ export function childrenOf(model, childModels, now) {
  * What the mod has offered for answering from the dashboard, if it still applies: a
  * question whose call is still pending, or a permission prompt inside its window.
  */
+// The mod refreshes its offer file every second while it is really waiting; an offer that has
+// gone quiet means the session can no longer take a dashboard answer.
+const HEARTBEAT_MS = 5_000;
+
 export function askOf(offer, model, now) {
-  if (offer?.kind === 'question' && model?.pending.has(offer.toolUseId)) {
+  if (!offer || now - (offer.heartbeatAt ?? 0) > HEARTBEAT_MS) return undefined;
+  if (offer.kind === 'question' && model?.pending.has(offer.toolUseId)) {
     return { kind: 'question', toolUseId: offer.toolUseId, questions: offer.questions };
   }
-  if (offer?.kind === 'permission' && offer.expiresAt > now) {
+  if (offer.kind === 'permission' && offer.expiresAt > now) {
     return { kind: 'permission', toolUseId: offer.toolUseId, tool: offer.tool, summary: offer.summary, expiresAt: offer.expiresAt };
   }
   return undefined;
 }
 
-export function buildAgent({ base, model, registry, proc, cpuHistory = [], childModels = new Map(), offer, repoOf, now, cfg, home }) {
+export function buildAgent({ base, model, registry, proc, cpuHistory = [], childModels = new Map(), offer, beacon, repoOf, now, cfg, home }) {
   const ask = askOf(offer, model, now);
   const derived = base.kind === 'codex'
     ? deriveCodexState(cpuHistory, now)
@@ -67,6 +72,7 @@ export function buildAgent({ base, model, registry, proc, cpuHistory = [], child
     stateReason: derived.reason,
     sinceHint: derived.since,
     ask,
+    mod: beacon ? { version: beacon.version, live: beacon.live } : undefined,
     lastActivityAt: model?.lastActivityAt || undefined,
     now: nowOf(model),
     lastPrompt: model?.lastPrompt ?? undefined,

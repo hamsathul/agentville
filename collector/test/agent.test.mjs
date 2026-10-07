@@ -91,7 +91,7 @@ test('countStates counts each state and the collisions', () => {
 test('an offered question that is still pending can be answered from the dashboard', () => {
   const m = modelOf(prompt(0, 'go'), toolUse(5, 'toolu_Q1', 'AskUserQuestion', { questions: [{ question: 'Pick a colour?' }] }));
   const questions = [{ question: 'Pick a colour?', header: 'Colour', multiSelect: false, options: [{ label: 'Red' }, { label: 'Blue' }] }];
-  const a = buildAgent({ base: base(), model: m, offer: { kind: 'question', toolUseId: 'toolu_Q1', createdAt: at(5), questions }, repoOf, now: at(6), cfg, home: '/h' });
+  const a = buildAgent({ base: base(), model: m, offer: { kind: 'question', toolUseId: 'toolu_Q1', createdAt: at(5), heartbeatAt: at(6), questions }, repoOf, now: at(6), cfg, home: '/h' });
   assert.equal(a.state, 'waiting');
   assert.deepEqual(a.ask, { kind: 'question', toolUseId: 'toolu_Q1', questions });
 });
@@ -104,7 +104,7 @@ test('an offered question that was already answered in the terminal is not answe
 
 test('an offered permission prompt makes the agent certainly waiting, with Allow/Deny details', () => {
   const m = modelOf(prompt(0, 'go'), toolUse(5, 'toolu_P1', 'Bash', { command: 'mkdir /tmp/x' }));
-  const offer = { kind: 'permission', toolUseId: 'toolu_P1', tool: 'Bash', summary: 'mkdir /tmp/x', createdAt: at(5), expiresAt: at(20) };
+  const offer = { kind: 'permission', toolUseId: 'toolu_P1', tool: 'Bash', summary: 'mkdir /tmp/x', createdAt: at(5), heartbeatAt: at(6), expiresAt: at(20) };
   const a = buildAgent({ base: base(), model: m, registry: { status: 'busy' }, cpuHistory: [{ at: at(5), cpu: 40 }], offer, repoOf, now: at(6), cfg, home: '/h' });
   assert.equal(a.state, 'waiting');
   assert.equal(a.stateReason, 'permission needed: Bash');
@@ -146,4 +146,17 @@ test('the timeline lists recent tool calls with their time, newest last', () => 
   const m = modelOf(prompt(0, 'go'), toolUse(5, 't1', 'Edit', { file_path: '/a' }), toolUse(9, 't2', 'Bash', { command: 'ls' }));
   const a = buildAgent({ base: base(), model: m, repoOf, now: at(10), cfg, home: '/h' });
   assert.deepEqual(a.timeline, [{ at: at(5), tool: 'Edit' }, { at: at(9), tool: 'Bash' }]);
+});
+
+test('an offer whose mod stopped refreshing it is not answerable, so the page cannot promise a delivery', () => {
+  const m = modelOf(prompt(0, 'go'), toolUse(5, 'toolu_Q1', 'AskUserQuestion'));
+  const offer = { kind: 'question', toolUseId: 'toolu_Q1', createdAt: at(5), heartbeatAt: at(6), questions: [] };
+  assert.notEqual(buildAgent({ base: base(), model: m, offer, repoOf, now: at(10), cfg, home: '/h' }).ask, undefined);
+  assert.equal(buildAgent({ base: base(), model: m, offer, repoOf, now: at(12), cfg, home: '/h' }).ask, undefined);
+});
+
+test("an agent shows whether its session's mod is listening for dashboard answers", () => {
+  const listening = buildAgent({ base: base(), model: null, beacon: { version: '0.2.0', live: true }, repoOf, now: at(0), cfg, home: '/h' });
+  assert.deepEqual(listening.mod, { version: '0.2.0', live: true });
+  assert.equal(buildAgent({ base: base(), model: null, repoOf, now: at(0), cfg, home: '/h' }).mod, undefined);
 });
