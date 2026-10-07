@@ -9,10 +9,11 @@ import { SessionModel } from './transcript/session-model.mjs';
 import { readRegistry } from './sources/registry.mjs';
 import { readAgentsCli } from './sources/agents-cli.mjs';
 import { childrenIndex, findCodexRoots, findPidByArg, readPs, treeStats } from './sources/ps.mjs';
-import { RepoResolver, repoStatus } from './sources/git.mjs';
+import { GIT_ENV, RepoResolver, repoStatus } from './sources/git.mjs';
 import { deployStatus } from './sources/gh.mjs';
 import { confirmDelivery, readBeacons, readPending, validateAnswers, writeAnswerFile, writeMessageFile } from './sources/pending.mjs';
-import { listFolder, readFolderFile } from './sources/files.mjs';
+import { listFolder, parsePorcelain, readFolderFile } from './sources/files.mjs';
+import { repoFiles } from './derive/repo-files.mjs';
 import { checkImages, pruneUploads, saveImages, withScreenshots } from './sources/uploads.mjs';
 import { compactSummary, memoryFiles, scratchpadOf } from './sources/memory.mjs';
 import { applySince, buildAgent, countStates, sortAgents } from './derive/agent.mjs';
@@ -266,7 +267,7 @@ export async function startCollector({ root, claudeDir = join(homedir(), '.claud
     const collisions = findCollisions(agents, now, cfg.collisionWindowMin * 60_000);
     snapshot = {
       generatedAt: now,
-      settings: { modToasts: cfg.modToasts, permissionDashboardSec: cfg.permissionDashboardSec, memoryAlertGb: cfg.memoryAlertGb },
+      settings: { modToasts: cfg.modToasts, permissionDashboardSec: cfg.permissionDashboardSec, memoryAlertGb: cfg.memoryAlertGb, cpuAlertPct: cfg.cpuAlertPct },
       collector: selfStats(),
       machine: { totalMemMb: Math.round(totalmem() / 1_048_576), cpuCount: cpus().length },
       sources: { ...sources },
@@ -427,6 +428,20 @@ export async function startCollector({ root, claudeDir = join(homedir(), '.claud
     return doc.doc ? doc : { status: 403, error: "That file is outside the agent's folder." };
   }
 
+  /** The farm's field close-up: files agents touched in one repo on the dashboard, with git status. */
+  async function repoTouched(repoPath) {
+    const repo = snapshot?.repos.find(r => r.path === repoPath);
+    if (!repo) return { status: 404, error: 'That repo is not on the dashboard.' };
+    const touched = [...sessions].map(([id, rec]) => ({
+      id,
+      touched: [rec.model, ...rec.childModels.values()].flatMap(m => m?.touchedFiles() ?? []),
+    }));
+    const st = await run('git', ['-C', repoPath, 'status', '--porcelain=v1', '-z', '--untracked-files=all'], { env: GIT_ENV, timeoutMs: 10_000 });
+    const status = st.code === 0 ? parsePorcelain(st.stdout, '') : {};
+    const branch = repo.branch ?? ((await run('git', ['-C', repoPath, 'branch', '--show-current'], { env: GIT_ENV, timeoutMs: 5000 })).stdout.trim() || null);
+    return { repo: repoPath, name: repo.name, branch, ...repoFiles({ repo: repoPath, sessions: touched, status, now: Date.now() }) };
+  }
+
   // The mod deletes the answer file once it has handed the answer to Claude. If that doesn't
   // happen within the timeout, the session isn't listening: withdraw it and say so.
   async function deliver(toolUseId, payload) {
@@ -497,7 +512,7 @@ export async function startCollector({ root, claudeDir = join(homedir(), '.claud
     port: portOverride ?? cfg.port, token, webFile: join(root, 'web', 'index.html'),
     getSnapshot: () => snapshot,
     getFeed: (id, limit) => modelFor(id)?.feed.slice(0, limit) ?? null,
-    getTranscriptHtml, getDoc: readDoc, listFiles, readFile, actions, log,
+    getTranscriptHtml, getDoc: readDoc, listFiles, readFile, repoTouched, actions, log,
   });
   const port = await server.listen();
 
@@ -531,5 +546,5 @@ export async function startCollector({ root, claudeDir = join(homedir(), '.claud
     await server.close();
   }
 
-  return { port, getSnapshot: () => snapshot, reloadConfig, actions, readDoc, listFiles, readFile, stop };
+  return { port, getSnapshot: () => snapshot, reloadConfig, actions, readDoc, listFiles, readFile, repoTouched, stop };
 }

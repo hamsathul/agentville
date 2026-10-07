@@ -78,7 +78,10 @@ export class SessionModel {
         this.#push(item);
         const isBackground = ev.input?.run_in_background === true;
         const kind = CHILD_KIND[ev.name] ?? (ev.name === 'Bash' && isBackground ? 'bgjob' : null);
-        if (kind) this.children.set(ev.id, { id: ev.id, kind, label: summarizeTool(ev.name, ev.input), state: 'running', startedAt: when, isBackground });
+        if (kind) {
+          const agentType = kind === 'subagent' && typeof ev.input?.subagent_type === 'string' ? ev.input.subagent_type : undefined;
+          this.children.set(ev.id, { id: ev.id, kind, agentType, label: summarizeTool(ev.name, ev.input), state: 'running', startedAt: when, isBackground });
+        }
         this.turnOpen = true;
         break;
       }

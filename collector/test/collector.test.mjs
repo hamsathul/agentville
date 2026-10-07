@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import { execFileSync } from 'node:child_process';
 import assert from 'node:assert/strict';
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, symlinkSync, unlinkSync, utimesSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, realpathSync, symlinkSync, unlinkSync, utimesSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { startCollector } from '../collector.mjs';
@@ -36,6 +36,7 @@ test('collector serves a waiting agent from a fixture ~/.claude and survives a b
     assert.equal(snap.settings.modToasts, true);
     assert.ok(snap.machine.totalMemMb > 0 && snap.machine.cpuCount > 0);
     assert.equal(snap.settings.memoryAlertGb, 2);
+    assert.equal(snap.settings.cpuAlertPct, 90);
 
     const onDisk = JSON.parse(readFileSync(join(root, 'state', 'state.json'), 'utf8'));
     assert.equal(onDisk.agents.find(x => x.id === 'sess-1').state, 'waiting');
@@ -397,6 +398,47 @@ test('an agent working in the home folder still shows its scratchpad and memory,
     assert.equal(list.scratch, null);
     assert.deepEqual(list.memory.map(m => m.where), ['all projects']);
     assert.match((await handle.readFile('sess-home', '@summary')).error, /hasn't been compacted/);
+  } finally {
+    await handle.stop();
+  }
+});
+
+test("a repo's close-up lists the files its sessions touched, with git status, once the repo is on the dashboard", async () => {
+  const root = mkdtempSync(join(tmpdir(), 'tracker-root-touched-'));
+  mkdirSync(join(root, 'web'));
+  writeFileSync(join(root, 'web', 'index.html'), '<html></html>');
+  writeFileSync(join(root, 'config.json'), JSON.stringify({ port: 0, deployRepos: {}, pollMs: 200 }));
+  const work = realpathSync(mkdtempSync(join(tmpdir(), 'tracker-work-touched-')));
+  const git = (...args) => execFileSync('git', ['-C', work, '-c', 'user.email=t@t', '-c', 'user.name=t', ...args]);
+  git('init', '-q', '-b', 'main');
+  mkdirSync(join(work, 'src'));
+  writeFileSync(join(work, 'src', 'app.ts'), 'one');
+  writeFileSync(join(work, 'README.md'), '# R');
+  git('add', '.');
+  git('commit', '-q', '-m', 'init');
+  writeFileSync(join(work, 'src', 'app.ts'), 'two');
+  const claudeDir = mkdtempSync(join(tmpdir(), 'tracker-claude-touched-'));
+  mkdirSync(join(claudeDir, 'sessions'));
+  mkdirSync(join(claudeDir, 'projects', '-w'), { recursive: true });
+  writeFileSync(join(claudeDir, 'sessions', `${process.pid}.json`), JSON.stringify({ pid: process.pid, sessionId: 'sess-farm', cwd: work, name: 'farmer', status: 'idle' }));
+  const now = Date.now();
+  const use = (n, name, file) => JSON.stringify({ type: 'assistant', timestamp: new Date(now - 5000 + n).toISOString(), cwd: work, message: { model: 'm', content: [{ type: 'tool_use', id: `t${n}`, name, input: { file_path: file } }] } });
+  writeFileSync(join(claudeDir, 'projects', '-w', 'sess-farm.jsonl'), [
+    JSON.stringify({ type: 'user', timestamp: new Date(now - 6000).toISOString(), cwd: work, message: { content: 'edit it' } }),
+    use(1, 'Read', join(work, 'README.md')),
+    use(2, 'Edit', join(work, 'src', 'app.ts')),
+  ].join('\n') + '\n');
+  const handle = await startCollector({ root, claudeDir, claudeBin: '/usr/bin/false', notify: () => {}, log: () => {}, home: '/nowhere' });
+  try {
+    for (let i = 0; i < 50 && !handle.getSnapshot().repos.some(r => r.path === work); i++) await new Promise(r => setTimeout(r, 100));
+    const r = await handle.repoTouched(work);
+    assert.equal(r.repo, work);
+    assert.equal(r.branch, 'main');
+    assert.deepEqual(r.files.map(f => [f.path, f.wrote, f.doc, f.git, f.agents.map(a => a.id)]), [
+      ['src/app.ts', true, false, 'M', ['sess-farm']],
+      ['README.md', false, true, null, ['sess-farm']],
+    ]);
+    assert.match((await handle.repoTouched('/etc')).error, /not on the dashboard/);
   } finally {
     await handle.stop();
   }

@@ -20,6 +20,7 @@ async function start() {
     getTranscriptHtml: async id => (id === 's1' ? renderTranscriptPage('s1', [{ at: 1, kind: 'prompt', text: '<script>alert(1)</script>' }]) : null),
     listFiles: async id => (id === 's1' ? { root: '/w', git: true, files: ['a.ts'], status: {}, touched: {}, truncated: false } : { status: 404, error: 'That agent was not found.' }),
     readFile: async (id, path) => (id === 's1' && path === '/w/a.ts' ? { doc: { path, text: 'const a = 1;', mtimeMs: 1, size: 12 } } : { status: 403, error: 'That file is outside the agent\'s folder.' }),
+    repoTouched: async path => (path === '/code/app' ? { repo: path, name: 'app', branch: 'main', files: [], truncated: false } : { status: 404, error: 'That repo is not on the dashboard.' }),
     getDoc: (id, path) => (id === 's1' && path === '/w/spec.md' ? { doc: { path, text: '# Spec', mtimeMs: 1, size: 6 } } : { status: 404, error: 'That document is not one this agent has opened.' }),
     actions: {
       open: async id => { calls.push(['open', id]); return { ok: true }; },
@@ -195,6 +196,21 @@ test('a message may carry screenshots, so its body may be large; other actions s
     assert.equal(calls.at(-1)[1].images[0].data.length, 200_000);
     const r = await request(port, { method: 'POST', path: '/api/actions/answer', headers, body: big });
     assert.equal(r.status, 413);
+  } finally {
+    await srv.close();
+  }
+});
+
+test("a repo's touched files are served only with the token, and only for a repo on the dashboard", async () => {
+  const { srv, port } = await start();
+  try {
+    const path = `/api/repo/touched?path=${encodeURIComponent('/code/app')}`;
+    assert.equal((await request(port, { path })).status, 403);
+    const ok = await request(port, { path, headers: { 'x-tracker-token': 'tok' } });
+    assert.equal(ok.status, 200);
+    assert.equal(JSON.parse(ok.body).name, 'app');
+    const other = await request(port, { path: '/api/repo/touched?path=%2Fetc', headers: { 'x-tracker-token': 'tok' } });
+    assert.equal(other.status, 404);
   } finally {
     await srv.close();
   }

@@ -11,12 +11,12 @@ const MAX_FILES = 5000;
 const MAX_BYTES = 2 * 1024 * 1024;
 const WALK_DEPTH = 8;
 const SKIP_DIRS = new Set(['node_modules', '.git']);
-const SECRET_FILE = /(^|\/)(\.env(\.(?!example$|sample$|template$)[^/]*)?|[^/]*\.(pem|key|p12|pfx|keystore|jks)|id_(rsa|dsa|ecdsa|ed25519)|\.npmrc|\.pypirc|\.netrc)$/i;
+export const SECRET_FILE = /(^|\/)(\.env(\.(?!example$|sample$|template$)[^/]*)?|[^/]*\.(pem|key|p12|pfx|keystore|jks)|id_(rsa|dsa|ecdsa|ed25519)|\.npmrc|\.pypirc|\.netrc)$/i;
 
 const STATUS_CODE = xy => (xy === '??' ? 'U' : xy.includes('D') ? 'D' : xy.includes('A') ? 'A' : xy.includes('R') ? 'R' : 'M');
 
 /** `git status --porcelain=v1 -z` → { path relative to the folder: M | U | A | D | R }. */
-function parsePorcelain(out, prefix) {
+export function parsePorcelain(out, prefix) {
   const status = {};
   const parts = out.split('\0');
   for (let i = 0; i < parts.length; i++) {

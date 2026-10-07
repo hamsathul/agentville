@@ -23,7 +23,7 @@ export function childrenOf(model, childModels, now) {
     if (cm && (cm.pending.size > 0 || now - cm.lastActivityAt < CHILD_RECENT_MS)) state = 'running';
     const lastAt = cm?.lastActivityAt || c.startedAt;
     if (state !== 'running' && now - lastAt > CHILD_KEEP_MS) continue;
-    out.push({ id: c.id, kind: c.kind, label: c.label, state, startedAt: c.startedAt, now: cm ? nowOf(cm) : undefined });
+    out.push({ id: c.id, kind: c.kind, agentType: c.agentType, label: c.label, state, startedAt: c.startedAt, now: cm ? nowOf(cm) : undefined });
   }
   return out.sort((a, b) => b.startedAt - a.startedAt).slice(0, 20);
 }

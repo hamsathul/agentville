@@ -172,3 +172,9 @@ test('documents come from the session and its subagents, newest first', () => {
   ]);
   assert.deepEqual(buildAgent({ base: base(), model: null, repoOf, now: at(5), cfg, home: '/h' }).docs, []);
 });
+
+test("children carry their subagent type", () => {
+  const parent = modelOf(prompt(0, 'go'), toolUse(1, 'tE', 'Agent', { description: 'Look around', subagent_type: 'Explore' }));
+  const a = buildAgent({ base: base(), model: parent, repoOf, now: at(2), cfg, home: '/h' });
+  assert.equal(a.children[0].agentType, 'Explore');
+});

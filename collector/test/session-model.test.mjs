@@ -120,3 +120,15 @@ test('every file the session wrote, edited or read is remembered for the explore
   ]);
   assert.deepEqual(m.documents(), []);
 });
+
+test("a subagent remembers its type, so the farm can draw an Explore subagent as a dog", () => {
+  const m = modelOf(
+    prompt(0, 'go'),
+    toolUse(1, 'e1', 'Agent', { description: 'Find routes', subagent_type: 'Explore' }),
+    toolUse(2, 'g1', 'Task', { description: 'Plain' }),
+    toolUse(3, 'b1', 'Bash', { command: 'npm run dev', run_in_background: true }),
+  );
+  assert.equal(m.children.get('e1').agentType, 'Explore');
+  assert.equal(m.children.get('g1').agentType, undefined);
+  assert.equal(m.children.get('b1').agentType, undefined);
+});

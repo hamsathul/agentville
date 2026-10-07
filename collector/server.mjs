@@ -32,7 +32,7 @@ function clampInt(value, min, max, fallback) {
   return Number.isFinite(n) ? Math.min(max, Math.max(min, n)) : fallback;
 }
 
-export function createTrackerServer({ port, token, webFile, getSnapshot, getFeed, getTranscriptHtml, getDoc, listFiles, readFile, actions, log = () => {} }) {
+export function createTrackerServer({ port, token, webFile, getSnapshot, getFeed, getTranscriptHtml, getDoc, listFiles, readFile, repoTouched, actions, log = () => {} }) {
   const clients = new Set();
   let server;
   const actualPort = () => server.address()?.port ?? port;
@@ -73,6 +73,11 @@ export function createTrackerServer({ port, token, webFile, getSnapshot, getFeed
           const file = url.searchParams.get('path') ?? '';
           const found = m[2] === 'doc' ? getDoc(m[1], file) : await readFile(m[1], file);
           return found.doc ? sendJson(res, 200, found.doc) : sendJson(res, found.status ?? 404, { error: found.error });
+        }
+        if (path === '/api/repo/touched') {
+          if (req.headers['x-tracker-token'] !== token) return sendJson(res, 403, { error: 'forbidden' });
+          const touched = await repoTouched(url.searchParams.get('path') ?? '');
+          return touched.error ? sendJson(res, touched.status ?? 404, { error: touched.error }) : sendJson(res, 200, touched);
         }
         if ((m = path.match(/^\/agent\/([\w:-]+)\/transcript$/))) {
           const html = await getTranscriptHtml(m[1]);
