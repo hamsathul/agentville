@@ -340,12 +340,15 @@ a.chip { text-decoration: none; }
 @media (max-width: 900px) { .app[data-view="farm"][data-side="open"] { display: block; } }
 .app[data-view="farm"] { grid-template-columns: minmax(0, 1fr); }
 .app[data-view="farm"] > .col { display: none; }
-.app[data-view="farm"] > #farm { display: block; }
+.app[data-view="farm"] > #farm { display: flex; flex-direction: column; overflow: hidden; } /* the farm's frame fits the screen */
+@media (max-width: 900px) { .app[data-view="farm"] > #farm { height: min(78vh, 760px); } }
 @keyframes blink { 50% { opacity: .25; } }
 .ell { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
-.px { display: grid; gap: 12px; }
-.px-host { overflow-x: auto; display: flex; flex-direction: column; align-items: flex-start; gap: 8px; background: #24361f; border: 1px solid var(--line); border-radius: 14px; padding: 10px; }
-.px-stage { position: relative; flex: none; margin-inline: auto; } /* centred, yet scrollable when zoomed in */
+.px { flex: 1; min-height: 0; display: flex; flex-direction: column; gap: 12px; }
+.px-host { flex: 1; min-height: 0; display: flex; flex-direction: column; gap: 8px; background: #24361f; border: 1px solid var(--line); border-radius: 14px; padding: 10px; }
+.px-view { position: relative; flex: 1; min-height: 0; display: flex; overflow: auto; overscroll-behavior: contain; border-radius: 6px; } /* the frame: zoom happens inside it */
+.px-view.panning, .px-view.panning * { cursor: grabbing !important; user-select: none; }
+.px-stage { position: relative; flex: none; margin: auto; } /* centred, yet scrollable all round when zoomed in */
 .px-hud .px-zoom { padding: 0; gap: 0; overflow: hidden; }
 .px-hud .px-zoom button { border: 0; border-radius: 0; box-shadow: none; background: transparent; padding: 1px 8px; min-width: 24px; justify-content: center; }
 .px-hud .px-zoom button + button { border-left: 1px solid #c98d4f; }
@@ -392,7 +395,7 @@ a.chip { text-decoration: none; }
 .px-tag.st-turn { background: var(--warn); color: #1d1d1d; }
 .px-tag.st-idle, .px-tag.st-stale { opacity: 0; }
 .px-tag.st-idle:hover, .px-tag.st-stale:hover { opacity: 1; }
-.px-under { display: grid; gap: 12px; }
+.px-under { flex: none; max-height: 30%; overflow: auto; display: grid; gap: 12px; }
 .px-under > div { background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 10px 14px; min-width: 0; }
 .px-under h4 { margin: 0 0 6px; font-size: 11px; text-transform: uppercase; letter-spacing: .08em; color: var(--muted); }
 .px-log { list-style: none; margin: 0; padding: 0; display: grid; gap: 3px; }

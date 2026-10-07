@@ -392,7 +392,7 @@
           <span title="Finished turns delivered to your porch"><b class="basket"></b>${game.harvests} harvested</span>
           <span title="Average context left across active farmers">energy <em class="hbar"><i style="width:${Math.round(energy * 100)}%"></i></em></span>
           ${need ? `<span class="alert">${need} need${need > 1 ? '' : 's'} you</span>` : ''}
-          <span class="px-zoom" title="Zoom (or ⌘/Ctrl + scroll over the farm)"><button type="button" data-farm-zoom="-1" aria-label="Zoom out">−</button><button type="button" data-farm-zoom="0" title="Fit the farm to the width">${Math.round(zoom * 100)}%</button><button type="button" data-farm-zoom="1" aria-label="Zoom in">+</button></span>
+          <span class="px-zoom" title="Zoom the farm inside its frame (or ⌘/Ctrl + scroll, or pinch); drag to move around when zoomed in"><button type="button" data-farm-zoom="-1" aria-label="Zoom out">−</button><button type="button" data-farm-zoom="0" title="Show the whole farm">${Math.round(zoom * 100)}%</button><button type="button" data-farm-zoom="1" aria-label="Zoom in">+</button></span>
           <button type="button" data-farm-bubbles title="Speech bubbles with what each farmer last said. × hides one; its 💬 shows it again">Bubbles: ${saysOn ? 'on' : 'off'}</button>
           <button type="button" class="px-motion" data-farm-motion title="Walking and animation on the farm">Motion: ${still ? 'off' : 'on'}</button>
           <button type="button" class="px-info" data-farm-help title="How to read the farm" aria-label="How to read the farm">i</button>`;
@@ -547,6 +547,7 @@
       <b>Hearts, crops</b><span>context left; ripe crops (golden wheat, red tomatoes, sunflowers in bloom…) with a sparkle = context nearly full; chickens = subagents, the dog = an Explore subagent</span>
       <b>Shade tree, scarecrows</b><span>idle agents nap under the tree; stale ones stand as scarecrows; the meadow is for agents outside any repo</span>
       <b>Click</b><span>a farmer to answer or message it in the sidebar; a field for the files agents touched there</span>
+      <b>Zoom</b><span>− / + (or ⌘/Ctrl + scroll, or pinch) zooms the farm inside its frame; drag or scroll to move around; the % button shows the whole farm again</span>
     </div>`;
   }
 
@@ -555,8 +556,9 @@
   function makePixelView(th) {
     let host = null, canvas = null, ctx = null, ov = null, logEl = null, hudEl = null, bg = null, ro = null;
     let raf = 0, last = 0, T = 0, cs = 1, first = true, timer = 0, layoutKey = null, labelKey = '';
+    let viewEl = null, drag = null, dragged = false; // the frame the farm is seen through; a drag that pans it
     let scene = { fields: [], farmers: [] }, overflow = {}, still = false, opts = {}, selectedId = null, got = false; // got: a scene has arrived
-    // Zoom on top of "fit to the width", and speech bubbles (each can be closed until its farmer says something new).
+    // Zoom on top of "the whole farm in the frame", and speech bubbles (each can be closed until its farmer says something new).
     const ZOOMS = [0.5, 0.75, 1, 1.25, 1.5, 2, 2.5, 3];
     const stored = key => { try { return localStorage.getItem(key); } catch { return null; } };
     const keep = (key, value) => { try { localStorage.setItem(key, value); } catch { /* this page only */ } };
@@ -603,19 +605,59 @@
       setTimeout(() => el.remove(), 1700);
     }
     function renderHud() { if (hudEl) hudEl.innerHTML = th.hud(still, zoom, saysOn); }
-    function setZoom(step) {
-      zoom = step === 0 ? 1 : ZOOMS[Math.max(0, Math.min(ZOOMS.length - 1, ZOOMS.indexOf(zoom) + step))];
+    /**
+     * Zoom changes the farm inside the frame, never the frame. The farm point under `at` (a point of
+     * the frame: its middle, or the pointer) stays where it is.
+     */
+    function setZoom(step, at) {
+      const next = step === 0 ? 1 : ZOOMS[Math.max(0, Math.min(ZOOMS.length - 1, ZOOMS.indexOf(zoom) + step))];
+      const stage = canvas?.parentElement;
+      const ax = at?.[0] ?? (viewEl?.clientWidth ?? 0) / 2, ay = at?.[1] ?? (viewEl?.clientHeight ?? 0) / 2;
+      const wx = viewEl ? (viewEl.scrollLeft + ax - stage.offsetLeft) / cs : 0, wy = viewEl ? (viewEl.scrollTop + ay - stage.offsetTop) / cs : 0;
+      zoom = next;
       keep('tracker-farm-zoom', String(zoom));
       resize();
       renderHud();
+      if (viewEl) {
+        viewEl.scrollLeft = step === 0 ? 0 : wx * cs + stage.offsetLeft - ax;
+        viewEl.scrollTop = step === 0 ? 0 : wy * cs + stage.offsetTop - ay;
+      }
     }
-    function onWheel(e) { // ⌘/Ctrl + scroll (or a trackpad pinch) zooms
+    function onWheel(e) { // ⌘/Ctrl + scroll (or a trackpad pinch) zooms around the pointer; plain scrolling moves around
       if (!e.ctrlKey && !e.metaKey) return;
       e.preventDefault();
       wheel += e.deltaY;
       if (Math.abs(wheel) < 40) return;
-      setZoom(wheel < 0 ? 1 : -1);
+      const r = viewEl.getBoundingClientRect();
+      setZoom(wheel < 0 ? 1 : -1, [e.clientX - r.left, e.clientY - r.top]);
       wheel = 0;
+    }
+    // Dragging the farm moves around it when it is bigger than the frame; a drag is never a click.
+    function onPointerDown(e) {
+      if (e.button !== 0 || e.pointerType === 'touch' || e.target.closest?.('input, textarea, select')) return;
+      dragged = false;
+      drag = { id: e.pointerId, x: e.clientX, y: e.clientY, left: viewEl.scrollLeft, top: viewEl.scrollTop, moving: false };
+    }
+    function onPointerMove(e) {
+      if (!drag || e.pointerId !== drag.id) return;
+      const dx = e.clientX - drag.x, dy = e.clientY - drag.y;
+      if (!drag.moving) {
+        if (Math.hypot(dx, dy) < 5 || (viewEl.scrollWidth <= viewEl.clientWidth && viewEl.scrollHeight <= viewEl.clientHeight)) return;
+        drag.moving = true;
+        viewEl.setPointerCapture?.(e.pointerId);
+        viewEl.classList.add('panning');
+      }
+      viewEl.scrollLeft = drag.left - dx;
+      viewEl.scrollTop = drag.top - dy;
+    }
+    function onPointerUp(e) {
+      if (!drag || e.pointerId !== drag.id) return;
+      if (drag.moving) {
+        dragged = true; // the click that follows this release is not a pick
+        setTimeout(() => { dragged = false; }, 0);
+        viewEl.classList.remove('panning');
+      }
+      drag = null;
     }
     // A hidden bubble stays hidden (as a 💬 to show it again) while its farmer is in the same situation:
     // still waiting, or no new question or reply. (A waiting farmer's text can change without it saying anything new.)
@@ -818,11 +860,13 @@
     function resize() {
       if (!canvas) return;
       const { H } = th.layout(), dpr = window.devicePixelRatio || 1;
-      // Fit the width (at most 4×); the backing store is a whole multiple of the art, and
-      // image-rendering: pixelated keeps the pixels square when the browser scales it.
-      const fit = Math.max(0.75, Math.min(4, ((host.querySelector('.px-host').clientWidth || W) - 22) / W));
-      cs = Math.max(0.5, Math.min(8, fit * zoom));
-      const k = Math.max(1, Math.ceil(cs * dpr));
+      // 100% fits the whole farm in the frame (its outer size, so scrollbars coming and going don't
+      // change it); zoom scales the farm inside. The backing store is a whole multiple of the art,
+      // at most ~24M pixels, and image-rendering: pixelated keeps the pixels square when scaled.
+      const fw = viewEl?.offsetWidth || W, fh = viewEl?.offsetHeight || 0;
+      const fit = Math.max(0.5, Math.min(6, (fw - 4) / W, fh > 60 ? (fh - 4) / H : Infinity));
+      cs = Math.max(0.25, Math.min(18, fit * zoom));
+      const k = Math.max(1, Math.min(Math.ceil(cs * dpr), Math.floor(Math.sqrt(24e6 / (W * H)))));
       canvas.width = W * k;
       canvas.height = H * k;
       canvas.style.width = `${W * cs}px`;
@@ -851,6 +895,7 @@
       startLoop();
     }
     function onClick(e) {
+      if (dragged) { dragged = false; e.stopPropagation(); return; }
       const tag = e.target.closest?.('[data-farmer]');
       if (tag) { e.stopPropagation(); opts.onPickAgent?.(tag.dataset.farmer); return; }
       if (e.target.closest?.('[data-farm-more]')) { e.stopPropagation(); opts.onShowRepos?.(); return; }
@@ -912,11 +957,12 @@
         still = opts.still ?? false;
         // The diary goes where the page asks (its sidebar), else under the farm.
         const under = opts.diary ? '' : '<div class="px-under"><div><h4>Farm diary</h4><ol class="px-log"></ol></div></div>';
-        host.innerHTML = `<div class="px"><div class="px-host"><div class="px-hud"></div><div class="px-stage"><canvas aria-label="Pixel farm: every farmer is an agent, every field a repo"></canvas><div class="px-ov"></div>${got ? '' : '<div class="px-loading"><span class="spinner"></span>Loading the farm…</div>'}</div></div>
+        host.innerHTML = `<div class="px"><div class="px-host"><div class="px-hud"></div><div class="px-view"><div class="px-stage"><canvas aria-label="Pixel farm: every farmer is an agent, every field a repo"></canvas><div class="px-ov"></div>${got ? '' : '<div class="px-loading"><span class="spinner"></span>Loading the farm…</div>'}</div></div></div>
           ${under}</div>
           <dialog class="px-help" aria-label="How to read the farm"><header><b>How to read the farm</b><button type="button" class="x" data-farm-help-close aria-label="Close">×</button></header>${helpHtml()}</dialog>`;
         canvas = host.querySelector('canvas');
         ctx = canvas.getContext('2d');
+        viewEl = host.querySelector('.px-view');
         ov = host.querySelector('.px-ov');
         logEl = opts.diary ?? host.querySelector('.px-log');
         hudEl = host.querySelector('.px-hud');
@@ -930,7 +976,11 @@
         ro = new ResizeObserver(() => resize());
         ro.observe(host);
         host.addEventListener('click', onClick);
-        host.querySelector('.px-stage').addEventListener('wheel', onWheel, { passive: false });
+        viewEl.addEventListener('wheel', onWheel, { passive: false });
+        viewEl.addEventListener('pointerdown', onPointerDown);
+        viewEl.addEventListener('pointermove', onPointerMove);
+        viewEl.addEventListener('pointerup', onPointerUp);
+        viewEl.addEventListener('pointercancel', onPointerUp);
         document.addEventListener('visibilitychange', onVisibility);
         renderLog();
         renderHud();
@@ -952,7 +1002,8 @@
         if (host) host.innerHTML = '';
         for (const b of bots.values()) { b.tag = null; b.tagText = ''; }
         says.clear();
-        host = canvas = ctx = ov = logEl = hudEl = null;
+        host = canvas = ctx = ov = logEl = hudEl = viewEl = null;
+        drag = null;
       },
       resume: () => { if (still) redrawStill(); else startLoop(); },
       isStill: () => still,

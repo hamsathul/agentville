@@ -44,7 +44,7 @@ how much CPU and memory each one uses.
   (answer its question or permission prompt, message it with screenshots, the conversation newest
   first), **Activity** (its tool steps), **Files** (its folder, scratchpad and memory) and **Diary**
   (who went where). Speech bubbles over the farmers show what each last said (its question when
-  it waits on you); × hides one to a 💬 that shows it again, and the Bubbles switch hides or shows them all. Zoom with − / + or ⌘/Ctrl + scroll. Click a field for a close-up of the files agents touched there.
+  it waits on you); × hides one to a 💬 that shows it again, and the Bubbles switch hides or shows them all. The farm fits its frame; − / + (or ⌘/Ctrl + scroll, or a pinch) zooms it inside the frame, and you drag or scroll to move around. Click a field for a close-up of the files agents touched there.
   It pauses when hidden and follows the system's reduce-motion setting.
 - **Start or resume sessions** (＋ Session in the top bar): start Claude Code in a folder you
   have worked in, or resume a session from the last 30 days by its title and last message. It

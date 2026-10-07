@@ -214,11 +214,25 @@ try {
   await js(`document.querySelector('.px-say-min[data-say="ui-asker"] [data-say-open]').click()`);
   check(await until(`!!document.querySelector('.px-say[data-say="ui-asker"]') && !document.querySelector('.px-say-min')`), 'the 💬 shows the bubble again');
   const width = () => js("parseFloat(document.querySelector('#farm canvas').style.width)");
-  const fit = await width();
+  const frameBox = () => js("JSON.stringify((({ left, top, width, height }) => [left, top, width, height].map(Math.round))(document.querySelector('#farm .px-view').getBoundingClientRect()))");
+  const view = expr => js(`(v => ${expr})(document.querySelector('#farm .px-view'))`);
+  check(await js("(() => { const v = document.querySelector('#farm .px-view').getBoundingClientRect(), c = document.querySelector('#farm canvas').getBoundingClientRect(); return c.width <= v.width + 1 && c.height <= v.height + 1 && v.bottom <= innerHeight && document.documentElement.scrollHeight <= innerHeight; })()"), 'at 100% the whole farm fits in a frame that fits the screen');
+  const fit = await width(), frame = await frameBox();
   await js("document.querySelector('[data-farm-zoom=\"1\"]').click()");
-  check(await width() > fit, 'zooming in makes the farm bigger');
+  await js("document.querySelector('[data-farm-zoom=\"1\"]').click()");
+  check(await width() > fit && (await frameBox()) === frame, `zooming in makes the farm bigger inside the same frame (${frame} → ${await frameBox()})`);
+  check(await view('v.scrollLeft > 0 && v.scrollTop > 0 && v.scrollWidth > v.clientWidth'), 'it zooms around the middle of the view, which now scrolls');
+  const picked = () => js("document.querySelector('.px-tag.sel')?.dataset.farmer ?? ''");
+  const pickedBefore = await picked(), left0 = await view('v.scrollLeft');
+  const [mx, my] = JSON.parse(await view('JSON.stringify((r => [Math.round(r.left + r.width / 2), Math.round(r.top + r.height / 2)])(v.getBoundingClientRect()))'));
+  const mouse = (type, x, y, extra = {}) => send('Input.dispatchMouseEvent', { type, x, y, button: 'left', ...extra });
+  await mouse('mousePressed', mx, my, { buttons: 1, clickCount: 1 });
+  for (let i = 1; i <= 6; i++) await mouse('mouseMoved', mx - i * 20, my, { buttons: 1 });
+  await mouse('mouseReleased', mx - 120, my, { buttons: 0, clickCount: 1 });
+  const left1 = await view('v.scrollLeft');
+  check(Math.abs(left1 - left0 - 120) <= 2 && (await picked()) === pickedBefore, `dragging moves around the farm and picks nobody (scrolled ${left0} → ${left1})`);
   await js("document.querySelector('[data-farm-zoom=\"0\"]').click()");
-  check(await width() === fit, 'the zoom reading fits the farm back to the width');
+  check(await width() === fit && (await frameBox()) === frame && await view('v.scrollWidth <= v.clientWidth'), 'the zoom reading fits the whole farm back in the frame');
   await js(`document.querySelector('.px-say[data-say="ui-done-a"] [data-say-close]').click()`);
   await js("document.querySelector('[data-farm-bubbles]').click()");
   check(/Bubbles: off/.test(await js("document.querySelector('[data-farm-bubbles]').textContent")) && await until("!document.querySelector('.px-say, .px-say-min')"), 'the bubbles switch hides them all');
@@ -266,13 +280,15 @@ try {
   check(errors.length === 0, `no page errors${errors.length ? `: ${errors.join(' | ')}` : ''}`);
 } finally {
   ws?.close();
+  const chromeGone = chrome.exitCode !== null ? Promise.resolve() : new Promise(r => chrome.once('exit', r));
   chrome.kill();
+  await Promise.race([chromeGone, sleep(5000)]); // Chrome writes its profile on the way out
   worker.kill();
   doneA.kill();
   doneB.kill();
   clearInterval(fakeMod);
   await handle.stop();
-  rmSync(temp, { recursive: true, force: true });
+  rmSync(temp, { recursive: true, force: true, maxRetries: 5, retryDelay: 200 });
 }
 
 console.log(failures.length ? `\n${failures.length} check(s) failed` : '\nPASS');
