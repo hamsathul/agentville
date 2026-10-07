@@ -4,90 +4,190 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Agent Tracker</title>
-<script>try { const t = localStorage.getItem('tracker-theme'); if (t === 'light' || t === 'dark') document.documentElement.dataset.theme = t; } catch {}</script>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='15' fill='%231a1a19'/%3E%3Cpath d='M9 38h11l6-15 8 26 6-17 4 6h11' fill='none' stroke='%230ca30c' stroke-width='5' stroke-linecap='round' stroke-linejoin='round'/%3E%3Ccircle cx='50' cy='15' r='7' fill='%23d03b3b'/%3E%3C/svg%3E">
+<script>(() => { let t = 'dark'; try { t = localStorage.getItem('tracker-theme') || 'dark'; } catch {} if (t === 'light' || t === 'dark') document.documentElement.dataset.theme = t; })();</script>
 <style>
+/* Mission control. Dark first; Auto follows macOS; the header button pins Light or Dark.
+   Palette: validated reference instance (categorical slots per agent, reserved status
+   colours with icon + label, single-hue blue ramp for activity). */
 :root {
-  --bg: #f5f5f7; --panel: #ffffff; --line: #d9d9de; --text: #1d1d1f; --muted: #6e6e73; --faint: #a1a1a6;
-  --red: #d70015; --red-bg: rgba(255, 59, 48, .12); --amber: #b25000; --amber-bg: rgba(255, 159, 10, .16);
-  --green: #1f8a3b; --green-bg: rgba(52, 199, 89, .14); --blue: #0066cc; --blue-bg: rgba(10, 132, 255, .12);
   color-scheme: light;
+  --page: #f9f9f7; --panel: #fcfcfb; --panel-2: #f1f0ec; --line: rgba(11, 11, 11, .10);
+  --grid: #e1e0d9; --axis: #c3c2b7; --text: #0b0b0b; --muted: #52514e; --faint: #898781;
+  --good: #0ca30c; --good-text: #006300; --warn: #fab219; --serious: #ec835a; --crit: #d03b3b;
+  --accent: #2a78d6; --track: #e4e9f1;
+  --s1: #2a78d6; --s2: #eb6834; --s3: #1baf7a; --s4: #eda100; --s5: #e87ba4; --s6: #008300; --s7: #4a3aa7; --s8: #e34948; --s-other: #898781;
+  --q0: #eceae4; --q1: #cde2fb; --q2: #9ec5f4; --q3: #5598e7; --q4: #256abf;
 }
-/* Auto follows macOS; the header button pins Light or Dark (data-theme on <html>). */
 @media (prefers-color-scheme: dark) {
-  :root:not([data-theme="light"]) { --bg: #161618; --panel: #222225; --line: #3a3a3e; --text: #f2f2f4; --muted: #a1a1a6; --faint: #6e6e73;
-    --red: #ff6961; --amber: #ffb340; --green: #4cd964; --blue: #64a8ff; color-scheme: dark; }
+  :root:not([data-theme="light"]) {
+    color-scheme: dark;
+    --page: #0d0d0d; --panel: #1a1a19; --panel-2: #242422; --line: rgba(255, 255, 255, .10);
+    --grid: #2c2c2a; --axis: #383835; --text: #ffffff; --muted: #c3c2b7; --faint: #898781; --good-text: #0ca30c;
+    --accent: #3987e5; --track: #262a31;
+    --s1: #3987e5; --s2: #d95926; --s3: #199e70; --s4: #c98500; --s5: #d55181; --s6: #008300; --s7: #9085e9; --s8: #e66767;
+    --q0: #262624; --q1: #104281; --q2: #1c5cab; --q3: #2a78d6; --q4: #6da7ec;
+  }
 }
-:root[data-theme="dark"] { --bg: #161618; --panel: #222225; --line: #3a3a3e; --text: #f2f2f4; --muted: #a1a1a6; --faint: #6e6e73;
-    --red: #ff6961; --amber: #ffb340; --green: #4cd964; --blue: #64a8ff; color-scheme: dark; }
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --page: #0d0d0d; --panel: #1a1a19; --panel-2: #242422; --line: rgba(255, 255, 255, .10);
+  --grid: #2c2c2a; --axis: #383835; --text: #ffffff; --muted: #c3c2b7; --faint: #898781; --good-text: #0ca30c;
+  --accent: #3987e5; --track: #262a31;
+  --s1: #3987e5; --s2: #d95926; --s3: #199e70; --s4: #c98500; --s5: #d55181; --s6: #008300; --s7: #9085e9; --s8: #e66767;
+  --q0: #262624; --q1: #104281; --q2: #1c5cab; --q3: #2a78d6; --q4: #6da7ec;
+}
 * { box-sizing: border-box; }
-body { margin: 0; font: 13px/1.4 -apple-system, BlinkMacSystemFont, system-ui, sans-serif; background: var(--bg); color: var(--text); }
-header { position: sticky; top: 0; z-index: 2; display: flex; flex-wrap: wrap; gap: 8px; align-items: center; padding: 10px 16px; background: var(--panel); border-bottom: 1px solid var(--line); }
-h1 { font-size: 14px; margin: 0 8px 0 0; }
-.pill { display: inline-block; padding: 2px 8px; border-radius: 999px; font-size: 12px; font-weight: 600; white-space: nowrap; }
-.p-waiting { background: var(--red-bg); color: var(--red); }
-.p-working { background: var(--green-bg); color: var(--green); }
-.p-yourTurn { background: var(--blue-bg); color: var(--blue); }
-.p-stale, .p-idle { border: 1px solid var(--line); color: var(--muted); }
-.p-collision { background: var(--amber-bg); color: var(--amber); }
-.p-err { background: var(--red-bg); color: var(--red); font-weight: 500; }
+body { margin: 0; font: 13px/1.45 system-ui, -apple-system, "Segoe UI", sans-serif; background: var(--page); color: var(--text); }
+header.top { position: sticky; top: 0; z-index: 3; display: flex; flex-wrap: wrap; gap: 10px; align-items: center; padding: 10px 18px; background: color-mix(in srgb, var(--page) 88%, transparent); backdrop-filter: blur(10px); border-bottom: 1px solid var(--line); }
+.brand { display: flex; align-items: center; gap: 9px; font-weight: 700; font-size: 15px; letter-spacing: .01em; }
+.brand svg { width: 22px; height: 22px; display: block; }
+.live { display: inline-flex; align-items: center; gap: 6px; font-size: 11px; font-weight: 700; color: var(--good-text); text-transform: uppercase; letter-spacing: .1em; }
+.live i { width: 7px; height: 7px; border-radius: 50%; background: var(--good); box-shadow: 0 0 10px var(--good); animation: pulse 1.6s infinite; }
+.live.off { color: var(--faint); }
+.live.off i { background: var(--faint); box-shadow: none; animation: none; }
 .grow { flex: 1; }
 .muted { color: var(--muted); }
+.faint { color: var(--faint); }
 .mono { font-family: ui-monospace, Menlo, monospace; font-size: 12px; }
-main { display: grid; grid-template-columns: minmax(0, 1fr) 300px; gap: 16px; padding: 16px; }
-main.with-drawer { grid-template-columns: minmax(0, 1fr) minmax(0, 1.2fr); }
-@media (max-width: 860px) { main, main.with-drawer { grid-template-columns: 1fr; } }
-.sec { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); margin: 14px 0 6px; }
-.row { display: block; width: 100%; text-align: left; font: inherit; color: inherit; background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 8px 10px; margin-bottom: 6px; cursor: pointer; }
-.row:hover { border-color: var(--faint); }
-.row.sel { outline: 2px solid var(--blue); outline-offset: -1px; }
-.row.waiting { border-left: 4px solid var(--red); }
+@keyframes pulse { 50% { opacity: .3; } }
+.wrap { display: grid; gap: 14px; padding: 16px 18px 28px; }
+.kpis { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; }
+.kpi { position: relative; overflow: hidden; background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 12px 14px 12px 18px; }
+.kpi::before { content: ''; position: absolute; inset: 0 auto 0 0; width: 4px; background: var(--k); }
+.kpi.hot { box-shadow: 0 0 0 1px color-mix(in srgb, var(--k) 50%, transparent), 0 0 26px -8px var(--k); }
+.kpi-top { display: flex; align-items: center; gap: 6px; color: var(--muted); font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: .08em; }
+.kpi .val { font-size: 36px; font-weight: 650; line-height: 1.1; margin-top: 4px; }
+.kpi .sub { color: var(--faint); font-size: 12px; min-height: 17px; }
+.k-waiting { --k: var(--crit); } .k-working { --k: var(--good); } .k-turn { --k: var(--warn); } .k-collide { --k: var(--serious); }
+.fleet { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.5fr) minmax(0, .8fr); gap: 12px; }
+.panel { background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 12px 14px; }
+.ptitle { display: flex; align-items: baseline; gap: 8px; font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: .08em; color: var(--muted); margin-bottom: 9px; }
+.ptitle .pv { margin-left: auto; text-transform: none; letter-spacing: 0; font-size: 12px; color: var(--text); font-weight: 650; }
+.stack { display: flex; gap: 2px; height: 14px; }
+.stack > i { display: block; height: 100%; min-width: 3px; }
+.stack > i:first-child { border-radius: 4px 0 0 4px; }
+.stack > i:last-child { border-radius: 0 4px 4px 0; }
+.stack > i:only-child { border-radius: 4px; }
+.stack > i.rest { background: var(--q0); }
+.legend { display: flex; flex-wrap: wrap; gap: 4px 12px; margin-top: 9px; font-size: 12px; color: var(--muted); }
+.legend span { display: inline-flex; align-items: center; gap: 5px; }
+.legend b { color: var(--text); font-weight: 650; }
+.key { width: 10px; height: 10px; border-radius: 3px; display: inline-block; flex: none; }
+main { display: grid; grid-template-columns: minmax(0, 1fr) 330px; gap: 14px; align-items: start; }
+main.with-drawer { grid-template-columns: minmax(0, 1fr) minmax(0, 1.3fr); }
+@media (max-width: 1000px) {
+  .kpis { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .fleet, main, main.with-drawer { grid-template-columns: 1fr; }
+}
+.sec { display: flex; align-items: center; gap: 8px; font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: .08em; color: var(--muted); margin: 16px 0 8px; }
+.sec:first-child { margin-top: 0; }
+.allclear { display: flex; align-items: center; gap: 8px; padding: 10px 12px; border: 1px dashed var(--line); border-radius: 12px; color: var(--muted); margin-bottom: 4px; }
+.allclear b { color: var(--good-text); }
+.row { position: relative; overflow: hidden; display: block; width: 100%; text-align: left; font: inherit; color: inherit; background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 10px 12px 10px 17px; margin-bottom: 8px; cursor: pointer; }
+.row::before { content: ''; position: absolute; inset: 0 auto 0 0; width: 4px; background: var(--st, var(--axis)); }
+.row:hover { border-color: color-mix(in srgb, var(--text) 28%, transparent); }
+.row.sel { box-shadow: 0 0 0 2px var(--accent); }
+.row.waiting { --st: var(--crit); box-shadow: 0 0 26px -10px var(--crit); }
+.row.waiting.sel { box-shadow: 0 0 0 2px var(--accent), 0 0 26px -10px var(--crit); }
+.row.working { --st: var(--good); }
+.row.yourTurn { --st: var(--warn); }
 .row.stale { opacity: .6; }
-.ask { border: 1px solid var(--red); background: var(--red-bg); border-radius: 8px; padding: 10px 12px; margin: 10px 0; }
-.ask fieldset { border: 0; padding: 0; margin: 0 0 10px; }
-.ask legend { font-weight: 600; margin-bottom: 4px; padding: 0; }
-.ask label.opt { display: block; margin: 3px 0; cursor: pointer; }
-.ask input.other { width: 100%; margin-top: 4px; padding: 5px 8px; border: 1px solid var(--line); border-radius: 6px; background: var(--panel); color: var(--text); font: inherit; }
-.act.primary { border-color: var(--blue); color: var(--blue); font-weight: 600; }
-.top { display: flex; gap: 8px; align-items: baseline; min-width: 0; }
-.name { font-weight: 600; }
-.ticker { display: flex; gap: 6px; align-items: center; margin-top: 3px; color: var(--muted); overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
-.pulse { width: 7px; height: 7px; border-radius: 50%; background: var(--green); flex: none; animation: pulse 1.2s infinite; }
-@keyframes pulse { 50% { opacity: .25; } }
-.card { background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 8px 10px; margin-bottom: 6px; }
-.card.collide { border-color: var(--amber); }
-.drawer { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 12px 14px; align-self: start; position: sticky; top: 64px; max-height: calc(100vh - 80px); overflow: auto; }
-.now { border: 1px solid var(--green); background: var(--green-bg); border-radius: 6px; padding: 6px 8px; }
-.feed > div { display: grid; grid-template-columns: 64px minmax(0, 1fr) auto; gap: 8px; padding: 3px 0; border-bottom: 1px dashed var(--line); }
+.row .top { display: flex; align-items: center; gap: 8px; min-width: 0; }
+.swatch { width: 10px; height: 10px; border-radius: 3px; flex: none; }
+.name { font-weight: 650; font-size: 14px; white-space: nowrap; }
+.path { color: var(--faint); font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
+.chip { display: inline-flex; align-items: center; gap: 4px; padding: 1px 8px; border-radius: 999px; font-size: 11px; font-weight: 650; white-space: nowrap; color: var(--text); border: 1px solid color-mix(in srgb, var(--c) 55%, transparent); background: color-mix(in srgb, var(--c) 16%, transparent); }
+.c-waiting { --c: var(--crit); } .c-working { --c: var(--good); } .c-yourTurn { --c: var(--warn); } .c-stale, .c-idle, .c-plain { --c: var(--faint); } .c-serious { --c: var(--serious); }
+.c-good { --c: var(--good); } .c-warn { --c: var(--warn); } .c-crit { --c: var(--crit); }
+.chip.live-dot::before { content: ''; width: 6px; height: 6px; border-radius: 50%; background: var(--c); animation: pulse 1.2s infinite; }
+.ticker { margin-top: 5px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; display: flex; gap: 6px; align-items: center; }
+.pulse { width: 7px; height: 7px; border-radius: 50%; background: var(--good); box-shadow: 0 0 8px var(--good); flex: none; animation: pulse 1.2s infinite; }
+.metrics { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 14px; margin-top: 9px; }
+.m { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: center; gap: 7px; font-size: 11px; }
+.ml { color: var(--faint); text-transform: uppercase; letter-spacing: .07em; font-weight: 700; font-size: 10px; }
+.mv { font-weight: 650; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.spark { width: 100%; height: 22px; display: block; overflow: visible; }
+.meter { display: block; height: 8px; border-radius: 4px; background: var(--track); overflow: hidden; }
+.meter > i { display: block; height: 100%; border-radius: 4px; background: var(--accent); }
+.meter.warn > i { background: var(--warn); }
+.meter.crit > i { background: var(--crit); }
+.heat { display: grid; grid-template-columns: repeat(30, minmax(0, 1fr)); gap: 2px; margin-top: 9px; }
+.h { display: block; height: 9px; border-radius: 2px; }
+.h0 { background: var(--q0); } .h1 { background: var(--q1); } .h2 { background: var(--q2); } .h3 { background: var(--q3); } .h4 { background: var(--q4); }
+.heat-label { display: flex; justify-content: space-between; font-size: 10px; color: var(--faint); margin-top: 3px; }
+.card { position: relative; overflow: hidden; background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 10px 12px 10px 16px; margin-bottom: 8px; }
+.card::before { content: ''; position: absolute; inset: 0 auto 0 0; width: 4px; background: var(--cs, var(--axis)); }
+.card.collide { --cs: var(--serious); box-shadow: 0 0 22px -10px var(--serious); }
+.card .top { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.badges { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 7px; }
+.drawer { background: var(--panel); border: 1px solid var(--line); border-radius: 14px; padding: 14px 16px; position: sticky; top: 64px; max-height: calc(100vh - 80px); overflow: auto; }
+.drawer .head { display: flex; align-items: center; gap: 9px; }
+.drawer .head .name { font-size: 16px; }
+.charts { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; margin-top: 4px; }
+@media (max-width: 1300px) { .charts { grid-template-columns: 1fr; } }
+.chartbox { background: var(--page); border: 1px solid var(--line); border-radius: 10px; padding: 9px 10px 4px; }
+.chart { width: 100%; height: auto; display: block; touch-action: none; }
+.chart text { font-size: 10px; fill: var(--faint); font-family: inherit; font-variant-numeric: tabular-nums; }
+.chart .grid { stroke: var(--grid); stroke-width: 1; }
+.chart .line { fill: none; stroke-width: 2; stroke-linejoin: round; stroke-linecap: round; }
+.chart .area { opacity: .1; }
+.chart .xh { stroke: var(--axis); stroke-width: 1; opacity: 0; }
+.chart .xd { opacity: 0; stroke: var(--panel); stroke-width: 2; }
+.timeline { background: var(--page); border: 1px solid var(--line); border-radius: 10px; padding: 6px 10px 2px; }
+.now { border: 1px solid color-mix(in srgb, var(--good) 60%, transparent); background: color-mix(in srgb, var(--good) 10%, transparent); border-radius: 8px; padding: 6px 9px; display: flex; gap: 7px; align-items: center; }
+.feed > div { display: grid; grid-template-columns: 62px minmax(0, 1fr) 120px; gap: 8px; align-items: center; padding: 4px 0; border-bottom: 1px solid var(--grid); }
 .feed .t { color: var(--faint); }
-.ok { color: var(--green); }
-.bad { color: var(--red); }
-.spark { display: inline-flex; align-items: flex-end; gap: 2px; height: 24px; vertical-align: bottom; }
-.spark i { width: 4px; background: var(--blue); opacity: .75; border-radius: 1px; }
-.act { display: inline-block; font: inherit; padding: 4px 10px; border: 1px solid var(--line); border-radius: 6px; background: var(--bg); color: var(--text); cursor: pointer; margin: 0 6px 6px 0; text-decoration: none; }
-.act:hover { border-color: var(--faint); }
-.banner { display: none; padding: 8px 16px; background: var(--amber-bg); color: var(--amber); font-weight: 600; }
-.banner.show { display: block; }
-dialog { border: 1px solid var(--line); border-radius: 10px; background: var(--panel); color: var(--text); max-width: 480px; }
-dialog::backdrop { background: rgba(0, 0, 0, .35); }
-.child { margin: 4px 0; }
+.feed .what { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.dur { display: inline-flex; align-items: center; gap: 6px; font-size: 11px; font-weight: 650; font-variant-numeric: tabular-nums; }
+.dur i { display: block; height: 6px; border-radius: 3px; background: var(--good); }
+.dur.bad i { background: var(--crit); }
+.pill { display: inline-block; padding: 2px 8px; border-radius: 999px; font-size: 11px; font-weight: 650; white-space: nowrap; border: 1px solid var(--line); color: var(--muted); }
+.p-err { color: var(--text); border-color: color-mix(in srgb, var(--crit) 55%, transparent); background: color-mix(in srgb, var(--crit) 16%, transparent); }
+.act { display: inline-flex; align-items: center; gap: 5px; font: inherit; font-weight: 600; padding: 5px 11px; border: 1px solid var(--line); border-radius: 8px; background: var(--panel-2); color: var(--text); cursor: pointer; margin: 0 6px 6px 0; text-decoration: none; }
+.act:hover { border-color: color-mix(in srgb, var(--text) 30%, transparent); }
+.act.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+.ask { border: 1px solid color-mix(in srgb, var(--crit) 60%, transparent); background: color-mix(in srgb, var(--crit) 9%, transparent); border-radius: 12px; padding: 11px 13px; margin: 12px 0; box-shadow: 0 0 28px -12px var(--crit); }
+.ask fieldset { border: 0; padding: 0; margin: 0 0 10px; }
+.ask legend { font-weight: 650; margin-bottom: 5px; padding: 0; }
+.ask label.opt { display: flex; gap: 7px; align-items: baseline; margin: 4px 0; cursor: pointer; }
+.ask input.other { width: 100%; margin-top: 5px; padding: 6px 9px; border: 1px solid var(--line); border-radius: 8px; background: var(--panel); color: var(--text); font: inherit; }
+.child { margin: 5px 0; }
 .empty { color: var(--faint); padding: 4px 2px; }
+details.data { margin-top: 8px; font-size: 12px; color: var(--muted); }
+details.data table { border-collapse: collapse; margin-top: 6px; font-variant-numeric: tabular-nums; }
+details.data td, details.data th { padding: 2px 10px 2px 0; text-align: left; }
+.banner { display: none; padding: 8px 18px; background: color-mix(in srgb, var(--warn) 18%, transparent); color: var(--text); font-weight: 600; border-bottom: 1px solid var(--line); }
+.banner.show { display: block; }
+.tip { position: fixed; z-index: 20; pointer-events: none; background: var(--panel-2); color: var(--text); border: 1px solid var(--line); border-radius: 8px; padding: 5px 9px; font-size: 12px; font-weight: 600; box-shadow: 0 8px 24px rgba(0, 0, 0, .3); opacity: 0; white-space: nowrap; }
+.tip.show { opacity: 1; }
+dialog { border: 1px solid var(--line); border-radius: 12px; background: var(--panel); color: var(--text); max-width: 480px; }
+dialog::backdrop { background: rgba(0, 0, 0, .45); }
 </style>
 </head>
 <body>
-<header>
-  <h1>Agent Tracker</h1>
-  <span id="counts"></span>
+<header class="top">
+  <div class="brand">
+    <svg viewBox="0 0 64 64" aria-hidden="true"><rect width="64" height="64" rx="15" fill="#1a1a19"/><path d="M9 38h11l6-15 8 26 6-17 4 6h11" fill="none" stroke="#0ca30c" stroke-width="5" stroke-linecap="round" stroke-linejoin="round"/><circle cx="50" cy="15" r="7" fill="#d03b3b"/></svg>
+    Agent Tracker
+  </div>
+  <span id="live" class="live"><i></i>live</span>
   <span class="grow"></span>
   <span id="errors"></span>
-  <span id="meta" class="muted"></span>
-  <button class="act" id="theme-toggle" type="button" style="margin:0">◐ Auto</button>
+  <span id="meta" class="faint"></span>
+  <button class="act" id="theme-toggle" type="button" style="margin:0">☾ Dark</button>
 </header>
 <div id="banner" class="banner">Disconnected from the collector — retrying…</div>
 <div id="notice" class="banner"></div>
-<main id="main">
-  <section id="list"></section>
-  <aside id="side"></aside>
-</main>
+<div class="wrap">
+  <section id="kpis" class="kpis"></section>
+  <section id="fleet" class="fleet"></section>
+  <main id="main">
+    <section id="list"></section>
+    <aside id="side"></aside>
+  </main>
+</div>
+<div id="tip" class="tip" role="tooltip"></div>
 <dialog id="cleanup">
   <h3>Remove stale background sessions</h3>
   <p class="muted">Runs <span class="mono">claude rm</span> for each one you tick. Removal is permanent: the session and its conversation are deleted.</p>
@@ -99,6 +199,7 @@ dialog::backdrop { background: rgba(0, 0, 0, .35); }
 <script>
 const TOKEN = '__TRACKER_TOKEN__';
 const GROUPS = [['waiting', 'Waiting on you'], ['working', 'Working'], ['yourTurn', 'Your turn'], ['stale', 'Stale (no activity for 24h+)'], ['idle', 'Idle']];
+const STATE_CHIP = { waiting: '❓ Waiting on you', working: '▶ Working', yourTurn: '↩ Your turn', stale: '◌ Stale', idle: '◌ Idle' };
 let snap = null;
 const drafts = new Map(); // toolUseId → { picks: Map<question index, Set<label>>, other: Map<question index, text> }
 let selected = null;
@@ -108,8 +209,9 @@ const openChildren = new Map();
 const $ = id => document.getElementById(id);
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 const clock = ms => new Date(ms).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+const hhmm = ms => new Date(ms).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
 const ago = ms => (!ms ? '' : Date.now() - ms < 86_400_000 ? clock(ms) : new Date(ms).toLocaleDateString([], { month: 'short', day: 'numeric' }));
-const gb = mb => (mb >= 1024 ? `${(mb / 1024).toFixed(1)} GB` : `${mb} MB`);
+const gb = mb => (mb >= 1024 ? `${(mb / 1024).toFixed(1)} GB` : `${Math.round(mb)} MB`);
 const short = p => String(p ?? '').replace(/^\/Users\/[^/]+/, '~');
 const shellQuote = s => `'${String(s).replace(/'/g, `'\\''`)}'`;
 
@@ -119,30 +221,153 @@ function elapsed(from) {
   return m >= 60 ? `${Math.floor(m / 60)}h${String(m % 60).padStart(2, '0')}m` : `${m}:${String(s % 60).padStart(2, '0')}`;
 }
 
+// Colour follows the agent, never its rank: each agent keeps its categorical slot while it is
+// on screen; a slot is freed only when its agent goes away. Past eight agents, "other" grey.
+const agentSlots = new Map();
+function syncSlots(agents) {
+  const live = new Set(agents.map(a => a.id));
+  for (const id of [...agentSlots.keys()]) if (!live.has(id)) agentSlots.delete(id);
+  for (const a of agents) {
+    if (agentSlots.has(a.id)) continue;
+    const used = new Set(agentSlots.values());
+    let slot = 'other';
+    for (let i = 1; i <= 8; i++) if (!used.has(i)) { slot = i; break; }
+    agentSlots.set(a.id, slot);
+  }
+}
+const colorOf = id => (agentSlots.get(id) === 'other' || !agentSlots.has(id) ? 'var(--s-other)' : `var(--s${agentSlots.get(id)})`);
+
 function updateTimers() {
   for (const el of document.querySelectorAll('[data-since]')) el.textContent = elapsed(Number(el.dataset.since));
   for (const el of document.querySelectorAll('[data-until]')) el.textContent = `${Math.max(0, Math.ceil((Number(el.dataset.until) - Date.now()) / 1000))}s`;
   if (snap) {
-    const ram = snap.agents.reduce((t, a) => t + (a.proc?.rssMb ?? 0), 0);
     const age = Math.max(0, Math.round((Date.now() - snap.generatedAt) / 1000));
-    $('meta').textContent = `agents RAM ${gb(ram)} · tracker ${snap.collector.cpu}% CPU, ${snap.collector.rssMb} MB · updated ${age}s ago`;
+    $('meta').textContent = `tracker ${snap.collector.cpu}% CPU · ${snap.collector.rssMb} MB · updated ${age}s ago`;
   }
 }
 
-function render() {
-  if (!snap) return;
+/* ---------- marks ---------- */
+
+function sparkline(values, color, floorMax) {
+  const W = 100, H = 22;
+  if (!values?.length) return `<svg class="spark" viewBox="0 0 ${W} ${H}" preserveAspectRatio="none"></svg>`;
+  const top = Math.max(floorMax ?? 0, ...values, 1);
+  const n = values.length;
+  const pts = values.map((v, i) => [n === 1 ? W : (i / (n - 1)) * W, H - 2 - (Math.min(v, top) / top) * (H - 4)]);
+  const d = pts.map((p, i) => `${i ? 'L' : 'M'}${p[0].toFixed(1)},${p[1].toFixed(1)}`).join('');
+  return `<svg class="spark" viewBox="0 0 ${W} ${H}" preserveAspectRatio="none" aria-hidden="true">
+    <path d="${d}L${W},${H}L${pts[0][0].toFixed(1)},${H}Z" fill="${color}" opacity=".12"/>
+    <path d="${d}" fill="none" stroke="${color}" stroke-width="2" vector-effect="non-scaling-stroke" stroke-linejoin="round" stroke-linecap="round"/></svg>`;
+}
+
+function meter(fraction, severity, tip) {
+  const pct = Math.max(2, Math.min(100, fraction * 100));
+  return `<span class="meter ${severity}" data-tip="${esc(tip)}"><i style="width:${pct.toFixed(1)}%"></i></span>`;
+}
+const severityOf = (ratio, warnAt, critAt) => (ratio < warnAt ? 'ok' : ratio < critAt ? 'warn' : 'crit');
+
+function heatStrip(activity) {
+  const counts = activity?.length === 30 ? activity : new Array(30).fill(0);
+  const now = Date.now();
+  const cells = counts.map((n, i) => {
+    const level = n === 0 ? 0 : n === 1 ? 1 : n <= 3 ? 2 : n <= 7 ? 3 : 4;
+    return `<i class="h h${level}" data-tip="${hhmm(now - (29 - i) * 60_000)} · ${n} tool call${n === 1 ? '' : 's'}"></i>`;
+  }).join('');
+  return `<div class="heat" role="img" aria-label="Tool calls per minute over the last 30 minutes">${cells}</div>
+    <div class="heat-label"><span>30 min ago</span><span>tool calls per minute</span><span>now</span></div>`;
+}
+
+function niceMax(v) {
+  const p = 10 ** Math.floor(Math.log10(Math.max(v, 1)));
+  for (const m of [1, 2, 2.5, 5, 10]) if (m * p >= v) return m * p;
+  return 10 * p;
+}
+
+/** A 10-minute line chart with hairline grid, end dot, crosshair and tooltip. One measure per chart. */
+function lineChart(title, at, values, color, format) {
+  if (!values?.length) return `<div class="chartbox"><div class="ptitle">${esc(title)}</div><div class="empty">No samples yet.</div></div>`;
+  const W = 560, H = 150, L = 46, R = 12, T = 10, B = 22;
+  const now = Date.now(), t0 = now - 10 * 60_000;
+  const maxV = niceMax(Math.max(...values));
+  const x = t => L + Math.max(0, Math.min(1, (t - t0) / (now - t0))) * (W - L - R);
+  const y = v => T + (1 - Math.min(v, maxV) / maxV) * (H - T - B);
+  const pts = values.map((v, i) => [x(at[i]), y(v)]);
+  const d = pts.map((p, i) => `${i ? 'L' : 'M'}${p[0].toFixed(1)},${p[1].toFixed(1)}`).join('');
+  const area = `${d}L${pts.at(-1)[0].toFixed(1)},${H - B}L${pts[0][0].toFixed(1)},${H - B}Z`;
+  const grid = [0, maxV / 2, maxV].map(v => `<line class="grid" x1="${L}" x2="${W - R}" y1="${y(v).toFixed(1)}" y2="${y(v).toFixed(1)}"/><text x="${L - 6}" y="${(y(v) + 3).toFixed(1)}" text-anchor="end">${esc(format(v))}</text>`).join('');
+  const xl = [[t0, '−10m', 'start'], [now - 5 * 60_000, '−5m', 'middle'], [now, 'now', 'end']]
+    .map(([t, s, anchor]) => `<text x="${x(t).toFixed(1)}" y="${H - 6}" text-anchor="${anchor}">${s}</text>`).join('');
+  const last = pts.at(-1);
+  const data = { x: pts.map(p => +p[0].toFixed(1)), y: pts.map(p => +p[1].toFixed(1)), t: values.map((v, i) => `${clock(at[i])} · ${format(v)}`) };
+  return `<div class="chartbox"><div class="ptitle">${esc(title)}<span class="pv">${esc(format(values.at(-1)))}</span></div>
+    <svg class="chart" viewBox="0 0 ${W} ${H}" role="img" aria-label="${esc(title)} over the last 10 minutes" data-chart="${esc(JSON.stringify(data))}">
+      ${grid}${xl}
+      <path class="area" d="${area}" fill="${color}"/>
+      <path class="line" d="${d}" stroke="${color}"/>
+      <circle cx="${last[0].toFixed(1)}" cy="${last[1].toFixed(1)}" r="4" fill="${color}" stroke="var(--panel)" stroke-width="2"/>
+      <line class="xh" x1="0" x2="0" y1="${T}" y2="${H - B}"/>
+      <circle class="xd" r="4" fill="${color}"/>
+      <rect x="${L}" y="${T}" width="${W - L - R}" height="${H - T - B}" fill="transparent"/>
+    </svg></div>`;
+}
+
+// Tool calls by kind: three categorical slots (validated all-pairs) plus grey for the rest;
+// lanes are labelled, so no separate legend is needed.
+const LANES = [['Shell', /^(Bash|BashOutput|KillShell)$/, 'var(--s1)'], ['Edit', /^(Edit|MultiEdit|Write|NotebookEdit)$/, 'var(--s2)'], ['Read', /^(Read|Grep|Glob|LS|WebFetch|WebSearch)$/, 'var(--s3)'], ['Other', /./, 'var(--s-other)']];
+function timelineChart(timeline) {
+  const W = 560, H = 116, L = 48, R = 12, T = 6, B = 20, lane = (H - T - B) / LANES.length;
+  const now = Date.now(), t0 = now - 30 * 60_000;
+  const x = t => L + Math.max(0, Math.min(1, (t - t0) / (now - t0))) * (W - L - R);
+  const laneY = i => T + lane * i + lane / 2;
+  const rows = LANES.map(([name], i) => `<line class="grid" x1="${L}" x2="${W - R}" y1="${laneY(i).toFixed(1)}" y2="${laneY(i).toFixed(1)}"/><text x="${L - 8}" y="${(laneY(i) + 3).toFixed(1)}" text-anchor="end">${name}</text>`).join('');
+  const xl = [[t0, '−30m', 'start'], [now - 15 * 60_000, '−15m', 'middle'], [now, 'now', 'end']]
+    .map(([t, s, anchor]) => `<text x="${x(t).toFixed(1)}" y="${H - 5}" text-anchor="${anchor}">${s}</text>`).join('');
+  const dots = (timeline ?? []).map(c => {
+    const li = LANES.findIndex(([, re]) => re.test(c.tool));
+    const cx = x(c.at).toFixed(1), cy = laneY(li).toFixed(1);
+    return `<g data-tip="${esc(`${clock(c.at)} · ${c.tool}`)}"><circle cx="${cx}" cy="${cy}" r="11" fill="transparent"/><circle cx="${cx}" cy="${cy}" r="4" fill="${LANES[li][2]}" stroke="var(--panel)" stroke-width="2"/></g>`;
+  }).join('');
+  return `<div class="timeline"><svg class="chart" viewBox="0 0 ${W} ${H}" role="img" aria-label="Tool calls by kind over the last 30 minutes">${rows}${xl}${dots}</svg></div>`;
+}
+
+/* ---------- sections ---------- */
+
+function kpisHtml() {
   const c = snap.counts;
-  $('counts').innerHTML = [['waiting', `${c.waiting} waiting on you`], ['working', `${c.working} working`], ['yourTurn', `${c.yourTurn} your turn`], ['stale', `${c.stale} stale`], ['idle', `${c.idle} idle`]]
-    .map(([k, t]) => `<span class="pill p-${k}">${t}</span>`).join(' ')
-    + (c.collisions ? ` <span class="pill p-collision">${c.collisions} collision${c.collisions > 1 ? 's' : ''}</span>` : '');
-  $('errors').innerHTML = Object.entries(snap.sources).filter(([, s]) => !s.ok)
-    .map(([n, s]) => `<span class="pill p-err" title="${esc(s.error)}">${esc(n)}: ${esc(String(s.error).slice(0, 40))}</span>`).join(' ');
-  $('list').innerHTML = listHtml();
-  const agent = selected && snap.agents.find(a => a.id === selected);
-  $('main').classList.toggle('with-drawer', Boolean(agent));
-  $('side').className = agent ? 'drawer' : '';
-  $('side').innerHTML = agent ? drawerHtml(agent) : railHtml();
-  updateTimers();
+  const waiting = snap.agents.filter(a => a.state === 'waiting');
+  const oldest = waiting.reduce((m, a) => Math.min(m, a.stateSince || Infinity), Infinity);
+  const withSubagents = snap.agents.filter(a => a.children?.some(ch => ch.state === 'running')).length;
+  const tiles = [
+    ['k-waiting', '❓', 'Waiting on you', c.waiting, c.waiting ? `oldest waiting <b data-since="${oldest}"></b>` : 'all clear', c.waiting > 0],
+    ['k-working', '▶', 'Working', c.working, withSubagents ? `${withSubagents} running subagents` : `${snap.agents.length} agents tracked`, false],
+    ['k-turn', '↩', 'Your turn', c.yourTurn, `${c.idle} idle · ${c.stale} stale`, false],
+    ['k-collide', '⚠', 'Collisions', c.collisions, c.collisions ? 'two agents writing one repo' : 'none', c.collisions > 0],
+  ];
+  return tiles.map(([k, icon, label, val, sub, hot]) => `<div class="kpi ${k}${hot ? ' hot' : ''}"><div class="kpi-top"><span>${icon}</span>${label}</div><div class="val">${val}</div><div class="sub">${sub}</div></div>`).join('');
+}
+
+function fleetHtml() {
+  const c = snap.counts;
+  const states = [['waiting', 'Waiting', 'var(--crit)'], ['working', 'Working', 'var(--good)'], ['yourTurn', 'Your turn', 'var(--warn)'], ['stale', 'Stale', 'var(--axis)'], ['idle', 'Idle', 'var(--faint)']].filter(([k]) => c[k] > 0);
+  const stateBar = states.length
+    ? `<div class="stack">${states.map(([k, label, color]) => `<i style="flex:${c[k]} 1 0;background:${color}" data-tip="${label} · ${c[k]} agent${c[k] === 1 ? '' : 's'}"></i>`).join('')}</div>
+       <div class="legend">${states.map(([k, label, color]) => `<span><i class="key" style="background:${color}"></i>${label} <b>${c[k]}</b></span>`).join('')}</div>`
+    : '<div class="empty">No agents.</div>';
+
+  const totalMb = snap.machine?.totalMemMb || 1;
+  const withMem = snap.agents.filter(a => a.proc?.rssMb).sort((x, y) => y.proc.rssMb - x.proc.rssMb);
+  const usedMb = withMem.reduce((t, a) => t + a.proc.rssMb, 0);
+  const memBar = `<div class="stack">${withMem.map(a => `<i style="width:${((a.proc.rssMb / totalMb) * 100).toFixed(2)}%;background:${colorOf(a.id)}" data-tip="${esc(`${a.name} · ${gb(a.proc.rssMb)}`)}"></i>`).join('')}<i class="rest" style="flex:1 1 0" data-tip="${esc(`Rest of this Mac · ${gb(Math.max(0, totalMb - usedMb))}`)}"></i></div>
+    <div class="legend">${withMem.slice(0, 8).map(a => `<span><i class="key" style="background:${colorOf(a.id)}"></i>${esc(a.name)} <b>${gb(a.proc.rssMb)}</b></span>`).join('')}</div>`;
+
+  const cores = snap.machine?.cpuCount || 1;
+  const cpuUsed = snap.agents.reduce((t, a) => t + (a.proc?.cpu ?? 0), 0);
+  const cpuRatio = cpuUsed / (cores * 100);
+  return `<div class="panel"><div class="ptitle">Agents by state<span class="pv">${snap.agents.length}</span></div>${stateBar}</div>
+    <div class="panel"><div class="ptitle">Memory used by agents<span class="pv">${gb(usedMb)} of ${gb(totalMb)}</span></div>${memBar}</div>
+    <div class="panel"><div class="ptitle">CPU used by agents<span class="pv">${Math.round(cpuUsed)}% · ${cores} cores</span></div>
+      ${meter(cpuRatio, severityOf(cpuRatio, 0.5, 0.8), `${Math.round(cpuRatio * 100)}% of all ${cores} cores`)}
+      <div class="legend"><span>${Math.round(cpuRatio * 100)}% of this Mac</span></div></div>`;
 }
 
 function askLine(a) {
@@ -151,17 +376,94 @@ function askLine(a) {
   return `❓ ${esc(a.stateReason)}`;
 }
 
+function metricsHtml(a) {
+  const parts = [];
+  if (a.proc) {
+    const cpuHist = a.proc.history?.cpu ?? [];
+    parts.push(`<div class="m" data-tip="CPU now ${Math.round(a.proc.cpu)}% · peak ${Math.round(Math.max(0, ...cpuHist))}% in 10 min"><span class="ml">CPU</span>${sparkline(cpuHist, colorOf(a.id), 100)}<span class="mv">${Math.round(a.proc.cpu)}%</span></div>`);
+    const limitMb = (snap.settings?.memoryAlertGb ?? 2) * 1024;
+    const sev = severityOf(a.proc.rssMb / limitMb, 0.6, 0.85);
+    parts.push(`<div class="m"><span class="ml">RAM</span>${meter(a.proc.rssMb / limitMb, sev, `${gb(a.proc.rssMb)} of the ${gb(limitMb)} alert line`)}<span class="mv">${gb(a.proc.rssMb)}${sev === 'ok' ? '' : ' ⚠'}</span></div>`);
+  }
+  if (a.contextTokens) {
+    const limit = a.contextTokens > 200_000 ? 1_000_000 : 200_000;
+    const r = a.contextTokens / limit;
+    parts.push(`<div class="m"><span class="ml">Context</span>${meter(r, severityOf(r, 0.7, 0.9), `${Math.round(a.contextTokens / 1000)}k of ${limit / 1000}k tokens`)}<span class="mv">${Math.round(r * 100)}%</span></div>`);
+  }
+  const heat = a.kind === 'codex' ? '' : heatStrip(a.activity);
+  return `${parts.length ? `<div class="metrics">${parts.join('')}</div>` : ''}${heat}`;
+}
+
 function rowHtml(a) {
   const ticker = a.state === 'waiting' ? `${askLine(a)} · <span data-since="${a.stateSince}"></span>`
     : a.now ? `<span class="pulse"></span><span class="mono">${esc(a.now.tool)} ${esc(a.now.summary)} · <span data-since="${a.now.startedAt}"></span></span>`
     : a.state === 'yourTurn' ? esc(a.lastReply ?? 'finished')
     : esc(a.stateReason);
-  const right = a.ask ? '<span class="pill p-waiting">answer here</span>'
-    : a.state === 'stale' ? `<span class="muted">${ago(a.lastActivityAt)}</span>`
-    : a.proc ? `<span class="muted">${gb(a.proc.rssMb)}</span>` : '';
+  const right = a.ask ? '<span class="chip c-waiting live-dot">answer here</span>'
+    : a.state === 'stale' ? `<span class="path">${ago(a.lastActivityAt)}</span>` : '';
   return `<button class="row ${a.state}${a.id === selected ? ' sel' : ''}" data-id="${esc(a.id)}">
-    <div class="top"><span class="name">${esc(a.name)}</span><span class="muted">${esc(short(a.cwd))}${a.kind === 'background' ? ' · bg' : ''}</span><span class="grow"></span>${right}</div>
-    <div class="ticker">${ticker}</div></button>`;
+    <div class="top"><span class="swatch" style="background:${colorOf(a.id)}"></span><span class="name">${esc(a.name)}</span><span class="chip c-${a.state}">${STATE_CHIP[a.state] ?? esc(a.state)}</span><span class="path">${esc(short(a.cwd))}${a.kind === 'background' ? ' · bg' : ''}</span><span class="grow"></span>${right}</div>
+    <div class="ticker">${ticker}</div>${a.state === 'stale' ? '' : metricsHtml(a)}</button>`;
+}
+
+function listHtml() {
+  let html = snap.counts.waiting ? '' : '<div class="allclear"><b>✓</b> Nobody is waiting on you.</div>';
+  for (const [state, title] of GROUPS) {
+    const agents = snap.agents.filter(a => a.state === state);
+    if (!agents.length) continue;
+    if (state === 'stale') {
+      html += `<div class="sec">${title} · ${agents.length}<span class="grow"></span><button class="act" id="toggle-stale" style="margin:0">${showStale ? 'Hide' : 'Show'}</button><button class="act" id="open-cleanup" style="margin:0">Clean up stale…</button></div>`;
+      if (showStale) html += agents.map(rowHtml).join('');
+      continue;
+    }
+    html += `<div class="sec">${title} · ${agents.length}</div>${agents.map(rowHtml).join('')}`;
+  }
+  return html;
+}
+
+function deployChip(d) {
+  if (!d) return '';
+  if (d.status === 'completed') {
+    return d.conclusion === 'success' ? '<span class="chip c-good">✓ deployed</span>'
+      : d.conclusion === 'failure' ? `<span class="chip c-crit" data-tip="${esc(`${d.workflow ?? 'Deploy'} failed at ${d.sha}`)}">✗ deploy failed</span>`
+      : `<span class="chip c-plain">${esc(d.conclusion ?? 'done')}</span>`;
+  }
+  return `<span class="chip c-warn live-dot" data-tip="${esc(`${d.workflow ?? 'Deploy'} ${d.status} · ${d.sha}`)}">deploying</span>`;
+}
+
+function railHtml() {
+  const colliding = new Set(snap.collisions.map(c => c.repo));
+  const who = ids => ids.map(id => {
+    const a = snap.agents.find(x => x.id === id);
+    return `<span class="chip c-plain"><i class="key" style="background:${colorOf(id)}"></i>${esc(a?.name ?? id)}</span>`;
+  }).join(' ');
+  let html = '<div class="sec">Collisions</div>';
+  html += snap.collisions.length
+    ? snap.collisions.map(c => `<div class="card collide"><div class="top"><span class="chip c-serious">⚠ ${esc(c.severity)}</span><b>${esc(c.repo.split('/').pop())}</b></div><div class="muted" style="margin-top:4px">${esc(c.reason)} · since ${clock(c.since)}</div><div class="badges">${who(c.agentIds)}</div></div>`).join('')
+    : '<div class="allclear"><b>✓</b> No agents are writing the same repo.</div>';
+  html += '<div class="sec">Repos</div>';
+  html += snap.repos.map(r => {
+    const dirty = r.dirty ?? 0;
+    const dirtyMeter = r.dirty === undefined ? '' : `<div class="m" style="margin-top:8px"><span class="ml">Changes</span>${meter(Math.min(dirty, 20) / 20, severityOf(dirty / 20, 0.5, 0.9), `${dirty} uncommitted file${dirty === 1 ? '' : 's'}`)}<span class="mv">${dirty ? `${dirty} uncommitted` : 'clean ✓'}</span></div>`;
+    const sync = r.ahead === undefined ? '' : `<span class="chip c-plain" data-tip="against origin, as of the last fetch">↑${r.ahead} ↓${r.behind}</span>`;
+    const agents = r.agentIds.length ? `<span class="chip ${colliding.has(r.path) ? 'c-serious' : 'c-plain'}">${r.agentIds.length} agent${r.agentIds.length > 1 ? 's' : ''}</span>` : '';
+    return `<div class="card${colliding.has(r.path) ? ' collide' : ''}" title="${esc(r.path)}"><div class="top"><b>${esc(r.name)}</b><span class="chip c-plain">⎇ ${esc(r.branch ?? '?')}</span>${deployChip(r.deploy)}</div>${dirtyMeter}<div class="badges">${sync}${agents}${who(r.agentIds)}</div></div>`;
+  }).join('') || '<div class="empty">No repos touched in the last 30 minutes.</div>';
+  return html;
+}
+
+function feedRow(f) {
+  const what = f.kind === 'tool' ? `🔧 <b>${esc(f.tool)}</b> ${esc(f.text)}` : f.kind === 'prompt' ? `👤 ${esc(f.text)}` : `💬 ${esc(f.text)}`;
+  let result = '';
+  if (f.kind === 'tool') {
+    if (f.ok === undefined) result = '<span class="faint">running…</span>';
+    else {
+      const ms = f.durationMs ?? 0;
+      const width = Math.max(4, Math.min(64, (Math.log10(ms + 1) / Math.log10(600_001)) * 64));
+      result = `<span class="dur${f.ok ? '' : ' bad'}" data-tip="${f.ok ? 'Succeeded' : 'Failed'} after ${(ms / 1000).toFixed(1)}s"><i style="width:${width.toFixed(0)}px"></i>${f.ok ? '✓' : '✗'} ${(ms / 1000).toFixed(1)}s</span>`;
+    }
+  }
+  return `<div><span class="t mono">${hhmm(f.at)}</span><span class="what">${what}</span><span>${result}</span></div>`;
 }
 
 function draftFor(toolUseId) {
@@ -175,9 +477,9 @@ function askHtml(a) {
   if (!ask) return '';
   const ids = `data-agent="${esc(a.id)}" data-tool="${esc(ask.toolUseId)}"`;
   if (ask.kind === 'permission') {
-    return `<div class="ask"><div class="sec" style="margin-top:0">Permission needed</div>
-      <div><b>${esc(ask.tool)}</b> wants to run:</div><div class="now mono" style="margin:4px 0 6px">${esc(ask.summary)}</div>
-      <div class="muted" style="margin-bottom:6px">Moves to the terminal prompt in <b data-until="${ask.expiresAt}"></b></div>
+    return `<div class="ask"><div class="sec" style="margin-top:0">🔐 Permission needed</div>
+      <div><b>${esc(ask.tool)}</b> wants to run:</div><div class="now mono" style="margin:5px 0 7px">${esc(ask.summary)}</div>
+      <div class="muted" style="margin-bottom:8px">Moves to the terminal prompt in <b data-until="${ask.expiresAt}"></b></div>
       <button class="act primary" id="ask-allow" ${ids}>Allow</button><button class="act" id="ask-deny" ${ids}>Deny</button></div>`;
   }
   const d = draftFor(ask.toolUseId);
@@ -185,72 +487,41 @@ function askHtml(a) {
     const picks = d.picks.get(qi) ?? new Set();
     const type = q.multiSelect ? 'checkbox' : 'radio';
     const field = `data-tool="${esc(ask.toolUseId)}" data-q="${qi}"`;
-    const options = q.options.map(o => `<label class="opt"><input type="${type}" name="${esc(ask.toolUseId)}-${qi}" value="${esc(o.label)}" ${field}${picks.has(o.label) ? ' checked' : ''}> ${esc(o.label)}${o.description ? ` <span class="muted">— ${esc(o.description)}</span>` : ''}</label>`).join('');
-    return `<fieldset><legend>${q.header ? `<span class="pill p-idle">${esc(q.header)}</span> ` : ''}${esc(q.question)}</legend>${options}
+    const options = q.options.map(o => `<label class="opt"><input type="${type}" name="${esc(ask.toolUseId)}-${qi}" value="${esc(o.label)}" ${field}${picks.has(o.label) ? ' checked' : ''}> <span>${esc(o.label)}${o.description ? ` <span class="muted">— ${esc(o.description)}</span>` : ''}</span></label>`).join('');
+    return `<fieldset><legend>${q.header ? `<span class="pill">${esc(q.header)}</span> ` : ''}${esc(q.question)}</legend>${options}
       <input type="text" class="other" placeholder="Other…" ${field} value="${esc(d.other.get(qi) ?? '')}"></fieldset>`;
   }).join('');
-  return `<div class="ask"><div class="sec" style="margin-top:0">Needs your answer</div>${questions}<button class="act primary" id="ask-send" ${ids}>Send answer</button></div>`;
-}
-
-function listHtml() {
-  let html = '';
-  for (const [state, title] of GROUPS) {
-    const agents = snap.agents.filter(a => a.state === state);
-    if (state === 'stale') {
-      if (!agents.length) continue;
-      html += `<div class="sec">${title} · ${agents.length} <button class="act" id="toggle-stale">${showStale ? 'Hide' : 'Show'}</button><button class="act" id="open-cleanup">Clean up stale…</button></div>`;
-      if (showStale) html += agents.map(rowHtml).join('');
-      continue;
-    }
-    if (!agents.length && state !== 'waiting') continue;
-    html += `<div class="sec">${title}</div>${agents.length ? agents.map(rowHtml).join('') : '<div class="empty">Nobody is waiting on you.</div>'}`;
-  }
-  return html;
-}
-
-function railHtml() {
-  const colliding = new Set(snap.collisions.map(c => c.repo));
-  const nameOf = id => esc(snap.agents.find(a => a.id === id)?.name ?? id);
-  let html = '<div class="sec">Collisions</div>';
-  html += snap.collisions.length
-    ? snap.collisions.map(c => `<div class="card collide"><b>${esc(c.repo.split('/').pop())}</b> <span class="pill p-collision">${esc(c.severity)}</span><div class="muted">${esc(c.reason)} · since ${clock(c.since)}</div><div>${c.agentIds.map(nameOf).join(', ')}</div></div>`).join('')
-    : '<div class="empty">None.</div>';
-  html += '<div class="sec">Repos</div>';
-  html += snap.repos.map(r => {
-    const aheadBehind = r.ahead === undefined ? '' : ` · ↑${r.ahead} ↓${r.behind}`;
-    const dirty = r.dirty === undefined ? '?' : r.dirty ? `${r.dirty} uncommitted` : 'clean';
-    const deploy = r.deploy ? `<div class="muted">deploy: ${esc(r.deploy.status)}${r.deploy.conclusion ? ` (${esc(r.deploy.conclusion)})` : ''} · ${esc(r.deploy.sha)}</div>` : '';
-    const count = r.agentIds.length ? ` <span class="pill ${colliding.has(r.path) ? 'p-collision' : 'p-idle'}">${r.agentIds.length} agent${r.agentIds.length > 1 ? 's' : ''}</span>` : '';
-    return `<div class="card${colliding.has(r.path) ? ' collide' : ''}" title="${esc(r.path)}"><b>${esc(r.name)}</b>${count}<div class="muted">${esc(r.branch ?? '?')} · ${dirty}${aheadBehind}</div>${deploy}</div>`;
-  }).join('') || '<div class="empty">No repos touched in the last 30 min.</div>';
-  return html;
-}
-
-function feedRow(f) {
-  const what = f.kind === 'tool' ? `🔧 <b>${esc(f.tool)}</b> ${esc(f.text)}` : f.kind === 'prompt' ? `👤 ${esc(f.text)}` : `💬 ${esc(f.text)}`;
-  const result = f.kind !== 'tool' ? '' : f.ok === undefined ? '…' : f.ok ? `✓ ${f.durationMs !== undefined ? `${(f.durationMs / 1000).toFixed(1)}s` : ''}` : '✗';
-  return `<div><span class="t mono">${clock(f.at)}</span><span>${what}</span><span class="${f.ok === false ? 'bad' : 'ok'}">${result}</span></div>`;
+  return `<div class="ask"><div class="sec" style="margin-top:0">❓ Needs your answer</div>${questions}<button class="act primary" id="ask-send" ${ids}>Send answer</button></div>`;
 }
 
 function drawerHtml(a) {
+  const color = colorOf(a.id);
+  const h = a.proc?.history;
+  const charts = h ? `<div class="charts">${lineChart('CPU', h.at, h.cpu, color, v => `${Math.round(v)}%`)}${lineChart('Memory', h.at, h.rssMb, color, v => gb(v))}</div>
+    <details class="data"><summary>Table view</summary><table><tr><th>Time</th><th>CPU</th><th>Memory</th></tr>${h.at.slice(-10).map((t, i, arr) => {
+      const j = h.at.length - arr.length + i;
+      return `<tr><td>${clock(t)}</td><td>${Math.round(h.cpu[j])}%</td><td>${gb(h.rssMb[j])}</td></tr>`;
+    }).join('')}</table></details>` : '';
   const children = a.children.length ? a.children.map(c => {
     const isOpen = openChildren.has(c.id);
     const feed = isOpen ? `<div class="feed">${(openChildren.get(c.id) ?? []).map(feedRow).join('') || '<div class="empty">No activity.</div>'}</div>` : '';
-    return `<div class="child"><button class="act" data-child="${esc(c.id)}">${isOpen ? '▾' : '▸'}</button><b>${esc(c.kind)}</b> ${esc(c.label)} <span class="pill p-${c.state === 'running' ? 'working' : 'idle'}">${esc(c.state)}${c.now ? ` · ${esc(c.now.tool)}` : ''}</span>${feed}</div>`;
+    return `<div class="child"><button class="act" data-child="${esc(c.id)}">${isOpen ? '▾' : '▸'}</button><b>${esc(c.kind)}</b> ${esc(c.label)} <span class="chip ${c.state === 'running' ? 'c-working live-dot' : 'c-plain'}">${esc(c.state)}${c.now ? ` · ${esc(c.now.tool)}` : ''}</span>${feed}</div>`;
   }).join('') : '<div class="empty">None.</div>';
   const touching = a.touching.length
-    ? a.touching.slice(0, 12).map(t => `<span class="pill p-idle" title="${esc(t.path)}">${esc(short(t.repo ?? t.path))} · ${esc(t.mode)}</span>`).join(' ')
-    : '<div class="empty">Nothing in the last 30 min.</div>';
-  const spark = a.proc ? `<span class="spark">${a.proc.cpuHistory.map(v => `<i style="height:${Math.max(2, Math.min(100, v))}%"></i>`).join('')}</span>` : '';
+    ? `<div class="badges">${a.touching.slice(0, 12).map(t => `<span class="chip ${t.mode === 'read' ? 'c-plain' : t.mode === 'git' ? 'c-serious' : 'c-warn'}" data-tip="${esc(t.path)}">${esc(short(t.repo ?? t.path))} · ${esc(t.mode)}</span>`).join('')}</div>`
+    : '<div class="empty">Nothing in the last 30 minutes.</div>';
   const proc = a.proc
-    ? `${spark} CPU ${a.proc.cpu}% · RAM ${gb(a.proc.rssMb)} · ${a.proc.childCount} child process${a.proc.childCount === 1 ? '' : 'es'}${a.proc.children.length ? ` (${esc(a.proc.children.join(', '))})` : ''}`
+    ? `CPU <b>${Math.round(a.proc.cpu)}%</b> · RAM <b>${gb(a.proc.rssMb)}</b> · ${a.proc.childCount} child process${a.proc.childCount === 1 ? '' : 'es'}${a.proc.children.length ? ` <span class="muted">(${esc(a.proc.children.join(', '))})</span>` : ''}`
     : '<span class="muted">No process found.</span>';
   const resume = a.kind === 'codex' ? '' : `cd ${shellQuote(a.cwd)} && claude --resume ${a.id}`;
-  return `<div class="top"><span class="name" style="font-size:15px">${esc(a.name)}</span><span class="pill p-${a.state}">${esc(a.state)} · <span data-since="${a.stateSince}"></span></span><span class="grow"></span><button class="act" id="close-drawer">✕</button></div>
+  return `<div class="head"><span class="swatch" style="background:${color}"></span><span class="name">${esc(a.name)}</span><span class="chip c-${a.state}">${STATE_CHIP[a.state] ?? esc(a.state)} · <span data-since="${a.stateSince}"></span></span><span class="grow"></span><button class="act" id="close-drawer" style="margin:0">✕</button></div>
     ${askHtml(a)}
-    <div class="muted">${esc(short(a.cwd))} · ${esc(a.kind)}${a.model ? ` · ${esc(a.model)}` : ''}${a.contextTokens ? ` · context ${Math.round(a.contextTokens / 1000)}k tokens` : ''}</div>
-    <div class="sec">Now</div>${a.now ? `<div class="now mono"><span class="pulse" style="display:inline-block"></span> ${esc(a.now.tool)} ${esc(a.now.summary)} · <b data-since="${a.now.startedAt}"></b></div>` : `<div class="muted">${esc(a.stateReason)}</div>`}
+    <div class="muted" style="margin-top:6px">${esc(short(a.cwd))} · ${esc(a.kind)}${a.model ? ` · ${esc(a.model)}` : ''}</div>
+    ${a.state === 'stale' ? '' : `<div style="margin-top:8px">${metricsHtml(a)}</div>`}
+    <div class="sec">Now</div>${a.now ? `<div class="now mono"><span class="pulse"></span> ${esc(a.now.tool)} ${esc(a.now.summary)} · <b data-since="${a.now.startedAt}"></b></div>` : `<div class="muted">${esc(a.stateReason)}</div>`}
     ${a.lastPrompt ? `<div class="sec">Last prompt</div><div>“${esc(a.lastPrompt)}”</div>` : ''}
+    ${charts ? `<div class="sec">Last 10 minutes</div>${charts}` : ''}
+    ${a.kind === 'codex' ? '' : `<div class="sec">Tool calls · last 30 minutes</div>${timelineChart(a.timeline)}`}
     <div class="sec">Activity</div><div class="feed">${a.feed.map(feedRow).join('') || '<div class="empty">No activity yet.</div>'}</div>
     <div class="sec">Subagents &amp; background jobs</div>${children}
     <div class="sec">Touching</div>${touching}
@@ -260,6 +531,65 @@ function drawerHtml(a) {
     ${resume ? `<button class="act" id="act-copy" data-text="${esc(resume)}">Copy resume command</button>` : ''}
     ${a.kind === 'codex' ? '' : `<a class="act" href="/agent/${encodeURIComponent(a.id)}/transcript" target="_blank" rel="noopener">Full transcript</a>`}`;
 }
+
+function render() {
+  if (!snap) return;
+  syncSlots(snap.agents);
+  $('kpis').innerHTML = kpisHtml();
+  $('fleet').innerHTML = fleetHtml();
+  $('errors').innerHTML = Object.entries(snap.sources).filter(([, s]) => !s.ok)
+    .map(([n, s]) => `<span class="pill p-err" title="${esc(s.error)}">${esc(n)}: ${esc(String(s.error).slice(0, 40))}</span>`).join(' ');
+  $('list').innerHTML = listHtml();
+  const agent = selected && snap.agents.find(a => a.id === selected);
+  $('main').classList.toggle('with-drawer', Boolean(agent));
+  $('side').className = agent ? 'drawer' : '';
+  $('side').innerHTML = agent ? drawerHtml(agent) : railHtml();
+  updateTimers();
+}
+
+/* ---------- interaction ---------- */
+
+function showTip(text, e) {
+  const tip = $('tip');
+  tip.textContent = text;
+  tip.classList.add('show');
+  tip.style.left = `${Math.min(e.clientX + 14, window.innerWidth - tip.offsetWidth - 8)}px`;
+  tip.style.top = `${e.clientY + 16}px`;
+}
+const hideTip = () => $('tip').classList.remove('show');
+
+// Crosshair snaps to the nearest sample; other marks carry their own data-tip.
+document.addEventListener('pointermove', e => {
+  const svg = e.target.closest?.('svg[data-chart]');
+  if (svg) {
+    const data = JSON.parse(svg.dataset.chart);
+    const box = svg.getBoundingClientRect();
+    const vx = ((e.clientX - box.left) / box.width) * svg.viewBox.baseVal.width;
+    let best = 0;
+    for (let i = 1; i < data.x.length; i++) if (Math.abs(data.x[i] - vx) < Math.abs(data.x[best] - vx)) best = i;
+    const xh = svg.querySelector('.xh');
+    xh.setAttribute('x1', data.x[best]);
+    xh.setAttribute('x2', data.x[best]);
+    xh.style.opacity = 1;
+    const xd = svg.querySelector('.xd');
+    xd.setAttribute('cx', data.x[best]);
+    xd.setAttribute('cy', data.y[best]);
+    xd.style.opacity = 1;
+    showTip(data.t[best], e);
+    return;
+  }
+  const el = e.target.closest?.('[data-tip]');
+  if (el) showTip(el.dataset.tip, e);
+  else hideTip();
+});
+document.addEventListener('pointerout', e => {
+  const svg = e.target.closest?.('svg[data-chart]');
+  if (svg && !svg.contains(e.relatedTarget)) {
+    svg.querySelector('.xh').style.opacity = 0;
+    svg.querySelector('.xd').style.opacity = 0;
+    hideTip();
+  }
+});
 
 async function post(path, body) {
   try {
@@ -328,8 +658,8 @@ document.addEventListener('click', async e => {
 });
 
 // Snapshots arrive every few seconds. Re-rendering replaces the DOM, which would wipe a
-// text selection (copying a path or prompt) and swallow a click that straddles it, so a
-// snapshot waits while text is selected or the pointer is down.
+// text selection (copying a path or prompt), swallow a click that straddles it, or clobber
+// typing, so a snapshot waits while text is selected, the pointer is down, or a box is typed in.
 let isPointerDown = false;
 let isRenderPending = false;
 const isTyping = () => {
@@ -349,7 +679,12 @@ function requestRender() {
   render();
 }
 document.addEventListener('pointerdown', () => { isPointerDown = true; });
+document.addEventListener('pointerup', () => {
+  isPointerDown = false;
+  setTimeout(() => { if (isRenderPending) requestRender(); }, 0);
+});
 document.addEventListener('focusout', () => setTimeout(() => { if (isRenderPending) requestRender(); }, 0));
+document.addEventListener('selectionchange', () => { if (isRenderPending && !hasSelection()) requestRender(); });
 
 // Answer drafts survive the drawer re-rendering on every snapshot.
 document.addEventListener('change', e => {
@@ -389,31 +724,31 @@ async function sendAnswer(agentId, toolUseId) {
   if (r.ok) drafts.delete(toolUseId);
   notice(r.ok ? `Answer sent to ${agent.name}.` : `Could not send: ${r.error}`);
 }
-document.addEventListener('pointerup', () => {
-  isPointerDown = false;
-  setTimeout(() => { if (isRenderPending) requestRender(); }, 0);
-});
-document.addEventListener('selectionchange', () => { if (isRenderPending && !hasSelection()) requestRender(); });
 
 function connect() {
   const events = new EventSource('/api/events');
   events.addEventListener('snapshot', ev => {
     snap = JSON.parse(ev.data);
     $('banner').classList.remove('show');
+    $('live').classList.remove('off');
     if (selected && !snap.agents.some(a => a.id === selected)) selected = null;
     requestRender();
   });
-  events.onerror = () => $('banner').classList.add('show');
+  events.onerror = () => {
+    $('banner').classList.add('show');
+    $('live').classList.add('off');
+  };
 }
 
+// Dark first: no saved choice means Dark. Auto follows macOS.
 const THEMES = ['auto', 'light', 'dark'];
 const THEME_LABELS = { auto: '◐ Auto', light: '☀ Light', dark: '☾ Dark' };
 function loadTheme() {
   try {
     const t = localStorage.getItem('tracker-theme');
-    return THEMES.includes(t) ? t : 'auto';
+    return THEMES.includes(t) ? t : 'dark';
   } catch {
-    return 'auto';
+    return 'dark';
   }
 }
 function saveTheme(t) {

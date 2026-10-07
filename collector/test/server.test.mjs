@@ -116,6 +116,8 @@ test('the transcript page follows the theme saved on the dashboard', () => {
   assert.match(page, /localStorage\.getItem\('tracker-theme'\)/);
   assert.match(page, /:root\[data-theme="dark"\]\s*\{/);
   assert.match(page, /:root:not\(\[data-theme="light"\]\)/);
+  assert.match(page, /<link rel="icon" href="data:image\/svg\+xml,/);
+  assert.match(page, /\|\| 'dark'/);
 });
 
 test('answers and permission decisions are posted to their actions, guarded like the others', async () => {
