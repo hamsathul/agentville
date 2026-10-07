@@ -1,6 +1,6 @@
-# Agent Tracker
+# Agentville
 
-**A live dashboard for every AI coding agent on your Mac**: Claude Code sessions (interactive
+**Agentville is a live dashboard for every AI coding agent on your Mac**: Claude Code sessions (interactive
 and background), their subagents and background jobs, and Codex. See who is waiting on you, what
 each agent is doing right now and what it costs. Answer, message and steer them from one page,
 and watch them work as farmers on a pixel farm.
@@ -90,6 +90,8 @@ It listens on `127.0.0.1` only and reads what Claude Code already writes to disk
 
 ### 1. Get the code and the command
 
+The repo and its command keep the project's first name, `agent-tracker`.
+
 ```bash
 git clone https://github.com/hamsathul/agent-tracker.git ~/tools/agent-tracker
 cd ~/tools/agent-tracker
@@ -178,7 +180,7 @@ The page is laid out like an editor, in three columns:
 
 Along the top: your agents' memory and CPU, your plan's 5-hour and weekly usage, and four cards:
 **Waiting on you**, **Working**, **Your turn** and **Collisions**. The tab title counts the agents
-that need you, e.g. `(2) Agent Tracker`.
+that need you, e.g. `(2) Agentville`, and the farmhouse in the tab gets a red light.
 
 | State | Meaning |
 |---|---|

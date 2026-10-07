@@ -217,7 +217,7 @@ function askHtml(a) {
   if (!ask) {
     return a.state === 'waiting'
       ? `<div class="ask"><div class="sec" style="margin-top:0">${a.stateReason === 'question pending' ? '❓' : '🔐'} Waiting on you</div><div>${askLine(a)}</div>
-          <div class="muted" style="margin-top:6px">The dashboard can't answer this one, so answer it in its terminal. (Its session isn't listening for dashboard answers: it may have started before the Agent Tracker mod was installed.)</div></div>`
+          <div class="muted" style="margin-top:6px">The dashboard can't answer this one, so answer it in its terminal. (Its session isn't listening for dashboard answers: it may have started before the Agentville mod was installed.)</div></div>`
       : '';
   }
   const ids = `data-agent="${esc(a.id)}" data-tool="${esc(ask.toolUseId)}"`;

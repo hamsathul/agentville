@@ -62,7 +62,7 @@ test('a permission prompt allowed on the dashboard runs the tool', async () => {
   const f = fake$(() => ok('{"decision":"allow"}'))
   const out: any = await permitFromDashboard(f.$, { tool: 'Bash', tool_use_id: 'toolu_P1', input: { command: 'mkdir /tmp/x' } }, async () => ({ decision: 'ask' }), OFFER)
   expect(out.decision).toBe('allow')
-  expect(out.reason).toBe('Answered from the Agent Tracker dashboard')
+  expect(out.reason).toBe('Answered from the Agentville dashboard')
   expect(JSON.parse(f.writes[0]?.text ?? '{}')).toEqual({ kind: 'permission', toolUseId: 'toolu_P1', sessionId: 's1', tool: 'Bash', summary: 'mkdir /tmp/x', createdAt: 1_000, expiresAt: 16_000 })
 })
 

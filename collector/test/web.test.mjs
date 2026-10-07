@@ -311,8 +311,15 @@ test('an agent keeps its colour when another agent appears before it', () => {
   assert.notEqual(colourOf('r0'), first);
 });
 
-test('the page has an SVG favicon', () => {
-  assert.match(html, /<link rel="icon" href="data:image\/svg\+xml,/);
+test("the page has an SVG favicon, Agentville's farmhouse, which brand.js redraws with a red light while an agent waits", () => {
+  assert.match(html, /<link rel="icon" id="favicon" href="data:image\/svg\+xml,/);
+  assert.match(html, /<title>Agentville<\/title>/);
+  const window = {};
+  vm.runInNewContext(readFileSync(fileURLToPath(new URL('../../web/brand.js', import.meta.url)), 'utf8'), { window });
+  const quiet = window.Agentville.svg({ size: 32 }), waiting = window.Agentville.svg({ size: 32, badge: true });
+  assert.match(quiet, /^<svg[^>]*width="32"[^>]*shape-rendering="crispEdges"/);
+  assert.ok(waiting.includes('#e5322d') && !quiet.includes('#e5322d'), 'the red light only while an agent waits');
+  assert.ok(window.Agentville.ROWS.every(r => r.length === 16) && window.Agentville.ROWS.length === 16, 'a 16×16 pixel grid');
 });
 
 test('agent colours come from the agent, so a reload with agents in another order keeps them', () => {
@@ -783,9 +790,9 @@ test('without the farm script, the toggle stays on the list and says why', async
   assert.equal(page.el('main').dataset.view, 'list');
 });
 
-test('the page loads the farm (deferred), then its token, then its own scripts in order', () => {
+test('the page loads its mark, the farm (deferred), then its token, then its own scripts in order', () => {
   const tags = [...html.matchAll(/<script(?: src="\/([a-z]+)\.js"( defer)?)?>/g)].map(m => (m[1] ? `${m[1]}${m[2] ? ' defer' : ''}` : 'inline'));
-  assert.deepEqual(tags, ['inline', 'farm defer', 'inline', 'core', 'charts', 'panels', 'markdown', 'viewer', 'explorer', 'app', 'sessions']);
+  assert.deepEqual(tags, ['inline', 'brand', 'farm defer', 'inline', 'core', 'charts', 'panels', 'markdown', 'viewer', 'explorer', 'app', 'sessions']);
   assert.match(html, /<script>const TOKEN = '__TRACKER_TOKEN__';<\/script>/);
 });
 
@@ -862,9 +869,9 @@ test('while you type in the sidebar, new snapshots still reach the farm but the 
 test('the tab title counts the agents waiting on you', () => {
   const page = loadPage();
   page.push(askSnapshot(QUESTION));
-  assert.equal(page.ctx.document.title, '(1) Agent Tracker');
+  assert.equal(page.ctx.document.title, '(1) Agentville');
   page.push(richSnapshot([richAgent()]));
-  assert.equal(page.ctx.document.title, 'Agent Tracker');
+  assert.equal(page.ctx.document.title, 'Agentville');
 });
 
 const chatty = () => richAgent({
@@ -907,7 +914,7 @@ test('an agent whose turn ended with a question is marked as asking you, in its 
   page.push(turnSnapshot([asking()]));
   assert.match(page.list(), /asks you[\s\S]*Should I push them to main\?/);
   assert.match(page.el('kpis').innerHTML, /1 asks you/);
-  assert.equal(page.ctx.document.title, '(1) Agent Tracker');
+  assert.equal(page.ctx.document.title, '(1) Agentville');
 });
 
 test('the question card answers a yes/no question in one click, or starts a "No, …" reply', async () => {

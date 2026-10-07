@@ -1,5 +1,5 @@
 #!/bin/bash
-# Control the Agent Tracker login service.
+# Control Agentville's login service (the command keeps its first name, agent-tracker).
 set -eo pipefail
 SELF="$(readlink -f "$0")"
 ROOT="$(cd "$(dirname "$SELF")/.." && pwd)"

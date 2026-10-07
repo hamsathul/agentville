@@ -1123,8 +1123,8 @@
     bell: ['....k....', '...kyk...', '..kyyyk..', '..kyyyk..', '..kyyyk..', '.kyyyyyk.', 'kkkkkkkkk', '...kyk...', '....k....'],
     winter: ['....b....', '.b..b..b.', '..b.b.b..', '...bbb...', 'bbbbbbbbb', '...bbb...', '..b.b.b..', '.b..b..b.', '....b....'],
   };
-  // The dashboard's mark, for the farm's panel.
-  const BRAND_SVG = '<svg class="px-logo" viewBox="0 0 64 64" aria-hidden="true"><rect width="64" height="64" rx="15" fill="#1a1a19"/><path d="M9 38h11l6-15 8 26 6-17 4 6h11" fill="none" stroke="#0ca30c" stroke-width="5" stroke-linecap="round" stroke-linejoin="round"/><circle cx="50" cy="15" r="7" fill="#d03b3b"/></svg>';
+  // Agentville's mark (the farmhouse, from brand.js), for the farm's panel.
+  const brandSvg = () => (typeof window !== 'undefined' && window.Agentville ? window.Agentville.svg({ size: 18, cls: 'px-logo' }) : '');
   const ICON_PAL = { k: '#4e3626', w: '#ffffff', y: '#f0b429', s: '#f4ecd8', r: '#e04a3a', g: '#3f9b3a', o: '#c8681a', b: '#a9dcf7' };
   const iconUrls = new Map();
   /** HTML for one of the farm's pixel icons (none without a DOM). */
@@ -1339,7 +1339,7 @@
         const tool = (attr, icon, name, state, title, disabled = false) => `<button type="button" ${attr}${disabled ? ' disabled' : ''} title="${esc(title)}">${iconImg(icon)}${pxImg(name, '#4e3626', null)}${state ? pxImg(state, '#8b5a2b', null) : ''}<span class="px-sr">${esc(state ? `${name}: ${state}` : name)}</span></button>`;
         const navBtn = (what, icon, name, title, pressed) => `<button type="button" data-farm-nav="${what}" title="${esc(title)}"${pressed === undefined ? '' : ` aria-pressed="${pressed}"`}>${iconImg(icon)}${pxImg(name, '#4e3626', null)}<span class="px-sr">${esc(name)}</span></button>`;
         return `<div class="px-stats${panelOpen ? '' : ' folded'}">
-            <button type="button" class="px-brand" data-farm-panel title="${panelOpen ? 'Fold this panel away' : 'Show the counts and meters'}" aria-expanded="${panelOpen}">${BRAND_SVG}${pxt('AGENT TRACKER', '#ffe8a3', '#2a1d14')}<i class="px-live${nav.live === false ? ' off' : ''}" title="${nav.live === false ? 'Disconnected from the collector: retrying' : 'Live'}"></i>${pxt(panelOpen ? '-' : '+', '#c9b48a', null)}</button>
+            <button type="button" class="px-brand" data-farm-panel title="${panelOpen ? 'Fold this panel away' : 'Show the counts and meters'}" aria-expanded="${panelOpen}">${brandSvg()}${pxt('AGENTVILLE', '#ffe8a3', '#2a1d14')}<i class="px-live${nav.live === false ? ' off' : ''}" title="${nav.live === false ? 'Disconnected from the collector: retrying' : 'Live'}"></i>${pxt(panelOpen ? '-' : '+', '#c9b48a', null)}</button>
             <div class="px-line"><span title="What the sessions on the farm have cost so far (each one's purse; from the mod)"><b class="coin"></b>${w(`$${spent.toFixed(2)}`)}</span><span title="Harvests: each time a session's conversation was compacted"><b class="basket"></b>${w(`${harvested} harvested`)}</span><span class="px-season" title="${esc(seasonTip())}">${iconImg(season === 'summer' ? 'day' : season)}${w(season)}</span></div>
             <div class="px-kpis">
               ${kpi('waiting', '!', 'k-wait', 'waiting on you', c.waiting, c.waiting ? `oldest ${ago(ch.oldestWaiting ?? Date.now())}` : 'all clear', c.waiting > 0, 'Agents waiting on you (a question or a permission): click for the first')}

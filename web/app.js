@@ -25,7 +25,7 @@ function overviewHtml(a) {
     <div class="muted" style="margin-top:6px">${esc(short(a.cwd))} · ${esc(a.kind)}${a.model ? ` · ${esc(a.model)}` : ''}
       ${a.kind === 'codex' ? '' : a.mod?.live
         ? ' <span class="chip c-good" data-tip="This session can be answered from the dashboard">📡 dashboard answers on</span>'
-        : ' <span class="chip c-plain" data-tip="The Agent Tracker mod in this session isn\'t listening. It starts with the next message you send the session, or with a new session.">dashboard answers off</span>'}</div>
+        : ' <span class="chip c-plain" data-tip="The Agentville mod in this session isn\'t listening. It starts with the next message you send the session, or with a new session.">dashboard answers off</span>'}</div>
     ${sessionBarHtml(a)}
     ${a.state === 'stale' ? '' : `<div style="margin-top:8px">${metricsHtml(a)}</div>`}
     <div class="sec">Now</div>${workingLineHtml(a)}${a.now ? `<div class="now mono"><span class="pulse"></span> ${esc(a.now.tool)} ${esc(a.now.summary)} · <b data-since="${a.now.startedAt}"></b></div>` : a.turn ? '' : `<div class="muted">${esc(a.stateReason)}</div>`}
@@ -54,7 +54,8 @@ function render() {
     .map(([n, s]) => `<span class="pill p-err" title="${esc(s.error)}">${esc(n)}: ${esc(String(s.error).slice(0, 40))}</span>`).join(' ');
   $('hstats').innerHTML = hstatsHtml();
   const needs = snap.counts.waiting + snap.agents.filter(a => a.question).length; // waiting, or asked something
-  document.title = needs ? `(${needs}) Agent Tracker` : 'Agent Tracker';
+  document.title = needs ? `(${needs}) Agentville` : 'Agentville';
+  window.Agentville?.favicon(needs > 0); // a red light on the tab's farmhouse while an agent waits
   refreshFullFeeds();
   if (view === 'farm') {
     // The farm draws the agents; the list and the centre are not drawn (so their ids don't exist twice).

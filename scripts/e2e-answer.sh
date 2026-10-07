@@ -104,7 +104,7 @@ for _ in $(seq 1 90); do
   sleep 1
 done
 [ "$(curl -s -o /dev/null -w '%{http_code}' "$BASE/api/agent/$QS/doc?path=$DOC")" = 403 ] || fail "the document was served without the token"
-curl -s -H "x-tracker-token: $TOKEN" "$BASE/api/agent/$QS/doc?path=$DOC" | grep -q '# Agent Tracker' || fail "the reader could not fetch README.md"
+curl -s -H "x-tracker-token: $TOKEN" "$BASE/api/agent/$QS/doc?path=$DOC" | grep -q '# Agentville' || fail "the reader could not fetch README.md"
 [ "$(curl -s -o /dev/null -w '%{http_code}' -H "x-tracker-token: $TOKEN" "$BASE/api/agent/$QS/doc?path=$ROOT/package.json")" = 404 ] || fail "a file the session never opened was served"
 echo "   ok: README.md is listed and readable, other files are not"
 L="$(curl -s -H "x-tracker-token: $TOKEN" "$BASE/api/agent/$QS/files")"

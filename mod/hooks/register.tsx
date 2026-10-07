@@ -21,12 +21,12 @@ const PERSON_TOOLS = new Set(['AskUserQuestion', 'ExitPlanMode'])
 // Waits for the answer file ($1); stops when the offer ($2) is withdrawn; touches the offer every
 // second as a heartbeat, so the dashboard only offers answering while this wait is alive.
 const WAIT_SH = 'n=0; while [ "$n" -lt "$3" ]; do if [ -f "$1" ]; then cat "$1"; exit 0; fi; if [ ! -f "$2" ]; then exit 2; fi; if [ $((n % 4)) -eq 0 ]; then touch "$2"; fi; sleep 0.25; n=$((n+1)); done; exit 1'
-const DASHBOARD_REASON = 'Answered from the Agent Tracker dashboard'
+const DASHBOARD_REASON = 'Answered from the Agentville dashboard'
 
 type Offer = { stateDir: string; sessionId: string; isLive: boolean; windowSec: number; now: number }
 type Waited = { kind: 'answer'; text: string } | { kind: 'withdrawn' } | { kind: 'timeout' }
 
-const MOD_VERSION = '0.5.0'
+const MOD_VERSION = '0.5.1'
 
 let latest: TrackerView = EMPTY
 // The terminal's working line (Slithering… while thinking), for the dashboard: when the turn began,
@@ -129,7 +129,7 @@ export async function runSettings($: any, stateDir: string, sessionId: string) {
 
 // A side question asked on the dashboard is /btw's: one answer from the conversation so far, no
 // tools, nothing added to the conversation, and it may be asked while the session works.
-const ASIDE_NOTE = 'This is a side question from the person, asked from the Agent Tracker dashboard (like /btw) while you work. Answer it directly in a single reply, from what this conversation already shows. You cannot use tools here: if answering would need reading files, running commands or searching, say so and suggest asking in the main conversation.\n\nThe question: '
+const ASIDE_NOTE = 'This is a side question from the person, asked from the Agentville dashboard (like /btw) while you work. Answer it directly in a single reply, from what this conversation already shows. You cannot use tools here: if answering would need reading files, running commands or searching, say so and suggest asking in the main conversation.\n\nThe question: '
 
 /** Answers the side questions waiting, each on its own (a model call takes a while): over this session's own transcript. */
 export async function answerAsides($: any, stateDir: string, sessionId: string) {
@@ -312,7 +312,7 @@ export const register: Register = on => {
     // /agents is a built-in command, so the pane opens with /tracker. A refused registration
     // must not stop the status line and toasts below from starting.
     try {
-      await $.command.register({ name: 'tracker', description: 'Show every agent working on this Mac (Agent Tracker)' })
+      await $.command.register({ name: 'tracker', description: 'Show every agent working on this Mac (Agentville)' })
     } catch (err) {
       $.ui.log(`agent-tracker: /tracker not registered: ${String(err)}`)
     }
@@ -356,7 +356,7 @@ export const register: Register = on => {
   on('command.run', { command: 'tracker' }, async $ => {
     await $.ui.open({ id: PANE, title: 'Agents' })
 
-    return { text: 'Agent Tracker pane opened.' }
+    return { text: 'Agentville pane opened.' }
   })
 
   on('ui.render', { component: 'Pane', requestId: PANE }, async ($, e) => {
@@ -369,7 +369,7 @@ export const register: Register = on => {
     if (!snapshot || !isFresh(current, now)) {
       return (
         <Box flexDirection="column">
-          <Text color="warning">Agent Tracker: collector not running</Text>
+          <Text color="warning">Agentville: collector not running</Text>
           <Text dimColor>Start it with: agent-tracker start</Text>
         </Box>
       )

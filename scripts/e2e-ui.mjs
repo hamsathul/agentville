@@ -164,7 +164,7 @@ try {
 
   console.log('List view');
   check(await until("document.querySelectorAll('.row').length >= 2 && !!document.querySelector('.ask legend')"), 'both agents are listed and the waiting one fills the centre');
-  check((await js('document.title')) === '(1) Agent Tracker', 'the tab title counts one agent waiting');
+  check((await js('document.title')) === '(1) Agentville', 'the tab title counts one agent waiting');
   check(await js("[...document.querySelectorAll('.row')].some(r => r.textContent.includes('ui-asker') && r.textContent.includes('answer here'))"), 'the waiting row says it can be answered here');
   check(/Which crop next\?/.test(await js("document.querySelector('.ask legend')?.textContent ?? ''")), 'the centre shows the question');
   check(await until("[...document.querySelectorAll('#tree .tn')].some(b => b.textContent.includes('README.md'))"), "the explorer lists the agent's folder");
