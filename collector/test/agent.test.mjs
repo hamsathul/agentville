@@ -87,3 +87,10 @@ test('sortAgents orders by state, then newest activity', () => {
 test('countStates counts each state and the collisions', () => {
   assert.deepEqual(countStates([{ state: 'working' }, { state: 'working' }, { state: 'stale' }], [{}]), { waiting: 0, working: 2, yourTurn: 0, stale: 1, idle: 0, collisions: 1 });
 });
+
+test('an agent with a Remote Control session gets a claude.ai link to answer it from', () => {
+  const linked = buildAgent({ base: base({ bridgeSessionId: 'session_01AbC' }), model: null, repoOf, now: at(0), cfg, home: '/h' });
+  assert.equal(linked.remoteUrl, 'https://claude.ai/code/session_01AbC');
+  const unlinked = buildAgent({ base: base(), model: null, repoOf, now: at(0), cfg, home: '/h' });
+  assert.equal(unlinked.remoteUrl, undefined);
+});

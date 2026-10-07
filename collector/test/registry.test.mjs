@@ -26,3 +26,12 @@ test('a missing sessions folder reads as empty', () => {
 test('isPidAlive is true for this process', () => {
   assert.equal(isPidAlive(process.pid), true);
 });
+
+test('the Remote Control session id is kept only when it has the expected shape', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'tracker-reg-bridge-'));
+  writeFileSync(join(dir, '111.json'), JSON.stringify({ pid: 111, sessionId: 's1', bridgeSessionId: 'session_01AbC' }));
+  writeFileSync(join(dir, '222.json'), JSON.stringify({ pid: 222, sessionId: 's2', bridgeSessionId: 'javascript:alert(1)' }));
+  const got = readRegistry(dir, () => true).sort((a, b) => a.pid - b.pid);
+  assert.equal(got[0].bridgeSessionId, 'session_01AbC');
+  assert.equal(got[1].bridgeSessionId, undefined);
+});

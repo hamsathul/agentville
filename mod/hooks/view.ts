@@ -53,6 +53,12 @@ export function elapsed(fromMs: number, now: number): string {
   return m >= 60 ? `${Math.floor(m / 60)}h${String(m % 60).padStart(2, '0')}m` : `${m}:${String(s % 60).padStart(2, '0')}`
 }
 
+/** The session's Remote Control page, where a waiting question or permission prompt can be answered. */
+export function answerUrl(agent: TrackerAgent): string | undefined {
+  const isClaudeSession = /^https:\/\/claude\.ai\/code\/session_[A-Za-z0-9]+$/.test(agent.remoteUrl ?? '')
+  return agent.state === 'waiting' && isClaudeSession ? agent.remoteUrl : undefined
+}
+
 export function rowText(agent: TrackerAgent, now: number): string {
   if (agent.state === 'waiting') return `${agent.stateReason} · ${elapsed(agent.stateSince, now)}`
   if (agent.now) return `${agent.now.tool} ${agent.now.summary} · ${elapsed(agent.now.startedAt, now)}`

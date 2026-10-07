@@ -1,7 +1,7 @@
 import { expect, test } from 'claude-code/testing'
 
 import type { TrackerAgent, TrackerSnapshot } from '../types'
-import { elapsed, groups, isFresh, newlyWaiting, rowText, stateFileFor, statusText } from '../hooks/view'
+import { answerUrl, elapsed, groups, isFresh, newlyWaiting, rowText, stateFileFor, statusText } from '../hooks/view'
 
 const agent = (over: Partial<TrackerAgent>): TrackerAgent => ({
   id: 'a', kind: 'interactive', name: 'a', cwd: '/w', state: 'working', stateReason: 'busy', stateSince: 0,
@@ -70,4 +70,12 @@ test('a waiting agent that flaps to working and back with the same start time to
 test('the state file is found next to the mod folder, wherever the repo is cloned', () => {
   expect(stateFileFor('/home/me/agent-tracker/mod')).toBe('/home/me/agent-tracker/state/state.json')
   expect(stateFileFor('/home/me/agent-tracker/mod/')).toBe('/home/me/agent-tracker/state/state.json')
+})
+
+test('Answer is offered only for a waiting agent with a claude.ai session link', () => {
+  const url = 'https://claude.ai/code/session_01AbC'
+  expect(answerUrl(agent({ state: 'waiting', remoteUrl: url }))).toBe(url)
+  expect(answerUrl(agent({ state: 'working', remoteUrl: url }))).toBe(undefined)
+  expect(answerUrl(agent({ state: 'waiting' }))).toBe(undefined)
+  expect(answerUrl(agent({ state: 'waiting', remoteUrl: 'https://evil.example/session_01AbC' }))).toBe(undefined)
 })

@@ -2,7 +2,7 @@ import { atom, read, update } from 'claude-code'
 import type { Register } from 'claude-code'
 
 import type { TrackerSnapshot, TrackerView } from '../types'
-import { DASHBOARD_URL, elapsed, groups, isFresh, newlyWaiting, rowText, stateFileFor, statusText } from './view'
+import { DASHBOARD_URL, answerUrl, elapsed, groups, isFresh, newlyWaiting, rowText, stateFileFor, statusText } from './view'
 
 const PANE = 'agent-tracker'
 const EMPTY: TrackerView = { snapshot: null, readAt: 0 }
@@ -73,6 +73,7 @@ export const register: Register = on => {
             <Text bold> {agent.name}</Text>
             <Text dimColor> · {agent.state}</Text>
           </Box>
+          {answerUrl(agent) ? <Button key="answer" variant="primary" label="Answer in Claude app" onPress={() => void $.process.run(['open', answerUrl(agent) ?? ''])} /> : null}
           <Text dimColor wrap="truncate-end">{agent.cwd}</Text>
           {agent.now
             ? <Text color="success" wrap="truncate-end">▶ {agent.now.tool} {agent.now.summary} · {elapsed(agent.now.startedAt, now)}</Text>
@@ -104,6 +105,7 @@ export const register: Register = on => {
               <Box>
                 <Button key={`agent-${a.id}`} plain label={a.id === selfId ? `${a.name} (this session)` : a.name} onPress={() => update($, selected, () => a.id)} />
                 <Text dimColor wrap="truncate-end"> {rowText(a, now)}</Text>
+                {answerUrl(a) ? <Button key={`answer-${a.id}`} label="Answer" onPress={() => void $.process.run(['open', answerUrl(a) ?? ''])} /> : null}
               </Box>
             ))}
           </Box>

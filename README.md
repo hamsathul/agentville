@@ -8,8 +8,11 @@ how much CPU and memory each one uses.
 - **Dashboard** at <http://localhost:7777>, served only to this machine. Agents waiting on
   you are listed first, then agents working (each with a live tool ticker), then finished ones.
   Click an agent to see its activity feed, subagents, the repos it touched and its process tree.
+  A waiting agent whose session has Remote Control on gets an **Answer in Claude app** button
+  that opens that session on claude.ai, where you can answer its question or permission prompt.
 - **Claude Code mod:** `/agents` opens a side pane, the status line shows
-  `⚑ 1 waiting · 2 working`, and toasts appear when another agent needs you.
+  `⚑ 1 waiting · 2 working`, toasts appear when another agent needs you, and waiting agents
+  have an **Answer** button.
 - **macOS notifications** when an agent needs you, finishes, collides with another agent in
   the same repo, or runs hot on CPU or memory. Each event notifies once.
 

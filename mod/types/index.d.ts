@@ -8,6 +8,7 @@ export type TrackerAgent = {
   state: TrackerState
   stateReason: string
   stateSince: number
+  remoteUrl?: string
   now?: { tool: string; summary: string; startedAt: number }
   lastPrompt?: string
   lastReply?: string

@@ -31,6 +31,7 @@ function loadPage() {
   vm.createContext(ctx);
   vm.runInContext(script, ctx);
   return {
+    ctx,
     list: () => els.get('list').innerHTML,
     push: snap => sourceListener({ data: JSON.stringify(snap) }),
     select: text => { selectedText = text; },
@@ -75,4 +76,19 @@ test('a snapshot waits while the pointer is down, so a click is not lost to a re
   assert.match(page.list(), /first/);
   page.fire('pointerup');
   assert.match(page.list(), /second/);
+});
+
+test('a waiting agent with a Remote Control link gets an Answer link in its row and drawer', () => {
+  const page = loadPage();
+  const snap = snapshot('x');
+  snap.counts = { ...snap.counts, waiting: 2, working: 0 };
+  snap.agents = [
+    { ...snap.agents[0], id: 'w1', name: 'linked', state: 'waiting', stateReason: 'question pending', remoteUrl: 'https://claude.ai/code/session_01AbC' },
+    { ...snap.agents[0], id: 'w2', name: 'unlinked', state: 'waiting', stateReason: 'question pending' },
+  ];
+  page.push(snap);
+  const links = page.list().match(/href="https:\/\/claude\.ai\/code\/[^"]+"/g) ?? [];
+  assert.deepEqual(links, ['href="https://claude.ai/code/session_01AbC"']);
+  assert.match(page.ctx.drawerHtml(snap.agents[0]), /Answer in Claude app/);
+  assert.doesNotMatch(page.ctx.drawerHtml(snap.agents[1]), /Answer in Claude app/);
 });
