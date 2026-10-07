@@ -12,6 +12,7 @@ async function start() {
   const webFile = join(mkdtempSync(join(tmpdir(), 'tracker-web-')), 'index.html');
   writeFileSync(webFile, '<html>token=__TRACKER_TOKEN__</html>');
   writeFileSync(join(webFile, '..', 'farm.js'), 'window.TrackerFarm = {};');
+  writeFileSync(join(webFile, '..', 'app.js'), 'const app = 1;');
   const srv = createTrackerServer({
     port: 0,
     token: 'tok',
@@ -226,6 +227,21 @@ test('the farm script is served as JavaScript without a token, but never to anot
     assert.equal(r.headers['cache-control'], 'no-store');
     assert.equal(r.body, 'window.TrackerFarm = {};');
     assert.equal((await request(port, { path: '/farm.js', headers: { host: 'evil.example:80' } })).status, 403);
+  } finally {
+    await srv.close();
+  }
+});
+
+test("the page's scripts are served from web/ by name, and nothing else is", async () => {
+  const { srv, port } = await start();
+  try {
+    const app = await request(port, { path: '/app.js' });
+    assert.equal(app.status, 200);
+    assert.equal(app.headers['content-type'], 'text/javascript; charset=utf-8');
+    assert.equal(app.body, 'const app = 1;');
+    assert.equal((await request(port, { path: '/missing.js' })).status, 404);
+    assert.equal((await request(port, { path: '/..%2Fpackage.js' })).status, 404);
+    assert.equal((await request(port, { path: '/index.html' })).status, 404);
   } finally {
     await srv.close();
   }

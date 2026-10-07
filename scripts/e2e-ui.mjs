@@ -33,8 +33,7 @@ if (!CHROME) {
 
 const temp = mkdtempSync(join(tmpdir(), 'tracker-ui-'));
 const root = join(temp, 'root');
-mkdirSync(join(root, 'web'), { recursive: true });
-for (const f of ['index.html', 'farm.js']) cpSync(join(ROOT, 'web', f), join(root, 'web', f));
+cpSync(join(ROOT, 'web'), join(root, 'web'), { recursive: true });
 writeFileSync(join(root, 'config.json'), JSON.stringify({ port: 0, deployRepos: {}, pollMs: 300 }));
 
 const repo = join(realpathSync(temp), 'farm-repo');

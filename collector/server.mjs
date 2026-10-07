@@ -57,7 +57,11 @@ export function createTrackerServer({ port, token, webFile, getSnapshot, getFeed
 
       if (req.method === 'GET') {
         if (path === '/') return send(res, 200, 'text/html; charset=utf-8', readFileSync(webFile, 'utf8').replace('__TRACKER_TOKEN__', token));
-        if (path === '/farm.js') return send(res, 200, 'text/javascript; charset=utf-8', readFileSync(join(dirname(webFile), 'farm.js'), 'utf8'));
+        if ((m = path.match(/^\/([a-z]+)\.js$/))) { // the page's scripts, from web/ by plain name only
+          let code;
+          try { code = readFileSync(join(dirname(webFile), `${m[1]}.js`), 'utf8'); } catch { return send(res, 404, 'text/plain', 'not found'); }
+          return send(res, 200, 'text/javascript; charset=utf-8', code);
+        }
         if (path === '/api/state') return sendJson(res, 200, getSnapshot());
         if (path === '/api/events') return openStream(req, res);
         if ((m = path.match(/^\/api\/agent\/([\w:-]+)\/feed$/))) {
