@@ -221,3 +221,30 @@ test("a field's weather follows its last deploy, direct or Actions; a run GitHub
   assert.deepEqual(scene.fields.map(f => f.weather), ['rainbow', null, 'rain', 'windmill', null]);
   assert.equal(scene.fields[1].lastDeploy.label, "⏸ Actions didn't run");
 });
+
+test('the sky follows your clock: night, dawn, day, dusk, brightening and darkening between', () => {
+  const { skyAt } = load();
+  const at = (h, m = 0) => plain(skyAt(new Date(2026, 9, 7, h, m)));
+  assert.deepEqual([3, 6, 12, 19, 22].map(h => at(h).phase), ['night', 'dawn', 'day', 'dusk', 'night']);
+  assert.equal(at(3).light, 0);
+  assert.equal(at(12).light, 1);
+  assert.ok(at(6, 30).light > at(5, 30).light, 'dawn brightens');
+  assert.ok(at(19, 30).light < at(18, 30).light, 'dusk darkens');
+  assert.ok(at(12).sun.x < at(16).sun.x, 'the sun crosses the sky');
+  assert.equal(at(12).moon, null);
+  assert.ok(at(23).moon && !at(23).sun);
+});
+
+test('every colour the farm paints comes from one palette of ramps', () => {
+  const { PALETTE, paint, actionOf } = load();
+  const palette = new Set(plain(PALETTE));
+  assert.ok(palette.size >= 40 && palette.size <= 90, `${palette.size} colours`);
+  const painted = new Set();
+  const ctx = { globalAlpha: 1, globalCompositeOperation: 'source-over', set fillStyle(c) { painted.add(c); }, get fillStyle() { return ''; }, fillRect() {}, drawImage() {} };
+  for (const step of STEP_KINDS) { const a = plain(actionOf(step, 'Bash')); paint(ctx, { prop: a.prop, flag: a.flag, T: 0.3 }); }
+  for (const crop of ['wheat', 'corn', 'carrot', 'cabbage', 'sunflower', 'tomato', 'pumpkin']) for (let stage = 0; stage < 6; stage++) paint(ctx, { crop, stage });
+  paint(ctx, { land: true, rows: 2 });
+  const strays = [...painted].filter(c => !palette.has(c));
+  assert.deepEqual(strays, []);
+  assert.ok(painted.size > 30);
+});

@@ -127,16 +127,16 @@
     const m = Math.max(0, (Date.now() - ms) / 60_000);
     return m < 1 ? 'now' : m < 60 ? `${Math.round(m)}m` : m < 1440 ? `${Math.round(m / 60)}h` : `${Math.round(m / 1440)}d`;
   };
-  const PXG = { ctx: null, T: 0, k: 1 }; // the canvas being drawn right now, the animation clock, device pixels per world pixel
-  const px = (x, y, w, h, c) => { PXG.ctx.fillStyle = c; PXG.ctx.fillRect(x, y, w, h); };
+  const PXG = { ctx: null, T: 0, k: 1, lights: null }; // the canvas being drawn now, the animation clock, device pixels per world pixel, lights to glow at night
+  const px = (x, y, w, h, c) => { PXG.ctx.fillStyle = ink(c); PXG.ctx.fillRect(x, y, w, h); };
   const SC = 1.5; // characters are drawn at 1.5×: one sprite pixel = 1.5 world pixels
   const blink = (hz, n = 2) => Math.floor(PXG.T * hz) % n;
   // A sprite pixel lands on whole device pixels, so a scale like 1.5× stays crisp (no soft edges).
   const snap = v => Math.round(v * PXG.k) / PXG.k;
-  const rpAt = (ox, oy) => (x, y, w, h, c) => {
+  const rpAt = (ox, oy) => Object.assign((x, y, w, h, c) => {
     const x0 = snap(ox + x * SC), y0 = snap(oy + y * SC);
     px(x0, y0, snap(ox + (x + w) * SC) - x0, snap(oy + (y + h) * SC) - y0, c);
-  };
+  }, { ox, oy });
   const legFrame = b => (b.walk ? (blink(8) ? 'a' : 'b') : 's');
   const pixelOrigin = (b, SH) => [snap(Math.round(b.x) - 7 * SC), snap(Math.round(b.y) - SH * SC + (b.walk && blink(8) ? -SC : 0))];
   function makeSprite(rows, pal) {
@@ -152,6 +152,191 @@
     if (glyph === '!') { rp(x + 4, y + 2, 1, 3, '#d03b3b'); rp(x + 4, y + 6, 1, 1, '#d03b3b'); }
     else if (glyph === '?') { rp(x + 3, y + 2, 3, 1, '#c98500'); rp(x + 5, y + 3, 1, 1, '#c98500'); rp(x + 4, y + 4, 1, 1, '#c98500'); rp(x + 4, y + 6, 1, 1, '#c98500'); }
     else for (const [dx, dy] of [[2, 4], [3, 5], [4, 4], [5, 3], [6, 2]]) rp(x + dx, y + dy, 1, 1, '#0ca30c');
+  }
+
+  /* ---------- one palette, the sky by the clock, light at night ---------- */
+
+  // The farm's colours, in ramps from dark to light. Everything painted is snapped to the nearest
+  // one, so the whole farm keeps one look. Each repo's fence and soil, and the skin tones, are in it
+  // exactly so they stay apart.
+  const RAMPS = {
+    ink: ['#1b1420', '#2a1d14'],
+    wood: ['#4e3626', '#6b4320', '#8b5a2b', '#a8703c', '#c98d4f', '#e2b07a'],
+    soil: ['#5e3d22', '#6b4a35', '#705a3a', '#7a4632', '#7a5230', '#86603a'],
+    path: ['#8a7140', '#9a7442', '#b08850', '#c9a46a'],
+    grass: ['#1f3d1a', '#2f5a2a', '#3f7d3a', '#4f8f3a', '#5d9b46', '#6aa84f', '#7fbf5a'],
+    leaf: ['#2f6b2f', '#3f9b3a', '#6cc04a', '#9ed36a', '#c6e89a', '#6b8f4a'],
+    autumn: ['#8a8f3a', '#b5562f', '#c8681a', '#e9a23b'],
+    stone: ['#3a3a40', '#5f6b7a', '#5f7f9a', '#8a8f96', '#9aa4ad', '#c3cbd2', '#e6eef5'],
+    sky: ['#141a33', '#2c3a5a', '#2c4a85', '#3d7be0', '#5ab4ff', '#a9dcf7', '#d8f0ff'],
+    dusk: ['#5a3b85', '#8a5fc0', '#d55181', '#f4b6c2', '#ffb48a'],
+    red: ['#5a1f19', '#6b2a22', '#9c3b30', '#b23a2e', '#e04a3a', '#ff6b6b'],
+    sun: ['#f08a24', '#f4a261', '#f0b429', '#ffd43b', '#e9c46a', '#f4d58d', '#ffe8a3'],
+    cream: ['#c9a24a', '#c9b48a', '#d4c294', '#e8d8b0', '#f4ecd8', '#ffffff'],
+    skin: ['#f1c7a1', '#e0a878', '#c68a5a', '#9c6644', '#7d5236'],
+    bright: ['#2fa57a', '#ff5a1f'],
+  };
+  const PALETTE = [...new Set(Object.values(RAMPS).flat())]; // shirts stay exact: they are the agents' colours in the list
+  const inked = new Map(PALETTE.map(c => [c, c]));
+  const rgbOf = hex => {
+    const h = hex.length === 4 ? hex.replace(/[0-9a-f]/gi, d => d + d) : hex;
+    return [1, 3, 5].map(i => parseInt(h.slice(i, i + 2), 16));
+  };
+  /** The palette colour nearest to a colour (weighted RGB distance), remembered. */
+  function ink(c) {
+    const hit = inked.get(c);
+    if (hit) return hit;
+    if (typeof c !== 'string' || !/^#[0-9a-f]{3}(?:[0-9a-f]{3})?$/i.test(c)) return c;
+    const [r, g, b] = rgbOf(c.toLowerCase());
+    let best = PALETTE[0], bestD = Infinity;
+    for (const p of PALETTE) {
+      const [pr, pg, pb] = rgbOf(p), rm = (r + pr) / 2;
+      const d = (2 + rm / 256) * (r - pr) ** 2 + 4 * (g - pg) ** 2 + (2 + (255 - rm) / 256) * (b - pb) ** 2;
+      if (d < bestD) { bestD = d; best = p; }
+    }
+    inked.set(c, best);
+    return best;
+  }
+
+  /** The light of the hour, by your clock: { phase, light (0 at night … 1 by day), sun, moon }. */
+  function skyAt(date) {
+    const h = date.getHours() + date.getMinutes() / 60;
+    const phase = h >= 7 && h < 18 ? 'day' : h >= 5 && h < 7 ? 'dawn' : h >= 18 && h < 20 ? 'dusk' : 'night';
+    const light = phase === 'day' ? 1 : phase === 'dawn' ? (h - 5) / 2 : phase === 'dusk' ? 1 - (h - 18) / 2 : 0;
+    const arc = (t, lo, hi) => ({ x: Math.round(14 + t * (W - 28)), y: Math.round(12 - Math.sin(t * Math.PI) * 10), lo, hi }); // left to right, high at midday
+    const sun = h >= 5.5 && h < 20 ? arc((h - 5.5) / 14.5) : null;
+    const nh = (h + 24 - 19.5) % 24; // the moon: from 19:30 to 6:00
+    const moon = !sun || phase === 'dusk' || phase === 'dawn' ? (nh < 10.5 ? arc(nh / 10.5) : null) : null;
+    return { phase, light, sun, moon: sun && phase === 'day' ? null : moon, hour: h };
+  }
+  const SKY = { // [top, middle, low] of the sky band by phase
+    day: ['#5ab4ff', '#a9dcf7', '#d8f0ff'], dawn: ['#8a5fc0', '#f4b6c2', '#ffb48a'], dusk: ['#5a3b85', '#d55181', '#ffb48a'], night: ['#141a33', '#2c3a5a', '#2c4a85'],
+  };
+  /** The sky band, every frame: its colours by the hour, stars, the sun or moon on its arc, drifting clouds. */
+  function drawSky(sky, T, hot) {
+    const [top, mid, low] = SKY[sky.phase];
+    px(0, 0, W, 6, top); px(0, 6, W, 5, mid); px(0, 11, W, 6, low);
+    if (sky.light < 0.6) for (let i = 0; i < 22; i++) { // stars
+      const x = (i * 97 + 13) % W, y = (i * 37) % 12;
+      if ((i + Math.floor(T * 1.3 + i * 0.7)) % 5) px(x, y, 1, 1, i % 3 ? '#e6eef5' : '#ffe8a3');
+    }
+    if (sky.sun) {
+      const { x, y } = sky.sun, c = hot && blink(2) ? '#ff922b' : sky.phase === 'day' ? '#ffd43b' : '#ff922b';
+      px(x - 3, y - 5, 6, 10, c); px(x - 5, y - 3, 10, 6, c); px(x - 4, y - 4, 8, 8, c); px(x - 2, y - 3, 2, 2, '#ffe8a3');
+      if (hot) { PXG.ctx.globalAlpha = 0.35; px(x - 8, y - 8, 16, 16, '#ff5a1f'); PXG.ctx.globalAlpha = 1; } // a machine running hot
+    }
+    if (sky.moon) {
+      const { x, y } = sky.moon;
+      px(x - 3, y - 4, 6, 8, '#f4ecd8'); px(x - 4, y - 3, 8, 6, '#f4ecd8'); px(x, y - 2, 2, 2, '#d4c294'); px(x - 2, y + 1, 1, 1, '#d4c294');
+      if (hot) { PXG.ctx.globalAlpha = 0.35; px(x - 7, y - 7, 14, 14, '#ff5a1f'); PXG.ctx.globalAlpha = 1; }
+    }
+    const cloud = sky.light > 0.5 ? '#ffffff' : sky.light > 0.1 ? '#f4b6c2' : '#4a4a52';
+    for (const [x0, y, w, sp] of [[60, 3, 22, 2.2], [210, 6, 26, 1.6], [330, 2, 16, 2.8]]) {
+      const x = Math.round(((x0 + T * sp) % (W + 60)) - 30);
+      px(x, y + 1, w, 4, cloud); px(x + 4, y, w - 8, 2, cloud); px(x + 2, y + 4, w - 4, 1, sky.light > 0.5 ? '#dfe9f2' : cloud);
+    }
+  }
+  /**
+   * Night falls over everything drawn so far (a tint, warm at dawn and dusk), then the lights glow:
+   * the farmhouse windows, the barn lamp, lanterns in farmers' hands.
+   */
+  function drawNight(sky, H, lights) {
+    const ctx = PXG.ctx, dark = 1 - sky.light;
+    if (dark < 0.02) return;
+    ctx.globalCompositeOperation = 'multiply';
+    ctx.globalAlpha = Math.min(0.7, dark * 0.7);
+    ctx.fillStyle = sky.phase === 'night' ? '#3c4a8c' : '#c26a7a';
+    ctx.fillRect(0, 0, W, H);
+    ctx.globalAlpha = 1;
+    ctx.globalCompositeOperation = 'source-over';
+    ctx.fillStyle = '#ffe8a3';
+    for (const [x, y, r, core] of lights) {
+      for (let k = 3; k >= 1; k--) { // a round glow in three steps, brighter inside
+        ctx.globalAlpha = 0.1 * dark * (4 - k);
+        const rr = Math.round((r * k) / 3);
+        for (let dy = -rr; dy <= rr; dy++) { const w = Math.round(Math.sqrt(rr * rr - dy * dy)); ctx.fillRect(Math.round(x - w), Math.round(y + dy), w * 2, 1); }
+      }
+      ctx.globalAlpha = 1;
+      if (core) {
+        const [cx, cy, cw, ch, panes] = core;
+        px(cx, cy, cw, ch, dark > 0.5 ? '#ffd43b' : '#f4d58d');
+        if (panes) { px(cx + (cw >> 1), cy, 1, ch, '#6b4320'); px(cx, cy + (ch >> 1), cw, 1, '#6b4320'); } // the window frame
+      }
+    }
+    ctx.globalAlpha = 1;
+  }
+
+  // Seasons: the grass, the trees and the flowers (spring blossom, autumn leaves, winter snow).
+  const SEASONS = {
+    spring: { grass: ['#4f8f3a', '#5d9b46', '#66a34b', '#7fbf5a'], tuft: '#3f7d3a', canopy: ['#2f6b2f', '#3f8a3a', '#6cc04a'], bloom: '#f4b6c2', flowers: ['#ffffff', '#f4b6c2', '#ffd43b', '#e58a8a'] },
+    summer: { grass: ['#4f8f3a', '#5d9b46', '#66a34b', '#6aa84f'], tuft: '#3f7d3a', canopy: ['#2a5e2a', '#2f6b2f', '#3f8a3a'], flowers: ['#ffffff', '#ffd43b'] },
+    autumn: { grass: ['#6b7a35', '#8a8f3a', '#a8a350', '#8a8f3a'], tuft: '#6b7a35', canopy: ['#8a3b2e', '#c8681a', '#e9a23b'], flowers: ['#c8681a'] },
+    winter: { grass: ['#c3cbd2', '#dfe9f2', '#f4f8fb', '#e6eef5'], tuft: '#9aa4ad', canopy: ['#3a3a40', '#4a4a52', '#dfe9f2'], flowers: [], snow: true },
+  };
+  /** 0–1023 for a spot, well mixed, the same every build (texture without stripes). */
+  const noise = (x, y) => {
+    let h = Math.imul(x | 0, 0x27d4eb2d) ^ Math.imul((y | 0) + 0x9e37, 0x165667b1);
+    h = Math.imul(h ^ (h >>> 15), 0x85ebca6b);
+    h = Math.imul(h ^ (h >>> 13), 0xc2b2ae35);
+    return ((h ^ (h >>> 16)) >>> 0) & 1023;
+  };
+
+  /** The land: everything that does not move, drawn once (and again when the season turns). The sky shows through above. */
+  function drawLand(f, L, season = 'summer') {
+    const { H, BOT_TOP, LANE_B } = L, S = SEASONS[season] ?? SEASONS.summer;
+    // grass in three tones, with tufts and a few flowers
+    for (let y = 16; y < H; y += 2) for (let x = 0; x < W; x += 2) { const n = noise(x, y); f(x, y, 2, 2, n < 170 ? S.grass[0] : n < 820 ? S.grass[1] : n < 1000 ? S.grass[2] : S.grass[3]); }
+    for (let y = 18; y < H - 2; y += 5) for (let x = 2; x < W - 2; x += 7) {
+      const n = noise(x + 7, y + 3);
+      if (n < 120) { f(x, y, 1, 2, S.tuft); f(x + 2, y, 1, 2, S.tuft); f(x + 1, y + 1, 1, 2, S.tuft); }
+      else if (n < 135 && S.flowers.length) { f(x, y + 1, 1, 1, S.tuft); f(x, y, 1, 1, S.flowers[n % S.flowers.length]); }
+    }
+    // a row of trees along the top, behind the fence
+    for (let x = 0; x < W; x += 10) {
+      const y = 14 + ((x / 10) % 3) * 2, c = S.canopy[(x / 10) % 2 ? 1 : 0];
+      f(x, y, 12, 12, c); f(x + 2, y, 6, 1, S.canopy[2]); f(x, y + 11, 12, 1, '#24361f');
+      if (S.snow) f(x + 1, y, 9, 2, '#f4f8fb');
+    }
+    for (let x = 0; x < W; x += 12) { f(x, 23, 2, 8, '#6b4320'); f(x, 23, 1, 8, '#8b5a2b'); f(x + 2, 24, 1, 7, '#2f5a2a'); }
+    f(0, 25, W, 1, '#8b5a2b'); f(0, 28, W, 1, '#8b5a2b'); f(0, 26, W, 1, '#4e3626'); f(0, 29, W, 1, '#4e3626');
+    // barn, top left: new farmers walk out of its door; a lamp over it glows at night
+    f(1, 5, 48, 28, '#2a1d14'); f(2, 6, 46, 26, '#b23a2e'); f(-2, 3, 54, 4, '#6b2a22'); f(6, 0, 38, 3, '#6b2a22'); f(-2, 6, 54, 1, '#4e3626');
+    for (let y = 8; y < 32; y += 4) f(2, y, 46, 1, '#9c3127');
+    f(2, 6, 2, 26, '#e04a3a');
+    if (S.snow) { f(-2, 2, 54, 2, '#f4f8fb'); f(6, 0, 38, 1, '#f4f8fb'); }
+    f(16, 14, 18, 18, '#5a1f19'); for (let i = 0; i < 18; i++) { f(16 + i, 14 + i, 1, 1, '#f4ecd8'); f(33 - i, 14 + i, 1, 1, '#f4ecd8'); }
+    f(23, 10, 4, 3, '#3a3a40'); f(24, 11, 2, 1, '#ffd43b'); f(48, 30, 4, 3, '#24361f'); // lamp; the barn's shadow
+    // the wild meadow beside the barn: farmers working outside any repo
+    for (let y = TOP + 6; y < BOT_TOP - 8; y += 5) for (let x = 4 + (y % 2) * 2; x < 46; x += 6) f(x, y, 1, 2, '#4f8f3a');
+    // the farm's sign
+    f(149, 3, 102, 16, '#2a1d14'); f(150, 4, 100, 14, '#6b4320'); f(151, 5, 98, 12, '#a8703c'); f(151, 10, 98, 1, '#8b5a2b'); f(151, 5, 98, 1, '#c98d4f');
+    for (const nx of [153, 245]) { f(nx, 6, 1, 1, '#3a3a40'); f(nx, 15, 1, 1, '#3a3a40'); }
+    f(166, 18, 2, 10, '#6b4320'); f(232, 18, 2, 10, '#6b4320'); f(168, 19, 1, 9, '#4e3626'); f(234, 19, 1, 9, '#4e3626');
+    // the walkways between field columns, and the lane in front of the house
+    const dirt = (x, y, w, h) => {
+      f(x, y, w, h, '#b08850');
+      for (let yy = y; yy < y + h; yy += 3) for (let xx = x + 1; xx < x + w - 1; xx += 3) { const n = noise(xx, yy); if (n < 90) f(xx, yy, 1, 1, '#c9a46a'); else if (n < 140) f(xx, yy, 1, 1, '#9a7442'); else if (n < 150) f(xx, yy, 2, 1, '#8a8f96'); }
+    };
+    for (const c of CORR) { dirt(c - 7, TOP, 14, BOT_TOP - TOP + 4); f(c - 7, TOP, 1, BOT_TOP - TOP + 4, '#9a7442'); f(c + 6, TOP, 1, BOT_TOP - TOP + 4, '#9a7442'); f(c + 7, TOP, 1, BOT_TOP - TOP + 4, '#3f7d3a'); }
+    dirt(0, BOT_TOP - 2, W, 7); f(0, BOT_TOP - 2, W, 1, '#9a7442'); f(0, BOT_TOP + 5, W, 1, '#8a7140');
+    // the farmhouse with your porch; its windows light up at night, its chimney smokes while agents work
+    f(124, BOT_TOP + 7, 152, 9, '#2a1d14');
+    f(130, BOT_TOP + 8, 140, 6, '#8a3b2e'); f(130, BOT_TOP + 8, 140, 1, '#b23a2e'); f(126, BOT_TOP + 12, 148, 3, '#6b2a22');
+    if (S.snow) f(128, BOT_TOP + 7, 144, 2, '#f4f8fb');
+    f(240, BOT_TOP - 2, 8, 10, '#5a1f19'); f(239, BOT_TOP - 3, 10, 2, '#3a3a40'); // chimney
+    f(135, BOT_TOP + 15, 130, LANE_B - BOT_TOP - 18, '#2a1d14');
+    f(136, BOT_TOP + 15, 128, LANE_B - BOT_TOP - 19, '#e8d8b0'); for (let y = BOT_TOP + 18; y < LANE_B - 4; y += 4) f(136, y, 128, 1, '#d4c294');
+    f(136, BOT_TOP + 15, 128, 2, '#c9b48a');
+    for (const wx of [148, 232]) { f(wx - 1, BOT_TOP + 18, 22, 15, '#2a1d14'); f(wx, BOT_TOP + 19, 20, 13, '#6b4320'); f(wx + 1, BOT_TOP + 20, 18, 11, '#5fa8e8'); f(wx + 2, BOT_TOP + 21, 6, 2, '#d8f0ff'); f(wx + 10, BOT_TOP + 20, 1, 11, '#6b4320'); f(wx + 1, BOT_TOP + 25, 18, 1, '#6b4320'); f(wx - 2, BOT_TOP + 32, 24, 2, '#8b5a2b'); }
+    f(189, LANE_B - 29, 22, 25, '#2a1d14'); f(190, LANE_B - 28, 20, 24, '#6b4320'); f(191, LANE_B - 27, 18, 23, '#8b5a2b'); f(193, LANE_B - 25, 6, 9, '#7a5230'); f(201, LANE_B - 25, 6, 9, '#7a5230'); f(205, LANE_B - 16, 2, 2, '#f0b429');
+    f(124, LANE_B - 4, 152, 10, '#a8703c'); for (let x = 128; x < 276; x += 8) f(x, LANE_B - 4, 1, 10, '#8b5a2b'); f(124, LANE_B - 4, 152, 1, '#c98d4f'); f(124, LANE_B + 5, 152, 1, '#6b4320');
+    f(186, LANE_B + 6, 28, 4, '#8b5a2b'); f(186, LANE_B + 9, 28, 1, '#6b4320');
+    f(276, BOT_TOP + 14, 4, LANE_B - BOT_TOP - 8, '#24361f'); f(124, LANE_B + 6, 62, 2, '#2f5a2a'); f(214, LANE_B + 6, 62, 2, '#2f5a2a'); // the house's shadow
+    // the shade tree's shadow (the tree itself is drawn with the farmers, so they can stand in front of it)
+    for (const [dx, w] of [[0, 52], [-6, 64], [-2, 56]]) f(31 + dx, LANE_B - 2 + (w === 64 ? 1 : w === 56 ? 2 : 0), w, 1, '#2f5a2a');
+    // the scarecrow corner: dry stubble
+    f(287, BOT_TOP + 9, 112, H - BOT_TOP - 10, '#6d5830'); f(288, BOT_TOP + 10, 110, H - BOT_TOP - 12, '#8a7140');
+    for (let y = BOT_TOP + 14; y < H - 2; y += 5) for (let x = 290 + (y % 2) * 2; x < 396; x += 6) f(x, y, 1, 2, S.snow ? '#dfe9f2' : '#6d5830');
   }
 
   /* ---------- layout: three columns of fields, then the farmyard ---------- */
@@ -198,6 +383,7 @@
     const pal = scare // a scarecrow keeps its farmer's hat and shape, in straw and sacking
       ? { k: '#3a2a1a', h: '#c9a24a', b: '#7a5230', r: '#c9a24a', s: '#d8c48a', g: '#d8c48a', p: '#d8c48a', C: '#8b7a55', o: '#6b5a3a', P: '#6b4320' }
       : { k: K, h: look.hatColor, b: look.band, r: look.hair, s: look.skin, g: '#e6eef5', p: '#e58a8a', C: color, o: look.overalls, P: '#6b4320' };
+    for (const key of Object.keys(pal)) if (key !== 'C') pal[key] = ink(pal[key]); // one palette; the shirt is the agent's colour
     const c = makeSprite(farmerRows(look).concat(LEGS[legs]), pal);
     if (up) { // one arm up, waving
       const g = c.getContext('2d');
@@ -414,6 +600,7 @@
       }
       case 'lantern': { // a server or a long wait: keeping watch with a lantern
         const flick = blink(5);
+        PXG.lights?.push([rp.ox + 12.5 * SC, rp.oy + 10 * SC, 9, null]);
         PXG.ctx.globalAlpha = 0.22 + 0.08 * flick; rp(8, 6, 9, 10, '#ffe8a3'); PXG.ctx.globalAlpha = 1;
         rp(12, 5, 1, 2, '#2a1d14'); rp(11, 7, 3, 1, '#2a1d14'); rp(11, 8, 3, 4, '#5f6b7a'); rp(12, 9, 1, 2, flick ? '#ffd43b' : '#ff922b'); rp(11, 12, 3, 1, '#2a1d14');
         return;
@@ -436,8 +623,9 @@
   }
 
   /** For tests and the legend: paints one tool (held by a farmer when `look` is given) or one plant on a 2D context. */
-  function paint(ctx, { prop, flag, crop, stage = 0, T = 0, look }) {
+  function paint(ctx, { prop, flag, crop, stage = 0, T = 0, look, land, rows = 1, season }) {
     Object.assign(PXG, { ctx, T, k: 1 });
+    if (land) drawLand(px, layoutFor(Array.from({ length: rows * 3 }, (_, i) => ({ key: `f${i}` }))), season);
     if (look) ctx.drawImage(farmerSprite(look, SHIRT[0], false, 's', false), 0, 0, 14 * SC, 16 * SC);
     if (prop) drawProp(prop, rpAt(0, 0), T, flag);
     if (crop) drawCrop(crop, 10, 20, stage, 0);
@@ -447,6 +635,7 @@
     const game = { coins: 0, harvests: 0 }; // page memory only: resets on reload
     let L = layoutFor([]);
     let scene = { fields: [], farmers: [] };
+    let season = 'summer';
     const stOf = k => L.ST.find(s => s.key === k);
     const fieldByKey = k => scene.fields.find(f => f.key === k);
 
@@ -459,10 +648,13 @@
     }
     function drawPlot(s) {
       const f = fieldByKey(s.key), x0 = s.cx - 42, y0 = s.rowTop + 4, st = plotState(f), T = PXG.T, fence = f.fence ?? '#c98d4f';
-      px(x0 - 2, y0 - 2, 88, 48, fence); px(x0 - 1, y0 - 1, 86, 46, shade(fence, 0.68));
+      px(x0 - 3, y0 - 3, 90, 50, '#2a1d14'); px(x0 + 87, y0 - 1, 2, 50, '#24361f'); px(x0 - 1, y0 + 47, 90, 2, '#24361f'); // outline, shadow
+      px(x0 - 2, y0 - 2, 88, 48, fence); px(x0 - 2, y0 - 2, 88, 1, shade(fence, 1.18)); px(x0 - 1, y0 - 1, 86, 46, shade(fence, 0.68));
       const soil = f.soil ?? '#7a5230', furrow = shade(soil, 0.77), ridge = shade(soil, 1.15);
       px(x0, y0, 84, 44, soil); px(x0, y0, 84, 1, furrow); px(x0, y0 + 43, 84, 1, furrow);
-      for (let k = 0; k < 5; k++) { const fy = y0 + 6 + k * 8; px(x0 + 2, fy - 1, 80, 1, ridge); px(x0 + 2, fy, 80, 2, furrow); }
+      for (let k = 0; k < 5; k++) { const fy = y0 + 6 + k * 8; px(x0 + 2, fy - 1, 80, 1, ridge); px(x0 + 2, fy, 80, 2, furrow); px(x0 + 2, fy + 2, 80, 1, shade(soil, 0.9)); } // lit ridge, dark furrow
+      for (let n = 0; n < 26; n++) { const sx = x0 + 3 + noise(n, s.cx) % 78, sy = y0 + 2 + noise(s.cx, n) % 40; px(sx, sy, 1, 1, n % 2 ? ridge : furrow); } // clods
+      if (season === 'winter' && st.kind !== 'grow') for (let k = 0; k < 5; k++) px(x0 + 2, y0 + 5 + k * 8, 80, 1, '#f4f8fb'); // frost on fallow rows
       for (let k = 0; k < 4; k++) for (let i = 0; i < 10; i++) {
         const x = x0 + 6 + i * 8, y = y0 + 5 + k * 8;
         if (st.kind === 'bare') { // fallow: weeds
@@ -497,17 +689,27 @@
       for (let i = 0; i < Math.min(4, Math.ceil(f.ahead / 4)); i++) { const x = cx - 30 + (i % 2) * 8, yy = y - 6 - Math.floor(i / 2) * 6; px(x, yy, 7, 6, '#8b5a2b'); px(x, yy, 7, 1, '#b07a46'); px(x + 3, yy, 1, 6, '#6b4320'); }
       for (let i = 0; i < Math.min(4, Math.ceil(f.dirty / 3)); i++) { const x = cx + 16 + (i % 3) * 10, yy = y - 6 - Math.floor(i / 3) * 6; px(x, yy, 9, 6, '#e2c26b'); px(x, yy, 9, 1, '#f1d98a'); px(x + 2, yy, 1, 6, '#c9a24a'); px(x + 6, yy, 1, 6, '#c9a24a'); }
     }
-    function drawTree() {
-      const { BOT_TOP, LANE_B } = L;
-      px(52, BOT_TOP + 12, 9, LANE_B - BOT_TOP - 14, '#6b4320'); px(52, BOT_TOP + 12, 2, LANE_B - BOT_TOP - 14, '#8b5a2b');
-      px(18, BOT_TOP - 6, 78, 20, '#2f6b2f'); px(26, BOT_TOP - 11, 62, 6, '#2f6b2f'); px(22, BOT_TOP + 14, 70, 3, '#2a5e2a');
-      px(32, BOT_TOP - 9, 20, 4, '#3f8a3a'); px(58, BOT_TOP - 4, 24, 5, '#3f8a3a'); px(24, BOT_TOP + 2, 14, 4, '#3f8a3a');
-      for (const [x, y] of [[40, BOT_TOP - 2], [70, BOT_TOP + 6], [30, BOT_TOP + 8]]) px(x, y, 3, 3, '#e63946'); // apples
+    function drawTree() { // the shade tree, by season: blossom in spring, apples in summer, orange in autumn, bare and snowy in winter
+      const { BOT_TOP, LANE_B } = L, S = SEASONS[season], [dark, mid, light] = S.canopy;
+      px(51, BOT_TOP + 12, 11, LANE_B - BOT_TOP - 14, '#2a1d14'); px(52, BOT_TOP + 12, 9, LANE_B - BOT_TOP - 14, '#6b4320'); px(52, BOT_TOP + 12, 2, LANE_B - BOT_TOP - 14, '#8b5a2b');
+      px(48, LANE_B - 4, 4, 2, '#6b4320'); px(61, LANE_B - 4, 4, 2, '#6b4320'); // roots
+      if (S.snow) { // bare branches with snow on them
+        for (const [x, y, w] of [[30, BOT_TOP + 2, 24], [58, BOT_TOP - 2, 26], [40, BOT_TOP - 8, 16], [24, BOT_TOP + 8, 10], [62, BOT_TOP + 6, 18]]) { px(x, y, w, 2, '#4e3626'); px(x + 1, y - 1, w - 2, 1, '#f4f8fb'); }
+        px(53, BOT_TOP - 8, 3, 22, '#4e3626');
+        return;
+      }
+      px(17, BOT_TOP - 7, 80, 22, '#1f3d1a'); px(25, BOT_TOP - 12, 64, 6, '#1f3d1a'); // outline
+      px(18, BOT_TOP - 6, 78, 20, dark); px(26, BOT_TOP - 11, 62, 6, dark); px(22, BOT_TOP + 14, 70, 3, '#24361f');
+      px(32, BOT_TOP - 9, 20, 4, mid); px(58, BOT_TOP - 4, 24, 5, mid); px(24, BOT_TOP + 2, 14, 4, mid); px(70, BOT_TOP + 4, 16, 4, mid);
+      px(34, BOT_TOP - 10, 10, 1, light); px(60, BOT_TOP - 5, 12, 1, light); px(26, BOT_TOP + 1, 6, 1, light);
+      const fruit = season === 'spring' ? S.bloom : season === 'autumn' ? '#e9a23b' : '#e63946';
+      for (const [x, y] of [[40, BOT_TOP - 2], [70, BOT_TOP + 6], [30, BOT_TOP + 8], [80, BOT_TOP - 3], [50, BOT_TOP + 9]]) { px(x, y, 3, 3, fruit); px(x, y, 1, 1, '#fff4d6'); } // apples, blossom
     }
     function drawPosts() {
       const { LANE_B } = L;
-      for (const x of [129, 268]) { px(x, LANE_B - 34, 3, 40, '#8b5a2b'); px(x, LANE_B - 34, 1, 40, '#a8703c'); }
-      px(127, LANE_B - 36, 146, 3, '#8a3b2e');
+      for (const x of [129, 268]) { px(x - 1, LANE_B - 34, 5, 40, '#2a1d14'); px(x, LANE_B - 34, 3, 40, '#8b5a2b'); px(x, LANE_B - 34, 1, 40, '#a8703c'); }
+      px(126, LANE_B - 37, 148, 5, '#2a1d14'); px(127, LANE_B - 36, 146, 3, '#8a3b2e'); px(127, LANE_B - 36, 146, 1, '#b23a2e');
+      if (season === 'winter') px(127, LANE_B - 37, 146, 1, '#f4f8fb');
     }
 
     return {
@@ -555,45 +757,33 @@
         if (z === 'meadow') return 'works in the wild meadow (no repo)';
         return `${doing(f)?.verb ?? 'working'} in the ${fieldByKey(f.field)?.name ?? ''} field`;
       },
-      hud(still, zoom = 1, saysOn = true) {
+      hud(still, zoom = 1, saysOn = true, skyMode = 'live') {
         const need = scene.farmers.filter(a => a.state === 'waiting' || a.question).length;
         return `<span title="One coin for every tool step since you opened this page"><b class="coin"></b>${game.coins}</span>
           <span title="Finished turns delivered to your porch"><b class="basket"></b>${game.harvests} harvested</span>
           ${need ? `<span class="alert">${need} need${need > 1 ? '' : 's'} you</span>` : ''}
           <span class="px-zoom" title="Zoom the farm inside its frame (or ⌘/Ctrl + scroll, or pinch); drag to move around when zoomed in"><button type="button" data-farm-zoom="-1" aria-label="Zoom out">−</button><button type="button" data-farm-zoom="0" title="Show the whole farm">${Math.round(zoom * 100)}%</button><button type="button" data-farm-zoom="1" aria-label="Zoom in">+</button></span>
           <button type="button" data-farm-bubbles title="Speech bubbles with what each farmer last said. × hides one; its 💬 shows it again">Bubbles: ${saysOn ? 'on' : 'off'}</button>
+          <button type="button" data-farm-sky title="The sky: live follows your clock (dawn, day, dusk, night); or hold it at day or night">Sky: ${skyMode}</button>
           <button type="button" class="px-motion" data-farm-motion title="Walking and animation on the farm">Motion: ${still ? 'off' : 'on'}</button>
           <button type="button" class="px-info" data-farm-help title="How to read the farm" aria-label="How to read the farm">i</button>`;
       },
-      bg(f) {
-        const { H, BOT_TOP, LANE_B } = L;
-        for (let y = 0; y < H; y += 4) for (let x = 0; x < W; x += 4) f(x, y, 4, 4, (x * 7 + y * 13) % 11 === 0 ? '#5d9b46' : ((x + y) / 4) % 2 ? '#6aa84f' : '#66a34b');
-        f(0, 0, W, 16, '#a9dcf7'); f(0, 12, W, 4, '#c4e6fa');
-        for (const [x, y, w] of [[90, 3, 20], [270, 5, 24], [340, 2, 16]]) { f(x, y + 1, w, 4, '#ffffff'); f(x + 4, y, w - 8, 2, '#ffffff'); }
-        for (let x = 0; x < W; x += 10) f(x, 14 + ((x / 10) % 3) * 2, 12, 12, (x / 10) % 2 ? '#3f7d3a' : '#467f3c');
-        for (let x = 0; x < W; x += 12) f(x, 23, 2, 8, '#6b4320');
-        f(0, 25, W, 1, '#8b5a2b'); f(0, 28, W, 1, '#8b5a2b');
-        // barn, top left: new farmers walk out of its door
-        f(2, 6, 46, 26, '#b23a2e'); f(-2, 3, 54, 4, '#6b2a22'); f(6, 0, 38, 3, '#6b2a22');
-        for (let y = 8; y < 32; y += 4) f(2, y, 46, 1, '#9c3127');
-        f(16, 14, 18, 18, '#5a1f19'); for (let i = 0; i < 18; i++) { f(16 + i, 14 + i, 1, 1, '#f4ead5'); f(33 - i, 14 + i, 1, 1, '#f4ead5'); }
-        // wild meadow beside the barn: farmers working outside any repo
-        for (let y = TOP + 6; y < BOT_TOP - 8; y += 5) for (let x = 4 + (y % 2) * 2; x < 46; x += 6) f(x, y, 1, 2, '#4f8f3a');
-        f(150, 4, 100, 14, '#6b4320'); f(151, 5, 98, 12, '#a8703c'); f(166, 18, 2, 10, '#6b4320'); f(232, 18, 2, 10, '#6b4320'); // sign
-        for (const c of CORR) { f(c - 7, TOP, 14, BOT_TOP - TOP + 4, '#b08850'); f(c - 7, TOP, 1, BOT_TOP - TOP + 4, '#9a7442'); f(c + 6, TOP, 1, BOT_TOP - TOP + 4, '#9a7442'); }
-        f(0, BOT_TOP - 2, W, 7, '#b08850'); f(0, BOT_TOP - 2, W, 1, '#9a7442');
-        // farmhouse with your porch
-        f(130, BOT_TOP + 8, 140, 6, '#8a3b2e'); f(126, BOT_TOP + 12, 148, 3, '#6b2a22');
-        f(136, BOT_TOP + 15, 128, LANE_B - BOT_TOP - 19, '#e8d8b0'); for (let y = BOT_TOP + 18; y < LANE_B - 4; y += 4) f(136, y, 128, 1, '#d4c294');
-        for (const wx of [148, 232]) { f(wx, BOT_TOP + 19, 20, 13, '#6b4320'); f(wx + 1, BOT_TOP + 20, 18, 11, '#5fa8e8'); f(wx + 10, BOT_TOP + 20, 1, 11, '#6b4320'); f(wx + 1, BOT_TOP + 25, 18, 1, '#6b4320'); }
-        f(190, LANE_B - 28, 20, 24, '#6b4320'); f(191, LANE_B - 27, 18, 23, '#8b5a2b'); f(205, LANE_B - 16, 2, 2, '#f0b429');
-        f(124, LANE_B - 4, 152, 10, '#a8703c'); for (let x = 128; x < 276; x += 8) f(x, LANE_B - 4, 1, 10, '#8b5a2b'); f(124, LANE_B + 5, 152, 1, '#6b4320');
-        f(186, LANE_B + 6, 28, 4, '#8b5a2b'); f(186, LANE_B + 9, 28, 1, '#6b4320');
-        // scarecrow corner: dry stubble
-        f(288, BOT_TOP + 10, 110, H - BOT_TOP - 12, '#8a7140');
-        for (let y = BOT_TOP + 14; y < H - 2; y += 5) for (let x = 290 + (y % 2) * 2; x < 396; x += 6) f(x, y, 1, 2, '#6d5830');
-      },
+      bg(f, season) { drawLand(f, L, season); },
       ground() { L.ST.forEach(drawPlot); L.ST.forEach(drawPiles); },
+      season: () => season,
+      /** Soft shadows on the ground under farmers and their animals, so nothing floats. */
+      shadows(b) {
+        PXG.ctx.globalAlpha = 0.3;
+        const x = Math.round(b.x), y = Math.round(b.y);
+        px(x - 6, y - 1, 12, 1, '#1f3d1a'); px(x - 8, y, 16, 2, '#1f3d1a'); px(x - 5, y + 2, 10, 1, '#1f3d1a');
+        for (const d of b.kids) { const kx = Math.round(d.x), ky = Math.round(d.y); px(kx - 4, ky, 8, 1, '#1f3d1a'); px(kx - 3, ky + 1, 6, 1, '#1f3d1a'); }
+        PXG.ctx.globalAlpha = 1;
+      },
+      /** Lights that glow at night: [x, y, reach, the lit shape]. */
+      lights() {
+        const { BOT_TOP } = L;
+        return [[25, 12, 7, [24, 11, 2, 1]], [158, BOT_TOP + 25, 16, [149, BOT_TOP + 20, 18, 11, true]], [242, BOT_TOP + 25, 16, [233, BOT_TOP + 20, 18, 11, true]]];
+      },
       fieldAt(x, y) { return L.ST.find(s => Math.abs(x - s.cx) <= 46 && y >= s.rowTop - 18 && y <= s.rowTop + 50)?.key ?? null; },
       items: () => [[L.BOT_TOP + 30, drawTree], [L.LANE_B + 6, drawPosts]],
       drawChar(f, b) {
@@ -636,11 +826,9 @@
           cp(2, 0, 1, 1, '#e63946'); cp(1, 1, 3, 1, '#ffffff'); cp(3, 1, 1, 1, '#222'); cp(0, 2, 4, 1, '#ffffff'); cp(4, 2, 1, 1, '#f0b429'); cp(1, 3, 3, 1, '#ececec'); cp(1, 4, 1, 1, '#f0b429'); cp(3, 4, 1, 1, '#f0b429');
         });
       },
+      hot: () => scene.farmers.some(a => a.hot),
       top() {
-        const T = PXG.T, anyHot = scene.farmers.some(a => a.hot);
-        const sun = anyHot && blink(2) ? '#ff922b' : '#ffd43b';
-        px(124, 2, 10, 10, sun); px(122, 4, 14, 6, sun); px(126, 0, 6, 14, sun);
-        if (anyHot) { PXG.ctx.globalAlpha = 0.35; px(119, -1, 20, 16, '#ff6b1a'); PXG.ctx.globalAlpha = 1; }
+        const T = PXG.T;
         for (const s of L.ST) {
           const weather = fieldByKey(s.key).weather;
           if (weather === 'rainbow') { // deploy passed
@@ -716,6 +904,11 @@
     const keep = (key, value) => { try { localStorage.setItem(key, value); } catch { /* this page only */ } };
     let zoom = ZOOMS.includes(Number(stored('tracker-farm-zoom'))) ? Number(stored('tracker-farm-zoom')) : 1;
     let saysOn = stored('tracker-farm-bubbles') !== 'off';
+    // The sky: live (your clock), or held at day or night.
+    const SKIES = ['live', 'day', 'night'];
+    let skyMode = SKIES.includes(stored('tracker-farm-sky')) ? stored('tracker-farm-sky') : 'live';
+    let bgSeason = null;
+    const skyNow = () => skyAt(skyMode === 'day' ? new Date(2000, 0, 1, 12) : skyMode === 'night' ? new Date(2000, 0, 1, 23) : new Date());
     let wheel = 0;
     const says = new Map(); // farmer id → { el, text }
     const closedSays = new Map(); // farmer id → the text that was closed
@@ -756,7 +949,7 @@
       ov.appendChild(el);
       setTimeout(() => el.remove(), 1700);
     }
-    function renderHud() { if (hudEl) hudEl.innerHTML = th.hud(still, zoom, saysOn); }
+    function renderHud() { if (hudEl) hudEl.innerHTML = th.hud(still, zoom, saysOn, skyMode); }
     /**
      * Zoom changes the farm inside the frame, never the frame. The farm point under `at` (a point of
      * the frame: its middle, or the pointer) stays where it is.
@@ -931,12 +1124,19 @@
       PXG.ctx = ctx;
       PXG.T = T;
       PXG.k = backing;
+      if (th.season() !== bgSeason) bg = buildBg(); // the season turned: new grass and trees
+      const sky = skyNow();
+      PXG.lights = [...th.lights()];
+      drawSky(sky, T, th.hot());
       ctx.drawImage(bg, 0, 0);
       th.ground();
+      for (const f of scene.farmers) { const b = bots.get(f.id); if (b) th.shadows(b); }
       const items = th.items();
       for (const f of scene.farmers) { const b = bots.get(f.id); if (b) items.push([b.y, () => th.drawChar(f, b)]); }
       items.sort((p, q) => p[0] - q[0]).forEach(it => it[1]());
       for (const f of scene.farmers) { const b = bots.get(f.id); if (b) th.drawFx(f, b); }
+      th.top();
+      drawNight(sky, th.layout().H, PXG.lights);
       const picked = selectedId && bots.get(selectedId);
       if (picked) { // the farmer shown in the sidebar: a ring at its feet
         PXG.ctx.globalAlpha = 0.85;
@@ -945,7 +1145,6 @@
         px(Math.round(picked.x) + 10, Math.round(picked.y) - 1, 2, 2, '#ffd43b');
         PXG.ctx.globalAlpha = 1;
       }
-      th.top();
       // Name tags, lifted when two would overlap.
       const placed = [];
       for (const f of scene.farmers) {
@@ -1007,7 +1206,8 @@
       c.width = W;
       c.height = H;
       const g = c.getContext('2d');
-      th.bg((x, y, w, h, col) => { g.fillStyle = col; g.fillRect(x, y, w, h); });
+      bgSeason = th.season();
+      th.bg((x, y, w, h, col) => { g.fillStyle = ink(col); g.fillRect(x, y, w, h); }, bgSeason);
       return c;
     }
     function resize() {
@@ -1056,6 +1256,14 @@
       const sign = e.target.closest?.('[data-farm-field]');
       if (sign) { e.stopPropagation(); opts.onOpenField?.(sign.dataset.farmField); return; }
       if (e.target.closest?.('[data-farm-motion]')) { e.stopPropagation(); setStill(!still); return; }
+      if (e.target.closest?.('[data-farm-sky]')) {
+        e.stopPropagation();
+        skyMode = SKIES[(SKIES.indexOf(skyMode) + 1) % SKIES.length];
+        keep('tracker-farm-sky', skyMode);
+        renderHud();
+        draw();
+        return;
+      }
       const zoomBtn = e.target.closest?.('[data-farm-zoom]');
       if (zoomBtn) { e.stopPropagation(); setZoom(Number(zoomBtn.dataset.farmZoom)); return; }
       if (e.target.closest?.('[data-farm-bubbles]')) {
@@ -1389,7 +1597,7 @@
     },
     /** A farmer's shirt colour, so the page can match it. */
     colorOf: id => SHIRT[colorIndex(id)],
-    actionOf, paint, growthStage, STAGES,
+    actionOf, paint, growthStage, STAGES, skyAt, PALETTE, ink,
     unmount() {
       if (!view) return;
       field.close();
