@@ -280,3 +280,23 @@ test('an agent keeps its colour when another agent appears before it', () => {
 test('the page has an SVG favicon', () => {
   assert.match(html, /<link rel="icon" href="data:image\/svg\+xml,/);
 });
+
+test('agent colours come from the agent, so a reload with agents in another order keeps them', () => {
+  const colours = order => {
+    const page = loadPage();
+    page.push(richSnapshot(order.map(id => richAgent({ id, name: id }))));
+    return Object.fromEntries(order.map(id => [id, page.list().match(new RegExp(`data-id="${id}"[\\s\\S]*?class="swatch" style="background:var\\((--s\\d)\\)`))?.[1]]));
+  };
+  const first = colours(['alpha', 'beta', 'gamma']);
+  const second = colours(['gamma', 'alpha', 'beta']);
+  assert.deepEqual(second, first);
+  assert.equal(new Set(Object.values(first)).size, 3);
+});
+
+test('the CPU panel states its headline as a share of the whole Mac', () => {
+  const page = loadPage();
+  page.push(richSnapshot([richAgent({ proc: { ...richAgent().proc, cpu: 200 } })]));
+  const fleet = page.el('fleet').innerHTML;
+  assert.match(fleet, /CPU used by agents<span class="pv">20% of this Mac</);
+  assert.match(fleet, /200% of one core · 10 cores/);
+});

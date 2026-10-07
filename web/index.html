@@ -136,10 +136,10 @@ main.with-drawer { grid-template-columns: minmax(0, 1fr) minmax(0, 1.3fr); }
 .chart .xd { opacity: 0; stroke: var(--panel); stroke-width: 2; }
 .timeline { background: var(--page); border: 1px solid var(--line); border-radius: 10px; padding: 6px 10px 2px; }
 .now { border: 1px solid color-mix(in srgb, var(--good) 60%, transparent); background: color-mix(in srgb, var(--good) 10%, transparent); border-radius: 8px; padding: 6px 9px; display: flex; gap: 7px; align-items: center; }
-.feed > div { display: grid; grid-template-columns: 62px minmax(0, 1fr) 120px; gap: 8px; align-items: center; padding: 4px 0; border-bottom: 1px solid var(--grid); }
+.feed > div { display: grid; grid-template-columns: 62px minmax(0, 1fr) auto; gap: 8px; align-items: center; padding: 4px 0; border-bottom: 1px solid var(--grid); }
 .feed .t { color: var(--faint); }
 .feed .what { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.dur { display: inline-flex; align-items: center; gap: 6px; font-size: 11px; font-weight: 650; font-variant-numeric: tabular-nums; }
+.dur { display: inline-flex; align-items: center; gap: 6px; white-space: nowrap; font-size: 11px; font-weight: 650; font-variant-numeric: tabular-nums; }
 .dur i { display: block; height: 6px; border-radius: 3px; background: var(--good); }
 .dur.bad i { background: var(--crit); }
 .pill { display: inline-block; padding: 2px 8px; border-radius: 999px; font-size: 11px; font-weight: 650; white-space: nowrap; border: 1px solid var(--line); color: var(--muted); }
@@ -221,18 +221,27 @@ function elapsed(from) {
   return m >= 60 ? `${Math.floor(m / 60)}h${String(m % 60).padStart(2, '0')}m` : `${m}:${String(s % 60).padStart(2, '0')}`;
 }
 
-// Colour follows the agent, never its rank: each agent keeps its categorical slot while it is
-// on screen; a slot is freed only when its agent goes away. Past eight agents, "other" grey.
+// Colour follows the agent, never its rank or screen order: each agent's preferred slot comes
+// from a hash of its id, new agents are placed in id order, and an agent keeps its slot while it
+// is on screen (freed when it goes away). So a reload shows the same colours. Past eight, grey.
 const agentSlots = new Map();
+const preferredSlot = id => {
+  let h = 0;
+  for (const ch of String(id)) h = (h * 31 + ch.charCodeAt(0)) >>> 0;
+  return (h % 8) + 1;
+};
 function syncSlots(agents) {
   const live = new Set(agents.map(a => a.id));
   for (const id of [...agentSlots.keys()]) if (!live.has(id)) agentSlots.delete(id);
-  for (const a of agents) {
-    if (agentSlots.has(a.id)) continue;
+  const fresh = agents.map(a => a.id).filter(id => !agentSlots.has(id)).sort();
+  for (const id of fresh) {
     const used = new Set(agentSlots.values());
     let slot = 'other';
-    for (let i = 1; i <= 8; i++) if (!used.has(i)) { slot = i; break; }
-    agentSlots.set(a.id, slot);
+    for (let k = 0; k < 8; k++) {
+      const candidate = ((preferredSlot(id) - 1 + k) % 8) + 1;
+      if (!used.has(candidate)) { slot = candidate; break; }
+    }
+    agentSlots.set(id, slot);
   }
 }
 const colorOf = id => (agentSlots.get(id) === 'other' || !agentSlots.has(id) ? 'var(--s-other)' : `var(--s${agentSlots.get(id)})`);
@@ -286,7 +295,7 @@ function niceMax(v) {
 /** A 10-minute line chart with hairline grid, end dot, crosshair and tooltip. One measure per chart. */
 function lineChart(title, at, values, color, format) {
   if (!values?.length) return `<div class="chartbox"><div class="ptitle">${esc(title)}</div><div class="empty">No samples yet.</div></div>`;
-  const W = 560, H = 150, L = 46, R = 12, T = 10, B = 22;
+  const W = 380, H = 160, L = 46, R = 10, T = 10, B = 22;
   const now = Date.now(), t0 = now - 10 * 60_000;
   const maxV = niceMax(Math.max(...values));
   const x = t => L + Math.max(0, Math.min(1, (t - t0) / (now - t0))) * (W - L - R);
@@ -315,7 +324,7 @@ function lineChart(title, at, values, color, format) {
 // lanes are labelled, so no separate legend is needed.
 const LANES = [['Shell', /^(Bash|BashOutput|KillShell)$/, 'var(--s1)'], ['Edit', /^(Edit|MultiEdit|Write|NotebookEdit)$/, 'var(--s2)'], ['Read', /^(Read|Grep|Glob|LS|WebFetch|WebSearch)$/, 'var(--s3)'], ['Other', /./, 'var(--s-other)']];
 function timelineChart(timeline) {
-  const W = 560, H = 116, L = 48, R = 12, T = 6, B = 20, lane = (H - T - B) / LANES.length;
+  const W = 760, H = 124, L = 52, R = 12, T = 6, B = 20, lane = (H - T - B) / LANES.length;
   const now = Date.now(), t0 = now - 30 * 60_000;
   const x = t => L + Math.max(0, Math.min(1, (t - t0) / (now - t0))) * (W - L - R);
   const laneY = i => T + lane * i + lane / 2;
@@ -365,9 +374,9 @@ function fleetHtml() {
   const cpuRatio = cpuUsed / (cores * 100);
   return `<div class="panel"><div class="ptitle">Agents by state<span class="pv">${snap.agents.length}</span></div>${stateBar}</div>
     <div class="panel"><div class="ptitle">Memory used by agents<span class="pv">${gb(usedMb)} of ${gb(totalMb)}</span></div>${memBar}</div>
-    <div class="panel"><div class="ptitle">CPU used by agents<span class="pv">${Math.round(cpuUsed)}% · ${cores} cores</span></div>
+    <div class="panel"><div class="ptitle">CPU used by agents<span class="pv">${Math.round(cpuRatio * 100)}% of this Mac</span></div>
       ${meter(cpuRatio, severityOf(cpuRatio, 0.5, 0.8), `${Math.round(cpuRatio * 100)}% of all ${cores} cores`)}
-      <div class="legend"><span>${Math.round(cpuRatio * 100)}% of this Mac</span></div></div>`;
+      <div class="legend"><span>${Math.round(cpuUsed)}% of one core · ${cores} cores</span></div></div>`;
 }
 
 function askLine(a) {
