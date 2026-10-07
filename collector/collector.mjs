@@ -1,6 +1,6 @@
 import { appendFileSync, existsSync, mkdirSync, readFileSync, readdirSync, renameSync, statSync, unlinkSync, watch, writeFileSync } from 'node:fs';
 import { randomBytes } from 'node:crypto';
-import { homedir } from 'node:os';
+import { cpus, homedir, totalmem } from 'node:os';
 import { basename, dirname, join } from 'node:path';
 import { loadConfig, mergeConfig } from './config.mjs';
 import { run } from './lib/exec.mjs';
@@ -190,9 +190,9 @@ export async function startCollector({ root, claudeDir = join(homedir(), '.claud
     Promise.all([...paths].slice(0, 50).map(p => resolver.topOf(p).catch(() => null))).finally(() => { isResolving = false; });
   }
 
-  function recordCpu(id, now, cpu) {
+  function recordCpu(id, now, cpu, rssMb) {
     const hist = cpuHist.get(id) ?? [];
-    hist.push({ at: now, cpu });
+    hist.push({ at: now, cpu, rssMb });
     while (hist.length && now - hist[0].at > CPU_HISTORY_MS) hist.shift();
     cpuHist.set(id, hist);
   }
@@ -235,7 +235,7 @@ export async function startCollector({ root, claudeDir = join(homedir(), '.claud
     const agents = [];
     for (const base of [...bases.values(), ...codex]) {
       const proc = base.pid ? treeStats(procs, base.pid, idx) : null;
-      if (isFull && proc) recordCpu(base.id, now, proc.cpu);
+      if (isFull && proc) recordCpu(base.id, now, proc.cpu, proc.rssMb);
       const rec = base.kind === 'codex' ? undefined : sessions.get(base.id);
       const agent = buildAgent({
         base, model: rec?.model ?? null, registry: base.registry, proc, cpuHistory: cpuHist.get(base.id) ?? [],
@@ -252,6 +252,7 @@ export async function startCollector({ root, claudeDir = join(homedir(), '.claud
       generatedAt: now,
       settings: { modToasts: cfg.modToasts, permissionDashboardSec: cfg.permissionDashboardSec },
       collector: selfStats(),
+      machine: { totalMemMb: Math.round(totalmem() / 1_048_576), cpuCount: cpus().length },
       sources: { ...sources },
       counts: countStates(agents, collisions),
       agents: sortAgents(agents),

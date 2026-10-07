@@ -33,6 +33,7 @@ test('collector serves a waiting agent from a fixture ~/.claude and survives a b
     assert.equal(snap.counts.waiting >= 1, true);
     assert.equal(snap.sources.agents.ok, false);
     assert.equal(snap.settings.modToasts, true);
+    assert.ok(snap.machine.totalMemMb > 0 && snap.machine.cpuCount > 0);
 
     const onDisk = JSON.parse(readFileSync(join(root, 'state', 'state.json'), 'utf8'));
     assert.equal(onDisk.agents.find(x => x.id === 'sess-1').state, 'waiting');

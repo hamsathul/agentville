@@ -4,6 +4,9 @@ import { collectTouches } from './touches.mjs';
 import { STATE_ORDER, deriveCodexState, deriveState } from './state.mjs';
 
 const CHILD_KEEP_MS = 60 * 60_000;
+const HISTORY_SAMPLES = 200; // 10 minutes at the 3 s poll
+const ACTIVITY_MINUTES = 30;
+const TIMELINE_MAX = 120;
 const CHILD_RECENT_MS = 60_000;
 
 export function nowOf(model) {
@@ -49,6 +52,7 @@ export function buildAgent({ base, model, registry, proc, cpuHistory = [], child
   const calls = model ? model.callsSince(since) : [];
   for (const cm of childModels.values()) calls.push(...cm.callsSince(since));
   const touching = collectTouches(calls, since, home).map(t => ({ ...t, repo: repoOf(t.path) ?? undefined }));
+  const recent = calls.filter(c => c.at > now - ACTIVITY_MINUTES * 60_000).sort((x, y) => x.at - y.at);
   return {
     id: base.id,
     kind: base.kind,
@@ -70,8 +74,25 @@ export function buildAgent({ base, model, registry, proc, cpuHistory = [], child
     feed: model ? model.feed.slice(0, 20) : [],
     children: model ? childrenOf(model, childModels, now) : [],
     touching,
-    proc: proc ? { ...proc, cpuHistory: cpuHistory.slice(-20).map(s => s.cpu) } : undefined,
+    proc: proc ? { ...proc, history: historyOf(cpuHistory) } : undefined,
+    activity: activityOf(recent, now),
+    timeline: recent.slice(-TIMELINE_MAX).map(c => ({ at: c.at, tool: c.name })),
   };
+}
+
+function historyOf(samples) {
+  const last = samples.slice(-HISTORY_SAMPLES);
+  return { at: last.map(s => s.at), cpu: last.map(s => s.cpu), rssMb: last.map(s => s.rssMb ?? 0) };
+}
+
+/** Tool calls per minute over the last 30 minutes; index 29 is the current minute. */
+function activityOf(calls, now) {
+  const buckets = new Array(ACTIVITY_MINUTES).fill(0);
+  for (const c of calls) {
+    const minutesAgo = Math.floor((now - c.at) / 60_000);
+    if (minutesAgo >= 0 && minutesAgo < ACTIVITY_MINUTES) buckets[ACTIVITY_MINUTES - 1 - minutesAgo] += 1;
+  }
+  return buckets;
 }
 
 export function applySince(agent, prev, now) {

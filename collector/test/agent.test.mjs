@@ -18,7 +18,7 @@ test('buildAgent assembles state, now, feed, process and repo-mapped touches', (
   );
   const a = buildAgent({
     base: base({ cliId: 'abc' }), model: m, registry: { status: 'busy' },
-    proc: { cpu: 5, rssMb: 300, childCount: 1, children: ['node x'] }, cpuHistory: [{ at: at(7), cpu: 5 }],
+    proc: { cpu: 5, rssMb: 300, childCount: 1, children: ['node x'] }, cpuHistory: [{ at: at(7), cpu: 5, rssMb: 300 }],
     repoOf, now: at(8), cfg, home: '/h',
   });
   assert.equal(a.state, 'working');
@@ -28,7 +28,7 @@ test('buildAgent assembles state, now, feed, process and repo-mapped touches', (
   assert.deepEqual(a.now, { tool: 'Bash', summary: 'Run tests', startedAt: at(7) });
   assert.equal(a.feed[0].tool, 'Bash');
   assert.equal(a.touching.find(t => t.mode === 'write').repo, '/p/backend');
-  assert.deepEqual(a.proc.cpuHistory, [5]);
+  assert.deepEqual(a.proc.history, { at: [at(7)], cpu: [5], rssMb: [300] });
   assert.equal(a.lastPrompt, 'fix it');
 });
 
@@ -118,4 +118,32 @@ test('an expired permission offer is ignored', () => {
   const a = buildAgent({ base: base(), model: m, registry: { status: 'busy' }, offer, repoOf, now: at(21), cfg, home: '/h' });
   assert.equal(a.state, 'working');
   assert.equal(a.ask, undefined);
+});
+
+test('process history keeps the last 200 samples for the 10-minute charts', () => {
+  const hist = Array.from({ length: 250 }, (_, i) => ({ at: at(i * 3), cpu: i, rssMb: 100 + i }));
+  const a = buildAgent({ base: base(), model: null, proc: { cpu: 1, rssMb: 1, childCount: 0, children: [] }, cpuHistory: hist, repoOf, now: at(750), cfg, home: '/h' });
+  assert.equal(a.proc.history.cpu.length, 200);
+  assert.equal(a.proc.history.cpu[0], 50);
+  assert.equal(a.proc.history.rssMb.at(-1), 349);
+});
+
+test('activity counts tool calls per minute over the last 30 minutes, newest last', () => {
+  const m = modelOf(
+    prompt(0, 'go'),
+    toolUse(10, 't1', 'Read', { file_path: '/a' }),
+    toolUse(20, 't2', 'Read', { file_path: '/b' }),
+    toolUse(29 * 60 + 5, 't3', 'Bash', { command: 'ls' }),
+  );
+  const a = buildAgent({ base: base(), model: m, repoOf, now: at(30 * 60), cfg, home: '/h' });
+  assert.equal(a.activity.length, 30);
+  assert.equal(a.activity[0], 2);
+  assert.equal(a.activity[29], 1);
+  assert.equal(a.activity.reduce((t, n) => t + n, 0), 3);
+});
+
+test('the timeline lists recent tool calls with their time, newest last', () => {
+  const m = modelOf(prompt(0, 'go'), toolUse(5, 't1', 'Edit', { file_path: '/a' }), toolUse(9, 't2', 'Bash', { command: 'ls' }));
+  const a = buildAgent({ base: base(), model: m, repoOf, now: at(10), cfg, home: '/h' });
+  assert.deepEqual(a.timeline, [{ at: at(5), tool: 'Edit' }, { at: at(9), tool: 'Bash' }]);
 });
