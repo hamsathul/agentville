@@ -11,6 +11,7 @@ async function start() {
   const calls = [];
   const webFile = join(mkdtempSync(join(tmpdir(), 'tracker-web-')), 'index.html');
   writeFileSync(webFile, '<html>token=__TRACKER_TOKEN__</html>');
+  writeFileSync(join(webFile, '..', 'farm.js'), 'window.TrackerFarm = {};');
   const srv = createTrackerServer({
     port: 0,
     token: 'tok',
@@ -211,6 +212,20 @@ test("a repo's touched files are served only with the token, and only for a repo
     assert.equal(JSON.parse(ok.body).name, 'app');
     const other = await request(port, { path: '/api/repo/touched?path=%2Fetc', headers: { 'x-tracker-token': 'tok' } });
     assert.equal(other.status, 404);
+  } finally {
+    await srv.close();
+  }
+});
+
+test('the farm script is served as JavaScript without a token, but never to another Host', async () => {
+  const { srv, port } = await start();
+  try {
+    const r = await request(port, { path: '/farm.js' });
+    assert.equal(r.status, 200);
+    assert.equal(r.headers['content-type'], 'text/javascript; charset=utf-8');
+    assert.equal(r.headers['cache-control'], 'no-store');
+    assert.equal(r.body, 'window.TrackerFarm = {};');
+    assert.equal((await request(port, { path: '/farm.js', headers: { host: 'evil.example:80' } })).status, 403);
   } finally {
     await srv.close();
   }

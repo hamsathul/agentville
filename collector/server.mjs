@@ -1,5 +1,6 @@
 import { createServer } from 'node:http';
 import { readFileSync } from 'node:fs';
+import { dirname, join } from 'node:path';
 
 const BODY_LIMIT = 64 * 1024;
 const MESSAGE_LIMIT = 90 * 1024 * 1024; // up to six 10 MB screenshots, base64-encoded
@@ -56,6 +57,7 @@ export function createTrackerServer({ port, token, webFile, getSnapshot, getFeed
 
       if (req.method === 'GET') {
         if (path === '/') return send(res, 200, 'text/html; charset=utf-8', readFileSync(webFile, 'utf8').replace('__TRACKER_TOKEN__', token));
+        if (path === '/farm.js') return send(res, 200, 'text/javascript; charset=utf-8', readFileSync(join(dirname(webFile), 'farm.js'), 'utf8'));
         if (path === '/api/state') return sendJson(res, 200, getSnapshot());
         if (path === '/api/events') return openStream(req, res);
         if ((m = path.match(/^\/api\/agent\/([\w:-]+)\/feed$/))) {

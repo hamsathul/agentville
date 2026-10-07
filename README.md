@@ -26,6 +26,15 @@ how much CPU and memory each one uses.
   **Read and reply:** specs, plans and other markdown files the agent wrote or read are also
   listed under "Documents". In any open file, select a passage and **Quote** it (code quotes
   carry their line numbers), then reply; the agent gets it as a message about that file.
+- **Pixel farm view** (☰ List | 🌾 Farm in the top bar): the same live data as a little farm.
+  Every agent is a farmer and every repo a field. A farmer that needs you walks to your porch
+  and waves a red "!"; one whose turn it is brings a basket. Working farmers stand in the field
+  of the repo they write to, holding a tool that matches their current step. Above each field,
+  hay bales are uncommitted files, crates unpushed commits and a mailbox commits behind; the
+  weather is the last deploy (rainbow, rain, windmill) and a rope marks two agents in one repo.
+  Hearts show context left, chickens are subagents and an Explore subagent is a dog. Click a
+  farmer to answer or message it; click a field for a close-up of the files agents touched there.
+  It pauses when hidden and follows the system's reduce-motion setting.
 - **Claude Code mod:** `/tracker` opens a side pane, the status line shows
   `⚑ 1 waiting · 2 working`, and toasts appear when another agent needs you. The mod is also
   what lets the dashboard answer a session's questions and permission prompts and send it messages.

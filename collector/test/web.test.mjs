@@ -8,13 +8,13 @@ import vm from 'node:vm';
 const html = readFileSync(fileURLToPath(new URL('../../web/index.html', import.meta.url)), 'utf8');
 const script = html.slice(html.lastIndexOf('<script>') + '<script>'.length, html.lastIndexOf('</script>'));
 
-function loadPage({ stored = {}, storageThrows = false, files = {}, replies = {}, listing = null } = {}) {
+function loadPage({ stored = {}, storageThrows = false, files = {}, replies = {}, listing = null, farm = null } = {}) {
   const posts = [];
   const gets = [];
   const revoked = [];
   let active = null;
   const els = new Map();
-  const el = id => ({ id, title: '', innerHTML: '', textContent: '', value: '', className: '', dataset: {}, classList: { add() {}, remove() {}, toggle() {} }, addEventListener() {}, showModal() { this.open = true; }, close() { this.open = false; }, focus() {}, querySelectorAll: () => [] });
+  const el = id => ({ id, title: '', innerHTML: '', textContent: '', value: '', className: '', dataset: {}, attrs: {}, setAttribute(k, v) { this.attrs[k] = String(v); }, scrollIntoView() {}, classList: { add() {}, remove() {}, toggle() {} }, addEventListener() {}, showModal() { this.open = true; }, close() { this.open = false; }, focus() {}, querySelectorAll: () => [] });
   const docListeners = {};
   let sourceListener = null;
   let selectedText = '';
@@ -26,7 +26,7 @@ function loadPage({ stored = {}, storageThrows = false, files = {}, replies = {}
       querySelectorAll: () => [],
       addEventListener: (type, fn) => { (docListeners[type] ??= []).push(fn); },
     },
-    window: { getSelection: () => ({ isCollapsed: selectedText === '', toString: () => selectedText }) },
+    window: { getSelection: () => ({ isCollapsed: selectedText === '', toString: () => selectedText }), ...(farm ? { TrackerFarm: farm } : {}) },
     EventSource: class { addEventListener(_type, fn) { sourceListener = fn; } },
     setInterval() {},
     setTimeout: fn => fn(),
@@ -678,4 +678,93 @@ test('when the folder itself is off, the explorer says why and still shows memor
   await page.settle();
   assert.match(page.tree(), /data-mem="@summary"[\s\S]*home folder/);
   assert.doesNotMatch(page.tree(), /data-group="ex-scratch"/);
+});
+
+function fakeFarm() {
+  const calls = [];
+  let options = null;
+  return {
+    calls,
+    pick: id => options.onPickAgent(id),
+    openDoc: (id, path) => options.onOpenDoc(id, path),
+    showRepos: () => options.onShowRepos(),
+    farm: {
+      mount(host, opts) { options = opts; calls.push(['mount', host.id, opts.token]); },
+      update(snap) { calls.push(['update', snap.agents.length]); },
+      unmount() { calls.push(['unmount']); },
+    },
+  };
+}
+
+test('the view toggle switches to the farm and remembers it', async () => {
+  const f = fakeFarm();
+  const page = loadPage({ farm: f.farm });
+  page.push(richSnapshot([richAgent()]));
+  assert.equal(page.el('main').dataset.view, 'list');
+  await page.click('view-farm');
+  assert.equal(page.el('main').dataset.view, 'farm');
+  assert.equal(page.stored['tracker-view'], 'farm');
+  assert.equal(page.el('view-farm').attrs['aria-pressed'], 'true');
+  assert.deepEqual(f.calls.slice(0, 2), [['mount', 'farm', '__TRACKER_TOKEN__'], ['update', 1]]);
+  const again = fakeFarm();
+  const reload = loadPage({ farm: again.farm, stored: { ...page.stored } });
+  assert.equal(reload.el('main').dataset.view, 'farm');
+  assert.deepEqual(again.calls[0], ['mount', 'farm', '__TRACKER_TOKEN__']);
+  await reload.click('view-list');
+  assert.equal(reload.el('main').dataset.view, 'list');
+  assert.deepEqual(again.calls.at(-1), ['unmount']);
+  assert.equal(reload.stored['tracker-view'], 'list');
+});
+
+test('in farm mode a snapshot goes to the farm; the list and the centre are not drawn', async () => {
+  const f = fakeFarm();
+  const page = loadPage({ farm: f.farm, stored: { 'tracker-view': 'farm' } });
+  page.push(richSnapshot([richAgent(), richAgent({ id: 'r2', name: 'second' })]));
+  assert.deepEqual(f.calls.at(-1), ['update', 2]);
+  assert.equal(page.side(), '');
+  assert.equal(page.el('list').innerHTML, '');
+  assert.match(page.el('kpis').innerHTML, /Working/);
+});
+
+test('clicking a farmer opens that agent in the list view, ready to answer', async () => {
+  const f = fakeFarm();
+  const page = loadPage({ farm: f.farm, stored: { 'tracker-view': 'farm' } });
+  page.push(richSnapshot([richAgent(), richAgent({ id: 'r2', name: 'second', mod: { version: '0.3.1', live: true } })]));
+  f.pick('r2');
+  assert.equal(page.el('main').dataset.view, 'list');
+  assert.match(page.side(), /data-msg-agent="r2"/);
+});
+
+test('a document picked in the field close-up opens in the reader in the list view', async () => {
+  const f = fakeFarm();
+  const page = loadPage({ farm: f.farm, stored: { 'tracker-view': 'farm' }, files: { '/w/docs/spec.md': '# Spec' } });
+  page.push(richSnapshot([richAgent()]));
+  await f.openDoc('r1', '/w/docs/spec.md');
+  assert.equal(page.el('main').dataset.view, 'list');
+  assert.match(page.tabs(), /class="tab on"[^]*?spec\.md/);
+  assert.match(page.el('reader-body').innerHTML, /<h1[^>]*>Spec<\/h1>/);
+});
+
+test('the "+N more fields" signpost opens the list view with the repos shown', async () => {
+  const f = fakeFarm();
+  const page = loadPage({ farm: f.farm, stored: { 'tracker-view': 'farm', 'tracker-closed-groups': '["repos","idle","stale"]' } });
+  page.push(richSnapshot([richAgent()]));
+  f.showRepos();
+  assert.equal(page.el('main').dataset.view, 'list');
+  assert.match(page.el('rail').innerHTML, /data-group="repos" aria-expanded="true"/);
+});
+
+test('without the farm script, the toggle stays on the list and says why', async () => {
+  const page = loadPage({ stored: { 'tracker-view': 'farm' } });
+  assert.equal(page.el('main').dataset.view, 'list');
+  assert.match(page.el('notice').textContent, /farm view could not load/);
+  page.push(richSnapshot([richAgent()]));
+  assert.match(page.list(), /busy-one/);
+  await page.click('view-farm');
+  assert.equal(page.el('main').dataset.view, 'list');
+});
+
+test('the farm script is loaded before the page script, which stays the last script tag', () => {
+  assert.match(html, /<script src="\/farm\.js" defer><\/script>[\s\S]*<script>[\s\S]*<\/script>\s*<\/body>/);
+  assert.equal(html.lastIndexOf('<script>'), html.indexOf('<script>', html.indexOf('<script src="/farm.js"')));
 });
