@@ -218,7 +218,7 @@ try {
   check(await until("document.querySelectorAll('.px-say').length >= 3"), 'the two finished farmers have bubbles too');
   await sleep(4000); // let everyone reach the porch
   const overlaps = await js(`(() => {
-    const boxes = [...document.querySelectorAll('.px-say, .px-tag:not(.st-idle):not(.st-stale)')].map(el => ({ el, r: el.getBoundingClientRect() }));
+    const boxes = [...document.querySelectorAll('.px-say, .px-tag.st-waiting, .px-tag.st-turn, .px-tag.sel')].map(el => ({ el, r: el.getBoundingClientRect() }));
     const out = [];
     for (let i = 0; i < boxes.length; i++) for (let j = i + 1; j < boxes.length; j++) {
       const a = boxes[i], b = boxes[j];
@@ -228,7 +228,17 @@ try {
     }
     return out.join(', ');
   })()`);
-  check(overlaps === '', `speech bubbles overlap neither each other nor name tags${overlaps ? `: ${overlaps}` : ''}`);
+  check(overlaps === '', `speech bubbles overlap neither each other nor the names shown${overlaps ? `: ${overlaps}` : ''}`);
+  check(await js("getComputedStyle(document.querySelector('.px-tag[data-farmer=\"ui-worker\"]')).opacity === '0' && getComputedStyle(document.querySelector('.px-tag.st-waiting')).opacity === '1'"), "a working farmer's name waits for a hover; a waiting one's always shows");
+  const hovered = await js(`(() => { const c = document.querySelector('#farm canvas'), t = document.querySelector('.px-tag[data-farmer="ui-worker"]').getBoundingClientRect(), cs = c.getBoundingClientRect().width / (400 + 2 * Number(c.dataset.pad.split(',')[0]));
+    c.dispatchEvent(new PointerEvent('pointermove', { bubbles: true, pointerId: 1, clientX: t.left + t.width / 2, clientY: t.bottom + 10 * cs })); // on its sprite, just under its hidden name
+    const on = document.querySelector('.px-tag[data-farmer="ui-worker"]').classList.contains('hover');
+    c.dispatchEvent(new PointerEvent('pointerleave', { bubbles: true, pointerId: 1 })); document.querySelector('#farm .px-view').dispatchEvent(new PointerEvent('pointerleave', { pointerId: 1 }));
+    return on && !document.querySelector('.px-tag.hover'); })()`);
+  check(hovered, 'hovering a farmer shows its name, and leaving hides it again');
+  const corners = JSON.parse(await js(`(() => { const r = s => document.querySelector(s).getBoundingClientRect(), v = r('#farm .px-host'), st = r('.px-stats'), z = r('.px-zoombar'), t = r('.px-tools');
+    return JSON.stringify({ stats: st.left - v.left < 20 && st.top - v.top < 20, zoom: v.right - z.right < 20 && Math.abs((z.top + z.bottom) / 2 - (v.top + v.bottom) / 2) < 40, tools: v.bottom - t.bottom < 20 && Math.abs((t.left + t.right) / 2 - (v.left + v.right) / 2) < 40 }); })()`));
+  check(corners.stats && corners.zoom && corners.tools, `the controls lie over the farm: stats top left, zoom on the right, switches along the bottom (${JSON.stringify(corners)})`);
   if (process.env.SHOTS) { // optional: SHOTS=<folder> saves a picture of the farm at this point
     const shot = await send('Page.captureScreenshot', { format: 'png' });
     writeFileSync(join(process.env.SHOTS, 'farm-bubbles.png'), Buffer.from(shot.result.data, 'base64'));
@@ -291,8 +301,8 @@ try {
   })`);
   check(allBack, `switching them back on shows them all, hidden ones too${sayState ? ` (now: ${sayState})` : ''}`);
 
-  // a farm point to the screen: the canvas also holds the extra sky and meadow round the farm (data-pad)
-  const closeUp = "(() => { const c = document.querySelector('#farm canvas'); const [px, pt] = c.dataset.pad.split(',').map(Number), r = c.getBoundingClientRect(), cs = r.width / (400 + 2 * px); c.dispatchEvent(new MouseEvent('click', { bubbles: true, clientX: r.left + (70 + px) * cs, clientY: r.top + (48 + pt) * cs })); })()";
+  // a farm point to the screen: the canvas also holds the forest round the farm (data-pad); the first field's bed is at (174, 118)
+  const closeUp = "(() => { const c = document.querySelector('#farm canvas'); const [px, pt] = c.dataset.pad.split(',').map(Number), r = c.getBoundingClientRect(), cs = r.width / (400 + 2 * px); c.dispatchEvent(new MouseEvent('click', { bubbles: true, clientX: r.left + (174 + px) * cs, clientY: r.top + (118 + pt) * cs })); })()";
   await js(closeUp);
   const closeUpOpen = await until("[...document.querySelectorAll('.fv-f')].map(b => b.textContent).join(' ').includes('app.ts')");
   const closeUpState = closeUpOpen ? '' : await js(`JSON.stringify({ fv: !!document.querySelector('.fv-back'), files: [...document.querySelectorAll('.fv-f')].length, canvas: (r => [r.left, r.top, r.width, r.height].map(Math.round))(document.querySelector('#farm canvas').getBoundingClientRect()), stage: document.querySelector('#farm .px-stage').style.transform, side: document.getElementById('main').dataset.side, sel: document.querySelector('.px-tag.sel')?.dataset.farmer, tags: [...document.querySelectorAll('.px-tag')].map(t => t.dataset.farmer + '@' + Math.round(t.getBoundingClientRect().left)) })`);
@@ -301,8 +311,8 @@ try {
   await js("document.querySelector('[data-fv-close]').click()");
   check(await js("!document.querySelector('.fv-back')"), 'the close-up closes');
 
-  await js("[...document.querySelectorAll('.px-tag')].find(t => t.textContent.startsWith('ui-asker')).click()");
-  check(await until("document.getElementById('main').dataset.side === 'open' && /Which crop next/.test(document.getElementById('farm-agent').textContent)"), 'clicking a farmer opens the sidebar with its question');
+  await js("document.querySelector('[data-farm-need]').click()");
+  check(await until("document.getElementById('main').dataset.side === 'open' && /Which crop next/.test(document.getElementById('farm-agent').textContent)"), "the farm's “needs you” button opens the waiting farmer in the sidebar, with its question");
   check(await js("document.getElementById('center-body').innerHTML === ''"), 'the hidden centre holds no second answer form');
   await js("(() => { const r = document.querySelector('#farm-agent input[value=\"Pumpkins\"]'); r.checked = true; r.dispatchEvent(new Event('change', { bubbles: true })); document.getElementById('ask-send').click(); })()");
   check(await until("/Answer sent to ui-asker/.test(document.getElementById('notice').textContent)"), 'the answer is sent from the farm sidebar');

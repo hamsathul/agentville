@@ -34,9 +34,12 @@ how much CPU and memory each one uses.
   listed under "Documents". In any open file, select a passage and **Quote** it (code quotes
   carry their line numbers), then reply; the agent gets it as a message about that file.
 - **Pixel farm view** (☰ List | 🌾 Farm in the top bar): the same live data as a little farm.
-  Every agent is a farmer and every repo a field. Each farmer has its own hat, hair and clothes;
-  each field its own crop (the seed packet on its fence), soil and fence, and a pennant when it is
-  on a branch other than main. A farmer that needs you walks to your porch and waves a red "!"; one whose turn it is brings a basket. Working farmers stand in the field
+  Every agent is a farmer and every repo a field: a raised bed in one fenced grid (empty beds wait
+  for more repos), with the barn, silo and farmhouse along the top, the yard down the left and a
+  forest all round, seen from slightly above. Each farmer has its own hat, hair and clothes (its
+  name shows when you hover it); each field its own crop (the seed packet on its side), soil and
+  frame, and a pennant when it is on a branch other than main. A farmer that needs you walks to
+  your porch in front of the farmhouse and waves a red "!"; one whose turn it is brings a basket. Working farmers stand in the field
   of the repo they write to, holding a tool for their current step: an almanac when reading, a
   spyglass when searching, a magnifier over the crops for tests, a hammer for a build, a
   wheelbarrow for installs, a crate for a commit, a cart to market for a push (with a flag for a
@@ -51,10 +54,10 @@ how much CPU and memory each one uses.
   (answer its question or permission prompt, message it with screenshots, the conversation newest
   first), **Activity** (its tool steps), **Files** (its folder, scratchpad and memory) and **Diary**
   (who went where). Speech bubbles over the farmers show what each last said (its question when
-  it waits on you); × hides one to a 💬 that shows it again, and the Bubbles switch hides or shows them all. The farm fits its frame; − / + (or ⌘/Ctrl + scroll, or a pinch) zooms it inside the frame, and you drag or scroll to move around. Click a field for a close-up of the files agents touched there.
+  it waits on you); × hides one to a 💬 that shows it again, and the Bubbles switch hides or shows them all. The farm fits its frame, with its controls over the edges like a game's: the stats top left (with a "needs you" button that opens the first agent waiting), + / − on the right (or ⌘/Ctrl + scroll, or a pinch) to zoom inside the frame, and the switches along the bottom; you drag or scroll to move around. Click a field for a close-up of the files agents touched there.
   The farm is drawn in one palette, with shadows, textured ground and a pixel font for names
-  and signs. The sky follows your clock (at night the windows and lanterns glow; the Sky
-  switch holds it at day or night), farmers face where they walk, rain falls on a field whose
+  and signs. The light follows your clock (cloud shadows drift over by day; at night the windows,
+  lamps and lanterns glow and fireflies come out; the Sky switch holds it at day or night), farmers face where they walk, rain falls on a field whose
   deploy failed, and dust, splashes and chimney smoke move with the work. The silo's grain is
   your plan's weekly usage, the season follows its 5-hour limit (spring when fresh, winter when
   nearly used up), and the henhouse's eggs are subagents that finished lately. Follow keeps the

@@ -328,7 +328,8 @@ pre.code .l:hover { background: var(--panel-2); }
 @keyframes spin { to { transform: rotate(360deg); } }
 a.chip { text-decoration: none; }
 .px-loading { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; gap: 9px; font: 600 13px system-ui, sans-serif; color: #fff3d6; background: rgba(20, 30, 18, .55); }
-.px-field { pointer-events: auto; cursor: pointer; border: 0; background: transparent; color: inherit; font: inherit; letter-spacing: inherit; padding: 0; display: inline-flex; gap: 5px; align-items: center; }
+.px-field { pointer-events: auto; cursor: pointer; border: 0; background: transparent; color: inherit; font: inherit; letter-spacing: inherit; padding: 0; display: inline-flex; flex-direction: column; gap: 3px; align-items: center; }
+.px-fl { display: inline-flex; gap: 5px; align-items: center; }
 .px-lab.silo-amber { background: #f0b429; color: #2a1d14; } .px-lab.silo-red { background: #e04a3a; color: #fff; }
 .px-field .dep-bad { color: #ff8a80; } .px-field .dep-ok { color: #8ef0a0; } .px-field .dep-run { color: #ffd166; } .px-field .dep-dim { color: #c9c2b0; opacity: .85; }
 .chat { display: grid; gap: 6px; }
@@ -357,13 +358,10 @@ a.chip { text-decoration: none; }
 @keyframes blink { 50% { opacity: .25; } }
 .ell { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
 .px { flex: 1; min-height: 0; display: flex; flex-direction: column; gap: 12px; }
-.px-host { flex: 1; min-height: 0; display: flex; flex-direction: column; gap: 8px; background: #24361f; border: 1px solid var(--line); border-radius: 14px; padding: 10px; }
-.px-view { position: relative; flex: 1; min-height: 0; display: flex; overflow: auto; overscroll-behavior: contain; border-radius: 6px; } /* the frame: zoom happens inside it */
+.px-host { position: relative; flex: 1; min-height: 0; display: flex; flex-direction: column; background: #1c3320; border: 1px solid var(--line); border-radius: 14px; overflow: hidden; container-type: inline-size; }
+.px-view { position: relative; flex: 1; min-height: 0; display: flex; overflow: auto; overscroll-behavior: contain; } /* the frame: zoom happens inside it */
 .px-view.panning, .px-view.panning * { cursor: grabbing !important; user-select: none; }
 .px-stage { position: relative; flex: none; margin: auto; } /* centred, yet scrollable all round when zoomed in */
-.px-hud .px-zoom { padding: 0; gap: 0; overflow: hidden; }
-.px-hud .px-zoom button { border: 0; border-radius: 0; box-shadow: none; background: transparent; padding: 1px 8px; min-width: 24px; justify-content: center; }
-.px-hud .px-zoom button + button { border-left: 1px solid #c98d4f; }
 .px-say { position: absolute; left: 0; top: 0; z-index: 2; width: max-content; max-width: 180px; padding: 4px 19px 5px 8px; background: #fffdf4; color: #2b2116; border: 2px solid #2a1d14; border-radius: 9px; font: 600 11px/1.3 system-ui, sans-serif; pointer-events: auto; cursor: pointer; box-shadow: 0 2px 0 rgba(0, 0, 0, .25); }
 .px-say::before { content: ''; position: absolute; left: 50%; top: 100%; width: 2px; height: var(--lead, 0px); margin-left: -1px; background: #2a1d14; } /* a lifted bubble's line down to its farmer */
 .px-say::after { content: ''; position: absolute; left: 50%; top: calc(100% + var(--lead, 0px)); margin-left: -6px; border: 6px solid transparent; border-top-color: #2a1d14; border-bottom: 0; }
@@ -389,14 +387,28 @@ a.chip { text-decoration: none; }
 .px-lab.bad { color: #ffd166; }
 .px-lab.cnt { background: rgba(255, 248, 225, .94); color: #5a3a1a; font-size: 9px; padding: 0 4px; border-radius: 6px; transform: translate(-50%, -100%); letter-spacing: 0; }
 .px-more { pointer-events: auto; cursor: pointer; font: 700 10px system-ui, sans-serif; letter-spacing: 0; color: #5a3a1a; background: rgba(255, 248, 225, .94); border: 2px solid #c98d4f; border-radius: 8px; padding: 0 6px; }
-.px-hud { align-self: stretch; justify-content: center; display: flex; flex-wrap: wrap; gap: 6px; pointer-events: none; }
-.px-hud span, .px-hud button { display: inline-flex; align-items: center; gap: 5px; font: 700 11px system-ui, sans-serif; background: rgba(255, 248, 225, .94); color: #5a3a1a; border: 2px solid #c98d4f; border-radius: 10px; padding: 1px 8px; box-shadow: 0 2px 0 #8b5a2b; pointer-events: auto; }
-.px-hud button { cursor: pointer; }
-.px-hud span.alert { background: #ffe3e0; border-color: var(--crit); color: #8a1c14; box-shadow: 0 2px 0 #8a1c14; animation: blink 1s infinite; }
-.px-hud .coin { width: 10px; height: 10px; border-radius: 50%; background: radial-gradient(circle at 35% 35%, #fff3b0, #ffd43b 55%, #c99a16); border: 1px solid #a37b0c; }
-.px-hud .basket { width: 11px; height: 8px; border-radius: 0 0 4px 4px; background: #a8703c; box-shadow: inset 0 2px 0 #e76f51; }
-.px-hud .hbar { display: inline-block; width: 46px; height: 7px; border-radius: 4px; background: #e8d8b0; overflow: hidden; border: 1px solid #c98d4f; }
-.px-hud .hbar i { display: block; height: 5px; background: linear-gradient(#7ed957, #3f9b3a); }
+/* the farm's controls, laid over the map: stats top left, zoom on the right, switches along the bottom */
+.px-hud { position: absolute; inset: 0; pointer-events: none; z-index: 6; }
+.px-hud > div { position: absolute; pointer-events: auto; }
+.px-hud button { font: inherit; cursor: pointer; }
+.px-hud button:disabled { opacity: .5; cursor: default; }
+.px-stats { top: 10px; left: 10px; display: grid; gap: 6px; justify-items: start; padding: 8px 11px 9px; background: rgba(28, 51, 32, .9); border: 2px solid #4e3626; border-radius: 6px; box-shadow: inset 0 0 0 1px rgba(255, 232, 163, .14), 0 3px 0 rgba(0, 0, 0, .35); }
+.px-stats .px-line { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+.px-stats .px-line > span { display: inline-flex; gap: 5px; align-items: center; }
+.px-stats .px-title { display: block; padding-bottom: 5px; border-bottom: 1px solid rgba(255, 232, 163, .18); }
+.px-stats .px-counts { display: grid; gap: 4px; }
+@container (max-width: 1250px) { .px-stats .px-season, .px-stats .px-counts { display: none; } } /* a narrow frame: just the essentials over the farm */
+.px-hud .coin { display: inline-block; width: 10px; height: 10px; border-radius: 50%; background: radial-gradient(circle at 35% 35%, #fff3b0, #ffd43b 55%, #c99a16); border: 1px solid #a37b0c; }
+.px-hud .basket { display: inline-block; width: 11px; height: 8px; border-radius: 0 0 4px 4px; background: #a8703c; box-shadow: inset 0 2px 0 #e76f51; }
+.px-need { display: inline-flex; align-items: center; padding: 4px 9px; background: linear-gradient(#e04a3a, #b23a2e); border: 2px solid #5a1f19; border-radius: 4px; box-shadow: inset 0 1px 0 rgba(255, 200, 190, .45), 0 2px 0 #5a1f19; animation: blink 1.2s infinite; }
+.px-zoombar { right: 10px; top: 50%; transform: translateY(-50%); display: flex; flex-direction: column; border: 2px solid #6b4320; border-radius: 5px; overflow: hidden; box-shadow: 0 3px 0 #4e3626; }
+.px-zoombar button { display: flex; align-items: center; justify-content: center; min-width: 40px; height: 30px; padding: 0 6px; border: 0; background: linear-gradient(#fbf3dc, #eadbb4); }
+.px-zoombar button + button { border-top: 1px solid #c9a46a; }
+.px-zoombar button:hover, .px-tools button:hover:not(:disabled) { background: linear-gradient(#fffaf0, #f4e6c4); }
+.px-tools { bottom: 10px; left: 50%; transform: translateX(-50%); display: flex; gap: 6px; }
+.px-tools button { display: flex; flex-direction: column; align-items: center; justify-content: flex-start; gap: 3px; min-width: 60px; padding: 6px 7px 5px; background: linear-gradient(#fbf3dc, #eadbb4); border: 2px solid #6b4320; border-radius: 5px; box-shadow: inset 0 -2px 0 rgba(107, 67, 32, .22), 0 3px 0 #4e3626; }
+.px-tools button:active:not(:disabled) { transform: translateY(2px); box-shadow: inset 0 -2px 0 rgba(107, 67, 32, .22), 0 1px 0 #4e3626; }
+.px-ico { display: block; width: 18px; height: 18px; flex: none; background: no-repeat 0 0 / 100% 100%; image-rendering: pixelated; }
 .px-pop { position: absolute; transform: translate(-50%, -100%); font: 800 12px system-ui, sans-serif; color: #ffe066; text-shadow: 0 1px 0 #6b4320, 0 0 4px rgba(0, 0, 0, .55); white-space: nowrap; pointer-events: none; animation: pop-up 1.6s ease-out forwards; }
 .px-pop.good { color: #c8f7b4; }
 .px-pop.warn { color: #fff; background: var(--crit); padding: 0 6px; border-radius: 4px; text-shadow: none; }
@@ -405,8 +417,9 @@ a.chip { text-decoration: none; }
 .px-tag { position: absolute; left: 0; top: 0; pointer-events: auto; cursor: pointer; border: 0; white-space: nowrap; font: 600 10px system-ui, sans-serif; padding: 0 5px; border-radius: 3px; background: rgba(10, 12, 15, .7); color: #e8edf2; line-height: 15px; }
 .px-tag.st-waiting { background: var(--crit); color: #fff; }
 .px-tag.st-turn { background: var(--warn); color: #1d1d1d; }
-.px-tag.st-idle, .px-tag.st-stale { opacity: 0; }
-.px-tag.st-idle:hover, .px-tag.st-stale:hover { opacity: 1; }
+.px-tag { opacity: 0; transition: opacity .12s; } /* a name shows on hover; always for the farmer picked and those who need you */
+.px-tag.st-waiting, .px-tag.st-turn, .px-tag.sel, .px-tag.hover, .px-tag:hover { opacity: 1; }
+.px-tag.hover, .px-tag:hover { z-index: 70; }
 .px-under { flex: none; max-height: 30%; overflow: auto; display: grid; gap: 12px; }
 .px-under > div { background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 10px 14px; min-width: 0; }
 .px-under h4 { margin: 0 0 6px; font-size: 11px; text-transform: uppercase; letter-spacing: .08em; color: var(--muted); }
@@ -420,17 +433,11 @@ a.chip { text-decoration: none; }
 /* the pixel font: text as a crisp image, its words kept for screen readers */
 .pxt { display: inline-block; vertical-align: middle; flex: none; background: no-repeat 0 0 / 100% 100%; image-rendering: pixelated; }
 .px-sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
-/* the HUD and place names as wooden signs */
-.px-hud span, .px-hud button { background: linear-gradient(180deg, #b07a46 0%, #a8703c 50%, #8b5a2b 100%); color: #fff3d6; border: 2px solid #4e3626; border-radius: 3px; box-shadow: inset 0 1px 0 rgba(255, 232, 163, .35), 0 2px 0 #2a1d14; padding: 3px 8px; }
-.px-hud span.alert { background: linear-gradient(180deg, #e04a3a, #9c3b30); border-color: #5a1f19; box-shadow: inset 0 1px 0 rgba(255, 200, 190, .4), 0 2px 0 #5a1f19; }
-.px-hud button:hover { background: linear-gradient(180deg, #c98d4f 0%, #b07a46 50%, #8b5a2b 100%); }
-.px-hud button:disabled { opacity: .55; cursor: default; }
-.px-hud .px-zoom { padding: 0; } .px-hud .px-zoom button { background: transparent; border: 0; box-shadow: none; padding: 3px 7px; } .px-hud .px-zoom button + button { border-left: 1px solid #4e3626; }
+/* place names as wooden signs */
 .px-lab.zone { background: linear-gradient(#a8703c, #8b5a2b); border: 1px solid #4e3626; border-radius: 2px; padding: 1px 4px; box-shadow: 0 1px 0 #2a1d14; }
 .px-tag, .px-lab, .px-field, .px-more, .px-pop { line-height: 0; }
 .px-tag { padding: 2px 4px; }
 .px-lab.cnt { padding: 2px 3px; }
-.px-hud .px-info { width: 22px; height: 22px; padding: 0; justify-content: center; border-radius: 50%; font: italic 800 13px Georgia, serif; }
 dialog.px-help { max-width: min(560px, calc(100vw - 32px)); padding: 0; }
 .px-help header { display: flex; align-items: center; gap: 8px; padding: 12px 16px; border-bottom: 1px solid var(--line); }
 .px-help header .x { margin-left: auto; border: 0; background: transparent; font-size: 22px; line-height: 1; cursor: pointer; color: var(--muted); }

@@ -171,7 +171,7 @@
   };
   const PXG = { ctx: null, T: 0, k: 1, lights: null, ext: null }; // ext: the world drawn, past the farm's own edges when the frame has room // the canvas being drawn now, the animation clock, device pixels per world pixel, lights to glow at night
   const px = (x, y, w, h, c) => { PXG.ctx.fillStyle = ink(c); PXG.ctx.fillRect(x, y, w, h); };
-  const SC = 1.5; // characters are drawn at 1.5×: one sprite pixel = 1.5 world pixels
+  const SC = 1; // one sprite pixel = one world pixel, the same pixels as the land
   const blink = (hz, n = 2) => Math.floor(PXG.T * hz) % n;
   // A sprite pixel lands on whole device pixels, so a scale like 1.5× stays crisp (no soft edges).
   const snap = v => Math.round(v * PXG.k) / PXG.k;
@@ -205,15 +205,15 @@
     ink: ['#1b1420', '#2a1d14'],
     wood: ['#4e3626', '#6b4320', '#8b5a2b', '#a8703c', '#c98d4f', '#e2b07a'],
     soil: ['#5e3d22', '#6b4a35', '#705a3a', '#7a4632', '#7a5230', '#86603a'],
-    path: ['#8a7140', '#9a7442', '#b08850', '#c9a46a'],
+    path: ['#8a7140', '#9a7442', '#b08850', '#c9a46a', '#dcc08a'],
     grass: ['#1f3d1a', '#2f5a2a', '#3f7d3a', '#4f8f3a', '#5d9b46', '#6aa84f', '#7fbf5a'],
-    leaf: ['#2f6b2f', '#3f9b3a', '#6cc04a', '#9ed36a', '#c6e89a', '#6b8f4a'],
-    autumn: ['#8a8f3a', '#b5562f', '#c8681a', '#e9a23b'],
+    leaf: ['#1c3320', '#264a2a', '#2f6b2f', '#3f9b3a', '#6cc04a', '#9ed36a', '#c6e89a', '#6b8f4a'],
+    autumn: ['#6b7a35', '#8a8f3a', '#b5562f', '#c8681a', '#e9a23b'],
     stone: ['#3a3a40', '#5f6b7a', '#5f7f9a', '#8a8f96', '#9aa4ad', '#c3cbd2', '#e6eef5'],
-    sky: ['#141a33', '#2c3a5a', '#2c4a85', '#3d7be0', '#5ab4ff', '#a9dcf7', '#d8f0ff'],
-    dusk: ['#5a3b85', '#8a5fc0', '#d55181', '#f4b6c2', '#ffb48a'],
+    water: ['#2c4a85', '#3d7be0', '#5ab4ff', '#a9dcf7'],
+    dusk: ['#5a3b85', '#8a5fc0', '#d55181', '#f4b6c2'],
     red: ['#5a1f19', '#6b2a22', '#9c3b30', '#b23a2e', '#e04a3a', '#ff6b6b'],
-    sun: ['#f08a24', '#f4a261', '#f0b429', '#ffd43b', '#e9c46a', '#f4d58d', '#ffe8a3'],
+    sun: ['#f08a24', '#f0b429', '#ffd43b', '#e9c46a', '#f4d58d', '#ffe8a3'],
     cream: ['#c9a24a', '#c9b48a', '#d4c294', '#e8d8b0', '#f4ecd8', '#ffffff'],
     skin: ['#f1c7a1', '#e0a878', '#c68a5a', '#9c6644', '#7d5236'],
     bright: ['#2fa57a', '#ff5a1f'],
@@ -251,9 +251,6 @@
     const moon = !sun || phase === 'dusk' || phase === 'dawn' ? (nh < 10.5 ? arc(nh / 10.5) : null) : null;
     return { phase, light, sun, moon: sun && phase === 'day' ? null : moon, hour: h };
   }
-  const SKY = { // [top, middle, low] of the sky band by phase
-    day: ['#5ab4ff', '#a9dcf7', '#d8f0ff'], dawn: ['#8a5fc0', '#f4b6c2', '#ffb48a'], dusk: ['#5a3b85', '#d55181', '#ffb48a'], night: ['#141a33', '#2c3a5a', '#2c4a85'],
-  };
   /** A puffy cloud, w wide: three bumps on a flat base, lit on top, shaded underneath. */
   function drawCloud(x, y, w, [light, mid, dark]) {
     const b = Math.round(w / 3);
@@ -262,37 +259,15 @@
     px(x + Math.round(w * 0.14), y + 1, b - 4, 1, light); px(x + Math.round(w * 0.4), y - 1, b - 2, 1, light); px(x + Math.round(w * 0.7), y + 1, b - 5, 1, light);
     px(x + 2, y + 7, w - 4, 1, dark);
   }
-  /** The sky band, every frame: its colours by the hour, stars, the sun or moon on its arc, drifting clouds. */
-  function drawSky(sky, T, hot) {
-    const [top, mid, low] = SKY[sky.phase], { x0, x1, y0 } = PXG.ext ?? { x0: 0, x1: W, y0: 0 }, EW = x1 - x0;
-    px(x0, y0, EW, 6 - y0, top); px(x0, 6, EW, 5, mid); px(x0, 11, EW, 6, low);
-    if (sky.light < 0.6) for (let i = 0, n = Math.round(22 * (EW / W) * (1 - y0 / 17)); i < n; i++) { // stars
-      const x = x0 + ((i * 97 + 13) % EW), y = y0 + ((i * 37) % (12 - y0));
-      if ((i + Math.floor(T * 1.3 + i * 0.7)) % 5) px(x, y, 1, 1, i % 3 ? '#e6eef5' : '#ffe8a3');
-    }
-    if (sky.sun) {
-      const { x, y } = sky.sun, c = hot && blink(2) ? '#ff922b' : sky.phase === 'day' ? '#ffd43b' : '#ff922b';
-      px(x - 3, y - 5, 6, 10, c); px(x - 5, y - 3, 10, 6, c); px(x - 4, y - 4, 8, 8, c); px(x - 2, y - 3, 2, 2, '#ffe8a3');
-      if (hot) { PXG.ctx.globalAlpha = 0.35; px(x - 8, y - 8, 16, 16, '#ff5a1f'); PXG.ctx.globalAlpha = 1; } // a machine running hot
-    }
-    if (sky.moon) {
-      const { x, y } = sky.moon;
-      px(x - 3, y - 4, 6, 8, '#f4ecd8'); px(x - 4, y - 3, 8, 6, '#f4ecd8'); px(x, y - 2, 2, 2, '#d4c294'); px(x - 2, y + 1, 1, 1, '#d4c294');
-      if (hot) { PXG.ctx.globalAlpha = 0.35; px(x - 7, y - 7, 14, 14, '#ff5a1f'); PXG.ctx.globalAlpha = 1; }
-    }
-    const tones = sky.light > 0.5 ? ['#ffffff', '#f4ecd8', '#c3cbd2'] : sky.light > 0.1 ? ['#ffd8a8', '#f4b6c2', '#d55181'] : ['#5f6b7a', '#3a3a40', '#2c3a5a'];
-    const clouds = [[60, 3, 24, 2.2], [210, 5, 28, 1.6], [330, 2, 18, 2.8], [140, -14, 30, 1.2], [290, -26, 22, 1.9], [20, -38, 26, 1.4], [370, -50, 20, 2.4]];
-    for (const [cx, y, w, sp] of clouds) if (y >= y0 - 4) drawCloud(Math.round(x0 + ((cx - x0 + T * sp) % (EW + 60)) - 30), y, w, tones);
-  }
-  /**
-   * Night falls over everything drawn so far (a tint, warm at dawn and dusk), then the lights glow:
-   * the farmhouse windows, the barn lamp, lanterns in farmers' hands.
-   */
   /** Two colours mixed: t = 0 gives a, 1 gives b. */
   function blend(a, b, t) {
     const [ar, ag, ab] = rgbOf(a), [br, bg, bb] = rgbOf(b);
     return `#${[ar + (br - ar) * t, ag + (bg - ag) * t, ab + (bb - ab) * t].map(v => Math.round(v).toString(16).padStart(2, '0')).join('')}`;
   }
+  /**
+   * Night falls over everything drawn so far (a tint, warm at dawn and dusk), then the lights glow:
+   * the farmhouse windows, the barn lamp, lanterns in farmers' hands.
+   */
   let lightMap = null; // the night's darkness, one pixel per world pixel, with the lit places cut out
   function drawNight(sky, H, lights) {
     const ctx = PXG.ctx, dark = 1 - sky.light;
@@ -300,7 +275,7 @@
     const e = PXG.ext ?? { x0: 0, x1: W, y0: 0, y1: H }, w = e.x1 - e.x0, h = e.y1 - e.y0;
     // Laid over the farm with multiply: white leaves a pixel as it is, the shade darkens it. So
     // the darkness is the shade mixed toward white by its strength, and a light is a round hole in
-    // it, in four soft steps to warm white in the middle: lit places keep their colours, no fog.
+    // it, in five soft steps to warm white in the middle: lit places keep their colours, no fog.
     const darkness = blend('#ffffff', sky.phase === 'night' ? '#3c4a8c' : '#c26a7a', Math.min(0.7, dark * 0.7));
     lightMap ??= document.createElement('canvas');
     if (lightMap.width !== w || lightMap.height !== h) { lightMap.width = w; lightMap.height = h; }
@@ -326,11 +301,12 @@
   }
 
   // Seasons: the grass, the trees and the flowers (spring blossom, autumn leaves, winter snow).
+  // grass: [dark, base, light]; canopy: [outline, shade, leaves, lit leaves].
   const SEASONS = {
-    spring: { grass: ['#4f8f3a', '#5d9b46', '#66a34b', '#7fbf5a'], tuft: '#3f7d3a', canopy: ['#2f6b2f', '#3f8a3a', '#6cc04a'], bloom: '#f4b6c2', flowers: ['#ffffff', '#f4b6c2', '#ffd43b', '#e58a8a'] },
-    summer: { grass: ['#4f8f3a', '#5d9b46', '#66a34b', '#6aa84f'], tuft: '#3f7d3a', canopy: ['#2a5e2a', '#2f6b2f', '#3f8a3a'], flowers: ['#ffffff', '#ffd43b'] },
-    autumn: { grass: ['#6b7a35', '#8a8f3a', '#a8a350', '#8a8f3a'], tuft: '#6b7a35', canopy: ['#8a3b2e', '#c8681a', '#e9a23b'], flowers: ['#c8681a'] },
-    winter: { grass: ['#c3cbd2', '#dfe9f2', '#f4f8fb', '#e6eef5'], tuft: '#9aa4ad', canopy: ['#3a3a40', '#4a4a52', '#dfe9f2'], flowers: [], snow: true },
+    spring: { grass: ['#4f8f3a', '#5d9b46', '#6aa84f'], tuft: '#3f7d3a', blade: '#7fbf5a', shadow: '#3f7d3a', canopy: ['#1c3320', '#2f6b2f', '#3f9b3a', '#6cc04a'], bloom: '#f4b6c2', flowers: ['#ffffff', '#f4b6c2', '#ffd43b', '#e58a8a'] },
+    summer: { grass: ['#4f8f3a', '#5d9b46', '#6aa84f'], tuft: '#3f7d3a', blade: '#7fbf5a', shadow: '#3f7d3a', canopy: ['#1c3320', '#264a2a', '#2f6b2f', '#3f9b3a'], flowers: ['#ffffff', '#ffd43b'] },
+    autumn: { grass: ['#6b7a35', '#8a8f3a', '#a8a350'], tuft: '#6b7a35', blade: '#c9c45a', shadow: '#6b7a35', canopy: ['#5a1f19', '#9c3b30', '#c8681a', '#e9a23b'], flowers: ['#c8681a'] },
+    winter: { grass: ['#c3cbd2', '#dfe9f2', '#f4f8fb'], tuft: '#9aa4ad', blade: '#ffffff', shadow: '#9aa4ad', canopy: ['#1c3320', '#264a2a', '#2f6b2f', '#ffffff'], flowers: [], snow: true },
   };
   /** 0–1023 for a spot, well mixed, the same every build (texture without stripes). */
   const noise = (x, y) => {
@@ -339,90 +315,242 @@
     h = Math.imul(h ^ (h >>> 13), 0xc2b2ae35);
     return ((h ^ (h >>> 16)) >>> 0) & 1023;
   };
+  /** Smooth noise, 0–1, that changes over about s pixels: patches of lighter and darker grass. */
+  function vnoise(x, y, s) {
+    const gx = Math.floor(x / s), gy = Math.floor(y / s), tx = x / s - gx, ty = y / s - gy;
+    const n = (i, j) => noise(gx + i, gy + j + 7919) / 1023, sx = tx * tx * (3 - 2 * tx), sy = ty * ty * (3 - 2 * ty);
+    return (n(0, 0) * (1 - sx) + n(1, 0) * sx) * (1 - sy) + (n(0, 1) * (1 - sx) + n(1, 1) * sx) * sy;
+  }
 
-  /** The land: everything that does not move, drawn once (and again when the season turns). The sky shows through above. */
-  function drawLand(f, L, season = 'summer', ext = { x0: 0, x1: W, y1: L.H }) {
-    const { H, BOT_TOP, LANE_B } = L, S = SEASONS[season] ?? SEASONS.summer, { x0, x1, y1 } = ext, EW = x1 - x0;
-    // grass in three tones, with tufts and a few flowers (out to the frame's edges)
-    for (let y = 16; y < y1; y += 2) for (let x = x0 - (x0 & 1); x < x1; x += 2) { const n = noise(x, y); f(x, y, 2, 2, n < 170 ? S.grass[0] : n < 820 ? S.grass[1] : n < 1000 ? S.grass[2] : S.grass[3]); }
-    for (let y = 18; y < y1 - 2; y += 5) for (let x = x0 + 2; x < x1 - 2; x += 7) {
-      const n = noise(x + 7, y + 3);
-      if (n < 120) { f(x, y, 1, 2, S.tuft); f(x + 2, y, 1, 2, S.tuft); f(x + 1, y + 1, 1, 2, S.tuft); }
-      else if (n < 135 && S.flowers.length) { f(x, y + 1, 1, 1, S.tuft); f(x, y, 1, 1, S.flowers[n % S.flowers.length]); }
+  // Shapes for the land. f paints a rectangle; everything is lit from the top left, so shadows fall
+  // to the bottom right.
+  /** A filled pixel ellipse. */
+  function oval(f, cx, cy, rx, ry, c) {
+    for (let dy = -ry; dy <= ry; dy++) {
+      const half = Math.round(rx * Math.sqrt(Math.max(0, 1 - (dy / (ry + 0.5)) ** 2)));
+      if (half > 0) f(cx - half, cy + dy, half * 2, 1, c);
     }
-    // beyond the farm (when the frame has room): its boundary fence below, and bushes
-    if (y1 > H + 8) { for (let x = x0; x < x1; x += 12) { f(x, H + 3, 2, 8, '#6b4320'); f(x, H + 3, 1, 8, '#8b5a2b'); } f(x0, H + 5, EW, 1, '#8b5a2b'); f(x0, H + 8, EW, 1, '#8b5a2b'); f(x0, H + 6, EW, 1, '#4e3626'); }
-    for (let i = 0; i < 60; i++) {
-      const bx = x0 + (noise(i, 77) % Math.max(1, EW)), by = 18 + (noise(77, i) % Math.max(1, y1 - 24));
-      if ((bx >= -2 && bx < W + 2 && by < H + 12) || by > y1 - 8) continue; // only out past the farm
-      f(bx - 1, by + 4, 11, 1, '#1f3d1a'); f(bx, by, 9, 5, S.canopy[0]); f(bx + 1, by - 1, 6, 2, S.canopy[1]); f(bx + 2, by - 1, 3, 1, S.canopy[2]);
-      if (S.snow) f(bx + 1, by - 1, 7, 1, '#ffffff'); else if (i % 3 === 0) f(bx + 3, by + 1, 1, 1, S.flowers[0] ?? '#e04a3a');
+  }
+  /** A round tree seen from above, standing at (x, y): its shadow, a stub of trunk, a leafy crown. */
+  function tree(f, x, y, r, S, seed = 0) {
+    const [line, dark, mid, lit] = S.canopy, cy = y - 3 - r;
+    oval(f, x + Math.round(r * 0.35), y, r, Math.max(2, Math.round(r * 0.4)), S.shadow);
+    f(x - 2, y - 5, 4, 5, '#4e3626'); f(x - 2, y - 5, 1, 5, '#6b4320');
+    oval(f, x, cy, r + 1, r + 1, line);
+    for (let i = 0; i < 5; i++) { const a = (i / 5) * Math.PI * 2 + seed; oval(f, Math.round(x + Math.cos(a) * r * 0.7), Math.round(cy + Math.sin(a) * r * 0.7), Math.ceil(r * 0.45) + 1, Math.ceil(r * 0.45) + 1, line); } // a bumpy edge
+    oval(f, x, cy, r, r, dark);
+    for (let i = 0; i < 5; i++) { const a = (i / 5) * Math.PI * 2 + seed; oval(f, Math.round(x + Math.cos(a) * r * 0.7), Math.round(cy + Math.sin(a) * r * 0.7), Math.ceil(r * 0.45), Math.ceil(r * 0.45), dark); }
+    oval(f, x - 1, cy - 1, Math.round(r * 0.8), Math.round(r * 0.8), mid);
+    oval(f, x - Math.round(r * 0.3), cy - Math.round(r * 0.35), Math.round(r * 0.45), Math.round(r * 0.4), lit);
+    for (let i = 0; i < r; i++) { const n = noise(x * 7 + i, y + seed * 99); f(x - r + (n % (2 * r)), cy - r + ((n >> 4) % (2 * r)), 1, 1, n & 1 ? dark : lit); } // leaves
+    if (S.snow) { oval(f, x - 1, cy - Math.round(r * 0.45), Math.round(r * 0.7), Math.max(1, Math.round(r * 0.3)), '#ffffff'); }
+  }
+  /** A bush: a small crown without a trunk; now and then with berries or flowers. */
+  function bush(f, x, y, r, S, berry) {
+    const [line, dark, mid, lit] = S.canopy;
+    oval(f, x + 2, y + 1, r + 1, Math.max(1, r >> 1), S.shadow);
+    oval(f, x, y - r, r + 1, r + 1, line); oval(f, x, y - r, r, r, dark); oval(f, x - 1, y - r - 1, Math.max(1, r - 2), Math.max(1, r - 2), mid);
+    f(x - Math.round(r / 2), y - r - Math.round(r / 2), 2, 1, lit);
+    if (S.snow) f(x - r + 1, y - 2 * r, 2 * r - 2, 2, '#ffffff');
+    else if (berry) for (const [dx, dy] of [[-2, -1], [2, 0], [0, 2]]) f(x + dx, y - r + dy, 1, 1, berry);
+  }
+  /** A stone: grey, lit on top, its shadow under it. */
+  function stone(f, x, y, s) {
+    oval(f, x + 1, y + 1, s + 1, Math.max(1, s >> 1), '#3f7d3a');
+    oval(f, x, y - (s >> 1), s, Math.max(1, Math.round(s * 0.7)), '#5f6b7a');
+    oval(f, x - 1, y - (s >> 1) - 1, Math.max(1, s - 1), Math.max(1, Math.round(s * 0.45)), '#8a8f96');
+    f(x - Math.round(s / 2), y - s, 1, 1, '#c3cbd2');
+  }
+  /** A dirt path: packed earth with ragged edges, pebbles and wheel marks. */
+  function dirt(f, x, y, w, h, vertical = false) {
+    f(x, y, w, h, '#b08850');
+    for (let i = 0; i < (vertical ? h : w); i++) { // ragged edges: grass bites into the path here and there
+      const n = noise(x + i * 3, y + i * 5);
+      if (vertical) { if (n < 300) f(x, y + i, 1, 1, '#9a7442'); if (n > 760) f(x + w - 1, y + i, 1, 1, '#9a7442'); if (n % 7 === 0) f(x - 1, y + i, 1, 1, '#b08850'); }
+      else { if (n < 300) f(x + i, y, 1, 1, '#9a7442'); if (n > 760) f(x + i, y + h - 1, 1, 1, '#8a7140'); if (n % 7 === 0) f(x + i, y - 1, 1, 1, '#b08850'); }
     }
-    // a row of trees along the top, behind the fence
-    for (let x = x0 - (((x0 % 10) + 10) % 10); x < x1; x += 10) {
-      const j = Math.round(x / 10), y = 14 + (((j % 3) + 3) % 3) * 2, c = S.canopy[Math.abs(j) % 2 ? 1 : 0];
-      f(x, y, 12, 12, c); f(x + 2, y, 6, 1, S.canopy[2]); f(x, y + 11, 12, 1, '#24361f');
-      if (S.snow) f(x + 1, y, 9, 2, '#f4f8fb');
+    for (let yy = y + 1; yy < y + h - 1; yy += 2) for (let xx = x + 1; xx < x + w - 1; xx += 2) {
+      const n = noise(xx * 3, yy * 7);
+      if (n < 70) f(xx, yy, 1, 1, '#c9a46a'); else if (n < 100) f(xx, yy, 1, 1, '#9a7442'); else if (n < 108) f(xx, yy, 2, 1, '#8a8f96');
     }
-    for (let x = x0 - (((x0 % 12) + 12) % 12); x < x1; x += 12) { f(x, 23, 2, 8, '#6b4320'); f(x, 23, 1, 8, '#8b5a2b'); f(x + 2, 24, 1, 7, '#2f5a2a'); }
-    f(x0, 25, EW, 1, '#8b5a2b'); f(x0, 28, EW, 1, '#8b5a2b'); f(x0, 26, EW, 1, '#4e3626'); f(x0, 29, EW, 1, '#4e3626');
-    // barn, top left: new farmers walk out of its door; a lamp over it glows at night
-    f(1, 5, 48, 28, '#2a1d14'); f(2, 6, 46, 26, '#b23a2e'); f(-2, 3, 54, 4, '#6b2a22'); f(6, 0, 38, 3, '#6b2a22'); f(-2, 6, 54, 1, '#4e3626');
-    for (let y = 8; y < 32; y += 4) f(2, y, 46, 1, '#9c3127');
-    f(2, 6, 2, 26, '#e04a3a');
-    if (S.snow) { f(-2, 2, 54, 2, '#f4f8fb'); f(6, 0, 38, 1, '#f4f8fb'); }
-    f(16, 14, 18, 18, '#5a1f19'); for (let i = 0; i < 18; i++) { f(16 + i, 14 + i, 1, 1, '#f4ecd8'); f(33 - i, 14 + i, 1, 1, '#f4ecd8'); }
-    f(23, 10, 4, 3, '#3a3a40'); f(24, 11, 2, 1, '#ffd43b'); f(48, 30, 4, 3, '#24361f'); // lamp; the barn's shadow
-    // the wild meadow beside the barn: farmers working outside any repo
-    for (let y = TOP + 6; y < BOT_TOP - 8; y += 5) for (let x = 4 + (y % 2) * 2; x < 46; x += 6) f(x, y, 1, 2, '#4f8f3a');
-    // the farm's sign
-    f(149, 3, 102, 16, '#2a1d14'); f(150, 4, 100, 14, '#6b4320'); f(151, 5, 98, 12, '#a8703c'); f(151, 10, 98, 1, '#8b5a2b'); f(151, 5, 98, 1, '#c98d4f');
-    for (const nx of [153, 245]) { f(nx, 6, 1, 1, '#3a3a40'); f(nx, 15, 1, 1, '#3a3a40'); }
-    f(166, 18, 2, 10, '#6b4320'); f(232, 18, 2, 10, '#6b4320'); f(168, 19, 1, 9, '#4e3626'); f(234, 19, 1, 9, '#4e3626');
-    // the walkways between field columns, and the lane in front of the house
-    const dirt = (x, y, w, h) => {
-      f(x, y, w, h, '#b08850');
-      for (let yy = y; yy < y + h; yy += 3) for (let xx = x + 1; xx < x + w - 1; xx += 3) { const n = noise(xx, yy); if (n < 90) f(xx, yy, 1, 1, '#c9a46a'); else if (n < 140) f(xx, yy, 1, 1, '#9a7442'); else if (n < 150) f(xx, yy, 2, 1, '#8a8f96'); }
-    };
-    for (const c of CORR) { dirt(c - 7, TOP, 14, BOT_TOP - TOP + 4); f(c - 7, TOP, 1, BOT_TOP - TOP + 4, '#9a7442'); f(c + 6, TOP, 1, BOT_TOP - TOP + 4, '#9a7442'); f(c + 7, TOP, 1, BOT_TOP - TOP + 4, '#3f7d3a'); }
-    dirt(x0, BOT_TOP - 2, EW, 7); f(x0, BOT_TOP - 2, EW, 1, '#9a7442'); f(x0, BOT_TOP + 5, EW, 1, '#8a7140');
-    // the farmhouse with your porch; its windows light up at night, its chimney smokes while agents work
-    f(124, BOT_TOP + 7, 152, 9, '#2a1d14');
-    f(130, BOT_TOP + 8, 140, 6, '#8a3b2e'); f(130, BOT_TOP + 8, 140, 1, '#b23a2e'); f(126, BOT_TOP + 12, 148, 3, '#6b2a22');
-    if (S.snow) f(128, BOT_TOP + 7, 144, 2, '#f4f8fb');
-    f(240, BOT_TOP - 2, 8, 10, '#5a1f19'); f(239, BOT_TOP - 3, 10, 2, '#3a3a40'); // chimney
-    f(135, BOT_TOP + 15, 130, LANE_B - BOT_TOP - 18, '#2a1d14');
-    f(136, BOT_TOP + 15, 128, LANE_B - BOT_TOP - 19, '#e8d8b0'); for (let y = BOT_TOP + 18; y < LANE_B - 4; y += 4) f(136, y, 128, 1, '#d4c294');
-    f(136, BOT_TOP + 15, 128, 2, '#c9b48a');
-    for (const wx of [148, 232]) { f(wx - 1, BOT_TOP + 18, 22, 15, '#2a1d14'); f(wx, BOT_TOP + 19, 20, 13, '#6b4320'); f(wx + 1, BOT_TOP + 20, 18, 11, '#5fa8e8'); f(wx + 2, BOT_TOP + 21, 6, 2, '#d8f0ff'); f(wx + 10, BOT_TOP + 20, 1, 11, '#6b4320'); f(wx + 1, BOT_TOP + 25, 18, 1, '#6b4320'); f(wx - 2, BOT_TOP + 32, 24, 2, '#8b5a2b'); }
-    f(198, LANE_B - 34, 4, 3, '#3a3a40'); f(199, LANE_B - 33, 2, 1, '#ffd43b'); // the porch lamp
-    f(189, LANE_B - 29, 22, 25, '#2a1d14'); f(190, LANE_B - 28, 20, 24, '#6b4320'); f(191, LANE_B - 27, 18, 23, '#8b5a2b'); f(193, LANE_B - 25, 6, 9, '#7a5230'); f(201, LANE_B - 25, 6, 9, '#7a5230'); f(205, LANE_B - 16, 2, 2, '#f0b429');
-    f(124, LANE_B - 4, 152, 10, '#a8703c'); for (let x = 128; x < 276; x += 8) f(x, LANE_B - 4, 1, 10, '#8b5a2b'); f(124, LANE_B - 4, 152, 1, '#c98d4f'); f(124, LANE_B + 5, 152, 1, '#6b4320');
-    f(186, LANE_B + 6, 28, 4, '#8b5a2b'); f(186, LANE_B + 9, 28, 1, '#6b4320');
-    f(276, BOT_TOP + 14, 4, LANE_B - BOT_TOP - 8, '#24361f'); f(124, LANE_B + 6, 62, 2, '#2f5a2a'); f(214, LANE_B + 6, 62, 2, '#2f5a2a'); // the house's shadow
-    // the shade tree's shadow (the tree itself is drawn with the farmers, so they can stand in front of it)
-    for (const [dx, w] of [[0, 52], [-6, 64], [-2, 56]]) f(31 + dx, LANE_B - 2 + (w === 64 ? 1 : w === 56 ? 2 : 0), w, 1, '#2f5a2a');
-    // the silo, top right: its grain gauge (the plan's weekly usage) is drawn every frame
-    f(371, 4, 22, 28, '#2a1d14'); f(372, 5, 20, 26, '#9aa4ad'); for (let x = 375; x < 391; x += 3) f(x, 5, 1, 26, '#8a8f96'); f(373, 5, 2, 26, '#c3cbd2');
-    f(372, 1, 20, 4, '#2a1d14'); f(373, 1, 18, 4, '#b23a2e'); f(375, 0, 14, 1, '#b23a2e'); f(374, 1, 6, 1, '#e04a3a');
-    if (S.snow) { f(373, 0, 18, 2, '#ffffff'); }
-    f(378, 7, 8, 22, '#2a1d14'); f(369, 30, 26, 2, '#5f6b7a'); f(393, 6, 2, 26, '#24361f');
-    // the pond and the henhouse, at the foot of the meadow
-    const py = BOT_TOP - 22;
-    f(4, py, 28, 15, '#2f5a2a'); f(3, py + 2, 30, 11, '#2f5a2a');
-    f(5, py + 1, 26, 13, S.snow ? '#c3cbd2' : '#3d7be0'); f(4, py + 3, 28, 9, S.snow ? '#c3cbd2' : '#3d7be0');
-    f(6, py + 2, 10, 1, S.snow ? '#e6eef5' : '#5ab4ff'); f(5, py + 4, 2, 6, S.snow ? '#e6eef5' : '#5ab4ff');
-    if (!S.snow) { f(22, py + 9, 4, 2, '#6cc04a'); f(23, py + 9, 1, 1, '#9ed36a'); f(9, py + 10, 3, 2, '#6cc04a'); } // lily pads
-    for (const [rx, h] of [[2, 7], [31, 9], [33, 6]]) { f(rx, py + 12 - h, 1, h, '#6b8f4a'); f(rx, py + 10 - h, 1, 2, '#6b4320'); } // reeds
-    const hx = 36, hy = BOT_TOP - 27;
-    f(hx - 1, hy + 4, 24, 18, '#2a1d14'); f(hx, hy + 5, 22, 16, '#c98d4f'); for (let y = hy + 8; y < hy + 21; y += 3) f(hx, y, 22, 1, '#a8703c');
-    f(hx - 2, hy + 2, 26, 4, '#2a1d14'); f(hx - 1, hy + 2, 24, 3, '#b23a2e'); f(hx + 2, hy, 18, 3, '#b23a2e'); f(hx + 2, hy, 18, 1, '#e04a3a');
-    if (S.snow) f(hx - 1, hy, 24, 2, '#ffffff');
-    f(hx + 8, hy + 12, 7, 9, '#2a1d14'); f(hx + 15, hy + 18, 6, 2, '#8b5a2b'); f(hx + 3, hy + 8, 4, 3, '#2a1d14'); // door, ramp, window
-    f(hx + 22, hy + 6, 2, 16, '#24361f');
-    // the scarecrow corner: dry stubble
-    f(287, BOT_TOP + 9, 112, H - BOT_TOP - 10, '#6d5830'); f(288, BOT_TOP + 10, 110, H - BOT_TOP - 12, '#8a7140');
-    for (let y = BOT_TOP + 14; y < H - 2; y += 5) for (let x = 290 + (y % 2) * 2; x < 396; x += 6) f(x, y, 1, 2, S.snow ? '#dfe9f2' : '#6d5830');
+  }
+  /** A wooden fence running across at y (its feet), from x0 to x1: posts and two rails. */
+  function fenceAcross(f, x0, x1, y, gaps = []) {
+    const open = x => gaps.some(([a, b]) => x >= a && x < b);
+    for (let x = x0; x < x1; x++) if (!open(x)) { f(x, y - 6, 1, 1, '#c98d4f'); f(x, y - 5, 1, 1, '#6b4320'); f(x, y - 3, 1, 1, '#a8703c'); f(x, y - 2, 1, 1, '#6b4320'); f(x, y, 1, 1, '#3f7d3a'); }
+    for (let x = x0; x <= x1 - 2; x += 8) if (!open(x) && !open(x + 1)) { f(x, y - 8, 2, 8, '#8b5a2b'); f(x, y - 8, 2, 1, '#e2b07a'); f(x + 1, y - 7, 1, 7, '#6b4320'); }
+  }
+  /** A wooden fence running down at x, from y0 to y1 (seen from above: a rail on a row of posts). */
+  function fenceDown(f, x, y0, y1, gaps = []) {
+    const open = y => gaps.some(([a, b]) => y >= a && y < b);
+    for (let y = y0; y < y1; y++) if (!open(y)) { f(x, y - 6, 2, 1, '#a8703c'); f(x + 2, y - 5, 1, 1, '#3f7d3a'); }
+    for (let y = y0; y <= y1; y += 8) if (!open(y)) { f(x, y - 8, 2, 8, '#8b5a2b'); f(x, y - 8, 2, 1, '#e2b07a'); f(x + 1, y - 7, 1, 7, '#6b4320'); f(x + 2, y - 2, 1, 2, '#3f7d3a'); }
+  }
+  /** A pitched roof seen from the front and above: shingle rows, lit near the ridge, dark at the eaves. */
+  function shingles(f, x, y, w, h, inset, [line, dark, base, lit]) {
+    for (let j = 0; j < h; j++) {
+      const d = Math.round(((h - 1 - j) * inset) / Math.max(1, h - 1)), xx = x + d, ww = w - 2 * d;
+      f(xx, y + j, ww, 1, j === 0 ? line : j < 3 ? lit : j % 4 === 3 ? dark : base);
+      if (j % 4 === 1 && j > 2) for (let k = xx + ((j >> 2) % 2) * 3 + 2; k < xx + ww - 1; k += 6) f(k, y + j, 1, 2, dark); // shingle joints, staggered
+    }
+    f(x, y + h, w, 1, line); f(x + 1, y + h + 1, w - 2, 1, dark); // the eave and its shadow
+  }
+
+  /**
+   * The land: everything that does not move, drawn once (and again when the season turns or the
+   * frame grows): grass, the forest round the farm, paths, fences, buildings, the pond.
+   */
+  function drawLand(f, L, season = 'summer', ext = { x0: 0, x1: W, y0: 0, y1: L.H }) {
+    const { H, ST, PORCH_Y, LANE, GRID } = L, S = SEASONS[season] ?? SEASONS.summer, { x0, x1, y0, y1 } = ext;
+    // grass: soft patches of three greens, tufts, a few flowers, stones and mushrooms
+    for (let y = y0 - (y0 & 1); y < y1; y += 2) for (let x = x0 - (x0 & 1); x < x1; x += 2) {
+      const v = vnoise(x, y, 22) + (noise(x, y) / 1023 - 0.5) * 0.2;
+      f(x, y, 2, 2, v < 0.36 ? S.grass[0] : v < 0.68 ? S.grass[1] : S.grass[2]);
+    }
+    for (let y = y0 + 2; y < y1 - 2; y += 5) for (let x = x0 + 2; x < x1 - 2; x += 6) {
+      const n = noise(x + 7, y + 3), jx = x + (n % 4), jy = y + ((n >> 2) % 3);
+      if (n < 150) { f(jx, jy, 1, 2, S.tuft); f(jx + 2, jy, 1, 2, S.tuft); f(jx + 1, jy + 1, 1, 2, S.tuft); }
+      else if (n < 200) f(jx, jy, 1, 1, S.blade);
+      else if (n < 212 && S.flowers.length) { f(jx, jy + 1, 1, 1, S.tuft); f(jx, jy, 1, 1, S.flowers[n % S.flowers.length]); }
+      else if (n < 215 && !S.snow) { f(jx, jy, 3, 1, '#e04a3a'); f(jx + 1, jy, 1, 1, '#ffffff'); f(jx + 1, jy + 1, 1, 1, '#f4ecd8'); } // a mushroom
+    }
+    // the forest all round: big round trees just past the farm's edges, thicker further out
+    const trees = [];
+    for (let gy = Math.floor((y0 - 20) / 18); gy * 18 < y1 + 24; gy++) for (let gx = Math.floor((x0 - 24) / 20); gx * 20 < x1 + 24; gx++) {
+      const n = noise(gx * 31, gy * 17), x = gx * 20 + (n % 13) - 6 + (gy % 2) * 10, y = gy * 18 + ((n >> 4) % 9);
+      if (!(x < -4 || x > W + 4 || y <= 12 || y >= H + 22 || (x < 22 && y < 84))) continue; // never on the farm itself (but in its top left corner)
+      if (x < x0 - 30 || x > x1 + 30 || y < y0 - 10 || y > y1 + 34) continue;
+      trees.push([x, y, 9 + ((n >> 6) % 5), n]);
+    }
+    trees.sort((a, b) => a[1] - b[1]).forEach(([x, y, r, n]) => (n % 5 === 0 ? bush(f, x, y, 5, S, null) : tree(f, x, y, r, S, n % 7)));
+    // the main lane in front of the buildings, the path down the yard, and the walkways between the fields
+    dirt(f, x0, LANE - 5, x1 - x0, 10);
+    dirt(f, 111, LANE, 10, H - LANE - 14, true);
+    for (const c of CORR.slice(1)) dirt(f, c - 6, GRID.y0 - 2, 12, GRID.y1 - GRID.y0 - 2, true);
+    // the fields' fence, with gates onto the lane and the yard
+    const lanes = [...new Set(L.slots.map(s => s.lane))];
+    fenceAcross(f, GRID.x0, GRID.x1 + 2, GRID.y0, CORR.slice(1).map(c => [c - 7, c + 7]));
+    fenceAcross(f, GRID.x0, GRID.x1 + 2, GRID.y1);
+    fenceDown(f, GRID.x0, GRID.y0, GRID.y1, lanes.map(y => [y - 4, y + 5]));
+    fenceDown(f, GRID.x1, GRID.y0, GRID.y1);
+    // empty beds waiting for a repo
+    for (const s of L.slots.slice(ST.length)) bed(f, s, '#6b4320', '#7a5230', S.snow);
+    // the barn, top left: new farmers walk out of its big door; a lamp over the door glows at night
+    barn(f, 36, 14, S);
+    silo(f, 92, 6, S);
+    house(f, 132, 10, S, PORCH_Y);
+    // the scarecrow patch, top right: dry stubble behind a low fence
+    f(286, 30, 110, PORCH_Y - 26, '#8a7140'); f(286, 30, 110, 1, '#6d5830');
+    for (let y = 33; y < PORCH_Y + 2; y += 4) for (let x = 289 + (y % 8 ? 2 : 0); x < 394; x += 5) { f(x, y, 1, 2, S.snow ? '#dfe9f2' : '#6d5830'); f(x + 1, y + 1, 1, 1, S.snow ? '#ffffff' : '#c9a46a'); }
+    fenceAcross(f, 284, 398, 30);
+    hay(f, 384, 46); hay(f, 372, 50);
+    // the yard: the henhouse and its run, the meadow, the pond, bushes and stones
+    henhouse(f, 8, 98, S);
+    for (let y = 140; y < 190; y += 3) for (let x = 8 + (y % 6); x < 104; x += 5) { const n = noise(x, y); if (n < 260) { f(x, y, 1, 2, S.tuft); if (S.flowers.length && n < 90) f(x, y - 1, 1, 1, S.flowers[n % S.flowers.length]); } } // the meadow's long grass and flowers
+    pond(f, 42, 210, S);
+    shadeTree(f, 66, 272, S, season);
+    for (const [x, y, r] of [[100, 136, 4], [92, 188, 4], [100, 226, 3]]) bush(f, x, y, r, S, season === 'summer' ? '#e04a3a' : null);
+    for (const [x, y, s] of [[86, 196, 3], [80, 204, 2], [96, 268, 2], [6, 274, 3]]) stone(f, x, y, s);
+    // the bottom edge: a strip of meadow, then the forest
+    for (let x = 4; x < W - 4; x += 9) { const n = noise(x, 999); if (n < 300) f(x, H - 6 + (n % 3), 1, 2, S.tuft); }
+  }
+  /** The shade tree, bottom left, where idle farmers nap: blossom in spring, apples in summer, orange in autumn, bare and snowy in winter. */
+  function shadeTree(f, x, y, S, season) {
+    if (S.snow) {
+      oval(f, x + 6, y + 1, 18, 4, S.shadow);
+      f(x - 3, y - 28, 6, 28, '#4e3626'); f(x - 3, y - 28, 2, 28, '#6b4320');
+      for (const [bx, by, w] of [[-22, -30, 20], [3, -34, 22], [-14, -42, 12], [4, -22, 16]]) { f(x + bx, y + by, w, 2, '#4e3626'); f(x + bx + 1, y + by - 1, w - 2, 1, '#ffffff'); }
+      return;
+    }
+    f(x - 3, y - 8, 6, 8, '#4e3626'); f(x - 3, y - 8, 2, 8, '#6b4320');
+    tree(f, x, y, 21, S, 3);
+    const fruit = season === 'spring' ? S.bloom : season === 'autumn' ? '#e9a23b' : '#e04a3a';
+    for (const [dx, dy] of [[-10, -30], [8, -38], [-4, -16], [12, -24], [-14, -40], [2, -28]]) { f(x + dx, y + dy, 2, 2, fruit); f(x + dx, y + dy, 1, 1, '#fff4d6'); }
+  }
+  /** A raised bed for a field, at its slot: a wooden frame round the soil, its front face in shade. */
+  function bed(f, s, frame, soil, frost) {
+    const { x0, y0 } = s, furrow = shade(soil, 0.77), ridge = shade(soil, 1.15);
+    f(x0 - 3, y0 - 3, 78, 41, '#2a1d14'); // outline
+    f(x0 - 2, y0 - 2, 76, 38, frame); f(x0 - 2, y0 - 2, 76, 1, shade(frame, 1.25)); f(x0 - 2, y0 + 34, 76, 3, shade(frame, 0.72)); f(x0 - 2, y0 + 36, 76, 1, '#2a1d14');
+    f(x0 + 74, y0, 2, 37, '#3f7d3a'); f(x0, y0 + 38, 74, 2, '#3f7d3a'); // its shadow
+    f(x0, y0, 72, 34, soil); f(x0, y0, 72, 1, furrow);
+    for (let k = 0; k < 4; k++) { const fy = y0 + 4 + k * 8; f(x0 + 2, fy - 1, 68, 1, ridge); f(x0 + 2, fy, 68, 2, furrow); f(x0 + 2, fy + 2, 68, 1, shade(soil, 0.9)); } // lit ridge, dark furrow
+    for (let n = 0; n < 20; n++) { const sx = x0 + 2 + noise(n, s.cx) % 68, sy = y0 + 2 + noise(s.cx, n) % 30; f(sx, sy, 1, 1, n % 2 ? ridge : furrow); } // clods
+    if (frost) for (let k = 0; k < 4; k++) f(x0 + 2, y0 + 3 + k * 8, 68, 1, '#f4f8fb'); // frost on bare soil
+  }
+  function hay(f, x, y) { f(x - 5, y - 4, 10, 6, '#c9a24a'); f(x - 5, y - 4, 10, 1, '#f4d58d'); f(x - 2, y - 4, 1, 6, '#a8703c'); f(x + 2, y - 4, 1, 6, '#a8703c'); f(x - 4, y + 2, 10, 1, '#3f7d3a'); }
+  /** The barn: a red front gable with white trim, its roof behind, a big door with a white X. */
+  function barn(f, X, Y, S) {
+    const W2 = 52, red = '#b23a2e', plank = '#9c3b30', trim = '#f4ecd8';
+    f(X + W2, Y + 18, 4, 50, S.shadow); f(X + 3, Y + 66, W2, 3, S.shadow); // shadow
+    shingles(f, X - 1, Y, W2 + 2, 22, 0, ['#2a1d14', '#5a1f19', '#6b2a22', '#9c3b30']); // the roof going back
+    f(X + 25, Y, 2, 22, '#5a1f19');
+    for (let j = 0; j <= 14; j++) { const half = Math.round((j * 25) / 14), y = Y + 10 + j; f(X + 26 - half, y, half * 2, 1, red); f(X + 25 - half, y, 2, 1, trim); f(X + 25 + half, y, 2, 1, trim); } // the gable
+    f(X + 1, Y + 24, W2 - 2, 42, red);
+    for (let x = X + 4; x < X + W2 - 2; x += 4) f(x, Y + 26, 1, 40, plank);
+    f(X + 1, Y + 24, W2 - 2, 2, trim); f(X + 1, Y + 24, 2, 42, trim); f(X + W2 - 3, Y + 24, 2, 42, trim); f(X + W2 - 1, Y + 24, 1, 42, '#5a1f19');
+    f(X + 21, Y + 13, 10, 8, trim); f(X + 22, Y + 14, 8, 6, '#5a1f19'); f(X + 23, Y + 18, 6, 2, '#e9c46a'); // the hay loft
+    const dx = X + 14, dy = Y + 38;
+    f(dx - 2, dy - 2, 28, 30, trim); f(dx, dy, 24, 28, '#6b2a22');
+    for (const lx of [dx, dx + 12]) for (let t = 0; t < 28; t++) { const k = Math.round((t * 11) / 27); f(lx + k, dy + t, 1, 1, trim); f(lx + 11 - k, dy + t, 1, 1, trim); } // the X braces
+    f(dx + 11, dy, 2, 28, trim); f(dx, dy, 24, 1, '#5a1f19');
+    f(X + 24, Y + 31, 4, 3, '#3a3a40'); f(X + 25, Y + 33, 2, 1, '#ffd43b'); // the lamp
+    if (S.snow) { f(X - 1, Y, W2 + 2, 3, '#ffffff'); for (let j = 0; j <= 14; j += 2) f(X + 24 - Math.round((j * 25) / 14), Y + 9 + j, 3, 1, '#ffffff'); }
+  }
+  /** The silo: a metal cylinder with a red dome; the grain gauge in its front is drawn every frame. */
+  function silo(f, X, Y, S) {
+    f(X + 20, Y + 16, 4, 58, S.shadow); f(X + 2, Y + 74, 20, 2, S.shadow);
+    f(X - 1, Y + 10, 22, 64, '#3a3a40'); f(X, Y + 10, 20, 64, '#9aa4ad'); f(X, Y + 10, 4, 64, '#c3cbd2'); f(X + 1, Y + 10, 1, 64, '#e6eef5'); f(X + 15, Y + 10, 5, 64, '#8a8f96'); f(X + 18, Y + 10, 2, 64, '#5f6b7a');
+    for (let y = Y + 16; y < Y + 72; y += 9) f(X, y, 20, 1, '#5f6b7a');
+    for (let j = 0; j < 11; j++) { const half = Math.round(10 * Math.sqrt(1 - ((10 - j) / 10.5) ** 2)); f(X + 10 - half - 1, Y + j, half * 2 + 2, 1, '#5a1f19'); f(X + 10 - half, Y + j, half * 2, 1, j < 3 ? '#e04a3a' : '#b23a2e'); f(X + 10 + half - 4, Y + j, Math.min(4, half), 1, '#9c3b30'); }
+    if (S.snow) f(X + 3, Y, 14, 3, '#ffffff');
+    f(X + 6, Y + 20, 8, 48, '#3a3a40'); f(X + 5, Y + 19, 10, 1, '#5f6b7a'); // the gauge's window
+    f(X + 2, Y + 70, 16, 4, '#5f6b7a');
+  }
+  /** The farmhouse, top middle: a shingled roof, cream walls, lit windows, the porch in front. */
+  function house(f, X, Y, S, PORCH_Y) {
+    const W2 = 136, wallY = Y + 32;
+    f(X + W2, Y + 10, 4, PORCH_Y - Y - 2, S.shadow); f(X + 2, PORCH_Y + 4, W2, 2, S.shadow); // shadow
+    shingles(f, X, Y, W2, 30, 9, ['#2a1d14', '#5a1f19', '#9c3b30', '#b23a2e']);
+    f(X + 104, Y + 4, 10, 16, '#5a1f19'); f(X + 105, Y + 4, 8, 15, '#9c3b30'); f(X + 105, Y + 4, 2, 15, '#b23a2e'); for (let y = Y + 7; y < Y + 18; y += 3) f(X + 105, y, 8, 1, '#6b2a22'); f(X + 103, Y + 2, 12, 3, '#3a3a40'); f(X + 114, Y + 8, 2, 12, '#6b2a22'); // the chimney
+    if (S.snow) for (let j = 0; j < 8; j++) { const d = Math.round(((29 - j) * 9) / 29); f(X + d, Y + j, W2 - 2 * d, 1, j < 6 ? '#ffffff' : '#e6eef5'); }
+    f(X + 4, wallY, W2 - 8, PORCH_Y - wallY - 10, '#e8d8b0');
+    for (let y = wallY + 3; y < PORCH_Y - 10; y += 3) f(X + 4, y, W2 - 8, 1, '#d4c294');
+    f(X + 4, wallY, W2 - 8, 2, '#c9b48a'); f(X + 4, wallY, 2, PORCH_Y - wallY - 10, '#f4ecd8'); f(X + W2 - 6, wallY, 2, PORCH_Y - wallY - 10, '#c9b48a');
+    for (const wx of [X + 16, X + 100]) { // windows, shutters, a flower box
+      f(wx - 4, wallY + 4, 3, 14, '#2f6b2f'); f(wx + 21, wallY + 4, 3, 14, '#2f6b2f');
+      f(wx - 1, wallY + 3, 22, 16, '#6b4320'); f(wx, wallY + 4, 20, 14, '#5ab4ff'); f(wx + 1, wallY + 5, 7, 2, '#a9dcf7'); f(wx + 10, wallY + 4, 1, 14, '#6b4320'); f(wx, wallY + 10, 20, 1, '#6b4320');
+      f(wx - 1, wallY + 19, 22, 3, '#8b5a2b'); for (let i = 0; i < 5; i++) f(wx + 1 + i * 4, wallY + 18, 2, 1, S.flowers[i % Math.max(1, S.flowers.length)] ?? '#6b8f4a');
+    }
+    f(X + 59, wallY + 3, 18, PORCH_Y - wallY - 13, '#6b4320'); f(X + 61, wallY + 5, 14, PORCH_Y - wallY - 15, '#8b5a2b'); f(X + 63, wallY + 7, 4, 6, '#7a5230'); f(X + 69, wallY + 7, 4, 6, '#7a5230'); f(X + 72, wallY + 14, 2, 2, '#f0b429'); // the door
+    f(X + 80, wallY + 6, 4, 4, '#3a3a40'); f(X + 81, wallY + 7, 2, 2, '#ffd43b'); // the porch lamp
+    // the porch: planks seen from above, its front edge, the steps down to the lane
+    f(X - 4, PORCH_Y - 10, W2 + 8, 12, '#a8703c'); f(X - 4, PORCH_Y - 10, W2 + 8, 1, '#6b4320');
+    for (let x = X - 1; x < X + W2 + 4; x += 6) f(x, PORCH_Y - 9, 1, 11, '#8b5a2b');
+    f(X - 4, PORCH_Y + 1, W2 + 8, 1, '#c98d4f'); f(X - 4, PORCH_Y + 2, W2 + 8, 3, '#6b4320'); f(X - 4, PORCH_Y + 5, W2 + 8, 1, '#2a1d14');
+    f(X + 58, PORCH_Y + 5, 20, 3, '#8b5a2b'); f(X + 58, PORCH_Y + 5, 20, 1, '#c98d4f'); f(X + 58, PORCH_Y + 8, 20, 1, '#4e3626');
+  }
+  /** The henhouse and its run: a little coop, a ramp, a fence; hens and eggs are drawn every frame. */
+  function henhouse(f, X, Y, S) {
+    f(X + 32, Y + 10, 3, 24, S.shadow);
+    shingles(f, X, Y, 32, 12, 3, ['#2a1d14', '#5a1f19', '#9c3b30', '#b23a2e']);
+    if (S.snow) f(X + 2, Y, 28, 3, '#ffffff');
+    f(X + 2, Y + 13, 28, 18, '#c98d4f'); for (let y = Y + 16; y < Y + 31; y += 3) f(X + 2, y, 28, 1, '#a8703c'); f(X + 2, Y + 13, 2, 18, '#e2b07a');
+    f(X + 12, Y + 19, 8, 12, '#2a1d14'); f(X + 5, Y + 17, 5, 4, '#2a1d14'); f(X + 23, Y + 17, 5, 4, '#2a1d14'); // door, windows
+    f(X + 13, Y + 31, 6, 4, '#8b5a2b'); f(X + 13, Y + 32, 6, 1, '#6b4320'); f(X + 13, Y + 34, 6, 1, '#6b4320'); // ramp
+    f(X + 2, Y + 31, 30, 1, '#4e3626');
+    fenceAcross(f, X + 36, X + 92, Y + 6); fenceAcross(f, X + 36, X + 92, Y + 36); fenceDown(f, X + 90, Y + 6, Y + 36);
+    for (let i = 0; i < 6; i++) f(X + 40 + noise(i, 5) % 46, Y + 12 + noise(5, i) % 20, 1, 1, '#c9a46a'); // scattered grain
+  }
+  /** The pond: a sandy bank, deep water at the edge, sky reflected in the middle, lily pads and reeds. */
+  function pond(f, cx, cy, S) {
+    oval(f, cx + 1, cy + 1, 34, 16, '#9a7442'); oval(f, cx, cy, 34, 15, '#c9a46a');
+    const deep = S.snow ? '#9aa4ad' : '#2c4a85', water = S.snow ? '#c3cbd2' : '#3d7be0', lit = S.snow ? '#e6eef5' : '#5ab4ff';
+    oval(f, cx, cy, 31, 13, deep); oval(f, cx + 1, cy + 1, 29, 11, water);
+    oval(f, cx - 6, cy - 3, 12, 3, lit); f(cx + 8, cy + 4, 9, 1, lit); f(cx - 18, cy + 3, 5, 1, lit);
+    if (!S.snow) { oval(f, cx + 16, cy + 5, 3, 2, '#3f9b3a'); f(cx + 16, cy + 4, 1, 1, '#6cc04a'); oval(f, cx - 14, cy + 6, 2, 1, '#3f9b3a'); f(cx - 15, cy + 5, 1, 1, '#ffffff'); } // lily pads, a flower
+    for (const [rx, h] of [[cx - 33, 7], [cx - 30, 9], [cx + 31, 8], [cx + 34, 6]]) { f(rx, cy - h + 2, 1, h, '#6b8f4a'); f(rx, cy - h, 1, 2, '#6b4320'); } // reeds
+    for (const [sx, sy] of [[cx - 22, cy - 14], [cx + 26, cy - 11], [cx + 12, cy + 15]]) stone(f, sx, sy, 2);
   }
 
   /* ---------- the pixel font: names, field names, counts and signs ---------- */
@@ -465,13 +593,18 @@
   }
   /** Pixels per font pixel on screen: 1.5 on a Retina screen (3 device pixels), 2 on a plain one, so it stays sharp. */
   const fontPx = () => { const dpr = window.devicePixelRatio || 1; return Math.max(1, Math.round(1.5 * dpr)) / dpr; };
+  /** A text in the pixel font as an image only (hidden from screen readers), or the plain text if it has a letter the font lacks. */
+  function pxImg(text, color = '#f4ecd8', shadow = '#1b1420') {
+    const t = String(text ?? '');
+    const img = textImage(t, color, shadow);
+    if (!img) return `<span aria-hidden="true">${esc(t)}</span>`;
+    const s = fontPx();
+    return `<i class="pxt" aria-hidden="true" style="width:${(img.w * s).toFixed(1)}px;height:${(img.h * s).toFixed(1)}px;background-image:url(${img.url})"></i>`;
+  }
   /** HTML for a text in the pixel font (its words stay for screen readers, copying and search), or plain text if it has a letter the font lacks. */
   function pxt(text, color = '#f4ecd8', shadow = '#1b1420') {
     const t = String(text ?? '');
-    const img = textImage(t, color, shadow);
-    if (!img) return esc(t);
-    const s = fontPx();
-    return `<i class="pxt" aria-hidden="true" style="width:${(img.w * s).toFixed(1)}px;height:${(img.h * s).toFixed(1)}px;background-image:url(${img.url})"></i><span class="px-sr">${esc(t)}</span>`;
+    return textImage(t, color, shadow) ? `${pxImg(t, color, shadow)}<span class="px-sr">${esc(t)}</span>` : esc(t);
   }
 
   /* ---------- particles: dust, splashes, chips, smoke, leaves, snow ---------- */
@@ -500,20 +633,23 @@
   }
   const rand = (lo, hi) => lo + Math.random() * (hi - lo);
 
-  /* ---------- layout: three columns of fields, then the farmyard ---------- */
+  /* ---------- layout: buildings along the top, the yard down the left, the fields in a fenced grid ---------- */
 
-  const W = 400, X0 = 48, COLW = 117, TOP = 32, ROWH = 74, MAX_FIELDS = 9;
-  const CORR = [X0 + COLW, X0 + 2 * COLW]; // walkways between the field columns
-  const BARN_DOOR = [25, 32];
+  // Fixed: the grid always has nine beds, and the ones no repo uses lie empty, so the farm keeps its
+  // shape (and its size on screen) as repos come and go.
+  const W = 400, FARM_H = 318, MAX_FIELDS = 9, COLW = 88, ROWH = 62;
+  const GRID = { x0: 128, x1: 396, y0: 96, y1: 290 }; // the fields' fence
+  const PORCH_Y = 78, LANE = 87; // where farmers stand on the porch (and among the scarecrows); the lane in front of the buildings
+  const CORR = [116, 218, 306]; // paths running down: the yard's, then the walkways between field columns
+  const BARN_DOOR = [62, LANE];
+  const MEADOW = [[28, 162], [74, 166], [40, 186], [86, 188]]; // where farmers working outside any repo stand
+  const SLOTS = Array.from({ length: MAX_FIELDS }, (_, i) => {
+    const cx = 174 + (i % 3) * COLW, rowTop = 100 + Math.floor(i / 3) * ROWH;
+    return { cx, rowTop, lane: rowTop + 44, x0: cx - 36, y0: rowTop + 12 };
+  });
   function layoutFor(fields) {
     const shown = fields.slice(0, MAX_FIELDS);
-    const rows = Math.max(1, Math.ceil(shown.length / 3));
-    const ST = shown.map((f, i) => {
-      const rowTop = TOP + Math.floor(i / 3) * ROWH;
-      return { key: f.key, cx: Math.round(X0 + (i % 3) * COLW + COLW / 2), rowTop, lane: rowTop + 44 };
-    });
-    const BOT_TOP = TOP + rows * ROWH;
-    return { key: shown.map(f => f.key).join('\n'), ST, rows, BOT_TOP, LANE_B: BOT_TOP + 50, H: BOT_TOP + 66, more: fields.length - shown.length };
+    return { key: shown.map(f => f.key).join('\n'), ST: shown.map((f, i) => ({ key: f.key, ...SLOTS[i] })), slots: SLOTS, PORCH_Y, LANE, GRID, H: FARM_H, more: fields.length - shown.length };
   }
 
   /* ---------- the farm theme: sprites, ground, weather, labels ---------- */
@@ -522,10 +658,10 @@
   // 14×16 farmer, front view, put together from its look. h hat · b hat band · r hair · s skin ·
   // g glasses · p cheeks · C shirt · o overalls · P pole. The eyes are drawn on top (row 6, or 7 looking down).
   const HEADS = {
-    straw: ['.....kkkk.....', '....khhhhk....', '...khhhhhhk...', '..kbbbbbbbbk..', '.khhhhhhhhhhk.'],
-    cap: ['..............', '.....kkkk.....', '....khhhhk....', '...khhhhhhk...', '...kbbbbbbbbk.'],
-    beanie: ['......kk......', '.....kbbk.....', '....khhhhk....', '...khhhhhhk...', '...kbbbbbbk...'],
-    bandana: ['..............', '....kkkkkk....', '...khhhhhhk...', '...khbhhbhkhk.', '...khhhhhhk.h.'],
+    straw: ['.....kkkk.....', '....kwwhhk....', '...khhhhhhk...', '..kbbbbbbbbk..', '.khhhhhhhhhhk.'],
+    cap: ['..............', '.....kkkk.....', '....kwwhhk....', '...khhhhhhk...', '...kbbbbbbbbk.'],
+    beanie: ['......kk......', '.....kbbk.....', '....kwwhhk....', '...khhhhhhk...', '...kbbbbbbk...'],
+    bandana: ['..............', '....kkkkkk....', '...kwwhhhhk...', '...khbhhbhkhk.', '...khhhhhhk.h.'],
     none: ['..............', '....kkkkkk....', '...krrrrrrk...', '...krrrrrrk...', '...krrrrrrk...'],
   };
   // Four views: from the front (walking down or standing), from behind (walking up), and from the
@@ -543,10 +679,10 @@
     look.extra === 'beard' ? '...krssrrrrrk.' : look.extra === 'cheeks' ? '...krsspssssk.' : '...krsssssssk.',
     look.extra === 'beard' ? '....krrrrrk...' : '....kkkkkkk...',
   ];
-  const HIPS = `...k${'o'.repeat(6)}k...`;
-  const FRONT_BODY = ['..kCCCCCCCCk..', '.kCCoCCCCoCCk.', '.kCCooooooCCk.', '.ks.oooooo.sk.', HIPS];
-  const BACK_BODY = ['..kCCCCCCCCk..', '.kCCCoCCoCCCk.', '.kCCooooooCCk.', '.ks.oooooo.sk.', HIPS]; // straps cross on the back
-  const SIDE_BODY = ['...kCCCCCCk...', '...kCCoCCCk...', '...kCooooCk...', '...koooosok...', HIPS];
+  const HIPS = `...k${'o'.repeat(5)}Ok...`;
+  const FRONT_BODY = ['..kCCCCCCCck..', '.kCCoCCCCocck.', '.kCCooooooCck.', '.ks.oooooO.sk.', HIPS];
+  const BACK_BODY = ['..kCCCCCCCck..', '.kCCCoCCoCcck.', '.kCCooooooCck.', '.ks.oooooO.sk.', HIPS]; // straps cross on the back
+  const SIDE_BODY = ['...kCCCCCck...', '...kCCoCCck...', '...kCoooock...', '...kooooOok...', HIPS];
   const LEGS = { s: ['...koo..ook...', '...kkk..kkk...'], a: ['...koo..ook...', '...kkk........'], b: ['...koo..ook...', '........kkk...'], p: ['......PP......', '......PP......'] };
   const SIDE_LEGS = { s: ['.....kook.....', '.....kkkk.....'], a: ['....ko..ok....', '...kk....kk...'], b: ['.....koko.....', '....kk..kk....'] };
   /** A farmer's sprite rows: 14 wide, 16 tall, for a view (down, up, right, left) and a leg frame. */
@@ -565,9 +701,9 @@
     const key = `${Object.values(look).join()}|${color}|${scare}|${legs}|${up}|${view}`;
     if (sprites.has(key)) return sprites.get(key);
     const pal = scare // a scarecrow keeps its farmer's hat and shape, in straw and sacking
-      ? { k: '#3a2a1a', h: '#c9a24a', b: '#7a5230', r: '#c9a24a', s: '#d8c48a', g: '#d8c48a', p: '#d8c48a', C: '#8b7a55', o: '#6b5a3a', P: '#6b4320' }
-      : { k: K, h: look.hatColor, b: look.band, r: look.hair, s: look.skin, g: '#e6eef5', p: '#e58a8a', C: color, o: look.overalls, P: '#6b4320' };
-    for (const key of Object.keys(pal)) if (key !== 'C') pal[key] = ink(pal[key]); // one palette; the shirt is the agent's colour
+      ? { k: '#3a2a1a', h: '#c9a24a', w: '#e2c27a', b: '#7a5230', r: '#c9a24a', s: '#d8c48a', g: '#d8c48a', p: '#d8c48a', C: '#8b7a55', c: '#6b5a3a', o: '#6b5a3a', O: '#4e3626', P: '#6b4320' }
+      : { k: K, h: look.hatColor, w: shade(look.hatColor, 1.3), b: look.band, r: look.hair, s: look.skin, g: '#e6eef5', p: '#e58a8a', C: color, c: shade(color, 0.78), o: look.overalls, O: shade(look.overalls, 0.75), P: '#6b4320' };
+    for (const key of Object.keys(pal)) if (!'Cwc'.includes(key)) pal[key] = ink(pal[key]); // one palette; the shirt is the agent's colour, its light and shade made from it
     const c = makeSprite(spriteRows(look, view, legs), pal);
     if (up && view === 'down') { // one arm up, waving
       const g = c.getContext('2d');
@@ -814,6 +950,30 @@
     if (crop) drawCrop(crop, 10, 20, stage, 0);
   }
 
+  // Pixel icons for the farm's buttons (9×9): one letter per pixel, '.' clear.
+  const ICONS = {
+    follow: ['....k....', '..kkkkk..', '.k.....k.', '.k.....k.', 'kk..r..kk', '.k.....k.', '.k.....k.', '..kkkkk..', '....k....'],
+    resting: ['.....kkkk', '.......k.', '......k..', '.....kkkk', 'kkkkk....', '...k.....', '..k......', '.k.......', 'kkkkk....'],
+    bubbles: ['.........', '.kkkkkkk.', 'kwwwwwwwk', 'kwkwkwkwk', 'kwwwwwwwk', '.kkwkkkk.', '..kk.....', '..k......', '.........'],
+    day: ['....y....', '.y.....y.', '...yyy...', '..yyyyy..', 'y.yyyyy.y', '..yyyyy..', '...yyy...', '.y.....y.', '....y....'],
+    night: ['...yyy..s', '..yy.....', '.yy......', '.yy...s..', '.yy......', '.yy......', '..yy.....', '...yyy...', '.........'],
+    live: ['.........', '...yyy...', '..yyyyy..', '.yyyyyyy.', 'kkkkkkkkk', '.........', '..kkkkk..', '.........', '...kkk...'],
+    play: ['..k......', '..kk.....', '..kgk....', '..kggk...', '..kgggk..', '..kggk...', '..kgk....', '..kk.....', '..k......'],
+    pause: ['.........', '.kk...kk.', '.kk...kk.', '.kk...kk.', '.kk...kk.', '.kk...kk.', '.kk...kk.', '.kk...kk.', '.........'],
+    help: ['..kkkkk..', '.kk...kk.', '......kk.', '....kkk..', '...kk....', '...kk....', '.........', '...kk....', '.........'],
+    spring: ['.........', '.gg...gg.', '.ggg.ggg.', '..gg.gg..', '....g....', '....g....', '....g....', '..kkkkk..', '.........'],
+    autumn: ['......oo.', '....oooo.', '..ooooo..', '.ooooo...', '.oooo....', '.ooo.....', '.k.......', 'k........', '.........'],
+    winter: ['....b....', '.b..b..b.', '..b.b.b..', '...bbb...', 'bbbbbbbbb', '...bbb...', '..b.b.b..', '.b..b..b.', '....b....'],
+  };
+  const ICON_PAL = { k: '#4e3626', w: '#ffffff', y: '#f0b429', s: '#f4ecd8', r: '#e04a3a', g: '#3f9b3a', o: '#c8681a', b: '#a9dcf7' };
+  const iconUrls = new Map();
+  /** HTML for one of the farm's pixel icons (none without a DOM). */
+  function iconImg(name) {
+    if (typeof document === 'undefined' || !ICONS[name]) return '';
+    if (!iconUrls.has(name)) iconUrls.set(name, makeSprite(ICONS[name], ICON_PAL).toDataURL());
+    return `<i class="px-ico" aria-hidden="true" style="background-image:url(${iconUrls.get(name)})"></i>`;
+  }
+
   function makeFarm() {
     const game = { coins: 0, harvests: 0 }; // page memory only: resets on reload
     let L = layoutFor([]);
@@ -830,16 +990,10 @@
       return { kind: 'bare', crop };
     }
     function drawPlot(s) {
-      const f = fieldByKey(s.key), x0 = s.cx - 42, y0 = s.rowTop + 4, st = plotState(f), T = PXG.T, fence = f.fence ?? '#c98d4f';
-      px(x0 - 3, y0 - 3, 90, 50, '#2a1d14'); px(x0 + 87, y0 - 1, 2, 50, '#24361f'); px(x0 - 1, y0 + 47, 90, 2, '#24361f'); // outline, shadow
-      px(x0 - 2, y0 - 2, 88, 48, fence); px(x0 - 2, y0 - 2, 88, 1, shade(fence, 1.18)); px(x0 - 1, y0 - 1, 86, 46, shade(fence, 0.68));
-      const soil = f.soil ?? '#7a5230', furrow = shade(soil, 0.77), ridge = shade(soil, 1.15);
-      px(x0, y0, 84, 44, soil); px(x0, y0, 84, 1, furrow); px(x0, y0 + 43, 84, 1, furrow);
-      for (let k = 0; k < 5; k++) { const fy = y0 + 6 + k * 8; px(x0 + 2, fy - 1, 80, 1, ridge); px(x0 + 2, fy, 80, 2, furrow); px(x0 + 2, fy + 2, 80, 1, shade(soil, 0.9)); } // lit ridge, dark furrow
-      for (let n = 0; n < 26; n++) { const sx = x0 + 3 + noise(n, s.cx) % 78, sy = y0 + 2 + noise(s.cx, n) % 40; px(sx, sy, 1, 1, n % 2 ? ridge : furrow); } // clods
-      if (season === 'winter' && st.kind !== 'grow') for (let k = 0; k < 5; k++) px(x0 + 2, y0 + 5 + k * 8, 80, 1, '#f4f8fb'); // frost on fallow rows
-      for (let k = 0; k < 4; k++) for (let i = 0; i < 10; i++) {
-        const x = x0 + 6 + i * 8, y = y0 + 5 + k * 8;
+      const f = fieldByKey(s.key), { x0, y0 } = s, st = plotState(f), T = PXG.T;
+      bed(px, s, f.fence ?? '#c98d4f', f.soil ?? '#7a5230', season === 'winter' && st.kind !== 'grow');
+      for (let k = 0; k < 4; k++) for (let i = 0; i < 9; i++) {
+        const x = x0 + 4 + i * 8, y = y0 + 3 + k * 8;
         if (st.kind === 'bare') { // fallow: weeds
           if ((i * 5 + k * 3) % 7 === 0) { px(x, y - 2, 1, 2, '#4f7f2f'); px(x - 1, y - 1, 1, 1, '#4f7f2f'); px(x + 1, y - 1, 1, 1, '#4f7f2f'); }
           continue;
@@ -852,96 +1006,84 @@
         // ripe (context nearly full, ready to harvest): a sparkle now and then
         if (stage === 5 && (i * 7 + k * 3 + Math.floor(T * 3)) % 13 === 0) { px(x, top - 5, 1, 3, '#ffffff'); px(x - 1, top - 4, 3, 1, '#ffffff'); }
       }
-      seedSign(f.crop ?? 'wheat', x0 - 6, y0 + 26); // what this field grows, even while it lies fallow
-      if (f.pennant) { // a branch other than main: a pennant by the fence
-        const fx = x0 + 86, fy = y0 + 2, wave = blink(2);
+      seedSign(f.crop ?? 'wheat', x0 - 8, y0 + 12); // what this field grows, even while it lies fallow
+      if (f.pennant) { // a branch other than main: a pennant on the bed's corner
+        const fx = x0 + 74, fy = y0 - 8, wave = blink(2);
         px(fx, fy, 1, 15, '#6b4320');
-        for (let r = 0; r < 5; r++) px(fx + 1, fy + r, 5 - r - (r === 2 ? wave : 0), 1, r === 0 ? '#7fb0ff' : '#3d7be0');
+        for (let r = 0; r < 5; r++) px(fx + 1, fy + r, 5 - r - (r === 2 ? wave : 0), 1, r === 0 ? '#a9dcf7' : '#3d7be0');
       }
       if (f.collision) { // two farmers writing one repo: rope with orange flags (faster when a git command is involved)
         PXG.ctx.globalAlpha = 0.7 + 0.3 * Math.sin(T * (f.collision === 'high' ? 14 : 6));
-        for (let i = 0; i < 88; i += 4) { const c = (i / 4) % 2 ? '#fff3d6' : '#ff8c42'; px(x0 - 2 + i, y0 - 2, 4, 1, c); px(x0 - 2 + i, y0 + 45, 4, 1, c); }
-        for (let i = 0; i < 48; i += 4) { const c = (i / 4) % 2 ? '#fff3d6' : '#ff8c42'; px(x0 - 2, y0 - 2 + i, 1, 4, c); px(x0 + 85, y0 - 2 + i, 1, 4, c); }
-        for (const [fx, fy] of [[x0 - 3, y0 - 6], [x0 + 84, y0 - 6]]) { px(fx, fy, 1, 6, '#6b4320'); px(fx + 1, fy, 4, 3, '#ff5a1f'); }
+        for (let i = 0; i < 76; i += 4) { const c = (i / 4) % 2 ? '#fff3d6' : '#ff8c42'; px(x0 - 2 + i, y0 - 3, 4, 1, c); px(x0 - 2 + i, y0 + 37, 4, 1, c); }
+        for (let i = 0; i < 40; i += 4) { const c = (i / 4) % 2 ? '#fff3d6' : '#ff8c42'; px(x0 - 3, y0 - 3 + i, 1, 4, c); px(x0 + 74, y0 - 3 + i, 1, 4, c); }
+        for (const [fx, fy] of [[x0 - 3, y0 - 8], [x0 + 74, y0 - 8]]) { px(fx, fy, 1, 6, '#6b4320'); px(fx + 1, fy, 4, 3, '#ff5a1f'); }
         PXG.ctx.globalAlpha = 1;
       }
     }
-    // Above each field: mailbox = behind the remote, crates = unpushed commits, hay bales = uncommitted files.
+    // On each bed's top edge: mailbox = behind the remote, crates = unpushed commits, hay bales = uncommitted files.
     function drawPiles(s) {
-      const f = fieldByKey(s.key), y = s.rowTop, cx = s.cx;
-      if (f.behind > 0) { px(cx - 40, y - 9, 2, 11, '#6b4320'); px(cx - 44, y - 13, 9, 5, '#5f6b7a'); px(cx - 44, y - 13, 9, 1, '#7d8a99'); px(cx - 35, y - 17, 1, 6, '#e63946'); px(cx - 35, y - 17, 3, 2, '#e63946'); }
-      for (let i = 0; i < Math.min(4, Math.ceil(f.ahead / 4)); i++) { const x = cx - 30 + (i % 2) * 8, yy = y - 6 - Math.floor(i / 2) * 6; px(x, yy, 7, 6, '#8b5a2b'); px(x, yy, 7, 1, '#b07a46'); px(x + 3, yy, 1, 6, '#6b4320'); }
-      for (let i = 0; i < Math.min(4, Math.ceil(f.dirty / 3)); i++) { const x = cx + 16 + (i % 3) * 10, yy = y - 6 - Math.floor(i / 3) * 6; px(x, yy, 9, 6, '#e2c26b'); px(x, yy, 9, 1, '#f1d98a'); px(x + 2, yy, 1, 6, '#c9a24a'); px(x + 6, yy, 1, 6, '#c9a24a'); }
+      const f = fieldByKey(s.key), y = s.rowTop + 10, cx = s.cx;
+      if (f.behind > 0) { px(cx - 40, y - 9, 2, 11, '#6b4320'); px(cx - 44, y - 13, 9, 5, '#5f6b7a'); px(cx - 44, y - 13, 9, 1, '#9aa4ad'); px(cx - 35, y - 17, 1, 6, '#e04a3a'); px(cx - 35, y - 17, 3, 2, '#e04a3a'); }
+      for (let i = 0; i < Math.min(4, Math.ceil(f.ahead / 4)); i++) { const x = cx - 30 + (i % 2) * 8, yy = y - 6 - Math.floor(i / 2) * 6; px(x, yy, 7, 6, '#8b5a2b'); px(x, yy, 7, 1, '#c98d4f'); px(x + 3, yy, 1, 6, '#6b4320'); px(x, yy + 6, 7, 1, '#4e3626'); }
+      for (let i = 0; i < Math.min(4, Math.ceil(f.dirty / 3)); i++) { const x = cx + 12 + (i % 3) * 9, yy = y - 6 - Math.floor(i / 3) * 6; px(x, yy, 8, 6, '#e9c46a'); px(x, yy, 8, 1, '#f4d58d'); px(x + 2, yy, 1, 6, '#c9a24a'); px(x + 5, yy, 1, 6, '#c9a24a'); px(x, yy + 6, 8, 1, '#8a7140'); }
     }
-    /** The silo's grain and lamp, the pond's ripples and duck, the henhouse's eggs: each frame. */
     function seasonTip() {
       const w = scene.plan?.windows?.find(x => x.kind === 'five_hour');
       return `The season follows your plan's 5-hour limit${w ? `: ${w.reset ? 'just reset' : `${Math.round(w.percentUsed)}% used`}` : ' (no reading yet: summer)'}. Spring while it is fresh, then summer and autumn; winter when it is nearly used up`;
     }
+    /** The silo's grain and lamp, the pond's ripples and duck, the henhouse's eggs and hens: each frame. */
     function drawScenery() {
       const T = PXG.T, silo = siloOf(scene.plan);
-      px(379, 8, 6, 20, '#3a3a40');
       if (silo) {
-        const h = Math.round(20 * silo.fill);
-        if (h) { px(379, 28 - h, 6, h, '#e9c46a'); px(379, 28 - h, 6, 1, '#f4d58d'); }
-        for (const t of [0.25, 0.5, 0.75]) px(385, 28 - Math.round(20 * t), 1, 1, '#c3cbd2');
-        if (silo.lamp && (silo.lamp === 'amber' || blink(2))) { px(380, 0, 4, 2, silo.lamp === 'red' ? '#e04a3a' : '#f0b429'); PXG.lights?.push([382, 1, 6, [380, 0, 4, 2]]); }
+        const h = Math.round(46 * silo.fill);
+        if (h) { px(99, 73 - h, 6, h, '#e9c46a'); px(99, 73 - h, 6, 1, '#f4d58d'); }
+        for (const t of [0.25, 0.5, 0.75]) px(105, 73 - Math.round(46 * t), 1, 1, '#c3cbd2');
+        if (silo.lamp && (silo.lamp === 'amber' || blink(2))) { px(100, 3, 4, 3, silo.lamp === 'red' ? '#e04a3a' : '#f0b429'); PXG.lights?.push([102, 6, 8, [100, 3, 4, 3]]); }
       }
-      const py = L.BOT_TOP - 22;
-      if (season !== 'winter') {
-        for (let i = 0; i < 2; i++) { const ph = (T * 0.5 + i * 0.5) % 1, r = Math.round(ph * 5); PXG.ctx.globalAlpha = 0.6 * (1 - ph); px(16 - r, py + 6 + i * 3, r * 2 + 1, 1, '#a9dcf7'); }
+      if (season !== 'winter') { // ripples, and a duck paddling round the pond
+        for (let i = 0; i < 2; i++) { const ph = (T * 0.5 + i * 0.5) % 1, r = Math.round(ph * 6); PXG.ctx.globalAlpha = 0.6 * (1 - ph); px(30 - r, 208 + i * 5, r * 2 + 1, 1, '#a9dcf7'); }
         PXG.ctx.globalAlpha = 1;
-        const dx = Math.round(10 + Math.sin(T * 0.25) * 8), face = Math.cos(T * 0.25) > 0 ? 1 : -1; // a duck paddles
-        px(dx, py + 5, 5, 3, '#ffffff'); px(dx + (face > 0 ? 3 : -1), py + 3, 3, 3, '#ffffff'); px(dx + (face > 0 ? 6 : -2), py + 4, 2, 1, '#f08a24'); px(dx + (face > 0 ? 4 : 0), py + 4, 1, 1, '#1b1420');
-      } else if (blink(1.5)) px(14, py + 4, 2, 1, '#ffffff'); // ice glints
-      const hx = 36, hy = L.BOT_TOP - 27, eggs = scene.henhouse?.eggs ?? 0;
-      px(hx + 1, hy + 21, 12, 3, '#c9a24a'); px(hx + 1, hy + 21, 12, 1, '#e9c46a'); // the nest
-      for (let i = 0; i < eggs; i++) { px(hx + 2 + i * 2, hy + 20 - (i % 2), 2, 2, i % 3 ? '#f4ecd8' : '#ffffff'); }
-      if (scene.henhouse?.roosting) { px(hx + 10, hy + 14, 3, 3, '#ffffff'); px(hx + 11, hy + 13, 1, 1, '#e04a3a'); px(hx + 13, hy + 15, 1, 1, '#f0b429'); } // a hen looks out
-    }
-    function drawTree() { // the shade tree, by season: blossom in spring, apples in summer, orange in autumn, bare and snowy in winter
-      const { BOT_TOP, LANE_B } = L, S = SEASONS[season], [dark, mid, light] = S.canopy;
-      px(51, BOT_TOP + 12, 11, LANE_B - BOT_TOP - 14, '#2a1d14'); px(52, BOT_TOP + 12, 9, LANE_B - BOT_TOP - 14, '#6b4320'); px(52, BOT_TOP + 12, 2, LANE_B - BOT_TOP - 14, '#8b5a2b');
-      px(48, LANE_B - 4, 4, 2, '#6b4320'); px(61, LANE_B - 4, 4, 2, '#6b4320'); // roots
-      if (S.snow) { // bare branches with snow on them
-        for (const [x, y, w] of [[30, BOT_TOP + 2, 24], [58, BOT_TOP - 2, 26], [40, BOT_TOP - 8, 16], [24, BOT_TOP + 8, 10], [62, BOT_TOP + 6, 18]]) { px(x, y, w, 2, '#4e3626'); px(x + 1, y - 1, w - 2, 1, '#f4f8fb'); }
-        px(53, BOT_TOP - 8, 3, 22, '#4e3626');
-        return;
+        const dx = Math.round(42 + Math.sin(T * 0.25) * 16), face = Math.cos(T * 0.25) > 0 ? 1 : -1, dy = 206;
+        px(dx - 1, dy + 3, 7, 1, '#2c4a85'); px(dx, dy, 5, 3, '#ffffff'); px(dx + (face > 0 ? 3 : -1), dy - 2, 3, 3, '#ffffff'); px(dx + (face > 0 ? 6 : -2), dy - 1, 2, 1, '#f08a24'); px(dx + (face > 0 ? 4 : 0), dy - 1, 1, 1, '#1b1420');
+      } else if (blink(1.5)) px(36, 206, 2, 1, '#ffffff'); // ice glints
+      const eggs = scene.henhouse?.eggs ?? 0, roost = Math.min(3, scene.henhouse?.roosting ?? 0);
+      px(4, 132, 12, 3, '#c9a24a'); px(4, 132, 12, 1, '#e9c46a'); // the nest
+      for (let i = 0; i < eggs; i++) px(5 + i * 2, 131 - (i % 2), 2, 2, i % 3 ? '#f4ecd8' : '#ffffff');
+      for (let i = 0; i < roost; i++) { // hens in the run: subagents no farmer can lead
+        const hx = 56 + i * 12 + Math.round(Math.sin(T * 0.6 + i * 2) * 4), hy = 122 + (i % 2) * 6, peck = blink(2 + i * 0.3);
+        px(hx, hy, 4, 3, '#ffffff'); px(hx + 3, hy - 2 + peck, 2, 2, '#ffffff'); px(hx + 4, hy - 3 + peck, 1, 1, '#e04a3a'); px(hx + 5, hy - 1 + peck, 1, 1, '#f0b429'); px(hx, hy + 3, 1, 1, '#f0b429'); px(hx + 2, hy + 3, 1, 1, '#f0b429');
       }
-      px(17, BOT_TOP - 7, 80, 22, '#1f3d1a'); px(25, BOT_TOP - 12, 64, 6, '#1f3d1a'); // outline
-      px(18, BOT_TOP - 6, 78, 20, dark); px(26, BOT_TOP - 11, 62, 6, dark); px(22, BOT_TOP + 14, 70, 3, '#24361f');
-      px(32, BOT_TOP - 9, 20, 4, mid); px(58, BOT_TOP - 4, 24, 5, mid); px(24, BOT_TOP + 2, 14, 4, mid); px(70, BOT_TOP + 4, 16, 4, mid);
-      px(34, BOT_TOP - 10, 10, 1, light); px(60, BOT_TOP - 5, 12, 1, light); px(26, BOT_TOP + 1, 6, 1, light);
-      const fruit = season === 'spring' ? S.bloom : season === 'autumn' ? '#e9a23b' : '#e63946';
-      for (const [x, y] of [[40, BOT_TOP - 2], [70, BOT_TOP + 6], [30, BOT_TOP + 8], [80, BOT_TOP - 3], [50, BOT_TOP + 9]]) { px(x, y, 3, 3, fruit); px(x, y, 1, 1, '#fff4d6'); } // apples, blossom
     }
-    function drawPosts() {
-      const { LANE_B } = L;
-      for (const x of [129, 268]) { px(x - 1, LANE_B - 34, 5, 40, '#2a1d14'); px(x, LANE_B - 34, 3, 40, '#8b5a2b'); px(x, LANE_B - 34, 1, 40, '#a8703c'); }
-      px(126, LANE_B - 37, 148, 5, '#2a1d14'); px(127, LANE_B - 36, 146, 3, '#8a3b2e'); px(127, LANE_B - 36, 146, 1, '#b23a2e');
-      if (season === 'winter') px(127, LANE_B - 37, 146, 1, '#f4f8fb');
+    // A cloud's shadow: rows of one span, so overlapping puffs don't double the shade.
+    function cloudShadow(x, y, r) {
+      const puffs = [[0, 0, r, Math.round(r * 0.5)], [Math.round(r * 0.55), -Math.round(r * 0.25), Math.round(r * 0.6), Math.round(r * 0.4)], [-Math.round(r * 0.5), Math.round(r * 0.1), Math.round(r * 0.55), Math.round(r * 0.35)]];
+      for (let dy = -r; dy <= r; dy++) {
+        let lo = Infinity, hi = -Infinity;
+        for (const [ox, oy, rx, ry] of puffs) { const t = (dy - oy) / (ry + 0.5); if (Math.abs(t) > 1) continue; const half = rx * Math.sqrt(1 - t * t); lo = Math.min(lo, ox - half); hi = Math.max(hi, ox + half); }
+        if (hi > lo) px(Math.round(x + lo), y + dy, Math.round(hi - lo), 1, '#1c3320');
+      }
     }
+    const FIREFLIES = [[20, 150], [60, 160], [92, 176], [30, 232], [74, 196], [50, 252], [100, 250], [14, 262], [88, 140], [96, 214], [240, 92], [330, 70]];
 
     return {
       key: 'farm', SH: 16, game,
       setScene(next) { scene = next; season = seasonOf(next.plan); },
       layout: () => L,
       relayout(fields) { L = layoutFor(fields); return L; },
-      // Where each farmer stands. Porch, tree, scarecrows and meadow hold four each; the rest show as a "+N" sign.
+      // Where each farmer stands. Porch, scarecrows, the tree and the meadow hold a few each; the rest show as a "+N" sign.
       slots(f) {
-        const { LANE_B, rows } = L;
         const s = f.state === 'working' ? stOf(f.field) : null;
         if (s) return { group: `st:${s.key}`, at: used => { const off = [doing(f)?.spot ?? 0, 0, -26, 26, -13, 13].find(o => !used.includes(o)) ?? 0; used.push(off); return [s.cx + off, s.lane]; }, zone: `st:${s.key}:${doing(f)?.prop ?? ''}` };
-        if (f.state === 'working') return { group: 'meadow', cap: Math.min(8, rows * 2), at: i => [i % 2 ? 36 : 16, TOP + 30 + Math.floor(i / 2) * 37 + (i % 2) * 12], zone: 'meadow' };
-        if (f.state === 'waiting') return { group: 'desk', cap: 3, at: i => [142 + 24 * i, LANE_B], zone: 'desk' }; // the porch: 3 waiting on the left,
-        if (f.state === 'turn') return { group: 'turn', cap: 3, at: i => [258 - 24 * i, LANE_B], zone: 'turn' }; // 3 with their turn on the right, apart
-        if (f.state === 'stale') return { group: 'storage', cap: 4, at: i => [308 + 26 * i, LANE_B - 2], zone: 'storage' };
-        return { group: 'charge', cap: 4, at: i => [20 + 26 * i, LANE_B], zone: 'charge' };
+        if (f.state === 'working') return { group: 'meadow', cap: MEADOW.length, at: i => MEADOW[i], zone: 'meadow' };
+        if (f.state === 'waiting') return { group: 'desk', cap: 3, at: i => [142 + 24 * i, PORCH_Y], zone: 'desk' }; // the porch: 3 waiting on the left,
+        if (f.state === 'turn') return { group: 'turn', cap: 3, at: i => [258 - 24 * i, PORCH_Y], zone: 'turn' }; // 3 with their turn on the right, apart
+        if (f.state === 'stale') return { group: 'storage', cap: 4, at: i => [304 + 24 * i, PORCH_Y], zone: 'storage' };
+        return { group: 'charge', cap: 4, at: i => [[64, 284], [40, 286], [88, 286], [16, 288]][i], zone: 'charge' }; // under the shade tree
       },
       spawn: () => BARN_DOOR,
       follow: (b, k, T, kid) => (kid?.dog
-        ? [b.x + Math.cos(T * 0.9 + k) * 44, b.y + 4 + Math.sin(T * 1.8) * 8] // the Explore dog roams and sniffs
-        : [b.x + (k % 2 ? 1 : -1) * (7 * SC + 4) + Math.sin(T * 1.3 + k) * 3, b.y + 3 - (k > 1 ? 4 * SC : 0)]),
+        ? [b.x + Math.cos(T * 0.9 + k) * 30, b.y + 3 + Math.sin(T * 1.8) * 6] // the Explore dog roams and sniffs
+        : [b.x + (k % 2 ? 1 : -1) * (7 * SC + 4) + Math.sin(T * 1.3 + k) * 3, b.y + 2 - (k > 1 ? 4 * SC : 0)]),
       startText: n => `Morning: <b>${n}</b> farmer${n === 1 ? '' : 's'} on the farm`,
       arriveText: 'walks out of the barn',
       tag: f => (f.kind === 'codex' ? clip(f.name, 16) : `${clip(f.name, 16)} ${'♥'.repeat(f.hearts)}${'♡'.repeat(4 - f.hearts)}`),
@@ -968,20 +1110,29 @@
         if (z === 'meadow') return 'works in the wild meadow (no repo)';
         return `${doing(f)?.verb ?? 'working'} in the ${fieldByKey(f.field)?.name ?? ''} field`;
       },
+      /** The farm's controls, laid over its corners: stats top left, zoom on the right, switches along the bottom. */
       hud(still, zoom = 1, saysOn = true, skyMode = 'live', follow = false, canFollow = false, restingHidden = null) {
         const need = scene.farmers.filter(a => a.state === 'waiting' || a.question).length;
+        const count = st => scene.farmers.filter(a => st.includes(a.state)).length;
         const w = t => pxt(t, '#fff3d6', '#2a1d14');
-        return `<span title="One coin for every tool step since you opened this page"><b class="coin"></b>${w(String(game.coins))}</span>
-          <span title="Finished turns delivered to your porch"><b class="basket"></b>${w(`${game.harvests} harvested`)}</span>
-          ${need ? `<span class="alert">${pxt(`${need} need${need > 1 ? '' : 's'} you`, '#ffffff', '#5a1f19')}</span>` : ''}
-          <span title="${esc(seasonTip())}">${{ spring: '🌱', summer: '☀️', autumn: '🍂', winter: '❄️' }[season]} ${w(season)}</span>
-          <span class="px-zoom" title="Zoom the farm inside its frame (or ⌘/Ctrl + scroll, or pinch); drag to move around when zoomed in"><button type="button" data-farm-zoom="-1" aria-label="Zoom out">${w('-')}</button><button type="button" data-farm-zoom="0" title="Show the whole farm">${w(`${Math.round(zoom * 100)}%`)}</button><button type="button" data-farm-zoom="1" aria-label="Zoom in">${w('+')}</button></span>
-          <button type="button" data-farm-follow${canFollow ? '' : ' disabled'} title="${canFollow ? 'Keep the farmer you picked in the middle of the view (zooms in); dragging the view turns it off' : 'Pick a farmer first, then Follow keeps it in view'}">${w(`Follow: ${follow ? 'on' : 'off'}`)}</button>
-          <button type="button" data-farm-resting title="Idle farmers (under the tree) and stale ones (scarecrows): show them, or hide them to keep the farm to the agents at work">${w(restingHidden === null ? 'Resting: shown' : `Resting: hidden (${restingHidden})`)}</button>
-          <button type="button" data-farm-bubbles title="Speech bubbles with what each farmer last said. × hides one; its 💬 shows it again">${w(`Bubbles: ${saysOn ? 'on' : 'off'}`)}</button>
-          <button type="button" data-farm-sky title="The sky: live follows your clock (dawn, day, dusk, night); or hold it at day or night">${w(`Sky: ${skyMode}`)}</button>
-          <button type="button" class="px-motion" data-farm-motion title="Walking and animation on the farm">${w(`Motion: ${still ? 'off' : 'on'}`)}</button>
-          <button type="button" class="px-info" data-farm-help title="How to read the farm" aria-label="How to read the farm">i</button>`;
+        const parts = [[count(['working']), 'working'], [count(['waiting', 'turn']), 'on the porch'], [count(['idle', 'stale']), 'resting']].filter(([n]) => n).map(([n, t]) => `${n} ${t}`);
+        const tool = (attr, icon, name, state, title, disabled = false) => `<button type="button" ${attr}${disabled ? ' disabled' : ''} title="${esc(title)}">${iconImg(icon)}${pxImg(name, '#4e3626', null)}${state ? pxImg(state, '#8b5a2b', null) : ''}<span class="px-sr">${esc(state ? `${name}: ${state}` : name)}</span></button>`;
+        return `<div class="px-stats">
+            <b class="px-title">${pxt('AGENT FARM', '#ffe8a3', '#2a1d14')}</b>
+            <div class="px-line"><span title="One coin for every tool step since you opened this page"><b class="coin"></b>${w(String(game.coins))}</span><span title="Finished turns delivered to your porch"><b class="basket"></b>${w(`${game.harvests} harvested`)}</span></div>
+            <div class="px-line px-season"><span title="${esc(seasonTip())}">${iconImg(season === 'summer' ? 'day' : season)}${w(season)}</span></div>
+            <div class="px-counts">${parts.length ? parts.map(t => `<div>${w(t)}</div>`).join('') : w('nobody on the farm')}</div>
+            ${need ? `<button type="button" class="px-need" data-farm-need title="Open the first agent that needs you">${pxt(`${need} need${need > 1 ? '' : 's'} you`, '#ffffff', '#5a1f19')}</button>` : ''}
+          </div>
+          <div class="px-zoombar" title="Zoom the farm inside its frame (or ⌘/Ctrl + scroll, or pinch); drag to move around when zoomed in"><button type="button" data-farm-zoom="1" aria-label="Zoom in">${pxt('+', '#4e3626', null)}</button><button type="button" data-farm-zoom="0" title="Show the whole farm">${pxt(`${Math.round(zoom * 100)}%`, '#4e3626', null)}</button><button type="button" data-farm-zoom="-1" aria-label="Zoom out">${pxt('-', '#4e3626', null)}</button></div>
+          <div class="px-tools">
+            ${tool('data-farm-follow', 'follow', 'Follow', follow ? 'on' : 'off', canFollow ? 'Keep the farmer you picked in the middle of the view (zooms in); dragging the view turns it off' : 'Pick a farmer first, then Follow keeps it in view', !canFollow)}
+            ${tool('data-farm-resting', 'resting', 'Resting', restingHidden === null ? 'shown' : `hidden (${restingHidden})`, 'Idle farmers (under the tree) and stale ones (scarecrows): show them, or hide them to keep the farm to the agents at work')}
+            ${tool('data-farm-bubbles', 'bubbles', 'Bubbles', saysOn ? 'on' : 'off', 'Speech bubbles with what each farmer last said. × hides one; its 💬 shows it again')}
+            ${tool('data-farm-sky', skyMode, 'Sky', skyMode, 'The light: live follows your clock (dawn, day, dusk, night); or hold it at day or night')}
+            ${tool('class="px-motion" data-farm-motion', still ? 'pause' : 'play', 'Motion', still ? 'off' : 'on', 'Walking and animation on the farm')}
+            ${tool('class="px-info" data-farm-help aria-label="How to read the farm"', 'help', 'Help', '', 'How to read the farm')}
+          </div>`;
       },
       bg(f, season, ext) { drawLand(f, L, season, ext); },
       ground() { drawScenery(); L.ST.forEach(drawPlot); L.ST.forEach(drawPiles); },
@@ -990,45 +1141,56 @@
       emit(f, b, dt, add) {
         const ox = b.x - 7 * SC, oy = b.y - 16 * SC, T = PXG.T;
         if (b.walk) {
-          if (Math.random() < dt * 9) add({ x: b.x + rand(-3, 3), y: b.y - 0.5, vx: rand(-5, 5) - (b.face === 'right' ? 6 : b.face === 'left' ? -6 : 0), vy: rand(-9, -3), g: 18, life: 0.5, max: 0.5, size: rand(1, 2.2), color: '#c9a46a', alpha: 0.75 });
+          if (Math.random() < dt * 9) add({ x: b.x + rand(-3, 3), y: b.y - 0.5, vx: rand(-5, 5) - (b.face === 'right' ? 6 : b.face === 'left' ? -6 : 0), vy: rand(-9, -3), g: 18, life: 0.5, max: 0.5, size: rand(1, 2), color: '#c9a46a', alpha: 0.75 });
           return;
         }
         if (f.state !== 'working') return;
         const prop = doing(f)?.prop;
         if (prop === 'can' && Math.random() < dt * 10) add({ x: ox + 17 * SC + rand(-1, 1), y: b.y - 1, vx: rand(-14, 14), vy: rand(-22, -10), g: 90, life: 0.3, max: 0.3, size: 1, color: '#5ab4ff' });
-        if ((prop === 'hoe' || prop === 'rake') && !blink(prop === 'hoe' ? 3 : 2.5) && Math.random() < dt * 8) add({ x: ox + 17 * SC, y: b.y - 1, vx: rand(4, 18), vy: rand(-24, -12), g: 80, life: 0.45, max: 0.45, size: 1.5, color: '#5e3d22' });
+        if ((prop === 'hoe' || prop === 'rake') && !blink(prop === 'hoe' ? 3 : 2.5) && Math.random() < dt * 8) add({ x: ox + 17 * SC, y: b.y - 1, vx: rand(4, 18), vy: rand(-24, -12), g: 80, life: 0.45, max: 0.45, size: 1, color: '#5e3d22' });
         if (prop === 'hammer' && !blink(3) && Math.random() < dt * 10) add({ x: ox + 18.5 * SC, y: oy + 8 * SC, vx: rand(-20, 20), vy: rand(-26, -8), g: 70, life: 0.3, max: 0.3, size: 1, color: '#ffd43b' });
-        if (prop === 'sickle' && !blink(3) && Math.random() < dt * 8) add({ x: ox + 16 * SC, y: b.y - 3, vx: rand(6, 22), vy: rand(-20, -6), g: 50, life: 0.6, max: 0.6, size: 1.5, color: '#4f8f3a' });
-        if ((prop === 'cart' || prop === 'barrow') && Math.random() < dt * 5) add({ x: ox + 17 * SC, y: b.y, vx: rand(-8, 4), vy: rand(-6, -2), g: 10, life: 0.6, max: 0.6, size: 2, color: '#c9a46a', alpha: 0.6 });
+        if (prop === 'sickle' && !blink(3) && Math.random() < dt * 8) add({ x: ox + 16 * SC, y: b.y - 3, vx: rand(6, 22), vy: rand(-20, -6), g: 50, life: 0.6, max: 0.6, size: 1, color: '#4f8f3a' });
+        if ((prop === 'cart' || prop === 'barrow') && Math.random() < dt * 5) add({ x: ox + 17 * SC, y: b.y, vx: rand(-8, 4), vy: rand(-6, -2), g: 10, life: 0.6, max: 0.6, size: 1.5, color: '#c9a46a', alpha: 0.6 });
         if (prop === 'crate' && T % 1.6 < dt) for (let i = 0; i < 3; i++) add({ x: ox + 16 * SC, y: oy + 10 * SC, vx: rand(-10, 10), vy: rand(-18, -8), g: 40, life: 0.4, max: 0.4, size: 1, color: '#f4d58d' });
       },
       /** The farm's own particles: smoke from the chimney while agents work; petals, leaves or snow by the season. */
       ambient(dt, add) {
-        const { BOT_TOP, H } = L;
-        if (season === 'spring' && Math.random() < dt * 3) add({ x: rand(22, 92), y: BOT_TOP + rand(-8, 10), vx: rand(3, 9), vy: rand(5, 9), g: 0, life: 3, max: 3, size: 1, color: '#f4b6c2', sway: 3 });
-        if (season === 'autumn' && Math.random() < dt * 4) add({ x: rand(20, 94), y: BOT_TOP + rand(-8, 12), vx: rand(2, 8), vy: rand(6, 11), g: 0, life: 3.2, max: 3.2, size: 1.5, color: ['#c8681a', '#e9a23b', '#b5562f'][Math.floor(rand(0, 3))], sway: 4 });
-        const e = PXG.ext ?? { x0: 0, x1: W, y0: 0, y1: H };
+        if (season === 'spring' && Math.random() < dt * 3) add({ x: rand(46, 88), y: rand(228, 260), vx: rand(3, 9), vy: rand(5, 9), g: 0, life: 3, max: 3, size: 1, color: '#f4b6c2', sway: 3 });
+        if (season === 'autumn' && Math.random() < dt * 4) add({ x: rand(44, 90), y: rand(228, 262), vx: rand(2, 8), vy: rand(6, 11), g: 0, life: 3.2, max: 3.2, size: 1, color: ['#c8681a', '#e9a23b', '#b5562f'][Math.floor(rand(0, 3))], sway: 4 });
+        const e = PXG.ext ?? { x0: 0, x1: W, y0: 0, y1: L.H };
         if (season === 'winter' && Math.random() < dt * 28 * ((e.x1 - e.x0) / W)) add({ x: rand(e.x0, e.x1), y: e.y0 - 2, vx: rand(-2, 2), vy: rand(9, 16), g: 0, life: (e.y1 - e.y0) / 10, max: (e.y1 - e.y0) / 10, size: rand(1, 1.6), color: '#ffffff', sway: 2, alpha: 0.9 });
         if (scene.farmers.some(a => a.state === 'working') && Math.random() < dt * 2.2) {
-          add({ x: 244 + rand(-1, 1), y: L.BOT_TOP - 5, vx: rand(2, 6), vy: rand(-9, -6), g: 0, life: 2.6, max: 2.6, size: 2, grow: 1.4, color: '#c3cbd2', alpha: 0.55 });
+          add({ x: 241 + rand(-1, 1), y: 11, vx: rand(2, 6), vy: rand(-8, -5), g: 0, life: 2.6, max: 2.6, size: 2, grow: 1.4, color: '#c3cbd2', alpha: 0.55 });
         }
       },
       /** Soft shadows on the ground under farmers and their animals, so nothing floats. */
       shadows(b) {
-        PXG.ctx.globalAlpha = 0.3;
+        PXG.ctx.globalAlpha = 0.32;
         const x = Math.round(b.x), y = Math.round(b.y);
-        px(x - 6, y - 1, 12, 1, '#1f3d1a'); px(x - 8, y, 16, 2, '#1f3d1a'); px(x - 5, y + 2, 10, 1, '#1f3d1a');
-        for (const d of b.kids) { const kx = Math.round(d.x), ky = Math.round(d.y); px(kx - 4, ky, 8, 1, '#1f3d1a'); px(kx - 3, ky + 1, 6, 1, '#1f3d1a'); }
+        px(x - 4, y - 1, 9, 1, '#1c3320'); px(x - 6, y, 13, 1, '#1c3320'); px(x - 4, y + 1, 9, 1, '#1c3320');
+        for (const d of b.kids) { const kx = Math.round(d.x), ky = Math.round(d.y); px(kx - 3, ky, 6, 1, '#1c3320'); }
         PXG.ctx.globalAlpha = 1;
       },
       /** Lights that glow at night: [x, y, reach, the lit shape]. */
       lights() {
-        const { BOT_TOP } = L;
-        const { LANE_B } = L;
-        return [[25, 12, 7, [24, 11, 2, 1]], [158, BOT_TOP + 25, 16, [149, BOT_TOP + 20, 18, 11, true]], [242, BOT_TOP + 25, 16, [233, BOT_TOP + 20, 18, 11, true]], [200, LANE_B - 12, 20, [199, LANE_B - 33, 2, 1]]]; // the porch lamp lights the porch, not the roof
+        return [[62, 54, 11, [61, 47, 2, 1]], [158, 56, 16, [148, 46, 20, 14, true]], [242, 56, 16, [232, 46, 20, 14, true]], [213, 66, 20, [213, 49, 2, 2]]];
       },
-      fieldAt(x, y) { return L.ST.find(s => Math.abs(x - s.cx) <= 46 && y >= s.rowTop - 18 && y <= s.rowTop + 50)?.key ?? null; },
-      items: () => [[L.BOT_TOP + 30, drawTree], [L.LANE_B + 6, drawPosts]],
+      /** By day, cloud shadows drift over the farm; at night, fireflies over the yard. */
+      weather(sky) {
+        const T = PXG.T, e = PXG.ext ?? { x0: 0, x1: W, y0: 0, y1: L.H }, EW = e.x1 - e.x0 + 160;
+        if (sky.light > 0.3) {
+          PXG.ctx.globalAlpha = 0.09 * sky.light;
+          for (const [ox, y, r, sp] of [[60, 70, 28, 2.2], [300, 210, 34, 1.6], [520, 140, 24, 2.8]]) cloudShadow(e.x0 - 80 + ((ox + T * sp) % EW), y, r);
+          PXG.ctx.globalAlpha = 1;
+        }
+        if (sky.light < 0.5) FIREFLIES.forEach(([bx, by], i) => {
+          if ((Math.floor(T * 1.4 + i * 0.37) + i) % 3 === 0) return;
+          const x = Math.round(bx + Math.sin(T * 0.7 + i * 1.7) * 6), y = Math.round(by + Math.cos(T * 0.9 + i) * 4);
+          PXG.lights?.push([x, y, 3, [x, y, 1, 1]]);
+        });
+      },
+      fieldAt(x, y) { return L.ST.find(s => Math.abs(x - s.cx) <= 40 && y >= s.rowTop && y <= s.rowTop + 56)?.key ?? null; },
+      items: () => [],
       drawChar(f, b) {
         const scare = f.state === 'stale', [ox, oy] = pixelOrigin(b, 16), rp = rpAt(ox, oy);
         if (scare) { rp(0, 10, 14, 1, '#6b4320'); rp(-1, 9, 2, 3, '#d8c48a'); rp(13, 9, 2, 3, '#d8c48a'); }
@@ -1047,93 +1209,93 @@
       },
       drawFx(f, b) {
         const [ox, oy] = pixelOrigin(b, 16), rp = rpAt(ox, oy), T = PXG.T;
-        if (f.hot) { rp(11, 3 + Math.floor((T * 6) % 4), 1, 2, '#8fd3ff'); rp(2, 4 + Math.floor((T * 6 + 2) % 4), 1, 2, '#8fd3ff'); rp(4, 7, 1, 1, '#ff6b6b'); rp(9, 7, 1, 1, '#ff6b6b'); }
+        if (f.hot) { rp(11, 3 + Math.floor((T * 6) % 4), 1, 2, '#a9dcf7'); rp(2, 4 + Math.floor((T * 6 + 2) % 4), 1, 2, '#a9dcf7'); rp(4, 7, 1, 1, '#ff6b6b'); rp(9, 7, 1, 1, '#ff6b6b'); }
         if (f.state === 'working' && !b.walk) { const act = doing(f); if (act) drawProp(act.prop, rp, T, act.flag); }
         if (f.state === 'waiting') {
-          bubble(rp, 14, -6 - blink(3), '!');
+          bubble(rp, 12, -7 - blink(3), '!');
           const x = Math.round(b.x), y = Math.round(b.y); // a ring at its feet that pulses: it needs you
           PXG.ctx.globalAlpha = 0.45 + 0.35 * Math.sin(PXG.T * 5);
-          px(x - 9, y + 1, 18, 1, '#e04a3a'); px(x - 11, y, 2, 1, '#e04a3a'); px(x + 9, y, 2, 1, '#e04a3a'); px(x - 9, y - 1, 1, 1, '#e04a3a'); px(x + 8, y - 1, 1, 1, '#e04a3a');
+          px(x - 6, y + 2, 13, 1, '#e04a3a'); px(x - 8, y + 1, 2, 1, '#e04a3a'); px(x + 7, y + 1, 2, 1, '#e04a3a'); px(x - 8, y - 1, 1, 2, '#e04a3a'); px(x + 8, y - 1, 1, 2, '#e04a3a');
           PXG.ctx.globalAlpha = 1;
         }
         if (f.state === 'turn') { // a basket of produce
-          if (b.walk) { rp(3, 10, 8, 4, '#a8703c'); rp(3, 10, 8, 1, '#c98d4f'); rp(4, 9, 2, 1, '#e76f51'); rp(7, 9, 2, 1, '#f4a261'); rp(6, 8, 1, 1, '#3f9b3a'); }
+          if (b.walk) { rp(3, 10, 8, 4, '#a8703c'); rp(3, 10, 8, 1, '#c98d4f'); rp(4, 9, 2, 1, '#e04a3a'); rp(7, 9, 2, 1, '#f08a24'); rp(6, 8, 1, 1, '#3f9b3a'); }
           else {
-            const x = Math.round(b.x) + 8, y = L.LANE_B - 10;
-            px(x, y, 16, 9, '#a8703c'); px(x, y, 16, 2, '#c98d4f'); px(x + 2, y - 3, 4, 3, '#e76f51'); px(x + 7, y - 4, 4, 4, '#f4a261'); px(x + 11, y - 3, 3, 3, '#e9c46a'); px(x + 8, y - 6, 1, 2, '#3f9b3a');
-            bubble(rp, 14, -6 - (f.question ? blink(3) : 0), f.question ? '?' : 'v'); // a question waits for your answer
+            const x = Math.round(b.x) + 7, y = Math.round(b.y) - 6;
+            px(x, y, 10, 6, '#a8703c'); px(x, y, 10, 1, '#c98d4f'); px(x, y + 5, 10, 1, '#6b4320'); px(x + 1, y - 2, 3, 2, '#e04a3a'); px(x + 4, y - 3, 3, 3, '#f08a24'); px(x + 7, y - 2, 2, 2, '#e9c46a'); px(x + 5, y - 4, 1, 1, '#3f9b3a');
+            bubble(rp, 12, -7 - (f.question ? blink(3) : 0), f.question ? '?' : 'v'); // a question waits for your answer
           }
         }
-        if (f.state === 'idle' && !b.walk) { const zy = -1 - Math.floor((T * 2) % 4); PXG.ctx.globalAlpha = 0.8; rp(12, zy, 3, 1, '#e6f4ff'); rp(13, zy + 1, 1, 1, '#e6f4ff'); rp(12, zy + 2, 3, 1, '#e6f4ff'); PXG.ctx.globalAlpha = 1; }
-        if (f.state === 'stale') { const peck = blink(1.5); rp(5, -2, 4, 2, '#1d1d1d'); rp(4, -3, 2, 2, '#1d1d1d'); rp(3, -2 + peck, 1, 1, '#f0b429'); rp(8, -1, 2, 1, '#1d1d1d'); } // crow on the hat
+        if (f.state === 'idle' && !b.walk) { const zy = -2 - Math.floor((T * 2) % 4); PXG.ctx.globalAlpha = 0.8; rp(11, zy, 3, 1, '#e6eef5'); rp(12, zy + 1, 1, 1, '#e6eef5'); rp(11, zy + 2, 3, 1, '#e6eef5'); PXG.ctx.globalAlpha = 1; }
+        if (f.state === 'stale') { const peck = blink(1.5); rp(5, -2, 4, 2, '#1b1420'); rp(4, -3, 2, 2, '#1b1420'); rp(3, -2 + peck, 1, 1, '#f0b429'); rp(8, -1, 2, 1, '#1b1420'); } // crow on the hat
         b.kids.forEach((d, k) => { // chickens = subagents, the dog = an Explore subagent
           if (f.kids[k]?.dog) {
             const left = Math.sin(T * 0.9 + k) > 0, sniff = blink(3), m = (x, w) => (left ? 8 - x - w : x);
             const dp = rpAt(Math.round(d.x - 4.5 * SC), Math.round(d.y - 6 * SC)), c = (x, y, w, h, col) => dp(m(x, w), y, w, h, col);
-            c(1, 2, 5, 2, '#a0662e'); c(5, 1 + sniff, 2, 2, '#a0662e'); c(5, sniff, 1, 1, '#6b4320'); c(7, 2 + sniff, 1, 1, '#222');
-            c(1, 4, 1, 1, '#6b4320'); c(4, 4, 1, 1, '#6b4320'); c(0, 1 + blink(6), 1, 1, '#a0662e'); c(2, 2, 2, 1, '#c98d4f');
+            c(1, 2, 5, 2, '#a8703c'); c(5, 1 + sniff, 2, 2, '#a8703c'); c(5, sniff, 1, 1, '#6b4320'); c(7, 2 + sniff, 1, 1, '#1b1420');
+            c(1, 4, 1, 1, '#6b4320'); c(4, 4, 1, 1, '#6b4320'); c(0, 1 + blink(6), 1, 1, '#a8703c'); c(2, 2, 2, 1, '#c98d4f');
             if (sniff) c(8, 4, 1, 1, '#b08850');
             return;
           }
-          const hop = b.walk ? Math.round(Math.abs(Math.sin(T * 10 + k)) * 3) : (blink(2) && k % 2 ? 1 : 0);
+          const hop = b.walk ? Math.round(Math.abs(Math.sin(T * 10 + k)) * 2) : (blink(2) && k % 2 ? 1 : 0);
           const cp = rpAt(Math.round(d.x - 2.5 * SC), Math.round(d.y - 5 * SC) - hop);
-          cp(2, 0, 1, 1, '#e63946'); cp(1, 1, 3, 1, '#ffffff'); cp(3, 1, 1, 1, '#222'); cp(0, 2, 4, 1, '#ffffff'); cp(4, 2, 1, 1, '#f0b429'); cp(1, 3, 3, 1, '#ececec'); cp(1, 4, 1, 1, '#f0b429'); cp(3, 4, 1, 1, '#f0b429');
+          cp(2, 0, 1, 1, '#e04a3a'); cp(1, 1, 3, 1, '#ffffff'); cp(3, 1, 1, 1, '#1b1420'); cp(0, 2, 4, 1, '#ffffff'); cp(4, 2, 1, 1, '#f0b429'); cp(1, 3, 3, 1, '#e6eef5'); cp(1, 4, 1, 1, '#f0b429'); cp(3, 4, 1, 1, '#f0b429');
         });
       },
-      hot: () => scene.farmers.some(a => a.hot),
       top() {
         const T = PXG.T;
         for (const s of L.ST) {
           const weather = fieldByKey(s.key).weather;
           if (weather === 'rainbow') { // deploy passed: a rainbow across the field
             PXG.ctx.globalAlpha = 0.5;
-            ['#e04a3a', '#f08a24', '#ffd43b', '#6cc04a', '#3d7be0', '#8a5fc0'].forEach((c, j) => { const r = 44 - j * 2; for (let ang = 182; ang <= 358; ang += 2.5) { const t = ang * Math.PI / 180; px(Math.round(s.cx + Math.cos(t) * r), Math.round(s.rowTop + 30 + Math.sin(t) * r * 0.62), 2, 2, c); } });
+            ['#e04a3a', '#f08a24', '#ffd43b', '#6cc04a', '#3d7be0', '#8a5fc0'].forEach((c, j) => { const r = 40 - j * 2; for (let ang = 182; ang <= 358; ang += 2.5) { const t = ang * Math.PI / 180; px(Math.round(s.cx + Math.cos(t) * r), Math.round(s.rowTop + 36 + Math.sin(t) * r * 0.6), 2, 2, c); } });
             PXG.ctx.globalAlpha = 1;
-            if ((Math.floor(T * 3) + s.cx) % 7 === 0) { const sx = s.cx - 30 + ((s.cx * 13 + Math.floor(T * 3) * 17) % 60), sy = s.rowTop + 8; px(sx, sy - 1, 1, 3, '#ffffff'); px(sx - 1, sy, 3, 1, '#ffffff'); }
+            if ((Math.floor(T * 3) + s.cx) % 7 === 0) { const sx = s.cx - 30 + ((s.cx * 13 + Math.floor(T * 3) * 17) % 60), sy = s.rowTop + 14; px(sx, sy - 1, 1, 3, '#ffffff'); px(sx - 1, sy, 3, 1, '#ffffff'); }
           } else if (weather === 'windmill') { // deploy running
-            const hx = s.cx - 2, hy = s.rowTop - 10;
-            px(hx - 2, hy, 5, 13, '#e8d8b0'); px(hx - 3, hy - 2, 7, 2, '#8a3b2e'); px(hx, hy + 8, 1, 4, '#6b4320');
+            const hx = s.cx - 2, hy = s.rowTop - 4;
+            px(hx - 2, hy, 5, 13, '#e8d8b0'); px(hx - 3, hy - 2, 7, 2, '#9c3b30'); px(hx, hy + 8, 1, 4, '#6b4320');
             for (let i = 0; i < 4; i++) { const t = T * 3 + i * Math.PI / 2; for (let r = 2; r <= 8; r++) px(Math.round(hx + Math.cos(t) * r), Math.round(hy + 1 + Math.sin(t) * r), 1, 1, r > 4 ? '#ffffff' : '#c9b48a'); }
           } else if (weather === 'rain') { // deploy failed: a dark cloud drifts over the field and rain falls on all of it
-            const x0 = s.cx - 42, cx = Math.round(s.cx - 20 + Math.sin(T * 0.5) * 10), cy = s.rowTop - 6;
+            const x0 = s.x0, cx = Math.round(s.cx - 22 + Math.sin(T * 0.5) * 10), cy = s.rowTop + 2;
+            PXG.ctx.globalAlpha = 0.18; oval(px, cx + 22, s.rowTop + 30, 22, 5, '#1c3320'); PXG.ctx.globalAlpha = 1;
             for (let i = 0; i < 18; i++) {
-              const ph = (T * 1.6 + (i * 0.37) % 1) % 1, x = x0 + 3 + ((i * 47) % 80) - Math.round(ph * 3), y = cy + 10 + ph * 44;
+              const ph = (T * 1.6 + (i * 0.37) % 1) % 1, x = x0 + 2 + ((i * 47) % 70) - Math.round(ph * 3), y = cy + 10 + ph * 40;
               if (ph < 0.92) { px(x, Math.round(y), 1, 3, '#5ab4ff'); } else { px(x - 1, s.rowTop + 46, 3, 1, '#a9dcf7'); } // a drop, then its splash
             }
-            drawCloud(cx, cy + 1, 42, ['#c3cbd2', '#8a8f96', '#5f6b7a']);
+            drawCloud(cx, cy + 1, 44, ['#9aa4ad', '#5f6b7a', '#3a3a40']);
           }
         }
       },
       labels(lab, overflow) {
-        const { LANE_B, ST, more } = L;
+        const { ST, more } = L;
         const cnt = t => pxt(t, '#5a3a1a', null); // a count on a cream tag
-        lab(200, 11, pxt('AGENT FARM', '#fff3d6', '#4e3626'), 'wood');
         for (const s of ST) {
           const f = fieldByKey(s.key);
-          const branch = f.branch === '(detached)' ? ` ${pxt('?', '#c3cbd2')}` : f.branch && !isMain(f.branch) ? ` ${pxt(clip(f.branch, 14), '#c3cbd2')}` : '';
+          const branch = f.branch === '(detached)' ? ` ${pxt('?', '#c3cbd2')}` : f.branch && !isMain(f.branch) ? ` ${pxt(clip(f.branch, 12), '#c3cbd2')}` : '';
           const d = f.lastDeploy;
-          const weather = d ? ` ${pxt(d.label, { ok: '#8ef0a0', failed: '#ff8a80', running: '#ffd166' }[d.state] ?? '#c9b48a')}` : '';
+          const weather = d ? pxt(d.label, { ok: '#8ef0a0', failed: '#ff8a80', running: '#ffd166' }[d.state] ?? '#c9b48a') : '';
           const tip = [f.key, f.branch && `on ${f.branch}`, d?.detail, 'Click to see the files agents touched here'].filter(Boolean).join(' · ');
-          lab(s.cx, s.rowTop + 50, `<button type="button" class="px-field" data-farm-field="${esc(f.key)}" title="${esc(tip)}">${pxt(clip(f.name, 18), f.collision ? '#ffd166' : '#e6eef5')}${branch}${weather}${f.collision ? ` ${pxt('⚠ crowded', '#ffd166')}` : ''}</button>`, f.collision ? 'bad' : '');
-          if (f.behind > 0) lab(s.cx - 53, s.rowTop - 7, cnt(`↓${f.behind}`), 'cnt', `${f.behind} commit${f.behind === 1 ? '' : 's'} behind the remote`);
-          if (f.ahead > 0) lab(s.cx - 23, s.rowTop - 7 - Math.ceil(Math.min(f.ahead, 16) / 8) * 6, cnt(`↑${f.ahead}`), 'cnt', `${f.ahead} unpushed commit${f.ahead === 1 ? '' : 's'}`);
-          if (f.dirty > 0) lab(s.cx + 30, s.rowTop - 7 - Math.ceil(Math.min(f.dirty, 12) / 9) * 6, cnt(`+${f.dirty}`), 'cnt', `${f.dirty} uncommitted file${f.dirty === 1 ? '' : 's'}`);
+          const second = [weather, f.collision ? ` ${pxt('⚠ crowded', '#ffd166')}` : ''].join('');
+          lab(s.cx, s.rowTop + 49, `<button type="button" class="px-field" data-farm-field="${esc(f.key)}" title="${esc(tip)}"><span class="px-fl">${pxt(clip(f.name, 16), f.collision ? '#ffd166' : '#e6eef5')}${branch}</span>${second ? `<span class="px-fl">${second}</span>` : ''}</button>`, f.collision ? 'bad' : '');
+          if (f.behind > 0) lab(s.cx - 40, s.rowTop - 8, cnt(`↓${f.behind}`), 'cnt', `${f.behind} commit${f.behind === 1 ? '' : 's'} behind the remote`);
+          if (f.ahead > 0) lab(s.cx - 23, s.rowTop + 3 - Math.ceil(Math.min(f.ahead, 16) / 8) * 6, cnt(`↑${f.ahead}`), 'cnt', `${f.ahead} unpushed commit${f.ahead === 1 ? '' : 's'}`);
+          if (f.dirty > 0) lab(s.cx + 25, s.rowTop + 3 - Math.ceil(Math.min(f.dirty, 12) / 9) * 6, cnt(`+${f.dirty}`), 'cnt', `${f.dirty} uncommitted file${f.dirty === 1 ? '' : 's'}`);
         }
-        if (!ST.length) lab(220, TOP + 30, pxt('No fields yet: no agent has touched a repo in the last 30 minutes', '#fff3d6', '#4e3626'), 'zone');
+        if (!ST.length) lab(262, 150, pxt('No fields yet: no agent has touched a repo in the last 30 minutes', '#fff3d6', '#4e3626'), 'zone');
         const silo = siloOf(scene.plan);
-        if (silo) lab(382, 33, silo.lamp === 'red' ? pxt(silo.label, '#ffffff', null) : cnt(silo.label), `cnt${silo.lamp ? ` silo-${silo.lamp}` : ''}`, `The silo: your plan's weekly limit, ${silo.label} used${silo.resetsAt ? `, resets ${new Date(silo.resetsAt).toLocaleString([], { weekday: 'short', hour: '2-digit', minute: '2-digit' })}` : ''}`);
-        if (scene.henhouse?.roosting) lab(47, L.BOT_TOP - 32, cnt(`+${scene.henhouse.roosting}`), 'cnt', `${scene.henhouse.roosting} more subagent${scene.henhouse.roosting === 1 ? '' : 's'} running than the farmers can lead`);
-        if (scene.henhouse?.eggs) lab(43, L.BOT_TOP - 2, cnt(`${scene.henhouse.eggs} egg${scene.henhouse.eggs === 1 ? '' : 's'}`), 'cnt', 'Eggs: subagents that finished lately');
+        if (silo) lab(102, 80, silo.lamp === 'red' ? pxt(silo.label, '#ffffff', null) : cnt(silo.label), `cnt${silo.lamp ? ` silo-${silo.lamp}` : ''}`, `The silo: your plan's weekly limit, ${silo.label} used${silo.resetsAt ? `, resets ${new Date(silo.resetsAt).toLocaleString([], { weekday: 'short', hour: '2-digit', minute: '2-digit' })}` : ''}`);
+        if (scene.henhouse?.roosting) lab(64, 104, cnt(`+${scene.henhouse.roosting}`), 'cnt', `${scene.henhouse.roosting} more subagent${scene.henhouse.roosting === 1 ? '' : 's'} running than the farmers can lead`);
+        if (scene.henhouse?.eggs) lab(14, 142, cnt(`${scene.henhouse.eggs} egg${scene.henhouse.eggs === 1 ? '' : 's'}`), 'cnt', 'Eggs: subagents that finished lately');
         const sign = t => pxt(t, '#fff3d6', '#4e3626');
-        lab(25, TOP + 2, sign('MEADOW'), 'zone');
-        lab(58, LANE_B + 6, sign('SHADE TREE'), 'zone'); lab(200, LANE_B + 10, sign('YOUR PORCH'), 'zone'); lab(343, LANE_B + 6, sign('SCARECROWS'), 'zone');
+        lab(56, 140, sign('MEADOW'), 'zone');
+        lab(60, 294, sign('SHADE TREE'), 'zone'); lab(200, 21, sign('YOUR PORCH'), 'zone'); lab(341, 18, sign('SCARECROWS'), 'zone');
         const plus = (x, y, n, what) => n > 0 && lab(x, y, cnt(`+${n} ${what}`), 'cnt');
-        plus(150, LANE_B - 40, overflow.desk, 'waiting');
-        plus(250, LANE_B - 40, overflow.turn, 'your turn');
-        plus(58, L.BOT_TOP + 22, overflow.charge, 'idle');
-        plus(343, L.BOT_TOP + 22, overflow.storage, 'stale');
-        plus(25, L.BOT_TOP - 8, overflow.meadow, 'in the meadow');
-        if (more > 0) lab(320, 11, `<button type="button" class="px-more" data-farm-more>${pxt(`+${more} more field${more === 1 ? '' : 's'}`, '#fff3d6', '#4e3626')}</button>`, 'wood');
+        plus(154, PORCH_Y - 34, overflow.desk, 'waiting');
+        plus(246, PORCH_Y - 34, overflow.turn, 'your turn');
+        plus(60, 262, overflow.charge, 'idle');
+        plus(340, PORCH_Y - 34, overflow.storage, 'stale');
+        plus(56, 152, overflow.meadow, 'in the meadow');
+        if (more > 0) lab(350, 296, `<button type="button" class="px-more" data-farm-more>${pxt(`+${more} more field${more === 1 ? '' : 's'}`, '#fff3d6', '#4e3626')}</button>`, 'wood');
       },
     };
   }
@@ -1141,22 +1303,22 @@
   /** The farm's legend, shown in a dialog from the ⓘ button. */
   function helpHtml() {
     return `<div class="px-key">
-      <b>Your porch</b><span>a farmer waving a red “!” needs you; a basket means it's your turn</span>
-      <b>Fields</b><span>one per repo, each with its own crop (the seed packet on its fence), soil and fence; a blue pennant = a branch other than main</span>
+      <b>Your porch</b><span>in front of the farmhouse at the top: a farmer waving a red “!” needs you; a basket means it's your turn. The stats panel's “needs you” button opens the first one</span>
+      <b>Fields</b><span>one raised bed per repo in the fenced grid, each with its own crop (the seed packet on its side), soil and frame; empty beds wait for more repos. A blue pennant = a branch other than main</span>
       <b>Tools</b><span>what a working farmer holds is its current step: almanac = reading, spyglass = searching, pigeon = the web, hoe = editing, seeds = a new file, magnifier = running tests, rake = lint or format, hammer = a build, wheelbarrow = installing, crate = a commit, cart = a push or a PR (with a red flag: a deploy), mailbag = a pull, lantern = a server or a long wait, sickle = deleting, whistle = calling subagents, clipboard = planning, watering can = any other command</span>
-      <b>Farmers</b><span>one per agent; each has its own hat, hair and clothes, and its shirt is the agent's colour in the list</span>
+      <b>Farmers</b><span>one per agent; each has its own hat, hair and clothes, and its shirt is the agent's colour in the list. Hover one for its name; names always show for the farmer you picked and those on the porch</span>
       <b>Speech bubbles</b><span>what a farmer asked or last said; × hides one to a 💬 (click it to show the bubble again); a new message brings it back by itself. The Bubbles switch hides or shows them all</span>
       <b>Above a field</b><span>hay = uncommitted files, crates = unpushed commits, mailbox = behind the remote</span>
       <b>Weather</b><span>the repo's last deploy, from GitHub Actions or a deploy an agent ran itself (a deploy script over ssh, rsync, vercel…), whichever is newer: rainbow = deployed, rain = deploy failed (hover its sign for why; the close-up links to the run), windmill = deploying. A run GitHub never started (billing, spending limit) brings no weather: ⏸ Actions didn't run. Rope = two agents writing one repo</span>
       <b>Hearts, crops</b><span>hearts = context left. Crops grow as the context fills: seeds, sprouts, young plants, in flower, ripening, then ripe with a sparkle (golden wheat, red tomatoes, sunflowers in bloom…) when it is nearly full. Chickens = subagents, the dog = an Explore subagent</span>
-      <b>Shade tree, scarecrows</b><span>idle agents nap under the tree; stale ones stand as scarecrows; the meadow is for agents outside any repo</span>
+      <b>Shade tree, scarecrows</b><span>idle agents nap under the tree (bottom left); stale ones stand as scarecrows (top right); the meadow by the henhouse is for agents outside any repo</span>
       <b>Silo</b><span>its grain is your plan's weekly limit used (the % under it; when it resets on hover); its lamp turns amber from 70% and blinks red from 90%</span>
       <b>Seasons</b><span>follow your plan's 5-hour limit: spring while it is fresh (blossom), then summer, autumn (falling leaves), and winter (snow) when it is nearly used up; a new window brings spring back</span>
-      <b>Henhouse, pond</b><span>eggs in the nest = subagents that finished lately; a hen at the door and a +N sign = more subagents running than their farmers can lead</span>
+      <b>Henhouse</b><span>eggs in the nest = subagents that finished lately; hens in the run and a +N sign = more subagents running than their farmers can lead</span>
       <b>Pigeons</b><span>one agent messaging another (Claude Code's SendMessage between sessions): a pigeon flies the note from one farmer to the other, and the diary says what it said; the agents' conversations show it too</span>
-      <b>Day and night</b><span>the sky follows your clock: at night the windows, the barn lamp and lanterns glow. The Sky switch holds it at day or night</span>
+      <b>Day and night</b><span>the light follows your clock: cloud shadows drift over by day; at night the windows, the lamps and lanterns glow and fireflies come out. The Sky switch holds it at day or night</span>
       <b>Click</b><span>a farmer to answer or message it in the sidebar; a field for the files agents touched there</span>
-      <b>Zoom</b><span>− / + (or ⌘/Ctrl + scroll, or pinch) zooms the farm inside its frame; drag or scroll to move around; the % button shows the whole farm again</span>
+      <b>Zoom</b><span>+ / − on the right (or ⌘/Ctrl + scroll, or pinch) zooms the farm inside its frame; drag or scroll to move around; the % button shows the whole farm again</span>
     </div>`;
   }
 
@@ -1165,7 +1327,7 @@
   function makePixelView(th) {
     let host = null, canvas = null, ctx = null, ov = null, logEl = null, hudEl = null, bg = null, ro = null;
     let raf = 0, last = 0, T = 0, cs = 1, first = true, timer = 0, layoutKey = null, labelKey = '';
-    let viewEl = null, drag = null, dragged = false, backing = 1; // the frame the farm is seen through; a drag that pans it
+    let viewEl = null, drag = null, dragged = false, backing = 1, hoverId = null; // the frame the farm is seen through; a drag that pans it; the farmer under the pointer
     let scene = { fields: [], farmers: [] }, overflow = {}, still = false, opts = {}, selectedId = null, got = false; // got: a scene has arrived
     // Zoom on top of "the whole farm in the frame", and speech bubbles (each can be closed until its farmer says something new).
     const ZOOMS = [0.5, 0.75, 1, 1.25, 1.5, 2, 2.5, 3];
@@ -1181,7 +1343,7 @@
     let restingShown = stored('tracker-farm-resting') !== 'hidden'; // idle and stale farmers on the farm, or not
     const resting = f => f.state === 'idle' || f.state === 'stale';
     let glide = null; // a zoom easing in: { from: scale, start, ox, oy }
-    let pad = { x: 0, t: 0, b: 0 }; // the frame's spare room, in world pixels: more sky above, more meadow below and beside
+    let pad = { x: 0, t: 0, b: 0 }; // the frame's spare room, in world pixels: more forest all round
     const extOf = () => ({ x0: -pad.x, x1: W + pad.x, y0: -pad.t, y1: th.layout().H + pad.b });
     const skyNow = () => skyAt(skyMode === 'day' ? new Date(2000, 0, 1, 12) : skyMode === 'night' ? new Date(2000, 0, 1, 23) : new Date());
     let wheel = 0;
@@ -1294,8 +1456,23 @@
       dragged = false;
       drag = { id: e.pointerId, x: e.clientX, y: e.clientY, left: viewEl.scrollLeft, top: viewEl.scrollTop, moving: false };
     }
+    /** The farmer under a pointer, if any (its sprite, in farm pixels). */
+    function botAt(e) {
+      if (!canvas || e.target !== canvas) return null;
+      const r = canvas.getBoundingClientRect(), on = r.width / (W + 2 * pad.x) || cs, x = (e.clientX - r.left) / on - pad.x, y = (e.clientY - r.top) / on - pad.t; // the size on screen: right even while a zoom glides
+      for (const [id, b] of bots) if (Math.abs(x - b.x) <= 7 * SC + 1 && y >= b.y - th.SH * SC - 1 && y <= b.y + 1) return id;
+      return null;
+    }
+    function setHover(id) {
+      if (id === hoverId) return;
+      bots.get(hoverId)?.tag?.classList.remove('hover');
+      hoverId = id;
+      bots.get(id)?.tag?.classList.add('hover');
+      if (canvas) canvas.style.cursor = id ? 'pointer' : '';
+    }
     function onPointerMove(e) {
-      if (!drag || e.pointerId !== drag.id) return;
+      if (!drag) { setHover(botAt(e)); return; }
+      if (e.pointerId !== drag.id) return;
       const dx = e.clientX - drag.x, dy = e.clientY - drag.y;
       if (!drag.moving) {
         if (Math.hypot(dx, dy) < 5 || (viewEl.scrollWidth <= viewEl.clientWidth && viewEl.scrollHeight <= viewEl.clientHeight)) return;
@@ -1347,7 +1524,7 @@
         s.w = null; // measured again
       }
       s.x = Math.round(b.x * cs);
-      s.bottom = Math.round((b.y - th.SH * SC - 3 - b.lift) * cs) - 18; // just above its farmer's name tag
+      s.bottom = Math.round((b.y - th.SH * SC - 3 - b.lift) * cs) - (b.shown ? 18 : 2); // just above its farmer's name tag, or its head
       s.seen = true;
     }
     /**
@@ -1357,7 +1534,7 @@
     function layoutBubbles() {
       const placed = [];
       for (const b of bots.values()) {
-        if (!b.tag || b.tag.classList.contains('st-idle') || b.tag.classList.contains('st-stale')) continue;
+        if (!b.tag || !b.shown) continue; // hidden names leave room
         if (b.tagW == null) { b.tagW = b.tag.offsetWidth; b.tagH = b.tag.offsetHeight; }
         const x = Math.round(b.x * cs), bottom = Math.round((b.y - th.SH * SC - 3 - b.lift) * cs);
         placed.push({ left: x - b.tagW / 2, right: x + b.tagW / 2, top: bottom - b.tagH, bottom });
@@ -1454,9 +1631,8 @@
       PXG.ext = extOf();
       const sky = skyNow();
       PXG.lights = [...th.lights()];
-      for (const f of scene.farmers) if (f.state === 'waiting' || f.state === 'turn') { const b = bots.get(f.id); if (b) PXG.lights.push([b.x, b.y - 14, 18, null]); } // lit at night: they need you
-      drawSky(sky, T, th.hot());
-      ctx.drawImage(bg, -pad.x, 0);
+      for (const f of scene.farmers) if (f.state === 'waiting' || f.state === 'turn') { const b = bots.get(f.id); if (b) PXG.lights.push([b.x, b.y - 8, 14, null]); } // lit at night: they need you
+      ctx.drawImage(bg, -pad.x, -pad.t);
       th.ground();
       for (const f of scene.farmers) { const b = bots.get(f.id); if (b) th.shadows(b); }
       const items = th.items();
@@ -1465,14 +1641,15 @@
       for (const f of scene.farmers) { const b = bots.get(f.id); if (b) th.drawFx(f, b); }
       if (!still) drawParticles(parts);
       drawFlights();
+      th.weather?.(sky);
       th.top();
       drawNight(sky, th.layout().H, PXG.lights);
       const picked = selectedId && bots.get(selectedId);
       if (picked) { // the farmer shown in the sidebar: a ring at its feet
         PXG.ctx.globalAlpha = 0.85;
-        px(Math.round(picked.x) - 10, Math.round(picked.y) + 1, 20, 2, '#ffd43b');
-        px(Math.round(picked.x) - 12, Math.round(picked.y) - 1, 2, 2, '#ffd43b');
-        px(Math.round(picked.x) + 10, Math.round(picked.y) - 1, 2, 2, '#ffd43b');
+        px(Math.round(picked.x) - 7, Math.round(picked.y) + 2, 15, 1, '#ffd43b');
+        px(Math.round(picked.x) - 9, Math.round(picked.y) - 1, 2, 3, '#ffd43b');
+        px(Math.round(picked.x) + 8, Math.round(picked.y) - 1, 2, 3, '#ffd43b');
         PXG.ctx.globalAlpha = 1;
       }
       // Name tags, lifted when two would overlap.
@@ -1489,13 +1666,14 @@
           b.tag.dataset.farmer = f.id;
           ov.appendChild(b.tag);
         }
-        const text = th.tag(f), tip = th.tip(f), sel = f.id === selectedId;
-        if (b.tagText !== f.state + text + tip + sel) {
-          b.tag.className = `px-tag st-${f.state}${sel ? ' sel' : ''}`;
+        const text = th.tag(f), tip = th.tip(f), sel = f.id === selectedId, hover = f.id === hoverId;
+        b.shown = sel || f.state === 'waiting' || f.state === 'turn'; // the rest show their names on hover
+        if (b.tagText !== f.state + text + tip + sel + hover) {
+          b.tag.className = `px-tag st-${f.state}${sel ? ' sel' : ''}${hover ? ' hover' : ''}`;
           b.tag.innerHTML = f.state === 'turn' ? pxt(text, '#1b1420', null) : pxt(text, '#ffffff');
           b.tagW = null;
           b.tag.title = tip;
-          b.tagText = f.state + text + tip + sel;
+          b.tagText = f.state + text + tip + sel + hover;
         }
         b.tag.style.transform = `translate(${Math.round(b.x * cs)}px, ${Math.round((b.y - th.SH * SC - 3 - b.lift) * cs)}px) translate(-50%, -100%)`;
         placeBubble(f, b);
@@ -1538,9 +1716,9 @@
       const { H } = th.layout();
       const c = document.createElement('canvas');
       c.width = W + 2 * pad.x;
-      c.height = H + pad.b;
+      c.height = H + pad.t + pad.b;
       const g = c.getContext('2d');
-      g.translate(pad.x, 0);
+      g.translate(pad.x, pad.t);
       bgSeason = th.season();
       th.bg((x, y, w, h, col) => { g.fillStyle = ink(col); g.fillRect(x, y, w, h); }, bgSeason, extOf());
       return c;
@@ -1553,10 +1731,10 @@
       // at most ~24M pixels, and image-rendering: pixelated keeps the pixels square when scaled.
       const fw = viewEl?.offsetWidth || W, fh = viewEl?.offsetHeight || 0;
       const fit = Math.max(0.5, Math.min(6, (fw - 2) / W, fh > 60 ? (fh - 2) / H : Infinity));
-      // The frame's spare room is more farm, not empty frame: sky above and meadow below, or meadow beside.
+      // The frame's spare room is more land, not empty frame: the forest round the farm.
       const spareW = Math.max(0, (fw - 2) / fit - W), spareH = fh > 60 ? Math.floor(Math.max(0, (fh - 2) / fit - H)) : 0;
       const was = `${pad.x},${pad.t},${pad.b}`;
-      pad = { x: Math.floor(spareW / 2), t: Math.floor(spareH * 0.4), b: spareH - Math.floor(spareH * 0.4) };
+      pad = { x: Math.floor(spareW / 2), t: Math.floor(spareH / 2), b: spareH - Math.floor(spareH / 2) };
       const EW = W + 2 * pad.x, EH = H + pad.t + pad.b;
       cs = Math.max(0.25, Math.min(18, fit * zoom));
       const k = Math.max(1, Math.min(Math.ceil(cs * dpr), Math.floor(Math.sqrt(24e6 / (EW * EH)))));
@@ -1607,6 +1785,12 @@
       const sign = e.target.closest?.('[data-farm-field]');
       if (sign) { e.stopPropagation(); opts.onOpenField?.(sign.dataset.farmField); return; }
       if (e.target.closest?.('[data-farm-motion]')) { e.stopPropagation(); setStill(!still); return; }
+      if (e.target.closest?.('[data-farm-need]')) { // the first farmer that needs you
+        e.stopPropagation();
+        const f = scene.farmers.find(x => x.state === 'waiting') ?? scene.farmers.find(x => x.question);
+        if (f) opts.onPickAgent?.(f.id);
+        return;
+      }
       if (e.target.closest?.('[data-farm-follow]')) { e.stopPropagation(); setFollow(!follow); return; }
       if (e.target.closest?.('[data-farm-resting]')) {
         e.stopPropagation();
@@ -1658,8 +1842,9 @@
       if (e.target.closest?.('[data-farm-help-close]') || e.target === help) { e.stopPropagation(); help.close(); return; } // × or a click on the backdrop
       if (help?.contains(e.target)) return;
       if (e.target !== canvas) return;
-      const r = canvas.getBoundingClientRect(), on = r.width / (W + 2 * pad.x) || cs, x = (e.clientX - r.left) / on - pad.x, y = (e.clientY - r.top) / on - pad.t; // the size on screen: right even while a zoom glides
-      for (const [id, b] of bots) if (Math.abs(x - b.x) <= 7 * SC + 1 && y >= b.y - th.SH * SC - 1 && y <= b.y + 1) { opts.onPickAgent?.(id); return; }
+      const hit = botAt(e);
+      if (hit) { opts.onPickAgent?.(hit); return; }
+      const r = canvas.getBoundingClientRect(), on = r.width / (W + 2 * pad.x) || cs, x = (e.clientX - r.left) / on - pad.x, y = (e.clientY - r.top) / on - pad.t;
       const key = th.fieldAt(x, y);
       if (key) opts.onOpenField?.(key);
     }
@@ -1679,7 +1864,7 @@
         still = opts.still ?? false;
         // The diary goes where the page asks (its sidebar), else under the farm.
         const under = opts.diary ? '' : '<div class="px-under"><div><h4>Farm diary</h4><ol class="px-log"></ol></div></div>';
-        host.innerHTML = `<div class="px"><div class="px-host"><div class="px-hud"></div><div class="px-view"><div class="px-stage"><canvas aria-label="Pixel farm: every farmer is an agent, every field a repo"></canvas><div class="px-ov"></div>${got ? '' : '<div class="px-loading"><span class="spinner"></span>Loading the farm…</div>'}</div></div></div>
+        host.innerHTML = `<div class="px"><div class="px-host"><div class="px-view"><div class="px-stage"><canvas aria-label="Pixel farm: every farmer is an agent, every field a repo"></canvas><div class="px-ov"></div>${got ? '' : '<div class="px-loading"><span class="spinner"></span>Loading the farm…</div>'}</div></div><div class="px-hud"></div></div>
           ${under}</div>
           <dialog class="px-help" aria-label="How to read the farm"><header><b>How to read the farm</b><button type="button" class="x" data-farm-help-close aria-label="Close">×</button></header>${helpHtml()}</dialog>`;
         canvas = host.querySelector('canvas');
@@ -1703,6 +1888,7 @@
         viewEl.addEventListener('pointermove', onPointerMove);
         viewEl.addEventListener('pointerup', onPointerUp);
         viewEl.addEventListener('pointercancel', onPointerUp);
+        viewEl.addEventListener('pointerleave', () => setHover(null));
         document.addEventListener('visibilitychange', onVisibility);
         renderLog();
         renderHud();
@@ -1729,6 +1915,7 @@
         says.clear();
         host = canvas = ctx = ov = logEl = hudEl = viewEl = null;
         drag = null;
+        hoverId = null;
       },
       resume: () => { if (still) redrawStill(); else startLoop(); },
       isStill: () => still,
