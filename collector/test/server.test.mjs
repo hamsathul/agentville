@@ -31,6 +31,8 @@ async function start() {
       permit: async body => { calls.push(['permit', body]); return { ok: true }; },
       message: async body => { calls.push(['message', body]); return { ok: true }; },
       start: async body => { calls.push(['start', body]); return { ok: true }; },
+      end: async body => { calls.push(['end', body]); return { ok: true }; },
+      restart: async body => { calls.push(['restart', body]); return { ok: true }; },
     },
     pastSessions: async () => ({ terminal: 'iTerm', projects: [{ cwd: '/code/app' }], sessions: [] }),
   });
@@ -262,6 +264,24 @@ test('past sessions need the token; starting one needs the token and a same-orig
     assert.deepEqual(calls, []);
     assert.equal((await request(port, { method: 'POST', path: '/api/actions/start', headers: { 'x-tracker-token': 'tok', origin, 'content-type': 'application/json' }, body })).status, 200);
     assert.deepEqual(calls, [['start', { cwd: '/code/app' }]]);
+  } finally {
+    await srv.close();
+  }
+});
+
+test('ending or restarting a session needs the token and a same-origin Origin header', async () => {
+  const { srv, port, calls } = await start();
+  try {
+    const origin = `http://127.0.0.1:${port}`;
+    const json = { 'content-type': 'application/json' };
+    for (const path of ['/api/actions/end', '/api/actions/restart']) {
+      assert.equal((await request(port, { method: 'POST', path, headers: { ...json, origin }, body: '{"agentId":"s1"}' })).status, 403);
+      assert.equal((await request(port, { method: 'POST', path, headers: { ...json, 'x-tracker-token': 'tok', origin: 'https://evil.example' }, body: '{"agentId":"s1"}' })).status, 403);
+    }
+    assert.deepEqual(calls, []);
+    await request(port, { method: 'POST', path: '/api/actions/end', headers: { ...json, 'x-tracker-token': 'tok', origin }, body: '{"agentId":"s1"}' });
+    await request(port, { method: 'POST', path: '/api/actions/restart', headers: { ...json, 'x-tracker-token': 'tok', origin }, body: '{"agentId":"s1","mode":"plan"}' });
+    assert.deepEqual(calls, [['end', { agentId: 's1' }], ['restart', { agentId: 's1', mode: 'plan' }]]);
   } finally {
     await srv.close();
   }

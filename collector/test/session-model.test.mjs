@@ -220,3 +220,8 @@ test("a background command has not worked or failed when it starts, only when it
   assert.deepEqual(m.calls.map(c => [c.id, c.ok, c.endedAt]), [['bg', true, at(40)], ['bg2', false, at(41)]]);
   assert.deepEqual([...m.children.values()].map(c => c.state), ['done', 'failed']);
 });
+
+test('the session remembers its latest permission mode', () => {
+  const m = modelOf(prompt(1, 'go', { permissionMode: 'default' }), prompt(5, 'again', { permissionMode: 'acceptEdits' }));
+  assert.equal(m.permissionMode, 'acceptEdits');
+});

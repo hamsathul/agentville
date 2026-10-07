@@ -76,6 +76,7 @@ export function buildAgent({ base, model, registry, proc, cpuHistory = [], child
     sinceHint: derived.since,
     ask,
     mod: beacon ? { version: beacon.version, live: beacon.live } : undefined,
+    mode: model?.permissionMode ?? undefined, // as of the last message you sent it (Shift+Tab since then shows on the next)
     usage: beacon?.usage ? { costUsd: beacon.usage.costUsd, contextPercent: beacon.usage.contextPercent } : undefined, // the plan's windows go in snapshot.plan
     lastActivityAt: model?.lastActivityAt || undefined,
     now: nowOf(model),

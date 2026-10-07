@@ -17,7 +17,7 @@ import { listFolder, parsePorcelain, readFolderFile } from './sources/files.mjs'
 import { repoFiles } from './derive/repo-files.mjs';
 import { checkImages, pruneUploads, saveImages, withScreenshots } from './sources/uploads.mjs';
 import { compactSummary, memoryFiles, scratchpadOf } from './sources/memory.mjs';
-import { SESSION_ID, claudeCommand, listSessions, projectsOf, terminalScript } from './sources/sessions.mjs';
+import { MODE_FLAGS, SESSION_ID, claudeCommand, closeTerminalScript, listSessions, projectsOf, terminalScript } from './sources/sessions.mjs';
 import { applySince, buildAgent, countStates, sortAgents } from './derive/agent.mjs';
 import { findCollisions } from './derive/collisions.mjs';
 import { reposFor } from './derive/repos.mjs';
@@ -28,6 +28,14 @@ import { createTrackerServer } from './server.mjs';
 import { renderTranscriptPage } from './transcript-page.mjs';
 
 const DOC_FILE = /\.(md|markdown|mdx)$/i;
+
+// A session's process, for ending it: its command line, its terminal, a signal, whether it still runs.
+const systemProcs = {
+  commandOf: async pid => { const r = await run('ps', ['-o', 'command=', '-p', String(pid)], { timeoutMs: 5000 }); return r.code === 0 ? r.stdout.trim() : null; },
+  ttyOf: async pid => { const r = await run('ps', ['-o', 'tty=', '-p', String(pid)], { timeoutMs: 5000 }); const t = r.code === 0 ? r.stdout.trim() : ''; return /^ttys\d+$/.test(t) ? t : null; },
+  kill: (pid, sig) => process.kill(pid, sig),
+  alive: pid => { try { process.kill(pid, 0); return true; } catch { return false; } },
+};
 const DOC_MAX_BYTES = 2 * 1024 * 1024;
 
 const ID_RE = /^[A-Za-z0-9-]{1,64}$/;
@@ -59,7 +67,7 @@ function loadToken(path) {
   return token;
 }
 
-export async function startCollector({ root, claudeDir = join(homedir(), '.claude'), claudeBin = 'claude', home = homedir(), scratchBase = `/private/tmp/claude-${process.getuid?.() ?? 0}`, port: portOverride, deliveryTimeoutMs = 5000, notify = notifyMac, launch = args => run('osascript', args, { timeoutMs: 15_000 }), log = makeLogger(join(root, 'logs')) }) {
+export async function startCollector({ root, claudeDir = join(homedir(), '.claude'), claudeBin = 'claude', home = homedir(), scratchBase = `/private/tmp/claude-${process.getuid?.() ?? 0}`, port: portOverride, deliveryTimeoutMs = 5000, notify = notifyMac, launch = args => run('osascript', args, { timeoutMs: 15_000 }), sessionProcs = systemProcs, endWaitMs = 8000, log = makeLogger(join(root, 'logs')) }) {
   const stateDir = join(root, 'state');
   const pendingDir = join(stateDir, 'pending');
   const answersDir = join(stateDir, 'answers');
@@ -492,9 +500,47 @@ export async function startCollector({ root, claudeDir = join(homedir(), '.claud
     return { ok: false, error: res.stderr.trim().slice(0, 200) || 'The terminal did not open.' };
   };
 
+  /**
+   * Ends a running session: checks the process is claude, SIGTERM (Claude shuts down cleanly), waits
+   * for it to stop, then closes its iTerm session or Terminal window, found by its tty.
+   */
+  async function endSession(agent) {
+    if (!agent) return { ok: false, error: 'That session was not found.' };
+    if (agent.kind !== 'interactive' || !Number.isInteger(agent.pid)) return { ok: false, error: 'Only a session running in a terminal can be ended from here.' };
+    const command = await sessionProcs.commandOf(agent.pid);
+    if (!/(^|\/|\s)claude(\s|$)/.test(command ?? '')) return { ok: false, error: "That session's process is not Claude Code any more." };
+    const tty = await sessionProcs.ttyOf(agent.pid);
+    sessionProcs.kill(agent.pid, 'SIGTERM');
+    const until = Date.now() + endWaitMs;
+    while (sessionProcs.alive(agent.pid) && Date.now() < until) await new Promise(r => setTimeout(r, 150));
+    if (sessionProcs.alive(agent.pid)) return { ok: false, error: "The session didn't stop. Close it in its terminal (/exit)." };
+    let closedWindow = false;
+    if (tty) for (const app of [cfg.terminal === 'iTerm' ? 'iTerm' : 'Terminal', cfg.terminal === 'iTerm' ? 'Terminal' : 'iTerm']) {
+      const res = await launch(closeTerminalScript(app, `/dev/${tty}`)).catch(() => ({ code: 1, stdout: '' }));
+      if (res.code === 0 && res.stdout.trim() === 'closed') { closedWindow = true; break; }
+    }
+    schedule(true);
+    return { ok: true, closedWindow };
+  }
+  const validMode = mode => mode === undefined || Object.hasOwn(MODE_FLAGS, mode);
+
   const actions = {
-    /** Opens a terminal window running claude in a listed folder, or resuming a past session that is not running. */
+    /** Ends a session and closes its terminal window. */
+    async end(body) {
+      return endSession(snapshot?.agents.find(a => a.id === body?.agentId));
+    },
+    /** Ends a session and resumes it in a new terminal window in another permission mode; the conversation carries on. */
+    async restart(body) {
+      const agent = snapshot?.agents.find(a => a.id === body?.agentId);
+      if (!validMode(body?.mode)) return { ok: false, error: 'That is not a permission mode.' };
+      if (!agent || !SESSION_ID.test(agent.id) || !agent.cwd || !isDir(agent.cwd)) return { ok: false, error: 'That session cannot be resumed from here.' };
+      const ended = await endSession(agent);
+      if (!ended.ok) return ended;
+      return openTerminal(claudeCommand(agent.cwd, agent.id, body.mode ?? 'default'));
+    },
+    /** Opens a terminal window running claude in a listed folder, or resuming a past session that is not running, in a permission mode. */
     async start(body) {
+      if (!validMode(body?.mode)) return { ok: false, error: 'That is not a permission mode.' };
       const known = await pastSessions();
       let cwd, resume;
       if (body?.resume !== undefined) {
@@ -508,7 +554,7 @@ export async function startCollector({ root, claudeDir = join(homedir(), '.claud
         cwd = known.projects.find(p => p.cwd === body?.cwd)?.cwd;
         if (!cwd) return { ok: false, error: 'Pick one of the listed folders.' };
       }
-      return openTerminal(claudeCommand(cwd, resume));
+      return openTerminal(claudeCommand(cwd, resume, body?.mode ?? 'default'));
     },
     async message(body) {
       const agent = snapshot?.agents.find(a => a.id === body?.agentId);

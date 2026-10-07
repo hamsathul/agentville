@@ -68,6 +68,7 @@ function loadPage({ stored = {}, storageThrows = false, files = {}, replies = {}
     push: snap => sourceListener({ data: JSON.stringify(snap) }),
     select: text => { selectedText = text; },
     fire: type => (docListeners[type] ?? []).forEach(fn => fn({ target: { closest: () => null } })),
+    change: target => Promise.all((docListeners.change ?? []).map(fn => fn({ target: { closest: () => null, ...target } }))),
     click: id => Promise.all((docListeners.click ?? []).map(fn => fn({ target: { closest: sel => (sel === 'button' ? ctx.document.getElementById(id) : null) } }))),
     el: id => ctx.document.getElementById(id),
     side: () => ctx.document.getElementById('center-body').innerHTML,
@@ -1101,4 +1102,39 @@ test("a repo card shows its last deploy as the collector words it: direct, block
   assert.match(rail, /⏸ Actions didn&#39;t run|⏸ Actions didn't run/);
   assert.match(rail, /href="https:\/\/github.com\/o\/b\/actions\/runs\/1"/);
   assert.doesNotMatch(rail, /deploy failed/);
+});
+
+test("a terminal session's panel shows its permission mode, and ends or restarts it only after you confirm", async () => {
+  const page = loadPage();
+  page.push(richSnapshot([richAgent({ pid: 4242, mode: 'plan' })]));
+  const side = page.side();
+  assert.match(side, /Plan mode/);
+  assert.match(side, /data-end-session="r1"/);
+  assert.match(side, /data-restart-mode/);
+  await page.clickButton('end-btn', { endSession: 'r1' });
+  assert.equal(page.el('confirm').open, true);
+  assert.match(page.el('confirm-text').textContent, /End busy-one\?/);
+  assert.deepEqual(page.posts, [], 'nothing until you confirm');
+  await page.clickButton('confirm-yes', { confirm: 'yes' });
+  await new Promise(r => setTimeout(r, 0));
+  assert.deepEqual(page.posts, [{ path: '/api/actions/end', body: { agentId: 'r1' } }]);
+  await page.change({ dataset: { restartMode: '', agent: 'r1' }, value: 'bypassPermissions' });
+  assert.match(page.el('confirm-text').textContent, /Restart busy-one in Bypass permissions/);
+  assert.match(page.el('confirm-text').textContent, /without asking/);
+  await page.clickButton('confirm-no', { confirm: 'no' });
+  await new Promise(r => setTimeout(r, 0));
+  assert.equal(page.posts.length, 1, 'cancelled: nothing posted');
+  await page.change({ dataset: { restartMode: '', agent: 'r1' }, value: 'acceptEdits' });
+  await page.clickButton('confirm-yes', { confirm: 'yes' });
+  await new Promise(r => setTimeout(r, 0));
+  assert.deepEqual(page.posts[1], { path: '/api/actions/restart', body: { agentId: 'r1', mode: 'acceptEdits' } });
+  page.push(richSnapshot([richAgent({ kind: 'codex', id: 'codex:1' })]));
+  assert.doesNotMatch(page.side(), /data-end-session/);
+});
+
+test("a session whose mode is not known yet says so, rather than guessing", () => {
+  const page = loadPage();
+  page.push(richSnapshot([richAgent({ pid: 4242 })]));
+  assert.match(page.side(), /mode not known yet/);
+  assert.doesNotMatch(page.side(), /Ask first<\/span>/);
 });

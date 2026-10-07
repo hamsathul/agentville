@@ -63,8 +63,14 @@ how much CPU and memory each one uses.
 - **Start or resume sessions** (＋ Session in the top bar): start Claude Code in a folder you
   have worked in, or resume a session from the last 30 days by its title and last message. It
   opens a new Terminal or iTerm window (the `terminal` setting) running `claude` or
-  `claude --resume <id>` there; sessions still running are marked and not offered. The first
-  time, macOS asks to let the tracker control that app.
+  `claude --resume <id>` there, in the permission mode you pick (ask first, accept edits, plan,
+  auto, or bypass permissions with `--dangerously-skip-permissions`); sessions still running
+  are marked and not offered. The window closes when Claude exits. The first time, macOS asks
+  to let the tracker control that app.
+- **End or restart a session:** a terminal session's panel shows its permission mode (as of the
+  last message you sent it), **End session** (after you confirm: Claude stops cleanly and its
+  iTerm or Terminal window closes; the conversation can be resumed) and **Restart in…** another
+  mode (it ends and resumes straight away in a new window, the conversation carrying on).
 - **Claude Code mod:** `/tracker` opens a side pane, the status line shows
   `⚑ 1 waiting · 2 working`, and toasts appear when another agent needs you. The mod is also
   what lets the dashboard answer a session's questions and permission prompts and send it messages,

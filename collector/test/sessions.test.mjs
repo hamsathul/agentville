@@ -4,7 +4,7 @@ import assert from 'node:assert/strict';
 import { mkdirSync, mkdtempSync, utimesSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { claudeCommand, listSessions, projectsOf, terminalScript } from '../sources/sessions.mjs';
+import { claudeCommand, closeTerminalScript, listSessions, projectsOf, terminalScript } from '../sources/sessions.mjs';
 
 const NOW = Date.parse('2026-10-07T12:00:00Z');
 const DAY = 86_400_000;
@@ -58,10 +58,31 @@ test('projects are the folders sessions ran in, newest first, one each', () => {
   assert.deepEqual(projects, [{ cwd: '/code/api', name: 'api', at: 5, sessions: 2 }, { cwd: '/code/app', name: 'app', at: 4, sessions: 1 }]);
 });
 
-test('the command cds into the folder (quoted) and starts or resumes claude', () => {
-  assert.equal(claudeCommand('/code/my app'), "cd '/code/my app' && claude");
-  assert.equal(claudeCommand("/code/it's", ID(1)), `cd '/code/it'\\''s' && claude --resume ${ID(1)}`);
+test('the command cds into the folder (quoted) and starts or resumes claude in its place, so the window closes when it ends', () => {
+  assert.equal(claudeCommand('/code/my app'), "cd '/code/my app' && exec claude");
+  assert.equal(claudeCommand("/code/it's", ID(1)), `cd '/code/it'\\''s' && exec claude --resume ${ID(1)}`);
   assert.throws(() => claudeCommand('/code/app', 'x; rm -rf ~'));
+});
+
+test('a permission mode goes on the command line; bypass is the dangerous flag', () => {
+  assert.equal(claudeCommand('/code/app', undefined, 'plan'), "cd '/code/app' && exec claude --permission-mode plan");
+  assert.equal(claudeCommand('/code/app', ID(2), 'acceptEdits'), `cd '/code/app' && exec claude --resume ${ID(2)} --permission-mode acceptEdits`);
+  assert.equal(claudeCommand('/code/app', undefined, 'auto'), "cd '/code/app' && exec claude --permission-mode auto");
+  assert.equal(claudeCommand('/code/app', undefined, 'bypassPermissions'), "cd '/code/app' && exec claude --dangerously-skip-permissions");
+  assert.equal(claudeCommand('/code/app', undefined, 'default'), "cd '/code/app' && exec claude");
+  assert.throws(() => claudeCommand('/code/app', undefined, 'yolo; rm -rf ~'));
+});
+
+test("closing a session's window finds it by its tty, only in a terminal app that is already running", () => {
+  for (const app of ['iTerm', 'Terminal']) {
+    const args = closeTerminalScript(app, '/dev/ttys012');
+    assert.equal(args.at(-1), '/dev/ttys012');
+    const script = args.slice(0, -1).filter((_, i) => i % 2 === 1).join('\n');
+    assert.match(script, new RegExp(`if application "${app}" is running then`));
+    assert.match(script, /tty of/);
+    assert.ok(!script.includes('ttys012'), 'the tty goes in as an argument');
+  }
+  assert.throws(() => closeTerminalScript('iTerm', 'ttys012; rm'));
 });
 
 test('the terminal script gets the command as an argument, never inside the script', () => {

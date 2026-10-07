@@ -32,6 +32,7 @@ export function parseEntry(obj) {
     } else if (obj.isCompactSummary === true || obj.isVisibleInTranscriptOnly === true) {
       events.push({ kind: 'turn_start' });
     } else if (obj.isMeta !== true) {
+      if (typeof obj.permissionMode === 'string') events.push({ kind: 'mode', mode: obj.permissionMode.slice(0, 40) }); // as of this message
       const text = typeof content === 'string' ? content : blocks.filter(b => b?.type === 'text').map(b => b.text ?? '').join('\n');
       events.push(...taskNotices(text));
       // The person typed it, or sent it from the dashboard (the mod submits it as the user's own words).
@@ -52,6 +53,8 @@ export function parseEntry(obj) {
     if (typeof obj.message?.model === 'string') events.push({ kind: 'model', model: obj.message.model, usage: obj.message.usage });
   } else if (obj.type === 'queue-operation' && obj.operation === 'enqueue' && typeof obj.content === 'string') {
     events.push(...taskNotices(obj.content)); // a notice that waited for a busy session: queued when the job ended
+  } else if (obj.type === 'permission-mode' && typeof obj.permissionMode === 'string') {
+    events.push({ kind: 'mode', mode: obj.permissionMode.slice(0, 40) }); // written as the mode is set or changed (Shift+Tab)
   } else if (obj.type === 'system' && obj.subtype === 'turn_duration') {
     events.push({ kind: 'turn_end' });
   } else if (obj.type === 'ai-title' && typeof obj.aiTitle === 'string') {

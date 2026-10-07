@@ -97,8 +97,39 @@ function listHtml() {
   return html || '<div class="empty">No agents are running.</div>';
 }
 
-/** A repo's last deploy, linked to its run on GitHub; a failure says why on hover when GitHub said. */
 const runLink = url => (typeof url === 'string' && url.startsWith('https://github.com/') ? url : null);
+// Permission modes a session can run in, as the dashboard names them.
+const MODES = [['default', 'Ask first'], ['acceptEdits', 'Accept edits'], ['plan', 'Plan mode'], ['auto', 'Auto'], ['bypassPermissions', 'Bypass permissions']];
+const modeName = mode => (MODES.find(([m]) => m === mode)?.[1] ?? { manual: 'Ask first', dontAsk: "Don't ask" }[mode] ?? mode);
+
+/** A terminal session's bar: its permission mode, Restart in… another mode, and End session. */
+function sessionBarHtml(a) {
+  if (a.kind !== 'interactive' || !a.pid) return '';
+  const mode = a.mode, bypass = mode === 'bypassPermissions';
+  const options = MODES.map(([m, label]) => `<option value="${m}"${m === mode ? ' disabled' : ''}>${esc(label)}${m === mode ? ' (now)' : ''}</option>`).join('');
+  const chip = mode
+    ? `<span class="chip ${bypass ? 'c-crit' : mode === 'plan' ? 'c-warn' : 'c-plain'}" data-tip="Its permission mode (Shift+Tab in its terminal changes it). Restart in… resumes it in another mode.">${bypass ? '⚠ ' : ''}${esc(modeName(mode))}</span>`
+    : '<span class="chip c-plain" data-tip="The session has not written its mode down yet; it shows after its next step">mode not known yet</span>';
+  return `<div class="sessbar">${chip}
+    <select class="act mini" data-restart-mode data-agent="${esc(a.id)}" aria-label="Restart this session in another permission mode"><option value="">Restart in…</option>${options}</select>
+    <button type="button" class="act mini" data-end-session="${esc(a.id)}" data-tip="End this session and close its terminal window (resume it later from ＋ Session)">End session</button></div>`;
+}
+
+/** An in-page yes/no question: resolves true for the OK button, false for Cancel or Escape. */
+let confirmResolve = null;
+function confirmBox(text, okLabel = 'OK') {
+  $('confirm-text').textContent = text;
+  $('confirm-yes').textContent = okLabel;
+  if (!$('confirm').open) $('confirm').showModal();
+  return new Promise(resolve => { confirmResolve?.(false); confirmResolve = resolve; });
+}
+function settleConfirm(yes) {
+  const resolve = confirmResolve;
+  confirmResolve = null;
+  if ($('confirm').open) $('confirm').close();
+  resolve?.(yes);
+}
+
 /** A repo's last deploy (the collector's lastDeploy: the newer of its Actions run and a deploy an agent ran itself). */
 function deployChip(d) {
   if (!d) return '';

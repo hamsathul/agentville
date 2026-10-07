@@ -26,6 +26,7 @@ function overviewHtml(a) {
       ${a.kind === 'codex' ? '' : a.mod?.live
         ? ' <span class="chip c-good" data-tip="This session can be answered from the dashboard">📡 dashboard answers on</span>'
         : ' <span class="chip c-plain" data-tip="The Agent Tracker mod in this session isn\'t listening. It starts with the next message you send the session, or with a new session.">dashboard answers off</span>'}</div>
+    ${sessionBarHtml(a)}
     ${a.state === 'stale' ? '' : `<div style="margin-top:8px">${metricsHtml(a)}</div>`}
     <div class="sec">Now</div>${a.now ? `<div class="now mono"><span class="pulse"></span> ${esc(a.now.tool)} ${esc(a.now.summary)} · <b data-since="${a.now.startedAt}"></b></div>` : `<div class="muted">${esc(a.stateReason)}</div>`}
     ${questionHtml(a)}
@@ -175,6 +176,7 @@ function farmSideHtml(a) {
   const now = a.now ? `<div class="now mono"><span class="pulse"></span> ${esc(a.now.tool)} ${esc(a.now.summary)} · <b data-since="${a.now.startedAt}"></b></div>` : `<div class="muted">${esc(a.stateReason)}</div>`;
   return `<div class="fs-head"><span class="swatch" style="background:${color}"></span><span class="name">${esc(a.name)}</span><span class="chip c-${a.state}">${STATE_CHIP[a.state] ?? esc(a.state)} · <span data-since="${a.stateSince}"></span></span><span class="grow"></span><button class="act mini" id="fs-list" type="button" data-tip="Show this agent in the list view">☰ List</button></div>
     <div class="muted" style="margin-top:4px">${esc(short(a.cwd))}${a.model ? ` · ${esc(a.model)}` : ''}</div>
+    ${sessionBarHtml(a)}
     ${askHtml(a)}
     <div class="sec">Now</div>${now}
     ${questionHtml(a)}
@@ -296,6 +298,8 @@ document.addEventListener('click', async e => {
   const el = e.target.closest('button');
   if (!el) return;
   const d = el.dataset;
+  if (d.confirm) { settleConfirm(d.confirm === 'yes'); return; }
+  if (d.endSession) { void endSessionFlow(d.endSession); return; } // not awaited: the confirm box waits for you
   if (el.id === 'view-list' || el.id === 'view-farm') { setView(el.id === 'view-farm' ? 'farm' : 'list'); return; }
   if (el.id === 'side-toggle') { setFarmSide(!farmSide); return; }
   if (d.farmTab) { setFarmTab(d.farmTab); return; }
@@ -411,8 +415,26 @@ document.addEventListener('selectionchange', () => { if (isRenderPending && !has
 document.addEventListener('selectionchange', captureReaderSelection);
 
 // Answer drafts survive the drawer re-rendering on every snapshot.
+/** End session: after you confirm, ends it and closes its window. */
+async function endSessionFlow(id) {
+  const a = snap?.agents.find(x => x.id === id);
+  if (!a) return;
+  if (!(await confirmBox(`End ${a.name}? Claude stops now; the conversation is kept, so you can resume it from ＋ Session. Its iTerm or Terminal window closes too.`, 'End session'))) return;
+  const r = await post('/api/actions/end', { agentId: id });
+  notice(r.ok ? `Ended ${a.name}${r.closedWindow ? ' and closed its window' : ''}.` : `Could not end ${a.name}: ${r.error}`);
+}
+/** Restart in a mode: after you confirm, ends the session and resumes it in a new window in that mode. */
+async function restartFlow(id, mode) {
+  const a = snap?.agents.find(x => x.id === id);
+  if (!a) return;
+  const warn = mode === 'bypassPermissions' ? ' ⚠ Bypass permissions runs every tool without asking (--dangerously-skip-permissions).' : '';
+  if (!(await confirmBox(`Restart ${a.name} in ${modeName(mode)}? It ends now and resumes straight away in a new terminal window; the conversation carries on.${warn}`, `Restart in ${modeName(mode)}`))) return;
+  const r = await post('/api/actions/restart', { agentId: id, mode });
+  notice(r.ok ? `Restarting ${a.name} in ${modeName(mode)}: a new ${r.terminal ?? 'terminal'} window opens.` : `Could not restart ${a.name}: ${r.error}`);
+}
 document.addEventListener('change', e => {
   const t = e.target;
+  if (t?.dataset?.restartMode !== undefined) { const mode = t.value; t.value = ''; if (mode) void restartFlow(t.dataset.agent, mode); return; }
   if (t?.id === 'img-picker') {
     if (pickerFor) addImages(pickerFor, [...(t.files ?? [])]);
     t.value = '';

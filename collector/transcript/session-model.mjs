@@ -128,6 +128,9 @@ export class SessionModel {
       case 'title':
         this.title = ev.text;
         break;
+      case 'mode':
+        this.permissionMode = ev.mode;
+        break;
       case 'model':
         if (!ev.model.startsWith('<')) this.model = ev.model;
         if (ev.usage) {

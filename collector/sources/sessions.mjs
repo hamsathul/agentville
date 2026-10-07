@@ -113,10 +113,34 @@ export function projectsOf(sessions) {
 
 const shellQuote = s => `'${String(s).replace(/'/g, `'\\''`)}'`;
 
-/** The shell line that starts Claude Code in a folder, or resumes a session there. */
-export function claudeCommand(cwd, resume) {
+// Permission modes a session can start in: their command-line flags. Bypass skips every permission check.
+export const MODE_FLAGS = {
+  default: '', acceptEdits: ' --permission-mode acceptEdits', plan: ' --permission-mode plan', auto: ' --permission-mode auto',
+  bypassPermissions: ' --dangerously-skip-permissions',
+};
+
+/**
+ * The shell line that starts Claude Code in a folder (or resumes a session there) in a permission
+ * mode. `exec` puts Claude in the shell's place, so its window closes when it ends.
+ */
+export function claudeCommand(cwd, resume, mode = 'default') {
   if (resume !== undefined && !SESSION_ID.test(resume)) throw new Error('not a session id');
-  return `cd ${shellQuote(cwd)} && claude${resume ? ` --resume ${resume}` : ''}`;
+  if (!Object.hasOwn(MODE_FLAGS, mode)) throw new Error('not a permission mode');
+  return `cd ${shellQuote(cwd)} && exec claude${resume ? ` --resume ${resume}` : ''}${MODE_FLAGS[mode]}`;
+}
+
+/**
+ * osascript arguments that close the iTerm session or Terminal window on a tty (/dev/ttys012),
+ * only if that app is running already (never starts it); prints "closed" or "none".
+ */
+export function closeTerminalScript(app, tty) {
+  if (!/^\/dev\/ttys\d{1,4}$/.test(tty)) throw new Error('not a tty');
+  const lines = app === 'iTerm'
+    ? ['on run argv', 'set t to item 1 of argv', 'if application "iTerm" is running then', 'tell application "iTerm"', 'repeat with w in windows', 'repeat with tb in tabs of w', 'repeat with s in sessions of tb',
+      'if (tty of s) is t then', 'close s', 'return "closed"', 'end if', 'end repeat', 'end repeat', 'end repeat', 'end tell', 'end if', 'return "none"', 'end run']
+    : ['on run argv', 'set t to item 1 of argv', 'if application "Terminal" is running then', 'tell application "Terminal"', 'repeat with w in windows', 'repeat with tb in tabs of w',
+      'if (tty of tb) is t then', 'close w', 'return "closed"', 'end if', 'end repeat', 'end repeat', 'end tell', 'end if', 'return "none"', 'end run'];
+  return [...lines.flatMap(line => ['-e', line]), tty];
 }
 
 /**

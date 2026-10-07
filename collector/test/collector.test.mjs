@@ -537,10 +537,53 @@ test('a session starts or resumes in a terminal only in a listed folder, or from
     }
     assert.equal(launched.length, 0);
     assert.deepEqual(await handle.actions.start({ resume: PAST }), { ok: true, terminal: 'iTerm' });
-    assert.equal(launched[0].at(-1), `cd '${work}' && claude --resume ${PAST}`);
+    assert.equal(launched[0].at(-1), `cd '${work}' && exec claude --resume ${PAST}`);
     assert.deepEqual(await handle.actions.start({ cwd: work }), { ok: true, terminal: 'iTerm' });
-    assert.equal(launched[1].at(-1), `cd '${work}' && claude`);
+    assert.equal(launched[1].at(-1), `cd '${work}' && exec claude`);
     assert.match(launched[1].join('\n'), /tell application "iTerm"/);
+  } finally {
+    await handle.stop();
+  }
+});
+
+test('a session is ended (SIGTERM, then its window closed by its tty) or restarted in another mode; only a claude process', async () => {
+  const root = mkdtempSync(join(tmpdir(), 'tracker-root-'));
+  mkdirSync(join(root, 'web'));
+  writeFileSync(join(root, 'web', 'index.html'), '<html>__TRACKER_TOKEN__</html>');
+  writeFileSync(join(root, 'config.json'), JSON.stringify({ port: 0, deployRepos: {}, terminal: 'iTerm' }));
+  const work = realpathSync(mkdtempSync(join(tmpdir(), 'tracker-work-')));
+  const claudeDir = mkdtempSync(join(tmpdir(), 'tracker-claude-'));
+  mkdirSync(join(claudeDir, 'sessions'));
+  mkdirSync(join(claudeDir, 'projects', '-w'), { recursive: true });
+  const LIVE = '22222222-aaaa-4bbb-8ccc-000000000001';
+  writeFileSync(join(claudeDir, 'sessions', `${process.pid}.json`), JSON.stringify({ pid: process.pid, sessionId: LIVE, cwd: work, name: 'live', kind: 'interactive', status: 'idle', version: '2.1.291' }));
+  writeFileSync(join(claudeDir, 'projects', '-w', `${LIVE}.jsonl`), `${JSON.stringify({ type: 'user', timestamp: new Date().toISOString(), cwd: work, permissionMode: 'default', message: { role: 'user', content: 'hi' } })}\n`);
+  const launched = [], signals = [];
+  let alive = true, command = 'claude --resume x';
+  const procs = { commandOf: async () => command, ttyOf: async () => 'ttys012', kill: (pid, sig) => { signals.push([pid, sig]); alive = false; }, alive: () => alive };
+  const handle = await startCollector({ root, claudeDir, claudeBin: '/usr/bin/false', notify: () => {}, log: () => {}, sessionProcs: procs, endWaitMs: 300,
+    launch: async args => { launched.push(args); return { code: 0, stdout: args.join(' ').includes('tty of') ? 'closed\n' : '', stderr: '' }; } });
+  try {
+    assert.equal(handle.getSnapshot().agents.find(a => a.id === LIVE).mode, 'default');
+    assert.equal((await handle.actions.end({ agentId: 'nope' })).ok, false);
+    assert.equal((await handle.actions.restart({ agentId: LIVE, mode: 'yolo' })).ok, false);
+    command = 'node something-else';
+    assert.equal((await handle.actions.end({ agentId: LIVE })).ok, false, 'not a claude process: left alone');
+    assert.deepEqual(signals, []);
+    command = 'claude';
+    assert.deepEqual(await handle.actions.end({ agentId: LIVE }), { ok: true, closedWindow: true });
+    assert.deepEqual(signals, [[process.pid, 'SIGTERM']]);
+    assert.equal(launched[0].at(-1), '/dev/ttys012');
+    alive = true;
+    assert.deepEqual(await handle.actions.restart({ agentId: LIVE, mode: 'bypassPermissions' }), { ok: true, terminal: 'iTerm' });
+    assert.equal(launched.at(-1).at(-1), `cd '${work}' && exec claude --resume ${LIVE} --dangerously-skip-permissions`);
+    alive = true;
+    procs.kill = (pid, sig) => signals.push([pid, sig]); // this one will not stop
+    const before = launched.length;
+    const stuck = await handle.actions.end({ agentId: LIVE });
+    assert.equal(stuck.ok, false);
+    assert.match(stuck.error, /didn't stop/);
+    assert.equal(launched.length, before, 'its window is left alone');
   } finally {
     await handle.stop();
   }

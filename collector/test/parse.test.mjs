@@ -89,3 +89,15 @@ test('a notice queued while the session was busy counts too, from when it was qu
   assert.equal(r.at, Date.parse('2026-10-07T13:26:00.000Z'));
   assert.deepEqual(parseEntry({ type: 'queue-operation', operation: 'remove', content }).events, []);
 });
+
+test("a user entry says the session's permission mode", () => {
+  const r = parseEntry({ type: 'user', permissionMode: 'plan', origin: { kind: 'human' }, message: { content: 'go' } });
+  assert.deepEqual(r.events, [{ kind: 'mode', mode: 'plan' }, { kind: 'prompt', text: 'go' }]);
+  assert.deepEqual(parseEntry({ type: 'user', permissionMode: 'bypassPermissions', origin: { kind: 'task-notification' }, message: { content: 'done' } }).events[0], { kind: 'mode', mode: 'bypassPermissions' });
+  assert.deepEqual(parseEntry({ type: 'user', message: { content: 'no mode' } }).events, [{ kind: 'prompt', text: 'no mode' }]);
+});
+
+test("the transcript's own permission-mode entries say the session's mode as it is now", () => {
+  assert.deepEqual(parseEntry({ type: 'permission-mode', permissionMode: 'bypassPermissions', sessionId: 's' }).events, [{ kind: 'mode', mode: 'bypassPermissions' }]);
+  assert.deepEqual(parseEntry({ type: 'permission-mode' }).events, []);
+});

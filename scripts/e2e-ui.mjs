@@ -82,6 +82,7 @@ const sessions = {
   'ui-done-b': { pid: doneB.pid, status: 'idle', lines: [
     line(now - 70_000, { content: 'Prepare the release' }, 'user'),
     line(now - 60_000, { model: 'claude-haiku', content: [{ type: 'text', text: 'The build is green on all three platforms and the release notes are ready for you to read.' }] }),
+    JSON.stringify({ type: 'permission-mode', permissionMode: 'plan', sessionId: 'ui-done-b' }),
     JSON.stringify({ type: 'system', subtype: 'turn_duration', timestamp: iso(now - 59_000), durationMs: 1000 }),
   ] },
 };
@@ -93,6 +94,8 @@ for (const [id, s] of Object.entries(sessions)) {
 const PAST = '5e551011-aaaa-4bbb-8ccc-000000000001';
 writeFileSync(join(claudeDir, 'projects', '-farm-repo', `${PAST}.jsonl`), `${[line(now - 86_400_000, { content: 'Plan the harvest' }, 'user'), JSON.stringify({ type: 'ai-title', aiTitle: 'Harvest planning' })].join('\n')}\n`);
 const launched = []; // terminal windows the dashboard asked for
+const ended = []; // sessions the dashboard ended (a stand-in: no real process is signalled)
+const sessionProcs = { commandOf: async () => 'claude', ttyOf: async () => 'ttys042', kill: pid => ended.push(pid), alive: pid => !ended.includes(pid) };
 
 // A stand-in for the mod in the asker's session: it says it is listening, keeps its offer of the
 // question fresh, and takes an answer the dashboard hands it (deleting the file, as the mod does).
@@ -123,7 +126,7 @@ const fakeMod = setInterval(() => {
 
 /* ---------- browser ---------- */
 
-const handle = await startCollector({ root, claudeDir, claudeBin: '/usr/bin/false', notify: () => {}, log: () => {}, home: '/nowhere', scratchBase: '/nonexistent', launch: async args => { launched.push(args.at(-1)); return { code: 0, stdout: '', stderr: '' }; } });
+const handle = await startCollector({ root, claudeDir, claudeBin: '/usr/bin/false', notify: () => {}, log: () => {}, home: '/nowhere', scratchBase: '/nonexistent', sessionProcs, launch: async args => { launched.push(args.at(-1)); return { code: 0, stdout: '', stderr: '' }; } });
 const profile = join(temp, 'chrome');
 const chrome = spawn(CHROME, ['--headless=new', '--remote-debugging-port=0', `--user-data-dir=${profile}`, '--no-first-run', '--no-default-browser-check', '--hide-scrollbars', 'about:blank'], { stdio: 'ignore' });
 let ws;
@@ -292,16 +295,23 @@ try {
   await js("(() => { const f = document.getElementById('sess-filter'); f.value = 'harvest'; f.dispatchEvent(new Event('input', { bubbles: true })); })()");
   check(await until("document.querySelectorAll('#sessions [data-sess-resume]').length === 1"), 'the filter narrows the list');
   await js("document.querySelector('#sessions [data-sess-resume]').click()");
-  check(await until('!document.getElementById(\'sessions\').open') && launched.at(-1) === `cd '${repo}' && claude --resume ${PAST}`, `Resume opens a terminal running claude --resume in the session's folder (got ${JSON.stringify(launched)})`);
+  check(await until('!document.getElementById(\'sessions\').open') && launched.at(-1) === `cd '${repo}' && exec claude --resume ${PAST}`, `Resume opens a terminal running claude --resume in the session's folder (got ${JSON.stringify(launched)})`);
   check(await until("/Opened a new Terminal window/.test(document.getElementById('notice').textContent)"), 'the page says the terminal opened');
   await js("document.getElementById('sessions-open').click()");
   await until("!!document.querySelector('#sessions [data-sess-new]')");
+  await js("(() => { const m = document.getElementById('sess-mode'); m.value = 'plan'; m.dispatchEvent(new Event('change', { bubbles: true })); })()");
   await js("document.querySelector('#sessions [data-sess-new]').click()");
-  check(await until('!document.getElementById(\'sessions\').open') && launched.at(-1) === `cd '${repo}' && claude`, 'New session opens a terminal running claude in the folder');
+  check(await until('!document.getElementById(\'sessions\').open') && launched.at(-1) === `cd '${repo}' && exec claude --permission-mode plan`, 'New session opens a terminal running claude in the folder, in the mode you picked');
 
   console.log('Back to the list');
   await js("document.getElementById('view-list').click()");
   check(await until("document.getElementById('main').dataset.view === 'list' && document.getElementById('farm-agent').innerHTML === '' && !!document.querySelector('#center-body .ov')"), 'the list view comes back with the agent in the centre');
+  await js("document.querySelector('.row[data-id=\"ui-done-b\"]').click()");
+  check(await until("!!document.querySelector('#center-body [data-end-session=\"ui-done-b\"]') && document.querySelector('#center-body .sessbar .chip')?.textContent === 'Plan mode'"), "a terminal session's panel shows its permission mode (from its transcript) and End session");
+  await js("document.querySelector('#center-body [data-end-session=\"ui-done-b\"]').click()");
+  check(await until("document.getElementById('confirm').open && /End ui-done-b\\?/.test(document.getElementById('confirm-text').textContent)") && ended.length === 0, 'End session asks first, and does nothing until you confirm');
+  await js("document.getElementById('confirm-yes').click()");
+  check(await until("/Ended ui-done-b/.test(document.getElementById('notice').textContent)") && ended[0] === doneB.pid && launched.at(-1) === '/dev/ttys042', `confirmed, it ends that session and closes its window by its tty (ended ${JSON.stringify(ended)}, last ${launched.at(-1)})`);
   check(errors.length === 0, `no page errors${errors.length ? `: ${errors.join(' | ')}` : ''}`);
 } finally {
   ws?.close();

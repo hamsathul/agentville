@@ -1,12 +1,15 @@
 // Start a new Claude Code session in a folder you worked in, or resume a past one, in a terminal
 // window (Terminal or iTerm, as config.json says). The collector checks the folder or session again.
 let sessData = null;
+const storedMode = () => { try { return localStorage.getItem('tracker-start-mode') || 'default'; } catch { return 'default'; } };
 let sessAllFolders = false; // the folder list shows the 6 most recent until you ask for all
 const FOLDERS_SHOWN = 6;
 
 async function openSessions() {
   $('sess-filter').value = '';
   $('sess-status').textContent = '';
+  $('sess-mode').value = storedMode();
+  $('sess-mode-warn').hidden = $('sess-mode').value !== 'bypassPermissions';
   sessAllFolders = false;
   $('sess-body').innerHTML = '<div class="loading"><span class="spinner"></span>Reading your sessions…</div>';
   $('sessions').showModal();
@@ -46,7 +49,7 @@ async function startSession(body, button) {
   button.disabled = true;
   $('sess-status').className = 'faint';
   $('sess-status').textContent = `Opening ${app}…`;
-  const r = await post('/api/actions/start', body);
+  const r = await post('/api/actions/start', { ...body, mode: $('sess-mode').value || 'default' });
   button.disabled = false;
   if (!r.ok) {
     $('sess-status').className = 'msg-bad';
@@ -59,6 +62,10 @@ async function startSession(body, button) {
 
 $('sessions-open').addEventListener('click', openSessions);
 $('sess-filter').addEventListener('input', renderSessions);
+$('sess-mode').addEventListener('change', () => {
+  try { localStorage.setItem('tracker-start-mode', $('sess-mode').value); } catch { /* this page only */ }
+  $('sess-mode-warn').hidden = $('sess-mode').value !== 'bypassPermissions';
+});
 $('sessions').addEventListener('click', e => {
   if (e.target === $('sessions') || e.target.closest('[data-sess-close]')) { $('sessions').close(); return; } // × or the backdrop
   if (e.target.closest('[data-sess-more]')) { sessAllFolders = !sessAllFolders; renderSessions(); return; }
