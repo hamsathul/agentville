@@ -1,5 +1,6 @@
 import { basename } from 'node:path';
 import { summarizeTool } from '../transcript/summarize.mjs';
+import { stepOf } from './step.mjs';
 import { collectTouches } from './touches.mjs';
 import { STATE_ORDER, deriveCodexState, deriveState } from './state.mjs';
 import { trailingQuestion } from './question.mjs';
@@ -13,7 +14,7 @@ const DOCS_MAX = 20;
 
 export function nowOf(model) {
   const p = model?.latestPending();
-  return p ? { tool: p.name, summary: summarizeTool(p.name, p.input), startedAt: p.at } : undefined;
+  return p ? { tool: p.name, summary: summarizeTool(p.name, p.input), step: stepOf(p.name, p.input), startedAt: p.at } : undefined;
 }
 
 export function childrenOf(model, childModels, now) {

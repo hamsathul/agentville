@@ -25,7 +25,7 @@ test('buildAgent assembles state, now, feed, process and repo-mapped touches', (
   assert.equal(a.name, 'my-app');
   assert.equal(a.title, 'Fix invoices');
   assert.equal(a.cliId, 'abc');
-  assert.deepEqual(a.now, { tool: 'Bash', summary: 'Run tests', startedAt: at(7) });
+  assert.deepEqual(a.now, { tool: 'Bash', summary: 'Run tests', step: 'test', startedAt: at(7) });
   assert.equal(a.feed[0].tool, 'Bash');
   assert.equal(a.touching.find(t => t.mode === 'write').repo, '/p/backend');
   assert.deepEqual(a.proc.history, { at: [at(7)], cpu: [5], rssMb: [300] });

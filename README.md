@@ -36,7 +36,11 @@ how much CPU and memory each one uses.
   Every agent is a farmer and every repo a field. Each farmer has its own hat, hair and clothes;
   each field its own crop (the seed packet on its fence), soil and fence, and a pennant when it is
   on a branch other than main. A farmer that needs you walks to your porch and waves a red "!"; one whose turn it is brings a basket. Working farmers stand in the field
-  of the repo they write to, holding a tool that matches their current step. Above each field,
+  of the repo they write to, holding a tool for their current step: an almanac when reading, a
+  spyglass when searching, a magnifier over the crops for tests, a hammer for a build, a
+  wheelbarrow for installs, a crate for a commit, a cart to market for a push (with a flag for a
+  deploy), a lantern for a server, and more (ⓘ lists them all). Crops grow through six stages as
+  the context fills, from seeds to ripe. Above each field,
   hay bales are uncommitted files, crates unpushed commits and a mailbox commits behind; the
   weather is the last deploy (rainbow, rain, windmill) and a rope marks two agents in one repo.
   Hearts show context left, chickens are subagents and an Explore subagent is a dog. Click a

@@ -104,6 +104,7 @@
         return {
           id: a.id, name: a.name, kind: a.kind, state: a.state === 'yourTurn' ? 'turn' : a.state, field: fieldOf(a, repos),
           tool: a.now?.tool ?? a.feed?.find(f => f.kind === 'tool')?.tool ?? null, summary: a.now?.summary ?? '',
+          step: a.now?.step ?? a.feed?.find(f => f.kind === 'tool')?.step ?? null, // test, push, install… (the collector reads commands)
           pct, hearts: Math.round((1 - pct) * 4), hot: (a.proc?.cpu ?? 0) >= cpuAlertPct,
           ask: askText(a), askKind: a.ask?.kind ?? null, question: a.question ?? null, reply: firstLine(a.lastReply),
           said: spoken((a.feed ?? []).find(f => f.kind === 'reply')?.body ?? (a.feed ?? []).find(f => f.kind === 'reply')?.text), color: colorIndex(a.id), shirt: SHIRT[colorIndex(a.id)], look: lookOf(a),
@@ -202,11 +203,34 @@
   }
 
   const ACTIVE = new Set(['waiting', 'working', 'turn']);
-  // Where a farmer stands in its field, and what it holds, by its current tool.
-  const toolSpot = t => (/^(Read|Grep|Glob|WebSearch|WebFetch)$/.test(t ?? '') ? -26 : /^(Edit|MultiEdit|NotebookEdit|Write)$/.test(t ?? '') ? 26 : 0);
-  const toolProp = t => (t === 'Bash' ? 'can' : /^(Edit|MultiEdit|NotebookEdit)$/.test(t ?? '') ? 'hoe' : t === 'Write' ? 'seeds'
-    : /^Web(Search|Fetch)$/.test(t ?? '') ? 'pigeon' : /^(Read|Grep|Glob)$/.test(t ?? '') ? 'almanac' : null);
-  const VERB = { can: 'watering', hoe: 'hoeing', seeds: 'planting', pigeon: 'sending a pigeon', almanac: 'reading the almanac' };
+  // What a farmer does for each kind of step, what it holds, and where it stands in its field
+  // (looking things up on the left, working the soil on the right, the rest in the middle).
+  const ACTIONS = {
+    edit: { prop: 'hoe', verb: 'hoeing the rows', spot: 26 },
+    write: { prop: 'seeds', verb: 'planting seeds', spot: 26 },
+    read: { prop: 'almanac', verb: 'reading the almanac', spot: -26 },
+    search: { prop: 'spyglass', verb: 'scouting the field', spot: -26 },
+    web: { prop: 'pigeon', verb: 'sending a pigeon', spot: -26 },
+    test: { prop: 'magnifier', verb: 'checking the crops', spot: 0 },
+    lint: { prop: 'rake', verb: 'raking the rows tidy', spot: 26 },
+    build: { prop: 'hammer', verb: 'mending the fence', spot: 0 },
+    install: { prop: 'barrow', verb: 'hauling in supplies', spot: 0 },
+    commit: { prop: 'crate', verb: 'packing a crate', spot: 0 },
+    push: { prop: 'cart', verb: 'taking crates to market', spot: 0 },
+    deploy: { prop: 'cart', verb: 'delivering to town', spot: 0, flag: true },
+    pull: { prop: 'mailbag', verb: 'fetching the mail', spot: 0 },
+    serve: { prop: 'lantern', verb: 'keeping watch', spot: 0 },
+    delete: { prop: 'sickle', verb: 'clearing weeds', spot: 26 },
+    agent: { prop: 'whistle', verb: 'whistling for helpers', spot: 0 },
+    plan: { prop: 'clipboard', verb: 'writing the chore list', spot: 0 },
+    ask: { prop: 'clipboard', verb: 'writing down a question', spot: 0 },
+    shell: { prop: 'can', verb: 'watering', spot: 0 },
+    other: { prop: 'can', verb: 'tending the field', spot: 0 },
+  };
+  const OLD_TOOLS = { Edit: 'edit', MultiEdit: 'edit', NotebookEdit: 'edit', Write: 'write', Read: 'read', Grep: 'search', Glob: 'search', WebSearch: 'web', WebFetch: 'web', Bash: 'shell' };
+  /** What a farmer does for a step; a step from an older snapshot goes by its tool. */
+  const actionOf = (step, tool) => ACTIONS[step] ?? ACTIONS[OLD_TOOLS[tool]] ?? ACTIONS.other;
+  const doing = f => (f.step || f.tool ? actionOf(f.step, f.tool) : null);
   const shades = new Map();
   /** A colour made darker (k < 1) or lighter (k > 1). */
   function shade(hex, k) {
@@ -230,54 +254,188 @@
     px(x, y, 9, 10, '#6b4320'); px(x + 1, y + 1, 7, 8, '#f4ecd8');
     (SEED_ICONS[crop] ?? SEED_ICONS.wheat).forEach((row, j) => { for (let i = 0; i < 5; i++) if (row[i] !== '.') px(x + 2 + i, y + 2 + j, 1, 1, SEED_PAL[row[i]]); });
   }
-  /** One plant at (x, y), grown to p (0–1); ripe past 0.8. Returns the y of its top, for the sparkle. */
-  function drawCrop(crop, x, y, p, sway) {
-    const ripe = p > 0.8;
-    if (crop === 'pumpkin') {
-      const z = 1 + Math.round(p * 3);
-      px(x - 2, y - 1, 5, 1, '#3f9b3a'); px(x - 3, y - 3, 2, 2, '#6cc04a');
-      px(x - Math.floor(z / 2), y - z - 1, z + 1, z, ripe ? '#ff8c1a' : '#f4a261'); px(x, y - z - 2, 1, 1, '#3f9b3a');
-      return y - z - 2;
+  /** Growth stages, as a session's context fills: seeds, sprouts, young plants, in flower, ripening, ripe. */
+  const STAGES = ['seeds', 'sprouts', 'young plants', 'in flower', 'ripening', 'ripe'];
+  const growthStage = p => (p >= 0.85 ? 5 : p >= 0.7 ? 4 : p >= 0.5 ? 3 : p >= 0.3 ? 2 : p >= 0.12 ? 1 : 0);
+  const SEED_COLOR = { wheat: '#d9b26a', corn: '#f2d14b', carrot: '#c98d4f', cabbage: '#6b4320', sunflower: '#3a3a40', tomato: '#f4d58d', pumpkin: '#f1e4c3' };
+  const G = '#3f9b3a', GL = '#6cc04a', GP = '#8fd16a'; // stem, leaf, pale leaf
+  /** One plant at (x, y) at a growth stage (0–5). Returns the y of its top, for the ripe sparkle. */
+  function drawCrop(crop, x, y, stage, sway) {
+    if (stage <= 0) { px(x - 1, y, 3, 1, '#5e3d22'); px(x, y - 1, 1, 1, SEED_COLOR[crop] ?? '#d9b26a'); return y - 1; } // a seed in its mound
+    if (stage === 1) { // sprouts: blades for grasses, a pair of seed leaves for the rest
+      if (crop === 'wheat' || crop === 'corn') { px(x, y - 3, 1, 3, GL); px(x + 1, y - 2, 1, 1, GP); return y - 3; }
+      if (crop === 'carrot') { px(x, y - 2, 1, 2, GL); px(x - 1, y - 3, 1, 1, GP); px(x + 1, y - 3, 1, 1, GP); return y - 3; }
+      px(x, y - 2, 1, 2, G); px(x - (crop === 'pumpkin' ? 2 : 1), y - 3, crop === 'pumpkin' ? 2 : 1, 1, GP); px(x + 1, y - 3, crop === 'pumpkin' ? 2 : 1, 1, GP);
+      return y - 3;
     }
-    if (crop === 'corn') {
-      const h = 3 + Math.round(p * 7);
-      px(x, y - h, 1, h, '#4f9a35'); px(x - 2, y - h + 3, 2, 1, '#6cc04a'); px(x + 1, y - h + 5, 2, 1, '#6cc04a');
-      if (ripe) { px(x + 1, y - h + 1, 2, 3, '#f2d14b'); px(x + 1, y - h + 4, 2, 1, '#8fd16a'); } else if (p > 0.4) px(x + 1, y - h + 2, 1, 2, '#9ed36a');
-      px(x + sway, y - h - 1, 1, 1, '#d9b26a');
-      return y - h - 1;
+    switch (crop) {
+      case 'corn': {
+        const h = [0, 0, 5, 8, 9, 10][stage];
+        px(x, y - h, 1, h, '#4f9a35'); px(x - 2, y - h + 3, 2, 1, GL); px(x + 1, y - h + 5, 2, 1, GL);
+        if (stage >= 3) px(x - 1 + sway, y - h - 1, 3, 1, '#d9b26a'); // the tassel
+        if (stage === 4) { px(x + 1, y - h + 2, 2, 3, '#9ed36a'); px(x + 2, y - h + 1, 1, 1, '#c97b4a'); } // a green cob, silk on top
+        if (stage === 5) { px(x + 1, y - h + 1, 2, 3, '#f2d14b'); px(x + 1, y - h + 4, 2, 1, GP); }
+        return y - h - 1;
+      }
+      case 'carrot': {
+        const h = [0, 0, 3, 4, 4, 5][stage];
+        px(x, y - h, 1, h, G); px(x - 1, y - h, 1, 1, GL); px(x + 1, y - h + 1, 1, 1, GL);
+        if (stage >= 3) { px(x - 2, y - h + 1, 1, 1, GP); px(x + 2, y - h, 1, 1, GP); }
+        if (stage === 3) px(x, y - h - 1, 1, 1, '#f4f1e1'); // a little white flower head
+        if (stage >= 4) px(x - 1, y, 3, 1, stage === 5 ? '#ff7a1a' : '#f0a060'); // the root's shoulder
+        if (stage === 5) px(x, y + 1, 1, 1, '#e8691a');
+        return y - h - 1;
+      }
+      case 'cabbage': {
+        const w = [0, 0, 3, 4, 5, 5][stage], h = [0, 0, 1, 2, 3, 3][stage];
+        px(x - (w >> 1) - (stage >= 4 ? 1 : 0), y - 1, w + (stage >= 4 ? 2 : 0), 1, '#4f9a35'); // outer leaves
+        px(x - (w >> 1), y - h - 1, w, h, stage >= 4 ? '#7fb24a' : GP);
+        if (stage === 3) px(x - (w >> 1) + 1, y - h - 1, 1, h, '#4f9a35'); // veins in the open leaves
+        if (stage >= 4) px(x - (w >> 1) + 1, y - h - 1, w - 2, 1, stage === 5 ? '#c6e89a' : '#a8d070'); // the head
+        if (stage === 5) px(x - (w >> 1) + 2, y - h, 1, 1, '#b8e08a');
+        return y - h - 1;
+      }
+      case 'sunflower': {
+        const h = [0, 0, 4, 7, 9, 10][stage];
+        px(x, y - h, 1, h, G); px(x + 1, y - h + 3, 2, 1, GL); if (stage >= 3) px(x - 2, y - h + 5, 2, 1, GL);
+        if (stage === 2) px(x - 1, y - h, 1, 1, GP);
+        if (stage === 3) px(x + sway, y - h - 1, 1, 1, '#9ed36a'); // a green bud
+        if (stage === 4) { px(x - 1 + sway, y - h - 2, 2, 2, '#f4c430'); px(x + sway, y - h - 1, 1, 1, '#6b8f3a'); } // opening
+        if (stage === 5) { px(x - 1 + sway, y - h - 2, 3, 3, '#f4c430'); px(x + sway, y - h - 1, 1, 1, '#6b4320'); } // in bloom
+        return y - h - 2;
+      }
+      case 'tomato': {
+        const h = [0, 0, 3, 5, 6, 7][stage];
+        px(x + 1, y - h - 1, 1, h + 1, '#8b5a2b'); px(x, y - h, 1, h, G); px(x - 1, y - h + 1, 1, 1, GL);
+        if (stage >= 3) px(x - 1, y - h + 3, 1, 1, GL);
+        if (stage === 3) { px(x - 1, y - h + 2, 1, 1, '#f4d03f'); px(x, y - h - 1, 1, 1, '#f4d03f'); } // yellow flowers
+        if (stage === 4) { px(x - 1, y - h + 2, 2, 2, '#9ed36a'); px(x - 1, y - 3, 2, 2, '#f08a3a'); } // green, then turning
+        if (stage === 5) { px(x - 1, y - h + 2, 2, 2, '#e04a3a'); px(x - 1, y - 3, 2, 2, '#e04a3a'); px(x, y - h + 2, 1, 1, '#ff7a6a'); }
+        return y - h - 1;
+      }
+      case 'pumpkin': {
+        px(x - 2, y - 1, 5, 1, G); px(x - 3, y - 3, 2, 2, GL);
+        if (stage >= 3) px(x + 2, y - 3, 2, 2, GL);
+        if (stage === 3) px(x, y - 3, 1, 2, '#f4d03f'); // a big yellow flower
+        if (stage === 4) { px(x - 1, y - 3, 2, 2, '#6b8f3a'); px(x, y - 4, 1, 1, G); } // a small green pumpkin
+        if (stage === 5) { px(x - 2, y - 4, 4, 3, '#ff8c1a'); px(x - 1, y - 4, 1, 3, '#e07a10'); px(x, y - 5, 1, 1, G); }
+        return y - (stage === 5 ? 5 : 4);
+      }
+      default: { // wheat
+        const h = [0, 0, 4, 6, 7, 8][stage];
+        px(x, y - h, 1, h, stage === 5 ? '#b8a040' : G); px(x - 1, y - h + 1, 1, 1, GL); px(x + 1, y - h + 2, 1, 1, GL);
+        if (stage === 2) px(x + 1, y - h, 1, 1, GP);
+        if (stage === 3) px(x + sway, y - h - 2, 1, 2, '#9ed36a'); // a green ear
+        if (stage === 4) px(x - 1 + sway, y - h - 2, 3, 2, '#c9c45a');
+        if (stage === 5) { px(x - 1 + sway, y - h - 2, 3, 2, '#e9c46a'); px(x + sway, y - h - 3, 1, 1, '#f4d58d'); return y - h - 3; }
+        return y - h - 2;
+      }
     }
-    if (crop === 'carrot') {
-      const h = 1 + Math.round(p * 3);
-      px(x, y - h, 1, h, '#3f9b3a'); px(x - 1, y - h, 1, 1, '#6cc04a'); px(x + 1, y - h + 1, 1, 1, '#6cc04a');
-      if (p > 0.5) px(x - 1, y, 3, 1, ripe ? '#ff7a1a' : '#f0a060');
-      return y - h;
+  }
+
+  /** What a working farmer holds, around its sprite (rp draws in sprite pixels; the farmer spans x 1–12, y 0–15). */
+  function drawProp(prop, rp, T, flag) {
+    switch (prop) {
+      case 'can': { // watering
+        const tilt = blink(2); rp(11, 10, 4, 3, '#9aa4ad'); rp(11, 10, 4, 1, '#c3cbd2'); rp(15, 9 + tilt, 2, 1, '#9aa4ad');
+        for (let i = 0; i < 3; i++) rp(16 + (i % 2), 11 + ((Math.floor(T * 10) + i * 2) % 5), 1, 1, '#5ab4ff');
+        return;
+      }
+      case 'hoe': // editing: up, then into the soil
+        if (blink(3)) { rp(12, 2, 1, 10, '#8b5a2b'); rp(11, 1, 3, 1, '#9aa4ad'); }
+        else { rp(11, 12, 5, 1, '#8b5a2b'); rp(16, 12, 1, 3, '#9aa4ad'); rp(17, 14, 1, 1, '#5e3d22'); rp(15, 15, 1, 1, '#5e3d22'); rp(18, 13, 1, 1, '#7a5230'); }
+        return;
+      case 'seeds': // a new file: a seed bag, seeds flying
+        rp(1, 11, 3, 3, '#c9a46a'); rp(1, 11, 3, 1, '#a07e48');
+        for (let i = 0; i < 3; i++) { const ph = (T * 1.5 + i / 3) % 1; rp(Math.round(11 + ph * 7), Math.round(11 - Math.sin(ph * Math.PI) * 5 + ph * 4), 1, 1, '#f4d58d'); }
+        return;
+      case 'almanac': // reading: an open book, pages turning
+        rp(3, 10, 8, 4, '#7a3e2b'); rp(4, 10, 6, 3, '#fff4d6'); rp(5, 11 + blink(3), 4, 1, '#c9b48a'); rp(7, 10, 1, 3, '#c9b48a');
+        return;
+      case 'spyglass': { // searching: a brass spyglass to the eye, sweeping
+        const dy = blink(1.2); rp(10, 6 + dy, 6, 2, '#c9a24a'); rp(10, 6 + dy, 6, 1, '#e2c27a'); rp(16, 5 + dy, 2, 4, '#8b6a2a');
+        if (blink(2)) rp(17, 6 + dy, 1, 1, '#e6f4ff');
+        rp(11, 9, 1, 3, '#e0a878');
+        return;
+      }
+      case 'pigeon': { // the web: a pigeon flies out and back
+        const bx = Math.round(7 + Math.cos(T * 2) * 16), by = Math.round(-8 + Math.sin(T * 4) * 3), up = blink(6);
+        rp(bx, by, 2, 1, '#ececec'); rp(bx + 2, by, 1, 1, '#f0b429'); rp(bx - 1, by + (up ? -1 : 1), 2, 1, '#bdbdbd'); rp(bx, by + 1, 1, 1, '#9aa0a6');
+        return;
+      }
+      case 'magnifier': { // tests: a magnifying glass over the crops
+        const lx = 13 + Math.round(Math.sin(T * 2.5) * 2);
+        rp(11, 11, lx - 11, 1, '#6b4320');
+        rp(lx, 9, 4, 1, '#c9a24a'); rp(lx, 14, 4, 1, '#c9a24a'); rp(lx - 1, 10, 1, 4, '#c9a24a'); rp(lx + 4, 10, 1, 4, '#c9a24a');
+        rp(lx, 10, 4, 4, '#d8f0ff'); rp(lx + 1, 10, 1, 1, '#ffffff');
+        return;
+      }
+      case 'rake': // lint and format: raking the rows tidy
+        if (blink(2.5)) { rp(12, 1, 1, 11, '#8b5a2b'); rp(10, 0, 5, 1, '#9aa4ad'); rp(10, 1, 1, 1, '#9aa4ad'); rp(12, 1, 1, 1, '#9aa4ad'); rp(14, 1, 1, 1, '#9aa4ad'); }
+        else { rp(11, 13, 6, 1, '#8b5a2b'); rp(17, 11, 1, 5, '#9aa4ad'); rp(18, 11, 1, 1, '#9aa4ad'); rp(18, 13, 1, 1, '#9aa4ad'); rp(18, 15, 1, 1, '#9aa4ad'); rp(19, 14, 3, 1, '#5e3d22'); }
+        return;
+      case 'hammer': { // build: mending a fence post
+        rp(18, 8, 2, 8, '#a8703c'); rp(18, 8, 2, 1, '#c98d4f'); rp(17, 11, 4, 1, '#8b5a2b');
+        if (blink(3)) { rp(12, 4, 1, 7, '#8b5a2b'); rp(11, 3, 3, 2, '#5f6b7a'); }
+        else { rp(12, 10, 5, 1, '#8b5a2b'); rp(16, 9, 2, 3, '#5f6b7a'); rp(18, 7, 1, 1, '#ffd43b'); rp(20, 8, 1, 1, '#ffd43b'); }
+        return;
+      }
+      case 'barrow': { // installing: a wheelbarrow of sacks
+        const bump = blink(4);
+        rp(11, 11, 2, 1, '#8b5a2b'); rp(13, 10 - bump, 6, 3, '#9aa4ad'); rp(13, 10 - bump, 6, 1, '#c3cbd2');
+        rp(14, 8 - bump, 2, 2, '#d8c48a'); rp(16, 7 - bump, 2, 3, '#c9a46a'); rp(14, 13, 1, 2, '#6b4320');
+        rp(18, 13, 2, 2, '#2a1d14'); rp(18 + blink(6), 13, 1, 1, '#9aa4ad');
+        return;
+      }
+      case 'crate': { // commit: produce goes into a crate
+        rp(13, 10, 6, 5, '#8b5a2b'); rp(13, 10, 6, 1, '#b07a46'); rp(13, 12, 6, 1, '#6b4320'); rp(15, 10, 1, 5, '#6b4320');
+        const ph = (T * 1.2) % 1;
+        if (ph < 0.8) rp(15, 5 + Math.round(ph * 5), 2, 2, ['#e76f51', '#f4a261', '#e9c46a'][Math.floor(T * 1.2) % 3]);
+        rp(11, 11, 2, 1, '#e0a878');
+        return;
+      }
+      case 'cart': { // push: a cart of crates off to market (with a flag: deploying)
+        const roll = blink(6);
+        rp(11, 10, 2, 1, '#6b4320'); rp(13, 9, 8, 3, '#a8703c'); rp(13, 9, 8, 1, '#c98d4f');
+        rp(14, 6, 3, 3, '#8b5a2b'); rp(14, 6, 3, 1, '#b07a46'); rp(17, 7, 3, 2, '#8b5a2b'); rp(17, 7, 3, 1, '#b07a46');
+        rp(15, 12, 3, 3, '#2a1d14'); rp(16 - roll, 13, 1, 1, '#9aa4ad'); rp(22, 14, 1, 1, '#b08850');
+        if (flag) { rp(20, 2, 1, 7, '#6b4320'); rp(21, 2, 3 + blink(3), 2, '#e63946'); rp(21, 4, 2, 1, '#e63946'); }
+        return;
+      }
+      case 'mailbag': { // pull: a satchel of letters
+        rp(4, 9, 1, 1, '#5e3d22'); rp(5, 10, 5, 1, '#5e3d22'); rp(10, 11, 5, 4, '#7a5230'); rp(10, 11, 5, 1, '#5e3d22');
+        const up = blink(2); rp(11, 9 - up, 3, 2, '#fff4d6'); rp(13, 9 - up, 1, 1, '#e63946');
+        return;
+      }
+      case 'lantern': { // a server or a long wait: keeping watch with a lantern
+        const flick = blink(5);
+        PXG.ctx.globalAlpha = 0.22 + 0.08 * flick; rp(8, 6, 9, 10, '#ffe8a3'); PXG.ctx.globalAlpha = 1;
+        rp(12, 5, 1, 2, '#2a1d14'); rp(11, 7, 3, 1, '#2a1d14'); rp(11, 8, 3, 4, '#5f6b7a'); rp(12, 9, 1, 2, flick ? '#ffd43b' : '#ff922b'); rp(11, 12, 3, 1, '#2a1d14');
+        return;
+      }
+      case 'sickle': // deleting: clearing weeds
+        if (blink(3)) { rp(12, 7, 1, 4, '#8b5a2b'); rp(12, 4, 3, 1, '#c3cbd2'); rp(15, 5, 1, 2, '#c3cbd2'); }
+        else { rp(12, 12, 3, 1, '#8b5a2b'); rp(15, 12, 1, 3, '#c3cbd2'); rp(13, 15, 2, 1, '#c3cbd2'); rp(17, 10, 1, 1, '#4f7f2f'); rp(18, 12, 1, 1, '#4f7f2f'); rp(19, 9, 1, 1, '#6d8f3a'); }
+        return;
+      case 'whistle': // subagents: whistling, notes floating up
+        rp(9, 7, 2, 1, '#c3cbd2'); rp(11, 8, 1, 2, '#e0a878');
+        for (let i = 0; i < 2; i++) { const ph = (T * 1.1 + i / 2) % 1, nx = 13 + i * 3, ny = Math.round(5 - ph * 7); rp(nx, ny, 1, 3, '#ffffff'); rp(nx + 1, ny, 1, 1, '#ffffff'); rp(nx - 1, ny + 2, 1, 1, '#ffffff'); }
+        return;
+      case 'clipboard': // planning: a chore list being ticked
+        rp(1, 9, 5, 6, '#a8703c'); rp(2, 10, 3, 4, '#fff4d6'); rp(3, 9, 1, 1, '#9aa4ad'); rp(2, 11, 3, 1, '#9aa0a6'); rp(2, 13, 2, 1, '#9aa0a6');
+        if (blink(2)) rp(4, 13, 1, 1, '#2fa57a');
+        rp(11, 9, 1, 3, '#f0b429'); rp(11, 12, 1, 1, '#2a1d14');
+        return;
+      default:
     }
-    if (crop === 'cabbage') {
-      const w = 2 + Math.round(p * 3), h = 1 + Math.round(p * 2);
-      px(x - (w >> 1) - 1, y - 1, w + 2, 1, '#4f9a35');
-      px(x - (w >> 1), y - h - 1, w, h, ripe ? '#7fb24a' : '#8fd16a'); px(x - (w >> 1) + 1, y - h - 1, 1, 1, '#c6e89a');
-      return y - h - 1;
-    }
-    if (crop === 'sunflower') {
-      const h = 3 + Math.round(p * 7);
-      px(x, y - h, 1, h, '#3f9b3a'); px(x + 1, y - h + 4, 2, 1, '#6cc04a');
-      if (ripe) { px(x - 1 + sway, y - h - 2, 3, 3, '#f4c430'); px(x + sway, y - h - 1, 1, 1, '#6b4320'); return y - h - 2; }
-      px(x + sway, y - h - 1, 1, 1, p > 0.4 ? '#d9c24a' : '#8fd16a');
-      return y - h - 1;
-    }
-    if (crop === 'tomato') {
-      const h = 2 + Math.round(p * 5);
-      px(x + 1, y - h - 1, 1, h + 1, '#8b5a2b'); px(x, y - h, 1, h, '#3f9b3a'); px(x - 1, y - h + 1, 1, 1, '#6cc04a');
-      if (p > 0.3) px(x - 1, y - h + 2, 2, 2, ripe ? '#e04a3a' : p > 0.6 ? '#f08a3a' : '#9ed36a');
-      if (p > 0.6) px(x - 1, y - 3, 2, 2, ripe ? '#e04a3a' : '#9ed36a');
-      return y - h - 1;
-    }
-    // wheat
-    const h = 2 + Math.round(p * 6);
-    px(x, y - h, 1, h, '#3f9b3a'); px(x - 1, y - h + 1, 1, 1, '#6cc04a'); px(x + 1, y - h + 2, 1, 1, '#6cc04a');
-    if (ripe) { px(x - 1 + sway, y - h - 2, 3, 2, '#e9c46a'); px(x + sway, y - h - 3, 1, 1, '#f4d58d'); return y - h - 2; }
-    px(x + sway, y - h - 1, 1, 1, '#8fd16a');
-    return y - h - 1;
+  }
+
+  /** For tests and the legend: paints one tool (held by a farmer when `look` is given) or one plant on a 2D context. */
+  function paint(ctx, { prop, flag, crop, stage = 0, T = 0, look }) {
+    Object.assign(PXG, { ctx, T, k: 1 });
+    if (look) ctx.drawImage(farmerSprite(look, SHIRT[0], false, 's', false), 0, 0, 14 * SC, 16 * SC);
+    if (prop) drawProp(prop, rpAt(0, 0), T, flag);
+    if (crop) drawCrop(crop, 10, 20, stage, 0);
   }
 
   function makeFarm() {
@@ -290,7 +448,7 @@
     function plotState(f) {
       const here = scene.farmers.filter(a => a.field === f.key), on = here.filter(a => ACTIVE.has(a.state));
       const crop = f.crop ?? 'wheat';
-      if (on.length) return { kind: 'grow', crop, p: Math.max(...on.map(a => a.pct)), busy: on.some(a => a.state === 'working') };
+      if (on.length) { const p = Math.max(...on.map(a => a.pct)); return { kind: 'grow', crop, p, stage: growthStage(p), busy: on.some(a => a.state === 'working') }; }
       if (here.length && here.every(a => a.state === 'stale')) return { kind: 'dry', crop };
       return { kind: 'bare', crop };
     }
@@ -307,9 +465,11 @@
           continue;
         }
         if (st.kind === 'dry') { px(x, y - 2, 1, 2, '#9c7a4a'); px(x + 1, y - 3, 1, 1, '#9c7a4a'); continue; }
-        const top = drawCrop(st.crop, x, y, st.p, st.busy && (i + k + Math.floor(T * 2)) % 2 ? 1 : 0);
+        // a few plants run a stage behind, as in a real field
+        const stage = Math.max(0, st.stage - (st.stage > 0 && (i * 7 + k * 3) % 5 === 0 ? 1 : 0));
+        const top = drawCrop(st.crop, x, y, stage, st.busy && (i + k + Math.floor(T * 2)) % 2 ? 1 : 0);
         // ripe (context nearly full, ready to harvest): a sparkle now and then
-        if (st.p > 0.8 && (i * 7 + k * 3 + Math.floor(T * 3)) % 13 === 0) { px(x, top - 5, 1, 3, '#ffffff'); px(x - 1, top - 4, 3, 1, '#ffffff'); }
+        if (stage === 5 && (i * 7 + k * 3 + Math.floor(T * 3)) % 13 === 0) { px(x, top - 5, 1, 3, '#ffffff'); px(x - 1, top - 4, 3, 1, '#ffffff'); }
       }
       seedSign(f.crop ?? 'wheat', x0 - 6, y0 + 26); // what this field grows, even while it lies fallow
       if (f.pennant) { // a branch other than main: a pennant by the fence
@@ -354,7 +514,7 @@
       slots(f) {
         const { LANE_B, rows } = L;
         const s = f.state === 'working' ? stOf(f.field) : null;
-        if (s) return { group: `st:${s.key}`, at: used => { const off = [toolSpot(f.tool), 0, -26, 26, -13, 13].find(o => !used.includes(o)) ?? 0; used.push(off); return [s.cx + off, s.lane]; }, zone: `st:${s.key}:${toolProp(f.tool) ?? f.tool}` };
+        if (s) return { group: `st:${s.key}`, at: used => { const off = [doing(f)?.spot ?? 0, 0, -26, 26, -13, 13].find(o => !used.includes(o)) ?? 0; used.push(off); return [s.cx + off, s.lane]; }, zone: `st:${s.key}:${doing(f)?.prop ?? ''}` };
         if (f.state === 'working') return { group: 'meadow', cap: Math.min(8, rows * 2), at: i => [i % 2 ? 36 : 16, TOP + 30 + Math.floor(i / 2) * 37 + (i % 2) * 12], zone: 'meadow' };
         if (f.state === 'waiting') return { group: 'desk', cap: 4, at: i => [136 + 18 * i, LANE_B], zone: 'desk' };
         if (f.state === 'turn') return { group: 'turn', cap: 4, at: i => [264 - 18 * i, LANE_B], zone: 'turn' };
@@ -371,7 +531,7 @@
       tip: f => {
         const field = fieldByKey(f.field);
         const what = f.state === 'waiting' ? `needs you: ${f.ask}` : f.state === 'turn' ? (f.question ? `asks you: ${f.question}` : `your turn: ${f.reply || 'finished'}`)
-          : f.state === 'working' ? `${VERB[toolProp(f.tool)] ?? f.tool ?? 'working'}${field ? ` in ${field.name}` : ''}${f.summary ? ` · ${f.summary}` : ''}`
+          : f.state === 'working' ? `${doing(f)?.verb ?? 'working'}${field ? ` in ${field.name}` : ''}${f.summary ? ` · ${f.summary}` : ''}`
           : f.state === 'stale' ? 'stale' : 'idle';
         return `${f.name} · ${what}${f.kind === 'codex' ? '' : ` · ${Math.round((1 - f.pct) * 100)}% context left`}`;
       },
@@ -388,7 +548,7 @@
         if (z === 'storage') return 'stands still as a scarecrow (stale)';
         if (z === 'charge') return 'rests under the shade tree (idle)';
         if (z === 'meadow') return 'works in the wild meadow (no repo)';
-        return `${VERB[toolProp(f.tool)] ?? 'working'} in the ${fieldByKey(f.field)?.name ?? ''} field`;
+        return `${doing(f)?.verb ?? 'working'} in the ${fieldByKey(f.field)?.name ?? ''} field`;
       },
       hud(still, zoom = 1, saysOn = true) {
         const on = scene.farmers.filter(a => ACTIVE.has(a.state)), need = scene.farmers.filter(a => a.state === 'waiting' || a.question).length;
@@ -447,24 +607,7 @@
       drawFx(f, b) {
         const [ox, oy] = pixelOrigin(b, 16), rp = rpAt(ox, oy), T = PXG.T;
         if (f.hot) { rp(11, 3 + Math.floor((T * 6) % 4), 1, 2, '#8fd3ff'); rp(2, 4 + Math.floor((T * 6 + 2) % 4), 1, 2, '#8fd3ff'); rp(4, 7, 1, 1, '#ff6b6b'); rp(9, 7, 1, 1, '#ff6b6b'); }
-        if (f.state === 'working' && !b.walk) {
-          const prop = toolProp(f.tool);
-          if (prop === 'can') {
-            const tilt = blink(2); rp(11, 10, 4, 3, '#9aa4ad'); rp(11, 10, 4, 1, '#c3cbd2'); rp(15, 9 + tilt, 2, 1, '#9aa4ad');
-            for (let i = 0; i < 3; i++) rp(16 + (i % 2), 11 + ((Math.floor(T * 10) + i * 2) % 5), 1, 1, '#5ab4ff');
-          } else if (prop === 'hoe') {
-            if (blink(3)) { rp(12, 2, 1, 10, '#8b5a2b'); rp(11, 1, 3, 1, '#9aa4ad'); }
-            else { rp(11, 12, 5, 1, '#8b5a2b'); rp(16, 12, 1, 3, '#9aa4ad'); rp(17, 14, 1, 1, '#5e3d22'); rp(15, 15, 1, 1, '#5e3d22'); rp(18, 13, 1, 1, '#7a5230'); }
-          } else if (prop === 'seeds') {
-            rp(1, 11, 3, 3, '#c9a46a'); rp(1, 11, 3, 1, '#a07e48');
-            for (let i = 0; i < 3; i++) { const ph = (T * 1.5 + i / 3) % 1; rp(Math.round(11 + ph * 7), Math.round(11 - Math.sin(ph * Math.PI) * 5 + ph * 4), 1, 1, '#f4d58d'); }
-          } else if (prop === 'pigeon') {
-            const bx = Math.round(7 + Math.cos(T * 2) * 16), by = Math.round(-8 + Math.sin(T * 4) * 3), up = blink(6);
-            rp(bx, by, 2, 1, '#ececec'); rp(bx + 2, by, 1, 1, '#f0b429'); rp(bx - 1, by + (up ? -1 : 1), 2, 1, '#bdbdbd');
-          } else if (prop === 'almanac') {
-            rp(3, 10, 8, 4, '#7a3e2b'); rp(4, 10, 6, 3, '#fff4d6'); rp(5, 11 + blink(3), 4, 1, '#c9b48a'); rp(7, 10, 1, 3, '#c9b48a');
-          }
-        }
+        if (f.state === 'working' && !b.walk) { const act = doing(f); if (act) drawProp(act.prop, rp, T, act.flag); }
         if (f.state === 'waiting') bubble(rp, 14, -6 - blink(3), '!');
         if (f.state === 'turn') { // a basket of produce
           if (b.walk) { rp(3, 10, 8, 4, '#a8703c'); rp(3, 10, 8, 1, '#c98d4f'); rp(4, 9, 2, 1, '#e76f51'); rp(7, 9, 2, 1, '#f4a261'); rp(6, 8, 1, 1, '#3f9b3a'); }
@@ -544,12 +687,13 @@
   function helpHtml() {
     return `<div class="px-key">
       <b>Your porch</b><span>a farmer waving a red “!” needs you; a basket means it's your turn</span>
-      <b>Fields</b><span>one per repo, each with its own crop (the seed packet on its fence), soil and fence; a blue pennant = a branch other than main. The tool in hand is the current step (almanac = reading, can = shell, hoe = editing, seeds = new file, pigeon = web)</span>
+      <b>Fields</b><span>one per repo, each with its own crop (the seed packet on its fence), soil and fence; a blue pennant = a branch other than main</span>
+      <b>Tools</b><span>what a working farmer holds is its current step: almanac = reading, spyglass = searching, pigeon = the web, hoe = editing, seeds = a new file, magnifier = running tests, rake = lint or format, hammer = a build, wheelbarrow = installing, crate = a commit, cart = a push or a PR (with a red flag: a deploy), mailbag = a pull, lantern = a server or a long wait, sickle = deleting, whistle = calling subagents, clipboard = planning, watering can = any other command</span>
       <b>Farmers</b><span>one per agent; each has its own hat, hair and clothes, and its shirt is the agent's colour in the list</span>
       <b>Speech bubbles</b><span>what a farmer asked or last said; × hides one to a 💬 (click it to show the bubble again); a new message brings it back by itself. The Bubbles switch hides or shows them all</span>
       <b>Above a field</b><span>hay = uncommitted files, crates = unpushed commits, mailbox = behind the remote</span>
       <b>Weather</b><span>the repo's last deploy: rainbow = deployed, rain = deploy failed (hover its sign for GitHub's reason; the close-up links to the run), windmill = deploying; rope = two agents writing one repo</span>
-      <b>Hearts, crops</b><span>context left; ripe crops (golden wheat, red tomatoes, sunflowers in bloom…) with a sparkle = context nearly full; chickens = subagents, the dog = an Explore subagent</span>
+      <b>Hearts, crops</b><span>hearts = context left. Crops grow as the context fills: seeds, sprouts, young plants, in flower, ripening, then ripe with a sparkle (golden wheat, red tomatoes, sunflowers in bloom…) when it is nearly full. Chickens = subagents, the dog = an Explore subagent</span>
       <b>Shade tree, scarecrows</b><span>idle agents nap under the tree; stale ones stand as scarecrows; the meadow is for agents outside any repo</span>
       <b>Click</b><span>a farmer to answer or message it in the sidebar; a field for the files agents touched there</span>
       <b>Zoom</b><span>− / + (or ⌘/Ctrl + scroll, or pinch) zooms the farm inside its frame; drag or scroll to move around; the % button shows the whole farm again</span>
@@ -1243,6 +1387,7 @@
     },
     /** A farmer's shirt colour, so the page can match it. */
     colorOf: id => SHIRT[colorIndex(id)],
+    actionOf, paint, growthStage, STAGES,
     unmount() {
       if (!view) return;
       field.close();

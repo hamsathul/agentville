@@ -154,3 +154,56 @@ test('every field gets its own crop and fence from its repo; a branch other than
   assert.deepEqual(fields.map(f => f.pennant), [false, true, false, false, false, false, false]);
   assert.equal(plain(toScene(snapOf([], [repo('/code/c')]), { cpuAlertPct: 90 }).fields[0]).crop, fields[2].crop);
 });
+
+test("a farmer's step is the kind of work it is doing now, else the last tool step it took", () => {
+  const { toScene } = load();
+  const now = agent('a', { now: { tool: 'Bash', summary: 'Run tests', step: 'test', startedAt: NOW } });
+  const after = agent('b', { feed: [{ at: NOW, kind: 'reply', text: 'done' }, { at: NOW - 1, kind: 'tool', tool: 'Bash', step: 'push', text: 'git push' }] });
+  const old = agent('c', { feed: [{ at: NOW, kind: 'tool', tool: 'Edit', text: 'a.ts' }] }); // from before steps were sent
+  assert.deepEqual(plain(toScene(snapOf([now, after, old], []), { cpuAlertPct: 90 }).farmers.map(f => f.step)), ['test', 'push', null]);
+});
+
+const STEP_KINDS = ['edit', 'write', 'read', 'search', 'web', 'test', 'lint', 'build', 'install', 'commit', 'push', 'deploy', 'pull', 'serve', 'delete', 'agent', 'plan', 'shell', 'other'];
+
+test('every kind of step has its own tool and words; only a plain shell command or an unknown tool waters', () => {
+  const { actionOf } = load();
+  const actions = STEP_KINDS.map(s => plain(actionOf(s, 'Bash')));
+  for (const [i, a] of actions.entries()) assert.ok(a?.prop && a.verb, STEP_KINDS[i]);
+  const watering = STEP_KINDS.filter((s, i) => actions[i].prop === 'can');
+  assert.deepEqual(watering, ['shell', 'other']);
+  assert.equal(new Set(actions.map(a => a.verb)).size, actions.length, 'each says what it does in its own words');
+  assert.equal(plain(actionOf(null, 'Edit')).prop, 'hoe', 'a step from an older snapshot goes by its tool');
+});
+
+// A stand-in 2D context that records what is painted.
+const recorder = () => {
+  const rects = [];
+  return { rects, ctx: { fillStyle: '', globalAlpha: 1, fillRect(x, y, w, h) { rects.push([x, y, w, h, this.fillStyle]); }, drawImage() {} } };
+};
+
+test('every tool a farmer can hold is drawn, and no two look alike', () => {
+  const { actionOf, paint } = load();
+  const drawn = new Map();
+  for (const step of STEP_KINDS) {
+    const { prop, flag } = plain(actionOf(step, 'Bash'));
+    const r = recorder();
+    for (const T of [0.1, 0.4, 0.7]) paint(r.ctx, { prop, flag, T });
+    assert.ok(r.rects.length >= 6, `${step}: ${prop}`);
+    drawn.set(`${prop}${flag ? '+flag' : ''}`, JSON.stringify(r.rects));
+  }
+  assert.equal(new Set(drawn.values()).size, drawn.size, [...drawn.keys()].join(' '));
+});
+
+test('crops grow through six stages, from seeds to ripe, and each crop looks different at each one', () => {
+  const { growthStage, paint, STAGES } = load();
+  assert.deepEqual(plain(STAGES), ['seeds', 'sprouts', 'young plants', 'in flower', 'ripening', 'ripe']);
+  assert.deepEqual([0, 0.1, 0.12, 0.29, 0.3, 0.5, 0.69, 0.7, 0.84, 0.85, 1].map(growthStage), [0, 0, 1, 1, 2, 3, 3, 4, 4, 5, 5]);
+  const crops = ['wheat', 'corn', 'carrot', 'cabbage', 'sunflower', 'tomato', 'pumpkin'];
+  const looks = new Set();
+  for (const crop of crops) {
+    const stages = [0, 1, 2, 3, 4, 5].map(stage => { const r = recorder(); paint(r.ctx, { crop, stage }); return JSON.stringify(r.rects); });
+    assert.equal(new Set(stages).size, 6, `${crop}: six different stages`);
+    stages.slice(2).forEach(s => looks.add(s));
+  }
+  assert.equal(looks.size, crops.length * 4, 'from young plants on, no two crops look the same');
+});

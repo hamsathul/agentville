@@ -1,6 +1,7 @@
 import { isAbsolute, resolve } from 'node:path';
 import { parseEntry } from './parse.mjs';
 import { firstLine, summarizeTool } from './summarize.mjs';
+import { stepOf } from '../derive/step.mjs';
 
 const CHILD_KIND = { Agent: 'subagent', Task: 'subagent', Workflow: 'workflow' };
 const DOC_FILE = /\.(md|markdown|mdx)$/i;
@@ -84,7 +85,7 @@ export class SessionModel {
         this.calls.push(call);
         if (this.calls.length > this.callCap) this.calls.splice(0, this.calls.length - this.callCap);
         this.#noteFile(call);
-        const item = { at: when, kind: 'tool', tool: ev.name, text: summarizeTool(ev.name, ev.input) };
+        const item = { at: when, kind: 'tool', tool: ev.name, step: stepOf(ev.name, ev.input), text: summarizeTool(ev.name, ev.input) };
         this.openItems.set(ev.id, item);
         this.#push(item);
         const isBackground = ev.input?.run_in_background === true;

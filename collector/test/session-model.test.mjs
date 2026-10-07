@@ -201,3 +201,8 @@ test('messages found earlier in the transcript are added as older ones, without 
     ['prompt', 'old ask', 'old ask'],
   ]);
 });
+
+test('tool steps carry the kind of work, and so does the pending one', () => {
+  const m = modelOf(prompt(1, 'go'), toolUse(2, 'a', 'Bash', { command: 'npm test' }), toolResult(3, 'a'), toolUse(4, 'b', 'Bash', { command: 'git push' }));
+  assert.deepEqual(m.feed.filter(f => f.kind === 'tool').map(f => f.step), ['push', 'test']);
+});
