@@ -135,6 +135,7 @@ try {
   };
   await send('Page.enable');
   await send('Runtime.enable');
+  if (process.env.THROTTLE) await send('Emulation.setCPUThrottlingRate', { rate: Number(process.env.THROTTLE) }); // e.g. THROTTLE=6 to act like a slow CI runner
   await send('Emulation.setDeviceMetricsOverride', { width: 1400, height: 950, deviceScaleFactor: 1, mobile: false });
   await send('Page.navigate', { url: `http://127.0.0.1:${handle.port}/` });
 
@@ -183,7 +184,8 @@ try {
   await js(`document.querySelector('.px-say[data-say="ui-asker"] [data-say-close]').click()`);
   check(await until(`!document.querySelector('.px-say[data-say="ui-asker"]')`), 'the bubble closes with its ×');
   await sleep(1000);
-  check(await js(`!document.querySelector('.px-say[data-say="ui-asker"]') && document.querySelectorAll('.px-say').length === 2`), 'it stays closed while the agent says nothing new; the others stay');
+  const bubbles = await js(`[...document.querySelectorAll('.px-say')].map(b => b.dataset.say + ': ' + b.textContent.replace('×', '').trim()).join(' | ')`);
+  check(!/ui-asker/.test(bubbles) && (bubbles.match(/ui-done/g) ?? []).length === 2, `it stays closed while the agent says nothing new; the others stay (now: ${bubbles})`);
   const width = () => js("parseFloat(document.querySelector('#farm canvas').style.width)");
   const fit = await width();
   await js("document.querySelector('[data-farm-zoom=\"1\"]').click()");

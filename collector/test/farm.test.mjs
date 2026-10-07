@@ -123,3 +123,9 @@ test('a farmer carries what it last said, as plain text, for its speech bubble',
   const [long] = plain(toScene(snapOf([agent('c', { feed: [{ kind: 'reply', text: 'x', body: 'word '.repeat(80) }] })], []), { cpuAlertPct: 90 }).farmers);
   assert.ok(long.said.length <= 160 && long.said.endsWith('…'));
 });
+
+test("a waiting farmer without the mod's offer still shows its question, from the pending call", () => {
+  const { askText } = load();
+  assert.equal(askText(agent('a', { state: 'waiting', stateReason: 'question pending', now: { tool: 'AskUserQuestion', summary: 'Which crop next?' } })), 'Which crop next?');
+  assert.equal(askText(agent('a', { state: 'waiting', stateReason: 'probably a permission prompt', now: { tool: 'Bash', summary: 'rm -rf x' } })), 'probably a permission prompt');
+});

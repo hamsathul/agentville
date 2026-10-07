@@ -44,6 +44,7 @@
   function askText(a) {
     if (a.ask?.kind === 'question') return a.ask.questions?.[0]?.question ?? a.stateReason ?? '';
     if (a.ask?.kind === 'permission') return `${a.ask.tool}: ${a.ask.summary}`;
+    if (a.now?.tool === 'AskUserQuestion' && a.now.summary) return a.now.summary; // no offer from the mod: the transcript's question
     return a.stateReason ?? '';
   }
 
@@ -501,11 +502,14 @@
       setZoom(wheel < 0 ? 1 : -1);
       wheel = 0;
     }
+    // A closed bubble stays closed while its farmer is in the same situation: still waiting, or no
+    // new question or reply. (A waiting farmer's text can change without it saying anything new.)
+    const sayKey = f => (f.state === 'waiting' ? 'waiting' : f.question ? `q:${f.question}` : `said:${f.said}`);
     /** A farmer's speech bubble: its question when waiting or asking, else what it last said. */
     function placeBubble(f, b) {
       const text = saysOn && ACTIVE.has(f.state) ? (f.state === 'waiting' ? f.ask : f.question || f.said) : '';
       let s = says.get(f.id);
-      if (!text || closedSays.get(f.id) === text) {
+      if (!text || closedSays.get(f.id) === sayKey(f)) {
         if (s) { s.el.remove(); says.delete(f.id); }
         return;
       }
@@ -748,7 +752,8 @@
       if (closeSay) {
         e.stopPropagation();
         const id = closeSay.closest('[data-say]').dataset.say;
-        closedSays.set(id, says.get(id)?.text);
+        const f = scene.farmers.find(x => x.id === id);
+        if (f) closedSays.set(id, sayKey(f));
         says.get(id)?.el.remove();
         says.delete(id);
         return;
