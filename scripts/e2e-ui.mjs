@@ -34,7 +34,9 @@ if (!CHROME) {
 const temp = mkdtempSync(join(tmpdir(), 'tracker-ui-'));
 const root = join(temp, 'root');
 cpSync(join(ROOT, 'web'), join(root, 'web'), { recursive: true });
-writeFileSync(join(root, 'config.json'), JSON.stringify({ port: 0, deployRepos: {}, pollMs: 300 }));
+// permissionGuessSec: the working session's command never finishes and its process is quiet, so after
+// the default 20s it would count as "probably a permission prompt" (waiting) partway through the run.
+writeFileSync(join(root, 'config.json'), JSON.stringify({ port: 0, deployRepos: {}, pollMs: 300, permissionGuessSec: 3600 }));
 
 const repo = join(realpathSync(temp), 'farm-repo');
 mkdirSync(join(repo, 'src'), { recursive: true });
