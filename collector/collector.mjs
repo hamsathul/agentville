@@ -1,4 +1,4 @@
-import { appendFileSync, existsSync, mkdirSync, readFileSync, readdirSync, renameSync, statSync, watch, writeFileSync } from 'node:fs';
+import { appendFileSync, existsSync, mkdirSync, readFileSync, readdirSync, renameSync, statSync, unlinkSync, watch, writeFileSync } from 'node:fs';
 import { randomBytes } from 'node:crypto';
 import { homedir } from 'node:os';
 import { basename, dirname, join } from 'node:path';
@@ -11,6 +11,7 @@ import { readAgentsCli } from './sources/agents-cli.mjs';
 import { childrenIndex, findCodexRoots, findPidByArg, readPs, treeStats } from './sources/ps.mjs';
 import { RepoResolver, repoStatus } from './sources/git.mjs';
 import { deployStatus } from './sources/gh.mjs';
+import { readPending, validateAnswers, writeAnswerFile } from './sources/pending.mjs';
 import { applySince, buildAgent, countStates, sortAgents } from './derive/agent.mjs';
 import { findCollisions } from './derive/collisions.mjs';
 import { AlertEngine, notifyMac } from './alerts.mjs';
@@ -48,7 +49,9 @@ function loadToken(path) {
 
 export async function startCollector({ root, claudeDir = join(homedir(), '.claude'), claudeBin = 'claude', home = homedir(), port: portOverride, notify = notifyMac, log = makeLogger(join(root, 'logs')) }) {
   const stateDir = join(root, 'state');
-  mkdirSync(stateDir, { recursive: true });
+  const pendingDir = join(stateDir, 'pending');
+  const answersDir = join(stateDir, 'answers');
+  for (const dir of [stateDir, pendingDir, answersDir]) mkdirSync(dir, { recursive: true });
   const configPath = join(root, 'config.json');
 
   const sources = {};
@@ -211,6 +214,10 @@ export async function startCollector({ root, claudeDir = join(homedir(), '.claud
       try { procs = await readPs(); markOk('ps'); } catch (err) { markFail('ps', err); }
     }
     const bases = computeBases();
+    const { bySession: offers, expired } = readPending(pendingDir, now);
+    for (const path of expired) {
+      try { unlinkSync(path); } catch { /* the mod may have removed it already */ }
+    }
     for (const [id, rec] of sessions) {
       if (bases.has(id)) continue;
       if (rec.path) tail.forget(rec.path);
@@ -232,7 +239,7 @@ export async function startCollector({ root, claudeDir = join(homedir(), '.claud
       const rec = base.kind === 'codex' ? undefined : sessions.get(base.id);
       const agent = buildAgent({
         base, model: rec?.model ?? null, registry: base.registry, proc, cpuHistory: cpuHist.get(base.id) ?? [],
-        childModels: rec?.childModels, repoOf: p => resolver.lookup(p), now, cfg, home,
+        childModels: rec?.childModels, offer: offers.get(base.id), repoOf: p => resolver.lookup(p), now, cfg, home,
       });
       agents.push(applySince(agent, prevAgents.get(agent.id), now));
     }
@@ -243,7 +250,7 @@ export async function startCollector({ root, claudeDir = join(homedir(), '.claud
     const collisions = findCollisions(agents, now, cfg.collisionWindowMin * 60_000);
     snapshot = {
       generatedAt: now,
-      settings: { modToasts: cfg.modToasts },
+      settings: { modToasts: cfg.modToasts, permissionDashboardSec: cfg.permissionDashboardSec },
       collector: selfStats(),
       sources: { ...sources },
       counts: countStates(agents, collisions),
@@ -323,7 +330,27 @@ export async function startCollector({ root, claudeDir = join(homedir(), '.claud
     return renderTranscriptPage(agent?.name ?? id, model.feed);
   }
 
+  const askFor = (agentId, toolUseId, kind) => {
+    const ask = snapshot?.agents.find(a => a.id === agentId)?.ask;
+    return ask && ask.kind === kind && ask.toolUseId === toolUseId ? ask : undefined;
+  };
+
   const actions = {
+    async answer(body) {
+      const ask = askFor(body?.agentId, body?.toolUseId, 'question');
+      if (!ask) return { ok: false, error: 'That question is no longer waiting.' };
+      const checked = validateAnswers(ask.questions, body.answers);
+      if (checked.error) return { ok: false, error: checked.error };
+      writeAnswerFile(answersDir, ask.toolUseId, { answers: checked.answers });
+      return { ok: true };
+    },
+    async permit(body) {
+      const ask = askFor(body?.agentId, body?.toolUseId, 'permission');
+      if (!ask || ask.expiresAt <= Date.now()) return { ok: false, error: 'That permission prompt is no longer waiting.' };
+      if (body.decision !== 'allow' && body.decision !== 'deny') return { ok: false, error: 'Choose Allow or Deny.' };
+      writeAnswerFile(answersDir, ask.toolUseId, { decision: body.decision });
+      return { ok: true };
+    },
     async open(id) {
       const agent = ID_RE.test(id) ? snapshot?.agents.find(a => a.id === id || a.cliId === id) : undefined;
       if (!agent) return { ok: false, error: 'unknown agent' };
@@ -360,6 +387,7 @@ export async function startCollector({ root, claudeDir = join(homedir(), '.claud
   const port = await server.listen();
 
   try {
+    watchers.push(watch(pendingDir, () => scheduleLight()));
     watchers.push(watch(join(claudeDir, 'projects'), { recursive: true }, (_event, name) => {
       if (String(name ?? '').endsWith('.jsonl')) scheduleLight();
     }));

@@ -21,6 +21,8 @@ async function start() {
     actions: {
       open: async id => { calls.push(['open', id]); return { ok: true }; },
       rm: async ids => { calls.push(['rm', ids]); return { results: [] }; },
+      answer: async body => { calls.push(['answer', body]); return { ok: true }; },
+      permit: async body => { calls.push(['permit', body]); return { ok: true }; },
     },
   });
   const port = await srv.listen();
@@ -114,4 +116,18 @@ test('the transcript page follows the theme saved on the dashboard', () => {
   assert.match(page, /localStorage\.getItem\('tracker-theme'\)/);
   assert.match(page, /:root\[data-theme="dark"\]\s*\{/);
   assert.match(page, /:root:not\(\[data-theme="light"\]\)/);
+});
+
+test('answers and permission decisions are posted to their actions, guarded like the others', async () => {
+  const { srv, port, calls } = await start();
+  const origin = `http://127.0.0.1:${port}`;
+  const post = (path, body, headers = { 'x-tracker-token': 'tok', origin }) =>
+    request(port, { method: 'POST', path, headers: { 'content-type': 'application/json', ...headers }, body: JSON.stringify(body) });
+  assert.equal((await post('/api/actions/answer', { agentId: 's1' }, { origin })).status, 403);
+  assert.deepEqual(calls, []);
+  const answer = { agentId: 's1', toolUseId: 'toolu_A', answers: { 'Pick a colour?': 'Blue' } };
+  assert.equal((await post('/api/actions/answer', answer)).status, 200);
+  assert.equal((await post('/api/actions/permit', { agentId: 's1', toolUseId: 'toolu_B', decision: 'allow' })).status, 200);
+  assert.deepEqual(calls, [['answer', answer], ['permit', { agentId: 's1', toolUseId: 'toolu_B', decision: 'allow' }]]);
+  await srv.close();
 });

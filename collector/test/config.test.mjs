@@ -42,3 +42,7 @@ test('the shipped config.example.json is valid, complete and names no private re
   assert.deepEqual(Object.keys(raw).sort(), Object.keys(DEFAULTS).sort());
   assert.deepEqual(loadConfig(path).deployRepos, {});
 });
+
+test('the dashboard gets 15 seconds to answer a permission prompt by default', () => {
+  assert.equal(DEFAULTS.permissionDashboardSec, 15);
+});

@@ -67,12 +67,15 @@ export function createTrackerServer({ port, token, webFile, getSnapshot, getFeed
         }
       }
 
-      if (req.method === 'POST' && (path === '/api/actions/rm' || /^\/api\/actions\/open\/[\w-]+$/.test(path))) {
+      const isBodyAction = path === '/api/actions/rm' || path === '/api/actions/answer' || path === '/api/actions/permit';
+      if (req.method === 'POST' && (isBodyAction || /^\/api\/actions\/open\/[\w-]+$/.test(path))) {
         if (req.headers['x-tracker-token'] !== token || !isAllowedOrigin(req.headers.origin ?? '')) {
           return sendJson(res, 403, { error: 'forbidden' });
         }
         const body = await readBody(req);
         if (path === '/api/actions/rm') return sendJson(res, 200, await actions.rm(Array.isArray(body.ids) ? body.ids : []));
+        if (path === '/api/actions/answer') return sendJson(res, 200, await actions.answer(body));
+        if (path === '/api/actions/permit') return sendJson(res, 200, await actions.permit(body));
         return sendJson(res, 200, await actions.open(path.split('/').pop()));
       }
 

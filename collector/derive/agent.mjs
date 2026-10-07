@@ -24,10 +24,27 @@ export function childrenOf(model, childModels, now) {
   return out.sort((a, b) => b.startedAt - a.startedAt).slice(0, 20);
 }
 
-export function buildAgent({ base, model, registry, proc, cpuHistory = [], childModels = new Map(), repoOf, now, cfg, home }) {
+/**
+ * What the mod has offered for answering from the dashboard, if it still applies: a
+ * question whose call is still pending, or a permission prompt inside its window.
+ */
+export function askOf(offer, model, now) {
+  if (offer?.kind === 'question' && model?.pending.has(offer.toolUseId)) {
+    return { kind: 'question', toolUseId: offer.toolUseId, questions: offer.questions };
+  }
+  if (offer?.kind === 'permission' && offer.expiresAt > now) {
+    return { kind: 'permission', toolUseId: offer.toolUseId, tool: offer.tool, summary: offer.summary, expiresAt: offer.expiresAt };
+  }
+  return undefined;
+}
+
+export function buildAgent({ base, model, registry, proc, cpuHistory = [], childModels = new Map(), offer, repoOf, now, cfg, home }) {
+  const ask = askOf(offer, model, now);
   const derived = base.kind === 'codex'
     ? deriveCodexState(cpuHistory, now)
-    : deriveState({ model, registry, cpuHistory, now, cfg });
+    : ask?.kind === 'permission'
+      ? { state: 'waiting', reason: `permission needed: ${ask.tool}`, since: offer.createdAt }
+      : deriveState({ model, registry, cpuHistory, now, cfg });
   const since = now - cfg.collisionWindowMin * 60_000;
   const calls = model ? model.callsSince(since) : [];
   for (const cm of childModels.values()) calls.push(...cm.callsSince(since));
@@ -46,6 +63,7 @@ export function buildAgent({ base, model, registry, proc, cpuHistory = [], child
     state: derived.state,
     stateReason: derived.reason,
     sinceHint: derived.since,
+    ask,
     lastActivityAt: model?.lastActivityAt || undefined,
     now: nowOf(model),
     lastPrompt: model?.lastPrompt ?? undefined,

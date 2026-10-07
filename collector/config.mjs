@@ -9,6 +9,7 @@ export const DEFAULTS = Object.freeze({
   staleAfterHours: 24,
   collisionWindowMin: 30,
   permissionGuessSec: 20,
+  permissionDashboardSec: 15,
   memoryAlertGb: 2,
   cpuAlertPct: 90,
   cpuAlertSustainSec: 120,

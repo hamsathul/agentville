@@ -94,3 +94,35 @@ test('an agent with a Remote Control session gets a claude.ai link to answer it 
   const unlinked = buildAgent({ base: base(), model: null, repoOf, now: at(0), cfg, home: '/h' });
   assert.equal(unlinked.remoteUrl, undefined);
 });
+
+test('an offered question that is still pending can be answered from the dashboard', () => {
+  const m = modelOf(prompt(0, 'go'), toolUse(5, 'toolu_Q1', 'AskUserQuestion', { questions: [{ question: 'Pick a colour?' }] }));
+  const questions = [{ question: 'Pick a colour?', header: 'Colour', multiSelect: false, options: [{ label: 'Red' }, { label: 'Blue' }] }];
+  const a = buildAgent({ base: base(), model: m, offer: { kind: 'question', toolUseId: 'toolu_Q1', createdAt: at(5), questions }, repoOf, now: at(6), cfg, home: '/h' });
+  assert.equal(a.state, 'waiting');
+  assert.deepEqual(a.ask, { kind: 'question', toolUseId: 'toolu_Q1', questions });
+});
+
+test('an offered question that was already answered in the terminal is not answerable', () => {
+  const m = modelOf(prompt(0, 'go'), toolUse(5, 'toolu_Q1', 'AskUserQuestion'), toolResult(7, 'toolu_Q1'));
+  const a = buildAgent({ base: base(), model: m, offer: { kind: 'question', toolUseId: 'toolu_Q1', createdAt: at(5), questions: [] }, repoOf, now: at(8), cfg, home: '/h' });
+  assert.equal(a.ask, undefined);
+});
+
+test('an offered permission prompt makes the agent certainly waiting, with Allow/Deny details', () => {
+  const m = modelOf(prompt(0, 'go'), toolUse(5, 'toolu_P1', 'Bash', { command: 'mkdir /tmp/x' }));
+  const offer = { kind: 'permission', toolUseId: 'toolu_P1', tool: 'Bash', summary: 'mkdir /tmp/x', createdAt: at(5), expiresAt: at(20) };
+  const a = buildAgent({ base: base(), model: m, registry: { status: 'busy' }, cpuHistory: [{ at: at(5), cpu: 40 }], offer, repoOf, now: at(6), cfg, home: '/h' });
+  assert.equal(a.state, 'waiting');
+  assert.equal(a.stateReason, 'permission needed: Bash');
+  assert.equal(a.sinceHint, at(5));
+  assert.deepEqual(a.ask, { kind: 'permission', toolUseId: 'toolu_P1', tool: 'Bash', summary: 'mkdir /tmp/x', expiresAt: at(20) });
+});
+
+test('an expired permission offer is ignored', () => {
+  const m = modelOf(prompt(0, 'go'), toolUse(5, 'toolu_P1', 'Bash'));
+  const offer = { kind: 'permission', toolUseId: 'toolu_P1', tool: 'Bash', summary: 'x', createdAt: at(5), expiresAt: at(20) };
+  const a = buildAgent({ base: base(), model: m, registry: { status: 'busy' }, offer, repoOf, now: at(21), cfg, home: '/h' });
+  assert.equal(a.state, 'working');
+  assert.equal(a.ask, undefined);
+});
