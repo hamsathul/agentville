@@ -78,3 +78,28 @@ test('callsSince returns calls at or after a time', () => {
   const m = modelOf(prompt(0, 'go'), toolUse(1, 't1', 'Read', { file_path: '/a' }), toolUse(10, 't2', 'Read', { file_path: '/b' }));
   assert.deepEqual(m.callsSince(at(5)).map(c => c.id), ['t2']);
 });
+
+test('markdown files written, edited or read are remembered as documents, newest first', () => {
+  const m = modelOf(
+    prompt(0, 'go'),
+    toolUse(1, 'a', 'Read', { file_path: '/w/README.md' }),
+    toolUse(2, 'b', 'Write', { file_path: '/w/docs/spec.md', content: '# Spec' }),
+    toolUse(3, 'c', 'Edit', { file_path: '/w/src/app.ts' }),
+    toolUse(4, 'd', 'Read', { file_path: '/w/docs/spec.md' }),
+    toolUse(5, 'e', 'Edit', { file_path: 'notes/plan.markdown' }, '/w'),
+  );
+  assert.deepEqual(m.documents(), [
+    { path: '/w/notes/plan.markdown', wrote: true, at: at(5) },
+    { path: '/w/docs/spec.md', wrote: true, at: at(4) },
+    { path: '/w/README.md', wrote: false, at: at(1) },
+  ]);
+});
+
+test('only the 40 most recent documents are kept', () => {
+  const lines = [prompt(0, 'go')];
+  for (let i = 1; i <= 45; i++) lines.push(toolUse(i, `t${i}`, 'Read', { file_path: `/w/d${i}.md` }));
+  const docs = modelOf(...lines).documents();
+  assert.equal(docs.length, 40);
+  assert.equal(docs[0].path, '/w/d45.md');
+  assert.equal(docs.at(-1).path, '/w/d6.md');
+});

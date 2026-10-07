@@ -160,3 +160,15 @@ test("an agent shows whether its session's mod is listening for dashboard answer
   assert.deepEqual(listening.mod, { version: '0.2.0', live: true });
   assert.equal(buildAgent({ base: base(), model: null, repoOf, now: at(0), cfg, home: '/h' }).mod, undefined);
 });
+
+test('documents come from the session and its subagents, newest first', () => {
+  const parent = modelOf(prompt(0, 'go'), toolUse(1, 'p1', 'Read', { file_path: '/p/README.md' }), toolUse(3, 'p2', 'Write', { file_path: '/p/docs/spec.md' }));
+  const child = modelOf(prompt(1, 'task'), toolUse(2, 'c1', 'Write', { file_path: '/p/docs/plan.md' }), toolUse(4, 'c2', 'Read', { file_path: '/p/README.md' }));
+  const a = buildAgent({ base: base(), model: parent, childModels: new Map([['tA', child]]), repoOf, now: at(5), cfg, home: '/h' });
+  assert.deepEqual(a.docs, [
+    { path: '/p/README.md', wrote: false, at: at(4) },
+    { path: '/p/docs/spec.md', wrote: true, at: at(3) },
+    { path: '/p/docs/plan.md', wrote: true, at: at(2) },
+  ]);
+  assert.deepEqual(buildAgent({ base: base(), model: null, repoOf, now: at(5), cfg, home: '/h' }).docs, []);
+});

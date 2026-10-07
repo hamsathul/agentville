@@ -18,6 +18,7 @@ async function start() {
     getSnapshot: () => ({ generatedAt: 1, agents: [], collisions: [] }),
     getFeed: id => (id === 's1' ? [{ at: 1, kind: 'prompt', text: 'hi' }] : null),
     getTranscriptHtml: async id => (id === 's1' ? renderTranscriptPage('s1', [{ at: 1, kind: 'prompt', text: '<script>alert(1)</script>' }]) : null),
+    getDoc: (id, path) => (id === 's1' && path === '/w/spec.md' ? { doc: { path, text: '# Spec', mtimeMs: 1, size: 6 } } : { status: 404, error: 'That document is not one this agent has opened.' }),
     actions: {
       open: async id => { calls.push(['open', id]); return { ok: true }; },
       rm: async ids => { calls.push(['rm', ids]); return { results: [] }; },
@@ -143,4 +144,20 @@ test('chat messages are posted to their action, guarded like the others', async 
   assert.equal((await request(port, { method: 'POST', path: '/api/actions/message', headers: { 'x-tracker-token': 'tok', origin, 'content-type': 'application/json' }, body })).status, 200);
   assert.deepEqual(calls, [['message', { agentId: 's1', text: 'hello' }]]);
   await srv.close();
+});
+
+test('a document is served only with the token, and only one the agent has opened', async () => {
+  const { srv, port } = await start();
+  try {
+    const path = `/api/agent/s1/doc?path=${encodeURIComponent('/w/spec.md')}`;
+    assert.equal((await request(port, { path })).status, 403);
+    const ok = await request(port, { path, headers: { 'x-tracker-token': 'tok' } });
+    assert.equal(ok.status, 200);
+    assert.deepEqual(JSON.parse(ok.body), { path: '/w/spec.md', text: '# Spec', mtimeMs: 1, size: 6 });
+    const other = await request(port, { path: '/api/agent/s1/doc?path=%2Fetc%2Fpasswd', headers: { 'x-tracker-token': 'tok' } });
+    assert.equal(other.status, 404);
+    assert.match(JSON.parse(other.body).error, /not one this agent has opened/);
+  } finally {
+    await srv.close();
+  }
 });

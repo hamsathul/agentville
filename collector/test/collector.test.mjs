@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, unlinkSync, utimesSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, symlinkSync, unlinkSync, utimesSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { startCollector } from '../collector.mjs';
@@ -202,6 +202,49 @@ test('a chat message is handed to the session through its mod, with delivery con
     assert.match((await handle.actions.message({ agentId: 'sess-msg', text: 'hi' })).error, /isn't listening/);
   } finally {
     clearInterval(fakeMod);
+    await handle.stop();
+  }
+});
+
+test('a document can be read only if the agent opened it, and only if it is a markdown file of sane size', async () => {
+  const root = mkdtempSync(join(tmpdir(), 'tracker-root-doc-'));
+  mkdirSync(join(root, 'web'));
+  writeFileSync(join(root, 'web', 'index.html'), '<html></html>');
+  writeFileSync(join(root, 'config.json'), JSON.stringify({ port: 0, deployRepos: {} }));
+  const work = mkdtempSync(join(tmpdir(), 'tracker-work-doc-'));
+  mkdirSync(join(work, 'docs'));
+  writeFileSync(join(work, 'docs', 'spec.md'), '# Spec\n\nHello.');
+  writeFileSync(join(work, 'secret.txt'), 'not for the dashboard');
+  symlinkSync(join(work, 'secret.txt'), join(work, 'link.md'));
+  writeFileSync(join(work, 'big.md'), 'x'.repeat(2 * 1024 * 1024 + 1));
+  writeFileSync(join(work, 'gone.md'), 'soon deleted');
+  const claudeDir = mkdtempSync(join(tmpdir(), 'tracker-claude-doc-'));
+  mkdirSync(join(claudeDir, 'sessions'));
+  mkdirSync(join(claudeDir, 'projects', '-w'), { recursive: true });
+  writeFileSync(join(claudeDir, 'sessions', `${process.pid}.json`), JSON.stringify({ pid: process.pid, sessionId: 'sess-doc', cwd: work, name: 'writer', status: 'idle' }));
+  const now = Date.now();
+  const use = (n, name, file) => JSON.stringify({ type: 'assistant', timestamp: new Date(now - 5000 + n).toISOString(), cwd: work, message: { model: 'm', content: [{ type: 'tool_use', id: `t${n}`, name, input: { file_path: file } }] } });
+  writeFileSync(join(claudeDir, 'projects', '-w', 'sess-doc.jsonl'), [
+    JSON.stringify({ type: 'user', timestamp: new Date(now - 6000).toISOString(), cwd: work, message: { content: 'write the spec' } }),
+    use(1, 'Write', join(work, 'docs', 'spec.md')),
+    use(2, 'Read', join(work, 'link.md')),
+    use(3, 'Read', join(work, 'big.md')),
+    use(4, 'Read', join(work, 'gone.md')),
+  ].join('\n') + '\n');
+  const handle = await startCollector({ root, claudeDir, claudeBin: '/usr/bin/false', notify: () => {}, log: () => {} });
+  try {
+    const spec = join(work, 'docs', 'spec.md');
+    assert.deepEqual(handle.getSnapshot().agents.find(a => a.id === 'sess-doc').docs.map(d => d.path), [join(work, 'gone.md'), join(work, 'big.md'), join(work, 'link.md'), spec]);
+    const ok = handle.readDoc('sess-doc', spec);
+    assert.equal(ok.doc.text, '# Spec\n\nHello.');
+    assert.equal(ok.doc.path, spec);
+    assert.match(handle.readDoc('sess-doc', join(work, 'secret.txt')).error, /not one this agent has opened/);
+    assert.match(handle.readDoc('nope', spec).error, /not one this agent has opened/);
+    assert.match(handle.readDoc('sess-doc', join(work, 'link.md')).error, /Only markdown/);
+    assert.match(handle.readDoc('sess-doc', join(work, 'big.md')).error, /too large/);
+    unlinkSync(join(work, 'gone.md'));
+    assert.match(handle.readDoc('sess-doc', join(work, 'gone.md')).error, /no longer exists/);
+  } finally {
     await handle.stop();
   }
 });

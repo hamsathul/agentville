@@ -2,7 +2,8 @@
 # End-to-end check of answering from the dashboard, with real Claude Code sessions.
 # Starts short background Haiku sessions (one asks a question, one needs permission to run
 # mkdir), answers both through the dashboard's HTTP API, sends the first one a chat message,
-# checks Claude received all three, then removes the sessions. Needs the collector running.
+# has it read a markdown file and fetches that file for the document reader, then removes the
+# sessions. Needs the collector running.
 set -eo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 PORT="$(/usr/bin/plutil -extract port raw "$ROOT/config.json" 2>/dev/null || echo 7777)"
@@ -57,7 +58,7 @@ transcript_has() { # session id, text → exit 0 when the transcript contains it
   return 1
 }
 
-echo "1/3 question answered from the dashboard"
+echo "1/4 question answered from the dashboard"
 Q=$(start e2e-ask "Use the AskUserQuestion tool to ask me exactly one question: 'Pick a colour?' with the options Red and Blue (header: Colour). After I answer, reply with only the colour I chose and stop. Do not read or change any files.")
 [ -n "$Q" ] || fail "could not start the question session"
 IDS+=("$Q")
@@ -68,7 +69,7 @@ R="$(post /api/actions/answer "{\"agentId\":\"$QS\",\"toolUseId\":\"$QID\",\"ans
 transcript_has "$QS" '\"Pick a colour?\"=\"Blue\"' || fail "Claude never received the answer"
 echo "   ok: Claude received \"Blue\""
 
-echo "2/3 permission prompt allowed from the dashboard"
+echo "2/4 permission prompt allowed from the dashboard"
 P=$(start e2e-permit "Run exactly this one Bash command and nothing else: mkdir $PERMIT_DIR   Then reply DONE. Do not read or change any other files.")
 [ -n "$P" ] || fail "could not start the permission session"
 IDS+=("$P")
@@ -80,7 +81,7 @@ for _ in $(seq 1 60); do [ -d "$PERMIT_DIR" ] && break; sleep 1; done
 [ -d "$PERMIT_DIR" ] || fail "the allowed command never ran"
 echo "   ok: the command ran"
 
-echo "3/3 chat message sent from the dashboard"
+echo "3/4 chat message sent from the dashboard"
 WORD="tracker-e2e-$$"
 for _ in $(seq 1 60); do
   R="$(post /api/actions/message "{\"agentId\":\"$QS\",\"text\":\"Reply with only the word $WORD and stop.\"}")"
@@ -90,6 +91,19 @@ done
 [ "$R" = '{"ok":true}' ] || fail "message refused: $R"
 transcript_has "$QS" "Reply with only the word $WORD" || fail "the message never reached the session"
 echo "   ok: the session got the message"
+
+echo "4/4 a markdown file the session read opens in the document reader"
+DOC="$ROOT/README.md"
+R="$(post /api/actions/message "{\"agentId\":\"$QS\",\"text\":\"Use the Read tool to read README.md (first 5 lines are enough), then reply with only DONE.\"}")"
+[ "$R" = '{"ok":true}' ] || fail "message refused: $R"
+for _ in $(seq 1 90); do
+  curl -s "$BASE/api/state" | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{const a=JSON.parse(s).agents.find(x=>x.id===process.argv[1]);process.exit(a?.docs?.some(d=>d.path===process.argv[2])?0:1)})' "$QS" "$DOC" && break
+  sleep 1
+done
+[ "$(curl -s -o /dev/null -w '%{http_code}' "$BASE/api/agent/$QS/doc?path=$DOC")" = 403 ] || fail "the document was served without the token"
+curl -s -H "x-tracker-token: $TOKEN" "$BASE/api/agent/$QS/doc?path=$DOC" | grep -q '# Agent Tracker' || fail "the reader could not fetch README.md"
+[ "$(curl -s -o /dev/null -w '%{http_code}' -H "x-tracker-token: $TOKEN" "$BASE/api/agent/$QS/doc?path=$ROOT/package.json")" = 404 ] || fail "a file the session never opened was served"
+echo "   ok: README.md is listed and readable, other files are not"
 
 for id in "${IDS[@]}"; do
   if claude logs "$id" 2>&1 | grep -q "agent-tracker.*skipped"; then fail "a mod hook was skipped in session $id"; fi

@@ -8,6 +8,7 @@ const HISTORY_SAMPLES = 200; // 10 minutes at the 3 s poll
 const ACTIVITY_MINUTES = 30;
 const TIMELINE_MAX = 120;
 const CHILD_RECENT_MS = 60_000;
+const DOCS_MAX = 20;
 
 export function nowOf(model) {
   const p = model?.latestPending();
@@ -80,10 +81,23 @@ export function buildAgent({ base, model, registry, proc, cpuHistory = [], child
     feed: model ? model.feed.slice(0, 20) : [],
     children: model ? childrenOf(model, childModels, now) : [],
     touching,
+    docs: docsOf(model, childModels),
     proc: proc ? { ...proc, history: historyOf(cpuHistory) } : undefined,
     activity: activityOf(recent, now),
     timeline: recent.slice(-TIMELINE_MAX).map(c => ({ at: c.at, tool: c.name })),
   };
+}
+
+/** Markdown files the session and its subagents wrote or read, newest first. */
+function docsOf(model, childModels) {
+  const byPath = new Map();
+  for (const m of [model, ...childModels.values()]) {
+    for (const d of m?.documents() ?? []) {
+      const prev = byPath.get(d.path);
+      byPath.set(d.path, prev ? { path: d.path, wrote: prev.wrote || d.wrote, at: Math.max(prev.at, d.at) } : d);
+    }
+  }
+  return [...byPath.values()].sort((a, b) => b.at - a.at).slice(0, DOCS_MAX);
 }
 
 function historyOf(samples) {

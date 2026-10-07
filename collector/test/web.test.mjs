@@ -8,11 +8,11 @@ import vm from 'node:vm';
 const html = readFileSync(fileURLToPath(new URL('../../web/index.html', import.meta.url)), 'utf8');
 const script = html.slice(html.lastIndexOf('<script>') + '<script>'.length, html.lastIndexOf('</script>'));
 
-function loadPage({ stored = {}, storageThrows = false } = {}) {
+function loadPage({ stored = {}, storageThrows = false, files = {} } = {}) {
   const posts = [];
   let active = null;
   const els = new Map();
-  const el = id => ({ id, title: '', innerHTML: '', textContent: '', className: '', dataset: {}, classList: { add() {}, remove() {}, toggle() {} }, addEventListener() {}, showModal() {}, querySelectorAll: () => [] });
+  const el = id => ({ id, title: '', innerHTML: '', textContent: '', value: '', className: '', dataset: {}, classList: { add() {}, remove() {}, toggle() {} }, addEventListener() {}, showModal() { this.open = true; }, close() { this.open = false; }, focus() {}, querySelectorAll: () => [] });
   const docListeners = {};
   let sourceListener = null;
   let selectedText = '';
@@ -33,8 +33,18 @@ function loadPage({ stored = {}, storageThrows = false } = {}) {
       getItem: key => { if (storageThrows) throw new Error('denied'); return stored[key] ?? null; },
       setItem: (key, value) => { if (storageThrows) throw new Error('denied'); stored[key] = String(value); },
     },
-    fetch: async (path, init) => { posts.push({ path, body: init?.body ? JSON.parse(init.body) : undefined }); return { ok: true, json: async () => ({ ok: true }) }; },
-    console, Date, Math, JSON, String, Number, Object, Boolean, Map, Set, encodeURIComponent,
+    fetch: async (path, init) => {
+      posts.push({ path, body: init?.body ? JSON.parse(init.body) : undefined });
+      const doc = String(path).match(/^\/api\/agent\/[^/]+\/doc\?path=(.*)$/);
+      if (doc) {
+        const file = decodeURIComponent(doc[1]);
+        return file in files
+          ? { ok: true, status: 200, json: async () => ({ path: file, text: files[file], mtimeMs: 1, size: files[file].length }) }
+          : { ok: false, status: 404, json: async () => ({ error: 'That file no longer exists.' }) };
+      }
+      return { ok: true, json: async () => ({ ok: true }) };
+    },
+    console, Date, Math, JSON, String, Number, Object, Boolean, Map, Set, encodeURIComponent, decodeURIComponent,
   };
   vm.createContext(ctx);
   vm.runInContext(script, ctx);
@@ -363,4 +373,83 @@ test('the number tiles are a compact single row', () => {
   const kpis = page.el('kpis').innerHTML;
   assert.doesNotMatch(kpis, /kpi-top/);
   assert.match(kpis, /<b class="val">1<\/b>/);
+});
+
+const SPEC = '# Spec\n\nSome **bold** text.\n\n- one\n- two\n\n<script>alert(1)</script>';
+const docAgent = (over = {}) => richAgent({
+  mod: { version: '0.3.0', live: true },
+  docs: [{ path: '/w/docs/spec.md', wrote: true, at: Date.now() - 60_000 }, { path: '/w/README.md', wrote: false, at: Date.now() - 120_000 }],
+  ...over,
+});
+async function openSpec(page) {
+  await page.openAgent('r1');
+  await page.clickButton('doc-open', { docAgent: 'r1', docPath: '/w/docs/spec.md' });
+}
+
+test('Documents lists the markdown files the agent wrote or read, and one opens in a reader', async () => {
+  const page = loadPage({ files: { '/w/docs/spec.md': SPEC } });
+  page.push(richSnapshot([docAgent()]));
+  await page.openAgent('r1');
+  const side = page.side();
+  assert.match(side, />Documents</);
+  assert.match(side, /spec\.md[\s\S]*written[\s\S]*README\.md[\s\S]*read/);
+  await openSpec(page);
+  assert.ok(page.posts.some(p => p.path === '/api/agent/r1/doc?path=%2Fw%2Fdocs%2Fspec.md'));
+  assert.equal(page.el('reader').open, true);
+  assert.match(page.el('reader').innerHTML, /docs\/spec\.md/);
+  const body = page.el('reader-body').innerHTML;
+  assert.match(body, /<h1[^>]*>Spec<\/h1>/);
+  assert.match(body, /<strong>bold<\/strong>/);
+  assert.match(body, /<li>one<\/li><li>two<\/li>/);
+  assert.doesNotMatch(body, /<script>/);
+  assert.match(body, /&lt;script&gt;/);
+});
+
+test('a reply from the reader goes to the agent as a message about that document, quoting the selection', async () => {
+  const page = loadPage({ files: { '/w/docs/spec.md': SPEC } });
+  page.push(richSnapshot([docAgent()]));
+  await openSpec(page);
+  page.select('Some bold text.');
+  page.fire('selectionchange');
+  await page.clickButton('reader-quote', {});
+  assert.equal(page.el('reader-text').value, '> Some bold text.\n\n');
+  page.edit('input', { id: 'reader-text', value: '> Some bold text.\n\nMake this italic instead.', dataset: {} });
+  await page.clickButton('reader-send', {});
+  const sent = page.posts.find(p => p.path === '/api/actions/message');
+  assert.deepEqual(sent.body, { agentId: 'r1', text: 'About docs/spec.md:\n\n> Some bold text.\n\nMake this italic instead.' });
+  assert.equal(page.el('reader-text').value, '');
+});
+
+test('the reader says why a document could not be shown', async () => {
+  const page = loadPage();
+  page.push(richSnapshot([docAgent()]));
+  await openSpec(page);
+  assert.match(page.el('reader-body').innerHTML, /no longer exists/);
+});
+
+test('the reader reply box is disabled when the session is not listening', async () => {
+  const page = loadPage({ files: { '/w/docs/spec.md': SPEC } });
+  page.push(richSnapshot([docAgent({ mod: undefined })]));
+  await openSpec(page);
+  assert.match(page.el('reader').innerHTML, /<textarea[^>]*id="reader-text"[^>]*disabled/);
+  assert.match(page.el('reader').innerHTML, /isn't listening/);
+});
+
+test('markdown renders headings, lists, code, tables and quotes, and never passes HTML or unsafe links through', () => {
+  const md = loadPage().ctx.renderMarkdown;
+  assert.match(md('## Two words'), /<h2 id="md-two-words">Two words<\/h2>/);
+  assert.equal(md('one\ntwo'), '<p>one two</p>');
+  assert.match(md('a *b* _c_ ~~d~~ `**e**`'), /a <em>b<\/em> <em>c<\/em> <del>d<\/del> <code>\*\*e\*\*<\/code>/);
+  assert.match(md('- a\n- b\n  - c\n- d'), /<ul><li>a<\/li><li>b<ul><li>c<\/li><\/ul><\/li><li>d<\/li><\/ul>/);
+  assert.match(md('3. x\n4. y'), /<ol start="3"><li>x<\/li><li>y<\/li><\/ol>/);
+  assert.match(md('- [x] done\n- [ ] todo'), /<input type="checkbox" disabled checked> done[\s\S]*<input type="checkbox" disabled> todo/);
+  assert.match(md('```js\nif (a < b) {}\n```'), /<pre class="md-code" data-lang="js"><code>if \(a &lt; b\) \{\}<\/code><\/pre>/);
+  assert.match(md('| A | B |\n|---|--:|\n| 1 | 2 |'), /<table><thead><tr><th>A<\/th><th style="text-align:right">B<\/th><\/tr><\/thead><tbody><tr><td>1<\/td><td style="text-align:right">2<\/td><\/tr><\/tbody><\/table>/);
+  assert.match(md('> quoted\n> more'), /<blockquote><p>quoted more<\/p><\/blockquote>/);
+  assert.match(md('---'), /<hr>/);
+  assert.match(md('---\ntitle: x\n---\n# T'), /<pre class="md-front">title: x<\/pre>/);
+  assert.match(md('[site](https://example.com/a?b=1&c=2)'), /<a href="https:\/\/example.com\/a\?b=1&amp;c=2" target="_blank" rel="noopener noreferrer">site<\/a>/);
+  const unsafe = md('[x](javascript:alert(1)) <img src=x onerror=alert(1)> ![pic](https://e.com/p.png) [q](https://e.com/"onmouseover="alert(1))');
+  assert.doesNotMatch(unsafe, /<img|href="javascript|onmouseover="/);
+  assert.match(unsafe, /&lt;img src=x onerror=alert\(1\)&gt;/);
 });

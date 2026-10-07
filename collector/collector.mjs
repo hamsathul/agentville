@@ -1,4 +1,4 @@
-import { appendFileSync, existsSync, mkdirSync, readFileSync, readdirSync, renameSync, statSync, unlinkSync, watch, writeFileSync } from 'node:fs';
+import { appendFileSync, existsSync, mkdirSync, readFileSync, readdirSync, realpathSync, renameSync, statSync, unlinkSync, watch, writeFileSync } from 'node:fs';
 import { randomBytes } from 'node:crypto';
 import { cpus, homedir, totalmem } from 'node:os';
 import { basename, dirname, join } from 'node:path';
@@ -17,6 +17,9 @@ import { findCollisions } from './derive/collisions.mjs';
 import { AlertEngine, notifyMac } from './alerts.mjs';
 import { createTrackerServer } from './server.mjs';
 import { renderTranscriptPage } from './transcript-page.mjs';
+
+const DOC_FILE = /\.(md|markdown|mdx)$/i;
+const DOC_MAX_BYTES = 2 * 1024 * 1024;
 
 const ID_RE = /^[A-Za-z0-9-]{1,64}$/;
 const CPU_HISTORY_MS = 10 * 60_000;
@@ -340,6 +343,22 @@ export async function startCollector({ root, claudeDir = join(homedir(), '.claud
     return renderTranscriptPage(agent?.name ?? id, model.feed);
   }
 
+  /** A markdown file the agent wrote or read, for the dashboard's reader; anything else is refused. */
+  function readDoc(agentId, path) {
+    const agent = snapshot?.agents.find(a => a.id === agentId);
+    if (!agent?.docs?.some(d => d.path === path)) return { status: 404, error: 'That document is not one this agent has opened.' };
+    try {
+      const real = realpathSync(path);
+      const st = statSync(real);
+      if (!DOC_FILE.test(real) || !st.isFile()) return { status: 403, error: 'Only markdown files can be shown here.' };
+      if (st.size > DOC_MAX_BYTES) return { status: 413, error: 'That file is too large to show here (2 MB at most).' };
+      return { doc: { path, text: readFileSync(real, 'utf8'), mtimeMs: st.mtimeMs, size: st.size } };
+    } catch (err) {
+      if (err.code === 'ENOENT') return { status: 404, error: 'That file no longer exists.' };
+      return { status: 500, error: `Could not read it (${err.code ?? err.message}).` };
+    }
+  }
+
   // The mod deletes the answer file once it has handed the answer to Claude. If that doesn't
   // happen within the timeout, the session isn't listening: withdraw it and say so.
   async function deliver(toolUseId, payload) {
@@ -417,7 +436,7 @@ export async function startCollector({ root, claudeDir = join(homedir(), '.claud
     port: portOverride ?? cfg.port, token, webFile: join(root, 'web', 'index.html'),
     getSnapshot: () => snapshot,
     getFeed: (id, limit) => modelFor(id)?.feed.slice(0, limit) ?? null,
-    getTranscriptHtml, actions, log,
+    getTranscriptHtml, getDoc: readDoc, actions, log,
   });
   const port = await server.listen();
 
@@ -450,5 +469,5 @@ export async function startCollector({ root, claudeDir = join(homedir(), '.claud
     await server.close();
   }
 
-  return { port, getSnapshot: () => snapshot, reloadConfig, actions, stop };
+  return { port, getSnapshot: () => snapshot, reloadConfig, actions, readDoc, stop };
 }

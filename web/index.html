@@ -62,7 +62,7 @@ header.top { position: sticky; top: 0; z-index: 3; display: flex; flex-wrap: wra
 .compose textarea { width: 100%; min-height: 58px; resize: vertical; padding: 8px 10px; border: 1px solid var(--line); border-radius: 10px; background: var(--page); color: var(--text); font: inherit; }
 .compose textarea:focus { outline: 2px solid var(--accent); outline-offset: -1px; }
 .compose textarea:disabled { opacity: .55; }
-.compose-row { display: flex; align-items: center; gap: 8px; margin-top: 6px; font-size: 12px; }
+.compose-row { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-top: 6px; font-size: 12px; }
 .compose-row .act { margin: 0; }
 .k-waiting { --k: var(--crit); } .k-working { --k: var(--good); } .k-turn { --k: var(--warn); } .k-collide { --k: var(--serious); }
 .fleet { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.5fr) minmax(0, .8fr); gap: 12px; }
@@ -169,6 +169,40 @@ details.data td, details.data th { padding: 2px 10px 2px 0; text-align: left; }
 .tip.show { opacity: 1; }
 dialog { border: 1px solid var(--line); border-radius: 12px; background: var(--panel); color: var(--text); max-width: 480px; }
 dialog::backdrop { background: rgba(0, 0, 0, .45); }
+.docs { display: grid; gap: 4px; }
+.doc { display: grid; grid-template-columns: auto auto minmax(0, 1fr) auto auto; align-items: center; gap: 8px; width: 100%; text-align: left; font: inherit; color: var(--text); background: var(--panel-2); border: 1px solid var(--line); border-radius: 8px; padding: 6px 10px; cursor: pointer; }
+.doc:hover { border-color: var(--accent); }
+.doc-name { font-weight: 650; }
+.doc-dir { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12px; }
+dialog.reader { max-width: none; width: min(940px, calc(100vw - 32px)); height: calc(100vh - 48px); padding: 0; overflow: hidden; }
+dialog.reader[open] { display: flex; flex-direction: column; }
+.reader-head { display: flex; align-items: center; gap: 8px; padding: 12px 16px; border-bottom: 1px solid var(--line); }
+.reader-head .act { margin: 0; }
+.reader-title { min-width: 0; }
+.reader-title .faint { font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+#reader-body { flex: 1; overflow: auto; padding: 6px 28px 24px; }
+.reader-foot { border-top: 1px solid var(--line); background: var(--panel-2); padding: 10px 16px 12px; }
+.md { max-width: 780px; font-size: 14.5px; line-height: 1.6; overflow-wrap: anywhere; }
+.md h1, .md h2, .md h3, .md h4, .md h5, .md h6 { line-height: 1.25; margin: 1.3em 0 .5em; }
+.md h1 { font-size: 1.7em; }
+.md h2 { font-size: 1.35em; padding-bottom: .25em; border-bottom: 1px solid var(--grid); }
+.md h3 { font-size: 1.12em; }
+.md p, .md ul, .md ol, .md blockquote, .md pre, .md .md-scroll { margin: 0 0 .85em; }
+.md ul, .md ol { padding-left: 1.5em; }
+.md li { margin: .15em 0; }
+.md li.task { list-style: none; margin-left: -1.3em; }
+.md code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: .88em; background: var(--panel-2); border: 1px solid var(--grid); border-radius: 5px; padding: .05em .35em; }
+.md pre { background: var(--page); border: 1px solid var(--line); border-radius: 8px; padding: 10px 12px; overflow: auto; }
+.md pre code { background: none; border: 0; padding: 0; font-size: 12.5px; overflow-wrap: normal; }
+.md blockquote { border-left: 3px solid var(--line); padding-left: 12px; color: var(--muted); }
+.md .md-scroll { overflow-x: auto; }
+.md table { border-collapse: collapse; }
+.md th, .md td { border: 1px solid var(--line); padding: 4px 9px; text-align: left; vertical-align: top; }
+.md th { background: var(--panel-2); }
+.md hr { border: 0; border-top: 1px solid var(--line); margin: 1.4em 0; }
+.md a { color: var(--accent); }
+.md .md-link { text-decoration: underline dotted; }
+.md .md-front { font-size: 12px; color: var(--muted); }
 </style>
 </head>
 <body>
@@ -194,6 +228,7 @@ dialog::backdrop { background: rgba(0, 0, 0, .45); }
   </main>
 </div>
 <div id="tip" class="tip" role="tooltip"></div>
+<dialog id="reader" class="reader" aria-label="Document"></dialog>
 <dialog id="cleanup">
   <h3>Remove stale background sessions</h3>
   <p class="muted">Runs <span class="mono">claude rm</span> for each one you tick. Removal is permanent: the session and its conversation are deleted.</p>
@@ -543,6 +578,292 @@ async function sendMessage(agentId, button) {
   render();
 }
 
+// Markdown for the document reader. Every character of the file is escaped; the only HTML that
+// comes out is what these functions build. Links go out only to http(s) and mailto, images show
+// their alt text (nothing is fetched), and raw HTML in the file shows as text.
+const MD_LIST_ITEM = /^(\s*)([-*+]|\d{1,9}[.)])\s+(.*)$/;
+const MD_HR = /^\s{0,3}([-*_])(\s*\1){2,}\s*$/;
+const MD_FENCE = /^\s{0,3}(`{3,}|~{3,})\s*([\w+#.-]*)/;
+const MD_HEADING = /^\s{0,3}(#{1,6})\s+(.*?)(?:\s+#+)?\s*$/;
+const MD_QUOTE = /^\s{0,3}>/;
+const mdSlug = text => String(text).toLowerCase().replace(/[^\w\s-]/g, '').trim().replace(/\s+/g, '-');
+const mdCells = line => line.trim().replace(/^\|/, '').replace(/\|$/, '').split(/(?<!\\)\|/).map(c => c.trim().replace(/\\\|/g, '|'));
+
+function mdTableAt(lines, i) {
+  if (!lines[i].includes('|') || i + 1 >= lines.length) return null;
+  const head = mdCells(lines[i]);
+  const sep = mdCells(lines[i + 1]);
+  if (sep.length !== head.length || !sep.every(c => /^:?-+:?$/.test(c))) return null;
+  return { head, align: sep.map(c => (c.endsWith(':') ? (c.startsWith(':') ? 'center' : 'right') : '')) };
+}
+
+const mdStartsBlock = (lines, i) => MD_FENCE.test(lines[i]) || MD_HEADING.test(lines[i]) || MD_HR.test(lines[i])
+  || MD_QUOTE.test(lines[i]) || MD_LIST_ITEM.test(lines[i]) || Boolean(mdTableAt(lines, i));
+
+function mdEmphasis(s) {
+  return s
+    .replace(/\*\*(?=\S)([\s\S]*?\S)\*\*/g, '<strong>$1</strong>')
+    .replace(/(^|[^\w_])__(?=\S)([\s\S]*?\S)__(?!\w)/g, '$1<strong>$2</strong>')
+    .replace(/(^|[^\w*])\*(?=\S)([^*]*?\S)\*(?![\w*])/g, '$1<em>$2</em>')
+    .replace(/(^|[^\w_])_(?=\S)([^_]*?\S)_(?!\w)/g, '$1<em>$2</em>')
+    .replace(/~~(?=\S)([\s\S]*?\S)~~/g, '<del>$1</del>');
+}
+
+function mdInline(text) {
+  const held = [];
+  const hold = html => `\u0000${held.push(html) - 1}\u0000`;
+  let s = String(text).replace(/\u0000/g, '');
+  s = s.replace(/(`+)([\s\S]*?[^`])\1(?!`)/g, (_, _ticks, code) => hold(`<code>${esc(code.trim())}</code>`));
+  s = esc(s);
+  s = s.replace(/!\[([^\]]*)\]\([^)]*\)/g, (_, alt) => hold(`<span class="md-link" title="Images aren't loaded here">🖼 ${alt || 'image'}</span>`));
+  s = s.replace(/\[([^\]]+)\]\(([^)\s]+)(?:\s+&quot;[\s\S]*?&quot;)?\)/g, (_, label, url) => {
+    const raw = url.replace(/&amp;/g, '&');
+    if (/^(https?:|mailto:)/i.test(raw)) return hold(`<a href="${url}" target="_blank" rel="noopener noreferrer">${mdEmphasis(label)}</a>`);
+    if (raw.startsWith('#')) return hold(`<a href="#md-${mdSlug(raw.slice(1))}">${mdEmphasis(label)}</a>`);
+    return hold(`<span class="md-link" title="${url}">${mdEmphasis(label)}</span>`);
+  });
+  s = s.replace(/&lt;((?:https?:|mailto:)[^\s&]+)&gt;/g, (_, url) => hold(`<a href="${url}" target="_blank" rel="noopener noreferrer">${url}</a>`));
+  s = mdEmphasis(s);
+  for (let n = 0; n < 4 && s.includes('\u0000'); n++) s = s.replace(/\u0000(\d+)\u0000/g, (_, k) => held[k]);
+  return s;
+}
+
+function mdList(lines, start) {
+  const first = lines[start].match(MD_LIST_ITEM);
+  const indent = first[1].length;
+  const ordered = /\d/.test(first[2]);
+  const items = [];
+  let i = start;
+  while (i < lines.length) {
+    const line = lines[i];
+    const m = line.match(MD_LIST_ITEM);
+    if (m && m[1].length === indent && /\d/.test(m[2]) === ordered) {
+      items.push({ text: [m[3]], inner: [] });
+      i++;
+    } else if (m && m[1].length > indent) {
+      const [html, next] = mdList(lines, i);
+      items.at(-1).inner.push(html);
+      i = next;
+    } else if (!m && line.trim() && !mdStartsBlock(lines, i)) {
+      items.at(-1).text.push(line.trim());
+      i++;
+    } else if (!line.trim()) {
+      let j = i;
+      while (j < lines.length && !lines[j].trim()) j++;
+      const n = lines[j]?.match(MD_LIST_ITEM);
+      if (!n || n[1].length < indent || (n[1].length === indent && /\d/.test(n[2]) !== ordered)) break;
+      i = j;
+    } else {
+      break;
+    }
+  }
+  const li = it => {
+    const text = it.text.join(' ');
+    const task = text.match(/^\[([ xX])\]\s+(.*)$/);
+    const body = task ? `<input type="checkbox" disabled${task[1] === ' ' ? '' : ' checked'}> ${mdInline(task[2])}` : mdInline(text);
+    return `<li${task ? ' class="task"' : ''}>${body}${it.inner.join('')}</li>`;
+  };
+  const tag = ordered ? 'ol' : 'ul';
+  const from = ordered ? Number.parseInt(first[2], 10) : 1;
+  return [`<${tag}${from !== 1 ? ` start="${from}"` : ''}>${items.map(li).join('')}</${tag}>`, i];
+}
+
+function renderMarkdown(src, nested = false) {
+  const lines = String(src ?? '').replace(/\r\n?/g, '\n').replace(/\t/g, '    ').split('\n');
+  const out = [];
+  let i = 0;
+  if (!nested && lines[0]?.trim() === '---') {
+    const end = lines.findIndex((l, k) => k > 0 && l.trim() === '---');
+    if (end > 0) {
+      out.push(`<pre class="md-front">${esc(lines.slice(1, end).join('\n'))}</pre>`);
+      i = end + 1;
+    }
+  }
+  while (i < lines.length) {
+    const line = lines[i];
+    let m;
+    if (!line.trim()) {
+      i++;
+    } else if ((m = line.match(MD_FENCE))) {
+      const body = [];
+      i++;
+      while (i < lines.length && !lines[i].trim().startsWith(m[1])) body.push(lines[i++]);
+      i++;
+      out.push(`<pre class="md-code"${m[2] ? ` data-lang="${esc(m[2])}"` : ''}><code>${esc(body.join('\n'))}</code></pre>`);
+    } else if ((m = line.match(MD_HEADING))) {
+      const level = m[1].length;
+      out.push(`<h${level} id="md-${mdSlug(m[2])}">${mdInline(m[2])}</h${level}>`);
+      i++;
+    } else if (MD_HR.test(line)) {
+      out.push('<hr>');
+      i++;
+    } else if (MD_QUOTE.test(line)) {
+      const body = [];
+      while (i < lines.length && MD_QUOTE.test(lines[i])) body.push(lines[i++].replace(/^\s{0,3}>\s?/, ''));
+      out.push(`<blockquote>${renderMarkdown(body.join('\n'), true)}</blockquote>`);
+    } else if ((m = mdTableAt(lines, i))) {
+      const { head, align } = m;
+      const cell = (tag, text, k) => `<${tag}${align[k] ? ` style="text-align:${align[k]}"` : ''}>${mdInline(text)}</${tag}>`;
+      const rows = [];
+      i += 2;
+      while (i < lines.length && lines[i].trim() && lines[i].includes('|')) rows.push(mdCells(lines[i++]));
+      out.push(`<div class="md-scroll"><table><thead><tr>${head.map((c, k) => cell('th', c, k)).join('')}</tr></thead><tbody>${rows.map(r => `<tr>${head.map((_, k) => cell('td', r[k] ?? '', k)).join('')}</tr>`).join('')}</tbody></table></div>`);
+    } else if (MD_LIST_ITEM.test(line)) {
+      const [html, next] = mdList(lines, i);
+      out.push(html);
+      i = next;
+    } else {
+      const para = [];
+      do para.push(lines[i++].trim());
+      while (i < lines.length && lines[i].trim() && !mdStartsBlock(lines, i));
+      out.push(`<p>${mdInline(para.join(' '))}</p>`);
+    }
+  }
+  return out.join('\n');
+}
+
+// The document reader: a markdown file the agent wrote or read, with a reply box that sends the
+// agent a message about it. It lives in its own dialog, so snapshot re-renders never touch it.
+let reader = null; // { agentId, path, at }
+let readerQuote = '';
+const readerDrafts = new Map(); // agent id + path → half-typed reply
+const readerKey = () => (reader ? `${reader.agentId}\n${reader.path}` : '');
+const docName = path => String(path).split('/').pop();
+const docEntry = (agentId, path) => snap?.agents.find(a => a.id === agentId)?.docs?.find(d => d.path === path);
+/** The path as the agent knows it: relative to its folder when inside it. */
+const docLabel = (agent, path) => (agent?.cwd && path.startsWith(`${agent.cwd}/`) ? path.slice(agent.cwd.length + 1) : path);
+const docSub = (agent, path) => {
+  const d = agent?.docs?.find(x => x.path === path);
+  return `${docLabel(agent, path)}${d ? ` · ${d.wrote ? 'written' : 'read'} by ${agent.name} at ${hhmm(d.at)}` : ''}`;
+};
+
+function docsHtml(a) {
+  if (!a.docs?.length) return '';
+  return `<div class="sec">Documents</div><div class="docs">${a.docs.map(d => {
+    const dir = docLabel(a, d.path).split('/').slice(0, -1).join('/');
+    return `<button class="doc" type="button" data-doc-agent="${esc(a.id)}" data-doc-path="${esc(d.path)}" data-tip="${esc(short(d.path))}"><span aria-hidden="true">📄</span><span class="doc-name">${esc(docName(d.path))}</span><span class="doc-dir faint">${esc(short(dir))}</span><span class="chip ${d.wrote ? 'c-warn' : 'c-plain'}">${d.wrote ? 'written' : 'read'}</span><span class="faint">${hhmm(d.at)}</span></button>`;
+  }).join('')}</div>`;
+}
+
+function readerHtml() {
+  const agent = snap?.agents.find(a => a.id === reader.agentId);
+  const live = Boolean(agent?.mod?.live);
+  const hint = live ? 'Select text above, then Quote to reply to that part. ⌘↩ sends.'
+    : "This session isn't listening for dashboard messages yet. Send it anything in its terminal once, or start a new session.";
+  return `<div class="reader-head">
+      <div class="reader-title"><b>📄 ${esc(docName(reader.path))}</b><div class="faint mono" id="reader-sub">${esc(docSub(agent, reader.path))}</div></div>
+      <span class="grow"></span>
+      <button class="act" id="reader-reload" type="button">↻ Reload</button>
+      <button class="act" id="reader-close" type="button" aria-label="Close">✕</button>
+    </div>
+    <article id="reader-body" class="md"></article>
+    <div class="reader-foot compose">
+      <textarea id="reader-text" rows="3" placeholder="Reply to ${esc(agent?.name ?? 'the agent')} about this document…"${live ? '' : ' disabled'}>${esc(readerDrafts.get(readerKey()) ?? '')}</textarea>
+      <div class="compose-row"><span class="faint" id="reader-status">${hint}</span><span class="grow"></span><button class="act" id="reader-quote" type="button"${live ? '' : ' disabled'}>❝ Quote selection</button><button class="act primary" id="reader-send" type="button"${live ? '' : ' disabled'}>Send</button></div>
+    </div>`;
+}
+
+async function openDoc(agentId, path) {
+  reader = { agentId, path, at: docEntry(agentId, path)?.at ?? 0 };
+  readerQuote = '';
+  $('reader').innerHTML = readerHtml();
+  $('reader-body').innerHTML = '<div class="empty">Loading…</div>';
+  if (!$('reader').open) $('reader').showModal();
+  await loadDoc();
+}
+
+async function loadDoc({ keepScroll = false } = {}) {
+  if (!reader) return;
+  const { agentId, path } = reader;
+  let html;
+  try {
+    const r = await fetch(`/api/agent/${encodeURIComponent(agentId)}/doc?path=${encodeURIComponent(path)}`, { headers: { 'x-tracker-token': TOKEN } });
+    const body = await r.json();
+    html = r.ok ? renderMarkdown(body.text) || '<div class="empty">This file is empty.</div>'
+      : `<div class="empty">${esc(body.error ?? `Could not load it (HTTP ${r.status}).`)}</div>`;
+  } catch (err) {
+    html = `<div class="empty">Could not load it: ${esc(err?.message ?? err)}</div>`;
+  }
+  if (reader?.agentId !== agentId || reader.path !== path) return;
+  const box = $('reader-body');
+  const top = box.scrollTop;
+  box.innerHTML = html;
+  if (keepScroll) box.scrollTop = top;
+}
+
+function closeReader() {
+  reader = null;
+  readerQuote = '';
+  if ($('reader').open) $('reader').close();
+}
+
+/** When the agent changes the open document, show the new text in place. */
+function refreshReader() {
+  const agent = snap.agents.find(a => a.id === reader.agentId);
+  const doc = agent?.docs?.find(d => d.path === reader.path);
+  if (!doc || doc.at <= reader.at) return;
+  reader.at = doc.at;
+  $('reader-sub').textContent = docSub(agent, reader.path);
+  if (hasSelection()) $('reader-status').textContent = `${agent.name} changed this file. ↻ Reload to see it.`;
+  else void loadDoc({ keepScroll: true });
+}
+
+function captureReaderSelection() {
+  if (!reader) return;
+  const s = window.getSelection?.();
+  if (!s || s.isCollapsed || !s.toString().trim()) return;
+  const node = s.anchorNode;
+  if (node && !$('reader-body').contains?.(node)) return;
+  readerQuote = s.toString();
+}
+
+function quoteSelection() {
+  captureReaderSelection();
+  const text = readerQuote.trim();
+  if (!text) {
+    $('reader-status').textContent = 'Select some text in the document first.';
+    return;
+  }
+  const prev = readerDrafts.get(readerKey()) ?? '';
+  const quoted = text.split('\n').map(l => `> ${l}`.trimEnd()).join('\n');
+  const next = `${prev}${prev && !prev.endsWith('\n\n') ? (prev.endsWith('\n') ? '\n' : '\n\n') : ''}${quoted}\n\n`;
+  readerDrafts.set(readerKey(), next);
+  const box = $('reader-text');
+  box.value = next;
+  box.focus?.();
+  readerQuote = '';
+}
+
+async function sendReaderReply() {
+  if (!reader) return;
+  const { agentId, path } = reader;
+  const key = readerKey();
+  const reply = (readerDrafts.get(key) ?? '').trim();
+  if (!reply) {
+    $('reader-status').textContent = 'Type a reply first.';
+    return;
+  }
+  const agent = snap?.agents.find(a => a.id === agentId);
+  const button = $('reader-send');
+  button.disabled = true;
+  button.textContent = 'Sending…';
+  const r = await post('/api/actions/message', { agentId, text: `About ${docLabel(agent, path)}:\n\n${reply}` });
+  button.disabled = false;
+  button.textContent = 'Send';
+  if (r.ok) {
+    readerDrafts.delete(key);
+    $('reader-text').value = '';
+  }
+  $('reader-status').textContent = r.ok
+    ? (agent?.state === 'working' ? `Queued for ${agent.name}: it reads it when its current step ends.` : `Sent to ${agent?.name ?? 'the session'}.`)
+    : `Could not send: ${r.error}`;
+}
+// Esc closes the dialog natively.
+$('reader').addEventListener('close', () => {
+  reader = null;
+  readerQuote = '';
+});
+
 function drawerHtml(a) {
   const color = colorOf(a.id);
   const h = a.proc?.history;
@@ -573,6 +894,7 @@ function drawerHtml(a) {
     <div class="sec">Now</div>${a.now ? `<div class="now mono"><span class="pulse"></span> ${esc(a.now.tool)} ${esc(a.now.summary)} · <b data-since="${a.now.startedAt}"></b></div>` : `<div class="muted">${esc(a.stateReason)}</div>`}
     ${composeHtml(a)}
     <div class="sec">Activity</div><div class="feed">${a.feed.map(feedRow).join('') || '<div class="empty">No activity yet.</div>'}</div>
+    ${docsHtml(a)}
     ${charts ? `<div class="sec">Last 10 minutes</div>${charts}` : ''}
     ${a.kind === 'codex' ? '' : `<div class="sec">Tool calls · last 30 minutes</div>${timelineChart(a.timeline)}`}
     <div class="sec">Subagents &amp; background jobs</div>${children}
@@ -686,6 +1008,11 @@ document.addEventListener('click', async e => {
   const el = e.target.closest('button');
   if (!el) return;
   if (el.id === 'msg-send') { await sendMessage(el.dataset.agent, el); return; }
+  if (el.dataset.docPath) { await openDoc(el.dataset.docAgent, el.dataset.docPath); return; }
+  if (el.id === 'reader-close') { closeReader(); return; }
+  if (el.id === 'reader-reload') { await loadDoc({ keepScroll: true }); return; }
+  if (el.id === 'reader-quote') { quoteSelection(); return; }
+  if (el.id === 'reader-send') { await sendReaderReply(); return; }
   if (el.id === 'ask-send') {
     el.disabled = true;
     el.textContent = 'Sending…';
@@ -745,6 +1072,7 @@ document.addEventListener('pointerup', () => {
 });
 document.addEventListener('focusout', () => setTimeout(() => { if (isRenderPending) requestRender(); }, 0));
 document.addEventListener('selectionchange', () => { if (isRenderPending && !hasSelection()) requestRender(); });
+document.addEventListener('selectionchange', captureReaderSelection);
 
 // Answer drafts survive the drawer re-rendering on every snapshot.
 document.addEventListener('change', e => {
@@ -762,9 +1090,17 @@ document.addEventListener('keydown', e => {
     e.preventDefault();
     sendMessage(e.target.dataset.msgAgent, $('msg-send'));
   }
+  if (e.key === 'Enter' && (e.metaKey || e.ctrlKey) && e.target?.id === 'reader-text') {
+    e.preventDefault();
+    sendReaderReply();
+  }
 });
 document.addEventListener('input', e => {
   const t = e.target;
+  if (t?.id === 'reader-text') {
+    readerDrafts.set(readerKey(), t.value);
+    return;
+  }
   if (t?.dataset?.msgAgent !== undefined) {
     msgDrafts.set(t.dataset.msgAgent, t.value);
     return;
@@ -802,6 +1138,7 @@ function connect() {
     $('banner').classList.remove('show');
     $('live').classList.remove('off');
     if (selected && !snap.agents.some(a => a.id === selected)) selected = null;
+    if (reader) refreshReader();
     requestRender();
   });
   events.onerror = () => {

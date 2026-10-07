@@ -31,7 +31,7 @@ function clampInt(value, min, max, fallback) {
   return Number.isFinite(n) ? Math.min(max, Math.max(min, n)) : fallback;
 }
 
-export function createTrackerServer({ port, token, webFile, getSnapshot, getFeed, getTranscriptHtml, actions, log = () => {} }) {
+export function createTrackerServer({ port, token, webFile, getSnapshot, getFeed, getTranscriptHtml, getDoc, actions, log = () => {} }) {
   const clients = new Set();
   let server;
   const actualPort = () => server.address()?.port ?? port;
@@ -60,6 +60,12 @@ export function createTrackerServer({ port, token, webFile, getSnapshot, getFeed
         if ((m = path.match(/^\/api\/agent\/([\w:-]+)\/feed$/))) {
           const feed = getFeed(m[1], clampInt(url.searchParams.get('limit'), 1, 200, 200));
           return feed ? sendJson(res, 200, feed) : sendJson(res, 404, { error: 'unknown agent' });
+        }
+        if ((m = path.match(/^\/api\/agent\/([\w:-]+)\/doc$/))) {
+          // File contents: the page sends its token, which other sites can't do without a CORS preflight.
+          if (req.headers['x-tracker-token'] !== token) return sendJson(res, 403, { error: 'forbidden' });
+          const found = getDoc(m[1], url.searchParams.get('path') ?? '');
+          return found.doc ? sendJson(res, 200, found.doc) : sendJson(res, found.status ?? 404, { error: found.error });
         }
         if ((m = path.match(/^\/agent\/([\w:-]+)\/transcript$/))) {
           const html = await getTranscriptHtml(m[1]);
