@@ -1,3 +1,7 @@
+
+
+https://github.com/user-attachments/assets/19447978-d50a-4339-9f50-a84f6ed9ac64
+
 # Agentville
 
 **Agentville is a live dashboard for every AI coding agent on your Mac**: Claude Code sessions (interactive
