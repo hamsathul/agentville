@@ -45,6 +45,15 @@ export class SessionModel {
     this.compactions = 0; // times the conversation was compacted
     this.lastCompactAt = 0;
     this.wakeAt = 0; // when a session that scheduled a wake-up (/loop) comes back by itself
+    this.turnStartedAt = 0; // when the current turn began, and the tokens its replies have come back with so far
+    this.turnOut = new Map(); // reply id → output tokens (each of a reply's entries repeats its count)
+  }
+
+  /** Output tokens the current turn has received, as the terminal's working line counts them (↓ 28.5k tokens). */
+  turnTokens() {
+    let total = 0;
+    for (const n of this.turnOut.values()) total += n;
+    return total;
   }
 
   applyLines(lines) {
@@ -71,6 +80,8 @@ export class SessionModel {
     switch (ev.kind) {
       case 'prompt':
         this.wakeAt = 0; // you spoke first
+        this.turnStartedAt = when;
+        this.turnOut.clear();
         this.#abandonPending();
         this.lastPrompt = firstLine(ev.text);
         this.lastPromptAt = when;
@@ -79,7 +90,7 @@ export class SessionModel {
         this.#push({ at: when, kind: 'prompt', text: this.lastPrompt, body: bodyOf(ev.text) });
         break;
       case 'turn_start':
-        if (!this.turnOpen) this.wakeAt = 0; // a new turn: the wake-up came (or something else woke it)
+        if (!this.turnOpen) { this.wakeAt = 0; this.turnStartedAt = when; this.turnOut.clear(); } // a new turn: the wake-up came (or something else woke it)
         this.turnOpen = true;
         break;
       case 'reply':
@@ -164,6 +175,7 @@ export class SessionModel {
         break;
       case 'model':
         if (!ev.model.startsWith('<')) { this.model = ev.model; this.fast = ev.usage?.speed === 'fast'; }
+        if (ev.id && Number.isFinite(ev.usage?.output_tokens)) this.turnOut.set(ev.id, Math.max(this.turnOut.get(ev.id) ?? 0, ev.usage.output_tokens));
         if (ev.usage) {
           const total = (ev.usage.input_tokens ?? 0) + (ev.usage.cache_read_input_tokens ?? 0) + (ev.usage.cache_creation_input_tokens ?? 0);
           if (total > 0) this.contextTokens = total;

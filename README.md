@@ -94,6 +94,11 @@ how much CPU and memory each one uses.
   turn, as if you typed it (what Claude Code said comes back to the bar). As when you type it,
   Claude Code saves the model, and an effort from low to xhigh, as your default for new sessions;
   `max` is for that session only.
+- **The working line:** a working session's panel shows the line its terminal shows,
+  `✻ Slithering… (5m 31s · ↓ 28.5k tokens · thinking with xhigh effort)`: how long the turn has
+  run and the tokens it has received (from the transcript), and the line's word, what the turn is
+  doing and the effort its requests go out with (from the mod, 0.5.0 on). The farm's tooltip says
+  it too, and its thought cloud follows it.
 - **Side questions (/btw):** ask a session something on the side from its panel. It is answered
   from the conversation so far, with no tools, even while the session works, and nothing is added
   to the conversation; the answer shows under the box. Switching and side questions need mod 0.5.0

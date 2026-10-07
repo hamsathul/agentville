@@ -134,3 +134,15 @@ test('delivery is confirmed when the mod takes the file, even in the last instan
   });
   assert.deepEqual(lastInstant, { ok: true });
 });
+
+test("a beacon can carry the working line (its word, what the turn is doing, since when) and the effort in use; a long-gone one is cleared", () => {
+  const dir = tmp();
+  put(dir, 's1.json', { sessionId: 's1', version: '0.5.0', at: NOW - 1000, turn: { startedAt: NOW - 331_000, word: 'Slithering', mode: 'thinking' }, effort: 'xhigh' });
+  put(dir, 's2.json', { sessionId: 's2', version: '0.5.0', at: NOW - 1000, turn: { startedAt: 'soon', word: 7, mode: 'dancing' }, effort: 'turbo' });
+  put(dir, 'old.json', { sessionId: 'old', version: '0.2.0', at: NOW - 4 * 86_400_000 });
+  const beacons = readBeacons(dir, NOW);
+  assert.deepEqual([beacons.get('s1').turn, beacons.get('s1').effort], [{ startedAt: NOW - 331_000, word: 'Slithering', mode: 'thinking' }, 'xhigh']);
+  assert.deepEqual([beacons.get('s2').turn, beacons.get('s2').effort], [undefined, undefined]);
+  assert.equal(beacons.has('old'), false);
+  assert.equal(existsSync(join(dir, 'old.json')), false);
+});

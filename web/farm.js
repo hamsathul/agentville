@@ -165,7 +165,8 @@
           said: spoken((a.feed ?? []).find(f => f.kind === 'reply')?.body ?? (a.feed ?? []).find(f => f.kind === 'reply')?.text), color: colorIndex(a.id), shirt: SHIRT[colorIndex(a.id)], look: lookOf(a), cost: a.usage?.costUsd ?? null, mode: a.mode ?? null,
           kids: (a.children ?? []).filter(c => c.state === 'running' && c.kind !== 'bgjob').slice(0, 4).map(c => ({ id: c.id, dog: c.agentType === 'Explore' })),
           tasks: a.tasks ?? null, compactions: a.compactions ?? 0,
-          thinking: a.kind !== 'codex' && a.state === 'working' && !a.now, // between tool calls: the model is thinking
+          thinking: a.kind !== 'codex' && a.state === 'working' && (a.turn?.mode ? a.turn.mode === 'thinking' : !a.now), // the working line says thinking (else: between tool calls)
+          turn: a.state === 'working' ? a.turn ?? null : null, effort: a.effort ?? null,
           model: a.model ?? null, family: familyOf(a.model), fast: a.fast === true,
           planAsk: a.state === 'waiting' && a.now?.tool === 'ExitPlanMode', // a plan waiting for your approval
           service: a.now?.service ?? null, // where a web or connector call goes
@@ -1283,7 +1284,8 @@
           f.compactions && `compacted ${f.compactions}×`,
           f.model && `${f.model}${f.fast ? ' (fast)' : ''}`,
         ].filter(Boolean).map(t => ` · ${t}`).join('');
-        return `${f.name} · ${f.thinking ? 'thinking' : what}${f.kind === 'codex' ? '' : ` · ${Math.round((1 - f.pct) * 100)}% context left`}${f.cost != null ? ` · $${f.cost.toFixed(2)} so far` : ''}${mode ? ` · ${mode}` : ''}${extra}`;
+        const line = f.turn ? `${f.turn.word ?? (f.thinking ? 'Thinking' : 'Working')}… ${ago(f.turn.startedAt)}${f.turn.outTokens ? ` · ↓ ${f.turn.outTokens >= 1000 ? `${(f.turn.outTokens / 1000).toFixed(1)}k` : f.turn.outTokens} tokens` : ''}${f.thinking && f.effort ? ` · thinking with ${f.effort} effort` : ''} · ` : '';
+        return `${f.name} · ${line}${f.thinking ? 'thinking' : what}${f.kind === 'codex' ? '' : ` · ${Math.round((1 - f.pct) * 100)}% context left`}${f.cost != null ? ` · $${f.cost.toFixed(2)} so far` : ''}${mode ? ` · ${mode}` : ''}${extra}`;
       },
       onMove(f, zone, prev, pop) {
         if (!prev) return;

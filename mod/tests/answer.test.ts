@@ -1,6 +1,6 @@
 import { expect, test } from 'claude-code/testing'
 
-import { answerAsides, answerFromDashboard, deliverMessages, offerContext, permitFromDashboard, runSettings, usageNow } from '../hooks/register'
+import { answerAsides, answerFromDashboard, deliverMessages, noteSpinner, offerContext, permitFromDashboard, runSettings, startTurn, turnForBeacon, usageNow } from '../hooks/register'
 
 // The hook bodies only call $.fs.write and $.process.run, so a small stand-in records them.
 type Run = { exitCode: number; stdout: string; stderr: string }
@@ -292,4 +292,17 @@ test('a side question with no answer says why', async () => {
   await answerAsides(f.$, '/repo/state', 's1')
   await settle()
   expect(f.written[0]?.value).toMatchObject({ reason: 'nothing-to-fork' })
+})
+
+test("the working line's word and what the turn is doing go in the beacon while a turn runs", () => {
+  startTurn(null)
+  noteSpinner({ word: 'Slithering', mode: 'thinking' })
+  expect(turnForBeacon()).toBe(null)
+  startTurn(7_000)
+  noteSpinner({ word: 'Slithering', mode: 'thinking', message: null, suffix: '…' })
+  expect(turnForBeacon()).toEqual({ startedAt: 7_000, word: 'Slithering', mode: 'thinking' })
+  noteSpinner({ word: 'Slithering', mode: 'tool-use' })
+  expect(turnForBeacon()?.mode).toBe('tool-use')
+  startTurn(null)
+  expect(turnForBeacon()).toBe(null)
 })

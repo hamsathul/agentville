@@ -98,6 +98,8 @@ export function writeAnswerFile(dir, toolUseId, payload) {
 
 const BEACON_LIVE_MS = 10_000;
 const BEACON_KEEP_MS = 3 * 86_400_000;
+const TURN_MODES = new Set(['requesting', 'responding', 'thinking', 'tool-input', 'tool-use']);
+const EFFORT_LEVEL = /^(?:low|medium|high|xhigh|max)$/;
 
 /** Whether a mod's version is at least `want` (1.2.3 against 1.2.0). */
 export function modAtLeast(version, want) {
@@ -139,6 +141,10 @@ export function readBeacons(dir, now) {
       if (typeof b.sessionId !== 'string' || !b.sessionId) continue;
       const beacon = { version: text(b.version, 20), live: now - (Number(b.at) || 0) < BEACON_LIVE_MS };
       if (b.usage && typeof b.usage === 'object') Object.assign(beacon, { at: Number(b.at) || 0, usage: usageOf(b.usage) });
+      if (b.turn && typeof b.turn === 'object' && num(b.turn.startedAt, 1e14)) { // the terminal's working line: Slithering… while thinking
+        beacon.turn = { startedAt: b.turn.startedAt, ...(text(b.turn.word, 40) ? { word: text(b.turn.word, 40) } : {}), ...(TURN_MODES.has(b.turn.mode) ? { mode: b.turn.mode } : {}) };
+      }
+      if (EFFORT_LEVEL.test(b.effort ?? '')) beacon.effort = b.effort; // the effort its model requests go out with
       beacons.set(b.sessionId, beacon);
     } catch {
       // half-written: next tick

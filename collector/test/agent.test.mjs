@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { DEFAULTS } from '../config.mjs';
-import { applySince, buildAgent, countStates, effortOf, modeOf, nowOf, sortAgents, tasksOf } from '../derive/agent.mjs';
+import { applySince, buildAgent, countStates, effortOf, modeOf, nowOf, sortAgents, tasksOf, turnOf } from '../derive/agent.mjs';
 import { at, modelOf, prompt, reply, title, toolResult, toolUse, turnEnd } from './fixtures.mjs';
 
 const cfg = { ...DEFAULTS };
@@ -250,4 +250,13 @@ test("a session's effort: what /effort last set since it started, else its --eff
   assert.equal(effortOf(m, 'claude --effort low', at(9)), 'low', 'the flag of a process started after it');
   assert.equal(effortOf(modelOf(prompt(0, 'go')), 'claude --resume x --effort high'), 'high');
   assert.equal(effortOf(modelOf(prompt(0, 'go')), 'claude'), undefined, "the model's default");
+});
+
+test("a working session's turn: since when and its tokens from the transcript, the working line's word and mode from its mod", () => {
+  const m = modelOf(prompt(10, 'go'), reply(12, 'x'));
+  assert.deepEqual(turnOf(m, undefined), { startedAt: at(10) });
+  assert.deepEqual(turnOf(m, { turn: { startedAt: at(11), word: 'Slithering', mode: 'thinking' } }), { startedAt: at(11), word: 'Slithering', mode: 'thinking' });
+  const working = buildAgent({ base: base(), model: modelOf(prompt(10, 'go'), toolUse(11, 't1', 'Bash', { command: 'sleep 9' })), now: at(12), cfg, repoOf, home: '/h', beacon: { version: '0.5.0', live: true, effort: 'xhigh' } });
+  assert.equal(working.effort, 'xhigh', 'the effort its requests go out with, from its mod');
+  assert.equal(working.turn.startedAt, at(10));
 });

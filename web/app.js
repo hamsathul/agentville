@@ -28,7 +28,7 @@ function overviewHtml(a) {
         : ' <span class="chip c-plain" data-tip="The Agent Tracker mod in this session isn\'t listening. It starts with the next message you send the session, or with a new session.">dashboard answers off</span>'}</div>
     ${sessionBarHtml(a)}
     ${a.state === 'stale' ? '' : `<div style="margin-top:8px">${metricsHtml(a)}</div>`}
-    <div class="sec">Now</div>${a.now ? `<div class="now mono"><span class="pulse"></span> ${esc(a.now.tool)} ${esc(a.now.summary)} · <b data-since="${a.now.startedAt}"></b></div>` : `<div class="muted">${esc(a.stateReason)}</div>`}
+    <div class="sec">Now</div>${workingLineHtml(a)}${a.now ? `<div class="now mono"><span class="pulse"></span> ${esc(a.now.tool)} ${esc(a.now.summary)} · <b data-since="${a.now.startedAt}"></b></div>` : a.turn ? '' : `<div class="muted">${esc(a.stateReason)}</div>`}
     ${questionHtml(a)}
     ${composeHtml(a)}
     ${asideHtml(a)}
@@ -179,7 +179,7 @@ function farmSideHtml(a) {
     <div class="muted" style="margin-top:4px">${esc(short(a.cwd))}${a.model ? ` · ${esc(a.model)}` : ''}</div>
     ${sessionBarHtml(a)}
     ${askHtml(a)}
-    <div class="sec">Now</div>${now}
+    <div class="sec">Now</div>${workingLineHtml(a)}${a.turn && !a.now ? '' : now}
     ${questionHtml(a)}
     ${composeHtml(a)}
     ${asideHtml(a)}

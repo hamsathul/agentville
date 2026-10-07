@@ -81,8 +81,15 @@ function syncSlots(agents) {
 }
 const colorOf = id => (agentSlots.get(id) === 'other' || !agentSlots.has(id) ? 'var(--s-other)' : `var(--s${agentSlots.get(id)})`);
 
+/** How long since, as Claude Code's working line says it: 12s, 5m 31s, 1h 4m. */
+function lasted(from) {
+  const s = Math.max(0, Math.floor((Date.now() - from) / 1000)), m = Math.floor(s / 60);
+  return m >= 60 ? `${Math.floor(m / 60)}h ${m % 60}m` : m ? `${m}m ${s % 60}s` : `${s}s`;
+}
+
 function updateTimers() {
   for (const el of document.querySelectorAll('[data-since]')) el.textContent = elapsed(Number(el.dataset.since));
+  for (const el of document.querySelectorAll('[data-lasted]')) el.textContent = lasted(Number(el.dataset.lasted));
   for (const el of document.querySelectorAll('[data-until]')) el.textContent = `${Math.max(0, Math.ceil((Number(el.dataset.until) - Date.now()) / 1000))}s`;
   if (snap) {
     const age = Math.max(0, Math.round((Date.now() - snap.generatedAt) / 1000));

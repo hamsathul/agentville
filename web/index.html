@@ -409,6 +409,12 @@ a.chip { text-decoration: none; }
 .px-tools button { display: flex; flex-direction: column; align-items: center; justify-content: flex-start; gap: 3px; min-width: 60px; padding: 6px 7px 5px; background: linear-gradient(#fbf3dc, #eadbb4); border: 2px solid #6b4320; border-radius: 5px; box-shadow: inset 0 -2px 0 rgba(107, 67, 32, .22), 0 3px 0 #4e3626; }
 .px-tools button:active:not(:disabled) { transform: translateY(2px); box-shadow: inset 0 -2px 0 rgba(107, 67, 32, .22), 0 1px 0 #4e3626; }
 .px-ico { display: block; width: 18px; height: 18px; flex: none; background: no-repeat 0 0 / 100% 100%; image-rendering: pixelated; }
+/* a working session's line, as its terminal shows it: ✻ Slithering… (5m 31s · ↓ 28.5k tokens · thinking with xhigh effort) */
+.workline { display: flex; align-items: baseline; gap: 6px; margin-bottom: 6px; font-size: 13px; }
+.workline b { color: #d97757; font-weight: 600; }
+.workline .spin::before { content: '✻'; display: inline-block; color: #d97757; animation: workline-spin 3s linear infinite; }
+@keyframes workline-spin { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) { .workline .spin::before { animation: none; } }
 .asides-box { margin-top: 10px; }
 .aside-row { display: flex; gap: 8px; }
 .aside-row input { flex: 1; min-width: 0; padding: 6px 9px; border: 1px solid var(--line); border-radius: 8px; background: var(--page); color: var(--text); font: inherit; }

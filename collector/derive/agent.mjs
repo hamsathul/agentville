@@ -89,6 +89,17 @@ export function effortOf(model, command, startedAt) {
   return fromFlag ?? logged ?? undefined;
 }
 
+/**
+ * A working session's turn, as its terminal's working line shows it: since when, the tokens
+ * received, and (from its mod) the line's word and what the turn is doing (thinking, responding…).
+ */
+export function turnOf(model, beacon) {
+  const startedAt = beacon?.turn?.startedAt ?? model?.turnStartedAt;
+  if (!startedAt) return undefined;
+  const outTokens = model?.turnTokens?.() ?? 0;
+  return { startedAt, ...(outTokens ? { outTokens } : {}), ...(beacon?.turn?.word ? { word: beacon.turn.word } : {}), ...(beacon?.turn?.mode ? { mode: beacon.turn.mode } : {}) };
+}
+
 export function buildAgent({ base, model, registry, proc, command, cpuHistory = [], childModels = new Map(), offer, beacon, repoOf, now, cfg, home, asides, setting }) {
   const ask = askOf(offer, model, now);
   const derived = base.kind === 'codex'
@@ -122,7 +133,8 @@ export function buildAgent({ base, model, registry, proc, command, cpuHistory = 
     ask,
     mod: beacon ? { version: beacon.version, live: beacon.live } : undefined,
     mode: modeOf(model, command, registry?.startedAt),
-    effort: effortOf(model, command, registry?.startedAt),
+    effort: beacon?.effort ?? effortOf(model, command, registry?.startedAt),
+    turn: derived.state === 'working' ? turnOf(model, beacon) : undefined,
     asides: asides?.length ? asides : undefined, // side questions (/btw) asked from the dashboard, newest first
     setting, // the last model or effort switch asked from the dashboard, and what Claude Code said
     usage: beacon?.usage ? { costUsd: beacon.usage.costUsd, contextPercent: beacon.usage.contextPercent } : undefined, // the plan's windows go in snapshot.plan

@@ -29,6 +29,10 @@ type Waited = { kind: 'answer'; text: string } | { kind: 'withdrawn' } | { kind:
 const MOD_VERSION = '0.5.0'
 
 let latest: TrackerView = EMPTY
+// The terminal's working line (Slithering… while thinking), for the dashboard: when the turn began,
+// the line's word and what the turn is doing; and the effort the model requests go out with.
+let turnNow: { startedAt: number; word?: string; mode?: string } | null = null
+let effortNow: string | null = null
 let selfId = ''
 let previous: TrackerSnapshot | null = null
 const toasted = new Set<string>()
@@ -171,6 +175,20 @@ export async function usageNow($: any) {
   }
 }
 
+/** A turn began (at), or ended (null): the working line starts afresh. */
+export function startTurn(at: number | null) {
+  turnNow = at === null ? null : { startedAt: at }
+}
+/** The turn as the beacon tells it. */
+export const turnForBeacon = () => turnNow
+
+/** What the working line shows now (its word, and thinking, responding or a tool), kept for the beacon. */
+export function noteSpinner(props: any) {
+  if (!turnNow || !props) return
+  if (typeof props.word === 'string') turnNow.word = props.word.slice(0, 40)
+  if (typeof props.mode === 'string') turnNow.mode = props.mode
+}
+
 /** Reads the collector's state for the pane, status line and toasts, and leaves a beacon saying this session's mod is listening (with its usage). */
 async function pollOnce($: any) {
   const now = await $.clock.now()
@@ -183,7 +201,7 @@ async function pollOnce($: any) {
     }
     previous = snapshot
     if (selfId) {
-      await $.fs.write(`${stateDirFor($.plugin.root)}/mods/${selfId}.json`, JSON.stringify({ sessionId: selfId, version: MOD_VERSION, at: now, usage: await usageNow($) }))
+      await $.fs.write(`${stateDirFor($.plugin.root)}/mods/${selfId}.json`, JSON.stringify({ sessionId: selfId, version: MOD_VERSION, at: now, usage: await usageNow($), turn: turnNow, effort: effortNow }))
       await deliverMessages($, stateDirFor($.plugin.root), selfId)
       await runSettings($, stateDirFor($.plugin.root), selfId)
       await answerAsides($, stateDirFor($.plugin.root), selfId)
@@ -306,8 +324,23 @@ export const register: Register = on => {
 
   // After a hot reload session.start may not run again, so the next turn starts the poll.
   on('turn.start', async ($, e, next) => {
+    startTurn(await $.clock.now())
     await ensurePolling($)
     return next(e)
+  })
+  on('turn.complete', async ($, e, next) => {
+    startTurn(null)
+    return next(e)
+  })
+
+  // Watched, never changed: the working line's word and mode, and the main loop's effort.
+  on('ui.render', { component: 'Spinner' }, ($, e, next) => {
+    noteSpinner(e.props)
+    return next(e)
+  }).catch(($, e, next) => next(e))
+  on('turn.step', async function* ($, e, next) {
+    if (!e.agentId && e.effort !== undefined) effortNow = String(e.effort)
+    return yield* next(e) // the request goes out as it was, streamed through
   })
 
   // If answering fails, the question falls back to the terminal dialog as usual.

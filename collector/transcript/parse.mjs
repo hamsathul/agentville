@@ -84,7 +84,7 @@ export function parseEntry(obj) {
         events.push({ kind: 'reply', text: b.text });
       }
     }
-    if (typeof obj.message?.model === 'string') events.push({ kind: 'model', model: obj.message.model, usage: obj.message.usage });
+    if (typeof obj.message?.model === 'string') events.push({ kind: 'model', model: obj.message.model, usage: obj.message.usage, ...(typeof obj.message.id === 'string' ? { id: obj.message.id } : {}) });
   } else if (obj.type === 'queue-operation' && obj.operation === 'enqueue' && typeof obj.content === 'string') {
     events.push(...taskNotices(obj.content)); // a notice that waited for a busy session: queued when the job ended
   } else if (obj.type === 'attachment' && obj.attachment?.type === 'queued_command' && (obj.origin ?? obj.attachment.origin)?.kind === 'peer') {

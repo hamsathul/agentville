@@ -1184,3 +1184,12 @@ test("a session's bar switches its model and effort (in the session, after you c
   await page.change({ dataset: { switchEffort: '', agent: 'r1' }, value: 'max' });
   assert.doesNotMatch(page.el('confirm-text').textContent, /default for new sessions/, 'max is for this session only');
 });
+
+test("a working session shows its terminal's working line: its word, how long, the tokens, and thinking with its effort", () => {
+  const page = loadPage();
+  page.push(richSnapshot([richAgent({ now: undefined, effort: 'xhigh', turn: { startedAt: Date.now() - 331_000, outTokens: 28_500, word: 'Slithering', mode: 'thinking' } })]));
+  const side = page.side();
+  assert.match(side, /<b>Slithering…<\/b> <span class="muted">\(<span data-lasted="\d+">5m 3\ds<\/span> · ↓ 28\.5k tokens · thinking with xhigh effort\)/);
+  page.push(richSnapshot([richAgent({ turn: { startedAt: Date.now() - 12_000, outTokens: 860 } })]));
+  assert.match(page.side(), /<b>Working…<\/b> <span class="muted">\(<span data-lasted="\d+">1\ds<\/span> · ↓ 860 tokens\)/, 'without its mod: from its steps, a tool running');
+});

@@ -298,6 +298,20 @@ function composeHtml(a) {
     <div class="compose-row">${status}<span class="grow"></span><button class="act" id="msg-attach" type="button" data-agent="${esc(a.id)}" data-tip="Attach screenshots (you can also paste or drop them on the box)"${live ? '' : ' disabled'}>📎 Screenshot</button><button class="act primary" id="msg-send" data-agent="${esc(a.id)}"${live ? '' : ' disabled'}>Send</button></div></div>`;
 }
 
+/** Tokens in short, as the working line has them: 860, 28.5k, 1.2M. */
+const tokensShort = n => (n >= 1e6 ? `${(n / 1e6).toFixed(1)}M` : n >= 1000 ? `${(n / 1000).toFixed(1)}k` : String(n));
+/**
+ * A working session's line, as its terminal shows it: Slithering… (5m 31s · ↓ 28.5k tokens · thinking
+ * with xhigh effort). The word and what it is doing come from its mod; without one, from its steps.
+ */
+function workingLineHtml(a) {
+  const t = a.turn;
+  if (!t || a.state !== 'working') return '';
+  const thinking = t.mode ? t.mode === 'thinking' : !a.now;
+  const doing = thinking ? `thinking${a.effort ? ` with ${a.effort} effort` : ''}` : t.mode === 'responding' ? 'responding' : t.mode === 'requesting' ? 'waiting for the model' : '';
+  return `<div class="workline"><span class="spin" aria-hidden="true"></span><b>${esc(t.word ?? (thinking ? 'Thinking' : 'Working'))}…</b> <span class="muted">(<span data-lasted="${t.startedAt}">${lasted(t.startedAt)}</span>${t.outTokens ? ` · ↓ ${tokensShort(t.outTokens)} tokens` : ''}${doing ? ` · ${doing}` : ''})</span></div>`;
+}
+
 /** Side questions (/btw): asked of the session from its conversation so far, answered without adding to it, even while it works. */
 function asideHtml(a) {
   if (a.kind === 'codex') return '';

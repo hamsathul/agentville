@@ -286,3 +286,10 @@ test('task changes and compactions from earlier in the transcript come before th
   assert.deepEqual(m.tasks().map(t => [t.subject, t.status]), [['Early task', 'completed']]);
   assert.equal(m.compactions, 3);
 });
+
+test("the turn's tokens: each reply counted once (its entries repeat the count), from the turn's start", () => {
+  const block = (sec, id, out, type = 'thinking') => JSON.stringify({ type: 'assistant', timestamp: new Date(at(sec)).toISOString(), message: { id, model: 'claude-opus-5-5', role: 'assistant', content: [{ type, text: 'x', thinking: 'x' }], usage: { input_tokens: 1, output_tokens: out } } });
+  const m = modelOf(prompt(0, 'old'), block(1, 'msg_0', 999), turnEnd(2), prompt(10, 'go'), block(11, 'msg_1', 856), block(11, 'msg_1', 856, 'text'), block(14, 'msg_2', 2000));
+  assert.equal(m.turnStartedAt, at(10));
+  assert.equal(m.turnTokens(), 2856);
+});
