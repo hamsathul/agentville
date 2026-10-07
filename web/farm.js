@@ -271,7 +271,8 @@
           <span title="Finished turns delivered to your porch"><b class="basket"></b>${game.harvests} harvested</span>
           <span title="Average context left across active farmers">energy <em class="hbar"><i style="width:${Math.round(energy * 100)}%"></i></em></span>
           ${need ? `<span class="alert">${need} need${need > 1 ? '' : 's'} you</span>` : ''}
-          <button type="button" class="px-motion" data-farm-motion title="Walking and animation on the farm">Motion: ${still ? 'off' : 'on'}</button>`;
+          <button type="button" class="px-motion" data-farm-motion title="Walking and animation on the farm">Motion: ${still ? 'off' : 'on'}</button>
+          <button type="button" class="px-info" data-farm-help title="How to read the farm" aria-label="How to read the farm">i</button>`;
       },
       bg(f) {
         const { H, BOT_TOP, LANE_B } = L;
@@ -406,6 +407,19 @@
         if (more > 0) lab(320, 11, `<button type="button" class="px-more" data-farm-more>+${more} more field${more === 1 ? '' : 's'}</button>`, 'wood');
       },
     };
+  }
+
+  /** The farm's legend, shown in a dialog from the ⓘ button. */
+  function helpHtml() {
+    return `<div class="px-key">
+      <b>Your porch</b><span>a farmer waving a red “!” needs you; a basket means it's your turn</span>
+      <b>Fields</b><span>one per repo; the tool in hand is the current step (almanac = reading, can = shell, hoe = editing, seeds = new file, pigeon = web)</span>
+      <b>Above a field</b><span>hay = uncommitted files, crates = unpushed commits, mailbox = behind the remote</span>
+      <b>Weather</b><span>rainbow = deployed, rain = deploy failed, windmill = deploying; rope = two agents writing one repo</span>
+      <b>Hearts, crops</b><span>context left; golden crops = context nearly full; chickens = subagents, the dog = an Explore subagent</span>
+      <b>Shade tree, scarecrows</b><span>idle agents nap under the tree; stale ones stand as scarecrows; the meadow is for agents outside any repo</span>
+      <b>Click</b><span>a farmer to answer or message it in the sidebar; a field for the files agents touched there</span>
+    </div>`;
   }
 
   /* ---------- the engine: positions, walking, tags, pop-ups, diary, the loop ---------- */
@@ -619,6 +633,10 @@
       if (tag) { e.stopPropagation(); opts.onPickAgent?.(tag.dataset.farmer); return; }
       if (e.target.closest?.('[data-farm-more]')) { e.stopPropagation(); opts.onShowRepos?.(); return; }
       if (e.target.closest?.('[data-farm-motion]')) { e.stopPropagation(); setStill(!still); return; }
+      const help = host.querySelector('.px-help');
+      if (e.target.closest?.('[data-farm-help]')) { e.stopPropagation(); help.showModal(); return; }
+      if (e.target.closest?.('[data-farm-help-close]') || e.target === help) { e.stopPropagation(); help.close(); return; } // × or a click on the backdrop
+      if (help?.contains(e.target)) return;
       if (e.target !== canvas) return;
       const r = canvas.getBoundingClientRect(), x = (e.clientX - r.left) / cs, y = (e.clientY - r.top) / cs;
       for (const [id, b] of bots) if (Math.abs(x - b.x) <= 14 && y >= b.y - th.SH * SC - 1 && y <= b.y + 1) { opts.onPickAgent?.(id); return; }
@@ -640,15 +658,8 @@
         host = el;
         still = opts.still ?? false;
         host.innerHTML = `<div class="px"><div class="px-host"><div class="px-hud"></div><div class="px-stage"><canvas aria-label="Pixel farm: every farmer is an agent, every field a repo"></canvas><div class="px-ov"></div></div></div>
-          <div class="px-under"><div><h4>Farm diary</h4><ol class="px-log"></ol></div>
-          <div><h4>How to read the farm</h4><div class="px-key">
-            <b>Your porch</b><span>a farmer waving a red “!” needs you; a basket means your turn</span>
-            <b>Fields</b><span>one per repo; the tool in hand is the current step (almanac = reading, can = shell, hoe = editing, seeds = new file, pigeon = web)</span>
-            <b>Above a field</b><span>hay = uncommitted files, crates = unpushed commits, mailbox = behind the remote</span>
-            <b>Weather</b><span>rainbow = deployed, rain = deploy failed, windmill = deploying; rope = two agents writing one repo</span>
-            <b>Hearts, crops</b><span>context left; golden crops = context nearly full; chickens = subagents, the dog = an Explore subagent</span>
-            <b>Click</b><span>a farmer to answer or message it; a field for the files agents touched there</span>
-          </div></div></div></div>`;
+          <div class="px-under"><div><h4>Farm diary</h4><ol class="px-log"></ol></div></div></div>
+          <dialog class="px-help" aria-label="How to read the farm"><header><b>How to read the farm</b><button type="button" class="x" data-farm-help-close aria-label="Close">×</button></header>${helpHtml()}</dialog>`;
         canvas = host.querySelector('canvas');
         ctx = canvas.getContext('2d');
         ov = host.querySelector('.px-ov');
@@ -917,6 +928,6 @@
       view.unmount();
       mounted = false;
     },
-    toScene, fieldOf, weatherOf, contextPct, askText,
+    toScene, fieldOf, weatherOf, contextPct, askText, helpHtml,
   };
 })();

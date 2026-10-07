@@ -96,3 +96,9 @@ test("a farmer's colour comes from its id, so the sidebar can match the shirt", 
   assert.equal(farm.colorOf('abc'), SHIRT_OF(farm, 'abc'));
 });
 const SHIRT_OF = (farm, id) => farm.toScene({ agents: [{ id, name: id, state: 'idle', touching: [] }], repos: [], collisions: [] }).farmers[0].shirt;
+
+test('how to read the farm is one block of help, for the info dialog', () => {
+  const html = load().helpHtml();
+  for (const item of ['Your porch', 'Fields', 'Above a field', 'Weather', 'Hearts, crops', 'Click']) assert.match(html, new RegExp(`<b>${item}</b>`));
+  assert.match(html, /^<div class="px-key">/);
+});
