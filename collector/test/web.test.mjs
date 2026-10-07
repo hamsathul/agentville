@@ -986,3 +986,31 @@ test('the farm sidebar has Agent, Files and Diary tabs; the choice is remembered
   f.pick('r1');
   assert.equal(page.el('main').dataset.sideTab, 'agent');
 });
+
+test('a failed deploy chip links to the run on GitHub and says why on hover', () => {
+  const page = loadPage();
+  const snap = richSnapshot([richAgent()]);
+  snap.repos = [{ path: '/w', name: 'w', branch: 'main', agentIds: ['r1'], deploy: { status: 'completed', conclusion: 'failure', sha: '6131f98', workflow: 'Deploy Backend', url: 'https://github.com/o/r/actions/runs/99', reason: 'The job was not started because recent account payments have failed.' } }];
+  page.push(snap);
+  assert.match(page.el('rail').innerHTML, /<a class="chip c-crit" href="https:\/\/github\.com\/o\/r\/actions\/runs\/99" target="_blank" rel="noopener"[^>]*data-tip="Deploy Backend failed at 6131f98: The job was not started because recent account payments have failed\."[^>]*>✗ deploy failed/);
+  snap.repos[0].deploy.url = 'javascript:alert(1)';
+  page.push(snap);
+  assert.doesNotMatch(page.el('rail').innerHTML, /href="javascript/);
+});
+
+test('before the first update the page says it is loading', () => {
+  assert.match(html, /<section id="list"><div class="loading"><span class="spinner"><\/span>[^<]*Loading/);
+  assert.match(html, /<div id="center-body" class="center-body"><div class="loading">/);
+});
+
+test('Show all says it is loading while it fetches', async () => {
+  const page = loadPage({ feeds: { r1: chatty().feed } });
+  page.push(richSnapshot([chatty()]));
+  await page.clickButton('more', { fullFeed: 'r1' });
+  assert.equal(page.el('more').textContent, 'Loading…');
+  assert.match(page.side(), /Show less/);
+});
+
+test('hidden controls stay hidden even when their own style sets a display', () => {
+  assert.match(html, /\[hidden\]\s*\{\s*display:\s*none\s*!important;\s*\}/);
+});

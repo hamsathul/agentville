@@ -57,7 +57,8 @@ Everything stays on your machine. The collector has no dependencies and listens 
 - macOS (it uses launchd, `ps` and `osascript`)
 - Node.js 22 or newer (nvm installs are found automatically)
 - Claude Code; the mod needs a build with function-hook mods (tested on 2.1.291)
-- Optional: `gh`, signed in, to show GitHub Actions deploy status for repos you list
+- Optional: `gh`, signed in, to show GitHub Actions deploy status for repos you list (a failed
+  deploy links to its run and gives GitHub's reason, such as a billing stop)
 
 ## Install
 

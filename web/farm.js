@@ -391,7 +391,10 @@
         for (const s of ST) {
           const f = fieldByKey(s.key);
           const branch = f.branch === '(detached)' ? ' <span style="opacity:.75">?</span>' : f.branch && !isMain(f.branch) ? ` <span style="opacity:.7">${esc(clip(f.branch, 14))}</span>` : '';
-          lab(s.cx, s.rowTop + 50, `${esc(clip(f.name, 18))}${branch}${f.collision ? ' ⚠ crowded' : ''}`, f.collision ? 'bad' : '', `${f.key}${f.branch ? ` · ${f.branch}` : ''}`);
+          const d = f.deploy, why = d?.reason ? `: ${d.reason}` : '';
+          const weather = f.weather === 'rain' ? ' <span class="dep-bad">✗ deploy failed</span>' : f.weather === 'windmill' ? ' <span class="dep-run">◌ deploying</span>' : f.weather === 'rainbow' ? ' <span class="dep-ok">✓ deployed</span>' : '';
+          const tip = [f.key, f.branch && `on ${f.branch}`, d && `${d.workflow ?? 'Deploy'} ${d.status === 'completed' ? d.conclusion : d.status} at ${d.sha}${why}`, 'Click to see the files agents touched here'].filter(Boolean).join(' · ');
+          lab(s.cx, s.rowTop + 50, `<button type="button" class="px-field" data-farm-field="${esc(f.key)}" title="${esc(tip)}">${esc(clip(f.name, 18))}${branch}${weather}${f.collision ? ' ⚠ crowded' : ''}</button>`, f.collision ? 'bad' : '');
           if (f.behind > 0) lab(s.cx - 40, s.rowTop - 17, `↓${f.behind}`, 'cnt', `${f.behind} commit${f.behind === 1 ? '' : 's'} behind the remote`);
           if (f.ahead > 0) lab(s.cx - 23, s.rowTop - 7 - Math.ceil(Math.min(f.ahead, 16) / 8) * 6, `↑${f.ahead}`, 'cnt', `${f.ahead} unpushed commit${f.ahead === 1 ? '' : 's'}`);
           if (f.dirty > 0) lab(s.cx + 30, s.rowTop - 7 - Math.ceil(Math.min(f.dirty, 12) / 9) * 6, `+${f.dirty}`, 'cnt', `${f.dirty} uncommitted file${f.dirty === 1 ? '' : 's'}`);
@@ -416,7 +419,7 @@
       <b>Your porch</b><span>a farmer waving a red “!” needs you; a basket means it's your turn</span>
       <b>Fields</b><span>one per repo; the tool in hand is the current step (almanac = reading, can = shell, hoe = editing, seeds = new file, pigeon = web)</span>
       <b>Above a field</b><span>hay = uncommitted files, crates = unpushed commits, mailbox = behind the remote</span>
-      <b>Weather</b><span>rainbow = deployed, rain = deploy failed, windmill = deploying; rope = two agents writing one repo</span>
+      <b>Weather</b><span>the repo's last deploy: rainbow = deployed, rain = deploy failed (hover its sign for GitHub's reason; the close-up links to the run), windmill = deploying; rope = two agents writing one repo</span>
       <b>Hearts, crops</b><span>context left; golden crops = context nearly full; chickens = subagents, the dog = an Explore subagent</span>
       <b>Shade tree, scarecrows</b><span>idle agents nap under the tree; stale ones stand as scarecrows; the meadow is for agents outside any repo</span>
       <b>Click</b><span>a farmer to answer or message it in the sidebar; a field for the files agents touched there</span>
@@ -428,7 +431,7 @@
   function makePixelView(th) {
     let host = null, canvas = null, ctx = null, ov = null, logEl = null, hudEl = null, bg = null, ro = null;
     let raf = 0, last = 0, T = 0, cs = 1, first = true, timer = 0, layoutKey = null, labelKey = '';
-    let scene = { fields: [], farmers: [] }, overflow = {}, still = false, opts = {}, selectedId = null;
+    let scene = { fields: [], farmers: [] }, overflow = {}, still = false, opts = {}, selectedId = null, got = false; // got: a scene has arrived
     const bots = new Map(), log = [];
 
     function targets() {
@@ -615,6 +618,8 @@
       if (still) redrawStill(); else { sync(false); draw(); }
     }
     function apply(next) {
+      got = true;
+      host?.querySelector('.px-loading')?.remove();
       scene = next;
       th.setScene(next);
       const want = layoutFor(next.fields).key;
@@ -633,6 +638,8 @@
       const tag = e.target.closest?.('[data-farmer]');
       if (tag) { e.stopPropagation(); opts.onPickAgent?.(tag.dataset.farmer); return; }
       if (e.target.closest?.('[data-farm-more]')) { e.stopPropagation(); opts.onShowRepos?.(); return; }
+      const sign = e.target.closest?.('[data-farm-field]');
+      if (sign) { e.stopPropagation(); opts.onOpenField?.(sign.dataset.farmField); return; }
       if (e.target.closest?.('[data-farm-motion]')) { e.stopPropagation(); setStill(!still); return; }
       const help = host.querySelector('.px-help');
       if (e.target.closest?.('[data-farm-help]')) { e.stopPropagation(); help.showModal(); return; }
@@ -660,7 +667,7 @@
         still = opts.still ?? false;
         // The diary goes where the page asks (its sidebar), else under the farm.
         const under = opts.diary ? '' : '<div class="px-under"><div><h4>Farm diary</h4><ol class="px-log"></ol></div></div>';
-        host.innerHTML = `<div class="px"><div class="px-host"><div class="px-hud"></div><div class="px-stage"><canvas aria-label="Pixel farm: every farmer is an agent, every field a repo"></canvas><div class="px-ov"></div></div></div>
+        host.innerHTML = `<div class="px"><div class="px-host"><div class="px-hud"></div><div class="px-stage"><canvas aria-label="Pixel farm: every farmer is an agent, every field a repo"></canvas><div class="px-ov"></div>${got ? '' : '<div class="px-loading"><span class="spinner"></span>Loading the farm…</div>'}</div></div>
           ${under}</div>
           <dialog class="px-help" aria-label="How to read the farm"><header><b>How to read the farm</b><button type="button" class="x" data-farm-help-close aria-label="Close">×</button></header>${helpHtml()}</dialog>`;
         canvas = host.querySelector('canvas');
@@ -807,7 +814,13 @@
         field.dirty ? `<span class="pile"><b class="i-bale"></b>${field.dirty} uncommitted</span>` : '',
         field.ahead ? `<span class="pile"><b class="i-crate"></b>${field.ahead} unpushed</span>` : '',
         field.behind ? `<span class="pile"><b class="i-mail"></b>${field.behind} behind</span>` : '',
-        deploy ? `<span class="pile ${deploy === 'failure' ? 'bad' : ''}">deploy ${esc(deploy)}</span>` : '',
+        deploy ? (() => {
+          const href = typeof field.deploy.url === 'string' && field.deploy.url.startsWith('https://github.com/') ? field.deploy.url : null;
+          const tip = `${field.deploy.workflow ?? 'Deploy'} at ${field.deploy.sha}${field.deploy.reason ? `: ${field.deploy.reason}` : ''}`;
+          const text = `deploy ${esc(deploy)}${href ? ' ↗' : ''}`;
+          return href ? `<a class="pile ${deploy === 'failure' ? 'bad' : ''}" href="${esc(href)}" target="_blank" rel="noopener" title="${esc(tip)}">${text}</a>` : `<span class="pile ${deploy === 'failure' ? 'bad' : ''}" title="${esc(tip)}">${text}</span>`;
+        })() : '',
+        field.deploy?.reason ? `<div class="fv-why">${esc(field.deploy.reason)}</div>` : '',
       ].join('');
       const who = f => f.agents.map(a => `<i style="background:${view.farmerColor(a.id)}" title="${esc(view.farmerName(a.id) ?? a.id)}"></i>`).join('');
       const rows = groups().map(([dir, list]) => `<li class="fv-d">${esc(dir)}</li>` + list.map(f => `<li><button type="button" class="fv-f ${sel === f.path ? 'on' : ''}" data-fv-file="${esc(f.path)}"><span class="k k-${kind(f)}"></span><span class="ell">${esc(nameIn(dir, f.path))}</span><span class="who">${who(f)}</span><time>${ago(f.at)}</time></button></li>`).join('')).join('');

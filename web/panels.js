@@ -79,14 +79,20 @@ function listHtml() {
   return html || '<div class="empty">No agents are running.</div>';
 }
 
+/** A repo's last deploy, linked to its run on GitHub; a failure says why on hover when GitHub said. */
+const runLink = url => (typeof url === 'string' && url.startsWith('https://github.com/') ? url : null);
 function deployChip(d) {
   if (!d) return '';
+  const href = runLink(d.url);
+  const chip = (cls, tip, text) => (href
+    ? `<a class="chip ${cls}" href="${esc(href)}" target="_blank" rel="noopener" data-tip="${esc(tip)}">${text}</a>`
+    : `<span class="chip ${cls}" data-tip="${esc(tip)}">${text}</span>`);
   if (d.status === 'completed') {
-    return d.conclusion === 'success' ? '<span class="chip c-good">✓ deployed</span>'
-      : d.conclusion === 'failure' ? `<span class="chip c-crit" data-tip="${esc(`${d.workflow ?? 'Deploy'} failed at ${d.sha}`)}">✗ deploy failed</span>`
-      : `<span class="chip c-plain">${esc(d.conclusion ?? 'done')}</span>`;
+    return d.conclusion === 'success' ? chip('c-good', `${d.workflow ?? 'Deploy'} passed at ${d.sha}`, '✓ deployed')
+      : d.conclusion === 'failure' ? chip('c-crit', `${d.workflow ?? 'Deploy'} failed at ${d.sha}${d.reason ? `: ${d.reason}` : ''}`, '✗ deploy failed')
+      : chip('c-plain', `${d.workflow ?? 'Deploy'} ${d.conclusion ?? 'finished'} at ${d.sha}`, esc(d.conclusion ?? 'done'));
   }
-  return `<span class="chip c-warn live-dot" data-tip="${esc(`${d.workflow ?? 'Deploy'} ${d.status} · ${d.sha}`)}">deploying</span>`;
+  return chip('c-warn live-dot', `${d.workflow ?? 'Deploy'} ${d.status} · ${d.sha}`, 'deploying');
 }
 
 function railHtml() {

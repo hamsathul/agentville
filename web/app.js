@@ -307,7 +307,11 @@ document.addEventListener('click', async e => {
     $('msg-text')?.focus?.();
     return;
   }
-  if (d.fullFeed !== undefined) { await toggleFullFeed(d.fullFeed); return; }
+  if (d.fullFeed !== undefined) {
+    if (!fullFeeds.has(d.fullFeed)) { el.disabled = true; el.textContent = 'Loading…'; }
+    await toggleFullFeed(d.fullFeed);
+    return;
+  }
   if (d.removeImg !== undefined) { removeImage(d.agent, Number(d.removeImg)); return; }
   if (el.id === 'msg-attach') {
     pickerFor = d.agent;
