@@ -137,8 +137,8 @@
     const x0 = snap(ox + x * SC), y0 = snap(oy + y * SC);
     px(x0, y0, snap(ox + (x + w) * SC) - x0, snap(oy + (y + h) * SC) - y0, c);
   }, { ox, oy });
-  const legFrame = b => (b.walk ? (blink(8) ? 'a' : 'b') : 's');
-  const pixelOrigin = (b, SH) => [snap(Math.round(b.x) - 7 * SC), snap(Math.round(b.y) - SH * SC + (b.walk && blink(8) ? -SC : 0))];
+  const legFrame = b => (b.walk ? walkFrame(PXG.T).legs : 's');
+  const pixelOrigin = (b, SH) => [snap(Math.round(b.x) - 7 * SC), snap(Math.round(b.y) - SH * SC + (b.walk && walkFrame(PXG.T).bob ? -SC : 0))];
   function makeSprite(rows, pal) {
     const c = document.createElement('canvas');
     c.width = rows[0].length;
@@ -212,6 +212,14 @@
   const SKY = { // [top, middle, low] of the sky band by phase
     day: ['#5ab4ff', '#a9dcf7', '#d8f0ff'], dawn: ['#8a5fc0', '#f4b6c2', '#ffb48a'], dusk: ['#5a3b85', '#d55181', '#ffb48a'], night: ['#141a33', '#2c3a5a', '#2c4a85'],
   };
+  /** A puffy cloud, w wide: three bumps on a flat base, lit on top, shaded underneath. */
+  function drawCloud(x, y, w, [light, mid, dark]) {
+    const b = Math.round(w / 3);
+    px(x + 1, y + 4, w - 2, 4, mid); px(x, y + 5, w, 2, mid);
+    px(x + Math.round(w * 0.1), y + 1, b, 4, mid); px(x + Math.round(w * 0.36), y - 1, b + 2, 6, mid); px(x + Math.round(w * 0.66), y + 1, b - 2, 4, mid);
+    px(x + Math.round(w * 0.14), y + 1, b - 4, 1, light); px(x + Math.round(w * 0.4), y - 1, b - 2, 1, light); px(x + Math.round(w * 0.7), y + 1, b - 5, 1, light);
+    px(x + 2, y + 7, w - 4, 1, dark);
+  }
   /** The sky band, every frame: its colours by the hour, stars, the sun or moon on its arc, drifting clouds. */
   function drawSky(sky, T, hot) {
     const [top, mid, low] = SKY[sky.phase];
@@ -230,11 +238,8 @@
       px(x - 3, y - 4, 6, 8, '#f4ecd8'); px(x - 4, y - 3, 8, 6, '#f4ecd8'); px(x, y - 2, 2, 2, '#d4c294'); px(x - 2, y + 1, 1, 1, '#d4c294');
       if (hot) { PXG.ctx.globalAlpha = 0.35; px(x - 7, y - 7, 14, 14, '#ff5a1f'); PXG.ctx.globalAlpha = 1; }
     }
-    const cloud = sky.light > 0.5 ? '#ffffff' : sky.light > 0.1 ? '#f4b6c2' : '#4a4a52';
-    for (const [x0, y, w, sp] of [[60, 3, 22, 2.2], [210, 6, 26, 1.6], [330, 2, 16, 2.8]]) {
-      const x = Math.round(((x0 + T * sp) % (W + 60)) - 30);
-      px(x, y + 1, w, 4, cloud); px(x + 4, y, w - 8, 2, cloud); px(x + 2, y + 4, w - 4, 1, sky.light > 0.5 ? '#dfe9f2' : cloud);
-    }
+    const tones = sky.light > 0.5 ? ['#ffffff', '#f4ecd8', '#c3cbd2'] : sky.light > 0.1 ? ['#ffd8a8', '#f4b6c2', '#d55181'] : ['#5f6b7a', '#3a3a40', '#2c3a5a'];
+    for (const [x0, y, w, sp] of [[60, 3, 24, 2.2], [210, 5, 28, 1.6], [330, 2, 18, 2.8]]) drawCloud(Math.round(((x0 + T * sp) % (W + 60)) - 30), y, w, tones);
   }
   /**
    * Night falls over everything drawn so far (a tint, warm at dawn and dusk), then the lights glow:
@@ -339,6 +344,32 @@
     for (let y = BOT_TOP + 14; y < H - 2; y += 5) for (let x = 290 + (y % 2) * 2; x < 396; x += 6) f(x, y, 1, 2, S.snow ? '#dfe9f2' : '#6d5830');
   }
 
+  /* ---------- particles: dust, splashes, chips, smoke, leaves, snow ---------- */
+
+  /** Moves particles (speed, then gravity), fades them, and drops the ones whose life ran out. */
+  function stepParticles(parts, dt) {
+    for (let i = parts.length - 1; i >= 0; i--) {
+      const p = parts[i];
+      p.life -= dt;
+      if (p.life <= 0) { parts.splice(i, 1); continue; }
+      p.x += p.vx * dt;
+      p.y += p.vy * dt;
+      p.vy += (p.g ?? 0) * dt;
+      if (p.grow) p.size += p.grow * dt;
+      if (p.sway) p.x += Math.sin((p.max - p.life) * p.sway) * 0.3; // leaves and snow drift as they fall
+    }
+    return parts;
+  }
+  function drawParticles(parts) {
+    for (const p of parts) {
+      PXG.ctx.globalAlpha = (p.alpha ?? 1) * Math.min(1, (p.life / p.max) * 2);
+      const s = Math.max(1, Math.round(p.size ?? 1));
+      px(Math.round(p.x - s / 2), Math.round(p.y - s / 2), s, s, p.color);
+    }
+    PXG.ctx.globalAlpha = 1;
+  }
+  const rand = (lo, hi) => lo + Math.random() * (hi - lo);
+
   /* ---------- layout: three columns of fields, then the farmyard ---------- */
 
   const W = 400, X0 = 48, COLW = 117, TOP = 32, ROWH = 74, MAX_FIELDS = 9;
@@ -367,25 +398,48 @@
     bandana: ['..............', '....kkkkkk....', '...khhhhhhk...', '...khbhhbhkhk.', '...khhhhhhk.h.'],
     none: ['..............', '....kkkkkk....', '...krrrrrrk...', '...krrrrrrk...', '...krrrrrrk...'],
   };
-  const farmerRows = look => [
-    ...(HEADS[look.hat] ?? HEADS.straw),
+  // Four views: from the front (walking down or standing), from behind (walking up), and from the
+  // side (walking right; walking left is its mirror). The hat is the same from every side.
+  const FRONT_FACE = look => [
     '...krssssrk...',
     look.extra === 'glasses' ? '...kggkkggk...' : '...kssssssk...',
     look.extra === 'beard' ? '...krssssrk...' : look.extra === 'cheeks' ? '...kpsssspk...' : '...kssssssk...',
     look.extra === 'beard' ? '....krrrrk....' : '....kkkkkk....',
-    '..kCCCCCCCCk..', '.kCCoCCCCoCCk.', '.kCCooooooCCk.', '.ks.oooooo.sk.', `...k${'o'.repeat(6)}k...`,
   ];
+  const BACK_HEAD = ['...krrrrrrk...', '...krrrrrrk...', '...krrrrrrk...', '....kkkkkk....'];
+  const SIDE_FACE = look => [ // facing right: hair at the back, one eye (drawn later), a nose
+    '...krrsssssk..',
+    look.extra === 'glasses' ? '...krssggggk..' : '...krssssssk..',
+    look.extra === 'beard' ? '...krssrrrrrk.' : look.extra === 'cheeks' ? '...krsspssssk.' : '...krsssssssk.',
+    look.extra === 'beard' ? '....krrrrrk...' : '....kkkkkkk...',
+  ];
+  const HIPS = `...k${'o'.repeat(6)}k...`;
+  const FRONT_BODY = ['..kCCCCCCCCk..', '.kCCoCCCCoCCk.', '.kCCooooooCCk.', '.ks.oooooo.sk.', HIPS];
+  const BACK_BODY = ['..kCCCCCCCCk..', '.kCCCoCCoCCCk.', '.kCCooooooCCk.', '.ks.oooooo.sk.', HIPS]; // straps cross on the back
+  const SIDE_BODY = ['...kCCCCCCk...', '...kCCoCCCk...', '...kCooooCk...', '...koooosok...', HIPS];
   const LEGS = { s: ['...koo..ook...', '...kkk..kkk...'], a: ['...koo..ook...', '...kkk........'], b: ['...koo..ook...', '........kkk...'], p: ['......PP......', '......PP......'] };
+  const SIDE_LEGS = { s: ['.....kook.....', '.....kkkk.....'], a: ['....ko..ok....', '...kk....kk...'], b: ['.....koko.....', '....kk..kk....'] };
+  /** A farmer's sprite rows: 14 wide, 16 tall, for a view (down, up, right, left) and a leg frame. */
+  function spriteRows(look, view = 'down', legs = 's') {
+    const head = HEADS[look.hat] ?? HEADS.straw;
+    if (view === 'left') return spriteRows(look, 'right', legs).map(r => [...r].reverse().join(''));
+    if (view === 'right') return [...head, ...SIDE_FACE(look), ...SIDE_BODY, ...(SIDE_LEGS[legs] ?? SIDE_LEGS.s)];
+    if (view === 'up') return [...head, ...BACK_HEAD, ...BACK_BODY, ...(LEGS[legs] ?? LEGS.s)];
+    return [...head, ...FRONT_FACE(look), ...FRONT_BODY, ...(LEGS[legs] ?? LEGS.s)];
+  }
+  /** The walk: foot, pass, other foot, pass (8 steps a second); the body rises on the passes. */
+  const walkFrame = T => { const i = Math.floor(T * 8) % 4; return { legs: ['a', 's', 'b', 's'][i], bob: i % 2 }; };
   const sprites = new Map();
-  function farmerSprite(look, color, scare, legs, up) {
-    const key = `${Object.values(look).join()}|${color}|${scare}|${legs}|${up}`;
+  function farmerSprite(look, color, scare, legs, up, view = 'down') {
+    if (scare) view = 'down';
+    const key = `${Object.values(look).join()}|${color}|${scare}|${legs}|${up}|${view}`;
     if (sprites.has(key)) return sprites.get(key);
     const pal = scare // a scarecrow keeps its farmer's hat and shape, in straw and sacking
       ? { k: '#3a2a1a', h: '#c9a24a', b: '#7a5230', r: '#c9a24a', s: '#d8c48a', g: '#d8c48a', p: '#d8c48a', C: '#8b7a55', o: '#6b5a3a', P: '#6b4320' }
       : { k: K, h: look.hatColor, b: look.band, r: look.hair, s: look.skin, g: '#e6eef5', p: '#e58a8a', C: color, o: look.overalls, P: '#6b4320' };
     for (const key of Object.keys(pal)) if (key !== 'C') pal[key] = ink(pal[key]); // one palette; the shirt is the agent's colour
-    const c = makeSprite(farmerRows(look).concat(LEGS[legs]), pal);
-    if (up) { // one arm up, waving
+    const c = makeSprite(spriteRows(look, view, legs), pal);
+    if (up && view === 'down') { // one arm up, waving
       const g = c.getContext('2d');
       g.clearRect(11, 11, 2, 2); g.fillStyle = color; g.fillRect(12, 5, 1, 6); g.fillStyle = pal.s; g.fillRect(12, 3, 1, 2); g.fillStyle = K; g.fillRect(13, 3, 1, 8);
     }
@@ -623,10 +677,10 @@
   }
 
   /** For tests and the legend: paints one tool (held by a farmer when `look` is given) or one plant on a 2D context. */
-  function paint(ctx, { prop, flag, crop, stage = 0, T = 0, look, land, rows = 1, season }) {
+  function paint(ctx, { prop, flag, crop, stage = 0, T = 0, look, face = 'down', legs = 's', land, rows = 1, season }) {
     Object.assign(PXG, { ctx, T, k: 1 });
     if (land) drawLand(px, layoutFor(Array.from({ length: rows * 3 }, (_, i) => ({ key: `f${i}` }))), season);
-    if (look) ctx.drawImage(farmerSprite(look, SHIRT[0], false, 's', false), 0, 0, 14 * SC, 16 * SC);
+    if (look) ctx.drawImage(farmerSprite(look, SHIRT[0], false, legs, false, face), 0, 0, 14 * SC, 16 * SC);
     if (prop) drawProp(prop, rpAt(0, 0), T, flag);
     if (crop) drawCrop(crop, 10, 20, stage, 0);
   }
@@ -664,7 +718,8 @@
         if (st.kind === 'dry') { px(x, y - 2, 1, 2, '#9c7a4a'); px(x + 1, y - 3, 1, 1, '#9c7a4a'); continue; }
         // a few plants run a stage behind, as in a real field
         const stage = Math.max(0, st.stage - (st.stage > 0 && (i * 7 + k * 3) % 5 === 0 ? 1 : 0));
-        const top = drawCrop(st.crop, x, y, stage, st.busy && (i + k + Math.floor(T * 2)) % 2 ? 1 : 0);
+        const sway = Math.round(Math.sin(T * 1.7 - x * 0.09 + k * 0.6) * (st.busy ? 1 : 0.8)); // the wind goes over the field in waves
+        const top = drawCrop(st.crop, x, y, stage, sway);
         // ripe (context nearly full, ready to harvest): a sparkle now and then
         if (stage === 5 && (i * 7 + k * 3 + Math.floor(T * 3)) % 13 === 0) { px(x, top - 5, 1, 3, '#ffffff'); px(x - 1, top - 4, 3, 1, '#ffffff'); }
       }
@@ -771,6 +826,28 @@
       bg(f, season) { drawLand(f, L, season); },
       ground() { L.ST.forEach(drawPlot); L.ST.forEach(drawPiles); },
       season: () => season,
+      /** Particles a farmer gives off: dust when walking; splashes, clods, sparks, chips from its tool. */
+      emit(f, b, dt, add) {
+        const ox = b.x - 7 * SC, oy = b.y - 16 * SC, T = PXG.T;
+        if (b.walk) {
+          if (Math.random() < dt * 9) add({ x: b.x + rand(-3, 3), y: b.y - 0.5, vx: rand(-5, 5) - (b.face === 'right' ? 6 : b.face === 'left' ? -6 : 0), vy: rand(-9, -3), g: 18, life: 0.5, max: 0.5, size: rand(1, 2.2), color: '#c9a46a', alpha: 0.75 });
+          return;
+        }
+        if (f.state !== 'working') return;
+        const prop = doing(f)?.prop;
+        if (prop === 'can' && Math.random() < dt * 10) add({ x: ox + 17 * SC + rand(-1, 1), y: b.y - 1, vx: rand(-14, 14), vy: rand(-22, -10), g: 90, life: 0.3, max: 0.3, size: 1, color: '#5ab4ff' });
+        if ((prop === 'hoe' || prop === 'rake') && !blink(prop === 'hoe' ? 3 : 2.5) && Math.random() < dt * 8) add({ x: ox + 17 * SC, y: b.y - 1, vx: rand(4, 18), vy: rand(-24, -12), g: 80, life: 0.45, max: 0.45, size: 1.5, color: '#5e3d22' });
+        if (prop === 'hammer' && !blink(3) && Math.random() < dt * 10) add({ x: ox + 18.5 * SC, y: oy + 8 * SC, vx: rand(-20, 20), vy: rand(-26, -8), g: 70, life: 0.3, max: 0.3, size: 1, color: '#ffd43b' });
+        if (prop === 'sickle' && !blink(3) && Math.random() < dt * 8) add({ x: ox + 16 * SC, y: b.y - 3, vx: rand(6, 22), vy: rand(-20, -6), g: 50, life: 0.6, max: 0.6, size: 1.5, color: '#4f8f3a' });
+        if ((prop === 'cart' || prop === 'barrow') && Math.random() < dt * 5) add({ x: ox + 17 * SC, y: b.y, vx: rand(-8, 4), vy: rand(-6, -2), g: 10, life: 0.6, max: 0.6, size: 2, color: '#c9a46a', alpha: 0.6 });
+        if (prop === 'crate' && T % 1.6 < dt) for (let i = 0; i < 3; i++) add({ x: ox + 16 * SC, y: oy + 10 * SC, vx: rand(-10, 10), vy: rand(-18, -8), g: 40, life: 0.4, max: 0.4, size: 1, color: '#f4d58d' });
+      },
+      /** The farm's own particles: smoke from the chimney while agents work. */
+      ambient(dt, add) {
+        if (scene.farmers.some(a => a.state === 'working') && Math.random() < dt * 2.2) {
+          add({ x: 244 + rand(-1, 1), y: L.BOT_TOP - 5, vx: rand(2, 6), vy: rand(-9, -6), g: 0, life: 2.6, max: 2.6, size: 2, grow: 1.4, color: '#c3cbd2', alpha: 0.55 });
+        }
+      },
       /** Soft shadows on the ground under farmers and their animals, so nothing floats. */
       shadows(b) {
         PXG.ctx.globalAlpha = 0.3;
@@ -789,10 +866,15 @@
       drawChar(f, b) {
         const scare = f.state === 'stale', [ox, oy] = pixelOrigin(b, 16), rp = rpAt(ox, oy);
         if (scare) { rp(0, 10, 14, 1, '#6b4320'); rp(-1, 9, 2, 3, '#d8c48a'); rp(13, 9, 2, 3, '#d8c48a'); }
-        PXG.ctx.drawImage(farmerSprite(f.look, SHIRT[f.color], scare, scare ? 'p' : legFrame(b), f.state === 'waiting'), ox, oy, 14 * SC, 16 * SC);
+        const view = b.walk ? b.face ?? 'down' : 'down';
+        PXG.ctx.drawImage(farmerSprite(f.look, SHIRT[f.color], scare, scare ? 'p' : legFrame(b), f.state === 'waiting', view), ox, oy, 14 * SC, 16 * SC);
         if (scare) { rp(5, 6, 1, 1, '#3a2a1a'); rp(8, 6, 1, 1, '#3a2a1a'); rp(5, 7, 4, 1, '#7a5230'); rp(6, 11, 2, 2, '#c97b4a'); return; }
-        const look = b.dir < 0 ? -1 : b.dir > 0 ? 1 : 0, ex = 5 + look;
-        if (f.state === 'idle' && !b.walk) { rp(ex, 6, 1, 1, '#8a5a3a'); rp(ex + 3, 6, 1, 1, '#8a5a3a'); return; } // eyes closed
+        if (view === 'up') return; // from behind: no face
+        if (view === 'left' || view === 'right') { rp(view === 'right' ? 9 : 4, 6, 1, 1, K); return; }
+        const ex = 5;
+        const blinking = ((PXG.T + (f.color ?? 0) * 0.37) % 3.7) < 0.12; // now and then, each farmer on its own beat
+        if ((f.state === 'idle' && !b.walk) || blinking) { rp(ex, 6, 1, 1, '#8a5a3a'); rp(ex + 3, 6, 1, 1, '#8a5a3a'); if (f.state === 'idle') return; } // eyes closed
+        if (blinking) return;
         const ey = f.state === 'working' && !b.walk ? 7 : 6;
         if (f.state === 'turn' && !b.walk) { rp(ex - 1, ey, 2, 1, K); rp(ex + 3, ey, 2, 1, K); rp(ex + 1, 7, 2, 1, '#b5562f'); }
         else { rp(ex, ey, 1, f.state === 'waiting' ? 2 : 1, K); rp(ex + 3, ey, 1, f.state === 'waiting' ? 2 : 1, K); }
@@ -831,18 +913,22 @@
         const T = PXG.T;
         for (const s of L.ST) {
           const weather = fieldByKey(s.key).weather;
-          if (weather === 'rainbow') { // deploy passed
-            PXG.ctx.globalAlpha = 0.55;
-            ['#ff6b6b', '#ffd43b', '#69db7c', '#4dabf7'].forEach((c, j) => { const r = 30 - j * 3; for (let ang = 196; ang <= 344; ang += 5) { const t = ang * Math.PI / 180; px(Math.round(s.cx + Math.cos(t) * r), Math.round(s.rowTop + 22 + Math.sin(t) * r * 0.55), 2, 2, c); } });
+          if (weather === 'rainbow') { // deploy passed: a rainbow across the field
+            PXG.ctx.globalAlpha = 0.5;
+            ['#e04a3a', '#f08a24', '#ffd43b', '#6cc04a', '#3d7be0', '#8a5fc0'].forEach((c, j) => { const r = 44 - j * 2; for (let ang = 182; ang <= 358; ang += 2.5) { const t = ang * Math.PI / 180; px(Math.round(s.cx + Math.cos(t) * r), Math.round(s.rowTop + 30 + Math.sin(t) * r * 0.62), 2, 2, c); } });
             PXG.ctx.globalAlpha = 1;
+            if ((Math.floor(T * 3) + s.cx) % 7 === 0) { const sx = s.cx - 30 + ((s.cx * 13 + Math.floor(T * 3) * 17) % 60), sy = s.rowTop + 8; px(sx, sy - 1, 1, 3, '#ffffff'); px(sx - 1, sy, 3, 1, '#ffffff'); }
           } else if (weather === 'windmill') { // deploy running
             const hx = s.cx - 2, hy = s.rowTop - 10;
             px(hx - 2, hy, 5, 13, '#e8d8b0'); px(hx - 3, hy - 2, 7, 2, '#8a3b2e'); px(hx, hy + 8, 1, 4, '#6b4320');
             for (let i = 0; i < 4; i++) { const t = T * 3 + i * Math.PI / 2; for (let r = 2; r <= 8; r++) px(Math.round(hx + Math.cos(t) * r), Math.round(hy + 1 + Math.sin(t) * r), 1, 1, r > 4 ? '#ffffff' : '#c9b48a'); }
-          } else if (weather === 'rain') { // deploy failed
-            const cx = Math.round(s.cx - 13 + Math.sin(T * 0.6) * 8), cy = s.rowTop + 2;
-            px(cx, cy + 2, 26, 6, '#8c96a0'); px(cx + 4, cy, 12, 3, '#9aa4ad'); px(cx + 14, cy + 1, 9, 2, '#9aa4ad'); px(cx, cy + 7, 26, 1, '#6f7881');
-            for (let i = 0; i < 6; i++) px(cx + 2 + i * 4, cy + 9 + Math.floor((T * 40 + i * 9) % 26), 1, 2, '#5ab4ff');
+          } else if (weather === 'rain') { // deploy failed: a dark cloud drifts over the field and rain falls on all of it
+            const x0 = s.cx - 42, cx = Math.round(s.cx - 20 + Math.sin(T * 0.5) * 10), cy = s.rowTop - 6;
+            for (let i = 0; i < 18; i++) {
+              const ph = (T * 1.6 + (i * 0.37) % 1) % 1, x = x0 + 3 + ((i * 47) % 80) - Math.round(ph * 3), y = cy + 10 + ph * 44;
+              if (ph < 0.92) { px(x, Math.round(y), 1, 3, '#5ab4ff'); } else { px(x - 1, s.rowTop + 46, 3, 1, '#a9dcf7'); } // a drop, then its splash
+            }
+            drawCloud(cx, cy + 1, 42, ['#c3cbd2', '#8a8f96', '#5f6b7a']);
           }
         }
       },
@@ -913,6 +999,8 @@
     const says = new Map(); // farmer id → { el, text }
     const closedSays = new Map(); // farmer id → the text that was closed
     const bots = new Map(), log = [];
+    const parts = []; // particles on the farm now
+    const addPart = p => { if (parts.length < 400) parts.push(p); };
 
     function targets() {
       const out = new Map(), count = {}, used = new Map(), over = { desk: 0, turn: 0, storage: 0, charge: 0, meadow: 0 };
@@ -944,6 +1032,7 @@
       const el = document.createElement('div');
       el.className = `px-pop ${cls}`;
       el.textContent = text;
+      if (cls === 'coin' || cls === 'good') for (let i = 0; i < (cls === 'good' ? 14 : 7); i++) addPart({ x, y: y + 8, vx: rand(-30, 30), vy: rand(-40, -15), g: 60, life: 0.7, max: 0.7, size: rand(1, 2), color: i % 3 ? '#ffd43b' : '#ffffff' }); // a little burst
       el.style.left = `${Math.round(x * cs)}px`;
       el.style.top = `${Math.round(y * cs)}px`;
       ov.appendChild(el);
@@ -1107,9 +1196,10 @@
       if (b.path.length) {
         const [qx, qy] = b.path[0], dx = qx - b.x, dy = qy - b.y, d = Math.hypot(dx, dy), sp = 40 * dt;
         b.dir = Math.abs(dx) > 0.1 ? Math.sign(dx) : 0;
+        if (d > 0.1) b.face = Math.abs(dx) > Math.abs(dy) ? (dx > 0 ? 'right' : 'left') : dy < 0 ? 'up' : 'down';
         if (d <= sp) { b.x = qx; b.y = qy; b.path.shift(); } else { b.x += (dx / d) * sp; b.y += (dy / d) * sp; }
         b.walk = b.path.length > 0 || d > sp;
-      } else { b.walk = false; b.dir = 0; }
+      } else { b.walk = false; b.dir = 0; b.face = 'down'; }
       while (b.kids.length < f.kids.length) b.kids.push({ x: b.x, y: b.y });
       b.kids.length = f.kids.length;
       b.kids.forEach((d, k) => {
@@ -1135,6 +1225,7 @@
       for (const f of scene.farmers) { const b = bots.get(f.id); if (b) items.push([b.y, () => th.drawChar(f, b)]); }
       items.sort((p, q) => p[0] - q[0]).forEach(it => it[1]());
       for (const f of scene.farmers) { const b = bots.get(f.id); if (b) th.drawFx(f, b); }
+      if (!still) drawParticles(parts);
       th.top();
       drawNight(sky, th.layout().H, PXG.lights);
       const picked = selectedId && bots.get(selectedId);
@@ -1183,7 +1274,9 @@
       const dt = last ? Math.min(0.1, (now - last) / 1000) : 0;
       last = now;
       T += dt;
-      for (const f of scene.farmers) { const b = bots.get(f.id); if (b) step(dt, f, b); }
+      for (const f of scene.farmers) { const b = bots.get(f.id); if (b) { step(dt, f, b); th.emit?.(f, b, dt, addPart); } }
+      th.ambient?.(dt, addPart);
+      stepParticles(parts, dt);
       draw();
     }
     function startLoop() { if (!raf && canvas && !still && visible()) { last = 0; raf = requestAnimationFrame(frame); } }
@@ -1597,7 +1690,7 @@
     },
     /** A farmer's shirt colour, so the page can match it. */
     colorOf: id => SHIRT[colorIndex(id)],
-    actionOf, paint, growthStage, STAGES, skyAt, PALETTE, ink,
+    actionOf, paint, growthStage, STAGES, skyAt, PALETTE, ink, spriteRows, walkFrame, stepParticles,
     unmount() {
       if (!view) return;
       field.close();

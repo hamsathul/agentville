@@ -248,3 +248,31 @@ test('every colour the farm paints comes from one palette of ramps', () => {
   assert.deepEqual(strays, []);
   assert.ok(painted.size > 30);
 });
+
+test('a farmer has four views: front, back, and a side each way (one the mirror of the other)', () => {
+  const { spriteRows } = load();
+  const look = { hat: 'cap', hatColor: '#4a74c9', band: '#2c4a85', hair: '#5a3a22', skin: '#e0a878', overalls: '#3c5a99', extra: 'beard' };
+  const views = Object.fromEntries(['down', 'up', 'right', 'left'].map(v => [v, plain(spriteRows(look, v, 's'))]));
+  for (const rows of Object.values(views)) { assert.equal(rows.length, 16); assert.ok(rows.every(r => r.length === 14)); }
+  assert.equal(new Set(Object.values(views).map(r => r.join('|'))).size, 4);
+  assert.deepEqual(views.left, views.right.map(r => [...r].reverse().join('')));
+  assert.ok(views.up.slice(5, 8).every(r => !r.includes('s')), 'from behind: hair, no face');
+  assert.ok(views.down.slice(5, 8).some(r => r.includes('s')));
+});
+
+test('walking takes four steps (foot, pass, other foot, pass), and the body rises on the passes', () => {
+  const { walkFrame } = load();
+  assert.deepEqual([0, 1, 2, 3, 4].map(i => plain(walkFrame(i / 8 + 0.01))), [
+    { legs: 'a', bob: 0 }, { legs: 's', bob: 1 }, { legs: 'b', bob: 0 }, { legs: 's', bob: 1 }, { legs: 'a', bob: 0 },
+  ]);
+});
+
+test('particles move with their speed and gravity, fade, and are gone when their life runs out', () => {
+  const { stepParticles } = load();
+  const parts = [{ x: 0, y: 0, vx: 10, vy: -20, g: 40, life: 1, max: 1 }, { x: 5, y: 5, vx: 0, vy: 0, g: 0, life: 0.05, max: 1 }];
+  stepParticles(parts, 0.1);
+  assert.equal(parts.length, 1);
+  assert.ok(Math.abs(parts[0].x - 1) < 1e-9 && Math.abs(parts[0].y - -2) < 1e-9);
+  assert.ok(Math.abs(parts[0].vy - -16) < 1e-9);
+  assert.ok(Math.abs(parts[0].life - 0.9) < 1e-9);
+});
