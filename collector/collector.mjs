@@ -280,7 +280,7 @@ export async function startCollector({ root, claudeDir = join(homedir(), '.claud
       if (isFull && proc) recordCpu(base.id, now, proc.cpu, proc.rssMb);
       const rec = base.kind === 'codex' ? undefined : sessions.get(base.id);
       const agent = buildAgent({
-        base, model: rec?.model ?? null, registry: base.registry, proc, cpuHistory: cpuHist.get(base.id) ?? [],
+        base, model: rec?.model ?? null, registry: base.registry, proc, command: base.pid ? procs.get(base.pid)?.command : undefined, cpuHistory: cpuHist.get(base.id) ?? [],
         childModels: rec?.childModels, offer: offers.get(base.id), beacon: beacons.get(base.id), repoOf: p => resolver.lookup(p), now, cfg, home,
       });
       agents.push(applySince(agent, prevAgents.get(agent.id), now));

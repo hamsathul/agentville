@@ -130,6 +130,7 @@ export class SessionModel {
         break;
       case 'mode':
         this.permissionMode = ev.mode;
+        this.permissionModeAt = when; // entries without a time count as the last activity before them
         break;
       case 'model':
         if (!ev.model.startsWith('<')) this.model = ev.model;

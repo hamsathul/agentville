@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { DEFAULTS } from '../config.mjs';
-import { applySince, buildAgent, countStates, sortAgents } from '../derive/agent.mjs';
+import { applySince, buildAgent, countStates, modeOf, sortAgents } from '../derive/agent.mjs';
 import { at, modelOf, prompt, reply, title, toolResult, toolUse, turnEnd } from './fixtures.mjs';
 
 const cfg = { ...DEFAULTS };
@@ -206,4 +206,16 @@ test('the snapshot carries a 600-character preview of a long message, marked as 
   assert.equal(p.body, 'short ask');
   assert.equal(p.more, undefined);
   assert.equal(m.feed[0].body, long, 'the model keeps the whole message for /feed');
+});
+
+test("a session's mode: the flag its process started with, unless the transcript recorded one since it started", () => {
+  const started = at(10);
+  const logged = (mode, when) => ({ permissionMode: mode, permissionModeAt: when });
+  assert.equal(modeOf(logged('bypassPermissions', at(5)), 'claude --resume x --permission-mode auto', started), 'auto', 'resumed in auto: the old entry predates it');
+  assert.equal(modeOf(logged('plan', at(20)), 'claude --resume x --permission-mode auto', started), 'plan', 'Shift+Tab after it started, recorded since');
+  assert.equal(modeOf(logged('default', at(5)), 'claude --dangerously-skip-permissions --resume x', started), 'bypassPermissions');
+  assert.equal(modeOf(logged('acceptEdits', at(5)), 'claude', started), 'acceptEdits', 'no flag: what the transcript says');
+  assert.equal(modeOf(null, 'claude --permission-mode=plan', started), 'plan');
+  assert.equal(modeOf(null, 'claude', started), undefined);
+  assert.equal(modeOf(logged('auto', at(5)), undefined, undefined), 'auto');
 });

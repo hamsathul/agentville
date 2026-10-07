@@ -49,7 +49,20 @@ export function askOf(offer, model, now) {
   return undefined;
 }
 
-export function buildAgent({ base, model, registry, proc, cpuHistory = [], childModels = new Map(), offer, beacon, repoOf, now, cfg, home }) {
+/**
+ * A session's permission mode: the flag its process started with (--permission-mode X, or
+ * --dangerously-skip-permissions), unless its transcript recorded a mode since that process
+ * started (Shift+Tab); else what the transcript last recorded. Undefined when neither says.
+ */
+export function modeOf(model, command, startedAt) {
+  const c = String(command ?? '');
+  const fromFlag = /(?:^|\s)--dangerously-skip-permissions(?:\s|$)/.test(c) ? 'bypassPermissions' : c.match(/(?:^|\s)--permission-mode[ =]([A-Za-z]+)/)?.[1];
+  const logged = model?.permissionMode;
+  if (logged && (!fromFlag || !startedAt || (model.permissionModeAt ?? 0) >= startedAt)) return logged;
+  return fromFlag ?? logged ?? undefined;
+}
+
+export function buildAgent({ base, model, registry, proc, command, cpuHistory = [], childModels = new Map(), offer, beacon, repoOf, now, cfg, home }) {
   const ask = askOf(offer, model, now);
   const derived = base.kind === 'codex'
     ? deriveCodexState(cpuHistory, now)
@@ -76,7 +89,7 @@ export function buildAgent({ base, model, registry, proc, cpuHistory = [], child
     sinceHint: derived.since,
     ask,
     mod: beacon ? { version: beacon.version, live: beacon.live } : undefined,
-    mode: model?.permissionMode ?? undefined, // as of the last message you sent it (Shift+Tab since then shows on the next)
+    mode: modeOf(model, command, registry?.startedAt),
     usage: beacon?.usage ? { costUsd: beacon.usage.costUsd, contextPercent: beacon.usage.contextPercent } : undefined, // the plan's windows go in snapshot.plan
     lastActivityAt: model?.lastActivityAt || undefined,
     now: nowOf(model),
