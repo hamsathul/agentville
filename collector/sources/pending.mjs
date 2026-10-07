@@ -1,4 +1,4 @@
-import { mkdirSync, readFileSync, readdirSync, renameSync, statSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, readdirSync, renameSync, statSync, unlinkSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 
 // The mod writes state/pending/<toolUseId>.json when it offers a question or a permission
@@ -132,4 +132,24 @@ export function writeMessageFile(dir, sessionId, text) {
   writeFileSync(`${file}.tmp`, JSON.stringify({ text, at: Date.now() }));
   renameSync(`${file}.tmp`, file);
   return file;
+}
+
+/**
+ * Waits for the mod to take a file it was handed (it deletes or renames it). If that doesn't happen
+ * in time, the file is withdrawn and the failure returned; a file already gone by then was taken
+ * in the last instant, which counts as delivered.
+ */
+export async function confirmDelivery(file, { timeoutMs, failure, exists = existsSync, unlink = unlinkSync }) {
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    if (!exists(file)) return { ok: true };
+    await new Promise(r => setTimeout(r, 100));
+  }
+  try {
+    unlink(file);
+  } catch (err) {
+    if (err?.code === 'ENOENT') return { ok: true };
+    throw err;
+  }
+  return { ok: false, error: failure };
 }

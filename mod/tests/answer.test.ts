@@ -134,36 +134,89 @@ test('with no collector state at all, the mod stays out of the way', async () =>
   expect(offer.windowSec).toBe(0)
 })
 
-function inbox$(files: Record<string, string>) {
+// A small in-memory inbox: `mv` claims a file (failing if it is already gone), `rm` deletes.
+function inbox$(initial: Record<string, string>, submit?: (input: { text: string }) => Promise<unknown>) {
+  const files = new Map(Object.entries(initial))
   const submitted: { text: string; asUser?: boolean }[] = []
-  const removed: string[] = []
+  const events: string[] = []
+  const base = (path: string) => path.split('/').pop() ?? ''
   const $ = {
     fs: {
-      list: async () => Object.keys(files).map(name => ({ name, kind: 'file' })),
+      list: async () => [...files.keys()].map(name => ({ name, kind: 'file' })),
       read: async (path: string) => {
-        const text = files[path.split('/').pop() ?? '']
+        const text = files.get(base(path))
         if (text === undefined) throw new Error('ENOENT')
         return text
       },
     },
-    prompt: { submit: async (input: { text: string; asUser?: boolean }) => { submitted.push(input); return { text: input.text } } },
-    process: { run: async (argv: string[]) => { removed.push(...argv.slice(2)); return ok() } },
+    prompt: {
+      submit: async (input: { text: string; asUser?: boolean }) => {
+        events.push(`submit ${input.text}`)
+        submitted.push(input)
+        return submit ? submit(input) : { text: input.text }
+      },
+    },
+    process: {
+      run: async (argv: string[]) => {
+        if (argv[0] === 'mv') {
+          const from = base(argv[1] ?? '')
+          const text = files.get(from)
+          if (text === undefined) return { exitCode: 1, stdout: '', stderr: 'No such file or directory' }
+          files.delete(from)
+          files.set(base(argv[2] ?? ''), text)
+          events.push(`claim ${from}`)
+          return ok()
+        }
+        if (argv[0] === 'rm') for (const path of argv.slice(2)) files.delete(base(path))
+        return ok()
+      },
+    },
   }
-  return { $, submitted, removed }
+  return { $, files, submitted, events }
 }
+const settle = async () => { for (let i = 0; i < 50; i++) await Promise.resolve() }
 
-test('dashboard chat messages are submitted as the person’s own words, oldest first, then removed', async () => {
+test('dashboard chat messages are all claimed first, then submitted as the person’s own words, oldest first', async () => {
   const f = inbox$({ '2000-b.json': '{"text":"second"}', '1000-a.json': '{"text":"first"}', '3000-c.json.tmp': '{"text":"half"}' })
   await deliverMessages(f.$, '/repo/state', 's1')
   expect(f.submitted).toEqual([{ text: 'first', asUser: true }, { text: 'second', asUser: true }])
-  expect(f.removed).toEqual(['/repo/state/messages/s1/1000-a.json', '/repo/state/messages/s1/2000-b.json'])
+  expect(f.events).toEqual(['claim 1000-a.json', 'claim 2000-b.json', 'submit first', 'submit second'])
+  expect([...f.files.keys()]).toEqual(['3000-c.json.tmp'])
 })
 
 test('an unreadable or empty message is discarded without being sent', async () => {
   const f = inbox$({ '1000-a.json': '{ broken', '2000-b.json': '{"text":"   "}' })
   await deliverMessages(f.$, '/repo/state', 's1')
   expect(f.submitted).toEqual([])
-  expect(f.removed).toEqual(['/repo/state/messages/s1/1000-a.json', '/repo/state/messages/s1/2000-b.json'])
+  expect([...f.files.keys()]).toEqual([])
+})
+
+test('a busy session holding the submit does not get the message twice, and the dashboard sees it taken at once', async () => {
+  const f = inbox$({ '1000-a.json': '{"text":"first"}' }, never)
+  void deliverMessages(f.$, '/repo/state', 's1')
+  await settle()
+  expect(f.files.has('1000-a.json')).toBe(false)
+  await deliverMessages(f.$, '/repo/state', 's1')
+  expect(f.submitted).toEqual([{ text: 'first', asUser: true }])
+})
+
+test('a message sent while an earlier one is still waiting is taken and submitted too', async () => {
+  const f = inbox$({ '1000-a.json': '{"text":"first"}' }, never)
+  void deliverMessages(f.$, '/repo/state', 's1')
+  await settle()
+  f.files.set('2000-b.json', '{"text":"second"}')
+  void deliverMessages(f.$, '/repo/state', 's1')
+  await settle()
+  expect(f.submitted.map(x => x.text)).toEqual(['first', 'second'])
+  expect([...f.files.keys()]).toEqual([])
+})
+
+test('a message the dashboard already withdrew is not sent', async () => {
+  const f = inbox$({ '1000-a.json': '{"text":"late"}' })
+  const list = f.$.fs.list
+  f.$.fs.list = async () => { const names = await list(); f.files.delete('1000-a.json'); return names }
+  await deliverMessages(f.$, '/repo/state', 's1')
+  expect(f.submitted).toEqual([])
 })
 
 test('no inbox folder means nothing to deliver', async () => {

@@ -8,7 +8,7 @@ import vm from 'node:vm';
 const html = readFileSync(fileURLToPath(new URL('../../web/index.html', import.meta.url)), 'utf8');
 const script = html.slice(html.lastIndexOf('<script>') + '<script>'.length, html.lastIndexOf('</script>'));
 
-function loadPage({ stored = {}, storageThrows = false, files = {} } = {}) {
+function loadPage({ stored = {}, storageThrows = false, files = {}, replies = {} } = {}) {
   const posts = [];
   let active = null;
   const els = new Map();
@@ -42,7 +42,7 @@ function loadPage({ stored = {}, storageThrows = false, files = {} } = {}) {
           ? { ok: true, status: 200, json: async () => ({ path: file, text: files[file], mtimeMs: 1, size: files[file].length }) }
           : { ok: false, status: 404, json: async () => ({ error: 'That file no longer exists.' }) };
       }
-      return { ok: true, json: async () => ({ ok: true }) };
+      return { ok: true, json: async () => replies[path] ?? { ok: true } };
     },
     console, Date, Math, JSON, String, Number, Object, Boolean, Map, Set, encodeURIComponent, decodeURIComponent,
   };
@@ -452,4 +452,24 @@ test('markdown renders headings, lists, code, tables and quotes, and never passe
   const unsafe = md('[x](javascript:alert(1)) <img src=x onerror=alert(1)> ![pic](https://e.com/p.png) [q](https://e.com/"onmouseover="alert(1))');
   assert.doesNotMatch(unsafe, /<img|href="javascript|onmouseover="/);
   assert.match(unsafe, /&lt;img src=x onerror=alert\(1\)&gt;/);
+});
+
+test('after Send the box empties and says it was sent, right under the box', async () => {
+  const page = loadPage();
+  page.push(richSnapshot([richAgent({ mod: { version: '0.3.1', live: true }, state: 'working' })]));
+  await page.openAgent('r1');
+  page.edit('input', { tagName: 'TEXTAREA', value: 'Also update the README', dataset: { msgAgent: 'r1' } });
+  await page.clickButton('msg-send', { agent: 'r1' });
+  assert.match(page.side(), /<textarea id="msg-text"[^>]*><\/textarea>/);
+  assert.match(page.side(), /id="msg-status"[^>]*>Queued for busy-one/);
+});
+
+test('if the session did not take the message, the text stays in the box and the reason shows under it', async () => {
+  const page = loadPage({ replies: { '/api/actions/message': { ok: false, error: "The session didn't pick up the message." } } });
+  page.push(richSnapshot([richAgent({ mod: { version: '0.3.1', live: true } })]));
+  await page.openAgent('r1');
+  page.edit('input', { tagName: 'TEXTAREA', value: 'keep me', dataset: { msgAgent: 'r1' } });
+  await page.clickButton('msg-send', { agent: 'r1' });
+  assert.match(page.side(), />keep me<\/textarea>/);
+  assert.match(page.side(), /id="msg-status"[^>]*>Not sent: The session didn(&#39;|')t pick up the message\./);
 });

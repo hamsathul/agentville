@@ -1,9 +1,9 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { existsSync, mkdtempSync, readFileSync, utimesSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdtempSync, readFileSync, unlinkSync, utimesSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { readBeacons, readPending, validateAnswers, writeAnswerFile } from '../sources/pending.mjs';
+import { confirmDelivery, readBeacons, readPending, validateAnswers, writeAnswerFile } from '../sources/pending.mjs';
 
 const NOW = 1_000_000_000;
 const tmp = () => mkdtempSync(join(tmpdir(), 'tracker-pending-'));
@@ -100,4 +100,21 @@ test('an offer whose heartbeat stopped over 10 minutes ago is cleaned up', () =>
   const { bySession, expired } = readPending(dir, NOW);
   assert.equal(bySession.size, 0);
   assert.deepEqual(expired.map(p => p.split('/').pop()), ['toolu_Dead.json']);
+});
+
+test('delivery is confirmed when the mod takes the file, even in the last instant before it is withdrawn', async () => {
+  const dir = tmp();
+  const file = join(dir, 'm.json');
+  put(dir, 'm.json', '{}');
+  setTimeout(() => unlinkSync(file), 150);
+  assert.deepEqual(await confirmDelivery(file, { timeoutMs: 2000, failure: 'nope' }), { ok: true });
+  put(dir, 'm.json', '{}');
+  assert.deepEqual(await confirmDelivery(file, { timeoutMs: 250, failure: 'nope' }), { ok: false, error: 'nope' });
+  assert.equal(existsSync(file), false, 'an untaken file is withdrawn');
+  const lastInstant = await confirmDelivery(file, {
+    timeoutMs: 0, failure: 'nope',
+    exists: () => true,
+    unlink: () => { throw Object.assign(new Error('gone'), { code: 'ENOENT' }); },
+  });
+  assert.deepEqual(lastInstant, { ok: true });
 });

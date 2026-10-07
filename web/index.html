@@ -64,6 +64,8 @@ header.top { position: sticky; top: 0; z-index: 3; display: flex; flex-wrap: wra
 .compose textarea:disabled { opacity: .55; }
 .compose-row { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-top: 6px; font-size: 12px; }
 .compose-row .act { margin: 0; }
+.msg-ok { color: var(--good-text); font-weight: 600; }
+.msg-bad { color: var(--crit); font-weight: 600; }
 .k-waiting { --k: var(--crit); } .k-working { --k: var(--good); } .k-turn { --k: var(--warn); } .k-collide { --k: var(--serious); }
 .fleet { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.5fr) minmax(0, .8fr); gap: 12px; }
 .panel { background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 12px 14px; }
@@ -244,6 +246,7 @@ const STATE_CHIP = { waiting: '❓ Waiting on you', working: '▶ Working', your
 let snap = null;
 const drafts = new Map(); // toolUseId → { picks: Map<question index, Set<label>>, other: Map<question index, text> }
 const msgDrafts = new Map(); // agent id → half-typed chat message
+const msgStatus = new Map(); // agent id → { text, bad, at }: the last send's result, shown under the box
 let selected = null;
 let showStale = false;
 const openChildren = new Map();
@@ -557,8 +560,12 @@ function composeHtml(a) {
   const hint = !live ? "This session isn't listening for dashboard messages yet. Send it anything in its terminal once, or start a new session."
     : a.state === 'working' ? `${esc(a.name)} is busy: your message waits until its current step ends. ⌘↩ sends.`
     : 'Sent as your own message. ⌘↩ sends.';
+  const sent = msgStatus.get(a.id);
+  const status = sent && Date.now() - sent.at < 20_000
+    ? `<span id="msg-status" class="${sent.bad ? 'msg-bad' : 'msg-ok'}">${esc(sent.text)}</span>`
+    : `<span id="msg-status" class="faint">${hint}</span>`;
   return `<div class="compose" style="margin-top:10px"><textarea id="msg-text" data-msg-agent="${esc(a.id)}" rows="2" placeholder="Message ${esc(a.name)}…"${live ? '' : ' disabled'}>${esc(msgDrafts.get(a.id) ?? '')}</textarea>
-    <div class="compose-row"><span class="faint">${hint}</span><span class="grow"></span><button class="act primary" id="msg-send" data-agent="${esc(a.id)}"${live ? '' : ' disabled'}>Send</button></div></div>`;
+    <div class="compose-row">${status}<span class="grow"></span><button class="act primary" id="msg-send" data-agent="${esc(a.id)}"${live ? '' : ' disabled'}>Send</button></div></div>`;
 }
 
 async function sendMessage(agentId, button) {
@@ -574,7 +581,11 @@ async function sendMessage(agentId, button) {
   }
   const r = await post('/api/actions/message', { agentId, text });
   if (r.ok) msgDrafts.delete(agentId);
-  notice(r.ok ? (agent?.state === 'working' ? `Queued for ${agent.name}: it reads it when its current step ends.` : `Sent to ${agent?.name ?? 'the session'}.`) : `Could not send: ${r.error}`);
+  msgStatus.set(agentId, {
+    at: Date.now(),
+    bad: !r.ok,
+    text: r.ok ? (agent?.state === 'working' ? `Queued for ${agent.name}: it reads it when its current step ends.` : `✓ Sent to ${agent?.name ?? 'the session'}.`) : `Not sent: ${r.error}`,
+  });
   render();
 }
 

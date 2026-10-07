@@ -26,7 +26,7 @@ const DASHBOARD_REASON = 'Answered from the Agent Tracker dashboard'
 type Offer = { stateDir: string; sessionId: string; isLive: boolean; windowSec: number; now: number }
 type Waited = { kind: 'answer'; text: string } | { kind: 'withdrawn' } | { kind: 'timeout' }
 
-const MOD_VERSION = '0.3.0'
+const MOD_VERSION = '0.3.1'
 
 let latest: TrackerView = EMPTY
 let selfId = ''
@@ -53,9 +53,11 @@ export async function offerContext($: any): Promise<Offer> {
 }
 
 /**
- * Chat messages sent from the dashboard wait in <state>/messages/<sessionId>/. Each is submitted as
- * the person's own words (queued if a turn is running), oldest first, then removed, which tells
- * the collector it was delivered.
+ * Chat messages sent from the dashboard wait in <state>/messages/<sessionId>/. Each is claimed by
+ * renaming it (which tells the collector it was taken, and stops a later poll sending it again),
+ * then submitted as the person's own words, oldest first. In a busy session the submit only
+ * returns once the queued prompt is taken, so every message is claimed before any is submitted.
+ * If the collector already withdrew a message, the rename fails and it is not sent.
  */
 export async function deliverMessages($: any, stateDir: string, sessionId: string) {
   const inbox = `${stateDir}/messages/${sessionId}`
@@ -65,17 +67,27 @@ export async function deliverMessages($: any, stateDir: string, sessionId: strin
   } catch {
     return
   }
+  const texts: string[] = []
   for (const name of entries.map(e => e.name).filter(n => n.endsWith('.json')).sort()) {
-    const path = `${inbox}/${name}`
+    const claimed = `${inbox}/${name}.claimed`
+    const moved = await $.process.run(['mv', `${inbox}/${name}`, claimed])
+    if (moved.exitCode !== 0) continue
     let text = ''
     try {
-      const value = JSON.parse(await $.fs.read(path))?.text
+      const value = JSON.parse(await $.fs.read(claimed))?.text
       text = typeof value === 'string' ? value.trim() : ''
     } catch {
       text = ''
     }
-    if (text) await $.prompt.submit({ text, asUser: true })
-    await removeFiles($, [path])
+    await removeFiles($, [claimed])
+    if (text) texts.push(text)
+  }
+  for (const text of texts) {
+    try {
+      await $.prompt.submit({ text, asUser: true })
+    } catch (err) {
+      logFailure($, `a message from the dashboard could not be sent (${String(err)}): ${text.slice(0, 200)}`)
+    }
   }
 }
 
