@@ -141,7 +141,7 @@ export async function startCollector({ root, claudeDir = join(homedir(), '.claud
   function computeBases() {
     const bases = new Map();
     for (const r of registry) {
-      bases.set(r.sessionId, { id: r.sessionId, kind: r.kind === 'background' ? 'background' : 'interactive', name: r.name, cwd: r.cwd, pid: r.pid, bridgeSessionId: r.bridgeSessionId, registry: r });
+      bases.set(r.sessionId, { id: r.sessionId, kind: r.kind === 'background' ? 'background' : 'interactive', name: r.name, cwd: r.cwd, pid: r.pid, registry: r });
     }
     for (const c of cliAgents) {
       const known = bases.get(c.sessionId);

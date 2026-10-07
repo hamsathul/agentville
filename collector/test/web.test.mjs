@@ -9,6 +9,8 @@ const html = readFileSync(fileURLToPath(new URL('../../web/index.html', import.m
 const script = html.slice(html.lastIndexOf('<script>') + '<script>'.length, html.lastIndexOf('</script>'));
 
 function loadPage({ stored = {}, storageThrows = false } = {}) {
+  const posts = [];
+  let active = null;
   const els = new Map();
   const el = id => ({ id, title: '', innerHTML: '', textContent: '', className: '', dataset: {}, classList: { add() {}, remove() {}, toggle() {} }, addEventListener() {}, showModal() {}, querySelectorAll: () => [] });
   const docListeners = {};
@@ -18,6 +20,7 @@ function loadPage({ stored = {}, storageThrows = false } = {}) {
     document: {
       getElementById: id => (els.has(id) ? els.get(id) : els.set(id, el(id)).get(id)),
       documentElement: { dataset: {} },
+      get activeElement() { return active; },
       querySelectorAll: () => [],
       addEventListener: (type, fn) => { (docListeners[type] ??= []).push(fn); },
     },
@@ -30,7 +33,7 @@ function loadPage({ stored = {}, storageThrows = false } = {}) {
       getItem: key => { if (storageThrows) throw new Error('denied'); return stored[key] ?? null; },
       setItem: (key, value) => { if (storageThrows) throw new Error('denied'); stored[key] = String(value); },
     },
-    fetch: async () => ({}),
+    fetch: async (path, init) => { posts.push({ path, body: init?.body ? JSON.parse(init.body) : undefined }); return { ok: true, json: async () => ({ ok: true }) }; },
     console, Date, Math, JSON, String, Number, Object, Boolean, Map, Set, encodeURIComponent,
   };
   vm.createContext(ctx);
@@ -43,6 +46,12 @@ function loadPage({ stored = {}, storageThrows = false } = {}) {
     fire: type => (docListeners[type] ?? []).forEach(fn => fn({ target: { closest: () => null } })),
     click: id => Promise.all((docListeners.click ?? []).map(fn => fn({ target: { closest: sel => (sel === 'button' ? ctx.document.getElementById(id) : null) } }))),
     el: id => ctx.document.getElementById(id),
+    side: () => ctx.document.getElementById('side').innerHTML,
+    posts,
+    focus: element => { active = element; },
+    openAgent: id => Promise.all((docListeners.click ?? []).map(fn => fn({ target: { closest: sel => (sel === '.row[data-id]' ? { dataset: { id } } : null) } }))),
+    clickButton: (id, dataset) => { Object.assign(ctx.document.getElementById(id).dataset, dataset); return Promise.all((docListeners.click ?? []).map(fn => fn({ target: { closest: sel => (sel === 'button' ? ctx.document.getElementById(id) : null) } }))); },
+    edit: (type, target) => (docListeners[type] ?? []).forEach(fn => fn({ target: { closest: () => null, ...target } })),
     theme: () => ctx.document.documentElement.dataset.theme,
     stored,
   };
@@ -87,21 +96,6 @@ test('a snapshot waits while the pointer is down, so a click is not lost to a re
   assert.match(page.list(), /second/);
 });
 
-test('a waiting agent with a Remote Control link gets an Answer link in its row and drawer', () => {
-  const page = loadPage();
-  const snap = snapshot('x');
-  snap.counts = { ...snap.counts, waiting: 2, working: 0 };
-  snap.agents = [
-    { ...snap.agents[0], id: 'w1', name: 'linked', state: 'waiting', stateReason: 'question pending', remoteUrl: 'https://claude.ai/code/session_01AbC' },
-    { ...snap.agents[0], id: 'w2', name: 'unlinked', state: 'waiting', stateReason: 'question pending' },
-  ];
-  page.push(snap);
-  const links = page.list().match(/href="https:\/\/claude\.ai\/code\/[^"]+"/g) ?? [];
-  assert.deepEqual(links, ['href="https://claude.ai/code/session_01AbC"']);
-  assert.match(page.ctx.drawerHtml(snap.agents[0]), /Answer in Claude app/);
-  assert.doesNotMatch(page.ctx.drawerHtml(snap.agents[1]), /Answer in Claude app/);
-});
-
 test('the theme button cycles Auto → Light → Dark → Auto and remembers the choice', async () => {
   const page = loadPage();
   assert.equal(page.theme(), undefined);
@@ -134,4 +128,92 @@ test('blocked browser storage falls back to Auto and the button still switches',
 test('the page CSS gives both an explicit dark theme and a system-dark theme that Light overrides', () => {
   assert.match(html, /:root\[data-theme="dark"\]\s*\{/);
   assert.match(html, /@media \(prefers-color-scheme: dark\)\s*\{\s*:root:not\(\[data-theme="light"\]\)\s*\{/);
+});
+
+const askSnapshot = ask => {
+  const snap = snapshot('x');
+  snap.counts = { ...snap.counts, waiting: 1, working: 0 };
+  snap.agents = [{ ...snap.agents[0], id: 'w1', name: 'asker', state: 'waiting', stateReason: 'question pending', ask }];
+  return snap;
+};
+const QUESTION = { kind: 'question', toolUseId: 'toolu_Q1', questions: [
+  { question: 'Pick a colour?', header: 'Colour', multiSelect: false, options: [{ label: 'Red', description: 'warm' }, { label: 'Blue' }] },
+] };
+const pick = (page, value, extra = {}) => page.edit('change', { type: 'radio', value, checked: true, dataset: { tool: 'toolu_Q1', q: '0' }, ...extra });
+
+test("a waiting question shows its options, and Send posts the chosen answer", async () => {
+  const page = loadPage();
+  page.push(askSnapshot(QUESTION));
+  assert.match(page.list(), /answer here/);
+  await page.openAgent('w1');
+  assert.match(page.side(), /Pick a colour\?/);
+  assert.match(page.side(), /value="Red"/);
+  assert.match(page.side(), /value="Blue"/);
+  pick(page, 'Blue');
+  await page.clickButton('ask-send', { agent: 'w1', tool: 'toolu_Q1' });
+  assert.deepEqual(page.posts, [{ path: '/api/actions/answer', body: { agentId: 'w1', toolUseId: 'toolu_Q1', answers: { 'Pick a colour?': 'Blue' } } }]);
+});
+
+test('Send with a question unanswered posts nothing and says why', async () => {
+  const page = loadPage();
+  page.push(askSnapshot(QUESTION));
+  await page.openAgent('w1');
+  await page.clickButton('ask-send', { agent: 'w1', tool: 'toolu_Q1' });
+  assert.deepEqual(page.posts, []);
+  assert.match(page.el('notice').textContent, /Answer every question/);
+});
+
+test('multi-select answers are comma-joined, and text under Other wins', async () => {
+  const page = loadPage();
+  const multi = { kind: 'question', toolUseId: 'toolu_Q1', questions: [
+    { question: 'Which?', header: '', multiSelect: true, options: [{ label: 'A' }, { label: 'B' }] },
+    { question: 'Why?', header: '', multiSelect: false, options: [{ label: 'X' }] },
+  ] };
+  page.push(askSnapshot(multi));
+  await page.openAgent('w1');
+  pick(page, 'A', { type: 'checkbox' });
+  pick(page, 'B', { type: 'checkbox' });
+  page.edit('input', { type: 'text', value: 'my own reason', dataset: { tool: 'toolu_Q1', q: '1' } });
+  await page.clickButton('ask-send', { agent: 'w1', tool: 'toolu_Q1' });
+  assert.deepEqual(page.posts[0].body.answers, { 'Which?': 'A, B', 'Why?': 'my own reason' });
+});
+
+test('a chosen option survives a refresh of the drawer', async () => {
+  const page = loadPage();
+  page.push(askSnapshot(QUESTION));
+  await page.openAgent('w1');
+  pick(page, 'Red');
+  page.push(askSnapshot(QUESTION));
+  assert.match(page.side(), /value="Red"[^>]*checked/);
+});
+
+test('a permission prompt shows what will run, and Allow posts the decision', async () => {
+  const page = loadPage();
+  page.push(askSnapshot({ kind: 'permission', toolUseId: 'toolu_P1', tool: 'Bash', summary: 'mkdir /tmp/x', expiresAt: Date.now() + 10_000 }));
+  await page.openAgent('w1');
+  assert.match(page.side(), /mkdir \/tmp\/x/);
+  assert.match(page.side(), /id="ask-allow"/);
+  assert.match(page.side(), /id="ask-deny"/);
+  await page.clickButton('ask-allow', { agent: 'w1', tool: 'toolu_P1' });
+  assert.deepEqual(page.posts, [{ path: '/api/actions/permit', body: { agentId: 'w1', toolUseId: 'toolu_P1', decision: 'allow' } }]);
+});
+
+test('typing under Other holds refreshes until the box loses focus', () => {
+  const page = loadPage();
+  page.push(snapshot('first'));
+  page.focus({ tagName: 'INPUT', type: 'text' });
+  page.push(snapshot('second'));
+  assert.match(page.list(), /first/);
+  page.focus(null);
+  page.fire('focusout');
+  assert.match(page.list(), /second/);
+});
+
+test('there are no Claude app links any more', async () => {
+  const page = loadPage();
+  const snap = askSnapshot(QUESTION);
+  snap.agents[0].remoteUrl = 'https://claude.ai/code/session_01AbC';
+  page.push(snap);
+  await page.openAgent('w1');
+  assert.doesNotMatch(page.list() + page.side(), /claude\.ai/);
 });

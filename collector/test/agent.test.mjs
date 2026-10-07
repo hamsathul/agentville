@@ -88,13 +88,6 @@ test('countStates counts each state and the collisions', () => {
   assert.deepEqual(countStates([{ state: 'working' }, { state: 'working' }, { state: 'stale' }], [{}]), { waiting: 0, working: 2, yourTurn: 0, stale: 1, idle: 0, collisions: 1 });
 });
 
-test('an agent with a Remote Control session gets a claude.ai link to answer it from', () => {
-  const linked = buildAgent({ base: base({ bridgeSessionId: 'session_01AbC' }), model: null, repoOf, now: at(0), cfg, home: '/h' });
-  assert.equal(linked.remoteUrl, 'https://claude.ai/code/session_01AbC');
-  const unlinked = buildAgent({ base: base(), model: null, repoOf, now: at(0), cfg, home: '/h' });
-  assert.equal(unlinked.remoteUrl, undefined);
-});
-
 test('an offered question that is still pending can be answered from the dashboard', () => {
   const m = modelOf(prompt(0, 'go'), toolUse(5, 'toolu_Q1', 'AskUserQuestion', { questions: [{ question: 'Pick a colour?' }] }));
   const questions = [{ question: 'Pick a colour?', header: 'Colour', multiSelect: false, options: [{ label: 'Red' }, { label: 'Blue' }] }];

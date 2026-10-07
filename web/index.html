@@ -42,9 +42,11 @@ main.with-drawer { grid-template-columns: minmax(0, 1fr) minmax(0, 1.2fr); }
 .row.sel { outline: 2px solid var(--blue); outline-offset: -1px; }
 .row.waiting { border-left: 4px solid var(--red); }
 .row.stale { opacity: .6; }
-.rowwrap { position: relative; }
-.row.has-answer .ticker { padding-right: 160px; }
-.rowwrap .answer { position: absolute; right: 10px; bottom: 7px; margin: 0; background: var(--panel); }
+.ask { border: 1px solid var(--red); background: var(--red-bg); border-radius: 8px; padding: 10px 12px; margin: 10px 0; }
+.ask fieldset { border: 0; padding: 0; margin: 0 0 10px; }
+.ask legend { font-weight: 600; margin-bottom: 4px; padding: 0; }
+.ask label.opt { display: block; margin: 3px 0; cursor: pointer; }
+.ask input.other { width: 100%; margin-top: 4px; padding: 5px 8px; border: 1px solid var(--line); border-radius: 6px; background: var(--panel); color: var(--text); font: inherit; }
 .act.primary { border-color: var(--blue); color: var(--blue); font-weight: 600; }
 .top { display: flex; gap: 8px; align-items: baseline; min-width: 0; }
 .name { font-weight: 600; }
@@ -98,6 +100,7 @@ dialog::backdrop { background: rgba(0, 0, 0, .35); }
 const TOKEN = '__TRACKER_TOKEN__';
 const GROUPS = [['waiting', 'Waiting on you'], ['working', 'Working'], ['yourTurn', 'Your turn'], ['stale', 'Stale (no activity for 24h+)'], ['idle', 'Idle']];
 let snap = null;
+const drafts = new Map(); // toolUseId → { picks: Map<question index, Set<label>>, other: Map<question index, text> }
 let selected = null;
 let showStale = false;
 const openChildren = new Map();
@@ -109,8 +112,6 @@ const ago = ms => (!ms ? '' : Date.now() - ms < 86_400_000 ? clock(ms) : new Dat
 const gb = mb => (mb >= 1024 ? `${(mb / 1024).toFixed(1)} GB` : `${mb} MB`);
 const short = p => String(p ?? '').replace(/^\/Users\/[^/]+/, '~');
 const shellQuote = s => `'${String(s).replace(/'/g, `'\\''`)}'`;
-// Remote Control link to the session in the Claude app; only claude.ai session URLs pass.
-const answerLink = a => (/^https:\/\/claude\.ai\/code\/session_[A-Za-z0-9]+$/.test(a.remoteUrl ?? '') ? a.remoteUrl : '');
 
 function elapsed(from) {
   const s = Math.max(0, Math.floor((Date.now() - from) / 1000));
@@ -120,6 +121,7 @@ function elapsed(from) {
 
 function updateTimers() {
   for (const el of document.querySelectorAll('[data-since]')) el.textContent = elapsed(Number(el.dataset.since));
+  for (const el of document.querySelectorAll('[data-until]')) el.textContent = `${Math.max(0, Math.ceil((Number(el.dataset.until) - Date.now()) / 1000))}s`;
   if (snap) {
     const ram = snap.agents.reduce((t, a) => t + (a.proc?.rssMb ?? 0), 0);
     const age = Math.max(0, Math.round((Date.now() - snap.generatedAt) / 1000));
@@ -143,16 +145,51 @@ function render() {
   updateTimers();
 }
 
+function askLine(a) {
+  if (a.ask?.kind === 'question') return `❓ ${esc(a.ask.questions[0]?.question ?? a.stateReason)}`;
+  if (a.ask?.kind === 'permission') return `🔐 <b>${esc(a.ask.tool)}</b> <span class="mono">${esc(a.ask.summary)}</span>`;
+  return `❓ ${esc(a.stateReason)}`;
+}
+
 function rowHtml(a) {
-  const ticker = a.state === 'waiting' ? `❓ ${esc(a.stateReason)} · <span data-since="${a.stateSince}"></span>`
+  const ticker = a.state === 'waiting' ? `${askLine(a)} · <span data-since="${a.stateSince}"></span>`
     : a.now ? `<span class="pulse"></span><span class="mono">${esc(a.now.tool)} ${esc(a.now.summary)} · <span data-since="${a.now.startedAt}"></span></span>`
     : a.state === 'yourTurn' ? esc(a.lastReply ?? 'finished')
     : esc(a.stateReason);
-  const right = a.state === 'stale' ? `<span class="muted">${ago(a.lastActivityAt)}</span>` : a.proc ? `<span class="muted">${gb(a.proc.rssMb)}</span>` : '';
-  const link = a.state === 'waiting' ? answerLink(a) : '';
-  return `<div class="rowwrap"><button class="row ${a.state}${a.id === selected ? ' sel' : ''}${link ? ' has-answer' : ''}" data-id="${esc(a.id)}">
+  const right = a.ask ? '<span class="pill p-waiting">answer here</span>'
+    : a.state === 'stale' ? `<span class="muted">${ago(a.lastActivityAt)}</span>`
+    : a.proc ? `<span class="muted">${gb(a.proc.rssMb)}</span>` : '';
+  return `<button class="row ${a.state}${a.id === selected ? ' sel' : ''}" data-id="${esc(a.id)}">
     <div class="top"><span class="name">${esc(a.name)}</span><span class="muted">${esc(short(a.cwd))}${a.kind === 'background' ? ' · bg' : ''}</span><span class="grow"></span>${right}</div>
-    <div class="ticker">${ticker}</div></button>${link ? `<a class="act primary answer" href="${esc(link)}" target="_blank" rel="noopener">Answer in Claude app</a>` : ''}</div>`;
+    <div class="ticker">${ticker}</div></button>`;
+}
+
+function draftFor(toolUseId) {
+  if (!drafts.has(toolUseId)) drafts.set(toolUseId, { picks: new Map(), other: new Map() });
+  return drafts.get(toolUseId);
+}
+
+/** The answer form at the top of a waiting agent's drawer. */
+function askHtml(a) {
+  const ask = a.ask;
+  if (!ask) return '';
+  const ids = `data-agent="${esc(a.id)}" data-tool="${esc(ask.toolUseId)}"`;
+  if (ask.kind === 'permission') {
+    return `<div class="ask"><div class="sec" style="margin-top:0">Permission needed</div>
+      <div><b>${esc(ask.tool)}</b> wants to run:</div><div class="now mono" style="margin:4px 0 6px">${esc(ask.summary)}</div>
+      <div class="muted" style="margin-bottom:6px">Moves to the terminal prompt in <b data-until="${ask.expiresAt}"></b></div>
+      <button class="act primary" id="ask-allow" ${ids}>Allow</button><button class="act" id="ask-deny" ${ids}>Deny</button></div>`;
+  }
+  const d = draftFor(ask.toolUseId);
+  const questions = ask.questions.map((q, qi) => {
+    const picks = d.picks.get(qi) ?? new Set();
+    const type = q.multiSelect ? 'checkbox' : 'radio';
+    const field = `data-tool="${esc(ask.toolUseId)}" data-q="${qi}"`;
+    const options = q.options.map(o => `<label class="opt"><input type="${type}" name="${esc(ask.toolUseId)}-${qi}" value="${esc(o.label)}" ${field}${picks.has(o.label) ? ' checked' : ''}> ${esc(o.label)}${o.description ? ` <span class="muted">— ${esc(o.description)}</span>` : ''}</label>`).join('');
+    return `<fieldset><legend>${q.header ? `<span class="pill p-idle">${esc(q.header)}</span> ` : ''}${esc(q.question)}</legend>${options}
+      <input type="text" class="other" placeholder="Other…" ${field} value="${esc(d.other.get(qi) ?? '')}"></fieldset>`;
+  }).join('');
+  return `<div class="ask"><div class="sec" style="margin-top:0">Needs your answer</div>${questions}<button class="act primary" id="ask-send" ${ids}>Send answer</button></div>`;
 }
 
 function listHtml() {
@@ -210,6 +247,7 @@ function drawerHtml(a) {
     : '<span class="muted">No process found.</span>';
   const resume = a.kind === 'codex' ? '' : `cd ${shellQuote(a.cwd)} && claude --resume ${a.id}`;
   return `<div class="top"><span class="name" style="font-size:15px">${esc(a.name)}</span><span class="pill p-${a.state}">${esc(a.state)} · <span data-since="${a.stateSince}"></span></span><span class="grow"></span><button class="act" id="close-drawer">✕</button></div>
+    ${askHtml(a)}
     <div class="muted">${esc(short(a.cwd))} · ${esc(a.kind)}${a.model ? ` · ${esc(a.model)}` : ''}${a.contextTokens ? ` · context ${Math.round(a.contextTokens / 1000)}k tokens` : ''}</div>
     <div class="sec">Now</div>${a.now ? `<div class="now mono"><span class="pulse" style="display:inline-block"></span> ${esc(a.now.tool)} ${esc(a.now.summary)} · <b data-since="${a.now.startedAt}"></b></div>` : `<div class="muted">${esc(a.stateReason)}</div>`}
     ${a.lastPrompt ? `<div class="sec">Last prompt</div><div>“${esc(a.lastPrompt)}”</div>` : ''}
@@ -218,7 +256,6 @@ function drawerHtml(a) {
     <div class="sec">Touching</div>${touching}
     <div class="sec">Process</div><div>${proc}</div>
     <div class="sec">Actions</div>
-    ${answerLink(a) ? `<a class="act primary" href="${esc(answerLink(a))}" target="_blank" rel="noopener">${a.state === 'waiting' ? 'Answer in Claude app' : 'Open in Claude app'}</a>` : ''}
     ${a.kind === 'background' && a.cliId ? '<button class="act" id="act-open">Open session</button>' : ''}
     ${resume ? `<button class="act" id="act-copy" data-text="${esc(resume)}">Copy resume command</button>` : ''}
     ${a.kind === 'codex' ? '' : `<a class="act" href="/agent/${encodeURIComponent(a.id)}/transcript" target="_blank" rel="noopener">Full transcript</a>`}`;
@@ -266,6 +303,13 @@ document.addEventListener('click', async e => {
   }
   const el = e.target.closest('button');
   if (!el) return;
+  if (el.id === 'ask-send') { await sendAnswer(el.dataset.agent, el.dataset.tool); return; }
+  if (el.id === 'ask-allow' || el.id === 'ask-deny') {
+    const decision = el.id === 'ask-allow' ? 'allow' : 'deny';
+    const r = await post('/api/actions/permit', { agentId: el.dataset.agent, toolUseId: el.dataset.tool, decision });
+    notice(r.ok ? (decision === 'allow' ? 'Allowed.' : 'Denied.') : `Could not send: ${r.error}`);
+    return;
+  }
   if (el.id === 'theme-toggle') { theme = THEMES[(THEMES.indexOf(theme) + 1) % THEMES.length]; saveTheme(theme); applyTheme(theme); }
   else if (el.id === 'close-drawer') { selected = null; render(); }
   else if (el.id === 'toggle-stale') { showStale = !showStale; render(); }
@@ -288,12 +332,16 @@ document.addEventListener('click', async e => {
 // snapshot waits while text is selected or the pointer is down.
 let isPointerDown = false;
 let isRenderPending = false;
+const isTyping = () => {
+  const el = document.activeElement;
+  return Boolean(el && (el.tagName === 'TEXTAREA' || (el.tagName === 'INPUT' && el.type === 'text')));
+};
 const hasSelection = () => {
   const s = window.getSelection?.();
   return Boolean(s && !s.isCollapsed && s.toString() !== '');
 };
 function requestRender() {
-  if (isPointerDown || hasSelection()) {
+  if (isPointerDown || hasSelection() || isTyping()) {
     isRenderPending = true;
     return;
   }
@@ -301,6 +349,46 @@ function requestRender() {
   render();
 }
 document.addEventListener('pointerdown', () => { isPointerDown = true; });
+document.addEventListener('focusout', () => setTimeout(() => { if (isRenderPending) requestRender(); }, 0));
+
+// Answer drafts survive the drawer re-rendering on every snapshot.
+document.addEventListener('change', e => {
+  const t = e.target;
+  if (!t?.dataset?.tool || t.dataset.q === undefined || t.type === 'text') return;
+  const d = draftFor(t.dataset.tool);
+  const qi = Number(t.dataset.q);
+  const picks = t.type === 'radio' ? new Set() : new Set(d.picks.get(qi) ?? []);
+  if (t.checked) picks.add(t.value);
+  else picks.delete(t.value);
+  d.picks.set(qi, picks);
+});
+document.addEventListener('input', e => {
+  const t = e.target;
+  if (!t?.dataset?.tool || t.dataset.q === undefined || t.type !== 'text') return;
+  draftFor(t.dataset.tool).other.set(Number(t.dataset.q), t.value);
+});
+
+async function sendAnswer(agentId, toolUseId) {
+  const agent = snap?.agents.find(a => a.id === agentId);
+  const ask = agent?.ask;
+  if (ask?.kind !== 'question' || ask.toolUseId !== toolUseId) {
+    notice('That question is no longer waiting.');
+    return;
+  }
+  const d = draftFor(toolUseId);
+  const answers = {};
+  for (const [qi, q] of ask.questions.entries()) {
+    const value = (d.other.get(qi) ?? '').trim() || [...(d.picks.get(qi) ?? [])].join(', ');
+    if (!value) {
+      notice('Answer every question first.');
+      return;
+    }
+    answers[q.question] = value;
+  }
+  const r = await post('/api/actions/answer', { agentId, toolUseId, answers });
+  if (r.ok) drafts.delete(toolUseId);
+  notice(r.ok ? `Answer sent to ${agent.name}.` : `Could not send: ${r.error}`);
+}
 document.addEventListener('pointerup', () => {
   isPointerDown = false;
   setTimeout(() => { if (isRenderPending) requestRender(); }, 0);

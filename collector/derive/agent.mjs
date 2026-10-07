@@ -53,7 +53,6 @@ export function buildAgent({ base, model, registry, proc, cpuHistory = [], child
     id: base.id,
     kind: base.kind,
     cliId: base.cliId,
-    remoteUrl: base.bridgeSessionId ? `https://claude.ai/code/${base.bridgeSessionId}` : undefined,
     name: base.name || model?.title || basename(base.cwd || '') || base.id,
     title: model?.title ?? undefined,
     cwd: base.cwd,

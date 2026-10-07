@@ -8,11 +8,11 @@ how much CPU and memory each one uses.
 - **Dashboard** at <http://localhost:7777>, served only to this machine. Agents waiting on
   you are listed first, then agents working (each with a live tool ticker), then finished ones.
   Click an agent to see its activity feed, subagents, the repos it touched and its process tree.
-  A waiting agent whose session has Remote Control on gets an **Answer in Claude app** button
-  that opens that session on claude.ai, where you can answer its question or permission prompt.
-- **Claude Code mod:** `/agents` opens a side pane, the status line shows
-  `⚑ 1 waiting · 2 working`, toasts appear when another agent needs you, and waiting agents
-  have an **Answer** button.
+  **Answer from the dashboard:** a waiting agent shows its question with clickable options (or
+  an "Other" box), and a permission prompt shows the command with **Allow** / **Deny**.
+- **Claude Code mod:** `/tracker` opens a side pane, the status line shows
+  `⚑ 1 waiting · 2 working`, and toasts appear when another agent needs you. The mod is also
+  what lets the dashboard answer a session's questions and permission prompts.
 - **macOS notifications** when an agent needs you, finishes, collides with another agent in
   the same repo, or runs hot on CPU or memory. Each event notifies once.
 
@@ -44,7 +44,7 @@ To load the mod in every Claude Code session, add the mod folder to `~/.claude/s
 { "env": { "CLAUDE_CODE_PLUGIN_DIRS": "/path/to/agent-tracker/mod" } }
 ```
 
-New sessions then have `/agents`. The mod reads `state/state.json`, which the collector writes
+New sessions then have `/tracker`. The mod reads `state/state.json`, which the collector writes
 next to the `mod/` folder.
 
 ## Commands
@@ -61,6 +61,7 @@ Without a `config.json`, the defaults in `config.example.json` apply.
 | `pollMs`, `agentsCliPollMs`, `gitPollMs`, `deployPollMs` | How often each source is read |
 | `staleAfterHours` | Quiet this long and an agent counts as stale (default 24) |
 | `collisionWindowMin` | How far back writes count towards a collision (default 30) |
+| `permissionDashboardSec` | How long a permission prompt is offered on the dashboard before the terminal shows it (default 15; 0 = terminal only) |
 | `permissionGuessSec` | A tool call with no result for this long, with an idle process, shows as "probably a permission prompt" |
 | `memoryAlertGb`, `cpuAlertPct`, `cpuAlertSustainSec` | Resource alert thresholds |
 | `notify` | Turn each notification type on or off: `waiting`, `collision`, `yourTurn`, `memory`, `cpu` |
@@ -94,6 +95,9 @@ stream. Action endpoints require a per-install token and a same-origin request.
 
 ## Known limits
 
+- Only sessions that load the mod can be answered from the dashboard. While a permission prompt
+  is offered there, the terminal shows a spinner; after `permissionDashboardSec` it shows the
+  normal prompt.
 - "Probably a permission prompt" is a guess: a tool call with no result for 20 s while the
   process is idle. A long, quiet network wait can trigger it.
 - Background shell jobs and workflows show as `unknown` once started; their completion isn't

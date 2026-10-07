@@ -39,8 +39,6 @@ export function readRegistry(dir, isAlive = isPidAlive) {
       status: entry.status ?? '',
       version: entry.version ?? '',
       startedAt: entry.startedAt ?? 0,
-      // Remote Control session: answerable from the Claude app at claude.ai/code/<id>.
-      bridgeSessionId: /^session_[A-Za-z0-9]+$/.test(entry.bridgeSessionId ?? '') ? entry.bridgeSessionId : undefined,
     });
   }
   return out;
