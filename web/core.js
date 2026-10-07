@@ -85,6 +85,6 @@ function updateTimers() {
   for (const el of document.querySelectorAll('[data-until]')) el.textContent = `${Math.max(0, Math.ceil((Number(el.dataset.until) - Date.now()) / 1000))}s`;
   if (snap) {
     const age = Math.max(0, Math.round((Date.now() - snap.generatedAt) / 1000));
-    $('meta').textContent = `tracker ${snap.collector.cpu}% CPU · ${snap.collector.rssMb} MB · updated ${age}s ago`;
+    $('meta').textContent = $('meta').title = `tracker ${snap.collector.cpu}% CPU · ${snap.collector.rssMb} MB · updated ${age}s ago`; // the title shows it whole when the header cuts it
   }
 }

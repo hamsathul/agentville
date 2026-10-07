@@ -17,6 +17,7 @@ import { listFolder, parsePorcelain, readFolderFile } from './sources/files.mjs'
 import { repoFiles } from './derive/repo-files.mjs';
 import { checkImages, pruneUploads, saveImages, withScreenshots } from './sources/uploads.mjs';
 import { compactSummary, memoryFiles, scratchpadOf } from './sources/memory.mjs';
+import { SESSION_ID, claudeCommand, listSessions, projectsOf, terminalScript } from './sources/sessions.mjs';
 import { applySince, buildAgent, countStates, sortAgents } from './derive/agent.mjs';
 import { findCollisions } from './derive/collisions.mjs';
 import { reposFor } from './derive/repos.mjs';
@@ -56,7 +57,7 @@ function loadToken(path) {
   return token;
 }
 
-export async function startCollector({ root, claudeDir = join(homedir(), '.claude'), claudeBin = 'claude', home = homedir(), scratchBase = `/private/tmp/claude-${process.getuid?.() ?? 0}`, port: portOverride, deliveryTimeoutMs = 5000, notify = notifyMac, log = makeLogger(join(root, 'logs')) }) {
+export async function startCollector({ root, claudeDir = join(homedir(), '.claude'), claudeBin = 'claude', home = homedir(), scratchBase = `/private/tmp/claude-${process.getuid?.() ?? 0}`, port: portOverride, deliveryTimeoutMs = 5000, notify = notifyMac, launch = args => run('osascript', args, { timeoutMs: 15_000 }), log = makeLogger(join(root, 'logs')) }) {
   const stateDir = join(root, 'state');
   const pendingDir = join(stateDir, 'pending');
   const answersDir = join(stateDir, 'answers');
@@ -467,7 +468,40 @@ export async function startCollector({ root, claudeDir = join(homedir(), '.claud
     return ask && ask.kind === kind && ask.toolUseId === toolUseId ? ask : undefined;
   };
 
+  const sessionCache = new Map();
+  const isDir = p => { try { return statSync(p).isDirectory(); } catch { return false; } };
+  /** Past sessions to resume and the folders to start a new one in (only ones that still exist). */
+  async function pastSessions() {
+    const live = new Set(snapshot?.agents.map(a => a.id) ?? []);
+    const sessions = listSessions({ claudeDir, cache: sessionCache }).map(s => ({ ...s, live: live.has(s.id) }));
+    return { terminal: cfg.terminal === 'iTerm' ? 'iTerm' : 'Terminal', projects: projectsOf(sessions).filter(p => isDir(p.cwd)), sessions };
+  }
+  const openTerminal = async command => {
+    const res = await launch(terminalScript(cfg.terminal, command));
+    const app = cfg.terminal === 'iTerm' ? 'iTerm' : 'Terminal';
+    if (res.code === 0) return { ok: true, terminal: app };
+    if (/-1743|not authori[sz]ed/i.test(res.stderr)) return { ok: false, error: `macOS stopped the tracker from opening ${app}. Allow it in System Settings › Privacy & Security › Automation, then try again.` };
+    return { ok: false, error: res.stderr.trim().slice(0, 200) || 'The terminal did not open.' };
+  };
+
   const actions = {
+    /** Opens a terminal window running claude in a listed folder, or resuming a past session that is not running. */
+    async start(body) {
+      const known = await pastSessions();
+      let cwd, resume;
+      if (body?.resume !== undefined) {
+        const s = typeof body.resume === 'string' && SESSION_ID.test(body.resume) ? known.sessions.find(x => x.id === body.resume) : undefined;
+        if (!s) return { ok: false, error: 'That session was not found.' };
+        if (s.live) return { ok: false, error: 'That session is already running.' };
+        if (!s.cwd || !isDir(s.cwd)) return { ok: false, error: 'The folder that session ran in no longer exists.' };
+        ({ cwd } = s);
+        resume = s.id;
+      } else {
+        cwd = known.projects.find(p => p.cwd === body?.cwd)?.cwd;
+        if (!cwd) return { ok: false, error: 'Pick one of the listed folders.' };
+      }
+      return openTerminal(claudeCommand(cwd, resume));
+    },
     async message(body) {
       const agent = snapshot?.agents.find(a => a.id === body?.agentId);
       if (!agent || agent.kind === 'codex') return { ok: false, error: 'That session was not found.' };
@@ -498,8 +532,7 @@ export async function startCollector({ root, claudeDir = join(homedir(), '.claud
       const agent = ID_RE.test(id) ? snapshot?.agents.find(a => a.id === id || a.cliId === id) : undefined;
       if (!agent) return { ok: false, error: 'unknown agent' };
       if (agent.kind !== 'background' || !agent.cliId || !ID_RE.test(agent.cliId)) return { ok: false, error: 'only background sessions can be opened from here' };
-      const res = await run('osascript', ['-e', 'on run argv', '-e', 'tell application "Terminal"', '-e', 'activate', '-e', 'do script ("claude attach " & item 1 of argv)', '-e', 'end tell', '-e', 'end run', agent.cliId]);
-      return res.code === 0 ? { ok: true } : { ok: false, error: res.stderr.trim().slice(0, 200) };
+      return openTerminal(`claude attach ${agent.cliId}`); // cliId is [A-Za-z0-9-] only
     },
     async rm(ids) {
       const results = [];
@@ -525,7 +558,7 @@ export async function startCollector({ root, claudeDir = join(homedir(), '.claud
     port: portOverride ?? cfg.port, token, webFile: join(root, 'web', 'index.html'),
     getSnapshot: () => snapshot,
     getFeed: (id, limit) => modelFor(id)?.history(limit) ?? null,
-    getTranscriptHtml, getDoc: readDoc, listFiles, readFile, repoTouched, actions, log,
+    getTranscriptHtml, getDoc: readDoc, listFiles, readFile, repoTouched, actions, pastSessions, log,
   });
   const port = await server.listen();
 
@@ -561,5 +594,5 @@ export async function startCollector({ root, claudeDir = join(homedir(), '.claud
     await server.close();
   }
 
-  return { port, getSnapshot: () => snapshot, reloadConfig, actions, readDoc, listFiles, readFile, repoTouched, stop };
+  return { port, getSnapshot: () => snapshot, reloadConfig, actions, pastSessions, readDoc, listFiles, readFile, repoTouched, stop };
 }

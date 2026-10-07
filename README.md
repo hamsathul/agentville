@@ -46,6 +46,11 @@ how much CPU and memory each one uses.
   (who went where). Speech bubbles over the farmers show what each last said (its question when
   it waits on you); × hides one to a 💬 that shows it again, and the Bubbles switch hides or shows them all. Zoom with − / + or ⌘/Ctrl + scroll. Click a field for a close-up of the files agents touched there.
   It pauses when hidden and follows the system's reduce-motion setting.
+- **Start or resume sessions** (＋ Session in the top bar): start Claude Code in a folder you
+  have worked in, or resume a session from the last 30 days by its title and last message. It
+  opens a new Terminal or iTerm window (the `terminal` setting) running `claude` or
+  `claude --resume <id>` there; sessions still running are marked and not offered. The first
+  time, macOS asks to let the tracker control that app.
 - **Claude Code mod:** `/tracker` opens a side pane, the status line shows
   `⚑ 1 waiting · 2 working`, and toasts appear when another agent needs you. The mod is also
   what lets the dashboard answer a session's questions and permission prompts and send it messages.
@@ -104,6 +109,7 @@ Without a `config.json`, the defaults in `config.example.json` apply.
 | `notify` | Turn each notification type on or off: `waiting`, `collision`, `yourTurn`, `memory`, `cpu` |
 | `modToasts` | Toasts inside Claude Code sessions |
 | `deployRepos` | Checkout path → `owner/repo` whose latest GitHub Actions run is shown, e.g. `{ "/Users/me/code/api": "me/api" }`. With no agent in it, such a repo is listed only while its deploy runs and for two hours after it started |
+| `terminal` | Where ＋ Session opens: `"Terminal"` (default) or `"iTerm"` |
 
 ## How it works
 

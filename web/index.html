@@ -127,6 +127,7 @@ header.top { flex: none; z-index: 3; display: flex; flex-wrap: wrap; gap: 10px; 
 .grp-n { margin-left: 4px; color: var(--faint); }
 .act.mini { padding: 2px 8px; font-size: 12px; margin: 0; }
 .hstats { display: flex; align-items: center; gap: 16px; flex-wrap: wrap; }
+#meta { flex: 1 1 0; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; text-align: right; } /* gives way before the buttons wrap */
 .hstat { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; white-space: nowrap; }
 .hstat .meter { width: 64px; }
 .hbar { display: inline-flex; gap: 1px; width: 96px; height: 8px; border-radius: 4px; overflow: hidden; background: var(--track); }
@@ -233,6 +234,19 @@ details.data td, details.data th { padding: 2px 10px 2px 0; text-align: left; }
 .tip.show { opacity: 1; }
 dialog { border: 1px solid var(--line); border-radius: 12px; background: var(--panel); color: var(--text); max-width: 480px; }
 dialog::backdrop { background: rgba(0, 0, 0, .45); }
+dialog.sess-dlg { width: min(680px, calc(100vw - 32px)); max-width: none; padding: 14px 16px 6px; }
+.sess-head { display: flex; align-items: center; gap: 8px; }
+.sess-head h3 { margin: 0; font-size: 15px; }
+#sess-filter { width: 100%; box-sizing: border-box; margin: 10px 0 2px; padding: 6px 9px; border: 1px solid var(--line); border-radius: 7px; background: var(--page); color: var(--text); font: inherit; }
+#sess-body { max-height: min(62vh, 560px); overflow: auto; }
+.sess-row { display: flex; align-items: center; gap: 10px; padding: 7px 2px; border-top: 1px solid var(--line); }
+.sess-main { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.sess-main > * { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.sess-main b { font-weight: 600; }
+.sess-when { font-size: 12px; white-space: nowrap; }
+.sess-more { padding: 6px 2px 2px; border-top: 1px solid var(--line); }
+#sess-status { margin: 8px 0 6px; min-height: 1.2em; }
+@media (max-width: 560px) { .sess-when { display: none; } }
 .docs { display: grid; gap: 4px; }
 .doc { display: grid; grid-template-columns: auto auto minmax(0, 1fr) auto auto; align-items: center; gap: 8px; width: 100%; text-align: left; font: inherit; color: var(--text); background: var(--panel-2); border: 1px solid var(--line); border-radius: 8px; padding: 6px 10px; cursor: pointer; }
 .doc:hover { border-color: var(--accent); }
@@ -456,6 +470,7 @@ a.pile { text-decoration: none; color: inherit; }
   <span id="hstats" class="hstats"></span>
   <span id="meta" class="faint"></span>
   <span class="seg" role="group" aria-label="View"><button type="button" id="view-list" aria-pressed="true">☰ List</button><button type="button" id="view-farm" aria-pressed="false">🌾 Farm</button></span>
+  <button class="act" id="sessions-open" type="button" style="margin:0" data-tip="Start a new Claude Code session in a folder, or resume a past one">＋ Session</button>
   <button class="act" id="side-toggle" type="button" style="margin:0" aria-pressed="false" hidden data-tip="Show the selected farmer's answer box, activity and files beside the farm">◨ Sidebar</button>
   <button class="act" id="theme-toggle" type="button" style="margin:0">☾ Dark</button>
 </header>
@@ -484,6 +499,12 @@ a.pile { text-decoration: none; color: inherit; }
 </main>
 <div id="tip" class="tip" role="tooltip"></div>
 <input type="file" id="img-picker" accept="image/png,image/jpeg,image/gif,image/webp" multiple hidden>
+<dialog id="sessions" class="sess-dlg" aria-labelledby="sess-title">
+  <div class="sess-head"><h3 id="sess-title">Start or resume a session</h3><span class="grow"></span><button type="button" class="act mini" data-sess-close aria-label="Close">×</button></div>
+  <input id="sess-filter" type="search" placeholder="Filter by folder, title or message…" autocomplete="off" spellcheck="false">
+  <div id="sess-body"></div>
+  <p id="sess-status" class="faint" role="status"></p>
+</dialog>
 <dialog id="cleanup">
   <h3>Remove stale background sessions</h3>
   <p class="muted">Runs <span class="mono">claude rm</span> for each one you tick. Removal is permanent: the session and its conversation are deleted.</p>
@@ -501,5 +522,6 @@ a.pile { text-decoration: none; color: inherit; }
 <script src="/viewer.js"></script>
 <script src="/explorer.js"></script>
 <script src="/app.js"></script>
+<script src="/sessions.js"></script>
 </body>
 </html>

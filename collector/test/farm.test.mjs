@@ -132,7 +132,7 @@ test("a waiting farmer without the mod's offer still shows its question, from th
 
 test('every farmer gets its own look from its id: hat, colours, skin, extras; the same agent always looks the same', () => {
   const { toScene } = load();
-  const ids = ['babdd0dd-1', '73d4ef43-2', 'e647b95e-3', '628455f7-4', 'cfd1b5ea-5', '4d7ebb45-6', 'a1b2c3d4-7', 'ffeedd00-8'];
+  const ids = ['agent-alpha', 'agent-bravo', 'agent-charlie', 'agent-delta', 'agent-echo', 'agent-foxtrot', 'agent-golf', 'agent-hotel'];
   const looks = plain(toScene(snapOf(ids.map(id => agent(id)), []), { cpuAlertPct: 90 }).farmers.map(f => f.look));
   for (const l of looks) for (const k of ['hat', 'hatColor', 'hair', 'skin', 'overalls', 'extra']) assert.ok(l[k], k);
   assert.ok(new Set(looks.map(l => JSON.stringify(l))).size === ids.length, 'eight agents, eight looks');

@@ -30,7 +30,9 @@ async function start() {
       answer: async body => { calls.push(['answer', body]); return { ok: true }; },
       permit: async body => { calls.push(['permit', body]); return { ok: true }; },
       message: async body => { calls.push(['message', body]); return { ok: true }; },
+      start: async body => { calls.push(['start', body]); return { ok: true }; },
     },
+    pastSessions: async () => ({ terminal: 'iTerm', projects: [{ cwd: '/code/app' }], sessions: [] }),
   });
   const port = await srv.listen();
   return { srv, port, calls };
@@ -242,6 +244,24 @@ test("the page's scripts are served from web/ by name, and nothing else is", asy
     assert.equal((await request(port, { path: '/missing.js' })).status, 404);
     assert.equal((await request(port, { path: '/..%2Fpackage.js' })).status, 404);
     assert.equal((await request(port, { path: '/index.html' })).status, 404);
+  } finally {
+    await srv.close();
+  }
+});
+
+test('past sessions need the token; starting one needs the token and a same-origin Origin header', async () => {
+  const { srv, port, calls } = await start();
+  try {
+    assert.equal((await request(port, { path: '/api/sessions' })).status, 403);
+    const list = await request(port, { path: '/api/sessions', headers: { 'x-tracker-token': 'tok' } });
+    assert.equal(list.status, 200);
+    assert.equal(JSON.parse(list.body).terminal, 'iTerm');
+    const origin = `http://127.0.0.1:${port}`;
+    const body = JSON.stringify({ cwd: '/code/app' });
+    assert.equal((await request(port, { method: 'POST', path: '/api/actions/start', headers: { 'x-tracker-token': 'tok', origin: 'https://evil.example', 'content-type': 'application/json' }, body })).status, 403);
+    assert.deepEqual(calls, []);
+    assert.equal((await request(port, { method: 'POST', path: '/api/actions/start', headers: { 'x-tracker-token': 'tok', origin, 'content-type': 'application/json' }, body })).status, 200);
+    assert.deepEqual(calls, [['start', { cwd: '/code/app' }]]);
   } finally {
     await srv.close();
   }

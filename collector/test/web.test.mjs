@@ -784,7 +784,7 @@ test('without the farm script, the toggle stays on the list and says why', async
 
 test('the page loads the farm (deferred), then its token, then its own scripts in order', () => {
   const tags = [...html.matchAll(/<script(?: src="\/([a-z]+)\.js"( defer)?)?>/g)].map(m => (m[1] ? `${m[1]}${m[2] ? ' defer' : ''}` : 'inline'));
-  assert.deepEqual(tags, ['inline', 'farm defer', 'inline', 'core', 'charts', 'panels', 'markdown', 'viewer', 'explorer', 'app']);
+  assert.deepEqual(tags, ['inline', 'farm defer', 'inline', 'core', 'charts', 'panels', 'markdown', 'viewer', 'explorer', 'app', 'sessions']);
   assert.match(html, /<script>const TOKEN = '__TRACKER_TOKEN__';<\/script>/);
 });
 

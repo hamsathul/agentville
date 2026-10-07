@@ -504,3 +504,44 @@ test("after a restart, files from early in a long transcript come back in the ba
     await handle.stop();
   }
 });
+
+test('a session starts or resumes in a terminal only in a listed folder, or from a past session that is not running', async () => {
+  const root = mkdtempSync(join(tmpdir(), 'tracker-root-'));
+  mkdirSync(join(root, 'web'));
+  writeFileSync(join(root, 'web', 'index.html'), '<html>__TRACKER_TOKEN__</html>');
+  writeFileSync(join(root, 'config.json'), JSON.stringify({ port: 0, deployRepos: {}, terminal: 'iTerm' }));
+  const work = realpathSync(mkdtempSync(join(tmpdir(), 'tracker-work-')));
+  const claudeDir = mkdtempSync(join(tmpdir(), 'tracker-claude-'));
+  const dir = join(claudeDir, 'projects', work.replace(/[^a-zA-Z0-9]/g, '-'));
+  mkdirSync(join(claudeDir, 'sessions'));
+  mkdirSync(dir, { recursive: true });
+  const PAST = '11111111-aaaa-4bbb-8ccc-000000000001', LIVE = '11111111-aaaa-4bbb-8ccc-000000000002', GONE = '11111111-aaaa-4bbb-8ccc-000000000003';
+  const now = Date.now();
+  const prompt = (ms, text, cwd = work) => JSON.stringify({ type: 'user', timestamp: new Date(ms).toISOString(), cwd, origin: { kind: 'human' }, message: { role: 'user', content: text } });
+  writeFileSync(join(dir, `${PAST}.jsonl`), `${prompt(now - 60_000, 'old work')}\n`);
+  writeFileSync(join(dir, `${LIVE}.jsonl`), `${prompt(now - 5000, 'current work')}\n`);
+  writeFileSync(join(dir, `${GONE}.jsonl`), `${prompt(now - 9000, 'gone', join(work, 'deleted'))}\n`);
+  for (const [id, age] of [[PAST, 60_000], [LIVE, 5000], [GONE, 9000]]) utimesSync(join(dir, `${id}.jsonl`), new Date(now - age), new Date(now - age));
+  writeFileSync(join(claudeDir, 'sessions', `${process.pid}.json`), JSON.stringify({ pid: process.pid, sessionId: LIVE, cwd: work, name: 'live', kind: 'interactive', status: 'idle', version: '2.1.291' }));
+  const launched = [];
+  const handle = await startCollector({ root, claudeDir, claudeBin: '/usr/bin/false', notify: () => {}, log: () => {}, launch: async args => { launched.push(args); return { code: 0, stdout: '', stderr: '' }; } });
+  try {
+    const past = await handle.pastSessions();
+    assert.equal(past.terminal, 'iTerm');
+    assert.deepEqual(past.projects.map(p => p.cwd), [work], 'a folder that is gone is not offered');
+    assert.deepEqual(past.sessions.map(s => [s.id, s.live]), [[LIVE, true], [GONE, false], [PAST, false]]);
+    for (const body of [{ cwd: '/etc' }, { cwd: join(work, 'deleted') }, { resume: LIVE }, { resume: GONE }, { resume: 'x; rm -rf ~' }, {}, null]) {
+      const r = await handle.actions.start(body);
+      assert.equal(r.ok, false, JSON.stringify(body));
+      assert.ok(r.error);
+    }
+    assert.equal(launched.length, 0);
+    assert.deepEqual(await handle.actions.start({ resume: PAST }), { ok: true, terminal: 'iTerm' });
+    assert.equal(launched[0].at(-1), `cd '${work}' && claude --resume ${PAST}`);
+    assert.deepEqual(await handle.actions.start({ cwd: work }), { ok: true, terminal: 'iTerm' });
+    assert.equal(launched[1].at(-1), `cd '${work}' && claude`);
+    assert.match(launched[1].join('\n'), /tell application "iTerm"/);
+  } finally {
+    await handle.stop();
+  }
+});

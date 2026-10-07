@@ -13,5 +13,6 @@
   "cpuAlertSustainSec": 120,
   "notify": { "waiting": true, "collision": true, "yourTurn": true, "memory": true, "cpu": true },
   "modToasts": true,
-  "deployRepos": {}
+  "deployRepos": {},
+  "terminal": "Terminal"
 }

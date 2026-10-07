@@ -87,6 +87,10 @@ for (const [id, s] of Object.entries(sessions)) {
   writeFileSync(join(claudeDir, 'sessions', `${s.pid}.json`), JSON.stringify({ pid: s.pid, sessionId: id, cwd: repo, name: id, status: s.status ?? 'busy' }));
   writeFileSync(join(claudeDir, 'projects', '-farm-repo', `${id}.jsonl`), `${s.lines.join('\n')}\n`);
 }
+// A past session in the repo, finished and closed: the sessions dialog offers to resume it.
+const PAST = '5e551011-aaaa-4bbb-8ccc-000000000001';
+writeFileSync(join(claudeDir, 'projects', '-farm-repo', `${PAST}.jsonl`), `${[line(now - 86_400_000, { content: 'Plan the harvest' }, 'user'), JSON.stringify({ type: 'ai-title', aiTitle: 'Harvest planning' })].join('\n')}\n`);
+const launched = []; // terminal windows the dashboard asked for
 
 // A stand-in for the mod in the asker's session: it says it is listening, keeps its offer of the
 // question fresh, and takes an answer the dashboard hands it (deleting the file, as the mod does).
@@ -115,7 +119,7 @@ const fakeMod = setInterval(() => {
 
 /* ---------- browser ---------- */
 
-const handle = await startCollector({ root, claudeDir, claudeBin: '/usr/bin/false', notify: () => {}, log: () => {}, home: '/nowhere', scratchBase: '/nonexistent' });
+const handle = await startCollector({ root, claudeDir, claudeBin: '/usr/bin/false', notify: () => {}, log: () => {}, home: '/nowhere', scratchBase: '/nonexistent', launch: async args => { launched.push(args.at(-1)); return { code: 0, stdout: '', stderr: '' }; } });
 const profile = join(temp, 'chrome');
 const chrome = spawn(CHROME, ['--headless=new', '--remote-debugging-port=0', `--user-data-dir=${profile}`, '--no-first-run', '--no-default-browser-check', '--hide-scrollbars', 'about:blank'], { stdio: 'ignore' });
 let ws;
@@ -230,6 +234,20 @@ try {
   await js("(() => { const r = document.querySelector('#farm-agent input[value=\"Pumpkins\"]'); r.checked = true; r.dispatchEvent(new Event('change', { bubbles: true })); document.getElementById('ask-send').click(); })()");
   check(await until("/Answer sent to ui-asker/.test(document.getElementById('notice').textContent)"), 'the answer is sent from the farm sidebar');
   check(answered?.answers?.['Which crop next?'] === 'Pumpkins', 'the session received the answer');
+
+  console.log('Sessions');
+  await js("document.getElementById('sessions-open').click()");
+  check(await until("document.getElementById('sessions').open && [...document.querySelectorAll('#sessions [data-sess-resume]')].some(b => b.closest('.sess-row').textContent.includes('Harvest planning'))"), 'the sessions dialog offers to resume a past session by its title');
+  check(await js("[...document.querySelectorAll('#sessions [data-sess-new]')].some(b => b.dataset.sessNew.endsWith('/farm-repo'))"), 'and to start a new session in a folder you worked in');
+  await js("(() => { const f = document.getElementById('sess-filter'); f.value = 'harvest'; f.dispatchEvent(new Event('input', { bubbles: true })); })()");
+  check(await until("document.querySelectorAll('#sessions [data-sess-resume]').length === 1"), 'the filter narrows the list');
+  await js("document.querySelector('#sessions [data-sess-resume]').click()");
+  check(await until('!document.getElementById(\'sessions\').open') && launched.at(-1) === `cd '${repo}' && claude --resume ${PAST}`, `Resume opens a terminal running claude --resume in the session's folder (got ${JSON.stringify(launched)})`);
+  check(await until("/Opened a new Terminal window/.test(document.getElementById('notice').textContent)"), 'the page says the terminal opened');
+  await js("document.getElementById('sessions-open').click()");
+  await until("!!document.querySelector('#sessions [data-sess-new]')");
+  await js("document.querySelector('#sessions [data-sess-new]').click()");
+  check(await until('!document.getElementById(\'sessions\').open') && launched.at(-1) === `cd '${repo}' && claude`, 'New session opens a terminal running claude in the folder');
 
   console.log('Back to the list');
   await js("document.getElementById('view-list').click()");

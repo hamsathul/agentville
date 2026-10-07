@@ -33,7 +33,7 @@ function clampInt(value, min, max, fallback) {
   return Number.isFinite(n) ? Math.min(max, Math.max(min, n)) : fallback;
 }
 
-export function createTrackerServer({ port, token, webFile, getSnapshot, getFeed, getTranscriptHtml, getDoc, listFiles, readFile, repoTouched, actions, log = () => {} }) {
+export function createTrackerServer({ port, token, webFile, getSnapshot, getFeed, getTranscriptHtml, getDoc, listFiles, readFile, repoTouched, actions, pastSessions, log = () => {} }) {
   const clients = new Set();
   let server;
   const actualPort = () => server.address()?.port ?? port;
@@ -80,6 +80,10 @@ export function createTrackerServer({ port, token, webFile, getSnapshot, getFeed
           const found = m[2] === 'doc' ? getDoc(m[1], file) : await readFile(m[1], file);
           return found.doc ? sendJson(res, 200, found.doc) : sendJson(res, found.status ?? 404, { error: found.error });
         }
+        if (path === '/api/sessions') { // past sessions' titles and messages: token only, like files
+          if (req.headers['x-tracker-token'] !== token) return sendJson(res, 403, { error: 'forbidden' });
+          return sendJson(res, 200, await pastSessions());
+        }
         if (path === '/api/repo/touched') {
           if (req.headers['x-tracker-token'] !== token) return sendJson(res, 403, { error: 'forbidden' });
           const touched = await repoTouched(url.searchParams.get('path') ?? '');
@@ -91,7 +95,7 @@ export function createTrackerServer({ port, token, webFile, getSnapshot, getFeed
         }
       }
 
-      const isBodyAction = ['/api/actions/rm', '/api/actions/answer', '/api/actions/permit', '/api/actions/message'].includes(path);
+      const isBodyAction = ['/api/actions/rm', '/api/actions/answer', '/api/actions/permit', '/api/actions/message', '/api/actions/start'].includes(path);
       if (req.method === 'POST' && (isBodyAction || /^\/api\/actions\/open\/[\w-]+$/.test(path))) {
         if (req.headers['x-tracker-token'] !== token || !isAllowedOrigin(req.headers.origin ?? '')) {
           return sendJson(res, 403, { error: 'forbidden' });
@@ -107,6 +111,7 @@ export function createTrackerServer({ port, token, webFile, getSnapshot, getFeed
         if (path === '/api/actions/answer') return sendJson(res, 200, await actions.answer(body));
         if (path === '/api/actions/permit') return sendJson(res, 200, await actions.permit(body));
         if (path === '/api/actions/message') return sendJson(res, 200, await actions.message(body));
+        if (path === '/api/actions/start') return sendJson(res, 200, await actions.start(body));
         return sendJson(res, 200, await actions.open(path.split('/').pop()));
       }
 
