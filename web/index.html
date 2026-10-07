@@ -277,6 +277,16 @@ pre.code .l:hover { background: var(--panel-2); }
 .seg button:hover { color: var(--text); }
 .seg button[aria-pressed="true"] { background: var(--panel); color: var(--text); box-shadow: 0 1px 3px rgba(0, 0, 0, .18), 0 0 0 1px var(--line); }
 #farm { display: none; min-height: 0; overflow: auto; }
+#farm-side { display: none; min-height: 0; overflow: auto; background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 12px 14px; }
+.app[data-view="farm"][data-side="open"] { grid-template-columns: minmax(0, 1fr) 380px; grid-template-rows: minmax(0, 1.15fr) minmax(0, 1fr); }
+.app[data-view="farm"][data-side="open"] > #farm { grid-row: 1 / span 2; grid-column: 1; }
+.app[data-view="farm"][data-side="open"] > #farm-side { display: block; grid-row: 1; grid-column: 2; }
+.app[data-view="farm"][data-side="open"] > .col.right { display: flex; grid-row: 2; grid-column: 2; }
+.fs-head { display: flex; align-items: center; gap: 8px; }
+.fs-head .name { font-size: 15px; }
+.fs-head .act { margin: 0; }
+.px-tag.sel { outline: 2px solid #ffd43b; outline-offset: 1px; }
+@media (max-width: 900px) { .app[data-view="farm"][data-side="open"] { display: block; } }
 .app[data-view="farm"] { grid-template-columns: minmax(0, 1fr); }
 .app[data-view="farm"] > .col { display: none; }
 .app[data-view="farm"] > #farm { display: block; }
@@ -383,6 +393,7 @@ pre.code .l:hover { background: var(--panel-2); }
   <span id="hstats" class="hstats"></span>
   <span id="meta" class="faint"></span>
   <span class="seg" role="group" aria-label="View"><button type="button" id="view-list" aria-pressed="true">☰ List</button><button type="button" id="view-farm" aria-pressed="false">🌾 Farm</button></span>
+  <button class="act" id="side-toggle" type="button" style="margin:0" aria-pressed="false" hidden data-tip="Show the selected farmer's answer box, activity and files beside the farm">◨ Sidebar</button>
   <button class="act" id="theme-toggle" type="button" style="margin:0">☾ Dark</button>
 </header>
 <div id="banner" class="banner">Disconnected from the collector — retrying…</div>
@@ -403,6 +414,7 @@ pre.code .l:hover { background: var(--panel-2); }
     <div id="tree" class="tree"></div>
   </aside>
   <section id="farm" aria-label="Pixel farm"></section>
+  <aside id="farm-side" aria-label="The selected farmer"><div id="farm-agent"></div></aside>
 </main>
 <div id="tip" class="tip" role="tooltip"></div>
 <input type="file" id="img-picker" accept="image/png,image/jpeg,image/gif,image/webp" multiple hidden>
@@ -1046,6 +1058,7 @@ function codeHtml(text) {
 
 /** Opens a file in a tab of the agent's centre view (or switches to it). */
 async function openFile(agentId, path) {
+  if (view === 'farm') setView('list'); // files open in the list view's tabs
   const t = tabsOf(agentId);
   if (!t.files.includes(path)) t.files.push(path);
   t.active = path;
@@ -1434,7 +1447,14 @@ function render() {
   $('hstats').innerHTML = hstatsHtml();
   if (view === 'farm') {
     // The farm draws the agents; the list and the centre are not drawn (so their ids don't exist twice).
+    // The sidebar shows the selected farmer: its answer form, message box and activity, then its files.
     window.TrackerFarm?.update(snap);
+    const a = farmSide ? centreAgent() : null;
+    window.TrackerFarm?.select?.(a?.id ?? null);
+    if (farmSide) {
+      $('farm-agent').innerHTML = a ? farmSideHtml(a) : '<div class="empty">No agents are running.</div>';
+      syncExplorer();
+    }
     updateTimers();
     return;
   }
@@ -1449,12 +1469,19 @@ function render() {
 /* ---------- two views: the list (default) and the pixel farm ---------- */
 
 let view = loadView();
-function loadView() {
+let farmSide = loadSaved('tracker-farm-side') === 'open'; // the farm's sidebar: answer, message, activity, files
+function loadSaved(key) {
   try {
-    return localStorage.getItem('tracker-view') === 'farm' ? 'farm' : 'list';
+    return localStorage.getItem(key);
   } catch {
-    return 'list';
+    return null;
   }
+}
+function save(key, value) {
+  try { localStorage.setItem(key, value); } catch { /* lasts this page only */ }
+}
+function loadView() {
+  return loadSaved('tracker-view') === 'farm' ? 'farm' : 'list';
 }
 function setView(next, { remember = true } = {}) {
   if (next === 'farm' && !window.TrackerFarm) {
@@ -1464,24 +1491,54 @@ function setView(next, { remember = true } = {}) {
   }
   if (view === 'farm' && next === 'list') window.TrackerFarm?.unmount();
   view = next;
-  if (remember) {
-    try { localStorage.setItem('tracker-view', next); } catch { /* lasts this page only */ }
-  }
+  if (remember) save('tracker-view', next);
   $('main').dataset.view = next;
   $('view-list').setAttribute('aria-pressed', next === 'list');
   $('view-farm').setAttribute('aria-pressed', next === 'farm');
+  $('side-toggle').hidden = next !== 'farm';
+  applyFarmSide();
+  // Only one of the centre and the farm sidebar holds the agent's answer and message boxes at a time.
   if (next === 'farm') {
+    $('center-tabs').innerHTML = '';
+    $('center-body').innerHTML = '';
+    reader = null;
     window.TrackerFarm.mount($('farm'), { token: TOKEN, onPickAgent: pickFromFarm, onOpenDoc: openDocFromFarm, onShowRepos: showReposFromFarm });
   } else {
-    shownKey = ''; // the centre wasn't drawn while the farm was up
+    $('farm-agent').innerHTML = '';
   }
+  shownKey = ''; // the centre is drawn afresh when the list comes back
   render();
 }
-/** A farmer was clicked: show that agent in the list view, where it can be answered or messaged. */
+function applyFarmSide() {
+  $('main').dataset.side = farmSide ? 'open' : 'closed';
+  $('side-toggle').setAttribute('aria-pressed', farmSide);
+  if (!farmSide) $('farm-agent').innerHTML = '';
+}
+function setFarmSide(open) {
+  farmSide = open;
+  save('tracker-farm-side', open ? 'open' : 'closed');
+  applyFarmSide();
+  render();
+}
+
+/** The farm sidebar for one agent: what it asks, a message box, what it is doing, what it did. */
+function farmSideHtml(a) {
+  const color = window.TrackerFarm?.colorOf?.(a.id) ?? colorOf(a.id);
+  const now = a.now ? `<div class="now mono"><span class="pulse"></span> ${esc(a.now.tool)} ${esc(a.now.summary)} · <b data-since="${a.now.startedAt}"></b></div>` : `<div class="muted">${esc(a.stateReason)}</div>`;
+  return `<div class="fs-head"><span class="swatch" style="background:${color}"></span><span class="name">${esc(a.name)}</span><span class="chip c-${a.state}">${STATE_CHIP[a.state] ?? esc(a.state)} · <span data-since="${a.stateSince}"></span></span><span class="grow"></span><button class="act mini" id="fs-list" type="button" data-tip="Show this agent in the list view">☰ List</button></div>
+    <div class="muted" style="margin-top:4px">${esc(short(a.cwd))}${a.model ? ` · ${esc(a.model)}` : ''}</div>
+    ${askHtml(a)}
+    <div class="sec">Now</div>${now}
+    ${composeHtml(a)}
+    <div class="sec">Activity</div><div class="feed">${a.feed.slice(0, 25).map(feedRow).join('') || '<div class="empty">No activity yet.</div>'}</div>`;
+}
+
+/** A farmer was clicked: show it in the farm's sidebar, where it can be answered or messaged. */
 function pickFromFarm(id) {
   if (selected !== id) openChildren.clear();
   selected = id;
-  setView('list');
+  if (farmSide) render();
+  else setFarmSide(true);
 }
 /** A noticeboard in a field close-up: read that document in the list view's reader. */
 async function openDocFromFarm(agentId, path) {
@@ -1491,7 +1548,7 @@ async function openDocFromFarm(agentId, path) {
 /** The "+N more fields" signpost: the list view, with the repos group open. */
 function showReposFromFarm() {
   closedGroups.delete('repos');
-  try { localStorage.setItem('tracker-closed-groups', JSON.stringify([...closedGroups])); } catch { /* lasts this page only */ }
+  save('tracker-closed-groups', JSON.stringify([...closedGroups]));
   setView('list');
   $('rail').scrollIntoView?.({ block: 'start' });
 }
@@ -1586,6 +1643,8 @@ document.addEventListener('click', async e => {
   if (!el) return;
   const d = el.dataset;
   if (el.id === 'view-list' || el.id === 'view-farm') { setView(el.id === 'view-farm' ? 'farm' : 'list'); return; }
+  if (el.id === 'side-toggle') { setFarmSide(!farmSide); return; }
+  if (el.id === 'fs-list') { setView('list'); return; }
   if (el.id === 'msg-send') { await sendMessage(d.agent, el); return; }
   if (d.removeImg !== undefined) { removeImage(d.agent, Number(d.removeImg)); return; }
   if (el.id === 'msg-attach') {
@@ -1667,6 +1726,7 @@ const hasSelection = () => {
 function requestRender() {
   if (isPointerDown || hasSelection() || isTyping()) {
     isRenderPending = true;
+    if (view === 'farm' && snap) window.TrackerFarm?.update(snap); // the farm keeps moving; only the sidebar waits
     return;
   }
   isRenderPending = false;

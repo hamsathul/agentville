@@ -690,6 +690,8 @@ function fakeFarm() {
     showRepos: () => options.onShowRepos(),
     farm: {
       mount(host, opts) { options = opts; calls.push(['mount', host.id, opts.token]); },
+      select(id) { calls.push(['select', id]); },
+      colorOf: () => '#d9673a',
       update(snap) { calls.push(['update', snap.agents.length]); },
       unmount() { calls.push(['unmount']); },
     },
@@ -720,19 +722,26 @@ test('in farm mode a snapshot goes to the farm; the list and the centre are not 
   const f = fakeFarm();
   const page = loadPage({ farm: f.farm, stored: { 'tracker-view': 'farm' } });
   page.push(richSnapshot([richAgent(), richAgent({ id: 'r2', name: 'second' })]));
-  assert.deepEqual(f.calls.at(-1), ['update', 2]);
+  assert.deepEqual(f.calls.filter(c => c[0] === 'update').at(-1), ['update', 2]);
   assert.equal(page.side(), '');
   assert.equal(page.el('list').innerHTML, '');
   assert.match(page.el('kpis').innerHTML, /Working/);
 });
 
-test('clicking a farmer opens that agent in the list view, ready to answer', async () => {
+test('clicking a farmer opens the farm sidebar on that agent, with its answer form, and the farm marks it', async () => {
   const f = fakeFarm();
   const page = loadPage({ farm: f.farm, stored: { 'tracker-view': 'farm' } });
-  page.push(richSnapshot([richAgent(), richAgent({ id: 'r2', name: 'second', mod: { version: '0.3.1', live: true } })]));
-  f.pick('r2');
-  assert.equal(page.el('main').dataset.view, 'list');
-  assert.match(page.side(), /data-msg-agent="r2"/);
+  page.push(askSnapshot(QUESTION));
+  f.pick('w1');
+  assert.equal(page.el('main').dataset.view, 'farm');
+  assert.equal(page.el('main').dataset.side, 'open');
+  assert.deepEqual(f.calls.filter(c => c[0] === 'select').at(-1), ['select', 'w1']);
+  const side = page.el('farm-agent').innerHTML;
+  assert.match(side, /Pick a colour\?/);
+  assert.match(side, /id="ask-send"/);
+  pick(page, 'Blue');
+  await page.clickButton('ask-send', { agent: 'w1', tool: 'toolu_Q1' });
+  assert.deepEqual(page.posts, [{ path: '/api/actions/answer', body: { agentId: 'w1', toolUseId: 'toolu_Q1', answers: { 'Pick a colour?': 'Blue' } } }]);
 });
 
 test('a document picked in the field close-up opens in the reader in the list view', async () => {
@@ -767,4 +776,73 @@ test('without the farm script, the toggle stays on the list and says why', async
 test('the farm script is loaded before the page script, which stays the last script tag', () => {
   assert.match(html, /<script src="\/farm\.js" defer><\/script>[\s\S]*<script>[\s\S]*<\/script>\s*<\/body>/);
   assert.equal(html.lastIndexOf('<script>'), html.indexOf('<script>', html.indexOf('<script src="/farm.js"')));
+});
+
+test('the sidebar toggle shows activity and the explorer beside the farm, and is remembered', async () => {
+  const f = fakeFarm();
+  const page = loadPage({ farm: f.farm, stored: { 'tracker-view': 'farm' }, listing: LISTING });
+  page.push(richSnapshot([richAgent({ mod: { version: '0.3.1', live: true } })]));
+  assert.equal(page.el('side-toggle').hidden, false);
+  assert.notEqual(page.el('main').dataset.side, 'open');
+  await page.click('side-toggle');
+  assert.equal(page.el('main').dataset.side, 'open');
+  assert.equal(page.stored['tracker-farm-side'], 'open');
+  assert.equal(page.el('side-toggle').attrs['aria-pressed'], 'true');
+  const side = page.el('farm-agent').innerHTML;
+  assert.match(side, /busy-one/);
+  assert.match(side, />Activity</);
+  assert.match(side, /npm test/);
+  assert.match(side, /id="msg-text"/);
+  await page.settle();
+  assert.ok(page.gets.some(g => g.path === '/api/agent/r1/files'));
+  assert.match(page.tree(), /data-file="src\/app\.ts"/);
+  await page.click('side-toggle');
+  assert.equal(page.el('main').dataset.side, 'closed');
+  assert.equal(page.stored['tracker-farm-side'], 'closed');
+  await page.click('view-list');
+  assert.equal(page.el('side-toggle').hidden, true);
+});
+
+test('a message can be sent from the farm sidebar', async () => {
+  const f = fakeFarm();
+  const page = loadPage({ farm: f.farm, stored: { 'tracker-view': 'farm', 'tracker-farm-side': 'open' } });
+  page.push(richSnapshot([richAgent({ mod: { version: '0.3.1', live: true } })]));
+  page.edit('input', { tagName: 'TEXTAREA', value: 'Water the pumpkins', dataset: { msgAgent: 'r1' } });
+  await page.clickButton('msg-send', { agent: 'r1' });
+  assert.deepEqual(page.posts, [{ path: '/api/actions/message', body: { agentId: 'r1', text: 'Water the pumpkins' } }]);
+  assert.match(page.el('farm-agent').innerHTML, /id="msg-status"[^>]*>Queued for busy-one/);
+});
+
+test("entering the farm clears the list's centre and leaving clears the sidebar, so each id exists once", async () => {
+  const f = fakeFarm();
+  const page = loadPage({ farm: f.farm, stored: { 'tracker-farm-side': 'open' } });
+  page.push(richSnapshot([richAgent({ mod: { version: '0.3.1', live: true } })]));
+  assert.match(page.side(), /id="msg-text"/);
+  await page.click('view-farm');
+  assert.equal(page.side(), '');
+  assert.equal(page.tabs(), '');
+  assert.match(page.el('farm-agent').innerHTML, /id="msg-text"/);
+  await page.click('view-list');
+  assert.equal(page.el('farm-agent').innerHTML, '');
+  assert.match(page.side(), /id="msg-text"/);
+});
+
+test('a file picked in the sidebar explorer opens in the list view', async () => {
+  const f = fakeFarm();
+  const page = loadPage({ farm: f.farm, stored: { 'tracker-view': 'farm', 'tracker-farm-side': 'open' }, listing: LISTING, files: { '/w/src/app.ts': 'const a = 1;\n' } });
+  page.push(richSnapshot([richAgent()]));
+  await page.settle();
+  await page.clickButton('tn', { file: 'src/app.ts' });
+  assert.equal(page.el('main').dataset.view, 'list');
+  assert.match(page.tabs(), /class="tab on"[^]*?app\.ts/);
+});
+
+test('while you type in the sidebar, new snapshots still reach the farm but the sidebar waits', async () => {
+  const f = fakeFarm();
+  const page = loadPage({ farm: f.farm, stored: { 'tracker-view': 'farm', 'tracker-farm-side': 'open' } });
+  page.push(richSnapshot([richAgent({ mod: { version: '0.3.1', live: true } })]));
+  page.focus({ tagName: 'TEXTAREA' });
+  page.push(richSnapshot([richAgent({ mod: { version: '0.3.1', live: true } }), richAgent({ id: 'r2', name: 'newcomer' })]));
+  assert.deepEqual(f.calls.filter(c => c[0] === 'update').at(-1), ['update', 2]);
+  assert.doesNotMatch(page.el('farm-agent').innerHTML, /newcomer/);
 });

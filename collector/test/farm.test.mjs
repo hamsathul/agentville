@@ -87,3 +87,12 @@ test('toScene maps repos to fields and agents to farmers', () => {
   assert.deepEqual([x.kind, x.field, x.state], ['codex', null, 'idle']);
   assert.equal(w.color, toScene(snapOf([agents[0]], repos), { cpuAlertPct: 90 }).farmers[0].color, 'colour follows the id, not the list position');
 });
+
+test("a farmer's colour comes from its id, so the sidebar can match the shirt", () => {
+  const farm = load();
+  assert.equal(typeof farm.select, 'function');
+  assert.match(farm.colorOf('abc'), /^#[0-9a-f]{6}$/);
+  assert.equal(farm.colorOf('abc'), farm.colorOf('abc'));
+  assert.equal(farm.colorOf('abc'), SHIRT_OF(farm, 'abc'));
+});
+const SHIRT_OF = (farm, id) => farm.toScene({ agents: [{ id, name: id, state: 'idle', touching: [] }], repos: [], collisions: [] }).farmers[0].shirt;

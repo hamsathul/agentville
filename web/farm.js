@@ -66,7 +66,7 @@
           id: a.id, name: a.name, kind: a.kind, state: a.state === 'yourTurn' ? 'turn' : a.state, field: fieldOf(a, repos),
           tool: a.now?.tool ?? a.feed?.find(f => f.kind === 'tool')?.tool ?? null, summary: a.now?.summary ?? '',
           pct, hearts: Math.round((1 - pct) * 4), hot: (a.proc?.cpu ?? 0) >= cpuAlertPct,
-          ask: askText(a), askKind: a.ask?.kind ?? null, reply: firstLine(a.lastReply), color: colorIndex(a.id),
+          ask: askText(a), askKind: a.ask?.kind ?? null, reply: firstLine(a.lastReply), color: colorIndex(a.id), shirt: SHIRT[colorIndex(a.id)],
           kids: (a.children ?? []).filter(c => c.state === 'running').slice(0, 4).map(c => ({ id: c.id, dog: c.agentType === 'Explore' })),
         };
       }),
@@ -413,7 +413,7 @@
   function makePixelView(th) {
     let host = null, canvas = null, ctx = null, ov = null, logEl = null, hudEl = null, bg = null, ro = null;
     let raf = 0, last = 0, T = 0, cs = 1, first = true, timer = 0, layoutKey = null, labelKey = '';
-    let scene = { fields: [], farmers: [] }, overflow = {}, still = false, opts = {};
+    let scene = { fields: [], farmers: [] }, overflow = {}, still = false, opts = {}, selectedId = null;
     const bots = new Map(), log = [];
 
     function targets() {
@@ -514,6 +514,14 @@
       for (const f of scene.farmers) { const b = bots.get(f.id); if (b) items.push([b.y, () => th.drawChar(f, b)]); }
       items.sort((p, q) => p[0] - q[0]).forEach(it => it[1]());
       for (const f of scene.farmers) { const b = bots.get(f.id); if (b) th.drawFx(f, b); }
+      const picked = selectedId && bots.get(selectedId);
+      if (picked) { // the farmer shown in the sidebar: a ring at its feet
+        PXG.ctx.globalAlpha = 0.85;
+        px(Math.round(picked.x) - 10, Math.round(picked.y) + 1, 20, 2, '#ffd43b');
+        px(Math.round(picked.x) - 12, Math.round(picked.y) - 1, 2, 2, '#ffd43b');
+        px(Math.round(picked.x) + 10, Math.round(picked.y) - 1, 2, 2, '#ffd43b');
+        PXG.ctx.globalAlpha = 1;
+      }
       th.top();
       // Name tags, lifted when two would overlap.
       const placed = [];
@@ -529,12 +537,12 @@
           b.tag.dataset.farmer = f.id;
           ov.appendChild(b.tag);
         }
-        const text = th.tag(f), tip = th.tip(f);
-        if (b.tagText !== f.state + text + tip) {
-          b.tag.className = `px-tag st-${f.state}`;
+        const text = th.tag(f), tip = th.tip(f), sel = f.id === selectedId;
+        if (b.tagText !== f.state + text + tip + sel) {
+          b.tag.className = `px-tag st-${f.state}${sel ? ' sel' : ''}`;
           b.tag.textContent = text;
           b.tag.title = tip;
-          b.tagText = f.state + text + tip;
+          b.tagText = f.state + text + tip + sel;
         }
         b.tag.style.transform = `translate(${Math.round(b.x * cs)}px, ${Math.round((b.y - th.SH * SC - 3 - b.lift) * cs)}px) translate(-50%, -100%)`;
       }
@@ -663,6 +671,10 @@
         startLoop();
       },
       update(next) { apply(next); },
+      select(id) {
+        selectedId = id;
+        if (canvas && still) draw();
+      },
       unmount() {
         stopLoop();
         ro?.disconnect();
@@ -892,6 +904,13 @@
       view.update(toScene(snap));
       field.refresh();
     },
+    /** Marks the farmer shown in the page's sidebar (null for none). */
+    select(id) {
+      ensure();
+      view.select(id ?? null);
+    },
+    /** A farmer's shirt colour, so the page can match it. */
+    colorOf: id => SHIRT[colorIndex(id)],
     unmount() {
       if (!view) return;
       field.close();
