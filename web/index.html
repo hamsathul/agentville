@@ -282,6 +282,20 @@ pre.code .l:hover { background: var(--panel-2); }
 .app[data-view="farm"][data-side="open"] > #farm { grid-row: 1 / span 2; grid-column: 1; }
 .app[data-view="farm"][data-side="open"] > #farm-side { display: block; grid-row: 1; grid-column: 2; }
 .app[data-view="farm"][data-side="open"] > .col.right { display: flex; grid-row: 2; grid-column: 2; }
+.chat { display: grid; gap: 6px; }
+.bub { max-width: 88%; padding: 6px 10px 4px; border-radius: 12px; white-space: pre-wrap; overflow-wrap: anywhere; font-size: 13px; }
+.bub time { display: block; margin-top: 2px; font-size: 10.5px; color: var(--faint); }
+.bub.you { justify-self: end; background: color-mix(in srgb, var(--accent) 18%, var(--panel)); border-bottom-right-radius: 4px; }
+.bub.you time { text-align: right; }
+.bub.agent { justify-self: start; background: var(--panel-2); border-bottom-left-radius: 4px; white-space: normal; }
+.bub-md p, .bub-md ul, .bub-md ol, .bub-md pre, .bub-md blockquote { margin: 0 0 .4em; }
+.bub-md > :last-child { margin-bottom: 0; }
+.bub-md ul, .bub-md ol { padding-left: 1.3em; }
+.bub-md h1, .bub-md h2, .bub-md h3, .bub-md h4 { font-size: 1em; margin: .3em 0; }
+.bub-md code { font-family: ui-monospace, Menlo, monospace; font-size: .9em; background: var(--panel); border-radius: 4px; padding: 0 .3em; }
+.bub-md pre { overflow: auto; background: var(--panel); border-radius: 6px; padding: 6px 8px; }
+.bub-md pre code { background: none; padding: 0; }
+.bub-md a { color: var(--accent); }
 .fs-head { display: flex; align-items: center; gap: 8px; }
 .fs-head .name { font-size: 15px; }
 .fs-head .act { margin: 0; }
@@ -758,6 +772,22 @@ function askHtml(a) {
       <input type="text" class="other" placeholder="Other…" ${field} value="${esc(d.other.get(qi) ?? '')}"></fieldset>`;
   }).join('');
   return `<div class="ask"><div class="sec" style="margin-top:0">❓ Needs your answer</div>${questions}<button class="act primary" id="ask-send" ${ids}>Send answer</button></div>`;
+}
+
+/** Your prompts (typed or sent from here) and the agent's replies, oldest first, like a chat. */
+function conversationHtml(a) {
+  const said = a.feed.filter(f => f.kind === 'prompt' || f.kind === 'reply').slice(0, 10).reverse();
+  if (!said.length) return '';
+  // Replies are markdown (rendered by the escape-everything renderer); your prompts stay as typed.
+  const bubble = f => (f.kind === 'prompt'
+    ? `<div class="bub you">${esc(f.body || f.text)}<time>${hhmm(f.at)}</time></div>`
+    : `<div class="bub agent"><div class="bub-md">${renderMarkdown(f.body || f.text)}</div><time>${hhmm(f.at)}</time></div>`);
+  return `<div class="sec">Conversation</div><div class="chat">${said.map(bubble).join('')}</div>`;
+}
+
+/** The tool steps, newest first (the conversation is shown on its own). */
+function activityHtml(a) {
+  return `<div class="feed">${a.feed.filter(f => f.kind === 'tool').slice(0, 25).map(feedRow).join('') || '<div class="empty">No tool steps yet.</div>'}</div>`;
 }
 
 /** Chat box: sends a message, with any screenshots, into the session as the person's own words (queued if it is busy). */
@@ -1428,8 +1458,9 @@ function overviewHtml(a) {
         : ' <span class="chip c-plain" data-tip="The Agent Tracker mod in this session isn\'t listening. It starts with the next message you send the session, or with a new session.">dashboard answers off</span>'}</div>
     ${a.state === 'stale' ? '' : `<div style="margin-top:8px">${metricsHtml(a)}</div>`}
     <div class="sec">Now</div>${a.now ? `<div class="now mono"><span class="pulse"></span> ${esc(a.now.tool)} ${esc(a.now.summary)} · <b data-since="${a.now.startedAt}"></b></div>` : `<div class="muted">${esc(a.stateReason)}</div>`}
+    ${conversationHtml(a)}
     ${composeHtml(a)}
-    <div class="sec">Activity</div><div class="feed">${a.feed.map(feedRow).join('') || '<div class="empty">No activity yet.</div>'}</div>
+    <div class="sec">Activity</div>${activityHtml(a)}
     ${docsHtml(a)}
     ${charts ? `<div class="sec">Last 10 minutes</div>${charts}` : ''}
     ${a.kind === 'codex' ? '' : `<div class="sec">Tool calls · last 30 minutes</div>${timelineChart(a.timeline)}`}
@@ -1449,6 +1480,7 @@ function render() {
   $('errors').innerHTML = Object.entries(snap.sources).filter(([, s]) => !s.ok)
     .map(([n, s]) => `<span class="pill p-err" title="${esc(s.error)}">${esc(n)}: ${esc(String(s.error).slice(0, 40))}</span>`).join(' ');
   $('hstats').innerHTML = hstatsHtml();
+  document.title = snap.counts.waiting ? `(${snap.counts.waiting}) Agent Tracker` : 'Agent Tracker';
   if (view === 'farm') {
     // The farm draws the agents; the list and the centre are not drawn (so their ids don't exist twice).
     // The sidebar shows the selected farmer: its answer form, message box and activity, then its files.
@@ -1533,8 +1565,9 @@ function farmSideHtml(a) {
     <div class="muted" style="margin-top:4px">${esc(short(a.cwd))}${a.model ? ` · ${esc(a.model)}` : ''}</div>
     ${askHtml(a)}
     <div class="sec">Now</div>${now}
+    ${conversationHtml(a)}
     ${composeHtml(a)}
-    <div class="sec">Activity</div><div class="feed">${a.feed.slice(0, 25).map(feedRow).join('') || '<div class="empty">No activity yet.</div>'}</div>`;
+    <div class="sec">Activity</div>${activityHtml(a)}`;
 }
 
 /** A farmer was clicked: show it in the farm's sidebar, where it can be answered or messaged. */

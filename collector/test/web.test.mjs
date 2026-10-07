@@ -846,3 +846,43 @@ test('while you type in the sidebar, new snapshots still reach the farm but the 
   assert.deepEqual(f.calls.filter(c => c[0] === 'update').at(-1), ['update', 2]);
   assert.doesNotMatch(page.el('farm-agent').innerHTML, /newcomer/);
 });
+
+test('the tab title counts the agents waiting on you', () => {
+  const page = loadPage();
+  page.push(askSnapshot(QUESTION));
+  assert.equal(page.ctx.document.title, '(1) Agent Tracker');
+  page.push(richSnapshot([richAgent()]));
+  assert.equal(page.ctx.document.title, 'Agent Tracker');
+});
+
+const chatty = () => richAgent({
+  mod: { version: '0.3.1', live: true },
+  feed: [
+    { at: Date.now() - 1000, kind: 'tool', tool: 'Bash', text: 'npm test', ok: true, durationMs: 900 },
+    { at: Date.now() - 2000, kind: 'reply', text: 'Done.', body: 'Done.\nAll <b>tests</b> pass.' },
+    { at: Date.now() - 2500, kind: 'reply', text: 'Plan:', body: 'Plan:\n\n- **fix** it' },
+    { at: Date.now() - 3000, kind: 'tool', tool: 'Edit', text: 'web/index.html', ok: true, durationMs: 100 },
+    { at: Date.now() - 4000, kind: 'prompt', text: 'Fix the build', body: 'Fix the build\nplease' },
+  ],
+});
+
+test('the conversation shows your prompts and the replies as a thread, oldest first; Activity shows the tool steps', async () => {
+  const page = loadPage();
+  page.push(richSnapshot([chatty()]));
+  const side = page.side();
+  assert.match(side, /class="bub you"[^>]*>[\s\S]*?Fix the build\nplease[\s\S]*?class="bub agent"[^>]*>[\s\S]*?<p>Done\. All &lt;b&gt;tests&lt;\/b&gt; pass\.<\/p>/);
+  const now = side.indexOf('>Now<'), chat = side.indexOf('>Conversation<'), box = side.indexOf('id="msg-text"'), activity = side.indexOf('>Activity<');
+  assert.ok(now < chat && chat < box && box < activity, `${now} ${chat} ${box} ${activity}`);
+  const feed = side.slice(activity);
+  assert.match(feed, /npm test/);
+  assert.match(feed, /web\/index\.html/);
+  assert.match(side, /<li><strong>fix<\/strong> it<\/li>/);
+  assert.doesNotMatch(feed.slice(0, feed.indexOf('</div></div>') + 1), /Fix the build|Done\./);
+});
+
+test('the farm sidebar has the conversation too', async () => {
+  const f = fakeFarm();
+  const page = loadPage({ farm: f.farm, stored: { 'tracker-view': 'farm', 'tracker-farm-side': 'open' } });
+  page.push(richSnapshot([chatty()]));
+  assert.match(page.el('farm-agent').innerHTML, />Conversation<[\s\S]*class="bub you"/);
+});

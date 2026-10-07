@@ -6,6 +6,8 @@ const CHILD_KIND = { Agent: 'subagent', Task: 'subagent', Workflow: 'workflow' }
 const DOC_FILE = /\.(md|markdown|mdx)$/i;
 const FILE_MODE = { Write: 'write', Edit: 'write', MultiEdit: 'write', NotebookEdit: 'write', Read: 'read' };
 const DOCS_KEPT = 40;
+const BODY_MAX = 600; // how much of a prompt or reply the conversation view shows
+const bodyOf = text => String(text ?? '').trim().slice(0, BODY_MAX);
 
 /** Everything the tracker knows about one session, built incrementally from its transcript. */
 export class SessionModel {
@@ -57,7 +59,7 @@ export class SessionModel {
         this.lastPrompt = firstLine(ev.text);
         this.lastPromptAt = when;
         this.turnOpen = true;
-        this.#push({ at: when, kind: 'prompt', text: this.lastPrompt });
+        this.#push({ at: when, kind: 'prompt', text: this.lastPrompt, body: bodyOf(ev.text) });
         break;
       case 'turn_start':
         this.turnOpen = true;
@@ -65,7 +67,7 @@ export class SessionModel {
       case 'reply':
         this.lastReply = firstLine(ev.text);
         this.turnOpen = true;
-        this.#push({ at: when, kind: 'reply', text: this.lastReply });
+        this.#push({ at: when, kind: 'reply', text: this.lastReply, body: bodyOf(ev.text) });
         break;
       case 'tool_use': {
         const call = { id: ev.id, name: ev.name, input: ev.input, at: when, cwd: ev.cwd };
