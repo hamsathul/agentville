@@ -41,7 +41,9 @@ how much CPU and memory each one uses.
   Hearts show context left, chickens are subagents and an Explore subagent is a dog. Click a
   farmer to open the sidebar beside the farm (or toggle it with ◨ Sidebar). Its tabs: **Agent**
   (answer its question or permission prompt, message it with screenshots, the conversation newest
-  first, its activity), **Files** (its folder, scratchpad and memory) and **Diary** (who went where). Click a field for a close-up of the files agents touched there.
+  first), **Activity** (its tool steps), **Files** (its folder, scratchpad and memory) and **Diary**
+  (who went where). Speech bubbles over the farmers show what each last said (its question when
+  it waits on you); close one with ×, or turn them off. Zoom with − / + or ⌘/Ctrl + scroll. Click a field for a close-up of the files agents touched there.
   It pauses when hidden and follows the system's reduce-motion setting.
 - **Claude Code mod:** `/tracker` opens a side pane, the status line shows
   `⚑ 1 waiting · 2 working`, and toasts appear when another agent needs you. The mod is also

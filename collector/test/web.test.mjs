@@ -799,9 +799,9 @@ test('the sidebar toggle shows activity and the explorer beside the farm, and is
   assert.equal(page.el('side-toggle').attrs['aria-pressed'], 'true');
   const side = page.el('farm-agent').innerHTML;
   assert.match(side, /busy-one/);
-  assert.match(side, />Activity</);
-  assert.match(side, /npm test/);
   assert.match(side, /id="msg-text"/);
+  await page.clickButton('tab-activity', { farmTab: 'activity' });
+  assert.match(page.el('farm-activity').innerHTML, /npm test/);
   await page.clickButton('tab-files', { farmTab: 'files' });
   await page.settle();
   assert.ok(page.gets.some(g => g.path === '/api/agent/r1/files'));
@@ -958,12 +958,12 @@ test('the farm sidebar shows the question card too', () => {
   assert.match(page.el('farm-agent').innerHTML, /class="qcard"[\s\S]*Should I push them to main\?/);
 });
 
-test('in the farm sidebar too: Now, the question, the message box, then the conversation and activity', () => {
+test('in the farm sidebar too: Now, the question, the message box, then the conversation (activity has its own tab)', () => {
   const f = fakeFarm();
   const page = loadPage({ farm: f.farm, stored: { 'tracker-view': 'farm', 'tracker-farm-side': 'open' } });
   page.push(turnSnapshot([asking({ feed: chatty().feed })]));
   const side = page.el('farm-agent').innerHTML;
-  const at = [side.indexOf('>Now<'), side.indexOf('class="qcard"'), side.indexOf('id="msg-text"'), side.indexOf('>Conversation<'), side.indexOf('>Activity')];
+  const at = [side.indexOf('>Now<'), side.indexOf('class="qcard"'), side.indexOf('id="msg-text"'), side.indexOf('>Conversation<')];
   assert.ok(at.every((v, i) => v >= 0 && (i === 0 || v > at[i - 1])), at.join(' '));
 });
 
@@ -1013,4 +1013,19 @@ test('Show all says it is loading while it fetches', async () => {
 
 test('hidden controls stay hidden even when their own style sets a display', () => {
   assert.match(html, /\[hidden\]\s*\{\s*display:\s*none\s*!important;\s*\}/);
+});
+
+test("Activity is its own tab in the farm sidebar, and the Agent tab no longer repeats it", async () => {
+  const f = fakeFarm();
+  const page = loadPage({ farm: f.farm, stored: { 'tracker-view': 'farm', 'tracker-farm-side': 'open' } });
+  page.push(richSnapshot([chatty()]));
+  assert.doesNotMatch(page.el('farm-agent').innerHTML, />Activity/);
+  assert.match(page.el('farm-agent').innerHTML, />Conversation</);
+  await page.clickButton('tab-activity', { farmTab: 'activity' });
+  assert.equal(page.el('main').dataset.sideTab, 'activity');
+  assert.equal(page.stored['tracker-farm-tab'], 'activity');
+  const act = page.el('farm-activity').innerHTML;
+  assert.match(act, />Activity/);
+  assert.match(act, /npm test/);
+  assert.match(act, /Show all/);
 });

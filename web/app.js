@@ -61,6 +61,7 @@ function render() {
     const a = farmSide ? centreAgent() : null;
     window.TrackerFarm?.select?.(a?.id ?? null);
     if (farmSide && farmTab === 'agent') $('farm-agent').innerHTML = a ? farmSideHtml(a) : '<div class="empty">No agents are running.</div>';
+    if (farmSide && farmTab === 'activity') $('farm-activity').innerHTML = a ? activityHtml(a) : '<div class="empty">No agents are running.</div>';
     if (farmSide && farmTab === 'files') syncExplorer();
     updateTimers();
     return;
@@ -106,7 +107,7 @@ function refreshFullFeeds() {
 
 let view = loadView();
 let farmSide = loadSaved('tracker-farm-side') === 'open'; // the farm's sidebar: answer, message, activity, files
-const FARM_TABS = ['agent', 'files', 'diary'];
+const FARM_TABS = ['agent', 'activity', 'files', 'diary'];
 let farmTab = FARM_TABS.includes(loadSaved('tracker-farm-tab')) ? loadSaved('tracker-farm-tab') : 'agent';
 function loadSaved(key) {
   try {
@@ -178,8 +179,7 @@ function farmSideHtml(a) {
     <div class="sec">Now</div>${now}
     ${questionHtml(a)}
     ${composeHtml(a)}
-    ${conversationHtml(a)}
-    ${activityHtml(a)}`;
+    ${conversationHtml(a)}`;
 }
 
 /** A farmer was clicked: show it in the farm's sidebar, where it can be answered or messaged. */

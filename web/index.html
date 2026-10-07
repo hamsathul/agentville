@@ -280,14 +280,15 @@ pre.code .l:hover { background: var(--panel-2); }
 #farm { display: none; min-height: 0; overflow: auto; }
 #farm-side { display: none; min-height: 0; overflow: auto; background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 12px 14px; }
 /* The farm sidebar: tabs on top, then one of the agent panel, its files (the explorer) or the farm diary. */
-#farm-tabs, #farm-diary-pane { display: none; }
+#farm-tabs, #farm-diary-pane, #farm-activity-pane { display: none; }
 .app[data-view="farm"][data-side="open"] { grid-template-columns: minmax(0, 1fr) 380px; grid-template-rows: auto minmax(0, 1fr); }
 .app[data-view="farm"][data-side="open"] > #farm { grid-row: 1 / span 2; grid-column: 1; }
 .app[data-view="farm"][data-side="open"] > #farm-tabs { display: flex; grid-row: 1; grid-column: 2; justify-self: start; }
 .app[data-view="farm"][data-side="open"][data-side-tab="agent"] > #farm-side { display: block; grid-row: 2; grid-column: 2; }
 .app[data-view="farm"][data-side="open"][data-side-tab="files"] > .col.right { display: flex; grid-row: 2; grid-column: 2; }
 .app[data-view="farm"][data-side="open"][data-side-tab="diary"] > #farm-diary-pane { display: block; grid-row: 2; grid-column: 2; }
-#farm-diary-pane { min-height: 0; overflow: auto; background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 12px 14px; }
+.app[data-view="farm"][data-side="open"][data-side-tab="activity"] > #farm-activity-pane { display: block; grid-row: 2; grid-column: 2; }
+#farm-activity-pane, #farm-diary-pane { min-height: 0; overflow: auto; background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 12px 14px; }
 #farm-tabs button[aria-selected="true"] { background: var(--panel); color: var(--text); box-shadow: 0 1px 3px rgba(0, 0, 0, .18), 0 0 0 1px var(--line); }
 .qcard { border: 1px solid color-mix(in srgb, var(--warn) 65%, transparent); background: color-mix(in srgb, var(--warn) 10%, transparent); border-radius: 12px; padding: 10px 13px; margin: 12px 0; display: grid; gap: 8px; }
 .qtext { font-weight: 600; font-size: 14px; }
@@ -328,8 +329,19 @@ a.chip { text-decoration: none; }
 @keyframes blink { 50% { opacity: .25; } }
 .ell { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
 .px { display: grid; gap: 12px; }
-.px-host { overflow-x: auto; display: flex; flex-direction: column; align-items: center; gap: 8px; background: #24361f; border: 1px solid var(--line); border-radius: 14px; padding: 10px; }
-.px-stage { position: relative; flex: none; }
+.px-host { overflow-x: auto; display: flex; flex-direction: column; align-items: flex-start; gap: 8px; background: #24361f; border: 1px solid var(--line); border-radius: 14px; padding: 10px; }
+.px-stage { position: relative; flex: none; margin-inline: auto; } /* centred, yet scrollable when zoomed in */
+.px-hud .px-zoom { padding: 0; gap: 0; overflow: hidden; }
+.px-hud .px-zoom button { border: 0; border-radius: 0; box-shadow: none; background: transparent; padding: 1px 8px; min-width: 24px; justify-content: center; }
+.px-hud .px-zoom button + button { border-left: 1px solid #c98d4f; }
+.px-say { position: absolute; left: 0; top: 0; z-index: 2; width: max-content; max-width: 200px; padding: 5px 20px 6px 9px; background: #fffdf4; color: #2b2116; border: 2px solid #2a1d14; border-radius: 9px; font: 600 11px/1.3 system-ui, sans-serif; pointer-events: auto; cursor: pointer; box-shadow: 0 2px 0 rgba(0, 0, 0, .25); }
+.px-say::after { content: ''; position: absolute; left: 50%; bottom: -9px; margin-left: -6px; border: 6px solid transparent; border-top-color: #2a1d14; border-bottom: 0; }
+.px-say span { display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
+.px-say .x { position: absolute; top: 0; right: 2px; border: 0; background: none; color: #7a6a55; font-size: 14px; line-height: 1; padding: 2px 3px; cursor: pointer; }
+.px-say .x:hover { color: #2b2116; }
+.px-say.st-waiting { background: #ffe9e6; border-color: #b3261e; }
+.px-say.st-waiting::after { border-top-color: #b3261e; }
+.px-say.q { background: #fff4cc; }
 .px-stage canvas { display: block; image-rendering: pixelated; cursor: pointer; }
 .px-ov { position: absolute; inset: 0; pointer-events: none; }
 .px-lab { position: absolute; transform: translateX(-50%); white-space: nowrap; font: 700 10px ui-monospace, Menlo, monospace; letter-spacing: .04em; color: #dfe6ec; background: rgba(10, 12, 15, .62); padding: 1px 6px; border-radius: 3px; display: inline-flex; gap: 5px; align-items: center; }
@@ -455,8 +467,9 @@ a.pile { text-decoration: none; color: inherit; }
     <div id="tree" class="tree"></div>
   </aside>
   <section id="farm" aria-label="Pixel farm"></section>
-  <div id="farm-tabs" class="seg" role="tablist" aria-label="Sidebar"><button type="button" id="tab-agent" role="tab" data-farm-tab="agent">Agent</button><button type="button" id="tab-files" role="tab" data-farm-tab="files">Files</button><button type="button" id="tab-diary" role="tab" data-farm-tab="diary">Diary</button></div>
+  <div id="farm-tabs" class="seg" role="tablist" aria-label="Sidebar"><button type="button" id="tab-agent" role="tab" data-farm-tab="agent">Agent</button><button type="button" id="tab-activity" role="tab" data-farm-tab="activity">Activity</button><button type="button" id="tab-files" role="tab" data-farm-tab="files">Files</button><button type="button" id="tab-diary" role="tab" data-farm-tab="diary">Diary</button></div>
   <aside id="farm-side" aria-label="The selected farmer"><div id="farm-agent"></div></aside>
+  <aside id="farm-activity-pane" aria-label="Activity"><div id="farm-activity"></div></aside>
   <aside id="farm-diary-pane" aria-label="Farm diary"><div class="sec" style="margin-top:0">Farm diary</div><ol id="farm-diary" class="px-log"></ol></aside>
 </main>
 <div id="tip" class="tip" role="tooltip"></div>

@@ -147,6 +147,21 @@ try {
   await js("document.querySelector('[data-farm-help-close]').click()");
   check(await js("!document.querySelector('.px-help').open"), 'the info dialog closes');
 
+  check(await until("[...document.querySelectorAll('.px-say')].some(b => b.textContent.includes('Which crop next?'))"), "the waiting farmer's question is in a speech bubble over its head");
+  check(await js("[...document.querySelectorAll('.px-say')].some(b => b.textContent.includes('One question before I go on'))") === false, 'a waiting farmer shows its question, not its older reply');
+  await js("document.querySelector('.px-say [data-say-close]').click()");
+  check(await until("!document.querySelector('.px-say')"), 'the bubble closes with its ×');
+  check(await js("document.querySelector('.px-say')") === null, 'and stays closed while the agent says nothing new');
+  const width = () => js("parseFloat(document.querySelector('#farm canvas').style.width)");
+  const fit = await width();
+  await js("document.querySelector('[data-farm-zoom=\"1\"]').click()");
+  check(await width() > fit, 'zooming in makes the farm bigger');
+  await js("document.querySelector('[data-farm-zoom=\"0\"]').click()");
+  check(await width() === fit, 'the zoom reading fits the farm back to the width');
+  await js("document.querySelector('[data-farm-bubbles]').click()");
+  check(/Bubbles: off/.test(await js("document.querySelector('[data-farm-bubbles]').textContent")), 'the bubbles switch turns them off');
+  await js("document.querySelector('[data-farm-bubbles]').click()");
+
   const closeUp = "(() => { const c = document.querySelector('#farm canvas'); const r = c.getBoundingClientRect(), cs = r.width / 400; c.dispatchEvent(new MouseEvent('click', { bubbles: true, clientX: r.left + 70 * cs, clientY: r.top + 48 * cs })); })()";
   await js(closeUp);
   check(await until("[...document.querySelectorAll('.fv-f')].map(b => b.textContent).join(' ').includes('app.ts')"), 'a field close-up lists the files agents touched');

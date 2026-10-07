@@ -47,6 +47,11 @@
     return a.stateReason ?? '';
   }
 
+  /** A reply as plain text for a speech bubble: markdown markers and code blocks out, one line, clipped. */
+  const spoken = (s, max = 160) => {
+    const text = String(s ?? '').replace(/```[\s\S]*?(```|$)/g, ' ').replace(/\*\*|__|`/g, '').replace(/^\s*#{1,6}\s*/gm, '').replace(/^\s*>\s?/gm, '').replace(/\s+/g, ' ').trim();
+    return text.length > max ? `${text.slice(0, max - 1)}…` : text;
+  };
   const firstLine = (s, max = 90) => {
     const line = String(s ?? '').split('\n')[0].trim();
     return line.length > max ? `${line.slice(0, max - 1)}…` : line;
@@ -66,7 +71,8 @@
           id: a.id, name: a.name, kind: a.kind, state: a.state === 'yourTurn' ? 'turn' : a.state, field: fieldOf(a, repos),
           tool: a.now?.tool ?? a.feed?.find(f => f.kind === 'tool')?.tool ?? null, summary: a.now?.summary ?? '',
           pct, hearts: Math.round((1 - pct) * 4), hot: (a.proc?.cpu ?? 0) >= cpuAlertPct,
-          ask: askText(a), askKind: a.ask?.kind ?? null, question: a.question ?? null, reply: firstLine(a.lastReply), color: colorIndex(a.id), shirt: SHIRT[colorIndex(a.id)],
+          ask: askText(a), askKind: a.ask?.kind ?? null, question: a.question ?? null, reply: firstLine(a.lastReply),
+          said: spoken((a.feed ?? []).find(f => f.kind === 'reply')?.body ?? (a.feed ?? []).find(f => f.kind === 'reply')?.text), color: colorIndex(a.id), shirt: SHIRT[colorIndex(a.id)],
           kids: (a.children ?? []).filter(c => c.state === 'running').slice(0, 4).map(c => ({ id: c.id, dog: c.agentType === 'Explore' })),
         };
       }),
@@ -265,13 +271,15 @@
         if (z === 'meadow') return 'works in the wild meadow (no repo)';
         return `${VERB[toolProp(f.tool)] ?? 'working'} in the ${fieldByKey(f.field)?.name ?? ''} field`;
       },
-      hud(still) {
+      hud(still, zoom = 1, saysOn = true) {
         const on = scene.farmers.filter(a => ACTIVE.has(a.state)), need = scene.farmers.filter(a => a.state === 'waiting' || a.question).length;
         const energy = on.length ? on.reduce((t, a) => t + (1 - a.pct), 0) / on.length : 1;
         return `<span title="One coin for every tool step since you opened this page"><b class="coin"></b>${game.coins}</span>
           <span title="Finished turns delivered to your porch"><b class="basket"></b>${game.harvests} harvested</span>
           <span title="Average context left across active farmers">energy <em class="hbar"><i style="width:${Math.round(energy * 100)}%"></i></em></span>
           ${need ? `<span class="alert">${need} need${need > 1 ? '' : 's'} you</span>` : ''}
+          <span class="px-zoom" title="Zoom (or ⌘/Ctrl + scroll over the farm)"><button type="button" data-farm-zoom="-1" aria-label="Zoom out">−</button><button type="button" data-farm-zoom="0" title="Fit the farm to the width">${Math.round(zoom * 100)}%</button><button type="button" data-farm-zoom="1" aria-label="Zoom in">+</button></span>
+          <button type="button" data-farm-bubbles title="Speech bubbles with what each farmer last said">Bubbles: ${saysOn ? 'on' : 'off'}</button>
           <button type="button" class="px-motion" data-farm-motion title="Walking and animation on the farm">Motion: ${still ? 'off' : 'on'}</button>
           <button type="button" class="px-info" data-farm-help title="How to read the farm" aria-label="How to read the farm">i</button>`;
       },
@@ -432,6 +440,15 @@
     let host = null, canvas = null, ctx = null, ov = null, logEl = null, hudEl = null, bg = null, ro = null;
     let raf = 0, last = 0, T = 0, cs = 1, first = true, timer = 0, layoutKey = null, labelKey = '';
     let scene = { fields: [], farmers: [] }, overflow = {}, still = false, opts = {}, selectedId = null, got = false; // got: a scene has arrived
+    // Zoom on top of "fit to the width", and speech bubbles (each can be closed until its farmer says something new).
+    const ZOOMS = [0.5, 0.75, 1, 1.25, 1.5, 2, 2.5, 3];
+    const stored = key => { try { return localStorage.getItem(key); } catch { return null; } };
+    const keep = (key, value) => { try { localStorage.setItem(key, value); } catch { /* this page only */ } };
+    let zoom = ZOOMS.includes(Number(stored('tracker-farm-zoom'))) ? Number(stored('tracker-farm-zoom')) : 1;
+    let saysOn = stored('tracker-farm-bubbles') !== 'off';
+    let wheel = 0;
+    const says = new Map(); // farmer id → { el, text }
+    const closedSays = new Map(); // farmer id → the text that was closed
     const bots = new Map(), log = [];
 
     function targets() {
@@ -469,7 +486,45 @@
       ov.appendChild(el);
       setTimeout(() => el.remove(), 1700);
     }
-    function renderHud() { if (hudEl) hudEl.innerHTML = th.hud(still); }
+    function renderHud() { if (hudEl) hudEl.innerHTML = th.hud(still, zoom, saysOn); }
+    function setZoom(step) {
+      zoom = step === 0 ? 1 : ZOOMS[Math.max(0, Math.min(ZOOMS.length - 1, ZOOMS.indexOf(zoom) + step))];
+      keep('tracker-farm-zoom', String(zoom));
+      resize();
+      renderHud();
+    }
+    function onWheel(e) { // ⌘/Ctrl + scroll (or a trackpad pinch) zooms
+      if (!e.ctrlKey && !e.metaKey) return;
+      e.preventDefault();
+      wheel += e.deltaY;
+      if (Math.abs(wheel) < 40) return;
+      setZoom(wheel < 0 ? 1 : -1);
+      wheel = 0;
+    }
+    /** A farmer's speech bubble: its question when waiting or asking, else what it last said. */
+    function placeBubble(f, b) {
+      const text = saysOn && ACTIVE.has(f.state) ? (f.state === 'waiting' ? f.ask : f.question || f.said) : '';
+      let s = says.get(f.id);
+      if (!text || closedSays.get(f.id) === text) {
+        if (s) { s.el.remove(); says.delete(f.id); }
+        return;
+      }
+      if (!s) {
+        const el = document.createElement('div');
+        el.dataset.say = f.id;
+        el.innerHTML = '<span></span><button type="button" class="x" data-say-close aria-label="Close this bubble">×</button>';
+        ov.appendChild(el);
+        s = { el, text: null };
+        says.set(f.id, s);
+      }
+      if (s.text !== text) {
+        s.el.querySelector('span').textContent = text;
+        s.el.className = `px-say st-${f.state}${f.question ? ' q' : ''}`;
+        s.el.title = `${f.name}: ${text} (click to open it in the sidebar)`;
+        s.text = text;
+      }
+      s.el.style.transform = `translate(${Math.round(b.x * cs)}px, ${Math.round((b.y - th.SH * SC - 3 - b.lift) * cs) - 18}px) translate(-50%, -100%)`;
+    }
     function addLog(f, text) {
       log.unshift({ at: Date.now(), state: f.state, html: `<b>${esc(f.name)}</b> ${esc(text)}` });
       log.length = Math.min(log.length, 8);
@@ -563,7 +618,9 @@
           b.tagText = f.state + text + tip + sel;
         }
         b.tag.style.transform = `translate(${Math.round(b.x * cs)}px, ${Math.round((b.y - th.SH * SC - 3 - b.lift) * cs)}px) translate(-50%, -100%)`;
+        placeBubble(f, b);
       }
+      for (const [id, s] of says) if (!bots.has(id)) { s.el.remove(); says.delete(id); }
     }
     const visible = () => Boolean(host?.isConnected) && host.offsetParent !== null && !document.hidden;
     function frame(now) {
@@ -605,7 +662,8 @@
       const { H } = th.layout(), dpr = window.devicePixelRatio || 1;
       // Fit the width (at most 4×); the backing store is a whole multiple of the art, and
       // image-rendering: pixelated keeps the pixels square when the browser scales it.
-      cs = Math.max(0.75, Math.min(4, ((host.querySelector('.px-host').clientWidth || W) - 22) / W));
+      const fit = Math.max(0.75, Math.min(4, ((host.querySelector('.px-host').clientWidth || W) - 22) / W));
+      cs = Math.max(0.5, Math.min(8, fit * zoom));
       const k = Math.max(1, Math.ceil(cs * dpr));
       canvas.width = W * k;
       canvas.height = H * k;
@@ -641,6 +699,27 @@
       const sign = e.target.closest?.('[data-farm-field]');
       if (sign) { e.stopPropagation(); opts.onOpenField?.(sign.dataset.farmField); return; }
       if (e.target.closest?.('[data-farm-motion]')) { e.stopPropagation(); setStill(!still); return; }
+      const zoomBtn = e.target.closest?.('[data-farm-zoom]');
+      if (zoomBtn) { e.stopPropagation(); setZoom(Number(zoomBtn.dataset.farmZoom)); return; }
+      if (e.target.closest?.('[data-farm-bubbles]')) {
+        e.stopPropagation();
+        saysOn = !saysOn;
+        keep('tracker-farm-bubbles', saysOn ? 'on' : 'off');
+        renderHud();
+        draw();
+        return;
+      }
+      const closeSay = e.target.closest?.('[data-say-close]');
+      if (closeSay) {
+        e.stopPropagation();
+        const id = closeSay.closest('[data-say]').dataset.say;
+        closedSays.set(id, says.get(id)?.text);
+        says.get(id)?.el.remove();
+        says.delete(id);
+        return;
+      }
+      const say = e.target.closest?.('[data-say]');
+      if (say) { e.stopPropagation(); opts.onPickAgent?.(say.dataset.say); return; }
       const help = host.querySelector('.px-help');
       if (e.target.closest?.('[data-farm-help]')) { e.stopPropagation(); help.showModal(); return; }
       if (e.target.closest?.('[data-farm-help-close]') || e.target === help) { e.stopPropagation(); help.close(); return; } // × or a click on the backdrop
@@ -685,6 +764,7 @@
         ro = new ResizeObserver(() => resize());
         ro.observe(host);
         host.addEventListener('click', onClick);
+        host.querySelector('.px-stage').addEventListener('wheel', onWheel, { passive: false });
         document.addEventListener('visibilitychange', onVisibility);
         renderLog();
         renderHud();
@@ -705,6 +785,7 @@
         document.removeEventListener('visibilitychange', onVisibility);
         if (host) host.innerHTML = '';
         for (const b of bots.values()) { b.tag = null; b.tagText = ''; }
+        says.clear();
         host = canvas = ctx = ov = logEl = hudEl = null;
       },
       resume: () => { if (still) redrawStill(); else startLoop(); },

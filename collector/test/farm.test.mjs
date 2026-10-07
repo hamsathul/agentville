@@ -108,3 +108,18 @@ test('a farmer whose turn ended with a question carries it, for the porch bubble
   const [f] = plain(toScene(snapOf([agent('t', { state: 'yourTurn', question: 'Should I deploy?' })], []), { cpuAlertPct: 90 }).farmers);
   assert.equal(f.question, 'Should I deploy?');
 });
+
+test('a farmer carries what it last said, as plain text, for its speech bubble', () => {
+  const { toScene } = load();
+  const feed = [
+    { kind: 'tool', tool: 'Bash', text: 'npm test' },
+    { kind: 'reply', text: 'Done.', body: '**Done.** All `tests` pass.\n\n## Next\nShip it?' },
+    { kind: 'reply', text: 'Older', body: 'Older reply' },
+  ];
+  const [f] = plain(toScene(snapOf([agent('a', { feed })], []), { cpuAlertPct: 90 }).farmers);
+  assert.equal(f.said, 'Done. All tests pass. Next Ship it?');
+  const [quiet] = plain(toScene(snapOf([agent('b', { feed: [{ kind: 'tool', tool: 'Read', text: 'x' }] })], []), { cpuAlertPct: 90 }).farmers);
+  assert.equal(quiet.said, '');
+  const [long] = plain(toScene(snapOf([agent('c', { feed: [{ kind: 'reply', text: 'x', body: 'word '.repeat(80) }] })], []), { cpuAlertPct: 90 }).farmers);
+  assert.ok(long.said.length <= 160 && long.said.endsWith('…'));
+});
