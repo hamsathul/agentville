@@ -288,31 +288,41 @@
    * Night falls over everything drawn so far (a tint, warm at dawn and dusk), then the lights glow:
    * the farmhouse windows, the barn lamp, lanterns in farmers' hands.
    */
+  /** Two colours mixed: t = 0 gives a, 1 gives b. */
+  function blend(a, b, t) {
+    const [ar, ag, ab] = rgbOf(a), [br, bg, bb] = rgbOf(b);
+    return `#${[ar + (br - ar) * t, ag + (bg - ag) * t, ab + (bb - ab) * t].map(v => Math.round(v).toString(16).padStart(2, '0')).join('')}`;
+  }
+  let lightMap = null; // the night's darkness, one pixel per world pixel, with the lit places cut out
   function drawNight(sky, H, lights) {
     const ctx = PXG.ctx, dark = 1 - sky.light;
-    if (dark < 0.02) return;
-    ctx.globalCompositeOperation = 'multiply';
-    ctx.globalAlpha = Math.min(0.7, dark * 0.7);
-    ctx.fillStyle = sky.phase === 'night' ? '#3c4a8c' : '#c26a7a';
-    const e = PXG.ext ?? { x0: 0, x1: W, y0: 0, y1: H };
-    ctx.fillRect(e.x0, e.y0, e.x1 - e.x0, e.y1 - e.y0);
-    ctx.globalAlpha = 1;
-    ctx.globalCompositeOperation = 'source-over';
-    ctx.fillStyle = '#ffe8a3';
-    for (const [x, y, r, core] of lights) {
-      for (let k = 3; k >= 1; k--) { // a round glow in three steps, brighter inside
-        ctx.globalAlpha = 0.1 * dark * (4 - k);
-        const rr = Math.round((r * k) / 3);
-        for (let dy = -rr; dy <= rr; dy++) { const w = Math.round(Math.sqrt(rr * rr - dy * dy)); ctx.fillRect(Math.round(x - w), Math.round(y + dy), w * 2, 1); }
-      }
-      ctx.globalAlpha = 1;
-      if (core) {
-        const [cx, cy, cw, ch, panes] = core;
-        px(cx, cy, cw, ch, dark > 0.5 ? '#ffd43b' : '#f4d58d');
-        if (panes) { px(cx + (cw >> 1), cy, 1, ch, '#6b4320'); px(cx, cy + (ch >> 1), cw, 1, '#6b4320'); } // the window frame
+    if (dark < 0.02 || typeof document === 'undefined') return;
+    const e = PXG.ext ?? { x0: 0, x1: W, y0: 0, y1: H }, w = e.x1 - e.x0, h = e.y1 - e.y0;
+    // Laid over the farm with multiply: white leaves a pixel as it is, the shade darkens it. So
+    // the darkness is the shade mixed toward white by its strength, and a light is a round hole in
+    // it, in four soft steps to warm white in the middle: lit places keep their colours, no fog.
+    const darkness = blend('#ffffff', sky.phase === 'night' ? '#3c4a8c' : '#c26a7a', Math.min(0.7, dark * 0.7));
+    lightMap ??= document.createElement('canvas');
+    if (lightMap.width !== w || lightMap.height !== h) { lightMap.width = w; lightMap.height = h; }
+    const g = lightMap.getContext('2d');
+    g.fillStyle = darkness;
+    g.fillRect(0, 0, w, h);
+    for (const [x, y, r] of lights) {
+      for (let k = 5; k >= 1; k--) { // five steps from the edge in: a soft pixel glow
+        const rr = Math.round((r * k) / 5);
+        g.fillStyle = blend(darkness, '#fff4d6', [0.95, 0.75, 0.55, 0.35, 0.17][k - 1]);
+        for (let dy = -rr; dy <= rr; dy++) { const half = Math.round(Math.sqrt(rr * rr - dy * dy)); g.fillRect(Math.round(x - e.x0 - half), Math.round(y - e.y0 + dy), half * 2, 1); }
       }
     }
-    ctx.globalAlpha = 1;
+    ctx.globalCompositeOperation = 'multiply';
+    ctx.drawImage(lightMap, e.x0, e.y0);
+    ctx.globalCompositeOperation = 'source-over';
+    for (const [, , , core] of lights) { // lit windows and lamps: they are the lights
+      if (!core) continue;
+      const [cx, cy, cw, ch, panes] = core;
+      px(cx, cy, cw, ch, dark > 0.5 ? '#ffd43b' : '#f4d58d');
+      if (panes) { px(cx + (cw >> 1), cy, 1, ch, '#6b4320'); px(cx, cy + (ch >> 1), cw, 1, '#6b4320'); } // the window frame
+    }
   }
 
   // Seasons: the grass, the trees and the flowers (spring blossom, autumn leaves, winter snow).
@@ -774,8 +784,7 @@
       }
       case 'lantern': { // a server or a long wait: keeping watch with a lantern
         const flick = blink(5);
-        PXG.lights?.push([rp.ox + 12.5 * SC, rp.oy + 10 * SC, 9, null]);
-        PXG.ctx.globalAlpha = 0.22 + 0.08 * flick; rp(8, 6, 9, 10, '#ffe8a3'); PXG.ctx.globalAlpha = 1;
+        PXG.lights?.push([rp.ox + 12.5 * SC, rp.oy + 10 * SC, 12, null]); // it lights its farmer at night
         rp(12, 5, 1, 2, '#2a1d14'); rp(11, 7, 3, 1, '#2a1d14'); rp(11, 8, 3, 4, '#5f6b7a'); rp(12, 9, 1, 2, flick ? '#ffd43b' : '#ff922b'); rp(11, 12, 3, 1, '#2a1d14');
         return;
       }
@@ -1016,7 +1025,7 @@
       lights() {
         const { BOT_TOP } = L;
         const { LANE_B } = L;
-        return [[25, 12, 7, [24, 11, 2, 1]], [158, BOT_TOP + 25, 16, [149, BOT_TOP + 20, 18, 11, true]], [242, BOT_TOP + 25, 16, [233, BOT_TOP + 20, 18, 11, true]], [200, LANE_B - 26, 30, [199, LANE_B - 33, 2, 1]]];
+        return [[25, 12, 7, [24, 11, 2, 1]], [158, BOT_TOP + 25, 16, [149, BOT_TOP + 20, 18, 11, true]], [242, BOT_TOP + 25, 16, [233, BOT_TOP + 20, 18, 11, true]], [200, LANE_B - 12, 20, [199, LANE_B - 33, 2, 1]]]; // the porch lamp lights the porch, not the roof
       },
       fieldAt(x, y) { return L.ST.find(s => Math.abs(x - s.cx) <= 46 && y >= s.rowTop - 18 && y <= s.rowTop + 50)?.key ?? null; },
       items: () => [[L.BOT_TOP + 30, drawTree], [L.LANE_B + 6, drawPosts]],

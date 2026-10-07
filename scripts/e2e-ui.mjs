@@ -203,6 +203,10 @@ try {
   await js("document.querySelector('[data-farm-resting]').click()");
   check(await until("!!document.querySelector('.px-tag[data-farmer=\"ui-idle\"]')"), 'and shows them again');
   check(await until("/ui-done-a\\s*sends a note to ui-done-b/.test(document.getElementById('farm-diary').textContent)"), "a message from one agent to another goes in the farm diary (and flies as a pigeon)");
+  for (let i = 0; i < 3 && !/Sky: night/.test(await js("document.querySelector('[data-farm-sky]').textContent")); i++) await js("document.querySelector('[data-farm-sky]').click()");
+  await sleep(600);
+  check(/Sky: night/.test(await js("document.querySelector('[data-farm-sky]').textContent")) && errors.length === 0, 'the farm draws its night, lights and all, without errors');
+  for (let i = 0; i < 3 && !/Sky: live/.test(await js("document.querySelector('[data-farm-sky]').textContent")); i++) await js("document.querySelector('[data-farm-sky]').click()");
   check(!/energy/i.test(await js("document.querySelector('.px-hud')?.textContent ?? ''")) && /5-hour 34%/.test(await js("document.getElementById('hstats').textContent")), 'the farm has no vague energy bar; the plan stays in the top bar');
   check(await until("[...document.querySelectorAll('.px-lab')].some(l => l.textContent.startsWith('farm-repo'))"), 'the repo is a field');
   await js("document.querySelector('[data-farm-help]').click()");
