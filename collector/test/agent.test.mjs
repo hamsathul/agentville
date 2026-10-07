@@ -187,3 +187,15 @@ test('an agent whose turn ended with a question says what it asks', () => {
   const busy = modelOf(prompt(0, 'go'), reply(1, 'Should I? Let me check.'), toolUse(2, 't', 'Bash'));
   assert.equal(buildAgent({ base: base(), model: busy, repoOf, now: at(3), cfg, home: '/h' }).question, undefined);
 });
+
+test('the snapshot carries a 600-character preview of a long message, marked as having more', () => {
+  const long = `Intro\n\n${'y'.repeat(900)}`;
+  const m = modelOf(prompt(0, 'short ask'), reply(1, long));
+  const a = buildAgent({ base: base(), model: m, registry: { status: 'idle' }, repoOf, now: at(2), cfg, home: '/h' });
+  const [r, p] = a.feed;
+  assert.equal(r.more, true);
+  assert.equal(r.body, `${long.slice(0, 600)}…`);
+  assert.equal(p.body, 'short ask');
+  assert.equal(p.more, undefined);
+  assert.equal(m.feed[0].body, long, 'the model keeps the whole message for /feed');
+});

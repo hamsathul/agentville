@@ -167,6 +167,10 @@ function askHtml(a) {
 /** The feed to show: the whole history once Show all has loaded it, else the snapshot's latest. */
 const feedOf = a => fullFeeds.get(a.id)?.items ?? a.feed;
 
+/** A message the snapshot only previews: the button loads the whole history, where it is complete. */
+const moreHtml = (a, f) =>
+  f.more ? `<button type="button" class="act mini bub-more" data-full-feed="${esc(a.id)}">Show the whole message</button>` : '';
+
 function conversationHtml(a) {
   const all = fullFeeds.has(a.id);
   const said = feedOf(a).filter(f => f.kind === 'prompt' || f.kind === 'reply').slice(0, all ? Infinity : 10); // newest first, under the box
@@ -174,8 +178,8 @@ function conversationHtml(a) {
   // Replies are markdown (rendered by the escape-everything renderer); your prompts stay as typed.
   // Reply on an agent message quotes it into the message box.
   const bubble = f => (f.kind === 'prompt'
-    ? `<div class="bub you">${esc(f.body || f.text)}<time>${hhmm(f.at)}</time></div>`
-    : `<div class="bub agent"><div class="bub-md">${renderMarkdown(f.body || f.text)}</div><time>${hhmm(f.at)}<button type="button" class="bub-reply" data-quote="${esc(f.body || f.text)}" data-agent="${esc(a.id)}" title="Quote this in your reply">↩ Reply</button></time></div>`);
+    ? `<div class="bub you">${esc(f.body || f.text)}${moreHtml(a, f)}<time>${hhmm(f.at)}</time></div>`
+    : `<div class="bub agent"><div class="bub-md">${renderMarkdown(f.body || f.text)}</div>${moreHtml(a, f)}<time>${hhmm(f.at)}<button type="button" class="bub-reply" data-quote="${esc(f.body || f.text)}" data-agent="${esc(a.id)}" title="Quote this in your reply">↩ Reply</button></time></div>`);
   return `<div class="sec">Conversation</div><div class="chat">${said.map(bubble).join('')}</div>`;
 }
 

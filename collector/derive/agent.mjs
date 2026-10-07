@@ -80,7 +80,7 @@ export function buildAgent({ base, model, registry, proc, cpuHistory = [], child
     lastPrompt: model?.lastPrompt ?? undefined,
     lastReply: model?.lastReply ?? undefined,
     question: derived.state === 'yourTurn' ? trailingQuestion(model?.finalReply) ?? undefined : undefined,
-    feed: model ? model.feed.slice(0, 20) : [],
+    feed: model ? model.feed.slice(0, 20).map(previewOf) : [],
     children: model ? childrenOf(model, childModels, now) : [],
     touching,
     docs: docsOf(model, childModels),
@@ -88,6 +88,13 @@ export function buildAgent({ base, model, registry, proc, cpuHistory = [], child
     activity: activityOf(recent, now),
     timeline: recent.slice(-TIMELINE_MAX).map(c => ({ at: c.at, tool: c.name })),
   };
+}
+
+/** The snapshot goes out on every change for every agent, so long messages travel as a preview; /feed has them whole. */
+const PREVIEW_MAX = 600;
+function previewOf(item) {
+  if (!item.body || item.body.length <= PREVIEW_MAX) return item;
+  return { ...item, body: `${item.body.slice(0, PREVIEW_MAX)}…`, more: true };
 }
 
 /** Markdown files the session and its subagents wrote or read, newest first. */

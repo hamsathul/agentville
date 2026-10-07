@@ -951,6 +951,18 @@ test('Show all loads the whole history for the conversation and activity, with a
   assert.doesNotMatch(page.side(), /an old search/);
 });
 
+test('a long message shows its preview and "Show the whole message", which loads it in full', async () => {
+  const full = `Start\n\n${'w'.repeat(700)} THE END`;
+  const preview = { at: Date.now() - 2000, kind: 'reply', text: 'Start', body: `${full.slice(0, 600)}…`, more: true };
+  const page = loadPage({ feeds: { r1: [{ ...preview, body: full, more: undefined }] } });
+  page.push(richSnapshot([richAgent({ mod: { version: '0.3.1', live: true }, feed: [preview] })]));
+  assert.match(page.side(), /data-full-feed="r1"[^>]*>Show the whole message</);
+  assert.doesNotMatch(page.side(), /THE END/);
+  await page.clickButton('more', { fullFeed: 'r1' });
+  assert.match(page.side(), /THE END/);
+  assert.doesNotMatch(page.side(), /Show the whole message/);
+});
+
 test('the farm sidebar shows the question card too', () => {
   const f = fakeFarm();
   const page = loadPage({ farm: f.farm, stored: { 'tracker-view': 'farm', 'tracker-farm-side': 'open' } });

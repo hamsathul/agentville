@@ -149,15 +149,20 @@ test('files found earlier in the transcript are merged in as older, never overri
   assert.deepEqual(m.documents().map(d => d.path), ['/w/spec.md', '/w/old.md']);
 });
 
-test('prompts and replies keep up to 600 characters of their text, line breaks and all, for the conversation view', () => {
-  const long = `First line\n\n${'y'.repeat(700)}`;
+test('prompts and replies keep their whole text, line breaks and all, for the conversation view', () => {
+  const long = `First line\n\n${'y'.repeat(700)}\n\nThe end.`;
   const m = modelOf(prompt(0, 'Fix the build\nthen run the tests'), reply(1, long));
   const [r, p] = m.feed;
   assert.equal(p.text, 'Fix the build');
   assert.equal(p.body, 'Fix the build\nthen run the tests');
   assert.equal(r.text, 'First line');
-  assert.equal(r.body.length, 600);
-  assert.ok(r.body.startsWith('First line\n\nyyy'));
+  assert.equal(r.body, long);
+});
+
+test('a message past 20,000 characters is cut there, and says so', () => {
+  const [r] = modelOf(reply(1, 'x'.repeat(25_000))).feed;
+  assert.equal(r.body.length, 20_001);
+  assert.ok(r.body.endsWith('…'));
 });
 
 test("the turn's final reply is kept whole; a later tool call or prompt clears it", () => {

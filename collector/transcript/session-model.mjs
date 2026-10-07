@@ -6,8 +6,11 @@ const CHILD_KIND = { Agent: 'subagent', Task: 'subagent', Workflow: 'workflow' }
 const DOC_FILE = /\.(md|markdown|mdx)$/i;
 const FILE_MODE = { Write: 'write', Edit: 'write', MultiEdit: 'write', NotebookEdit: 'write', Read: 'read' };
 const DOCS_KEPT = 40;
-const BODY_MAX = 600; // how much of a prompt or reply the conversation view shows
-const bodyOf = text => String(text ?? '').trim().slice(0, BODY_MAX);
+const BODY_MAX = 20_000; // a prompt or reply is kept whole for the conversation view, up to this (a pasted dump stops here)
+const bodyOf = text => {
+  const t = String(text ?? '').trim();
+  return t.length > BODY_MAX ? `${t.slice(0, BODY_MAX)}…` : t;
+};
 
 /** Everything the tracker knows about one session, built incrementally from its transcript. */
 export class SessionModel {
