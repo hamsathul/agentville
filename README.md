@@ -1,6 +1,6 @@
 
 
-
+https://github.com/user-attachments/assets/19447978-d50a-4339-9f50-a84f6ed9ac64
 
 # Agentville
 
@@ -8,7 +8,7 @@
 and background), their subagents and background jobs, and Codex. See who is waiting on you, what
 each agent is doing right now and what it costs. Answer, message and steer them from one page,
 and watch them work as farmers on a pixel farm.
-https://github.com/user-attachments/assets/19447978-d50a-4339-9f50-a84f6ed9ac64
+
 ![The farm view: every agent a farmer, every repo a field](docs/farm.png)
 
 <sub>The farm view, from a demo with made-up sessions. Every farmer is an agent and every field a
