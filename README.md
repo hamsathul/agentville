@@ -145,9 +145,14 @@ stream. Action endpoints require a per-install token and a same-origin request.
 
 ```bash
 npm test                    # collector + dashboard (node:test)
+npm run test:ui             # the dashboard and the farm in headless Chrome, on a fixture
 claude plugin test mod      # the Claude Code mod
 scripts/e2e-answer.sh       # answering, messaging (with a screenshot, and to a busy session), the reader
 ```
+
+GitHub Actions runs `npm test` and `npm run test:ui` on every push to `main` and on pull
+requests. The mod's tests need a Claude Code build with mods, and `scripts/e2e-answer.sh`
+needs real sessions, so those two run locally.
 
 ## License
 

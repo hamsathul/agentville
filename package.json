@@ -6,6 +6,7 @@
   "description": "Local dashboard of every AI agent working on this Mac",
   "scripts": {
     "test": "node --test \"collector/test/*.test.mjs\"",
+    "test:ui": "node scripts/e2e-ui.mjs",
     "start": "node collector/index.mjs"
   },
   "engines": {
