@@ -319,7 +319,11 @@ function asideHtml(a) {
   const list = (a.asides ?? []).map(x => `<div class="aside"><div class="aside-q"><b>btw</b> ${esc(x.question)}</div>${x.pending
     ? '<div class="aside-a muted"><span class="spinner"></span> thinking…</div>'
     : x.answer ? `<div class="aside-a md">${renderMarkdown(x.answer)}</div>` : `<div class="aside-a msg-bad">No answer: ${esc(x.reason ?? 'unknown')}</div>`}</div>`).join('');
-  return `<div class="asides-box"><div class="sec">Side question <span class="faint" style="text-transform:none;letter-spacing:0">(/btw: answered from its conversation, not added to it; works while it's busy)</span></div>
+  // Its heading folds the whole section away (remembered, for every session); folded, it says how many it holds.
+  const open = isOpen('btw'), count = (a.asides ?? []).length;
+  const head = `<button class="sec sec-fold" type="button" data-group="btw" aria-expanded="${open}" data-tip="${open ? 'Hide side questions' : 'Show side questions'}"><span class="tw">${open ? '▾' : '▸'}</span>Side question <span class="faint" style="text-transform:none;letter-spacing:0">(/btw: answered from its conversation, not added to it; works while it's busy)</span>${!open && count ? `<span class="grp-n">${count}</span>` : ''}</button>`;
+  if (!open) return `<div class="asides-box">${head}</div>`;
+  return `<div class="asides-box">${head}
     <div class="aside-row"><input type="text" id="aside-text" data-aside-agent="${esc(a.id)}" placeholder="${live ? `Ask ${esc(a.name)} something on the side…` : esc(modWhy(a))}" value="${esc(asideDrafts.get(a.id) ?? '')}"${live ? '' : ' disabled'}><button type="button" class="act" id="aside-send" data-agent="${esc(a.id)}"${live ? '' : ' disabled'}>Ask</button></div>${list}</div>`;
 }
 

@@ -213,6 +213,10 @@ The **Side question** box asks the session something on the side, like `/btw` in
 It is answered from the conversation so far, with no tools, even while the session is busy, and
 nothing is added to the conversation. The answer appears under the box.
 
+Click the **Side question** heading to fold the whole section away, or to bring it back. Folded,
+the heading shows how many side questions the session has. The choice holds for every session,
+in the list and in the farm's sidebar, and is remembered.
+
 ### Model, effort and permission mode
 
 Each terminal session's bar shows its **permission mode**, its **model** (e.g. *Opus 5.5*) and its

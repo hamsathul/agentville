@@ -1192,6 +1192,23 @@ test("a session's bar switches its model and effort (in the session, after you c
   assert.doesNotMatch(page.el('confirm-text').textContent, /default for new sessions/, 'max is for this session only');
 });
 
+test('the side question section folds to its heading, with how many it holds, and stays folded after a reload', async () => {
+  const live = () => richSnapshot([richAgent({ mod: { live: true, version: '0.5.0' }, asides: [{ id: '1', question: 'Where is the parser?', answer: 'In parse.mjs.', at: 1, answeredAt: 1 }] })]);
+  const page = loadPage();
+  page.push(live());
+  assert.match(page.side(), /data-group="btw" aria-expanded="true"/);
+  assert.match(page.side(), /id="aside-text"/);
+  await page.clickButton('grp', { group: 'btw' });
+  assert.match(page.side(), /data-group="btw" aria-expanded="false"/);
+  assert.doesNotMatch(page.side(), /id="aside-text"|Where is the parser/, 'the box and the answers are hidden');
+  assert.match(page.side(), /data-group="btw"[^>]*>[\s\S]*?<span class="grp-n">1<\/span>/, 'the folded heading says how many');
+  const again = loadPage({ stored: { ...page.stored } });
+  again.push(live());
+  assert.match(again.side(), /data-group="btw" aria-expanded="false"/);
+  await again.clickButton('grp', { group: 'btw' });
+  assert.match(again.side(), /id="aside-text"/, 'a click shows it again');
+});
+
 test("a working session shows its terminal's working line: its word, how long, the tokens, and thinking with its effort", () => {
   const page = loadPage();
   page.push(richSnapshot([richAgent({ now: undefined, effort: 'xhigh', turn: { startedAt: Date.now() - 331_000, outTokens: 28_500, word: 'Slithering', mode: 'thinking' } })]));
