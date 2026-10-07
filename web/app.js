@@ -142,7 +142,7 @@ function setView(next, { remember = true } = {}) {
     $('center-tabs').innerHTML = '';
     $('center-body').innerHTML = '';
     reader = null;
-    window.TrackerFarm.mount($('farm'), { token: TOKEN, diary: $('farm-diary'), onPickAgent: pickFromFarm, onOpenDoc: openDocFromFarm, onShowRepos: showReposFromFarm });
+    window.TrackerFarm.mount($('farm'), { token: TOKEN, diary: $('farm-diary'), onPickAgent: pickFromFarm, onOpenDoc: openDocFromFarm, onShowRepos: showReposFromFarm, onStartSession: () => $('sessions-open').click(), onBell: bellSwitched });
   } else {
     $('farm-agent').innerHTML = '';
   }
@@ -533,10 +533,47 @@ async function sendAnswer(agentId, toolUseId) {
   notice(r.ok ? `Answer sent to ${agent.name}.` : `Could not send: ${r.error}`);
 }
 
+/* ---------- the bell: a chime and a desktop notice when an agent starts waiting on you ---------- */
+// Switched on from the farm's Bell button; it rings in either view.
+let bellSeen = null, bellAudio = null;
+const bellIsOn = () => { try { return localStorage.getItem('tracker-bell') === 'on'; } catch { return false; } };
+function chime() {
+  try {
+    bellAudio ??= new AudioContext();
+    if (bellAudio.state === 'suspended') void bellAudio.resume();
+    const t = bellAudio.currentTime;
+    for (const [freq, d] of [[880, 0], [1318.5, 0.14]]) { // two soft notes, a farm bell
+      const o = bellAudio.createOscillator(), g = bellAudio.createGain();
+      o.type = 'sine'; o.frequency.value = freq;
+      g.gain.setValueAtTime(0.0001, t + d); g.gain.exponentialRampToValueAtTime(0.22, t + d + 0.01); g.gain.exponentialRampToValueAtTime(0.0001, t + d + 1.1);
+      o.connect(g).connect(bellAudio.destination); o.start(t + d); o.stop(t + d + 1.2);
+    }
+  } catch { /* no sound here */ }
+}
+function bellSwitched(on) {
+  if (!on) return;
+  if ('Notification' in window && Notification.permission === 'default') void Notification.requestPermission();
+  chime(); // what it sounds like (and the click lets the page play sound)
+}
+function ringBell() {
+  const waiting = snap.agents.filter(a => a.state === 'waiting' || a.question);
+  const fresh = bellSeen ? waiting.filter(a => !bellSeen.has(a.id)) : [];
+  bellSeen = new Set(waiting.map(a => a.id));
+  if (!fresh.length || !bellIsOn()) return;
+  chime();
+  if (!('Notification' in window) || Notification.permission !== 'granted' || (!document.hidden && document.hasFocus())) return;
+  for (const a of fresh.slice(0, 3)) {
+    const what = a.ask?.kind === 'permission' ? `${a.ask.tool}: ${a.ask.summary}` : a.ask?.questions?.[0]?.question ?? a.question ?? a.stateReason ?? '';
+    const n = new Notification(`${a.name} needs you`, { body: String(what).slice(0, 180), tag: `tracker-${a.id}` });
+    n.onclick = () => { window.focus(); n.close(); };
+  }
+}
+
 function connect() {
   const events = new EventSource('/api/events');
   events.addEventListener('snapshot', ev => {
     snap = JSON.parse(ev.data);
+    ringBell();
     $('banner').classList.remove('show');
     $('live').classList.remove('off');
     if (selected && !snap.agents.some(a => a.id === selected)) selected = null;

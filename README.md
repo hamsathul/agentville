@@ -55,6 +55,17 @@ how much CPU and memory each one uses.
   first), **Activity** (its tool steps), **Files** (its folder, scratchpad and memory) and **Diary**
   (who went where). Speech bubbles over the farmers show what each last said (its question when
   it waits on you); × hides one to a 💬 that shows it again, and the Bubbles switch hides or shows them all. The farm fits its frame, with its controls over the edges like a game's: the stats top left (with a "needs you" button that opens the first agent waiting), + / − on the right (or ⌘/Ctrl + scroll, or a pinch) to zoom inside the frame, and the switches along the bottom; you drag or scroll to move around. Click a field for a close-up of the files agents touched there.
+  The farm also shows what Claude Code is doing beyond the tools: a thought cloud while the model
+  thinks, a chore board with the session's task list, a scroll on the porch for a plan to approve,
+  a blueprint in plan mode, a red and white scarf in bypass-permissions mode, a pin on the hat for
+  the model and speed lines in fast mode, a purse for what the session has cost, carts on the road
+  for web and connector (MCP) calls, a pump for a background command, a hammock for a session that
+  wakes up by itself (/loop), a harvest when the conversation is compacted, a greenhouse for a
+  worktree, one project's repos side by side under its sign, and a market stall with your open pull
+  requests (from gh). Click the buildings: the barn starts or resumes a session, the farmhouse lists
+  who is on your porch, the silo shows your plan's usage, the henhouse the subagents, the notice
+  board your projects' CLAUDE.md and memory. The Bell switch chimes (and sends a desktop notice when
+  the page is in the background) when an agent starts waiting on you.
   The farm is drawn in one palette, with shadows, textured ground and a pixel font for names
   and signs. The light follows your clock (cloud shadows drift over by day; at night the windows,
   lamps and lanterns glow and fireflies come out; the Sky switch holds it at day or night), farmers face where they walk, rain falls on a field whose

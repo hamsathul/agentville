@@ -213,6 +213,20 @@ try {
   check(await js("document.querySelector('.px-help').open"), 'the info button opens how to read the farm');
   await js("document.querySelector('[data-farm-help-close]').click()");
   check(await js("!document.querySelector('.px-help').open"), 'the info dialog closes');
+  // the buildings open things: a farm point to the screen (the canvas holds the forest round the farm too)
+  const clickFarm = (x, y) => `(() => { const c = document.querySelector('#farm canvas'); const [px, pt] = c.dataset.pad.split(',').map(Number), r = c.getBoundingClientRect(), cs = r.width / (400 + 2 * px); c.dispatchEvent(new MouseEvent('click', { bubbles: true, clientX: r.left + (${x} + px) * cs, clientY: r.top + (${y} + pt) * cs })); })()`;
+  await js(clickFarm(200, 30));
+  check(await until("document.querySelector('.px-dlg')?.open && /ui-asker/.test(document.querySelector('.px-dlg').textContent)"), 'clicking the farmhouse lists who is on your porch');
+  await js("document.querySelector('[data-farm-dlg-close]').click()");
+  await js(clickFarm(96, 40));
+  check(await until("document.querySelector('.px-dlg')?.open && /plan/i.test(document.querySelector('.px-dlg-title').textContent)"), "clicking the silo shows the plan's usage");
+  await js("document.querySelector('[data-farm-dlg-close]').click()");
+  await js(clickFarm(62, 40));
+  check(await until("document.getElementById('sessions').open"), 'clicking the barn opens Start or resume a session');
+  await js("document.getElementById('sessions').close()");
+  await js("document.querySelector('[data-farm-bell]').click()");
+  check(/Bell: on/.test(await js("document.querySelector('[data-farm-bell]').textContent")) && await js("localStorage.getItem('tracker-bell')") === 'on', 'the Bell switch turns on the chime for agents that start waiting');
+  await js("document.querySelector('[data-farm-bell]').click()");
 
   check(await until("[...document.querySelectorAll('.px-say')].some(b => b.textContent.includes('Which crop next?'))"), "the waiting farmer's question is in a speech bubble over its head");
   check(await until("document.querySelectorAll('.px-say').length >= 3"), 'the two finished farmers have bubbles too');

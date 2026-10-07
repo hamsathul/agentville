@@ -163,7 +163,7 @@ test("a farmer's step is the kind of work it is doing now, else the last tool st
   assert.deepEqual(plain(toScene(snapOf([now, after, old], []), { cpuAlertPct: 90 }).farmers.map(f => f.step)), ['test', 'push', null]);
 });
 
-const STEP_KINDS = ['edit', 'write', 'read', 'search', 'web', 'test', 'lint', 'build', 'install', 'commit', 'push', 'deploy', 'pull', 'serve', 'delete', 'agent', 'plan', 'shell', 'other'];
+const STEP_KINDS = ['edit', 'write', 'read', 'search', 'web', 'mcp', 'skill', 'test', 'lint', 'build', 'install', 'commit', 'push', 'deploy', 'pull', 'serve', 'delete', 'agent', 'plan', 'shell', 'other'];
 
 test('every kind of step has its own tool and words; only a plain shell command or an unknown tool waters', () => {
   const { actionOf } = load();
@@ -327,4 +327,38 @@ test('a recent message between two farmers is a pigeon from one to the other, se
   const a = agent('a1', { name: 'shop-api-3', feed: [note('out', 'docs-2', 20_000, 'Hold the deploy'), note('out', 'aed8a9f3e491b8ac1', 5_000)] });
   const b = agent('b1', { name: 'docs-2', feed: [note('in', 'shop-api-3', 19_000, 'Hold the deploy'), note('in', 'shop-api-3', 400_000, 'old')] });
   assert.deepEqual(plain(toScene(snapOf([a, b], []), { cpuAlertPct: 90 }).mail), [{ from: 'a1', to: 'b1', at: NOW - 20_000, text: 'Hold the deploy' }]);
+});
+
+test('a farmer carries its task list, thinking, model, a plan to approve, its errand, its background jobs and its nap', () => {
+  const { toScene } = load();
+  const agents = [
+    agent('a', { model: 'claude-opus-5-5', fast: true, tasks: { done: 2, total: 5, current: 'Testing', items: [] }, compactions: 3, children: [{ id: 'j', kind: 'bgjob', state: 'running' }, { id: 's', kind: 'subagent', state: 'running', label: 'Look around', agentType: 'Explore' }] }),
+    agent('b', { model: 'claude-haiku-4-5', now: { tool: 'mcp__claude_ai_Gmail__search_threads', step: 'mcp', service: 'Gmail' } }),
+    agent('c', { state: 'waiting', now: { tool: 'ExitPlanMode', step: 'plan' } }),
+    agent('d', { state: 'yourTurn', wakeAt: NOW + 600_000 }),
+    agent('e', { state: 'yourTurn', wakeAt: NOW - 1 }),
+  ];
+  const [a, b, c, d, e] = plain(toScene(snapOf(agents, [])).farmers);
+  assert.deepEqual([a.family, a.fast, a.tasks.done, a.compactions, a.jobs, a.thinking, a.kids.map(k => k.id)], ['opus', true, 2, 3, 1, true, ['s']], 'working with no call open: thinking; a background job is a pump, not a chicken');
+  assert.deepEqual([b.family, b.service, b.thinking], ['haiku', 'Gmail', false]);
+  assert.equal(c.planAsk, true);
+  assert.deepEqual([d.nap, e.nap], [true, false], 'a wake-up still to come: a hammock, not the porch');
+  assert.deepEqual(plain(toScene(snapOf(agents, [])).subagents).map(s => [s.parent, s.label, s.type]), [['a', 'Look around', 'Explore']]);
+});
+
+test("a project's repos sit side by side under its sign, a worktree right after its repo; the grid grows with the repos", () => {
+  const { layoutFor } = load();
+  const f = (key, over = {}) => ({ key, ...over });
+  const L = plain(layoutFor([f('/Users/me/code/solo'), f('/Users/me/code/shop/api'), f('/Users/me/code/other'), f('/Users/me/code/shop/web'), f('/Users/me/code/shop/api/.claude/worktrees/x', { worktree: true, main: '/Users/me/code/shop/api' })]));
+  const slot = k => L.ST.find(s => s.key === k).i;
+  assert.deepEqual([slot('/Users/me/code/solo'), slot('/Users/me/code/shop/api'), slot('/Users/me/code/shop/api/.claude/worktrees/x'), slot('/Users/me/code/shop/web')], [0, 3, 4, 5], 'the shop project does not fit after solo: it gets a row of its own, worktree after its repo');
+  assert.equal(slot('/Users/me/code/other'), 1, 'a single repo fills the gap');
+  assert.deepEqual(L.groups, [{ name: 'shop', slots: [3, 4, 5] }]);
+  assert.equal(L.rows, 3);
+  assert.equal(plain(layoutFor([f('/Users/me/code/a'), f('/Users/me/code/b')])).groups.length, 0, '~/code holds unrelated repos: no project');
+  const many = plain(layoutFor(Array.from({ length: 13 }, (_, i) => f(`/Users/me/code/r${i}`))));
+  assert.equal(many.rows, 5);
+  assert.equal(many.H, many.GRID.y1 + 28);
+  assert.equal(many.more, 0);
+  assert.equal(plain(layoutFor(Array.from({ length: 20 }, (_, i) => f(`/Users/me/code/r${i}`)))).more, 2, 'six rows at most; the rest are "+N more"');
 });

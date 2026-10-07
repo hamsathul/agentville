@@ -127,17 +127,23 @@
     return line.length > max ? `${line.slice(0, max - 1)}…` : line;
   };
 
+  /** The model's family, for the pin on a farmer's hat. */
+  const familyOf = m => { const t = String(m ?? '').toLowerCase(); return ['opus', 'sonnet', 'haiku', 'fable'].find(f => t.includes(f)) ?? null; };
+
   function toScene(snap, { cpuAlertPct = snap?.settings?.cpuAlertPct ?? 90 } = {}) {
     const repos = snap?.repos ?? [];
     const agents = snap?.agents ?? [];
     const kids = agents.map(a => a.children ?? []);
+    const now = snap?.generatedAt ?? Date.now();
     return {
       plan: snap?.plan ?? null,
+      // subagents for the henhouse's list: what each was asked, whose it is, how it is going
+      subagents: agents.flatMap(a => (a.children ?? []).filter(c => c.kind === 'subagent').map(c => ({ id: c.id, label: c.label ?? '', type: c.agentType ?? null, state: c.state, parent: a.name, startedAt: c.startedAt }))),
       mail: mailOf(agents, snap?.generatedAt ?? Date.now()),
       // The henhouse: eggs for subagents that finished lately; running ones beyond the four a farmer leads roost there.
       henhouse: {
-        eggs: Math.min(6, kids.flat().filter(c => c.state === 'done').length),
-        roosting: kids.reduce((t, k) => t + Math.max(0, k.filter(c => c.state === 'running').length - 4), 0),
+        eggs: Math.min(6, kids.flat().filter(c => c.kind !== 'bgjob' && c.state === 'done').length),
+        roosting: kids.reduce((t, k) => t + Math.max(0, k.filter(c => c.kind !== 'bgjob' && c.state === 'running').length - 4), 0),
       },
       fields: repos.map(r => ({
         key: r.path, name: r.name, branch: r.branch ?? null, dirty: r.dirty ?? 0, ahead: r.ahead ?? 0, behind: r.behind ?? 0,
@@ -145,17 +151,26 @@
         crop: CROPS[pick(r.path, 7, CROPS.length)], fence: FENCES[pick(r.path, 8, FENCES.length)], soil: SOILS[pick(r.path, 9, SOILS.length)],
         pennant: Boolean(r.branch) && r.branch !== '(detached)' && !isMain(r.branch),
         collision: (snap.collisions ?? []).find(c => c.repo === r.path)?.severity ?? null,
+        worktree: r.worktree === true, main: r.main ?? null, // a worktree grows in a greenhouse beside its repo
+        prs: r.prs ?? null,
       })),
       farmers: (snap?.agents ?? []).map(a => {
         const pct = contextPct(a.contextTokens);
         return {
-          id: a.id, name: a.name, kind: a.kind, state: a.state === 'yourTurn' ? 'turn' : a.state, field: fieldOf(a, repos),
+          id: a.id, name: a.name, kind: a.kind, cwd: a.cwd ?? null, state: a.state === 'yourTurn' ? 'turn' : a.state, field: fieldOf(a, repos),
           tool: a.now?.tool ?? a.feed?.find(f => f.kind === 'tool')?.tool ?? null, summary: a.now?.summary ?? '',
           step: a.now?.step ?? a.feed?.find(f => f.kind === 'tool')?.step ?? null, // test, push, install… (the collector reads commands)
           pct, hearts: Math.round((1 - pct) * 4), hot: (a.proc?.cpu ?? 0) >= cpuAlertPct,
           ask: askText(a), askKind: a.ask?.kind ?? null, question: a.question ?? null, reply: firstLine(a.lastReply),
           said: spoken((a.feed ?? []).find(f => f.kind === 'reply')?.body ?? (a.feed ?? []).find(f => f.kind === 'reply')?.text), color: colorIndex(a.id), shirt: SHIRT[colorIndex(a.id)], look: lookOf(a), cost: a.usage?.costUsd ?? null, mode: a.mode ?? null,
-          kids: (a.children ?? []).filter(c => c.state === 'running').slice(0, 4).map(c => ({ id: c.id, dog: c.agentType === 'Explore' })),
+          kids: (a.children ?? []).filter(c => c.state === 'running' && c.kind !== 'bgjob').slice(0, 4).map(c => ({ id: c.id, dog: c.agentType === 'Explore' })),
+          tasks: a.tasks ?? null, compactions: a.compactions ?? 0,
+          thinking: a.kind !== 'codex' && a.state === 'working' && !a.now, // between tool calls: the model is thinking
+          model: a.model ?? null, family: familyOf(a.model), fast: a.fast === true,
+          planAsk: a.state === 'waiting' && a.now?.tool === 'ExitPlanMode', // a plan waiting for your approval
+          service: a.now?.service ?? null, // where a web or connector call goes
+          jobs: (a.children ?? []).filter(c => c.kind === 'bgjob' && c.state === 'running').length, // background commands running
+          wakeAt: a.wakeAt ?? null, nap: Boolean(a.wakeAt > now && (a.state === 'yourTurn' || a.state === 'idle') && !a.question), // it comes back by itself (/loop)
         };
       }),
     };
@@ -192,6 +207,7 @@
   function bubble(rp, x, y, glyph) {
     rp(x, y, 9, 8, '#15191e'); rp(x + 1, y + 1, 7, 6, '#ffffff'); rp(x + 1, y + 8, 1, 2, '#15191e');
     if (glyph === '!') { rp(x + 4, y + 2, 1, 3, '#d03b3b'); rp(x + 4, y + 6, 1, 1, '#d03b3b'); }
+    else if (glyph === 'plan') { rp(x + 2, y + 2, 5, 4, '#f4ecd8'); rp(x + 2, y + 2, 5, 1, '#c9a24a'); rp(x + 2, y + 5, 5, 1, '#c9a24a'); rp(x + 3, y + 3, 3, 1, '#9aa4ad'); }
     else if (glyph === '?') { rp(x + 3, y + 2, 3, 1, '#c98500'); rp(x + 5, y + 3, 1, 1, '#c98500'); rp(x + 4, y + 4, 1, 1, '#c98500'); rp(x + 4, y + 6, 1, 1, '#c98500'); }
     else for (const [dx, dy] of [[2, 4], [3, 5], [4, 4], [5, 3], [6, 2]]) rp(x + dx, y + dy, 1, 1, '#0ca30c');
   }
@@ -425,7 +441,7 @@
     trees.sort((a, b) => a[1] - b[1]).forEach(([x, y, r, n]) => (n % 5 === 0 ? bush(f, x, y, 5, S, null) : tree(f, x, y, r, S, n % 7)));
     // the main lane in front of the buildings, the path down the yard, and the walkways between the fields
     dirt(f, x0, LANE - 5, x1 - x0, 10);
-    dirt(f, 111, LANE, 10, H - LANE - 14, true);
+    dirt(f, 111, LANE, 10, GRID.y1 - LANE, true);
     for (const c of CORR.slice(1)) dirt(f, c - 6, GRID.y0 - 2, 12, GRID.y1 - GRID.y0 - 2, true);
     // the fields' fence, with gates onto the lane and the yard
     const lanes = [...new Set(L.slots.map(s => s.lane))];
@@ -433,26 +449,71 @@
     fenceAcross(f, GRID.x0, GRID.x1 + 2, GRID.y1);
     fenceDown(f, GRID.x0, GRID.y0, GRID.y1, lanes.map(y => [y - 4, y + 5]));
     fenceDown(f, GRID.x1, GRID.y0, GRID.y1);
-    // empty beds waiting for a repo
-    for (const s of L.slots.slice(ST.length)) bed(f, s, '#6b4320', '#7a5230', S.snow);
+    // empty beds waiting for a repo; each project's beds edged with stones, under its sign
+    for (const s of L.empty) bed(f, s, '#6b4320', '#7a5230', S.snow);
+    for (const g of L.groups) for (const [r, cols] of rowsOfGroup(g)) {
+      const top = 100 + r * ROWH, gx0 = 174 + Math.min(...cols) * COLW - 43, gx1 = 174 + Math.max(...cols) * COLW + 43;
+      for (let x = gx0; x <= gx1; x += 3) { f(x, top + 1, 2, 1, '#c3cbd2'); f(x, top + 59, 2, 1, '#c3cbd2'); f(x, top + 2, 2, 1, '#8a8f96'); f(x, top + 60, 2, 1, '#8a8f96'); }
+      for (let y = top + 1; y <= top + 60; y += 3) { f(gx0, y, 1, 2, '#c3cbd2'); f(gx1, y, 1, 2, '#c3cbd2'); }
+    }
     // the barn, top left: new farmers walk out of its big door; a lamp over the door glows at night
     barn(f, 36, 14, S);
     silo(f, 92, 6, S);
     house(f, 132, 10, S, PORCH_Y);
-    // the scarecrow patch, top right: dry stubble behind a low fence
-    f(286, 30, 110, PORCH_Y - 26, '#8a7140'); f(286, 30, 110, 1, '#6d5830');
-    for (let y = 33; y < PORCH_Y + 2; y += 4) for (let x = 289 + (y % 8 ? 2 : 0); x < 394; x += 5) { f(x, y, 1, 2, S.snow ? '#dfe9f2' : '#6d5830'); f(x + 1, y + 1, 1, 1, S.snow ? '#ffffff' : '#c9a46a'); }
-    fenceAcross(f, 284, 398, 30);
-    hay(f, 384, 46); hay(f, 372, 50);
+    // the scarecrow patch, top right: dry stubble behind a low fence; the market stall beside it, the notice board by the porch
+    f(316, 30, 80, PORCH_Y - 26, '#8a7140'); f(316, 30, 80, 1, '#6d5830');
+    for (let y = 33; y < PORCH_Y + 2; y += 4) for (let x = 319 + (y % 8 ? 2 : 0); x < 394; x += 5) { f(x, y, 1, 2, S.snow ? '#dfe9f2' : '#6d5830'); f(x + 1, y + 1, 1, 1, S.snow ? '#ffffff' : '#c9a46a'); }
+    fenceAcross(f, 314, 398, 30);
+    hay(f, 386, 44);
+    stall(f, STALL.x, STALL.y, S);
+    noticeBoard(f, BOARD.x, BOARD.y, S);
     // the yard: the henhouse and its run, the meadow, the pond, bushes and stones
     henhouse(f, 8, 98, S);
     for (let y = 140; y < 190; y += 3) for (let x = 8 + (y % 6); x < 104; x += 5) { const n = noise(x, y); if (n < 260) { f(x, y, 1, 2, S.tuft); if (S.flowers.length && n < 90) f(x, y - 1, 1, 1, S.flowers[n % S.flowers.length]); } } // the meadow's long grass and flowers
     pond(f, 42, 210, S);
-    shadeTree(f, 66, 272, S, season);
-    for (const [x, y, r] of [[100, 136, 4], [92, 188, 4], [100, 226, 3]]) bush(f, x, y, r, S, season === 'summer' ? '#e04a3a' : null);
-    for (const [x, y, s] of [[86, 196, 3], [80, 204, 2], [96, 268, 2], [6, 274, 3]]) stone(f, x, y, s);
+    for (const [x, y] of NAPS) hammock(f, x, y, S);
+    for (let r = 3; r < L.rows; r++) for (const [x, dy] of [[30, 20], [88, 34]]) tree(f, x, 100 + r * ROWH + dy - 62, 10, S, r + x); // more rows: an orchard in the yard
+    shadeTree(f, 66, GRID.y1 - 18, S, season);
+    for (const [x, y, r] of [[100, 136, 4], [92, 188, 3]]) bush(f, x, y, r, S, season === 'summer' ? '#e04a3a' : null);
+    for (const [x, y, s] of [[96, GRID.y1 - 22, 2], [6, GRID.y1 - 16, 3]]) stone(f, x, y, s);
     // the bottom edge: a strip of meadow, then the forest
     for (let x = 4; x < W - 4; x += 9) { const n = noise(x, 999); if (n < 300) f(x, H - 6 + (n % 3), 1, 2, S.tuft); }
+  }
+  /** A project's beds, row by row: [[row, [columns]]]. */
+  function rowsOfGroup(g) {
+    const rows = new Map();
+    for (const i of g.slots) rows.set(Math.floor(i / 3), [...(rows.get(Math.floor(i / 3)) ?? []), i % 3]);
+    return [...rows];
+  }
+  /** The market stall by the lane: a striped awning over a counter; crates for open pull requests go on it each frame. */
+  function stall(f, X, Y, S) {
+    f(X + 28, Y + 8, 3, 28, S.shadow);
+    f(X + 1, Y + 6, 2, 28, '#6b4320'); f(X + 25, Y + 6, 2, 28, '#6b4320');
+    for (let i = 0; i < 7; i++) { f(X - 1 + i * 4, Y, 4, 6, i % 2 ? '#f4ecd8' : '#e04a3a'); f(X + i * 4, Y + 6, 2, 1, i % 2 ? '#f4ecd8' : '#b23a2e'); }
+    f(X - 1, Y - 1, 29, 1, '#9c3b30');
+    f(X - 1, Y + 22, 30, 3, '#a8703c'); f(X - 1, Y + 22, 30, 1, '#c98d4f');
+    f(X, Y + 25, 28, 9, '#8b5a2b'); for (let x = X + 3; x < X + 28; x += 5) f(x, Y + 25, 1, 9, '#6b4320'); f(X, Y + 33, 28, 1, '#4e3626');
+    if (S.snow) f(X - 1, Y - 1, 29, 2, '#ffffff');
+  }
+  /** The notice board by the porch: pinned notes (what the farm remembers). */
+  function noticeBoard(f, X, Y, S) {
+    f(X + 14, Y + 4, 2, 18, S.shadow);
+    f(X + 1, Y + 9, 2, 13, '#6b4320'); f(X + 10, Y + 9, 2, 13, '#6b4320');
+    f(X - 2, Y - 3, 17, 2, '#6b2a22'); f(X - 1, Y - 1, 15, 11, '#4e3626'); f(X, Y, 13, 9, '#a8703c');
+    f(X + 1, Y + 1, 5, 4, '#f4ecd8'); f(X + 7, Y + 1, 5, 5, '#fff4d6'); f(X + 2, Y + 5, 4, 3, '#e8d8b0');
+    f(X + 2, Y + 3, 3, 1, '#c9b48a'); f(X + 8, Y + 3, 3, 1, '#c9b48a'); f(X + 8, Y + 5, 2, 1, '#c9b48a');
+    f(X + 3, Y + 1, 1, 1, '#e04a3a'); f(X + 9, Y + 1, 1, 1, '#3d7be0');
+    if (S.snow) f(X - 2, Y - 4, 17, 1, '#ffffff');
+  }
+  /** A hammock between two posts, for a session napping until its wake-up. */
+  function hammock(f, cx, y, S) {
+    oval(f, cx, y + 1, 10, 1, S.shadow);
+    for (const x of [cx - 13, cx + 12]) { f(x, y - 11, 2, 12, '#6b4320'); f(x, y - 11, 2, 1, '#a8703c'); }
+    for (let i = 0; i < 25; i++) {
+      const x = cx - 12 + i, sag = Math.round(Math.sin((i / 24) * Math.PI) * 4);
+      if (i < 3 || i > 21) f(x, y - 9 + sag, 1, 1, '#c9b48a');
+      else { f(x, y - 9 + sag, 1, 1, '#d55181'); f(x, y - 8 + sag, 1, 1, '#8a5fc0'); }
+    }
   }
   /** The shade tree, bottom left, where idle farmers nap: blossom in spring, apples in summer, orange in autumn, bare and snowy in winter. */
   function shadeTree(f, x, y, S, season) {
@@ -637,19 +698,70 @@
 
   // Fixed: the grid always has nine beds, and the ones no repo uses lie empty, so the farm keeps its
   // shape (and its size on screen) as repos come and go.
-  const W = 400, FARM_H = 318, MAX_FIELDS = 9, COLW = 88, ROWH = 62;
-  const GRID = { x0: 128, x1: 396, y0: 96, y1: 290 }; // the fields' fence
+  const W = 400, MAX_FIELDS = 18, COLW = 88, ROWH = 62, MIN_ROWS = 3, MAX_ROWS = 6;
   const PORCH_Y = 78, LANE = 87; // where farmers stand on the porch (and among the scarecrows); the lane in front of the buildings
   const CORR = [116, 218, 306]; // paths running down: the yard's, then the walkways between field columns
   const BARN_DOOR = [62, LANE];
-  const MEADOW = [[28, 162], [74, 166], [40, 186], [86, 188]]; // where farmers working outside any repo stand
-  const SLOTS = Array.from({ length: MAX_FIELDS }, (_, i) => {
-    const cx = 174 + (i % 3) * COLW, rowTop = 100 + Math.floor(i / 3) * ROWH;
-    return { cx, rowTop, lane: rowTop + 44, x0: cx - 36, y0: rowTop + 12 };
-  });
+  const MEADOW = [[28, 162], [74, 166], [40, 186], [86, 186]]; // where farmers working outside any repo stand
+  const NAPS = [[97, 204], [97, 224]]; // hammocks by the pond: sessions that will wake up by themselves (/loop)
+  const STALL = { x: 284, y: 48 }, BOARD = { x: 113, y: 62 }; // the market stall (pull requests), the notice board (memory)
+  const slotAt = i => { const cx = 174 + (i % 3) * COLW, rowTop = 100 + Math.floor(i / 3) * ROWH; return { i, cx, rowTop, lane: rowTop + 44, x0: cx - 36, y0: rowTop + 12 }; };
+  // A project is the folder holding sibling repos (like pmt/backend and pmt/frontend); a home folder or
+  // a catch-all one like ~/code holds unrelated repos, so it is none.
+  const CATCH_ALL = new Set(['code', 'projects', 'repos', 'src', 'dev', 'work', 'tools', 'github', 'git', 'documents', 'desktop', 'downloads', 'workspace', 'workspaces', 'sites', 'apps', 'clients', 'tmp']);
+  function projectOf(path) {
+    const parts = String(path).split('/').filter(Boolean).slice(0, -1);
+    return parts.length >= 3 && !CATCH_ALL.has(parts.at(-1).toLowerCase()) ? `/${parts.join('/')}` : null;
+  }
+  /**
+   * Which bed each field gets: the repos of one project side by side under its sign (a worktree
+   * right after its repo), kept to one row when they fit; beds left between groups lie empty.
+   * Returns { slotOf: key → bed number, groups: [{ name, keys }] }.
+   */
+  function arrange(fields) {
+    const byKey = new Map(fields.map(f => [f.key, f]));
+    const home = f => (f.worktree && f.main ? f.main : f.key);
+    const units = new Map();
+    for (const f of fields) {
+      const project = projectOf(home(f)), id = project ?? `repo:${home(f)}`;
+      if (!units.has(id)) units.set(id, { project, keys: [] });
+      units.get(id).keys.push(f.key);
+    }
+    for (const u of units.values()) { // each repo, then its worktrees
+      const order = [];
+      for (const k of u.keys) if (!byKey.get(k).worktree) { order.push(k); for (const w of u.keys) if (byKey.get(w).worktree && byKey.get(w).main === k) order.push(w); }
+      for (const k of u.keys) if (!order.includes(k)) order.push(k);
+      u.keys = order;
+      if (u.project && new Set(u.keys.map(k => home(byKey.get(k)))).size < 2) u.project = null; // one repo is no project
+    }
+    const slotOf = new Map(), queue = [...units.values()];
+    let row = 0, col = 0;
+    const place = u => { for (const k of u.keys) { slotOf.set(k, row * 3 + col); if (++col === 3) { col = 0; row++; } } };
+    while (queue.length) {
+      const n = queue[0].keys.length;
+      if (col > 0 && (n > 3 || col + n > 3)) { // it does not fit the rest of this row: a smaller one may, else the next row
+        const j = queue.findIndex(u => u.keys.length <= 3 - col);
+        if (j > 0) place(queue.splice(j, 1)[0]); else { row++; col = 0; }
+        continue;
+      }
+      place(queue.shift());
+    }
+    return { slotOf, groups: [...units.values()].filter(u => u.project).map(u => ({ name: u.project.split('/').pop(), keys: u.keys })) };
+  }
   function layoutFor(fields) {
-    const shown = fields.slice(0, MAX_FIELDS);
-    return { key: shown.map(f => f.key).join('\n'), ST: shown.map((f, i) => ({ key: f.key, ...SLOTS[i] })), slots: SLOTS, PORCH_Y, LANE, GRID, H: FARM_H, more: fields.length - shown.length };
+    const { slotOf, groups } = arrange(fields);
+    const shown = fields.filter(f => slotOf.get(f.key) < MAX_FIELDS);
+    const last = Math.max(-1, ...shown.map(f => slotOf.get(f.key)));
+    const rows = Math.min(MAX_ROWS, Math.max(MIN_ROWS, Math.floor(last / 3) + 1));
+    const slots = Array.from({ length: rows * 3 }, (_, i) => slotAt(i));
+    const ST = shown.map(f => ({ key: f.key, ...slots[slotOf.get(f.key)] }));
+    const used = new Set(ST.map(s => s.i));
+    const GRID = { x0: 128, x1: 396, y0: 96, y1: 104 + rows * ROWH }; // the fields' fence
+    return {
+      key: ST.map(s => `${s.key}@${s.i}`).join('\n'), ST, slots, empty: slots.filter(s => !used.has(s.i)), rows, PORCH_Y, LANE, GRID, H: GRID.y1 + 28,
+      groups: groups.map(g => ({ name: g.name, slots: g.keys.filter(k => slotOf.get(k) < rows * 3).map(k => slotOf.get(k)) })).filter(g => g.slots.length),
+      more: fields.length - shown.length,
+    };
   }
 
   /* ---------- the farm theme: sprites, ground, weather, labels ---------- */
@@ -714,6 +826,7 @@
   }
 
   const ACTIVE = new Set(['waiting', 'working', 'turn']);
+  const FAMILY_PIN = { opus: '#8a5fc0', sonnet: '#3d7be0', haiku: '#2fa57a', fable: '#f08a24' };
   // What a farmer does for each kind of step, what it holds, and where it stands in its field
   // (looking things up on the left, working the soil on the right, the rest in the middle).
   const ACTIONS = {
@@ -722,6 +835,8 @@
     read: { prop: 'almanac', verb: 'reading the almanac', spot: -26 },
     search: { prop: 'spyglass', verb: 'scouting the field', spot: -26 },
     web: { prop: 'pigeon', verb: 'sending a pigeon', spot: -26 },
+    mcp: { prop: 'parcel', verb: 'sending a parcel to town', spot: -26 },
+    skill: { prop: 'recipe', verb: 'following a recipe', spot: 0 },
     test: { prop: 'magnifier', verb: 'checking the crops', spot: 0 },
     lint: { prop: 'rake', verb: 'raking the rows tidy', spot: 26 },
     build: { prop: 'hammer', verb: 'mending the fence', spot: 0 },
@@ -741,7 +856,9 @@
   const OLD_TOOLS = { Edit: 'edit', MultiEdit: 'edit', NotebookEdit: 'edit', Write: 'write', Read: 'read', Grep: 'search', Glob: 'search', WebSearch: 'web', WebFetch: 'web', Bash: 'shell' };
   /** What a farmer does for a step; a step from an older snapshot goes by its tool. */
   const actionOf = (step, tool) => ACTIONS[step] ?? ACTIONS[OLD_TOOLS[tool]] ?? ACTIONS.other;
-  const doing = f => (f.step || f.tool ? actionOf(f.step, f.tool) : null);
+  const BLUEPRINT = { prop: 'blueprint', verb: 'drawing up plans (plan mode)', spot: 0 };
+  /** What a farmer does now: its step's tool; in plan mode, a blueprint. */
+  const doing = f => (f.mode === 'plan' && f.state === 'working' ? BLUEPRINT : f.step || f.tool ? actionOf(f.step, f.tool) : null);
   const shades = new Map();
   /** A colour made darker (k < 1) or lighter (k > 1). */
   function shade(hex, k) {
@@ -932,6 +1049,22 @@
         rp(9, 7, 2, 1, '#c3cbd2'); rp(11, 8, 1, 2, '#e0a878');
         for (let i = 0; i < 2; i++) { const ph = (T * 1.1 + i / 2) % 1, nx = 13 + i * 3, ny = Math.round(5 - ph * 7); rp(nx, ny, 1, 3, '#ffffff'); rp(nx + 1, ny, 1, 1, '#ffffff'); rp(nx - 1, ny + 2, 1, 1, '#ffffff'); }
         return;
+      case 'parcel': { // a connector: a parcel off to town (its cart goes along the road)
+        const up = blink(2);
+        rp(10, 9 - up, 6, 5, '#c9a46a'); rp(10, 9 - up, 6, 1, '#e2b07a'); rp(12, 9 - up, 1, 5, '#9c3b30'); rp(10, 11 - up, 6, 1, '#9c3b30'); rp(13, 8 - up, 2, 1, '#9c3b30');
+        rp(9, 11, 1, 2, '#e0a878');
+        return;
+      }
+      case 'recipe': { // a skill: reading its recipe card
+        rp(3, 9, 8, 6, '#fff4d6'); rp(3, 9, 8, 1, '#e04a3a'); rp(4, 11, 6, 1, '#c9b48a'); rp(4, 13, 4, 1, '#c9b48a');
+        if (blink(1.5)) { rp(12, 6, 1, 3, '#ffd43b'); rp(11, 7, 3, 1, '#ffd43b'); } // the knack of it
+        return;
+      }
+      case 'blueprint': { // plan mode: drawing up plans, a pencil moving over the sheet
+        rp(1, 9, 11, 6, '#2c4a85'); rp(1, 9, 11, 1, '#3d7be0'); rp(3, 10, 1, 5, '#a9dcf7'); rp(1, 12, 11, 1, '#a9dcf7'); rp(7, 11, 3, 2, '#a9dcf7');
+        rp(8 + blink(3) * 2, 7, 1, 3, '#f0b429'); rp(8 + blink(3) * 2, 10, 1, 1, '#1b1420');
+        return;
+      }
       case 'clipboard': // planning: a chore list being ticked
         rp(1, 9, 5, 6, '#a8703c'); rp(2, 10, 3, 4, '#fff4d6'); rp(3, 9, 1, 1, '#9aa4ad'); rp(2, 11, 3, 1, '#9aa0a6'); rp(2, 13, 2, 1, '#9aa0a6');
         if (blink(2)) rp(4, 13, 1, 1, '#2fa57a');
@@ -940,6 +1073,15 @@
       default:
     }
   }
+
+  /** Where a farmer's cart is on the road while a web or connector call goes on: out to town past the farm's right edge, and back. */
+  function cartOf(f) {
+    if (f.state !== 'working' || !f.service || (f.step !== 'web' && f.step !== 'mcp')) return null;
+    const ph = (PXG.T / 8 + (hashOf(f.id) % 97) / 97) % 1, out = ph < 0.5, t = out ? ph * 2 : (1 - ph) * 2;
+    return { x: Math.round(280 + t * 150), dir: out ? 1 : -1 };
+  }
+  /** How long until a time, in short: 12m, 2h. */
+  const until = at => { const m = Math.max(0, (at - Date.now()) / 60_000); return m < 1 ? 'a moment' : m < 60 ? `${Math.round(m)}m` : `${Math.round(m / 60)}h`; };
 
   /** For tests and the legend: paints one tool (held by a farmer when `look` is given) or one plant on a 2D context. */
   function paint(ctx, { prop, flag, crop, stage = 0, T = 0, look, face = 'down', legs = 's', land, rows = 1, season }) {
@@ -963,6 +1105,7 @@
     help: ['..kkkkk..', '.kk...kk.', '......kk.', '....kkk..', '...kk....', '...kk....', '.........', '...kk....', '.........'],
     spring: ['.........', '.gg...gg.', '.ggg.ggg.', '..gg.gg..', '....g....', '....g....', '....g....', '..kkkkk..', '.........'],
     autumn: ['......oo.', '....oooo.', '..ooooo..', '.ooooo...', '.oooo....', '.ooo.....', '.k.......', 'k........', '.........'],
+    bell: ['....k....', '...kyk...', '..kyyyk..', '..kyyyk..', '..kyyyk..', '.kyyyyyk.', 'kkkkkkkkk', '...kyk...', '....k....'],
     winter: ['....b....', '.b..b..b.', '..b.b.b..', '...bbb...', 'bbbbbbbbb', '...bbb...', '..b.b.b..', '.b..b..b.', '....b....'],
   };
   const ICON_PAL = { k: '#4e3626', w: '#ffffff', y: '#f0b429', s: '#f4ecd8', r: '#e04a3a', g: '#3f9b3a', o: '#c8681a', b: '#a9dcf7' };
@@ -975,8 +1118,8 @@
   }
 
   function makeFarm() {
-    const game = { coins: 0, harvests: 0 }; // page memory only: resets on reload
     let L = layoutFor([]);
+    let seenCompactions = null, seenMerged = null; // what the last scene had, so news can be told
     let scene = { fields: [], farmers: [] };
     let season = 'summer';
     const stOf = k => L.ST.find(s => s.key === k);
@@ -991,7 +1134,7 @@
     }
     function drawPlot(s) {
       const f = fieldByKey(s.key), { x0, y0 } = s, st = plotState(f), T = PXG.T;
-      bed(px, s, f.fence ?? '#c98d4f', f.soil ?? '#7a5230', season === 'winter' && st.kind !== 'grow');
+      bed(px, s, f.worktree ? '#9aa4ad' : f.fence ?? '#c98d4f', f.soil ?? '#7a5230', season === 'winter' && st.kind !== 'grow');
       for (let k = 0; k < 4; k++) for (let i = 0; i < 9; i++) {
         const x = x0 + 4 + i * 8, y = y0 + 3 + k * 8;
         if (st.kind === 'bare') { // fallow: weeds
@@ -1005,6 +1148,12 @@
         const top = drawCrop(st.crop, x, y, stage, sway);
         // ripe (context nearly full, ready to harvest): a sparkle now and then
         if (stage === 5 && (i * 7 + k * 3 + Math.floor(T * 3)) % 13 === 0) { px(x, top - 5, 1, 3, '#ffffff'); px(x - 1, top - 4, 3, 1, '#ffffff'); }
+      }
+      if (f.worktree) { // a worktree: a greenhouse beside its repo's bed, glazing bars and glints
+        PXG.ctx.globalAlpha = 0.2; px(x0 - 2, y0 - 8, 77, 45, '#a9dcf7'); PXG.ctx.globalAlpha = 1;
+        for (let x = x0 - 2; x <= x0 + 74; x += 12) px(x, y0 - 8, 1, 45, '#e6eef5');
+        px(x0 - 2, y0 - 8, 77, 1, '#ffffff'); px(x0 - 2, y0 + 7, 77, 1, '#c3cbd2'); px(x0 - 3, y0 - 9, 79, 1, '#9aa4ad');
+        PXG.ctx.globalAlpha = 0.55; for (let i = 0; i < 5; i++) px(x0 + 4 + i * 12, y0 - 6 + (i % 2) * 2, 4, 1, '#ffffff'); PXG.ctx.globalAlpha = 1;
       }
       seedSign(f.crop ?? 'wheat', x0 - 8, y0 + 12); // what this field grows, even while it lies fallow
       if (f.pennant) { // a branch other than main: a pennant on the bed's corner
@@ -1049,6 +1198,26 @@
       const eggs = scene.henhouse?.eggs ?? 0, roost = Math.min(3, scene.henhouse?.roosting ?? 0);
       px(4, 132, 12, 3, '#c9a24a'); px(4, 132, 12, 1, '#e9c46a'); // the nest
       for (let i = 0; i < eggs; i++) px(5 + i * 2, 131 - (i % 2), 2, 2, i % 3 ? '#f4ecd8' : '#ffffff');
+      // the market stall: a crate on the counter for each open pull request, its tag the checks' colour
+      const prs = scene.fields.flatMap(fl => fl.prs?.open ?? []);
+      prs.slice(0, 8).forEach((pr, i) => {
+        const x = STALL.x + 1 + (i % 4) * 7, y = STALL.y + 16 - Math.floor(i / 4) * 5, tag = pr.draft ? '#9aa4ad' : { ok: '#2fa57a', failed: '#e04a3a', running: blink(2) ? '#f0b429' : '#ffd43b' }[pr.checks] ?? '#e8d8b0';
+        px(x, y, 6, 5, '#8b5a2b'); px(x, y, 6, 1, '#c98d4f'); px(x + 2, y, 1, 5, '#6b4320'); px(x + 3, y + 1, 2, 2, tag);
+      });
+      // pumps by the beds: background commands still running there
+      for (const s of L.ST) {
+        const jobs = scene.farmers.filter(f => f.field === s.key).reduce((t, f) => t + (f.jobs ?? 0), 0);
+        for (let j = 0; j < Math.min(2, jobs); j++) {
+          const x = s.x0 - 9 + j * 5, y = s.y0 - 2 + j * 2, up = Math.floor(T * 3 + j) % 2;
+          px(x - 1, y + 9, 6, 2, '#5f6b7a'); px(x + 1, y + 1, 3, 9, '#3d7be0'); px(x + 1, y + 1, 1, 9, '#5ab4ff'); px(x + 4, y + 3, 2, 1, '#3d7be0');
+          px(x - 2, y - 1 + up * 2, 5, 1, '#9aa4ad'); px(x + 2, y - 1, 1, 2, '#5f6b7a');
+          if ((Math.floor(T * 6) + j) % 3) px(x + 5, y + 4 + (Math.floor(T * 6) % 3), 1, 1, '#a9dcf7');
+        }
+      }
+      // the porch cat, curled up at the end of the porch, its tail flicking
+      const flick = blink(0.7);
+      px(264, 74, 7, 3, '#e9a23b'); px(265, 73, 5, 1, '#e9a23b'); px(270, 72, 3, 3, '#e9a23b'); px(270, 71, 1, 1, '#c8681a'); px(272, 71, 1, 1, '#c8681a'); px(271, 73, 1, 1, '#1b1420');
+      px(263, 75 - flick, 1, 2, '#c8681a'); px(266, 74, 1, 3, '#c8681a'); px(264, 77, 8, 1, '#6b4320');
       for (let i = 0; i < roost; i++) { // hens in the run: subagents no farmer can lead
         const hx = 56 + i * 12 + Math.round(Math.sin(T * 0.6 + i * 2) * 4), hy = 122 + (i % 2) * 6, peck = blink(2 + i * 0.3);
         px(hx, hy, 4, 3, '#ffffff'); px(hx + 3, hy - 2 + peck, 2, 2, '#ffffff'); px(hx + 4, hy - 3 + peck, 1, 1, '#e04a3a'); px(hx + 5, hy - 1 + peck, 1, 1, '#f0b429'); px(hx, hy + 3, 1, 1, '#f0b429'); px(hx + 2, hy + 3, 1, 1, '#f0b429');
@@ -1066,8 +1235,20 @@
     const FIREFLIES = [[20, 150], [60, 160], [92, 176], [30, 232], [74, 196], [50, 252], [100, 250], [14, 262], [88, 140], [96, 214], [240, 92], [330, 70]];
 
     return {
-      key: 'farm', SH: 16, game,
-      setScene(next) { scene = next; season = seasonOf(next.plan); },
+      key: 'farm', SH: 16,
+      /** A new scene; returns what happened since the last one: harvests (compactions) and sales (merged pull requests). */
+      setScene(next) {
+        const events = [];
+        const comp = new Map(next.farmers.map(f => [f.id, f.compactions ?? 0]));
+        if (seenCompactions) for (const f of next.farmers) if (seenCompactions.has(f.id) && comp.get(f.id) > seenCompactions.get(f.id)) events.push({ id: f.id, text: 'Harvest!', cls: 'good', log: 'brings in the harvest: its conversation was compacted, and it sows again' });
+        seenCompactions = comp;
+        const merged = next.fields.flatMap(fl => (fl.prs?.merged ?? []).map(m => ({ ...m, repo: fl.name, key: `${fl.key}#${m.number}` })));
+        if (seenMerged) for (const m of merged) if (!seenMerged.has(m.key) && (m.at ?? 0) > Date.now() - 30 * 60_000) events.push({ at: [STALL.x + 14, STALL.y + 8], text: `Sold! #${m.number}`, cls: 'good', log: `${m.repo}: pull request #${m.number} merged (${clip(m.title ?? '', 50)})` });
+        seenMerged = new Set(merged.map(m => m.key));
+        scene = next;
+        season = seasonOf(next.plan);
+        return events;
+      },
       layout: () => L,
       relayout(fields) { L = layoutFor(fields); return L; },
       // Where each farmer stands. Porch, scarecrows, the tree and the meadow hold a few each; the rest show as a "+N" sign.
@@ -1075,10 +1256,12 @@
         const s = f.state === 'working' ? stOf(f.field) : null;
         if (s) return { group: `st:${s.key}`, at: used => { const off = [doing(f)?.spot ?? 0, 0, -26, 26, -13, 13].find(o => !used.includes(o)) ?? 0; used.push(off); return [s.cx + off, s.lane]; }, zone: `st:${s.key}:${doing(f)?.prop ?? ''}` };
         if (f.state === 'working') return { group: 'meadow', cap: MEADOW.length, at: i => MEADOW[i], zone: 'meadow' };
+        if (f.nap) return { group: 'nap', cap: NAPS.length, at: i => NAPS[i], zone: 'nap' }; // it wakes up by itself: a hammock, not your porch
         if (f.state === 'waiting') return { group: 'desk', cap: 3, at: i => [142 + 24 * i, PORCH_Y], zone: 'desk' }; // the porch: 3 waiting on the left,
         if (f.state === 'turn') return { group: 'turn', cap: 3, at: i => [258 - 24 * i, PORCH_Y], zone: 'turn' }; // 3 with their turn on the right, apart
-        if (f.state === 'stale') return { group: 'storage', cap: 4, at: i => [304 + 24 * i, PORCH_Y], zone: 'storage' };
-        return { group: 'charge', cap: 4, at: i => [[64, 284], [40, 286], [88, 286], [16, 288]][i], zone: 'charge' }; // under the shade tree
+        if (f.state === 'stale') return { group: 'storage', cap: 4, at: i => [328 + 20 * i, PORCH_Y], zone: 'storage' };
+        const y = L.GRID.y1 - 6;
+        return { group: 'charge', cap: 4, at: i => [[64, y], [40, y + 2], [88, y + 2], [16, y + 4]][i], zone: 'charge' }; // under the shade tree
       },
       spawn: () => BARN_DOOR,
       follow: (b, k, T, kid) => (kid?.dog
@@ -1086,40 +1269,49 @@
         : [b.x + (k % 2 ? 1 : -1) * (7 * SC + 4) + Math.sin(T * 1.3 + k) * 3, b.y + 2 - (k > 1 ? 4 * SC : 0)]),
       startText: n => `Morning: <b>${n}</b> farmer${n === 1 ? '' : 's'} on the farm`,
       arriveText: 'walks out of the barn',
-      tag: f => (f.kind === 'codex' ? clip(f.name, 16) : `${clip(f.name, 16)} ${'♥'.repeat(f.hearts)}${'♡'.repeat(4 - f.hearts)}`),
+      tag: f => (f.kind === 'codex' ? clip(f.name, 16) : `${clip(f.name, 16)} ${'♥'.repeat(f.hearts)}${'♡'.repeat(4 - f.hearts)}${f.tasks ? ` ${f.tasks.done}/${f.tasks.total}` : ''}`),
       tip: f => {
         const field = fieldByKey(f.field);
         const what = f.state === 'waiting' ? `needs you: ${f.ask}` : f.state === 'turn' ? (f.question ? `asks you: ${f.question}` : `your turn: ${f.reply || 'finished'}`)
           : f.state === 'working' ? `${doing(f)?.verb ?? 'working'}${field ? ` in ${field.name}` : ''}${f.summary ? ` · ${f.summary}` : ''}`
           : f.state === 'stale' ? 'stale' : 'idle';
         const mode = { acceptEdits: 'accept edits', plan: 'plan mode', auto: 'auto mode', bypassPermissions: '⚠ bypass permissions', dontAsk: "don't ask" }[f.mode];
-        return `${f.name} · ${what}${f.kind === 'codex' ? '' : ` · ${Math.round((1 - f.pct) * 100)}% context left`}${f.cost != null ? ` · $${f.cost.toFixed(2)} so far` : ''}${mode ? ` · ${mode}` : ''}`;
+        const extra = [
+          f.tasks && `tasks ${f.tasks.done}/${f.tasks.total}${f.tasks.current ? `: ${f.tasks.current}` : ''}`,
+          f.jobs && `${f.jobs} background command${f.jobs === 1 ? '' : 's'} running`,
+          f.nap && f.wakeAt && `wakes up by itself at ${new Date(f.wakeAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`,
+          f.compactions && `compacted ${f.compactions}×`,
+          f.model && `${f.model}${f.fast ? ' (fast)' : ''}`,
+        ].filter(Boolean).map(t => ` · ${t}`).join('');
+        return `${f.name} · ${f.thinking ? 'thinking' : what}${f.kind === 'codex' ? '' : ` · ${Math.round((1 - f.pct) * 100)}% context left`}${f.cost != null ? ` · $${f.cost.toFixed(2)} so far` : ''}${mode ? ` · ${mode}` : ''}${extra}`;
       },
       onMove(f, zone, prev, pop) {
         if (!prev) return;
-        if (zone.startsWith('st:') && prev.startsWith('st:')) { game.coins++; pop('+1', 'coin'); }
-        else if (zone === 'turn') { game.harvests++; game.coins += 5; pop('Harvest! +5', 'good'); }
-        else if (zone === 'desk') pop('Needs you!', 'warn');
-        else if (zone === 'storage') pop('…zzz', 'dim');
+        if (zone === 'turn') pop('Done!', 'good');
+        else if (zone === 'desk') pop(f.planAsk ? 'A plan for you' : 'Needs you!', 'warn');
+        else if (zone === 'storage' || zone === 'nap') pop('…zzz', 'dim');
       },
+      speed: f => (f.fast ? 68 : 40), // fast mode walks faster
       zoneText(f, z) {
         if (z === 'desk') return f.askKind === 'permission' ? 'comes up to your porch: needs a permission' : 'comes up to your porch with a question';
         if (z === 'turn') return f.question ? 'comes to your porch with a question' : 'brings a basket of finished work to your porch';
         if (z === 'storage') return 'stands still as a scarecrow (stale)';
         if (z === 'charge') return 'rests under the shade tree (idle)';
         if (z === 'meadow') return 'works in the wild meadow (no repo)';
+        if (z === 'nap') return `naps in a hammock until it wakes up by itself${f.wakeAt ? ` at ${new Date(f.wakeAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}` : ''}`;
         return `${doing(f)?.verb ?? 'working'} in the ${fieldByKey(f.field)?.name ?? ''} field`;
       },
       /** The farm's controls, laid over its corners: stats top left, zoom on the right, switches along the bottom. */
-      hud(still, zoom = 1, saysOn = true, skyMode = 'live', follow = false, canFollow = false, restingHidden = null) {
+      hud(still, zoom = 1, saysOn = true, skyMode = 'live', follow = false, canFollow = false, restingHidden = null, bell = false) {
         const need = scene.farmers.filter(a => a.state === 'waiting' || a.question).length;
+        const spent = scene.farmers.reduce((t, a) => t + (a.cost ?? 0), 0), harvested = scene.farmers.reduce((t, a) => t + (a.compactions ?? 0), 0);
         const count = st => scene.farmers.filter(a => st.includes(a.state)).length;
         const w = t => pxt(t, '#fff3d6', '#2a1d14');
         const parts = [[count(['working']), 'working'], [count(['waiting', 'turn']), 'on the porch'], [count(['idle', 'stale']), 'resting']].filter(([n]) => n).map(([n, t]) => `${n} ${t}`);
         const tool = (attr, icon, name, state, title, disabled = false) => `<button type="button" ${attr}${disabled ? ' disabled' : ''} title="${esc(title)}">${iconImg(icon)}${pxImg(name, '#4e3626', null)}${state ? pxImg(state, '#8b5a2b', null) : ''}<span class="px-sr">${esc(state ? `${name}: ${state}` : name)}</span></button>`;
         return `<div class="px-stats">
             <b class="px-title">${pxt('AGENT FARM', '#ffe8a3', '#2a1d14')}</b>
-            <div class="px-line"><span title="One coin for every tool step since you opened this page"><b class="coin"></b>${w(String(game.coins))}</span><span title="Finished turns delivered to your porch"><b class="basket"></b>${w(`${game.harvests} harvested`)}</span></div>
+            <div class="px-line"><span title="What the sessions on the farm have cost so far (each one's purse; from the mod)"><b class="coin"></b>${w(`$${spent.toFixed(2)}`)}</span><span title="Harvests: each time a session's conversation was compacted"><b class="basket"></b>${w(`${harvested} harvested`)}</span></div>
             <div class="px-line px-season"><span title="${esc(seasonTip())}">${iconImg(season === 'summer' ? 'day' : season)}${w(season)}</span></div>
             <div class="px-counts">${parts.length ? parts.map(t => `<div>${w(t)}</div>`).join('') : w('nobody on the farm')}</div>
             ${need ? `<button type="button" class="px-need" data-farm-need title="Open the first agent that needs you">${pxt(`${need} need${need > 1 ? '' : 's'} you`, '#ffffff', '#5a1f19')}</button>` : ''}
@@ -1131,6 +1323,7 @@
             ${tool('data-farm-bubbles', 'bubbles', 'Bubbles', saysOn ? 'on' : 'off', 'Speech bubbles with what each farmer last said. × hides one; its 💬 shows it again')}
             ${tool('data-farm-sky', skyMode, 'Sky', skyMode, 'The light: live follows your clock (dawn, day, dusk, night); or hold it at day or night')}
             ${tool('class="px-motion" data-farm-motion', still ? 'pause' : 'play', 'Motion', still ? 'off' : 'on', 'Walking and animation on the farm')}
+            ${tool('data-farm-bell', 'bell', 'Bell', bell ? 'on' : 'off', 'A chime, and a desktop notice when the page is in the background, whenever an agent starts waiting on you (in the list view too)')}
             ${tool('class="px-info" data-farm-help aria-label="How to read the farm"', 'help', 'Help', '', 'How to read the farm')}
           </div>`;
       },
@@ -1142,6 +1335,8 @@
         const ox = b.x - 7 * SC, oy = b.y - 16 * SC, T = PXG.T;
         if (b.walk) {
           if (Math.random() < dt * 9) add({ x: b.x + rand(-3, 3), y: b.y - 0.5, vx: rand(-5, 5) - (b.face === 'right' ? 6 : b.face === 'left' ? -6 : 0), vy: rand(-9, -3), g: 18, life: 0.5, max: 0.5, size: rand(1, 2), color: '#c9a46a', alpha: 0.75 });
+          const back = b.face === 'right' ? -1 : b.face === 'left' ? 1 : 0;
+          if (f.fast && Math.random() < dt * 16) add({ x: b.x + back * 7, y: b.y - rand(3, 12), vx: back * 30, vy: 0, g: 0, life: 0.22, max: 0.22, size: 1, color: '#ffffff', alpha: 0.8 }); // fast mode: speed lines
           return;
         }
         if (f.state !== 'working') return;
@@ -1175,9 +1370,24 @@
       lights() {
         return [[62, 54, 11, [61, 47, 2, 1]], [158, 56, 16, [148, 46, 20, 14, true]], [242, 56, 16, [232, 46, 20, 14, true]], [213, 66, 20, [213, 49, 2, 2]]];
       },
-      /** By day, cloud shadows drift over the farm; at night, fireflies over the yard. */
+      /** By day, butterflies and birds, and cloud shadows drift over the farm; at night, fireflies over the yard. */
       weather(sky) {
         const T = PXG.T, e = PXG.ext ?? { x0: 0, x1: W, y0: 0, y1: L.H }, EW = e.x1 - e.x0 + 160;
+        if (sky.light > 0.5 && (season === 'spring' || season === 'summer')) [[40, 160, '#ffffff'], [80, 150, '#ffd43b'], [60, 186, '#f08a24']].forEach(([bx, by, c], i) => {
+          const x = Math.round(bx + Math.sin(T * 0.5 + i * 2.1) * 22 + Math.sin(T * 1.7 + i) * 4), y = Math.round(by + Math.sin(T * 0.8 + i * 1.3) * 10 + Math.sin(T * 3 + i) * 2), open = blink(6 + i);
+          px(x - (open ? 2 : 1), y, open ? 2 : 1, 2, c); px(x + 1, y, open ? 2 : 1, 2, c); px(x, y, 1, 2, '#1b1420');
+        });
+        if (sky.light > 0.4 && season !== 'winter') { // birds on the fields' fence, now and then off to another post
+          const posts = [[150, 88], [196, 88], [246, 88], [276, 88], [330, 88], [372, 88], [128, 140], [396, 180]];
+          for (let i = 0; i < 3; i++) {
+            const cycle = (T + i * 7.3) / 14, seg = Math.floor(cycle), ph = cycle - seg, [ax, ay] = posts[(seg * 3 + i * 5) % posts.length], [bx, by] = posts[((seg + 1) * 3 + i * 5) % posts.length];
+            let x = ax, y = ay - 1, flying = false;
+            if (ph > 0.86) { const t = (ph - 0.86) / 0.14; x = Math.round(ax + (bx - ax) * t); y = Math.round(ay + (by - ay) * t - Math.sin(t * Math.PI) * 18) - 1; flying = true; }
+            const hop = !flying && Math.floor(T * 2 + i) % 7 === 0 ? 1 : 0;
+            px(x - 2, y - 2 - hop, 4, 2, '#6b4320'); px(x + 1, y - 3 - hop, 2, 2, '#6b4320'); px(x + 3, y - 2 - hop, 1, 1, '#f0b429'); px(x - 1, y - 1 - hop, 2, 1, '#c98d4f');
+            if (flying) px(x - 2, y - 4 + blink(10) * 3, 3, 1, '#4e3626');
+          }
+        }
         if (sky.light > 0.3) {
           PXG.ctx.globalAlpha = 0.09 * sky.light;
           for (const [ox, y, r, sp] of [[60, 70, 28, 2.2], [300, 210, 34, 1.6], [520, 140, 24, 2.8]]) cloudShadow(e.x0 - 80 + ((ox + T * sp) % EW), y, r);
@@ -1190,14 +1400,55 @@
         });
       },
       fieldAt(x, y) { return L.ST.find(s => Math.abs(x - s.cx) <= 40 && y >= s.rowTop && y <= s.rowTop + 56)?.key ?? null; },
+      /** The building at a farm point, if any: each opens something. */
+      buildingAt(x, y) {
+        const at = ([x0, y0, x1, y1]) => x >= x0 && x <= x1 && y >= y0 && y <= y1;
+        return [['barn', [36, 12, 88, 80]], ['silo', [92, 4, 112, 80]], ['board', [111, 58, 128, 82]], ['house', [132, 8, 268, 66]], ['stall', [STALL.x - 1, STALL.y - 1, STALL.x + 29, STALL.y + 34]], ['henhouse', [6, 96, 100, 136]]].find(([, box]) => at(box))?.[0] ?? null;
+      },
+      buildingTip: k => ({ barn: 'The barn: start a new session or resume one (a new farmer walks out of its door)', silo: "The silo: your plan's usage", board: 'The notice board: what your projects remember (CLAUDE.md and memory)', house: 'The farmhouse: who is on your porch', stall: 'The market stall: pull requests', henhouse: 'The henhouse: subagents' })[k] ?? '',
+      /** What a building shows when clicked: { title, html }. */
+      dialog(k) {
+        if (k === 'house') {
+          const list = scene.farmers.filter(f => f.state === 'waiting' || f.state === 'turn');
+          return { title: 'Your porch', html: list.length ? `<ul class="px-dl">${list.map(f => `<li><button type="button" class="act" data-farm-pick="${esc(f.id)}">Open</button><span><b>${esc(f.name)}</b> ${esc(f.state === 'waiting' ? (f.planAsk ? 'has a plan for you to approve' : `needs you: ${f.ask}`) : f.question ? `asks: ${f.question}` : `finished${f.reply ? `: ${f.reply}` : ''}`)}</span></li>`).join('')}</ul>` : '<p class="muted">Nobody is waiting on you.</p>' };
+        }
+        if (k === 'silo') {
+          const ws = scene.plan?.windows ?? [], name = w => ({ five_hour: '5-hour limit', seven_day: 'Weekly limit' })[w.kind] ?? w.kind;
+          return { title: 'The silo: your plan', html: ws.length ? ws.map(w => { const pct = w.reset ? 0 : Math.round(w.percentUsed); return `<div class="px-meter"><b>${esc(name(w))}</b><span class="bar"><i style="width:${Math.min(100, pct)}%"></i></span><span>${w.reset ? 'just reset' : `${pct}% used`}${w.resetsAt ? ` · resets ${esc(new Date(w.resetsAt).toLocaleString([], { weekday: 'short', hour: '2-digit', minute: '2-digit' }))}` : ''}</span></div>`; }).join('') + '<p class="muted">The grain is the week; the season is the 5-hour limit (winter when it is nearly used up).</p>' : '<p class="muted">No reading of your plan yet: it comes from the mod in a running session.</p>' };
+        }
+        if (k === 'henhouse') {
+          const subs = scene.subagents ?? [];
+          return { title: 'The henhouse: subagents', html: subs.length ? `<ul class="px-dl">${subs.slice(0, 40).map(c => `<li><i class="px-dot st-${esc(c.state)}"></i><span><b>${esc(c.parent)}</b> ${esc(c.label || 'a subagent')}${c.type ? ` <em>${esc(c.type)}</em>` : ''} · ${esc(c.state)}</span></li>`).join('')}</ul>` : '<p class="muted">No subagents lately.</p>' };
+        }
+        if (k === 'stall') {
+          const link = pr => (typeof pr.url === 'string' && pr.url.startsWith('https://github.com/') ? `<a href="${esc(pr.url)}" target="_blank" rel="noopener">#${pr.number}</a>` : `#${pr.number}`);
+          const checks = pr => (pr.draft ? 'draft' : { ok: '✓ checks pass', failed: '✗ checks failed', running: '◌ checks running' }[pr.checks] ?? 'no checks');
+          const repos = scene.fields.filter(fl => fl.prs);
+          return { title: 'The market stall: pull requests', html: repos.length ? repos.map(fl => `<h4>${esc(fl.name)}</h4><ul class="px-dl">${(fl.prs.open ?? []).map(pr => `<li><span>${link(pr)} ${esc(pr.title)} <em class="ck-${esc(pr.draft ? 'draft' : pr.checks ?? 'none')}">${checks(pr)}</em></span></li>`).join('') || '<li class="muted">No open pull requests.</li>'}${(fl.prs.merged ?? []).map(m => `<li class="muted"><span>${link(m)} merged${m.at ? ` ${ago(m.at)} ago` : ''}: ${esc(m.title)}</span></li>`).join('')}</ul>`).join('') : '<p class="muted">No pull requests to show: the repos here have no GitHub origin, or gh is not signed in.</p>' };
+        }
+        return null;
+      },
+      /** The projects whose memory the notice board shows: one session in each folder. */
+      boardSessions: () => [...new Map(scene.farmers.filter(f => f.kind !== 'codex' && f.cwd).map(f => [f.cwd, f])).values()].slice(0, 8),
       items: () => [],
       drawChar(f, b) {
+        if (b.zone === 'nap' && !b.walk) { // lying in its hammock, head to the left, the cloth round it
+          const ctx = PXG.ctx, cx = Math.round(b.x), y = Math.round(b.y);
+          ctx.save(); ctx.translate(cx, y - 10); ctx.rotate(-Math.PI / 2);
+          ctx.drawImage(farmerSprite(f.look, SHIRT[f.color], false, 's', false, 'down'), -8, -7, 14 * SC, 16 * SC);
+          ctx.restore();
+          for (let i = 3; i <= 21; i++) { const sag = Math.round(Math.sin((i / 24) * Math.PI) * 4); px(cx - 12 + i, y - 9 + sag, 1, 2, '#d55181'); px(cx - 12 + i, y - 7 + sag, 1, 1, '#8a5fc0'); }
+          return;
+        }
         const scare = f.state === 'stale', [ox, oy] = pixelOrigin(b, 16), rp = rpAt(ox, oy);
         if (scare) { rp(0, 10, 14, 1, '#6b4320'); rp(-1, 9, 2, 3, '#d8c48a'); rp(13, 9, 2, 3, '#d8c48a'); }
         const view = b.walk ? b.face ?? 'down' : 'down';
         PXG.ctx.drawImage(farmerSprite(f.look, SHIRT[f.color], scare, scare ? 'p' : legFrame(b), f.state === 'waiting', view), ox, oy, 14 * SC, 16 * SC);
         if (scare) { rp(5, 6, 1, 1, '#3a2a1a'); rp(8, 6, 1, 1, '#3a2a1a'); rp(5, 7, 4, 1, '#7a5230'); rp(6, 11, 2, 2, '#c97b4a'); return; }
+        if (f.family) { rp(9, 2, 2, 2, FAMILY_PIN[f.family]); rp(9, 2, 1, 1, '#ffffff'); } // its model's pin on the hat
+        if (f.mode === 'bypassPermissions') { for (let i = 0; i < 6; i++) rp(4 + i, 9, 1, 1, i % 2 ? '#ffffff' : '#e04a3a'); rp(9, 10, 1, 2, '#e04a3a'); } // no permission checks: a hazard scarf
         if (view === 'up') return; // from behind: no face
+        if (f.cost >= 1) { const big = f.cost >= 10, gold = f.cost >= 50; rp(1, big ? 11 : 12, big ? 3 : 2, big ? 3 : 2, gold ? '#c9a24a' : '#8b5a2b'); rp(2, big ? 11 : 12, 1, 1, '#ffd43b'); } // its purse: what it has cost
         if (view === 'left' || view === 'right') { rp(view === 'right' ? 9 : 4, 6, 1, 1, K); return; }
         const ex = 5;
         const blinking = ((PXG.T + (f.color ?? 0) * 0.37) % 3.7) < 0.12; // now and then, each farmer on its own beat
@@ -1210,9 +1461,27 @@
       drawFx(f, b) {
         const [ox, oy] = pixelOrigin(b, 16), rp = rpAt(ox, oy), T = PXG.T;
         if (f.hot) { rp(11, 3 + Math.floor((T * 6) % 4), 1, 2, '#a9dcf7'); rp(2, 4 + Math.floor((T * 6 + 2) % 4), 1, 2, '#a9dcf7'); rp(4, 7, 1, 1, '#ff6b6b'); rp(9, 7, 1, 1, '#ff6b6b'); }
+        if (b.zone === 'nap' && !b.walk) { // asleep until its wake-up: zzz, and a little clock
+          const x = Math.round(b.x), y = Math.round(b.y), zy = y - 20 - Math.floor((T * 2) % 4);
+          PXG.ctx.globalAlpha = 0.85; px(x + 6, zy, 3, 1, '#e6eef5'); px(x + 7, zy + 1, 1, 1, '#e6eef5'); px(x + 6, zy + 2, 3, 1, '#e6eef5'); PXG.ctx.globalAlpha = 1;
+          px(x - 15, y - 25, 7, 7, '#4e3626'); px(x - 14, y - 24, 5, 5, '#f4ecd8'); px(x - 12, y - 23, 1, 2, '#1b1420'); px(x - 12, y - 22, 2, 1, '#1b1420');
+          return;
+        }
         if (f.state === 'working' && !b.walk) { const act = doing(f); if (act) drawProp(act.prop, rp, T, act.flag); }
+        if (f.thinking && !b.walk) { // between steps, the model is thinking: a thought cloud, its dots filling in
+          const ph = Math.floor(T * 3) % 4;
+          rp(10, 0, 1, 1, '#e6eef5'); rp(11, -2, 2, 2, '#e6eef5');
+          rp(12, -10, 10, 7, '#9aa4ad'); rp(13, -11, 8, 9, '#9aa4ad'); rp(13, -9, 8, 5, '#ffffff'); rp(14, -10, 6, 7, '#ffffff');
+          for (let i = 0; i < 3; i++) rp(14 + i * 2, -7, 1, 1, i < ph ? '#5f6b7a' : '#c3cbd2');
+        }
+        if (f.tasks?.total && f.state === 'working' && !b.walk) { // its chore board: the task list, ticked as items are done
+          const t = f.tasks, rows = Math.min(3, t.total), done = Math.round((t.done / t.total) * rows);
+          rp(-6, 9, 1, 6, '#6b4320'); rp(-10, 2, 8, 8, '#4e3626'); rp(-9, 3, 6, 6, '#fff4d6');
+          for (let r = 0; r < rows; r++) { rp(-8, 4 + r * 2, 1, 1, r < done ? '#2fa57a' : '#9aa4ad'); rp(-6, 4 + r * 2, 2, 1, '#c9b48a'); }
+          rp(-10, 11, 8, 1, '#4e3626'); rp(-10, 11, Math.max(t.done ? 1 : 0, Math.round((8 * t.done) / t.total)), 1, '#6cc04a');
+        }
         if (f.state === 'waiting') {
-          bubble(rp, 12, -7 - blink(3), '!');
+          bubble(rp, 12, -7 - blink(3), f.planAsk ? 'plan' : '!');
           const x = Math.round(b.x), y = Math.round(b.y); // a ring at its feet that pulses: it needs you
           PXG.ctx.globalAlpha = 0.45 + 0.35 * Math.sin(PXG.T * 5);
           px(x - 6, y + 2, 13, 1, '#e04a3a'); px(x - 8, y + 1, 2, 1, '#e04a3a'); px(x + 7, y + 1, 2, 1, '#e04a3a'); px(x - 8, y - 1, 1, 2, '#e04a3a'); px(x + 8, y - 1, 1, 2, '#e04a3a');
@@ -1242,8 +1511,29 @@
           cp(2, 0, 1, 1, '#e04a3a'); cp(1, 1, 3, 1, '#ffffff'); cp(3, 1, 1, 1, '#1b1420'); cp(0, 2, 4, 1, '#ffffff'); cp(4, 2, 1, 1, '#f0b429'); cp(1, 3, 3, 1, '#e6eef5'); cp(1, 4, 1, 1, '#f0b429'); cp(3, 4, 1, 1, '#f0b429');
         });
       },
+      /** Labels that move with what they name: the carts on the road, the hammocks' wake-up times. */
+      movers(posOf) {
+        const out = [];
+        for (const f of scene.farmers) {
+          const c = cartOf(f);
+          if (c) out.push({ key: `cart:${f.id}`, x: c.x, y: LANE - 5, html: pxt(clip(f.service, 18), '#5a3a1a', null), title: `${f.name}: ${f.summary || f.service}` });
+          const b = posOf(f.id);
+          if (f.nap && f.wakeAt && b?.zone === 'nap' && !b.walk) out.push({ key: `nap:${f.id}`, x: b.x - 11, y: b.y - 26, html: pxt(`wakes in ${until(f.wakeAt)}`, '#5a3a1a', null), title: `${f.name} wakes up by itself at ${new Date(f.wakeAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}` });
+        }
+        return out;
+      },
       top() {
         const T = PXG.T;
+        for (const f of scene.farmers) { // carts to town and back, one for each web or connector call going on
+          const c = cartOf(f);
+          if (!c) continue;
+          const { x, dir } = c, y = LANE + 4, step = blink(6), pony = x + dir * 7;
+          px(x - 4, y + 2, 9, 1, '#3f7d3a'); // its shadow on the road
+          px(x - 4, y - 4, 8, 4, '#a8703c'); px(x - 4, y - 4, 8, 1, '#c98d4f'); px(x - 2, y - 7, 4, 3, f.step === 'web' ? '#f4ecd8' : '#c9a46a'); px(x - 2, y - 7, 4, 1, f.step === 'web' ? '#ffffff' : '#e2b07a');
+          px(x - 3, y, 2, 2, '#4e3626'); px(x + 2, y, 2, 2, '#4e3626');
+          px(pony - 3, y - 4, 6, 3, '#8b5a2b'); px(pony + dir * 3 - (dir < 0 ? 1 : 0), y - 6, 2, 3, '#8b5a2b'); px(pony + dir * 4 - (dir < 0 ? 0 : 1), y - 5, 1, 1, '#1b1420');
+          px(pony - 3 + step, y - 1, 1, 2, '#6b4320'); px(pony + 1 - step, y - 1, 1, 2, '#6b4320'); px(pony - dir * 4, y - 4, 1, 2, '#4e3626');
+        }
         for (const s of L.ST) {
           const weather = fieldByKey(s.key).weather;
           if (weather === 'rainbow') { // deploy passed: a rainbow across the field
@@ -1275,7 +1565,7 @@
           const d = f.lastDeploy;
           const weather = d ? pxt(d.label, { ok: '#8ef0a0', failed: '#ff8a80', running: '#ffd166' }[d.state] ?? '#c9b48a') : '';
           const tip = [f.key, f.branch && `on ${f.branch}`, d?.detail, 'Click to see the files agents touched here'].filter(Boolean).join(' · ');
-          const second = [weather, f.collision ? ` ${pxt('⚠ crowded', '#ffd166')}` : ''].join('');
+          const second = [f.worktree && f.main ? pxt(`worktree of ${f.main.split('/').pop()}`, '#a9dcf7') : '', weather, f.collision ? ` ${pxt('⚠ crowded', '#ffd166')}` : ''].filter(Boolean).join(' ');
           lab(s.cx, s.rowTop + 49, `<button type="button" class="px-field" data-farm-field="${esc(f.key)}" title="${esc(tip)}"><span class="px-fl">${pxt(clip(f.name, 16), f.collision ? '#ffd166' : '#e6eef5')}${branch}</span>${second ? `<span class="px-fl">${second}</span>` : ''}</button>`, f.collision ? 'bad' : '');
           if (f.behind > 0) lab(s.cx - 40, s.rowTop - 8, cnt(`↓${f.behind}`), 'cnt', `${f.behind} commit${f.behind === 1 ? '' : 's'} behind the remote`);
           if (f.ahead > 0) lab(s.cx - 23, s.rowTop + 3 - Math.ceil(Math.min(f.ahead, 16) / 8) * 6, cnt(`↑${f.ahead}`), 'cnt', `${f.ahead} unpushed commit${f.ahead === 1 ? '' : 's'}`);
@@ -1288,14 +1578,17 @@
         if (scene.henhouse?.eggs) lab(14, 142, cnt(`${scene.henhouse.eggs} egg${scene.henhouse.eggs === 1 ? '' : 's'}`), 'cnt', 'Eggs: subagents that finished lately');
         const sign = t => pxt(t, '#fff3d6', '#4e3626');
         lab(56, 140, sign('MEADOW'), 'zone');
-        lab(60, 294, sign('SHADE TREE'), 'zone'); lab(200, 21, sign('YOUR PORCH'), 'zone'); lab(341, 18, sign('SCARECROWS'), 'zone');
+        lab(60, L.GRID.y1 + 4, sign('SHADE TREE'), 'zone'); lab(200, 21, sign('YOUR PORCH'), 'zone'); lab(356, 18, sign('SCARECROWS'), 'zone');
+        for (const g of L.groups) { const [r, cols] = rowsOfGroup(g)[0]; lab(174 + Math.min(...cols) * COLW + 44, 100 + r * ROWH - 1, sign(clip(g.name, 16)), 'zone proj', `The ${g.name} project: its repos side by side`); }
+        const open = scene.fields.flatMap(fl => fl.prs?.open ?? []);
+        if (open.length) lab(STALL.x + 14, STALL.y + 32, cnt(`${open.length} PR${open.length === 1 ? '' : 's'}`), 'cnt', `Open pull requests: ${open.slice(0, 6).map(pr => `#${pr.number} ${pr.title}`).join(' · ')}${open.length > 6 ? ' …' : ''}. Click the stall for them all`);
         const plus = (x, y, n, what) => n > 0 && lab(x, y, cnt(`+${n} ${what}`), 'cnt');
         plus(154, PORCH_Y - 34, overflow.desk, 'waiting');
         plus(246, PORCH_Y - 34, overflow.turn, 'your turn');
         plus(60, 262, overflow.charge, 'idle');
         plus(340, PORCH_Y - 34, overflow.storage, 'stale');
         plus(56, 152, overflow.meadow, 'in the meadow');
-        if (more > 0) lab(350, 296, `<button type="button" class="px-more" data-farm-more>${pxt(`+${more} more field${more === 1 ? '' : 's'}`, '#fff3d6', '#4e3626')}</button>`, 'wood');
+        if (more > 0) lab(350, L.GRID.y1 + 8, `<button type="button" class="px-more" data-farm-more>${pxt(`+${more} more field${more === 1 ? '' : 's'}`, '#fff3d6', '#4e3626')}</button>`, 'wood');
       },
     };
   }
@@ -1304,13 +1597,19 @@
   function helpHtml() {
     return `<div class="px-key">
       <b>Your porch</b><span>in front of the farmhouse at the top: a farmer waving a red “!” needs you; a basket means it's your turn. The stats panel's “needs you” button opens the first one</span>
-      <b>Fields</b><span>one raised bed per repo in the fenced grid, each with its own crop (the seed packet on its side), soil and frame; empty beds wait for more repos. A blue pennant = a branch other than main</span>
-      <b>Tools</b><span>what a working farmer holds is its current step: almanac = reading, spyglass = searching, pigeon = the web, hoe = editing, seeds = a new file, magnifier = running tests, rake = lint or format, hammer = a build, wheelbarrow = installing, crate = a commit, cart = a push or a PR (with a red flag: a deploy), mailbag = a pull, lantern = a server or a long wait, sickle = deleting, whistle = calling subagents, clipboard = planning, watering can = any other command</span>
+      <b>Fields</b><span>one raised bed per repo in the fenced grid, each with its own crop (the seed packet on its side), soil and frame; empty beds wait for more repos, and the grid grows to 18. A blue pennant = a branch other than main; a greenhouse = a worktree, beside its repo; stones round some beds and a sign = one project's repos</span>
+      <b>Tools</b><span>what a working farmer holds is its current step: almanac = reading, spyglass = searching, pigeon = the web, hoe = editing, seeds = a new file, magnifier = running tests, rake = lint or format, hammer = a build, wheelbarrow = installing, crate = a commit, cart = a push or a PR (with a red flag: a deploy), mailbag = a pull, lantern = a server or a long wait, sickle = deleting, whistle = calling subagents, clipboard = planning, parcel = a connector (MCP: Gmail, Linear…), recipe card = a skill, blueprint = plan mode, watering can = any other command</span>
+      <b>Above a farmer</b><span>a thought cloud = thinking between steps; a scroll on the porch = a plan for you to approve; a chore board beside it = its task list, ticked as items get done (its name says how many, e.g. 3/7)</span>
+      <b>On a farmer</b><span>the pin on its hat = its model (purple Opus, blue Sonnet, green Haiku, orange Fable); speed lines = fast mode; a red and white scarf = bypass permissions (no checks); its purse = what it has cost (gold from $50)</span>
+      <b>Road to town</b><span>a cart on the lane for each web or connector call going on, with where it goes</span>
+      <b>Pumps, hammocks</b><span>a pump by a bed = a background command still running; a farmer in a hammock = a session that wakes up by itself (/loop, a scheduled wake-up), with when</span>
+      <b>Market stall</b><span>a crate for each open pull request, its tag the checks (green pass, red failed, yellow running, grey draft); “Sold!” = one merged</span>
+      <b>Buildings</b><span>click the barn to start or resume a session, the farmhouse for who is on your porch, the silo for your plan's usage, the henhouse for subagents, the notice board for CLAUDE.md and memory, the stall for pull requests</span>
       <b>Farmers</b><span>one per agent; each has its own hat, hair and clothes, and its shirt is the agent's colour in the list. Hover one for its name; names always show for the farmer you picked and those on the porch</span>
       <b>Speech bubbles</b><span>what a farmer asked or last said; × hides one to a 💬 (click it to show the bubble again); a new message brings it back by itself. The Bubbles switch hides or shows them all</span>
       <b>Above a field</b><span>hay = uncommitted files, crates = unpushed commits, mailbox = behind the remote</span>
       <b>Weather</b><span>the repo's last deploy, from GitHub Actions or a deploy an agent ran itself (a deploy script over ssh, rsync, vercel…), whichever is newer: rainbow = deployed, rain = deploy failed (hover its sign for why; the close-up links to the run), windmill = deploying. A run GitHub never started (billing, spending limit) brings no weather: ⏸ Actions didn't run. Rope = two agents writing one repo</span>
-      <b>Hearts, crops</b><span>hearts = context left. Crops grow as the context fills: seeds, sprouts, young plants, in flower, ripening, then ripe with a sparkle (golden wheat, red tomatoes, sunflowers in bloom…) when it is nearly full. Chickens = subagents, the dog = an Explore subagent</span>
+      <b>Hearts, crops</b><span>hearts = context left. Crops grow as the context fills: seeds, sprouts, young plants, in flower, ripening, then ripe with a sparkle (golden wheat, red tomatoes, sunflowers in bloom…) when it is nearly full. When the conversation is compacted, that's the harvest: the field starts again from seed. Chickens = subagents, the dog = an Explore subagent</span>
       <b>Shade tree, scarecrows</b><span>idle agents nap under the tree (bottom left); stale ones stand as scarecrows (top right); the meadow by the henhouse is for agents outside any repo</span>
       <b>Silo</b><span>its grain is your plan's weekly limit used (the % under it; when it resets on hover); its lamp turns amber from 70% and blinks red from 90%</span>
       <b>Seasons</b><span>follow your plan's 5-hour limit: spring while it is fresh (blossom), then summer, autumn (falling leaves), and winter (snow) when it is nearly used up; a new window brings spring back</span>
@@ -1318,7 +1617,8 @@
       <b>Pigeons</b><span>one agent messaging another (Claude Code's SendMessage between sessions): a pigeon flies the note from one farmer to the other, and the diary says what it said; the agents' conversations show it too</span>
       <b>Day and night</b><span>the light follows your clock: cloud shadows drift over by day; at night the windows, the lamps and lanterns glow and fireflies come out. The Sky switch holds it at day or night</span>
       <b>Click</b><span>a farmer to answer or message it in the sidebar; a field for the files agents touched there</span>
-      <b>Zoom</b><span>+ / − on the right (or ⌘/Ctrl + scroll, or pinch) zooms the farm inside its frame; drag or scroll to move around; the % button shows the whole farm again</span>
+      <b>Zoom</b><span>+ / − on the right (or ⌘/Ctrl + scroll, or pinch) zooms the farm inside its frame; drag or scroll to move around (the map in the corner shows where you are; click it to go somewhere); the % button shows the whole farm again</span>
+      <b>Stats, bell</b><span>the stats add up what the sessions have cost and their harvests. Bell: a chime, and a desktop notice when the page is in the background, whenever an agent starts waiting on you</span>
     </div>`;
   }
 
@@ -1341,6 +1641,9 @@
     let bgSeason = null;
     let follow = false; // keep the picked farmer in the middle of the view
     let restingShown = stored('tracker-farm-resting') !== 'hidden'; // idle and stale farmers on the farm, or not
+    let bellOn = stored('tracker-bell') === 'on'; // a chime and a desktop notice when an agent starts waiting (the page rings it)
+    const moverEls = new Map(); // labels that move: key → element
+    let dlg = null, mini = null; // the buildings' dialog; the minimap shown while zoomed in
     const resting = f => f.state === 'idle' || f.state === 'stale';
     let glide = null; // a zoom easing in: { from: scale, start, ox, oy }
     let pad = { x: 0, t: 0, b: 0 }; // the frame's spare room, in world pixels: more forest all round
@@ -1391,7 +1694,7 @@
       ov.appendChild(el);
       setTimeout(() => el.remove(), 1700);
     }
-    function renderHud() { if (hudEl) hudEl.innerHTML = th.hud(still, zoom, saysOn, skyMode, follow, Boolean(selectedId && bots.has(selectedId)), restingShown ? null : scene.farmers.filter(resting).length); }
+    function renderHud() { if (hudEl) hudEl.innerHTML = th.hud(still, zoom, saysOn, skyMode, follow, Boolean(selectedId && bots.has(selectedId)), restingShown ? null : scene.farmers.filter(resting).length, bellOn); }
     /**
      * Zoom changes the farm inside the frame, never the frame. The farm point under `at` (a point of
      * the frame: its middle, or the pointer) stays where it is.
@@ -1470,8 +1773,19 @@
       bots.get(id)?.tag?.classList.add('hover');
       if (canvas) canvas.style.cursor = id ? 'pointer' : '';
     }
+    /** The farm point under a pointer, or null off the canvas. */
+    function farmPoint(e) {
+      if (!canvas || e.target !== canvas) return null;
+      const r = canvas.getBoundingClientRect(), on = r.width / (W + 2 * pad.x) || cs;
+      return [(e.clientX - r.left) / on - pad.x, (e.clientY - r.top) / on - pad.t];
+    }
     function onPointerMove(e) {
-      if (!drag) { setHover(botAt(e)); return; }
+      if (!drag) {
+        const id = botAt(e);
+        setHover(id);
+        if (!id && canvas) { const pt = farmPoint(e), k = pt && th.buildingAt?.(...pt); canvas.style.cursor = k ? 'pointer' : ''; canvas.title = k ? th.buildingTip(k) : ''; }
+        return;
+      }
       if (e.pointerId !== drag.id) return;
       const dx = e.clientX - drag.x, dy = e.clientY - drag.y;
       if (!drag.moving) {
@@ -1498,7 +1812,7 @@
     const sayKey = f => (f.state === 'waiting' ? 'waiting' : f.question ? `q:${f.question}` : `said:${f.said}`);
     /** A farmer's speech bubble: its question when waiting or asking, else what it last said. Hidden, a 💬. */
     function placeBubble(f, b) {
-      const text = saysOn && ACTIVE.has(f.state) ? (f.state === 'waiting' ? f.ask : f.question || f.said) : '';
+      const text = saysOn && ACTIVE.has(f.state) && !f.nap ? (f.state === 'waiting' ? f.ask : f.question || f.said) : '';
       let s = says.get(f.id);
       const min = closedSays.get(f.id) === sayKey(f);
       if (s && (!text || s.min !== min)) { s.el.remove(); says.delete(f.id); s = null; }
@@ -1607,7 +1921,7 @@
     }
     function step(dt, f, b) {
       if (b.path.length) {
-        const [qx, qy] = b.path[0], dx = qx - b.x, dy = qy - b.y, d = Math.hypot(dx, dy), sp = 40 * dt;
+        const [qx, qy] = b.path[0], dx = qx - b.x, dy = qy - b.y, d = Math.hypot(dx, dy), sp = (th.speed?.(f) ?? 40) * dt;
         b.dir = Math.abs(dx) > 0.1 ? Math.sign(dx) : 0;
         if (d > 0.1) b.face = Math.abs(dx) > Math.abs(dy) ? (dx > 0 ? 'right' : 'left') : dy < 0 ? 'up' : 'down';
         if (d <= sp) { b.x = qx; b.y = qy; b.path.shift(); } else { b.x += (dx / d) * sp; b.y += (dy / d) * sp; }
@@ -1667,19 +1981,29 @@
           ov.appendChild(b.tag);
         }
         const text = th.tag(f), tip = th.tip(f), sel = f.id === selectedId, hover = f.id === hoverId;
-        b.shown = sel || f.state === 'waiting' || f.state === 'turn'; // the rest show their names on hover
-        if (b.tagText !== f.state + text + tip + sel + hover) {
-          b.tag.className = `px-tag st-${f.state}${sel ? ' sel' : ''}${hover ? ' hover' : ''}`;
+        b.shown = sel || f.state === 'waiting' || (f.state === 'turn' && !f.nap); // the rest show their names on hover
+        if (b.tagText !== f.state + text + tip + sel + hover + f.nap) {
+          b.tag.className = `px-tag st-${f.state}${f.nap ? ' nap' : ''}${sel ? ' sel' : ''}${hover ? ' hover' : ''}`;
           b.tag.innerHTML = f.state === 'turn' ? pxt(text, '#1b1420', null) : pxt(text, '#ffffff');
           b.tagW = null;
           b.tag.title = tip;
-          b.tagText = f.state + text + tip + sel + hover;
+          b.tagText = f.state + text + tip + sel + hover + f.nap;
         }
         b.tag.style.transform = `translate(${Math.round(b.x * cs)}px, ${Math.round((b.y - th.SH * SC - 3 - b.lift) * cs)}px) translate(-50%, -100%)`;
         placeBubble(f, b);
       }
       for (const [id, s] of says) if (!bots.has(id)) { s.el.remove(); says.delete(id); }
       layoutBubbles();
+      const keepMovers = new Set();
+      for (const m of th.movers?.(id => bots.get(id)) ?? []) {
+        keepMovers.add(m.key);
+        let el = moverEls.get(m.key);
+        if (!el) { el = document.createElement('div'); el.className = 'px-mover'; ov.appendChild(el); moverEls.set(m.key, el); }
+        if (el.dataset.html !== m.html) { el.innerHTML = m.html; el.dataset.html = m.html; el.title = m.title ?? ''; }
+        el.style.transform = `translate(${Math.round(m.x * cs)}px, ${Math.round(m.y * cs)}px) translate(-50%, -100%)`;
+      }
+      for (const [k, el] of moverEls) if (!keepMovers.has(k)) { el.remove(); moverEls.delete(k); }
+      drawMini();
       for (const s of says.values()) s.seen = false;
     }
     const visible = () => Boolean(host?.isConnected) && host.offsetParent !== null && !document.hidden;
@@ -1764,7 +2088,7 @@
         if (from && to) { addLog(from, `sends a note to ${to.name}: ${clip(m.text ?? '', 60)}`); if (!still) flights.push({ from: m.from, to: m.to, start: T }); }
       }
       scene = next;
-      th.setScene(next);
+      const news = th.setScene(next) ?? [];
       const want = layoutFor(next.fields).key;
       if (want !== layoutKey) { // fields came or went: new ground; farmers walk to their new spots
         th.relayout(next.fields);
@@ -1773,6 +2097,11 @@
       }
       if (!canvas) return;
       if (still) redrawStill(); else sync(false);
+      for (const ev of news) { // a harvest over its farmer, a sale at the stall
+        const b = ev.id ? bots.get(ev.id) : null, at = ev.at ?? (b ? [b.x, b.y - th.SH * SC - 14] : null);
+        if (at) pop(at[0], at[1], ev.text, ev.cls);
+        if (ev.log) addLog(next.farmers.find(f => f.id === ev.id) ?? { name: 'The market', state: 'turn' }, ev.log);
+      }
       layoutLabels();
       renderHud();
       startLoop();
@@ -1785,6 +2114,20 @@
       const sign = e.target.closest?.('[data-farm-field]');
       if (sign) { e.stopPropagation(); opts.onOpenField?.(sign.dataset.farmField); return; }
       if (e.target.closest?.('[data-farm-motion]')) { e.stopPropagation(); setStill(!still); return; }
+      if (e.target.closest?.('[data-farm-bell]')) {
+        e.stopPropagation();
+        bellOn = !bellOn;
+        keep('tracker-bell', bellOn ? 'on' : 'off');
+        opts.onBell?.(bellOn);
+        renderHud();
+        return;
+      }
+      const pick = e.target.closest?.('[data-farm-pick]');
+      if (pick) { e.stopPropagation(); dlg?.close(); opts.onPickAgent?.(pick.dataset.farmPick); return; }
+      const mem = e.target.closest?.('[data-farm-mem]');
+      if (mem) { e.stopPropagation(); dlg?.close(); opts.onOpenDoc?.(mem.dataset.farmMem, mem.dataset.path); return; }
+      if (e.target.closest?.('[data-farm-dlg-close]') || (dlg && e.target === dlg)) { e.stopPropagation(); dlg.close(); return; }
+      if (dlg?.contains(e.target)) return;
       if (e.target.closest?.('[data-farm-need]')) { // the first farmer that needs you
         e.stopPropagation();
         const f = scene.farmers.find(x => x.state === 'waiting') ?? scene.farmers.find(x => x.question);
@@ -1844,9 +2187,64 @@
       if (e.target !== canvas) return;
       const hit = botAt(e);
       if (hit) { opts.onPickAgent?.(hit); return; }
-      const r = canvas.getBoundingClientRect(), on = r.width / (W + 2 * pad.x) || cs, x = (e.clientX - r.left) / on - pad.x, y = (e.clientY - r.top) / on - pad.t;
+      const [x, y] = farmPoint(e);
+      const building = th.buildingAt?.(x, y);
+      if (building) { openBuilding(building); return; }
       const key = th.fieldAt(x, y);
       if (key) opts.onOpenField?.(key);
+    }
+    /** A building, clicked: the barn starts a session; the rest open a dialog. */
+    function openBuilding(k) {
+      if (k === 'barn') { opts.onStartSession?.(); return; }
+      if (!dlg) return;
+      if (k === 'board') { void openBoard(); return; }
+      const d = th.dialog(k);
+      if (!d) return;
+      dlg.querySelector('.px-dlg-title').textContent = d.title;
+      dlg.querySelector('.px-dlg-body').innerHTML = d.html;
+      if (!dlg.open) dlg.showModal();
+    }
+    /** The notice board: each project's CLAUDE.md and memory, read from one of its sessions. */
+    async function openBoard() {
+      dlg.querySelector('.px-dlg-title').textContent = 'The notice board: what your projects remember';
+      const body = dlg.querySelector('.px-dlg-body');
+      body.innerHTML = '<div class="loading"><span class="spinner"></span>Reading…</div>';
+      if (!dlg.open) dlg.showModal();
+      const sessions = th.boardSessions();
+      const parts = await Promise.all(sessions.map(async f => {
+        try {
+          const r = await fetch(`/api/agent/${encodeURIComponent(f.id)}/files`, { headers: { 'x-tracker-token': opts.token } });
+          const d = r.ok ? await r.json() : null;
+          const files = d?.memory ?? [];
+          return `<h4>${esc(f.cwd.split('/').pop() || f.cwd)}</h4>${files.length ? `<ul class="px-dl">${files.map(m => `<li><button type="button" class="act" data-farm-mem="${esc(f.id)}" data-path="${esc(m.path)}">${esc(m.label)}</button><span class="muted">${esc(m.where)}</span></li>`).join('')}</ul>` : '<p class="muted">Nothing remembered here yet.</p>'}`;
+        } catch {
+          return `<h4>${esc(f.cwd)}</h4><p class="muted">Could not read it.</p>`;
+        }
+      }));
+      body.innerHTML = parts.join('') || '<p class="muted">No sessions on the farm.</p>';
+    }
+    /** The minimap: the whole farm small in a corner while zoomed in, the view a box on it; click it to go there. */
+    function drawMini() {
+      if (!mini || !viewEl || !bg) return;
+      const zoomed = viewEl.scrollWidth > viewEl.clientWidth + 2 || viewEl.scrollHeight > viewEl.clientHeight + 2;
+      mini.hidden = !zoomed;
+      if (!zoomed) return;
+      const EW = W + 2 * pad.x, EH = th.layout().H + pad.t + pad.b, mw = 150, mh = Math.round((mw * EH) / EW);
+      if (mini.width !== mw || mini.height !== mh) { mini.width = mw; mini.height = mh; }
+      const g = mini.getContext('2d'), k = mw / EW;
+      g.imageSmoothingEnabled = true;
+      g.drawImage(bg, 0, 0, mw, mh);
+      for (const f of scene.farmers) { const b = bots.get(f.id); if (b) { g.fillStyle = f.state === 'waiting' ? '#e04a3a' : SHIRT[f.color]; g.fillRect(Math.round((b.x + pad.x) * k) - 1, Math.round((b.y + pad.t) * k) - 2, 3, 3); } }
+      const stage = canvas.parentElement, vx = (viewEl.scrollLeft - stage.offsetLeft) / cs, vy = (viewEl.scrollTop - stage.offsetTop) / cs;
+      g.strokeStyle = '#ffd43b'; g.lineWidth = 1.5;
+      g.strokeRect(Math.max(0, vx * k), Math.max(0, vy * k), Math.min(mw, (viewEl.clientWidth / cs) * k), Math.min(mh, (viewEl.clientHeight / cs) * k));
+    }
+    function onMiniClick(e) {
+      const r = mini.getBoundingClientRect(), k = (W + 2 * pad.x) / r.width, stage = canvas.parentElement;
+      viewEl.scrollLeft = (e.clientX - r.left) * k * cs + stage.offsetLeft - viewEl.clientWidth / 2;
+      viewEl.scrollTop = (e.clientY - r.top) * k * cs + stage.offsetTop - viewEl.clientHeight / 2;
+      if (follow) { follow = false; renderHud(); }
+      if (still) drawMini();
     }
     function onVisibility() { if (document.hidden) stopLoop(); else startLoop(); }
     function setStill(next) {
@@ -1866,13 +2264,22 @@
         const under = opts.diary ? '' : '<div class="px-under"><div><h4>Farm diary</h4><ol class="px-log"></ol></div></div>';
         host.innerHTML = `<div class="px"><div class="px-host"><div class="px-view"><div class="px-stage"><canvas aria-label="Pixel farm: every farmer is an agent, every field a repo"></canvas><div class="px-ov"></div>${got ? '' : '<div class="px-loading"><span class="spinner"></span>Loading the farm…</div>'}</div></div><div class="px-hud"></div></div>
           ${under}</div>
-          <dialog class="px-help" aria-label="How to read the farm"><header><b>How to read the farm</b><button type="button" class="x" data-farm-help-close aria-label="Close">×</button></header>${helpHtml()}</dialog>`;
+          <dialog class="px-help" aria-label="How to read the farm"><header><b>How to read the farm</b><button type="button" class="x" data-farm-help-close aria-label="Close">×</button></header>${helpHtml()}</dialog>
+          <dialog class="px-help px-dlg" aria-label="The farm"><header><b class="px-dlg-title"></b><button type="button" class="x" data-farm-dlg-close aria-label="Close">×</button></header><div class="px-dlg-body"></div></dialog>`;
         canvas = host.querySelector('canvas');
         ctx = canvas.getContext('2d');
         viewEl = host.querySelector('.px-view');
         ov = host.querySelector('.px-ov');
         logEl = opts.diary ?? host.querySelector('.px-log');
         hudEl = host.querySelector('.px-hud');
+        dlg = host.querySelector('.px-dlg');
+        mini = document.createElement('canvas');
+        mini.className = 'px-mini';
+        mini.hidden = true;
+        mini.title = 'The whole farm: click to go there';
+        host.querySelector('.px-host').appendChild(mini);
+        mini.addEventListener('click', onMiniClick);
+        moverEls.clear();
         for (const b of bots.values()) { b.tag = null; b.tagText = ''; }
         layoutKey = null;
         labelKey = '';
@@ -1889,6 +2296,7 @@
         viewEl.addEventListener('pointerup', onPointerUp);
         viewEl.addEventListener('pointercancel', onPointerUp);
         viewEl.addEventListener('pointerleave', () => setHover(null));
+        viewEl.addEventListener('scroll', () => { if (still) drawMini(); }, { passive: true });
         document.addEventListener('visibilitychange', onVisibility);
         renderLog();
         renderHud();
@@ -1913,7 +2321,8 @@
         if (host) host.innerHTML = '';
         for (const b of bots.values()) { b.tag = null; b.tagText = ''; }
         says.clear();
-        host = canvas = ctx = ov = logEl = hudEl = viewEl = null;
+        host = canvas = ctx = ov = logEl = hudEl = viewEl = dlg = mini = null;
+        moverEls.clear();
         drag = null;
         hoverId = null;
       },
@@ -2154,6 +2563,6 @@
       view.unmount();
       mounted = false;
     },
-    toScene, fieldOf, weatherOf, contextPct, askText, helpHtml,
+    toScene, fieldOf, weatherOf, contextPct, askText, helpHtml, layoutFor,
   };
 })();
