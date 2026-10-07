@@ -443,3 +443,31 @@ test("a repo's close-up lists the files its sessions touched, with git status, o
     await handle.stop();
   }
 });
+
+test("an agent's own repo stays on the dashboard even when it touched no files lately", async () => {
+  const root = mkdtempSync(join(tmpdir(), 'tracker-root-cwdrepo-'));
+  mkdirSync(join(root, 'web'));
+  writeFileSync(join(root, 'web', 'index.html'), '<html></html>');
+  writeFileSync(join(root, 'config.json'), JSON.stringify({ port: 0, deployRepos: {}, pollMs: 200 }));
+  const work = realpathSync(mkdtempSync(join(tmpdir(), 'tracker-work-cwdrepo-')));
+  execFileSync('git', ['-C', work, 'init', '-q', '-b', 'main']);
+  mkdirSync(join(work, 'src'));
+  const claudeDir = mkdtempSync(join(tmpdir(), 'tracker-claude-cwdrepo-'));
+  mkdirSync(join(claudeDir, 'sessions'));
+  mkdirSync(join(claudeDir, 'projects', '-w'), { recursive: true });
+  writeFileSync(join(claudeDir, 'sessions', `${process.pid}.json`), JSON.stringify({ pid: process.pid, sessionId: 'sess-quiet', cwd: join(work, 'src'), name: 'quiet', status: 'idle' }));
+  writeFileSync(join(claudeDir, 'projects', '-w', 'sess-quiet.jsonl'), `${JSON.stringify({ type: 'user', timestamp: new Date(Date.now() - 3 * 3_600_000).toISOString(), message: { content: 'hi' } })}\n`);
+  const handle = await startCollector({ root, claudeDir, claudeBin: '/usr/bin/false', notify: () => {}, log: () => {}, home: '/nowhere' });
+  try {
+    let repo;
+    for (let i = 0; i < 50 && !repo; i++) {
+      repo = handle.getSnapshot().repos.find(r => r.path === work);
+      if (!repo) await new Promise(r => setTimeout(r, 100));
+    }
+    assert.ok(repo, 'the repo holding the agent folder is listed');
+    assert.deepEqual(repo.agentIds, ['sess-quiet']);
+    assert.deepEqual(handle.getSnapshot().collisions, []);
+  } finally {
+    await handle.stop();
+  }
+});

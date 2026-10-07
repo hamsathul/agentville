@@ -180,6 +180,8 @@ export async function startCollector({ root, claudeDir = join(homedir(), '.claud
     };
   }
 
+  const ownFolder = a => Boolean(a.cwd) && a.cwd !== home && a.cwd !== '/';
+
   function reposFor(agents) {
     const map = new Map();
     const ensure = path => {
@@ -187,12 +189,16 @@ export async function startCollector({ root, claudeDir = join(homedir(), '.claud
       return map.get(path);
     };
     for (const path of Object.keys(cfg.deployRepos)) ensure(path);
+    const addAgent = (path, id) => {
+      const r = ensure(path);
+      if (!r.agentIds.includes(id)) r.agentIds.push(id);
+    };
     for (const a of agents) {
-      for (const t of a.touching) {
-        if (!t.repo) continue;
-        const r = ensure(t.repo);
-        if (!r.agentIds.includes(a.id)) r.agentIds.push(a.id);
-      }
+      for (const t of a.touching) if (t.repo) addAgent(t.repo, a.id);
+      // The repo an agent works in stays listed while the agent is around, even when it touched
+      // nothing lately, so the repo rail and the farm's fields don't come and go.
+      const own = ownFolder(a) ? resolver.lookup(a.cwd) : null;
+      if (own) addAgent(own, a.id);
     }
     return [...map.values()].sort((x, y) => y.agentIds.length - x.agentIds.length || x.name.localeCompare(y.name));
   }
@@ -200,7 +206,10 @@ export async function startCollector({ root, claudeDir = join(homedir(), '.claud
   function queueResolve(agents) {
     if (isResolving) return;
     const paths = new Set();
-    for (const a of agents) for (const t of a.touching) if (resolver.needsRefresh(t.path)) paths.add(t.path);
+    for (const a of agents) {
+      for (const t of a.touching) if (resolver.needsRefresh(t.path)) paths.add(t.path);
+      if (ownFolder(a) && resolver.needsRefresh(a.cwd)) paths.add(a.cwd);
+    }
     if (!paths.size) return;
     isResolving = true;
     Promise.all([...paths].slice(0, 50).map(p => resolver.topOf(p).catch(() => null))).finally(() => { isResolving = false; });
