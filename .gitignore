@@ -6,3 +6,4 @@ node_modules/
 config.json
 mod/.claude-plugin/types/
 .DS_Store
+*.mp4

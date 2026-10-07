@@ -67,7 +67,8 @@ function loadToken(path) {
   return token;
 }
 
-export async function startCollector({ root, claudeDir = join(homedir(), '.claude'), claudeBin = 'claude', home = homedir(), scratchBase = `/private/tmp/claude-${process.getuid?.() ?? 0}`, port: portOverride, deliveryTimeoutMs = 5000, notify = notifyMac, launch = args => run('osascript', args, { timeoutMs: 15_000 }), sessionProcs = systemProcs, endWaitMs = 8000, log = makeLogger(join(root, 'logs')) }) {
+export async function startCollector({ root, claudeDir = join(homedir(), '.claude'), claudeBin = 'claude', home = homedir(), scratchBase = `/private/tmp/claude-${process.getuid?.() ?? 0}`, port: portOverride, deliveryTimeoutMs = 5000, notify = notifyMac, launch = args => run('osascript', args, { timeoutMs: 15_000 }), sessionProcs = systemProcs, endWaitMs = 8000, readProcs = readPs, deployStatusOf = deployStatus, pullRequestsOf = pullRequests, githubSlugOf = githubSlug, log = makeLogger(join(root, 'logs')) }) {
+  // readProcs, deployStatusOf, pullRequestsOf and githubSlugOf read the machine and GitHub; a test or the demo video passes stand-ins.
   const stateDir = join(root, 'state');
   const pendingDir = join(stateDir, 'pending');
   const answersDir = join(stateDir, 'answers');
@@ -257,7 +258,7 @@ export async function startCollector({ root, claudeDir = join(homedir(), '.claud
     const now = Date.now();
     if (isFull) {
       try { registry = readRegistry(join(claudeDir, 'sessions')); markOk('registry'); } catch (err) { markFail('registry', err); }
-      try { procs = await readPs(); markOk('ps'); } catch (err) { markFail('ps', err); }
+      try { procs = await readProcs(); markOk('ps'); } catch (err) { markFail('ps', err); }
     }
     const bases = computeBases();
     const { bySession: offers, expired } = readPending(pendingDir, now);
@@ -345,7 +346,7 @@ export async function startCollector({ root, claudeDir = join(homedir(), '.claud
     if (!entries.length) return;
     let failed = null;
     for (const [path, repo] of entries) {
-      try { deploys.set(path, await deployStatus(repo)); } catch (err) { failed = err; }
+      try { deploys.set(path, await deployStatusOf(repo)); } catch (err) { failed = err; }
     }
     if (failed) markFail('gh', failed); else markOk('gh');
   }
@@ -357,10 +358,10 @@ export async function startCollector({ root, claudeDir = join(homedir(), '.claud
     for (const r of snapshot?.repos ?? []) {
       if (r.worktree) continue;
       try {
-        const slug = cfg.deployRepos[r.path] ?? await githubSlug(r.path);
+        const slug = cfg.deployRepos[r.path] ?? await githubSlugOf(r.path);
         if (!slug) { prs.delete(r.path); continue; }
         asked++;
-        prs.set(r.path, await pullRequests(slug));
+        prs.set(r.path, await pullRequestsOf(slug));
       } catch (err) { failed = err; }
     }
     if (failed) markFail('prs', failed); else if (asked) markOk('prs');
