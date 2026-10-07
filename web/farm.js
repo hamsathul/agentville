@@ -1744,6 +1744,12 @@
     }
     function renderHud() {
       if (hudEl) hudEl.innerHTML = th.hud({ still, zoom, saysOn, skyMode, follow, canFollow: Boolean(selectedId && bots.has(selectedId)), restingHidden: restingShown ? null : scene.farmers.filter(resting).length, bell: bellOn, nav: opts.navState?.() ?? {}, panelOpen });
+      placeMini();
+    }
+    /** The minimap sits just above the switches, which take more rows in a narrow frame (the sidebar open). */
+    function placeMini() {
+      const tools = hudEl?.querySelector('.px-tools');
+      if (mini && tools) mini.style.bottom = `${tools.offsetHeight + 16}px`;
     }
     /**
      * Zoom changes the farm inside the frame, never the frame. The farm point under `at` (a point of
@@ -2131,6 +2137,7 @@
       ctx.imageSmoothingEnabled = false;
       labelKey = '';
       layoutLabels();
+      placeMini();
       if (still) redrawStill(); else { sync(false); draw(); }
     }
     function apply(next) {

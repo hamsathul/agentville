@@ -281,6 +281,7 @@ try {
   await js("document.querySelector('[data-farm-zoom=\"1\"]').click()");
   check(await width() > fit && (await frameBox()) === frame, `zooming in makes the farm bigger inside the same frame (${frame} → ${await frameBox()})`);
   check(await view('v.scrollLeft > 0 && v.scrollTop > 0 && v.scrollWidth > v.clientWidth'), 'it zooms around the middle of the view, which now scrolls');
+  check(await until("(m => !!m && !m.hidden && (a => [...document.querySelectorAll('.px-tools > button, .px-tools > .px-zoombar')].every(b => (r => r.right <= a.left || r.left >= a.right || r.bottom <= a.top || r.top >= a.bottom)(b.getBoundingClientRect())))(m.getBoundingClientRect()))(document.querySelector('.px-mini'))"), 'zoomed in, the minimap shows, above the toolbar rather than over its buttons');
   const picked = () => js("document.querySelector('.px-tag.sel')?.dataset.farmer ?? ''");
   const pickedBefore = await picked(), left0 = await view('v.scrollLeft');
   const [mx, my] = JSON.parse(await view('JSON.stringify((r => [Math.round(r.left + r.width / 2), Math.round(r.top + r.height / 2)])(v.getBoundingClientRect()))'));
@@ -292,6 +293,7 @@ try {
   check(Math.abs(left1 - left0 - 120) <= 2 && (await picked()) === pickedBefore, `dragging moves around the farm and picks nobody (scrolled ${left0} → ${left1})`);
   await js("document.querySelector('[data-farm-zoom=\"0\"]').click()");
   check(await width() === fit && (await frameBox()) === frame && await until("(v => v.scrollWidth <= v.clientWidth && !document.querySelector('#farm .px-stage').style.transform)(document.querySelector('#farm .px-view'))"), 'the zoom reading fits the whole farm back in the frame (once its glide ends)');
+  check(await js("(() => { const v = document.querySelector('#farm .px-view'), e = document.createElement('div'); e.style.cssText = 'position:absolute;left:100%;top:0;width:300px;height:10px'; document.querySelector('#farm .px-ov').appendChild(e); const still = v.scrollWidth <= v.clientWidth && document.querySelector('.px-mini')?.hidden !== false; e.remove(); return still; })()"), "at 100%, a label past the farm's edge (a cart off to town) doesn't make the frame scroll");
   check(await js("!!document.querySelector('.px-tag .pxt') && !!document.querySelector('.px-lab .pxt') && [...document.querySelectorAll('.px-tag')].some(t => t.textContent.startsWith('ui-asker'))"), 'names and signs are in the pixel font, with their text still in the page');
   await js("document.querySelector('.px-tag[data-farmer=\"ui-worker\"]').click()");
   await until("document.querySelector('.px-tag.sel')?.dataset.farmer === 'ui-worker'");
@@ -299,6 +301,7 @@ try {
   const followed = await until(`(() => { const v = document.querySelector('#farm .px-view').getBoundingClientRect(), t = document.querySelector('.px-tag[data-farmer="ui-worker"]').getBoundingClientRect(), cx = t.left + t.width / 2, cy = t.bottom;
     return v.width > 0 && Math.abs(cx - (v.left + v.width / 2)) < v.width / 5 && Math.abs(cy - (v.top + v.height / 2)) < v.height / 3 && parseFloat(document.querySelector('#farm canvas').style.width) > v.width; })()`, 4000);
   check(followed && /Follow: on/.test(await js("document.querySelector('[data-farm-follow]').textContent")), 'Follow zooms in and keeps the picked farmer in the middle of the view');
+  check(await until("(m => !!m && !m.hidden && (a => [...document.querySelectorAll('.px-tools > button, .px-tools > .px-zoombar')].every(b => (r => r.right <= a.left || r.left >= a.right || r.bottom <= a.top || r.top >= a.bottom)(b.getBoundingClientRect())))(m.getBoundingClientRect()))(document.querySelector('.px-mini'))"), 'with the sidebar open too, the minimap stays clear of the toolbar (Follow can be clicked)');
   {
     const [fx, fy] = JSON.parse(await view('JSON.stringify((r => [Math.round(r.left + r.width / 2), Math.round(r.top + r.height / 2)])(v.getBoundingClientRect()))'));
     await mouse('mousePressed', fx, fy, { buttons: 1, clickCount: 1 });

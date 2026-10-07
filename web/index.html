@@ -371,7 +371,7 @@ html[data-view="farm"] .banner.show { position: fixed; top: 10px; left: 50%; tra
 .px-host { position: relative; flex: 1; min-height: 0; display: flex; flex-direction: column; background: #1c3320; border: 1px solid var(--line); border-radius: 14px; overflow: hidden; container-type: size; }
 .px-view { position: relative; flex: 1; min-height: 0; display: flex; overflow: auto; overscroll-behavior: contain; } /* the frame: zoom happens inside it */
 .px-view.panning, .px-view.panning * { cursor: grabbing !important; user-select: none; }
-.px-stage { position: relative; flex: none; margin: auto; } /* centred, yet scrollable all round when zoomed in */
+.px-stage { position: relative; flex: none; margin: auto; overflow: clip; } /* centred, yet scrollable all round when zoomed in; a label past the farm's edge (a cart off to town) is cut off, never makes the frame scroll */
 .px-say { position: absolute; left: 0; top: 0; z-index: 2; width: max-content; max-width: 180px; padding: 4px 19px 5px 8px; background: #fffdf4; color: #2b2116; border: 2px solid #2a1d14; border-radius: 9px; font: 600 11px/1.3 system-ui, sans-serif; pointer-events: auto; cursor: pointer; box-shadow: 0 2px 0 rgba(0, 0, 0, .25); }
 .px-say::before { content: ''; position: absolute; left: 50%; top: 100%; width: 2px; height: var(--lead, 0px); margin-left: -1px; background: #2a1d14; } /* a lifted bubble's line down to its farmer */
 .px-say::after { content: ''; position: absolute; left: 50%; top: calc(100% + var(--lead, 0px)); margin-left: -6px; border: 6px solid transparent; border-top-color: #2a1d14; border-bottom: 0; }
