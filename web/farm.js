@@ -121,13 +121,18 @@
     const m = Math.max(0, (Date.now() - ms) / 60_000);
     return m < 1 ? 'now' : m < 60 ? `${Math.round(m)}m` : m < 1440 ? `${Math.round(m / 60)}h` : `${Math.round(m / 1440)}d`;
   };
-  const PXG = { ctx: null, T: 0 }; // the canvas being drawn right now, and the animation clock
+  const PXG = { ctx: null, T: 0, k: 1 }; // the canvas being drawn right now, the animation clock, device pixels per world pixel
   const px = (x, y, w, h, c) => { PXG.ctx.fillStyle = c; PXG.ctx.fillRect(x, y, w, h); };
-  const SC = 2; // characters are drawn at 2×: one sprite pixel = two world pixels
+  const SC = 1.5; // characters are drawn at 1.5×: one sprite pixel = 1.5 world pixels
   const blink = (hz, n = 2) => Math.floor(PXG.T * hz) % n;
-  const rpAt = (ox, oy) => (x, y, w, h, c) => px(ox + x * SC, oy + y * SC, w * SC, h * SC, c);
+  // A sprite pixel lands on whole device pixels, so a scale like 1.5× stays crisp (no soft edges).
+  const snap = v => Math.round(v * PXG.k) / PXG.k;
+  const rpAt = (ox, oy) => (x, y, w, h, c) => {
+    const x0 = snap(ox + x * SC), y0 = snap(oy + y * SC);
+    px(x0, y0, snap(ox + (x + w) * SC) - x0, snap(oy + (y + h) * SC) - y0, c);
+  };
   const legFrame = b => (b.walk ? (blink(8) ? 'a' : 'b') : 's');
-  const pixelOrigin = (b, SH) => [Math.round(b.x) - 7 * SC, Math.round(b.y) - SH * SC + (b.walk && blink(8) ? -SC : 0)];
+  const pixelOrigin = (b, SH) => [snap(Math.round(b.x) - 7 * SC), snap(Math.round(b.y) - SH * SC + (b.walk && blink(8) ? -SC : 0))];
   function makeSprite(rows, pal) {
     const c = document.createElement('canvas');
     c.width = rows[0].length;
@@ -359,7 +364,7 @@
       spawn: () => BARN_DOOR,
       follow: (b, k, T, kid) => (kid?.dog
         ? [b.x + Math.cos(T * 0.9 + k) * 44, b.y + 4 + Math.sin(T * 1.8) * 8] // the Explore dog roams and sniffs
-        : [b.x + (k % 2 ? 17 : -17) + Math.sin(T * 1.3 + k) * 3, b.y + 3 - (k > 1 ? 8 : 0)]),
+        : [b.x + (k % 2 ? 1 : -1) * (7 * SC + 4) + Math.sin(T * 1.3 + k) * 3, b.y + 3 - (k > 1 ? 4 * SC : 0)]),
       startText: n => `Morning: <b>${n}</b> farmer${n === 1 ? '' : 's'} on the farm`,
       arriveText: 'walks out of the barn',
       tag: f => (f.kind === 'codex' ? clip(f.name, 16) : `${clip(f.name, 16)} ${'♥'.repeat(f.hearts)}${'♡'.repeat(4 - f.hearts)}`),
@@ -474,14 +479,14 @@
         b.kids.forEach((d, k) => { // chickens = subagents, the dog = an Explore subagent
           if (f.kids[k]?.dog) {
             const left = Math.sin(T * 0.9 + k) > 0, sniff = blink(3), m = (x, w) => (left ? 8 - x - w : x);
-            const dp = rpAt(Math.round(d.x) - 8, Math.round(d.y) - 12), c = (x, y, w, h, col) => dp(m(x, w), y, w, h, col);
+            const dp = rpAt(Math.round(d.x - 4.5 * SC), Math.round(d.y - 6 * SC)), c = (x, y, w, h, col) => dp(m(x, w), y, w, h, col);
             c(1, 2, 5, 2, '#a0662e'); c(5, 1 + sniff, 2, 2, '#a0662e'); c(5, sniff, 1, 1, '#6b4320'); c(7, 2 + sniff, 1, 1, '#222');
             c(1, 4, 1, 1, '#6b4320'); c(4, 4, 1, 1, '#6b4320'); c(0, 1 + blink(6), 1, 1, '#a0662e'); c(2, 2, 2, 1, '#c98d4f');
             if (sniff) c(8, 4, 1, 1, '#b08850');
             return;
           }
           const hop = b.walk ? Math.round(Math.abs(Math.sin(T * 10 + k)) * 3) : (blink(2) && k % 2 ? 1 : 0);
-          const cp = rpAt(Math.round(d.x) - 5, Math.round(d.y) - 10 - hop);
+          const cp = rpAt(Math.round(d.x - 2.5 * SC), Math.round(d.y - 5 * SC) - hop);
           cp(2, 0, 1, 1, '#e63946'); cp(1, 1, 3, 1, '#ffffff'); cp(3, 1, 1, 1, '#222'); cp(0, 2, 4, 1, '#ffffff'); cp(4, 2, 1, 1, '#f0b429'); cp(1, 3, 3, 1, '#ececec'); cp(1, 4, 1, 1, '#f0b429'); cp(3, 4, 1, 1, '#f0b429');
         });
       },
@@ -556,7 +561,7 @@
   function makePixelView(th) {
     let host = null, canvas = null, ctx = null, ov = null, logEl = null, hudEl = null, bg = null, ro = null;
     let raf = 0, last = 0, T = 0, cs = 1, first = true, timer = 0, layoutKey = null, labelKey = '';
-    let viewEl = null, drag = null, dragged = false; // the frame the farm is seen through; a drag that pans it
+    let viewEl = null, drag = null, dragged = false, backing = 1; // the frame the farm is seen through; a drag that pans it
     let scene = { fields: [], farmers: [] }, overflow = {}, still = false, opts = {}, selectedId = null, got = false; // got: a scene has arrived
     // Zoom on top of "the whole farm in the frame", and speech bubbles (each can be closed until its farmer says something new).
     const ZOOMS = [0.5, 0.75, 1, 1.25, 1.5, 2, 2.5, 3];
@@ -778,6 +783,7 @@
       if (!ctx) return;
       PXG.ctx = ctx;
       PXG.T = T;
+      PXG.k = backing;
       ctx.drawImage(bg, 0, 0);
       th.ground();
       const items = th.items();
@@ -867,6 +873,7 @@
       const fit = Math.max(0.5, Math.min(6, (fw - 4) / W, fh > 60 ? (fh - 4) / H : Infinity));
       cs = Math.max(0.25, Math.min(18, fit * zoom));
       const k = Math.max(1, Math.min(Math.ceil(cs * dpr), Math.floor(Math.sqrt(24e6 / (W * H)))));
+      backing = k;
       canvas.width = W * k;
       canvas.height = H * k;
       canvas.style.width = `${W * cs}px`;
@@ -937,7 +944,7 @@
       if (help?.contains(e.target)) return;
       if (e.target !== canvas) return;
       const r = canvas.getBoundingClientRect(), x = (e.clientX - r.left) / cs, y = (e.clientY - r.top) / cs;
-      for (const [id, b] of bots) if (Math.abs(x - b.x) <= 14 && y >= b.y - th.SH * SC - 1 && y <= b.y + 1) { opts.onPickAgent?.(id); return; }
+      for (const [id, b] of bots) if (Math.abs(x - b.x) <= 7 * SC + 1 && y >= b.y - th.SH * SC - 1 && y <= b.y + 1) { opts.onPickAgent?.(id); return; }
       const key = th.fieldAt(x, y);
       if (key) opts.onOpenField?.(key);
     }
