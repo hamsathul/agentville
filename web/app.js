@@ -134,6 +134,7 @@ function setView(next, { remember = true } = {}) {
   view = next;
   if (remember) save('tracker-view', next);
   $('main').dataset.view = next;
+  document.documentElement.dataset.view = next; // the farm fills the window: the top bar and count cards go into it
   $('view-list').setAttribute('aria-pressed', next === 'list');
   $('view-farm').setAttribute('aria-pressed', next === 'farm');
   $('side-toggle').hidden = next !== 'farm';
@@ -143,7 +144,12 @@ function setView(next, { remember = true } = {}) {
     $('center-tabs').innerHTML = '';
     $('center-body').innerHTML = '';
     reader = null;
-    window.TrackerFarm.mount($('farm'), { token: TOKEN, diary: $('farm-diary'), onPickAgent: pickFromFarm, onOpenDoc: openDocFromFarm, onShowRepos: showReposFromFarm, onStartSession: () => $('sessions-open').click(), onBell: bellSwitched });
+    window.TrackerFarm.mount($('farm'), {
+      token: TOKEN, diary: $('farm-diary'), onPickAgent: pickFromFarm, onOpenDoc: openDocFromFarm, onShowRepos: showReposFromFarm, onStartSession: () => $('sessions-open').click(), onBell: bellSwitched,
+      // the top bar's buttons, on the farm
+      onNav: what => ({ list: () => setView('list'), session: () => $('sessions-open').click(), side: () => setFarmSide(!farmSide), theme: () => $('theme-toggle').click() })[what]?.(),
+      navState: () => ({ theme, side: farmSide, live: !$('live').classList.contains('off') }),
+    });
   } else {
     $('farm-agent').innerHTML = '';
   }

@@ -135,8 +135,19 @@
     const agents = snap?.agents ?? [];
     const kids = agents.map(a => a.children ?? []);
     const now = snap?.generatedAt ?? Date.now();
+    const waiting = agents.filter(a => a.state === 'waiting'), cpuUsed = agents.reduce((t, a) => t + (a.proc?.cpu ?? 0), 0);
     return {
       plan: snap?.plan ?? null,
+      // what the dashboard's top bar and count cards say, for the farm's own panel (it fills the window)
+      chrome: {
+        counts: snap?.counts ?? null, asking: agents.filter(a => a.question).length, agents: agents.length,
+        oldestWaiting: waiting.length ? Math.min(...waiting.map(a => a.stateSince || now)) : null,
+        subagentsRunning: agents.filter(a => a.children?.some(c => c.kind === 'subagent' && c.state === 'running')).length,
+        ram: { usedMb: agents.reduce((t, a) => t + (a.proc?.rssMb ?? 0), 0), totalMb: snap?.machine?.totalMemMb ?? null },
+        cpu: { used: cpuUsed, cores: snap?.machine?.cpuCount ?? 1 },
+        collector: snap?.collector ?? null,
+        errors: Object.entries(snap?.sources ?? {}).filter(([, v]) => v && v.ok === false).map(([k, v]) => `${k}: ${String(v.error ?? 'failing').slice(0, 60)}`),
+      },
       // subagents for the henhouse's list: what each was asked, whose it is, how it is going
       subagents: agents.flatMap(a => (a.children ?? []).filter(c => c.kind === 'subagent').map(c => ({ id: c.id, label: c.label ?? '', type: c.agentType ?? null, state: c.state, parent: a.name, startedAt: c.startedAt }))),
       mail: mailOf(agents, snap?.generatedAt ?? Date.now()),
@@ -1106,9 +1117,14 @@
     help: ['..kkkkk..', '.kk...kk.', '......kk.', '....kkk..', '...kk....', '...kk....', '.........', '...kk....', '.........'],
     spring: ['.........', '.gg...gg.', '.ggg.ggg.', '..gg.gg..', '....g....', '....g....', '....g....', '..kkkkk..', '.........'],
     autumn: ['......oo.', '....oooo.', '..ooooo..', '.ooooo...', '.oooo....', '.ooo.....', '.k.......', 'k........', '.........'],
+    list: ['.........', 'kk.kkkkkk', '.........', 'kk.kkkkkk', '.........', 'kk.kkkkkk', '.........', '.........', '.........'],
+    plus: ['....k....', '....k....', '....k....', 'kkkkkkkkk', '....k....', '....k....', '....k....', '.........', '.........'],
+    side: ['kkkkkkkkk', 'k...kyyyk', 'k...kyyyk', 'k...kyyyk', 'k...kyyyk', 'k...kyyyk', 'kkkkkkkkk', '.........', '.........'],
     bell: ['....k....', '...kyk...', '..kyyyk..', '..kyyyk..', '..kyyyk..', '.kyyyyyk.', 'kkkkkkkkk', '...kyk...', '....k....'],
     winter: ['....b....', '.b..b..b.', '..b.b.b..', '...bbb...', 'bbbbbbbbb', '...bbb...', '..b.b.b..', '.b..b..b.', '....b....'],
   };
+  // The dashboard's mark, for the farm's panel.
+  const BRAND_SVG = '<svg class="px-logo" viewBox="0 0 64 64" aria-hidden="true"><rect width="64" height="64" rx="15" fill="#1a1a19"/><path d="M9 38h11l6-15 8 26 6-17 4 6h11" fill="none" stroke="#0ca30c" stroke-width="5" stroke-linecap="round" stroke-linejoin="round"/><circle cx="50" cy="15" r="7" fill="#d03b3b"/></svg>';
   const ICON_PAL = { k: '#4e3626', w: '#ffffff', y: '#f0b429', s: '#f4ecd8', r: '#e04a3a', g: '#3f9b3a', o: '#c8681a', b: '#a9dcf7' };
   const iconUrls = new Map();
   /** HTML for one of the farm's pixel icons (none without a DOM). */
@@ -1303,30 +1319,61 @@
         if (z === 'nap') return `naps in a hammock until it wakes up by itself${f.wakeAt ? ` at ${new Date(f.wakeAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}` : ''}`;
         return `${doing(f)?.verb ?? 'working'} in the ${fieldByKey(f.field)?.name ?? ''} field`;
       },
-      /** The farm's controls, laid over its corners: stats top left, zoom on the right, switches along the bottom. */
-      hud(still, zoom = 1, saysOn = true, skyMode = 'live', follow = false, canFollow = false, restingHidden = null, bell = false) {
+      /**
+       * The farm's controls, laid over it so it fills the window: top left, the panel with what the
+       * dashboard's top bar and count cards say; top right, the dashboard's own buttons; on the right,
+       * zoom and the switches.
+       */
+      hud({ still, zoom = 1, saysOn = true, skyMode = 'live', follow = false, canFollow = false, restingHidden = null, bell = false, nav = {}, panelOpen = true }) {
         const need = scene.farmers.filter(a => a.state === 'waiting' || a.question).length;
         const spent = scene.farmers.reduce((t, a) => t + (a.cost ?? 0), 0), harvested = scene.farmers.reduce((t, a) => t + (a.compactions ?? 0), 0);
-        const count = st => scene.farmers.filter(a => st.includes(a.state)).length;
-        const w = t => pxt(t, '#fff3d6', '#2a1d14');
-        const parts = [[count(['working']), 'working'], [count(['waiting', 'turn']), 'on the porch'], [count(['idle', 'stale']), 'resting']].filter(([n]) => n).map(([n, t]) => `${n} ${t}`);
-        const tool = (attr, icon, name, state, title, disabled = false) => `<button type="button" ${attr}${disabled ? ' disabled' : ''} title="${esc(title)}">${iconImg(icon)}${pxImg(name, '#4e3626', null)}${state ? pxImg(state, '#8b5a2b', null) : ''}<span class="px-sr">${esc(state ? `${name}: ${state}` : name)}</span></button>`;
-        return `<div class="px-stats">
-            <b class="px-title">${pxt('AGENT FARM', '#ffe8a3', '#2a1d14')}</b>
-            <div class="px-line"><span title="What the sessions on the farm have cost so far (each one's purse; from the mod)"><b class="coin"></b>${w(`$${spent.toFixed(2)}`)}</span><span title="Harvests: each time a session's conversation was compacted"><b class="basket"></b>${w(`${harvested} harvested`)}</span></div>
-            <div class="px-line px-season"><span title="${esc(seasonTip())}">${iconImg(season === 'summer' ? 'day' : season)}${w(season)}</span></div>
-            <div class="px-counts">${parts.length ? parts.map(t => `<div>${w(t)}</div>`).join('') : w('nobody on the farm')}</div>
+        const ch = scene.chrome ?? {}, c = ch.counts ?? {};
+        const w = t => pxt(t, '#fff3d6', '#2a1d14'), dim = t => pxt(t, '#c9b48a', null), label = t => pxt(t, '#a9c79a', null);
+        const gb = mb => (mb >= 1024 ? `${(mb / 1024).toFixed(1)} GB` : `${Math.round(mb)} MB`);
+        const bar = (ratio, tone) => `<span class="px-bar"><i class="${tone}" style="width:${Math.round(Math.max(0, Math.min(1, ratio)) * 100)}%"></i></span>`;
+        const tone = r => (r >= 0.8 ? 'bad' : r >= 0.5 ? 'warn' : 'ok');
+        const kpi = (state, glyph, cls, name, n, sub, hot, title) => `<button type="button" class="px-kpi${hot ? ' hot' : ''}"${state && n ? ` data-farm-state="${state}"` : ' disabled'} title="${esc(title)}"><span class="px-kpi-ico ${cls}">${pxt(glyph, '#ffffff', null)}</span><span class="px-kpi-n">${w(String(n ?? 0))}</span><span class="px-kpi-l">${label(name)}${sub ? `<br>${dim(sub)}` : ''}</span></button>`;
+        const ramRatio = ch.ram?.totalMb ? ch.ram.usedMb / ch.ram.totalMb : 0, cpuRatio = (ch.cpu?.used ?? 0) / ((ch.cpu?.cores || 1) * 100);
+        const windows = scene.plan?.windows ?? [], win = kind => windows.find(x => x.kind === kind), pctOf = x => (x ? (x.reset ? 0 : Math.round(x.percentUsed)) : null);
+        const five = pctOf(win('five_hour')), week = pctOf(win('seven_day'));
+        const tool = (attr, icon, name, state, title, disabled = false) => `<button type="button" ${attr}${disabled ? ' disabled' : ''} title="${esc(title)}">${iconImg(icon)}<span class="px-tl">${pxImg(name, '#4e3626', null)}${state ? pxImg(state, '#8b5a2b', null) : ''}</span><span class="px-sr">${esc(state ? `${name}: ${state}` : name)}</span></button>`;
+        const navBtn = (what, icon, name, title, pressed) => `<button type="button" data-farm-nav="${what}" title="${esc(title)}"${pressed === undefined ? '' : ` aria-pressed="${pressed}"`}>${iconImg(icon)}${pxImg(name, '#4e3626', null)}<span class="px-sr">${esc(name)}</span></button>`;
+        return `<div class="px-stats${panelOpen ? '' : ' folded'}">
+            <button type="button" class="px-brand" data-farm-panel title="${panelOpen ? 'Fold this panel away' : 'Show the counts and meters'}" aria-expanded="${panelOpen}">${BRAND_SVG}${pxt('AGENT TRACKER', '#ffe8a3', '#2a1d14')}<i class="px-live${nav.live === false ? ' off' : ''}" title="${nav.live === false ? 'Disconnected from the collector: retrying' : 'Live'}"></i>${pxt(panelOpen ? '-' : '+', '#c9b48a', null)}</button>
+            <div class="px-line"><span title="What the sessions on the farm have cost so far (each one's purse; from the mod)"><b class="coin"></b>${w(`$${spent.toFixed(2)}`)}</span><span title="Harvests: each time a session's conversation was compacted"><b class="basket"></b>${w(`${harvested} harvested`)}</span><span class="px-season" title="${esc(seasonTip())}">${iconImg(season === 'summer' ? 'day' : season)}${w(season)}</span></div>
+            <div class="px-kpis">
+              ${kpi('waiting', '!', 'k-wait', 'waiting on you', c.waiting, c.waiting ? `oldest ${ago(ch.oldestWaiting ?? Date.now())}` : 'all clear', c.waiting > 0, 'Agents waiting on you (a question or a permission): click for the first')}
+              ${kpi('working', '>', 'k-work', 'working', c.working, ch.subagentsRunning ? `${ch.subagentsRunning} with subagents` : `${ch.agents ?? 0} agents tracked`, false, 'Agents at work: click for the first')}
+              ${kpi('turn', '<', 'k-turn', 'your turn', c.yourTurn, `${ch.asking ? `${ch.asking} ask you · ` : ''}${c.idle ?? 0} idle · ${c.stale ?? 0} stale`, ch.asking > 0, "Agents whose turn ended: it's yours. Click for the first")}
+              ${kpi(null, '⚠', 'k-collide', 'collisions', c.collisions, c.collisions ? 'two in one repo' : 'none', c.collisions > 0, 'Two agents writing one repo')}
+            </div>
+            <div class="px-gauges">
+              <span class="px-gauge" title="Memory used by the agents, of this Mac's">${label('RAM')}${bar(ramRatio, tone(ramRatio))}${w(gb(ch.ram?.usedMb ?? 0))}${ch.ram?.totalMb ? dim(`of ${gb(ch.ram.totalMb)}`) : ''}</span>
+              <span class="px-gauge" title="${esc(`CPU used by the agents: ${Math.round(ch.cpu?.used ?? 0)}% of one core, ${ch.cpu?.cores ?? 1} cores`)}">${label('CPU')}${bar(cpuRatio, tone(cpuRatio))}${w(`${Math.round(cpuRatio * 100)}%`)}${dim('of this Mac')}</span>
+              ${five !== null ? `<span class="px-gauge" title="Your plan's 5-hour limit (from the mod)">${label('5H')}${bar(five / 100, tone(five / 100))}${w(`${five}%`)}${dim('5-hour limit')}</span>` : ''}
+              ${week !== null ? `<span class="px-gauge" title="Your plan's weekly limit (from the mod)">${label('WEEK')}${bar(week / 100, tone(week / 100))}${w(`${week}%`)}${dim('this week')}</span>` : ''}
+              ${ch.collector ? `<span class="px-gauge" title="The tracker itself">${dim(`tracker ${ch.collector.cpu ?? 0}% CPU · ${ch.collector.rssMb ?? 0} MB`)}</span>` : ''}
+            </div>
+            ${(ch.errors ?? []).map(e => `<div class="px-err">⚠ ${esc(e)}</div>`).join('')}
             ${need ? `<button type="button" class="px-need" data-farm-need title="Open the first agent that needs you">${pxt(`${need} need${need > 1 ? '' : 's'} you`, '#ffffff', '#5a1f19')}</button>` : ''}
           </div>
-          <div class="px-zoombar" title="Zoom the farm inside its frame (or ⌘/Ctrl + scroll, or pinch); drag to move around when zoomed in"><button type="button" data-farm-zoom="1" aria-label="Zoom in">${pxt('+', '#4e3626', null)}</button><button type="button" data-farm-zoom="0" title="Show the whole farm">${pxt(`${Math.round(zoom * 100)}%`, '#4e3626', null)}</button><button type="button" data-farm-zoom="-1" aria-label="Zoom out">${pxt('-', '#4e3626', null)}</button></div>
-          <div class="px-tools">
-            ${tool('data-farm-follow', 'follow', 'Follow', follow ? 'on' : 'off', canFollow ? 'Keep the farmer you picked in the middle of the view (zooms in); dragging the view turns it off' : 'Pick a farmer first, then Follow keeps it in view', !canFollow)}
-            ${tool('data-farm-resting', 'resting', 'Resting', restingHidden === null ? 'shown' : `hidden (${restingHidden})`, 'Idle farmers (under the tree) and stale ones (scarecrows): show them, or hide them to keep the farm to the agents at work')}
-            ${tool('data-farm-bubbles', 'bubbles', 'Bubbles', saysOn ? 'on' : 'off', 'Speech bubbles with what each farmer last said. × hides one; its 💬 shows it again')}
-            ${tool('data-farm-sky', skyMode, 'Sky', skyMode, 'The light: live follows your clock (dawn, day, dusk, night); or hold it at day or night')}
-            ${tool('class="px-motion" data-farm-motion', still ? 'pause' : 'play', 'Motion', still ? 'off' : 'on', 'Walking and animation on the farm')}
-            ${tool('data-farm-bell', 'bell', 'Bell', bell ? 'on' : 'off', 'A chime, and a desktop notice when the page is in the background, whenever an agent starts waiting on you (in the list view too)')}
-            ${tool('class="px-info" data-farm-help aria-label="How to read the farm"', 'help', 'Help', '', 'How to read the farm')}
+          <div class="px-nav">
+            ${navBtn('list', 'list', 'LIST', 'Back to the list view')}
+            ${navBtn('session', 'plus', 'SESSION', 'Start a new Claude Code session in a folder, or resume a past one')}
+            ${navBtn('side', 'side', 'SIDEBAR', "Show the selected farmer's answer box, activity and files beside the farm", Boolean(nav.side))}
+            ${navBtn('theme', nav.theme === 'light' ? 'day' : nav.theme === 'auto' ? 'live' : 'night', String(nav.theme ?? 'dark').toUpperCase(), 'Theme: dark, light, or auto (as macOS is): click to change')}
+          </div>
+          <div class="px-dock">
+            <div class="px-zoombar" title="Zoom the farm inside its frame (or ⌘/Ctrl + scroll, or pinch); drag to move around when zoomed in"><button type="button" data-farm-zoom="1" aria-label="Zoom in">${pxt('+', '#4e3626', null)}</button><button type="button" data-farm-zoom="0" title="Show the whole farm">${pxt(`${Math.round(zoom * 100)}%`, '#4e3626', null)}</button><button type="button" data-farm-zoom="-1" aria-label="Zoom out">${pxt('-', '#4e3626', null)}</button></div>
+            <div class="px-tools">
+              ${tool('data-farm-follow', 'follow', 'Follow', follow ? 'on' : 'off', canFollow ? 'Keep the farmer you picked in the middle of the view (zooms in); dragging the view turns it off' : 'Pick a farmer first, then Follow keeps it in view', !canFollow)}
+              ${tool('data-farm-resting', 'resting', 'Resting', restingHidden === null ? 'shown' : `hidden (${restingHidden})`, 'Idle farmers (under the tree) and stale ones (scarecrows): show them, or hide them to keep the farm to the agents at work')}
+              ${tool('data-farm-bubbles', 'bubbles', 'Bubbles', saysOn ? 'on' : 'off', 'Speech bubbles with what each farmer last said. × hides one; its 💬 shows it again')}
+              ${tool('data-farm-sky', skyMode, 'Sky', skyMode, 'The light: live follows your clock (dawn, day, dusk, night); or hold it at day or night')}
+              ${tool('class="px-motion" data-farm-motion', still ? 'pause' : 'play', 'Motion', still ? 'off' : 'on', 'Walking and animation on the farm')}
+              ${tool('data-farm-bell', 'bell', 'Bell', bell ? 'on' : 'off', 'A chime, and a desktop notice when the page is in the background, whenever an agent starts waiting on you (in the list view too)')}
+              ${tool('class="px-info" data-farm-help aria-label="How to read the farm"', 'help', 'Help', '', 'How to read the farm')}
+            </div>
           </div>`;
       },
       bg(f, season, ext) { drawLand(f, L, season, ext); },
@@ -1643,13 +1690,14 @@
     let bgSeason = null;
     let follow = false; // keep the picked farmer in the middle of the view
     let restingShown = stored('tracker-farm-resting') !== 'hidden'; // idle and stale farmers on the farm, or not
-    let bellOn = stored('tracker-bell') === 'on'; // a chime and a desktop notice when an agent starts waiting (the page rings it)
+    let bellOn = stored('tracker-bell') === 'on';
+    let panelOpen = stored('tracker-farm-panel') !== 'folded'; // the farm's panel: counts and meters, or folded to its title // a chime and a desktop notice when an agent starts waiting (the page rings it)
     const moverEls = new Map(); // labels that move: key → element
     let dlg = null, mini = null; // the buildings' dialog; the minimap shown while zoomed in
     const resting = f => f.state === 'idle' || f.state === 'stale';
     let glide = null; // a zoom easing in: { from: scale, start, ox, oy }
-    let pad = { x: 0, t: 0, b: 0 }; // the frame's spare room, in world pixels: more forest all round
-    const extOf = () => ({ x0: -pad.x, x1: W + pad.x, y0: -pad.t, y1: th.layout().H + pad.b });
+    let pad = { l: 0, r: 0, t: 0, b: 0 }; // the frame's spare room, in world pixels: more forest all round
+    const extOf = () => ({ x0: -pad.l, x1: W + pad.r, y0: -pad.t, y1: th.layout().H + pad.b });
     const skyNow = () => skyAt(skyMode === 'day' ? new Date(2000, 0, 1, 12) : skyMode === 'night' ? new Date(2000, 0, 1, 23) : new Date());
     let wheel = 0;
     const says = new Map(); // farmer id → { el, text }
@@ -1696,7 +1744,9 @@
       ov.appendChild(el);
       setTimeout(() => el.remove(), 1700);
     }
-    function renderHud() { if (hudEl) hudEl.innerHTML = th.hud(still, zoom, saysOn, skyMode, follow, Boolean(selectedId && bots.has(selectedId)), restingShown ? null : scene.farmers.filter(resting).length, bellOn); }
+    function renderHud() {
+      if (hudEl) hudEl.innerHTML = th.hud({ still, zoom, saysOn, skyMode, follow, canFollow: Boolean(selectedId && bots.has(selectedId)), restingHidden: restingShown ? null : scene.farmers.filter(resting).length, bell: bellOn, nav: opts.navState?.() ?? {}, panelOpen });
+    }
     /**
      * Zoom changes the farm inside the frame, never the frame. The farm point under `at` (a point of
      * the frame: its middle, or the pointer) stays where it is.
@@ -1732,7 +1782,7 @@
       const b = follow && selectedId ? bots.get(selectedId) : null;
       if (!b || !viewEl || drag?.moving) return;
       const stage = canvas.parentElement;
-      const tx = (b.x + pad.x) * cs + stage.offsetLeft - viewEl.clientWidth / 2, ty = (b.y - 14 + pad.t) * cs + stage.offsetTop - viewEl.clientHeight / 2;
+      const tx = (b.x + pad.l) * cs + stage.offsetLeft - viewEl.clientWidth / 2, ty = (b.y - 14 + pad.t) * cs + stage.offsetTop - viewEl.clientHeight / 2;
       const ease = (cur, t) => { const d = t - cur, stepBy = dt ? d * Math.min(1, dt * 3.5) : d; return cur + (Math.abs(stepBy) < 1 ? Math.sign(d) * Math.min(1, Math.abs(d)) : stepBy); };
       viewEl.scrollLeft = ease(viewEl.scrollLeft, tx);
       viewEl.scrollTop = ease(viewEl.scrollTop, ty);
@@ -1741,7 +1791,7 @@
       follow = on && Boolean(selectedId && bots.has(selectedId));
       if (follow && zoom < 2) {
         const b = bots.get(selectedId), stage = canvas.parentElement;
-        setZoom(0, [(b.x + pad.x) * cs + stage.offsetLeft - viewEl.scrollLeft, (b.y + pad.t) * cs + stage.offsetTop - viewEl.scrollTop], 2);
+        setZoom(0, [(b.x + pad.l) * cs + stage.offsetLeft - viewEl.scrollLeft, (b.y + pad.t) * cs + stage.offsetTop - viewEl.scrollTop], 2);
       }
       renderHud();
       if (follow && still) followTick(0);
@@ -1764,7 +1814,7 @@
     /** The farmer under a pointer, if any (its sprite, in farm pixels). */
     function botAt(e) {
       if (!canvas || e.target !== canvas) return null;
-      const r = canvas.getBoundingClientRect(), on = r.width / (W + 2 * pad.x) || cs, x = (e.clientX - r.left) / on - pad.x, y = (e.clientY - r.top) / on - pad.t; // the size on screen: right even while a zoom glides
+      const r = canvas.getBoundingClientRect(), on = r.width / (W + pad.l + pad.r) || cs, x = (e.clientX - r.left) / on - pad.l, y = (e.clientY - r.top) / on - pad.t; // the size on screen: right even while a zoom glides
       for (const [id, b] of bots) if (Math.abs(x - b.x) <= 7 * SC + 1 && y >= b.y - th.SH * SC - 1 && y <= b.y + 1) return id;
       return null;
     }
@@ -1778,8 +1828,8 @@
     /** The farm point under a pointer, or null off the canvas. */
     function farmPoint(e) {
       if (!canvas || e.target !== canvas) return null;
-      const r = canvas.getBoundingClientRect(), on = r.width / (W + 2 * pad.x) || cs;
-      return [(e.clientX - r.left) / on - pad.x, (e.clientY - r.top) / on - pad.t];
+      const r = canvas.getBoundingClientRect(), on = r.width / (W + pad.l + pad.r) || cs;
+      return [(e.clientX - r.left) / on - pad.l, (e.clientY - r.top) / on - pad.t];
     }
     function onPointerMove(e) {
       if (!drag) {
@@ -1948,7 +1998,7 @@
       const sky = skyNow();
       PXG.lights = [...th.lights()];
       for (const f of scene.farmers) if (f.state === 'waiting' || f.state === 'turn') { const b = bots.get(f.id); if (b) PXG.lights.push([b.x, b.y - 8, 14, null]); } // lit at night: they need you
-      ctx.drawImage(bg, -pad.x, -pad.t);
+      ctx.drawImage(bg, -pad.l, -pad.t);
       th.ground();
       for (const f of scene.farmers) { const b = bots.get(f.id); if (b) th.shadows(b); }
       const items = th.items();
@@ -2041,10 +2091,10 @@
     function buildBg() {
       const { H } = th.layout();
       const c = document.createElement('canvas');
-      c.width = W + 2 * pad.x;
+      c.width = W + pad.l + pad.r;
       c.height = H + pad.t + pad.b;
       const g = c.getContext('2d');
-      g.translate(pad.x, pad.t);
+      g.translate(pad.l, pad.t);
       bgSeason = th.season();
       th.bg((x, y, w, h, col) => { g.fillStyle = ink(col); g.fillRect(x, y, w, h); }, bgSeason, extOf());
       return c;
@@ -2059,9 +2109,14 @@
       const fit = Math.max(0.5, Math.min(6, (fw - 2) / W, fh > 60 ? (fh - 2) / H : Infinity));
       // The frame's spare room is more land, not empty frame: the forest round the farm.
       const spareW = Math.max(0, (fw - 2) / fit - W), spareH = fh > 60 ? Math.floor(Math.max(0, (fh - 2) / fit - H)) : 0;
-      const was = `${pad.x},${pad.t},${pad.b}`;
-      pad = { x: Math.floor(spareW / 2), t: Math.floor(spareH / 2), b: spareH - Math.floor(spareH / 2) };
-      const EW = W + 2 * pad.x, EH = H + pad.t + pad.b;
+      const was = `${pad.l},${pad.r},${pad.t},${pad.b}`;
+      // The panel (left) and the switches (right) lie over the frame's edges: with room to spare, the
+      // farm sits between them rather than in the middle.
+      const edge = sel => { const el = hudEl?.querySelector(sel); return el ? (el.offsetWidth + 16) / fit : 0; };
+      const left = edge('.px-stats'), right = edge('.px-dock'), room = spareW - left - right;
+      const padL = spareW <= 0 ? 0 : room >= 0 ? left + room / 2 : (spareW * left) / Math.max(1, left + right);
+      pad = { l: Math.floor(padL), r: Math.floor(spareW) - Math.floor(padL), t: Math.floor(spareH / 2), b: spareH - Math.floor(spareH / 2) };
+      const EW = W + pad.l + pad.r, EH = H + pad.t + pad.b;
       cs = Math.max(0.25, Math.min(18, fit * zoom));
       const k = Math.max(1, Math.min(Math.ceil(cs * dpr), Math.floor(Math.sqrt(24e6 / (EW * EH)))));
       backing = k;
@@ -2069,11 +2124,12 @@
       canvas.height = EH * k;
       canvas.style.width = `${EW * cs}px`;
       canvas.style.height = `${EH * cs}px`;
-      canvas.dataset.pad = `${pad.x},${pad.t}`; // where the farm sits in the canvas (for tests)
-      ov.style.left = `${pad.x * cs}px`; // names and labels keep the farm's own coordinates
+      canvas.dataset.pad = `${pad.l},${pad.t}`; // where the farm sits in the canvas, and how wide the land drawn is (for tests)
+      canvas.dataset.ew = String(EW);
+      ov.style.left = `${pad.l * cs}px`; // names and labels keep the farm's own coordinates
       ov.style.top = `${pad.t * cs}px`;
-      if (was !== `${pad.x},${pad.t},${pad.b}`) bg = buildBg(); // the land grows with the frame
-      ctx.setTransform(k, 0, 0, k, pad.x * k, pad.t * k);
+      if (was !== `${pad.l},${pad.r},${pad.t},${pad.b}`) bg = buildBg(); // the land grows with the frame
+      ctx.setTransform(k, 0, 0, k, pad.l * k, pad.t * k);
       ctx.imageSmoothingEnabled = false;
       labelKey = '';
       layoutLabels();
@@ -2130,6 +2186,16 @@
       if (mem) { e.stopPropagation(); dlg?.close(); opts.onOpenDoc?.(mem.dataset.farmMem, mem.dataset.path); return; }
       if (e.target.closest?.('[data-farm-dlg-close]') || (dlg && e.target === dlg)) { e.stopPropagation(); dlg.close(); return; }
       if (dlg?.contains(e.target)) return;
+      if (e.target.closest?.('[data-farm-panel]')) { e.stopPropagation(); panelOpen = !panelOpen; keep('tracker-farm-panel', panelOpen ? 'open' : 'folded'); renderHud(); resize(); return; }
+      const navBtn = e.target.closest?.('[data-farm-nav]');
+      if (navBtn) { e.stopPropagation(); opts.onNav?.(navBtn.dataset.farmNav); renderHud(); return; } // the dashboard's own buttons
+      const stateBtn = e.target.closest?.('[data-farm-state]');
+      if (stateBtn) { // a count: the first farmer in that state
+        e.stopPropagation();
+        const want = stateBtn.dataset.farmState, f = scene.farmers.find(x => x.state === want);
+        if (f) opts.onPickAgent?.(f.id);
+        return;
+      }
       if (e.target.closest?.('[data-farm-need]')) { // the first farmer that needs you
         e.stopPropagation();
         const f = scene.farmers.find(x => x.state === 'waiting') ?? scene.farmers.find(x => x.question);
@@ -2231,18 +2297,18 @@
       const zoomed = viewEl.scrollWidth > viewEl.clientWidth + 2 || viewEl.scrollHeight > viewEl.clientHeight + 2;
       mini.hidden = !zoomed;
       if (!zoomed) return;
-      const EW = W + 2 * pad.x, EH = th.layout().H + pad.t + pad.b, mw = 150, mh = Math.round((mw * EH) / EW);
+      const EW = W + pad.l + pad.r, EH = th.layout().H + pad.t + pad.b, mw = 150, mh = Math.round((mw * EH) / EW);
       if (mini.width !== mw || mini.height !== mh) { mini.width = mw; mini.height = mh; }
       const g = mini.getContext('2d'), k = mw / EW;
       g.imageSmoothingEnabled = true;
       g.drawImage(bg, 0, 0, mw, mh);
-      for (const f of scene.farmers) { const b = bots.get(f.id); if (b) { g.fillStyle = f.state === 'waiting' ? '#e04a3a' : SHIRT[f.color]; g.fillRect(Math.round((b.x + pad.x) * k) - 1, Math.round((b.y + pad.t) * k) - 2, 3, 3); } }
+      for (const f of scene.farmers) { const b = bots.get(f.id); if (b) { g.fillStyle = f.state === 'waiting' ? '#e04a3a' : SHIRT[f.color]; g.fillRect(Math.round((b.x + pad.l) * k) - 1, Math.round((b.y + pad.t) * k) - 2, 3, 3); } }
       const stage = canvas.parentElement, vx = (viewEl.scrollLeft - stage.offsetLeft) / cs, vy = (viewEl.scrollTop - stage.offsetTop) / cs;
       g.strokeStyle = '#ffd43b'; g.lineWidth = 1.5;
       g.strokeRect(Math.max(0, vx * k), Math.max(0, vy * k), Math.min(mw, (viewEl.clientWidth / cs) * k), Math.min(mh, (viewEl.clientHeight / cs) * k));
     }
     function onMiniClick(e) {
-      const r = mini.getBoundingClientRect(), k = (W + 2 * pad.x) / r.width, stage = canvas.parentElement;
+      const r = mini.getBoundingClientRect(), k = (W + pad.l + pad.r) / r.width, stage = canvas.parentElement;
       viewEl.scrollLeft = (e.clientX - r.left) * k * cs + stage.offsetLeft - viewEl.clientWidth / 2;
       viewEl.scrollTop = (e.clientY - r.top) * k * cs + stage.offsetTop - viewEl.clientHeight / 2;
       if (follow) { follow = false; renderHud(); }
@@ -2287,6 +2353,7 @@
         labelKey = '';
         th.relayout(scene.fields);
         layoutKey = layoutFor(scene.fields).key;
+        renderHud(); // before the first fit: the panel's and switches' size place the farm
         bg = buildBg();
         resize();
         ro = new ResizeObserver(() => resize());

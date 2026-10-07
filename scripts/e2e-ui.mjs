@@ -195,7 +195,7 @@ try {
   check(await until("[...document.querySelectorAll('.px-tag')].some(t => t.textContent.startsWith('ui-asker') && t.classList.contains('st-waiting'))"), 'the waiting agent is on the porch');
   check(/1 needs you/.test(await js("document.querySelector('.px-hud')?.textContent ?? ''")), 'the farm says one needs you');
   const porch = JSON.parse(await js("JSON.stringify(['ui-done-a', 'ui-done-b', 'ui-asker'].map(id => (r => r.left + r.width / 2)(document.querySelector(`.px-tag[data-farmer='${id}']`).getBoundingClientRect())))"));
-  const cs0 = await js("(c => c.getBoundingClientRect().width / (400 + 2 * Number(c.dataset.pad.split(',')[0])))(document.querySelector('#farm canvas'))");
+  const cs0 = await js("(c => c.getBoundingClientRect().width / Number(c.dataset.ew))(document.querySelector('#farm canvas'))");
   check(Math.abs(porch[0] - porch[1]) >= 22 * cs0 - 1, `farmers on the porch stand apart, none hidden behind another (${Math.round(Math.abs(porch[0] - porch[1]) / cs0)} apart)`);
   check(await until("!!document.querySelector('.px-tag[data-farmer=\"ui-idle\"]')"), 'an idle farmer rests under the tree');
   await js("document.querySelector('[data-farm-resting]').click()");
@@ -207,14 +207,16 @@ try {
   await sleep(600);
   check(/Sky: night/.test(await js("document.querySelector('[data-farm-sky]').textContent")) && errors.length === 0, 'the farm draws its night, lights and all, without errors');
   for (let i = 0; i < 3 && !/Sky: live/.test(await js("document.querySelector('[data-farm-sky]').textContent")); i++) await js("document.querySelector('[data-farm-sky]').click()");
-  check(!/energy/i.test(await js("document.querySelector('.px-hud')?.textContent ?? ''")) && /5-hour 34%/.test(await js("document.getElementById('hstats').textContent")), 'the farm has no vague energy bar; the plan stays in the top bar');
+  check(!/energy/i.test(await js("document.querySelector('.px-hud')?.textContent ?? ''")) && /34%[\s\S]*5-hour limit/.test(await js("document.querySelector('.px-stats').textContent")), "the farm has no vague energy bar; the plan's usage is in its panel");
+  check(await js("getComputedStyle(document.querySelector('header.top')).display === 'none' && getComputedStyle(document.getElementById('kpis')).display === 'none'"), 'the farm fills the window: no top bar or count cards above it');
+  check(/waiting on you[\s\S]*working[\s\S]*your turn[\s\S]*collisions/.test(await js("document.querySelector('.px-stats').textContent")) && /RAM[\s\S]*CPU/.test(await js("document.querySelector('.px-stats').textContent")), "the count cards and the top bar's meters are in the farm's panel");
   check(await until("[...document.querySelectorAll('.px-lab')].some(l => l.textContent.startsWith('farm-repo'))"), 'the repo is a field');
   await js("document.querySelector('[data-farm-help]').click()");
   check(await js("document.querySelector('.px-help').open"), 'the info button opens how to read the farm');
   await js("document.querySelector('[data-farm-help-close]').click()");
   check(await js("!document.querySelector('.px-help').open"), 'the info dialog closes');
   // the buildings open things: a farm point to the screen (the canvas holds the forest round the farm too)
-  const clickFarm = (x, y) => `(() => { const c = document.querySelector('#farm canvas'); const [px, pt] = c.dataset.pad.split(',').map(Number), r = c.getBoundingClientRect(), cs = r.width / (400 + 2 * px); c.dispatchEvent(new MouseEvent('click', { bubbles: true, clientX: r.left + (${x} + px) * cs, clientY: r.top + (${y} + pt) * cs })); })()`;
+  const clickFarm = (x, y) => `(() => { const c = document.querySelector('#farm canvas'); const [px, pt] = c.dataset.pad.split(',').map(Number), r = c.getBoundingClientRect(), cs = r.width / Number(c.dataset.ew); c.dispatchEvent(new MouseEvent('click', { bubbles: true, clientX: r.left + (${x} + px) * cs, clientY: r.top + (${y} + pt) * cs })); })()`;
   await js(clickFarm(200, 30));
   check(await until("document.querySelector('.px-dlg')?.open && /ui-asker/.test(document.querySelector('.px-dlg').textContent)"), 'clicking the farmhouse lists who is on your porch');
   await js("document.querySelector('[data-farm-dlg-close]').click()");
@@ -244,15 +246,18 @@ try {
   })()`);
   check(overlaps === '', `speech bubbles overlap neither each other nor the names shown${overlaps ? `: ${overlaps}` : ''}`);
   check(await js("getComputedStyle(document.querySelector('.px-tag[data-farmer=\"ui-worker\"]')).opacity === '0' && getComputedStyle(document.querySelector('.px-tag.st-waiting')).opacity === '1'"), "a working farmer's name waits for a hover; a waiting one's always shows");
-  const hovered = await js(`(() => { const c = document.querySelector('#farm canvas'), t = document.querySelector('.px-tag[data-farmer="ui-worker"]').getBoundingClientRect(), cs = c.getBoundingClientRect().width / (400 + 2 * Number(c.dataset.pad.split(',')[0]));
+  const hovered = await js(`(() => { const c = document.querySelector('#farm canvas'), t = document.querySelector('.px-tag[data-farmer="ui-worker"]').getBoundingClientRect(), cs = c.getBoundingClientRect().width / Number(c.dataset.ew);
     c.dispatchEvent(new PointerEvent('pointermove', { bubbles: true, pointerId: 1, clientX: t.left + t.width / 2, clientY: t.bottom + 10 * cs })); // on its sprite, just under its hidden name
     const on = document.querySelector('.px-tag[data-farmer="ui-worker"]').classList.contains('hover');
     c.dispatchEvent(new PointerEvent('pointerleave', { bubbles: true, pointerId: 1 })); document.querySelector('#farm .px-view').dispatchEvent(new PointerEvent('pointerleave', { pointerId: 1 }));
     return on && !document.querySelector('.px-tag.hover'); })()`);
   check(hovered, 'hovering a farmer shows its name, and leaving hides it again');
-  const corners = JSON.parse(await js(`(() => { const r = s => document.querySelector(s).getBoundingClientRect(), v = r('#farm .px-host'), st = r('.px-stats'), z = r('.px-zoombar'), t = r('.px-tools');
-    return JSON.stringify({ stats: st.left - v.left < 20 && st.top - v.top < 20, zoom: v.right - z.right < 20 && Math.abs((z.top + z.bottom) / 2 - (v.top + v.bottom) / 2) < 40, tools: v.bottom - t.bottom < 20 && Math.abs((t.left + t.right) / 2 - (v.left + v.right) / 2) < 40 }); })()`));
-  check(corners.stats && corners.zoom && corners.tools, `the controls lie over the farm: stats top left, zoom on the right, switches along the bottom (${JSON.stringify(corners)})`);
+  const corners = JSON.parse(await js(`(() => { const r = s => document.querySelector(s).getBoundingClientRect(), v = r('#farm .px-host'), st = r('.px-stats'), z = r('.px-zoombar'), t = r('.px-tools'), n = r('.px-nav');
+    return JSON.stringify({ stats: st.left - v.left < 20 && st.top - v.top < 20, nav: v.right - n.right < 20 && n.top - v.top < 20, zoom: v.right - z.right < 20 && z.top > n.bottom, tools: v.right - t.right < 20 && t.top >= z.bottom }); })()`));
+  check(corners.stats && corners.nav && corners.zoom && corners.tools, `the controls lie over the farm: the panel top left, the dashboard's buttons top right, zoom and the switches under them on the right (${JSON.stringify(corners)})`);
+  await js("document.querySelector('[data-farm-nav=\"theme\"]').click()");
+  check(await until("document.documentElement.dataset.theme !== 'dark'"), "the farm's own buttons work the dashboard: the theme changes");
+  for (let i = 0; i < 2 && (await js("document.documentElement.dataset.theme")) !== 'dark'; i++) await js("document.querySelector('[data-farm-nav=\"theme\"]').click()");
   if (process.env.SHOTS) { // optional: SHOTS=<folder> saves a picture of the farm at this point
     const shot = await send('Page.captureScreenshot', { format: 'png' });
     writeFileSync(join(process.env.SHOTS, 'farm-bubbles.png'), Buffer.from(shot.result.data, 'base64'));
@@ -316,7 +321,7 @@ try {
   check(allBack, `switching them back on shows them all, hidden ones too${sayState ? ` (now: ${sayState})` : ''}`);
 
   // a farm point to the screen: the canvas also holds the forest round the farm (data-pad); the first field's bed is at (174, 118)
-  const closeUp = "(() => { const c = document.querySelector('#farm canvas'); const [px, pt] = c.dataset.pad.split(',').map(Number), r = c.getBoundingClientRect(), cs = r.width / (400 + 2 * px); c.dispatchEvent(new MouseEvent('click', { bubbles: true, clientX: r.left + (174 + px) * cs, clientY: r.top + (118 + pt) * cs })); })()";
+  const closeUp = "(() => { const c = document.querySelector('#farm canvas'); const [px, pt] = c.dataset.pad.split(',').map(Number), r = c.getBoundingClientRect(), cs = r.width / Number(c.dataset.ew); c.dispatchEvent(new MouseEvent('click', { bubbles: true, clientX: r.left + (174 + px) * cs, clientY: r.top + (118 + pt) * cs })); })()";
   await js(closeUp);
   const closeUpOpen = await until("[...document.querySelectorAll('.fv-f')].map(b => b.textContent).join(' ').includes('app.ts')");
   const closeUpState = closeUpOpen ? '' : await js(`JSON.stringify({ fv: !!document.querySelector('.fv-back'), files: [...document.querySelectorAll('.fv-f')].length, canvas: (r => [r.left, r.top, r.width, r.height].map(Math.round))(document.querySelector('#farm canvas').getBoundingClientRect()), stage: document.querySelector('#farm .px-stage').style.transform, side: document.getElementById('main').dataset.side, sel: document.querySelector('.px-tag.sel')?.dataset.farmer, tags: [...document.querySelectorAll('.px-tag')].map(t => t.dataset.farmer + '@' + Math.round(t.getBoundingClientRect().left)) })`);
