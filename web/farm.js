@@ -658,13 +658,15 @@
         opts = options ?? {};
         host = el;
         still = opts.still ?? false;
+        // The diary goes where the page asks (its sidebar), else under the farm.
+        const under = opts.diary ? '' : '<div class="px-under"><div><h4>Farm diary</h4><ol class="px-log"></ol></div></div>';
         host.innerHTML = `<div class="px"><div class="px-host"><div class="px-hud"></div><div class="px-stage"><canvas aria-label="Pixel farm: every farmer is an agent, every field a repo"></canvas><div class="px-ov"></div></div></div>
-          <div class="px-under"><div><h4>Farm diary</h4><ol class="px-log"></ol></div></div></div>
+          ${under}</div>
           <dialog class="px-help" aria-label="How to read the farm"><header><b>How to read the farm</b><button type="button" class="x" data-farm-help-close aria-label="Close">×</button></header>${helpHtml()}</dialog>`;
         canvas = host.querySelector('canvas');
         ctx = canvas.getContext('2d');
         ov = host.querySelector('.px-ov');
-        logEl = host.querySelector('.px-log');
+        logEl = opts.diary ?? host.querySelector('.px-log');
         hudEl = host.querySelector('.px-hud');
         for (const b of bots.values()) { b.tag = null; b.tagText = ''; }
         layoutKey = null;

@@ -697,6 +697,7 @@ function fakeFarm() {
     showRepos: () => options.onShowRepos(),
     farm: {
       mount(host, opts) { options = opts; calls.push(['mount', host.id, opts.token]); },
+      diaryId: () => options?.diary?.id,
       select(id) { calls.push(['select', id]); },
       colorOf: () => '#d9673a',
       update(snap) { calls.push(['update', snap.agents.length]); },
@@ -801,6 +802,7 @@ test('the sidebar toggle shows activity and the explorer beside the farm, and is
   assert.match(side, />Activity</);
   assert.match(side, /npm test/);
   assert.match(side, /id="msg-text"/);
+  await page.clickButton('tab-files', { farmTab: 'files' });
   await page.settle();
   assert.ok(page.gets.some(g => g.path === '/api/agent/r1/files'));
   assert.match(page.tree(), /data-file="src\/app\.ts"/);
@@ -837,7 +839,7 @@ test("entering the farm clears the list's centre and leaving clears the sidebar,
 
 test('a file picked in the sidebar explorer opens in the list view', async () => {
   const f = fakeFarm();
-  const page = loadPage({ farm: f.farm, stored: { 'tracker-view': 'farm', 'tracker-farm-side': 'open' }, listing: LISTING, files: { '/w/src/app.ts': 'const a = 1;\n' } });
+  const page = loadPage({ farm: f.farm, stored: { 'tracker-view': 'farm', 'tracker-farm-side': 'open', 'tracker-farm-tab': 'files' }, listing: LISTING, files: { '/w/src/app.ts': 'const a = 1;\n' } });
   page.push(richSnapshot([richAgent()]));
   await page.settle();
   await page.clickButton('tn', { file: 'src/app.ts' });
@@ -874,11 +876,11 @@ const chatty = () => richAgent({
   ],
 });
 
-test('the conversation shows your prompts and the replies as a thread, oldest first; Activity shows the tool steps', async () => {
+test('the conversation shows your prompts and the replies as a thread, newest first; Activity shows the tool steps', async () => {
   const page = loadPage();
   page.push(richSnapshot([chatty()]));
   const side = page.side();
-  assert.match(side, /class="bub you"[^>]*>[\s\S]*?Fix the build\nplease[\s\S]*?class="bub agent"[^>]*>[\s\S]*?<p>Done\. All &lt;b&gt;tests&lt;\/b&gt; pass\.<\/p>/);
+  assert.match(side, /class="chat"><div class="bub agent"[^>]*>[\s\S]*?<p>Done\. All &lt;b&gt;tests&lt;\/b&gt; pass\.<\/p>[\s\S]*?class="bub agent"[\s\S]*?Plan:[\s\S]*?class="bub you"[^>]*>Fix the build\nplease/, 'newest first');
   const now = side.indexOf('>Now<'), chat = side.indexOf('>Conversation<'), box = side.indexOf('id="msg-text"'), activity = side.indexOf('>Activity<');
   assert.ok(now < box && box < chat && chat < activity, `${now} ${box} ${chat} ${activity}`);
   const feed = side.slice(activity);
@@ -963,4 +965,24 @@ test('in the farm sidebar too: Now, the question, the message box, then the conv
   const side = page.el('farm-agent').innerHTML;
   const at = [side.indexOf('>Now<'), side.indexOf('class="qcard"'), side.indexOf('id="msg-text"'), side.indexOf('>Conversation<'), side.indexOf('>Activity')];
   assert.ok(at.every((v, i) => v >= 0 && (i === 0 || v > at[i - 1])), at.join(' '));
+});
+
+test('the farm sidebar has Agent, Files and Diary tabs; the choice is remembered, and picking a farmer shows Agent', async () => {
+  const f = fakeFarm();
+  const page = loadPage({ farm: f.farm, stored: { 'tracker-view': 'farm', 'tracker-farm-side': 'open' }, listing: LISTING });
+  page.push(richSnapshot([richAgent({ mod: { version: '0.3.1', live: true } })]));
+  assert.equal(page.el('main').dataset.sideTab, 'agent');
+  assert.match(page.el('farm-agent').innerHTML, /id="msg-text"/);
+  assert.equal(page.el('tab-agent').attrs['aria-selected'], 'true');
+  await page.clickButton('tab-files', { farmTab: 'files' });
+  assert.equal(page.el('main').dataset.sideTab, 'files');
+  assert.equal(page.stored['tracker-farm-tab'], 'files');
+  assert.equal(page.el('tab-files').attrs['aria-selected'], 'true');
+  await page.settle();
+  assert.match(page.tree(), /data-file="README\.md"/);
+  await page.clickButton('tab-diary', { farmTab: 'diary' });
+  assert.equal(page.el('main').dataset.sideTab, 'diary');
+  assert.equal(f.farm.diaryId(), 'farm-diary', 'the farm writes its diary into the Diary tab');
+  f.pick('r1');
+  assert.equal(page.el('main').dataset.sideTab, 'agent');
 });

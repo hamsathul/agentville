@@ -163,7 +163,7 @@ const feedOf = a => fullFeeds.get(a.id)?.items ?? a.feed;
 
 function conversationHtml(a) {
   const all = fullFeeds.has(a.id);
-  const said = feedOf(a).filter(f => f.kind === 'prompt' || f.kind === 'reply').slice(0, all ? Infinity : 10).reverse();
+  const said = feedOf(a).filter(f => f.kind === 'prompt' || f.kind === 'reply').slice(0, all ? Infinity : 10); // newest first, under the box
   if (!said.length) return '';
   // Replies are markdown (rendered by the escape-everything renderer); your prompts stay as typed.
   // Reply on an agent message quotes it into the message box.

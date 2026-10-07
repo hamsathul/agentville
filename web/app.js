@@ -60,10 +60,8 @@ function render() {
     window.TrackerFarm?.update(snap);
     const a = farmSide ? centreAgent() : null;
     window.TrackerFarm?.select?.(a?.id ?? null);
-    if (farmSide) {
-      $('farm-agent').innerHTML = a ? farmSideHtml(a) : '<div class="empty">No agents are running.</div>';
-      syncExplorer();
-    }
+    if (farmSide && farmTab === 'agent') $('farm-agent').innerHTML = a ? farmSideHtml(a) : '<div class="empty">No agents are running.</div>';
+    if (farmSide && farmTab === 'files') syncExplorer();
     updateTimers();
     return;
   }
@@ -108,6 +106,8 @@ function refreshFullFeeds() {
 
 let view = loadView();
 let farmSide = loadSaved('tracker-farm-side') === 'open'; // the farm's sidebar: answer, message, activity, files
+const FARM_TABS = ['agent', 'files', 'diary'];
+let farmTab = FARM_TABS.includes(loadSaved('tracker-farm-tab')) ? loadSaved('tracker-farm-tab') : 'agent';
 function loadSaved(key) {
   try {
     return localStorage.getItem(key);
@@ -140,7 +140,7 @@ function setView(next, { remember = true } = {}) {
     $('center-tabs').innerHTML = '';
     $('center-body').innerHTML = '';
     reader = null;
-    window.TrackerFarm.mount($('farm'), { token: TOKEN, onPickAgent: pickFromFarm, onOpenDoc: openDocFromFarm, onShowRepos: showReposFromFarm });
+    window.TrackerFarm.mount($('farm'), { token: TOKEN, diary: $('farm-diary'), onPickAgent: pickFromFarm, onOpenDoc: openDocFromFarm, onShowRepos: showReposFromFarm });
   } else {
     $('farm-agent').innerHTML = '';
   }
@@ -149,8 +149,17 @@ function setView(next, { remember = true } = {}) {
 }
 function applyFarmSide() {
   $('main').dataset.side = farmSide ? 'open' : 'closed';
+  $('main').dataset.sideTab = farmTab;
   $('side-toggle').setAttribute('aria-pressed', farmSide);
+  for (const tab of FARM_TABS) $(`tab-${tab}`).setAttribute('aria-selected', tab === farmTab);
   if (!farmSide) $('farm-agent').innerHTML = '';
+}
+/** The sidebar's tabs: the selected farmer (answer, message, conversation, activity), its files, the diary. */
+function setFarmTab(tab) {
+  farmTab = FARM_TABS.includes(tab) ? tab : 'agent';
+  save('tracker-farm-tab', farmTab);
+  applyFarmSide();
+  render();
 }
 function setFarmSide(open) {
   farmSide = open;
@@ -177,7 +186,9 @@ function farmSideHtml(a) {
 function pickFromFarm(id) {
   if (selected !== id) openChildren.clear();
   selected = id;
-  if (farmSide) render();
+  farmTab = 'agent';
+  save('tracker-farm-tab', farmTab);
+  if (farmSide) { applyFarmSide(); render(); }
   else setFarmSide(true);
 }
 /** A noticeboard in a field close-up: read that document in the list view's reader. */
@@ -284,6 +295,7 @@ document.addEventListener('click', async e => {
   const d = el.dataset;
   if (el.id === 'view-list' || el.id === 'view-farm') { setView(el.id === 'view-farm' ? 'farm' : 'list'); return; }
   if (el.id === 'side-toggle') { setFarmSide(!farmSide); return; }
+  if (d.farmTab) { setFarmTab(d.farmTab); return; }
   if (el.id === 'fs-list') { setView('list'); return; }
   if (el.id === 'msg-send') { await sendMessage(d.agent, el); return; }
   if (d.quickReply !== undefined) { await sendMessage(d.agent, el, d.quickReply); return; }

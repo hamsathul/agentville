@@ -27,8 +27,8 @@ how much CPU and memory each one uses.
   the dashboard shows it as a question: an "asks you" chip, a card with the question (one-click
   **Yes** / **No…** for yes/no questions), a "?" on the farm's porch, and the tab title count.
   **Reply** on any of the agent's messages quotes it into your answer. The **Conversation**
-  thread sits above the message box; **Show all** loads the session's whole history (or open the
-  **Full transcript**).
+  thread sits under the message box, newest first; **Show all** loads the session's whole
+  history (or open the **Full transcript**).
   **Read and reply:** specs, plans and other markdown files the agent wrote or read are also
   listed under "Documents". In any open file, select a passage and **Quote** it (code quotes
   carry their line numbers), then reply; the agent gets it as a message about that file.
@@ -39,9 +39,9 @@ how much CPU and memory each one uses.
   hay bales are uncommitted files, crates unpushed commits and a mailbox commits behind; the
   weather is the last deploy (rainbow, rain, windmill) and a rope marks two agents in one repo.
   Hearts show context left, chickens are subagents and an Explore subagent is a dog. Click a
-  farmer to open the sidebar beside the farm (or toggle it with ◨ Sidebar): answer its question
-  or permission prompt, message it (screenshots too), follow its activity, and browse its files,
-  scratchpad and memory. Click a field for a close-up of the files agents touched there.
+  farmer to open the sidebar beside the farm (or toggle it with ◨ Sidebar). Its tabs: **Agent**
+  (answer its question or permission prompt, message it with screenshots, the conversation newest
+  first, its activity), **Files** (its folder, scratchpad and memory) and **Diary** (who went where). Click a field for a close-up of the files agents touched there.
   It pauses when hidden and follows the system's reduce-motion setting.
 - **Claude Code mod:** `/tracker` opens a side pane, the status line shows
   `⚑ 1 waiting · 2 working`, and toasts appear when another agent needs you. The mod is also
