@@ -343,9 +343,9 @@ try {
   check(await until("/Opened a new Terminal window/.test(document.getElementById('notice').textContent)"), 'the page says the terminal opened');
   await js("document.getElementById('sessions-open').click()");
   await until("!!document.querySelector('#sessions [data-sess-new]')");
-  await js("(() => { const m = document.getElementById('sess-mode'); m.value = 'plan'; m.dispatchEvent(new Event('change', { bubbles: true })); })()");
+  await js("(() => { const m = document.getElementById('sess-mode'); m.value = 'plan'; m.dispatchEvent(new Event('change', { bubbles: true })); document.getElementById('sess-model').value = 'sonnet'; document.getElementById('sess-effort').value = 'high'; })()");
   await js("document.querySelector('#sessions [data-sess-new]').click()");
-  check(await until('!document.getElementById(\'sessions\').open') && launched.at(-1) === `cd '${repo}' && exec claude --permission-mode plan`, 'New session opens a terminal running claude in the folder, in the mode you picked');
+  check(await until('!document.getElementById(\'sessions\').open') && launched.at(-1) === `cd '${repo}' && exec claude --permission-mode plan --model 'sonnet' --effort high`, `New session opens a terminal running claude in the folder, in the mode, model and effort you picked (got ${launched.at(-1)})`);
 
   console.log('Back to the list');
   await js("document.getElementById('view-list').click()");

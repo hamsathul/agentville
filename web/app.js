@@ -31,6 +31,7 @@ function overviewHtml(a) {
     <div class="sec">Now</div>${a.now ? `<div class="now mono"><span class="pulse"></span> ${esc(a.now.tool)} ${esc(a.now.summary)} · <b data-since="${a.now.startedAt}"></b></div>` : `<div class="muted">${esc(a.stateReason)}</div>`}
     ${questionHtml(a)}
     ${composeHtml(a)}
+    ${asideHtml(a)}
     ${conversationHtml(a)}
     ${activityHtml(a)}
     ${docsHtml(a)}
@@ -181,6 +182,7 @@ function farmSideHtml(a) {
     <div class="sec">Now</div>${now}
     ${questionHtml(a)}
     ${composeHtml(a)}
+    ${asideHtml(a)}
     ${conversationHtml(a)}`;
 }
 
@@ -306,6 +308,7 @@ document.addEventListener('click', async e => {
   if (d.farmTab) { setFarmTab(d.farmTab); return; }
   if (el.id === 'fs-list') { setView('list'); return; }
   if (el.id === 'msg-send') { await sendMessage(d.agent, el); return; }
+  if (el.id === 'aside-send') { await askAside(d.agent, el); return; }
   if (d.quickReply !== undefined) { await sendMessage(d.agent, el, d.quickReply); return; }
   if (d.quickDraft !== undefined || d.quote !== undefined) {
     const prev = msgDrafts.get(d.agent) ?? '';
@@ -442,9 +445,36 @@ async function restartFlow(id, mode) {
   const r = await post('/api/actions/restart', { agentId: id, mode });
   notice(r.ok ? `Restarting ${a.name} in ${modeName(mode)}: a new ${r.terminal ?? 'terminal'} window opens.` : `Could not restart ${a.name}: ${r.error}`);
 }
+/** Switches a running session's model or effort (/model, /effort in it), after you confirm. */
+async function switchFlow(id, what, value) {
+  const a = snap?.agents.find(x => x.id === id);
+  if (!a) return;
+  const label = what === 'model' ? (MODELS.find(([m]) => m === value)?.[1] ?? value) : `${value} effort`;
+  const saved = what === 'model' || value !== 'max' ? ' Claude Code also saves it as your default for new sessions (as when you type it).' : '';
+  if (!(await confirmBox(`Switch ${a.name} to ${label}? It runs /${what} ${value} in the session after its current turn.${saved}`, `Switch to ${label}`))) return;
+  const r = await post('/api/actions/setting', { agentId: id, [what]: value });
+  notice(r.ok ? `${a.name} switches to ${label} after its current turn.` : `Could not switch ${a.name}: ${r.error}`);
+}
+/** Asks a session a side question (/btw); the answer shows under the box when it comes. */
+async function askAside(agentId, button) {
+  const question = (asideDrafts.get(agentId) ?? '').trim();
+  if (!question) return;
+  if (button) { button.disabled = true; button.textContent = 'Asking…'; }
+  const r = await post('/api/actions/aside', { agentId, question });
+  if (r.ok) asideDrafts.delete(agentId);
+  else notice(`Could not ask: ${r.error}`);
+  document.activeElement?.blur?.();
+  render();
+}
 document.addEventListener('change', e => {
   const t = e.target;
   if (t?.dataset?.restartMode !== undefined) { const mode = t.value; t.value = ''; if (mode) void restartFlow(t.dataset.agent, mode); return; }
+  if (t?.dataset?.switchModel !== undefined || t?.dataset?.switchEffort !== undefined) {
+    const value = t.value, what = t.dataset.switchModel !== undefined ? 'model' : 'effort';
+    t.value = '';
+    if (value) void switchFlow(t.dataset.agent, what, value);
+    return;
+  }
   if (t?.id === 'img-picker') {
     if (pickerFor) addImages(pickerFor, [...(t.files ?? [])]);
     t.value = '';
@@ -487,6 +517,10 @@ document.addEventListener('keydown', e => {
     e.preventDefault();
     sendMessage(e.target.dataset.msgAgent, $('msg-send'));
   }
+  if (sendKey(e) && e.target?.id === 'aside-text') {
+    e.preventDefault();
+    void askAside(e.target.dataset.asideAgent, $('aside-send'));
+  }
   if (sendKey(e) && e.target?.id === 'reader-text') {
     e.preventDefault();
     sendReaderReply();
@@ -505,6 +539,10 @@ document.addEventListener('input', e => {
   }
   if (t?.dataset?.msgAgent !== undefined) {
     msgDrafts.set(t.dataset.msgAgent, t.value);
+    return;
+  }
+  if (t?.dataset?.asideAgent !== undefined) {
+    asideDrafts.set(t.dataset.asideAgent, t.value);
     return;
   }
   if (!t?.dataset?.tool || t.dataset.q === undefined || t.type !== 'text') return;

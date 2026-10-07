@@ -5,6 +5,7 @@ const STATE_CHIP = { waiting: '❓ Waiting on you', working: '▶ Working', your
 let snap = null;
 const drafts = new Map(); // toolUseId → { picks: Map<question index, Set<label>>, other: Map<question index, text> }
 const msgDrafts = new Map(); // agent id → half-typed chat message
+const asideDrafts = new Map(); // agent id → half-typed side question
 const msgStatus = new Map(); // agent id → { text, bad, at }: the last send's result, shown under the box
 const fullFeeds = new Map(); // agent id → { items, at }: the whole history, while Show all is on
 const msgImages = new Map(); // agent id → screenshots waiting to go with the next message: [{ file, url, name, size }]

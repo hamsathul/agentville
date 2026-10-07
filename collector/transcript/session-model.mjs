@@ -154,6 +154,10 @@ export class SessionModel {
         this.permissionMode = ev.mode;
         this.permissionModeAt = when; // entries without a time count as the last activity before them
         break;
+      case 'effort':
+        this.effort = ev.level;
+        this.effortAt = when;
+        break;
       case 'compact':
         this.compactions += 1;
         this.lastCompactAt = when;

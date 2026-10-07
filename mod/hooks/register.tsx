@@ -26,7 +26,7 @@ const DASHBOARD_REASON = 'Answered from the Agent Tracker dashboard'
 type Offer = { stateDir: string; sessionId: string; isLive: boolean; windowSec: number; now: number }
 type Waited = { kind: 'answer'; text: string } | { kind: 'withdrawn' } | { kind: 'timeout' }
 
-const MOD_VERSION = '0.4.0'
+const MOD_VERSION = '0.5.0'
 
 let latest: TrackerView = EMPTY
 let selfId = ''
@@ -60,34 +60,96 @@ export async function offerContext($: any): Promise<Offer> {
  * If the collector already withdrew a message, the rename fails and it is not sent.
  */
 export async function deliverMessages($: any, stateDir: string, sessionId: string) {
-  const inbox = `${stateDir}/messages/${sessionId}`
-  let entries: { name: string }[]
-  try {
-    entries = await $.fs.list(inbox)
-  } catch {
-    return
-  }
-  const texts: string[] = []
-  for (const name of entries.map(e => e.name).filter(n => n.endsWith('.json')).sort()) {
-    const claimed = `${inbox}/${name}.claimed`
-    const moved = await $.process.run(['mv', `${inbox}/${name}`, claimed])
-    if (moved.exitCode !== 0) continue
-    let text = ''
-    try {
-      const value = JSON.parse(await $.fs.read(claimed))?.text
-      text = typeof value === 'string' ? value.trim() : ''
-    } catch {
-      text = ''
-    }
-    await removeFiles($, [claimed])
-    if (text) texts.push(text)
-  }
+  const texts = (await claimRequests($, `${stateDir}/messages/${sessionId}`))
+    .map(v => (typeof v?.text === 'string' ? v.text.trim() : ''))
+    .filter(Boolean)
   for (const text of texts) {
     try {
       await $.prompt.submit({ text, asUser: true })
     } catch (err) {
       logFailure($, `a message from the dashboard could not be sent (${String(err)}): ${text.slice(0, 200)}`)
     }
+  }
+}
+
+/**
+ * The requests waiting in an inbox, oldest first: each claimed by renaming it (which tells the
+ * collector it was taken), read, then removed. A request already withdrawn is skipped.
+ */
+export async function claimRequests($: any, inbox: string): Promise<any[]> {
+  let entries: { name: string }[]
+  try {
+    entries = await $.fs.list(inbox)
+  } catch {
+    return []
+  }
+  const out: any[] = []
+  for (const name of entries.map(e => e.name).filter(n => n.endsWith('.json')).sort()) {
+    const claimed = `${inbox}/${name}.claimed`
+    const moved = await $.process.run(['mv', `${inbox}/${name}`, claimed])
+    if (moved.exitCode !== 0) continue
+    try {
+      out.push(JSON.parse(await $.fs.read(claimed)))
+    } catch {
+      // unreadable: dropped
+    }
+    await removeFiles($, [claimed])
+  }
+  return out
+}
+
+// Model and effort switches from the dashboard run as the person's own /model and /effort, the
+// arguments checked again here: an alias (opus, sonnet, opus[1m]…) or an effort level.
+const SETTINGS: Record<string, RegExp> = { model: /^(?:default|opus|sonnet|haiku|fable)(?:\[1m\])?$/, effort: /^(?:low|medium|high|xhigh|max)$/ }
+
+/**
+ * Runs the switches the dashboard asked for. A slash command waits for the session to be idle, so
+ * each runs on its own, never holding up the poll; what Claude Code said comes back to the collector.
+ */
+export async function runSettings($: any, stateDir: string, sessionId: string) {
+  for (const req of await claimRequests($, `${stateDir}/commands/${sessionId}`)) {
+    const command = String(req?.command ?? ''), args = String(req?.args ?? ''), id = String(req?.id ?? '')
+    if (!SETTINGS[command]?.test(args) || !SAFE_ID.test(id)) continue
+    void (async () => {
+      let result: { ok: boolean; text: string }
+      try {
+        const r = await $.command.run({ command, args })
+        result = { ok: true, text: String(r?.text ?? '') }
+      } catch (err) {
+        result = { ok: false, text: String(err) }
+      }
+      await writeReply($, `${stateDir}/command-results/${sessionId}.${id}.json`, { id, sessionId, command, args, ...result, at: await $.clock.now() })
+    })()
+  }
+}
+
+// A side question asked on the dashboard is /btw's: one answer from the conversation so far, no
+// tools, nothing added to the conversation, and it may be asked while the session works.
+const ASIDE_NOTE = 'This is a side question from the person, asked from the Agent Tracker dashboard (like /btw) while you work. Answer it directly in a single reply, from what this conversation already shows. You cannot use tools here: if answering would need reading files, running commands or searching, say so and suggest asking in the main conversation.\n\nThe question: '
+
+/** Answers the side questions waiting, each on its own (a model call takes a while): over this session's own transcript. */
+export async function answerAsides($: any, stateDir: string, sessionId: string) {
+  for (const req of await claimRequests($, `${stateDir}/btw/${sessionId}`)) {
+    const id = String(req?.id ?? ''), question = typeof req?.question === 'string' ? req.question.trim().slice(0, 2000) : ''
+    if (!SAFE_ID.test(id) || !question) continue
+    void (async () => {
+      let answer: { text?: string; reason?: string }
+      try {
+        const r = await $.model.fork({ prompt: ASIDE_NOTE + question })
+        answer = r?.isAnswered ? { text: String(r.text ?? '') } : { reason: String(r?.reason ?? 'no answer') }
+      } catch (err) {
+        answer = { reason: String(err) }
+      }
+      await writeReply($, `${stateDir}/asides/${sessionId}.${id}.json`, { id, sessionId, question, ...answer, at: Number(req.at) || 0, answeredAt: await $.clock.now() })
+    })()
+  }
+}
+
+async function writeReply($: any, path: string, value: unknown) {
+  try {
+    await $.fs.write(path, JSON.stringify(value))
+  } catch (err) {
+    logFailure($, `could not tell the dashboard (${String(err)})`)
   }
 }
 
@@ -123,6 +185,8 @@ async function pollOnce($: any) {
     if (selfId) {
       await $.fs.write(`${stateDirFor($.plugin.root)}/mods/${selfId}.json`, JSON.stringify({ sessionId: selfId, version: MOD_VERSION, at: now, usage: await usageNow($) }))
       await deliverMessages($, stateDirFor($.plugin.root), selfId)
+      await runSettings($, stateDirFor($.plugin.root), selfId)
+      await answerAsides($, stateDirFor($.plugin.root), selfId)
     }
   } catch (err) {
     fresh = { snapshot: null, readAt: now, error: String(err) }

@@ -409,6 +409,13 @@ a.chip { text-decoration: none; }
 .px-tools button { display: flex; flex-direction: column; align-items: center; justify-content: flex-start; gap: 3px; min-width: 60px; padding: 6px 7px 5px; background: linear-gradient(#fbf3dc, #eadbb4); border: 2px solid #6b4320; border-radius: 5px; box-shadow: inset 0 -2px 0 rgba(107, 67, 32, .22), 0 3px 0 #4e3626; }
 .px-tools button:active:not(:disabled) { transform: translateY(2px); box-shadow: inset 0 -2px 0 rgba(107, 67, 32, .22), 0 1px 0 #4e3626; }
 .px-ico { display: block; width: 18px; height: 18px; flex: none; background: no-repeat 0 0 / 100% 100%; image-rendering: pixelated; }
+.asides-box { margin-top: 10px; }
+.aside-row { display: flex; gap: 8px; }
+.aside-row input { flex: 1; min-width: 0; padding: 6px 9px; border: 1px solid var(--line); border-radius: 8px; background: var(--page); color: var(--text); font: inherit; }
+.aside { margin-top: 8px; padding: 8px 10px; border: 1px solid var(--line); border-radius: 8px; background: var(--panel2, var(--panel)); }
+.aside-q { font-size: 13px; } .aside-q b { font: 600 11px ui-monospace, Menlo, monospace; color: var(--accent, #8a5fc0); margin-right: 4px; }
+.aside-a { margin-top: 6px; font-size: 13px; } .aside-a.md > :first-child { margin-top: 0; } .aside-a.md > :last-child { margin-bottom: 0; }
+.set-note { font-size: 12px; max-width: 320px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .px-mover { position: absolute; left: 0; top: 0; z-index: 3; white-space: nowrap; line-height: 0; background: rgba(255, 248, 225, .94); padding: 2px 3px; border-radius: 6px; pointer-events: auto; } /* a label that moves: a cart's errand, a hammock's wake-up */
 .px-lab.proj { background: linear-gradient(#a8703c, #8b5a2b); border: 1px solid #4e3626; transform: translate(-50%, -50%); }
 .px-mini { position: absolute; right: 10px; bottom: 10px; z-index: 7; width: 150px; border: 2px solid #4e3626; border-radius: 4px; box-shadow: 0 3px 0 rgba(0, 0, 0, .35); cursor: pointer; background: #1c3320; }
@@ -555,6 +562,8 @@ a.pile { text-decoration: none; color: inherit; }
 <dialog id="sessions" class="sess-dlg" aria-labelledby="sess-title">
   <div class="sess-head"><h3 id="sess-title">Start or resume a session</h3><span class="grow"></span><button type="button" class="act mini" data-sess-close aria-label="Close">×</button></div>
   <div class="sess-modes"><label for="sess-mode">Permission mode</label><select id="sess-mode"><option value="default">Ask first</option><option value="acceptEdits">Accept edits</option><option value="plan">Plan mode</option><option value="auto">Auto</option><option value="bypassPermissions">Bypass permissions</option></select><span id="sess-mode-warn" class="msg-bad" hidden>⚠ every tool runs without asking (--dangerously-skip-permissions)</span></div>
+  <div class="sess-modes"><label for="sess-model">Model</label><select id="sess-model"><option value="default">Your default</option><option value="opus">Opus</option><option value="opus[1m]">Opus, 1M context</option><option value="sonnet">Sonnet</option><option value="haiku">Haiku</option><option value="fable">Fable</option></select>
+    <label for="sess-effort">Effort</label><select id="sess-effort"><option value="">Its default</option><option value="low">low</option><option value="medium">medium</option><option value="high">high</option><option value="xhigh">xhigh</option><option value="max">max</option></select><span class="faint">for this session only (--model, --effort)</span></div>
   <input id="sess-filter" type="search" placeholder="Filter by folder, title or message…" autocomplete="off" spellcheck="false">
   <div id="sess-body"></div>
   <p id="sess-status" class="faint" role="status"></p>

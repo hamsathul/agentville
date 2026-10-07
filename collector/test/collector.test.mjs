@@ -541,6 +541,9 @@ test('a session starts or resumes in a terminal only in a listed folder, or from
     assert.deepEqual(await handle.actions.start({ cwd: work }), { ok: true, terminal: 'iTerm' });
     assert.equal(launched[1].at(-1), `cd '${work}' && exec claude`);
     assert.match(launched[1].join('\n'), /tell application "iTerm"/);
+    assert.deepEqual(await handle.actions.start({ cwd: work, model: 'opus[1m]', effort: 'high' }), { ok: true, terminal: 'iTerm' });
+    assert.equal(launched[2].at(-1), `cd '${work}' && exec claude --model 'opus[1m]' --effort high`, 'a model and effort for this session only, quoted for the shell');
+    for (const body of [{ cwd: work, model: 'gpt-5' }, { cwd: work, effort: 'turbo' }, { cwd: work, model: "sonnet'; rm -rf ~; '" }]) assert.equal((await handle.actions.start(body)).ok, false, JSON.stringify(body));
   } finally {
     await handle.stop();
   }
@@ -585,6 +588,63 @@ test('a session is ended (SIGTERM, then its window closed by its tty) or restart
     assert.match(stuck.error, /didn't stop/);
     assert.equal(launched.length, before, 'its window is left alone');
   } finally {
+    await handle.stop();
+  }
+});
+
+test("a session's model and effort are switched by its mod (/model, /effort), and side questions answered by it", async () => {
+  const root = mkdtempSync(join(tmpdir(), 'tracker-root-set-'));
+  mkdirSync(join(root, 'web'));
+  writeFileSync(join(root, 'web', 'index.html'), '<html></html>');
+  writeFileSync(join(root, 'config.json'), JSON.stringify({ port: 0, deployRepos: {} }));
+  const claudeDir = mkdtempSync(join(tmpdir(), 'tracker-claude-set-'));
+  mkdirSync(join(claudeDir, 'sessions'));
+  mkdirSync(join(claudeDir, 'projects', '-w'), { recursive: true });
+  writeFileSync(join(claudeDir, 'sessions', `${process.pid}.json`), JSON.stringify({ pid: process.pid, sessionId: 'sess-set', cwd: '/w', name: 'switchy', status: 'idle' }));
+  const t = new Date().toISOString();
+  writeFileSync(join(claudeDir, 'projects', '-w', 'sess-set.jsonl'), [
+    JSON.stringify({ type: 'user', timestamp: t, message: { content: 'hi' } }),
+    JSON.stringify({ type: 'system', subtype: 'local_command', timestamp: t, content: '<local-command-stdout>Set effort level to xhigh (saved as your default for new sessions): Deeper reasoning</local-command-stdout>' }),
+  ].join('\n') + '\n');
+  mkdirSync(join(root, 'state', 'mods'), { recursive: true });
+  writeFileSync(join(root, 'state', 'mods', 'sess-set.json'), JSON.stringify({ sessionId: 'sess-set', version: '0.5.0', at: Date.now() }));
+  // A stand-in mod: takes requests and writes back as the real one does.
+  const taken = [];
+  const fakeMod = setInterval(() => {
+    for (const [kind, out] of [['commands', 'command-results'], ['btw', 'asides']]) {
+      const inbox = join(root, 'state', kind, 'sess-set');
+      if (!existsSync(inbox)) continue;
+      for (const name of readdirSync(inbox).filter(n => n.endsWith('.json'))) {
+        const req = JSON.parse(readFileSync(join(inbox, name), 'utf8'));
+        unlinkSync(join(inbox, name));
+        taken.push([kind, req.command ?? req.question, req.args]);
+        const reply = kind === 'commands' ? { id: req.id, sessionId: 'sess-set', command: req.command, args: req.args, ok: true, text: 'Set model to `Sonnet 5.5` and saved as your default for new sessions', at: Date.now() }
+          : { id: req.id, sessionId: 'sess-set', question: req.question, text: 'The parser lives in parse.mjs.', at: req.at, answeredAt: Date.now() };
+        setTimeout(() => writeFileSync(join(root, 'state', out, `sess-set.${req.id}.json`), JSON.stringify(reply)), 150);
+      }
+    }
+  }, 40);
+  const handle = await startCollector({ root, claudeDir, claudeBin: '/usr/bin/false', notify: () => {}, log: () => {}, deliveryTimeoutMs: 800 });
+  const agent = () => handle.getSnapshot().agents.find(a => a.id === 'sess-set');
+  const until = async (ok, ms = 4000) => { for (let i = 0; i < ms / 50; i++) { await handle.reloadConfig(); if (ok()) return true; await new Promise(r => setTimeout(r, 50)); } return false; };
+  try {
+    assert.equal(agent().effort, 'xhigh', 'what /effort last set');
+    for (const body of [{ agentId: 'sess-set' }, { agentId: 'sess-set', model: 'gpt-5' }, { agentId: 'sess-set', effort: 'turbo' }, { agentId: 'nope', model: 'sonnet' }]) assert.equal((await handle.actions.setting(body)).ok, false, JSON.stringify(body));
+    assert.deepEqual(await handle.actions.setting({ agentId: 'sess-set', model: 'sonnet' }), { ok: true });
+    assert.ok(await until(() => agent().setting?.args === 'sonnet'), 'what Claude Code said comes back');
+    assert.match(agent().setting.text, /Set model to/);
+    assert.equal((await handle.actions.aside({ agentId: 'sess-set', question: '  ' })).ok, false);
+    const asked = await handle.actions.aside({ agentId: 'sess-set', question: 'Where does the parser live?' });
+    assert.equal(asked.ok, true);
+    assert.equal(agent().asides?.[0]?.pending, true, 'asked: an answer to come');
+    assert.ok(await until(() => agent().asides?.[0]?.answer), 'then the answer');
+    assert.deepEqual([agent().asides[0].question, agent().asides[0].answer, agent().asides[0].pending], ['Where does the parser live?', 'The parser lives in parse.mjs.', undefined]);
+    assert.deepEqual(taken, [['commands', 'model', 'sonnet'], ['btw', 'Where does the parser live?', undefined]]);
+    writeFileSync(join(root, 'state', 'mods', 'sess-set.json'), JSON.stringify({ sessionId: 'sess-set', version: '0.4.0', at: Date.now() }));
+    await handle.reloadConfig();
+    assert.match((await handle.actions.setting({ agentId: 'sess-set', effort: 'high' })).error, /older tracker mod \(0\.4\.0\)\. Run \/reload-plugins/, 'a mod from before switching tells you how to get the new one');
+  } finally {
+    clearInterval(fakeMod);
     await handle.stop();
   }
 });

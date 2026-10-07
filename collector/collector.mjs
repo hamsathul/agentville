@@ -12,12 +12,12 @@ import { readAgentsCli } from './sources/agents-cli.mjs';
 import { childrenIndex, findCodexRoots, findPidByArg, readPs, treeStats } from './sources/ps.mjs';
 import { GIT_ENV, RepoResolver, githubSlug, repoStatus } from './sources/git.mjs';
 import { deployStatus, pullRequests } from './sources/gh.mjs';
-import { confirmDelivery, readBeacons, readPending, validateAnswers, writeAnswerFile, writeMessageFile } from './sources/pending.mjs';
+import { confirmDelivery, modAtLeast, readBeacons, readPending, readReplies, validateAnswers, writeAnswerFile, writeMessageFile, writeRequestFile } from './sources/pending.mjs';
 import { listFolder, parsePorcelain, readFolderFile } from './sources/files.mjs';
 import { repoFiles } from './derive/repo-files.mjs';
 import { checkImages, pruneUploads, saveImages, withScreenshots } from './sources/uploads.mjs';
 import { compactSummary, memoryFiles, scratchpadOf } from './sources/memory.mjs';
-import { MODE_FLAGS, SESSION_ID, claudeCommand, closeTerminalScript, listSessions, projectsOf, terminalScript } from './sources/sessions.mjs';
+import { EFFORTS, MODELS, MODE_FLAGS, SESSION_ID, claudeCommand, closeTerminalScript, listSessions, projectsOf, terminalScript } from './sources/sessions.mjs';
 import { applySince, buildAgent, countStates, sortAgents } from './derive/agent.mjs';
 import { findCollisions } from './derive/collisions.mjs';
 import { reposFor } from './derive/repos.mjs';
@@ -74,7 +74,11 @@ export async function startCollector({ root, claudeDir = join(homedir(), '.claud
   const modsDir = join(stateDir, 'mods');
   const messagesDir = join(stateDir, 'messages');
   const uploadsDir = join(stateDir, 'uploads');
-  for (const dir of [stateDir, pendingDir, answersDir, modsDir, messagesDir, uploadsDir]) mkdirSync(dir, { recursive: true });
+  // Model and effort switches and side questions go to a session's mod as files; it writes back what came of them.
+  const commandsDir = join(stateDir, 'commands'), resultsDir = join(stateDir, 'command-results');
+  const asksDir = join(stateDir, 'btw'), asideAnswersDir = join(stateDir, 'asides');
+  for (const dir of [stateDir, pendingDir, answersDir, modsDir, messagesDir, uploadsDir, commandsDir, resultsDir, asksDir, asideAnswersDir]) mkdirSync(dir, { recursive: true });
+  const pendingAsides = new Map(); // session → [{ id, question, at }] asked and not answered yet
   const configPath = join(root, 'config.json');
 
   const sources = {};
@@ -258,6 +262,7 @@ export async function startCollector({ root, claudeDir = join(homedir(), '.claud
     const bases = computeBases();
     const { bySession: offers, expired } = readPending(pendingDir, now);
     const beacons = readBeacons(modsDir, now);
+    const settingResults = readReplies(resultsDir, now, { perSession: 1 }), asideAnswers = readReplies(asideAnswersDir, now, { perSession: 5 });
     for (const path of expired) {
       try { unlinkSync(path); } catch { /* the mod may have removed it already */ }
     }
@@ -284,6 +289,7 @@ export async function startCollector({ root, claudeDir = join(homedir(), '.claud
       const agent = buildAgent({
         base, model: rec?.model ?? null, registry: base.registry, proc, command: base.pid ? procs.get(base.pid)?.command : undefined, cpuHistory: cpuHist.get(base.id) ?? [],
         childModels: rec?.childModels, offer: offers.get(base.id), beacon: beacons.get(base.id), repoOf: p => resolver.lookup(p), now, cfg, home,
+        asides: asidesOf(base.id, asideAnswers.get(base.id) ?? [], now), setting: settingOf(settingResults.get(base.id)?.[0], now),
       });
       agents.push(applySince(agent, prevAgents.get(agent.id), now));
       if (rec) { // deploys it ran itself (a script over ssh, rsync…), its subagents' too
@@ -542,6 +548,22 @@ export async function startCollector({ root, claudeDir = join(homedir(), '.claud
     return { ok: true, closedWindow };
   }
   const validMode = mode => mode === undefined || Object.hasOwn(MODE_FLAGS, mode);
+  const validStart = b => (b?.model === undefined || MODELS.includes(b.model)) && (b?.effort === undefined || EFFORTS.includes(b.effort));
+  const ASIDE_WAIT_MS = 3 * 60_000;
+  /** A session's side questions, newest first: answered ones, and the ones still being answered (given up on after 3 minutes). */
+  function asidesOf(id, answered, now) {
+    const done = new Set(answered.map(a => a.id));
+    const waiting = (pendingAsides.get(id) ?? []).filter(p => !done.has(p.id) && now - p.at < ASIDE_WAIT_MS);
+    if (waiting.length) pendingAsides.set(id, waiting); else pendingAsides.delete(id);
+    const clip = (t, n) => (typeof t === 'string' ? t.slice(0, n) : undefined);
+    return [...waiting.map(p => ({ ...p, pending: true })), ...answered.map(a => ({ id: a.id, question: clip(a.question, 2000), answer: clip(a.text, 8000), reason: clip(a.reason, 300), at: a.at, answeredAt: a.answeredAt }))]
+      .sort((a, b) => (b.at ?? 0) - (a.at ?? 0)).slice(0, 5);
+  }
+  /** The last model or effort switch asked from the dashboard, for 10 minutes: what Claude Code said of it. */
+  function settingOf(r, now) {
+    if (!r || now - (r.at ?? 0) > 600_000) return undefined;
+    return { command: r.command, args: r.args, ok: r.ok === true, text: typeof r.text === 'string' ? r.text.slice(0, 300) : '', at: r.at };
+  }
 
   const actions = {
     /** Ends a session and closes its terminal window. */
@@ -557,9 +579,48 @@ export async function startCollector({ root, claudeDir = join(homedir(), '.claud
       if (!ended.ok) return ended;
       return openTerminal(claudeCommand(agent.cwd, agent.id, body.mode ?? 'default'));
     },
+    /**
+     * Switches a running session's model or effort: its mod runs /model or /effort there, as if you
+     * typed it (after the current turn). Claude Code saves the choice as your default for new sessions.
+     */
+    async setting(body) {
+      const agent = snapshot?.agents.find(a => a.id === body?.agentId);
+      if (!agent || agent.kind === 'codex') return { ok: false, error: 'That session was not found.' };
+      if (!agent.mod?.live) return { ok: false, error: "That session isn't listening for the dashboard yet. Send it anything in its terminal once, or start a new session." };
+      if (!modAtLeast(agent.mod.version, '0.5.0')) return { ok: false, error: `That session runs an older tracker mod (${agent.mod.version}). Run /reload-plugins in it (or resume it), then try again.` };
+      let request;
+      if (body.model !== undefined) {
+        if (!MODELS.includes(body.model)) return { ok: false, error: 'That is not a model to switch to.' };
+        request = { command: 'model', args: body.model };
+      } else if (body.effort !== undefined) {
+        if (!EFFORTS.includes(body.effort)) return { ok: false, error: 'That is not an effort level.' };
+        request = { command: 'effort', args: body.effort };
+      } else return { ok: false, error: 'Pick a model or an effort level.' };
+      const id = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+      const file = writeRequestFile(commandsDir, agent.id, { ...request, id, at: Date.now() }, id);
+      return confirmDelivery(file, { timeoutMs: deliveryTimeoutMs, failure: `The session didn't pick it up. Type /${request.command} ${request.args} in its terminal.` });
+    },
+    /** A side question (/btw): answered from the session's conversation without adding to it, even while it works. */
+    async aside(body) {
+      const agent = snapshot?.agents.find(a => a.id === body?.agentId);
+      if (!agent || agent.kind === 'codex') return { ok: false, error: 'That session was not found.' };
+      const question = typeof body.question === 'string' ? body.question.trim() : '';
+      if (!question) return { ok: false, error: 'Type a question first.' };
+      if (question.length > 2000) return { ok: false, error: 'That question is too long (2,000 characters at most).' };
+      if (!agent.mod?.live) return { ok: false, error: "That session isn't listening for the dashboard yet. Send it anything in its terminal once, or start a new session." };
+      if (!modAtLeast(agent.mod.version, '0.5.0')) return { ok: false, error: `That session runs an older tracker mod (${agent.mod.version}). Run /reload-plugins in it (or resume it), then try again.` };
+      const id = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`, at = Date.now();
+      const file = writeRequestFile(asksDir, agent.id, { id, question, at }, id);
+      const delivered = await confirmDelivery(file, { timeoutMs: deliveryTimeoutMs, failure: "The session didn't pick up the question. Ask it with /btw in its terminal." });
+      if (!delivered.ok) return delivered;
+      pendingAsides.set(agent.id, [...(pendingAsides.get(agent.id) ?? []), { id, question, at }]);
+      await schedule(false); // the page shows it asked straight away
+      return { ok: true, id };
+    },
     /** Opens a terminal window running claude in a listed folder, or resuming a past session that is not running, in a permission mode. */
     async start(body) {
       if (!validMode(body?.mode)) return { ok: false, error: 'That is not a permission mode.' };
+      if (!validStart(body)) return { ok: false, error: 'That is not a model or an effort level to start with.' };
       const known = await pastSessions();
       let cwd, resume;
       if (body?.resume !== undefined) {
@@ -573,7 +634,7 @@ export async function startCollector({ root, claudeDir = join(homedir(), '.claud
         cwd = known.projects.find(p => p.cwd === body?.cwd)?.cwd;
         if (!cwd) return { ok: false, error: 'Pick one of the listed folders.' };
       }
-      return openTerminal(claudeCommand(cwd, resume, body?.mode ?? 'default'));
+      return openTerminal(claudeCommand(cwd, resume, body?.mode ?? 'default', { model: body?.model ?? 'default', effort: body?.effort }));
     },
     async message(body) {
       const agent = snapshot?.agents.find(a => a.id === body?.agentId);

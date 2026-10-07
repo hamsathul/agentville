@@ -49,7 +49,8 @@ async function startSession(body, button) {
   button.disabled = true;
   $('sess-status').className = 'faint';
   $('sess-status').textContent = `Opening ${app}…`;
-  const r = await post('/api/actions/start', { ...body, mode: $('sess-mode').value || 'default' });
+  const model = $('sess-model').value || 'default', effort = $('sess-effort').value || undefined;
+  const r = await post('/api/actions/start', { ...body, mode: $('sess-mode').value || 'default', ...(model !== 'default' ? { model } : {}), ...(effort ? { effort } : {}) });
   button.disabled = false;
   if (!r.ok) {
     $('sess-status').className = 'msg-bad';

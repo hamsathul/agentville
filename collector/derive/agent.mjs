@@ -78,7 +78,18 @@ export function modeOf(model, command, startedAt) {
   return fromFlag ?? logged ?? undefined;
 }
 
-export function buildAgent({ base, model, registry, proc, command, cpuHistory = [], childModels = new Map(), offer, beacon, repoOf, now, cfg, home }) {
+/**
+ * A session's effort level: what /effort last set since its process started, else the --effort
+ * flag it started with, else what the transcript last recorded. Undefined: the model's default.
+ */
+export function effortOf(model, command, startedAt) {
+  const fromFlag = String(command ?? '').match(/(?:^|\s)--effort[ =]([a-z]+)/)?.[1];
+  const logged = model?.effort;
+  if (logged && (!fromFlag || !startedAt || (model.effortAt ?? 0) >= startedAt)) return logged;
+  return fromFlag ?? logged ?? undefined;
+}
+
+export function buildAgent({ base, model, registry, proc, command, cpuHistory = [], childModels = new Map(), offer, beacon, repoOf, now, cfg, home, asides, setting }) {
   const ask = askOf(offer, model, now);
   const derived = base.kind === 'codex'
     ? deriveCodexState(cpuHistory, now)
@@ -111,6 +122,9 @@ export function buildAgent({ base, model, registry, proc, command, cpuHistory = 
     ask,
     mod: beacon ? { version: beacon.version, live: beacon.live } : undefined,
     mode: modeOf(model, command, registry?.startedAt),
+    effort: effortOf(model, command, registry?.startedAt),
+    asides: asides?.length ? asides : undefined, // side questions (/btw) asked from the dashboard, newest first
+    setting, // the last model or effort switch asked from the dashboard, and what Claude Code said
     usage: beacon?.usage ? { costUsd: beacon.usage.costUsd, contextPercent: beacon.usage.contextPercent } : undefined, // the plan's windows go in snapshot.plan
     lastActivityAt: model?.lastActivityAt || undefined,
     now: nowOf(model),

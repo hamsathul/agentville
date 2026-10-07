@@ -1163,3 +1163,24 @@ test('the conversation shows messages from and to other sessions as their own bu
   assert.match(side, /class="bub peer in"[\s\S]*from shop-api-3[\s\S]*Hold the deploy\./);
   assert.match(side, /class="bub peer out"[\s\S]*to shop-api-3 · Holding[\s\S]*Holding until you say so\./);
 });
+
+test("a session's bar switches its model and effort (in the session, after you confirm), and side questions show with their answers", async () => {
+  const page = loadPage();
+  page.push(richSnapshot([richAgent({ pid: 4242, model: 'claude-opus-5-5', effort: 'xhigh', mod: { live: true, version: '0.5.0' },
+    asides: [{ id: '2', question: 'Still running?', pending: true, at: 2 }, { id: '1', question: 'Where is the parser?', answer: 'In **parse.mjs**.', at: 1, answeredAt: 1 }],
+    setting: { command: 'model', args: 'sonnet', ok: true, text: 'Set model to `Sonnet 5.5` and saved as your default for new sessions', at: Date.now() } })]));
+  const side = page.side();
+  assert.match(side, /data-switch-model[^>]*><option value="">Opus 5\.5<\/option>/, 'the model it is on, in short');
+  assert.match(side, /effort: xhigh/);
+  assert.match(side, /✓ Set model to Sonnet 5\.5/, 'what Claude Code said of the last switch');
+  assert.match(side, /Where is the parser\?[\s\S]*<strong>parse\.mjs<\/strong>/, 'an answer, as markdown');
+  assert.match(side, /Still running\?[\s\S]*thinking…/, 'a question still being answered');
+  await page.change({ dataset: { switchModel: '', agent: 'r1' }, value: 'haiku' });
+  assert.match(page.el('confirm-text').textContent, /Switch busy-one to Haiku\? It runs \/model haiku in the session after its current turn\. Claude Code also saves it as your default/);
+  assert.deepEqual(page.posts, [], 'nothing until you confirm');
+  await page.clickButton('confirm-yes', { confirm: 'yes' });
+  await new Promise(r => setTimeout(r, 0));
+  assert.deepEqual(page.posts, [{ path: '/api/actions/setting', body: { agentId: 'r1', model: 'haiku' } }]);
+  await page.change({ dataset: { switchEffort: '', agent: 'r1' }, value: 'max' });
+  assert.doesNotMatch(page.el('confirm-text').textContent, /default for new sessions/, 'max is for this session only');
+});

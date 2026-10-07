@@ -97,6 +97,14 @@ export function writeAnswerFile(dir, toolUseId, payload) {
 }
 
 const BEACON_LIVE_MS = 10_000;
+const BEACON_KEEP_MS = 3 * 86_400_000;
+
+/** Whether a mod's version is at least `want` (1.2.3 against 1.2.0). */
+export function modAtLeast(version, want) {
+  const a = String(version ?? '0').split('.').map(n => Number.parseInt(n, 10) || 0), b = want.split('.').map(Number);
+  for (let i = 0; i < 3; i++) if ((a[i] ?? 0) !== (b[i] ?? 0)) return (a[i] ?? 0) > (b[i] ?? 0);
+  return true;
+}
 
 /** The mod in each session writes state/mods/<sessionId>.json every 2 s while it is listening. */
 const num = (v, max) => (typeof v === 'number' && Number.isFinite(v) && v >= 0 && v <= max ? v : null);
@@ -127,6 +135,7 @@ export function readBeacons(dir, now) {
     if (!name.endsWith('.json')) continue;
     try {
       const b = JSON.parse(readFileSync(join(dir, name), 'utf8'));
+      if (now - (Number(b.at) || 0) > BEACON_KEEP_MS) { unlinkSync(join(dir, name)); continue; } // a session long gone
       if (typeof b.sessionId !== 'string' || !b.sessionId) continue;
       const beacon = { version: text(b.version, 20), live: now - (Number(b.at) || 0) < BEACON_LIVE_MS };
       if (b.usage && typeof b.usage === 'object') Object.assign(beacon, { at: Number(b.at) || 0, usage: usageOf(b.usage) });
@@ -142,13 +151,43 @@ const SESSION_ID = /^[A-Za-z0-9-]{1,64}$/;
 
 /** Queues a chat message for a session's mod: state/messages/<sessionId>/<time>-<n>.json, written whole. */
 export function writeMessageFile(dir, sessionId, text) {
+  return writeRequestFile(dir, sessionId, { text, at: Date.now() });
+}
+
+/** A request for a session's mod (a message, a model switch, a side question), in its inbox under `dir`; written whole, then named. */
+export function writeRequestFile(dir, sessionId, value, id = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`) {
   if (!SESSION_ID.test(sessionId)) throw new Error('not a session id');
   const inbox = join(dir, sessionId);
   mkdirSync(inbox, { recursive: true });
-  const file = join(inbox, `${Date.now()}-${Math.random().toString(36).slice(2, 8)}.json`);
-  writeFileSync(`${file}.tmp`, JSON.stringify({ text, at: Date.now() }));
+  const file = join(inbox, `${id}.json`);
+  writeFileSync(`${file}.tmp`, JSON.stringify(value));
   renameSync(`${file}.tmp`, file);
   return file;
+}
+
+/**
+ * What the mods wrote back (switch results, side-question answers): `<dir>/<session>.<id>.json`,
+ * newest first, at most `perSession` for each session. Files older than `keepMs` are removed.
+ */
+export function readReplies(dir, now, { keepMs = 86_400_000, perSession = 5 } = {}) {
+  const bySession = new Map();
+  let names = [];
+  try { names = readdirSync(dir).filter(n => n.endsWith('.json')); } catch { return bySession; }
+  for (const name of names) {
+    const path = join(dir, name);
+    let value;
+    try {
+      if (now - statSync(path).mtimeMs > keepMs) { unlinkSync(path); continue; }
+      value = JSON.parse(readFileSync(path, 'utf8'));
+    } catch {
+      continue; // half written, or gone
+    }
+    const sid = typeof value?.sessionId === 'string' ? value.sessionId : name.split('.')[0];
+    if (!bySession.has(sid)) bySession.set(sid, []);
+    bySession.get(sid).push(value);
+  }
+  for (const [sid, list] of bySession) bySession.set(sid, list.sort((a, b) => (b.answeredAt ?? b.at ?? 0) - (a.answeredAt ?? a.at ?? 0)).slice(0, perSession));
+  return bySession;
 }
 
 /**

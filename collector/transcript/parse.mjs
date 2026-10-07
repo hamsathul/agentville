@@ -37,6 +37,9 @@ function createdTaskId(obj, block) {
   return text.match(/^Task #([\w-]+) created/)?.[1];
 }
 
+// What /effort printed when it set the level (typed, or run from the dashboard).
+const EFFORT_SET = /<local-command-stdout>Set effort level to ([a-z]+)/;
+
 /** Normalises one transcript JSON object into { at, events }. */
 export function parseEntry(obj) {
   if (!obj || typeof obj !== 'object') return { at: null, events: [] };
@@ -44,6 +47,10 @@ export function parseEntry(obj) {
   const at = Number.isFinite(parsed) ? parsed : null;
   const events = [];
   const content = obj.message?.content;
+  if (obj.type === 'user' || obj.type === 'system') {
+    const effort = (typeof obj.content === 'string' ? obj.content : typeof content === 'string' ? content : '').match(EFFORT_SET);
+    if (effort) events.push({ kind: 'effort', level: effort[1] });
+  }
 
   if (obj.type === 'user') {
     const blocks = Array.isArray(content) ? content : [];

@@ -1,6 +1,6 @@
 import { expect, test } from 'claude-code/testing'
 
-import { answerFromDashboard, deliverMessages, offerContext, permitFromDashboard, usageNow } from '../hooks/register'
+import { answerAsides, answerFromDashboard, deliverMessages, offerContext, permitFromDashboard, runSettings, usageNow } from '../hooks/register'
 
 // The hook bodies only call $.fs.write and $.process.run, so a small stand-in records them.
 type Run = { exitCode: number; stdout: string; stderr: string }
@@ -235,4 +235,61 @@ test("the beacon carries the session's usage as the status line has it: cost, co
     rateLimits: [{ kind: 'five_hour', percentUsed: 34.5, resetsAt: '2026-10-07T16:00:00Z' }, { kind: 'seven_day', percentUsed: 61, resetsAt: undefined }],
   })
   expect(await usageNow({ session: { usage: async () => { throw new Error('no usage here') } } })).toBe(undefined)
+})
+
+// Model and effort switches, and side questions, asked on the dashboard.
+function asker$(files: Record<string, string>, { run, fork }: { run?: (c: any) => Promise<any>; fork?: (r: any) => Promise<any> } = {}) {
+  const f = inbox$(files)
+  const written: { path: string; value: any }[] = []
+  const ran: any[] = []
+  const forked: any[] = []
+  const $: any = {
+    ...f.$,
+    fs: { ...f.$.fs, write: async (path: string, text: string) => { written.push({ path, value: JSON.parse(text) }) } },
+    clock: { now: async () => 5_000 },
+    command: { run: async (c: any) => { ran.push(c); return run ? run(c) : { text: `Set ${c.command} to ${c.args}` } } },
+    model: { fork: async (r: any) => { forked.push(r); return fork ? fork(r) : { isAnswered: true, text: 'It is the parser.' } } },
+  }
+  return { $, files: f.files, written, ran, forked }
+}
+
+test('a model or effort switch from the dashboard runs as /model or /effort, and what Claude Code said goes back', async () => {
+  const f = asker$({ '1-a.json': '{"command":"model","args":"sonnet","id":"1-a"}', '2-b.json': '{"command":"effort","args":"high","id":"2-b"}' })
+  await runSettings(f.$, '/repo/state', 's1')
+  await settle()
+  expect(f.ran).toEqual([{ command: 'model', args: 'sonnet' }, { command: 'effort', args: 'high' }])
+  expect(f.written.map(w => w.path)).toEqual(['/repo/state/command-results/s1.1-a.json', '/repo/state/command-results/s1.2-b.json'])
+  expect(f.written[0]?.value).toEqual({ id: '1-a', sessionId: 's1', command: 'model', args: 'sonnet', ok: true, text: 'Set model to sonnet', at: 5_000 })
+  expect([...f.files.keys()]).toEqual([])
+})
+
+test('only /model and /effort, with an alias or a level, are run from the dashboard', async () => {
+  const f = asker$({ '1-a.json': '{"command":"clear","args":"","id":"1-a"}', '2-b.json': '{"command":"model","args":"sonnet; rm -rf ~","id":"2-b"}', '3-c.json': '{"command":"effort","args":"turbo","id":"3-c"}', '4-d.json': '{"command":"model","args":"opus[1m]","id":"4-d"}' })
+  await runSettings(f.$, '/repo/state', 's1')
+  await settle()
+  expect(f.ran).toEqual([{ command: 'model', args: 'opus[1m]' }])
+})
+
+test('a switch that fails says why', async () => {
+  const f = asker$({ '1-a.json': '{"command":"model","args":"fable","id":"1-a"}' }, { run: async () => { throw new Error('Unknown model') } })
+  await runSettings(f.$, '/repo/state', 's1')
+  await settle()
+  expect(f.written[0]?.value).toMatchObject({ ok: false, text: 'Error: Unknown model' })
+})
+
+test("a side question is answered over the session's own transcript, like /btw, and the answer goes back", async () => {
+  const f = asker$({ '1-a.json': '{"id":"1-a","question":"Which file holds the parser?","at":4000}' })
+  await answerAsides(f.$, '/repo/state', 's1')
+  await settle()
+  expect(f.forked.length).toBe(1)
+  expect(String(f.forked[0]?.prompt)).toContain('side question')
+  expect(String(f.forked[0]?.prompt).endsWith('Which file holds the parser?')).toBe(true)
+  expect(f.written).toEqual([{ path: '/repo/state/asides/s1.1-a.json', value: { id: '1-a', sessionId: 's1', question: 'Which file holds the parser?', text: 'It is the parser.', at: 4000, answeredAt: 5_000 } }])
+})
+
+test('a side question with no answer says why', async () => {
+  const f = asker$({ '1-a.json': '{"id":"1-a","question":"Anything?"}' }, { fork: async () => ({ isAnswered: false, reason: 'nothing-to-fork' }) })
+  await answerAsides(f.$, '/repo/state', 's1')
+  await settle()
+  expect(f.written[0]?.value).toMatchObject({ reason: 'nothing-to-fork' })
 })

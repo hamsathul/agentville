@@ -113,6 +113,10 @@ export function projectsOf(sessions) {
 
 const shellQuote = s => `'${String(s).replace(/'/g, `'\\''`)}'`;
 
+// Models and effort levels a session can start with, or switch to (aliases, as --model and /model take them).
+export const MODELS = ['default', 'opus', 'opus[1m]', 'sonnet', 'haiku', 'fable'];
+export const EFFORTS = ['low', 'medium', 'high', 'xhigh', 'max'];
+
 // Permission modes a session can start in: their command-line flags. Bypass skips every permission check.
 export const MODE_FLAGS = {
   default: '', acceptEdits: ' --permission-mode acceptEdits', plan: ' --permission-mode plan', auto: ' --permission-mode auto',
@@ -121,12 +125,15 @@ export const MODE_FLAGS = {
 
 /**
  * The shell line that starts Claude Code in a folder (or resumes a session there) in a permission
- * mode. `exec` puts Claude in the shell's place, so its window closes when it ends.
+ * mode, with a model and effort for this session only (flags, not your saved defaults). `exec` puts
+ * Claude in the shell's place, so its window closes when it ends.
  */
-export function claudeCommand(cwd, resume, mode = 'default') {
+export function claudeCommand(cwd, resume, mode = 'default', { model = 'default', effort } = {}) {
   if (resume !== undefined && !SESSION_ID.test(resume)) throw new Error('not a session id');
   if (!Object.hasOwn(MODE_FLAGS, mode)) throw new Error('not a permission mode');
-  return `cd ${shellQuote(cwd)} && exec claude${resume ? ` --resume ${resume}` : ''}${MODE_FLAGS[mode]}`;
+  if (!MODELS.includes(model)) throw new Error('not a model');
+  if (effort !== undefined && !EFFORTS.includes(effort)) throw new Error('not an effort level');
+  return `cd ${shellQuote(cwd)} && exec claude${resume ? ` --resume ${resume}` : ''}${MODE_FLAGS[mode]}${model !== 'default' ? ` --model ${shellQuote(model)}` : ''}${effort ? ` --effort ${effort}` : ''}`;
 }
 
 /**

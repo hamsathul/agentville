@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { DEFAULTS } from '../config.mjs';
-import { applySince, buildAgent, countStates, modeOf, nowOf, sortAgents, tasksOf } from '../derive/agent.mjs';
+import { applySince, buildAgent, countStates, effortOf, modeOf, nowOf, sortAgents, tasksOf } from '../derive/agent.mjs';
 import { at, modelOf, prompt, reply, title, toolResult, toolUse, turnEnd } from './fixtures.mjs';
 
 const cfg = { ...DEFAULTS };
@@ -240,4 +240,14 @@ test('the snapshot carries the task list, compactions, fast mode and a wake-up s
   assert.equal(a.wakeAt, at(3) + 600_000);
   assert.equal(a.fast, undefined);
   assert.equal(buildAgent({ base: base(), model: m, now: at(700), cfg, repoOf, home: '/h' }).wakeAt, undefined, 'its time passed');
+});
+
+test("a session's effort: what /effort last set since it started, else its --effort flag", () => {
+  const set = JSON.stringify({ type: 'system', subtype: 'local_command', timestamp: new Date(at(5)).toISOString(), content: '<local-command-stdout>Set effort level to max (this session only): Maximum</local-command-stdout>' });
+  const m = modelOf(prompt(0, 'go'), set);
+  assert.equal(m.effort, 'max');
+  assert.equal(effortOf(m, 'claude --effort low', at(1)), 'max', 'set after the process started');
+  assert.equal(effortOf(m, 'claude --effort low', at(9)), 'low', 'the flag of a process started after it');
+  assert.equal(effortOf(modelOf(prompt(0, 'go')), 'claude --resume x --effort high'), 'high');
+  assert.equal(effortOf(modelOf(prompt(0, 'go')), 'claude'), undefined, "the model's default");
 });

@@ -102,6 +102,23 @@ const runLink = url => (typeof url === 'string' && url.startsWith('https://githu
 const MODES = [['default', 'Ask first'], ['acceptEdits', 'Accept edits'], ['plan', 'Plan mode'], ['auto', 'Auto'], ['bypassPermissions', 'Bypass permissions']];
 const modeName = mode => (MODES.find(([m]) => m === mode)?.[1] ?? { manual: 'Ask first', dontAsk: "Don't ask" }[mode] ?? mode);
 
+/** Whether a session's mod can switch its model and answer side questions (it is listening, and 0.5.0 or newer). */
+function modCan(a) {
+  const v = String(a.mod?.version ?? '0').split('.').map(n => Number.parseInt(n, 10) || 0);
+  return Boolean(a.mod?.live) && (v[0] > 0 || v[1] >= 5);
+}
+const modWhy = a => (!a.mod?.live ? "The session isn't listening for the dashboard yet (send it anything in its terminal once)"
+  : `Its tracker mod is older (${a.mod.version}): run /reload-plugins in the session (or resume it) to do this from here`);
+
+// Models to switch to (aliases: the newest of each), and effort levels.
+const MODELS = [['opus', 'Opus'], ['opus[1m]', 'Opus, 1M context'], ['sonnet', 'Sonnet'], ['haiku', 'Haiku'], ['fable', 'Fable'], ['default', 'Your default']];
+const EFFORTS = ['low', 'medium', 'high', 'xhigh', 'max'];
+/** A model id in short: claude-opus-5-5 → Opus 5.5, claude-haiku-4-5-20251001 → Haiku 4.5. */
+function modelName(id) {
+  const m = String(id ?? '').match(/^claude-([a-z]+)-(\d+)(?:-(\d{1,2}))?(?:-|$)/);
+  return m ? `${m[1][0].toUpperCase()}${m[1].slice(1)} ${m[2]}${m[3] ? `.${m[3]}` : ''}` : String(id ?? '');
+}
+
 /** A terminal session's bar: its permission mode, Restart in… another mode, and End session. */
 function sessionBarHtml(a) {
   if (a.kind === 'background' && a.state === 'stale' && a.cliId) { // an old background session: it can only be removed
@@ -114,9 +131,19 @@ function sessionBarHtml(a) {
   const chip = mode
     ? `<span class="chip ${bypass ? 'c-crit' : mode === 'plan' ? 'c-warn' : 'c-plain'}" data-tip="Its permission mode (Shift+Tab in its terminal changes it). Restart in… resumes it in another mode.">${bypass ? '⚠ ' : ''}${esc(modeName(mode))}</span>`
     : '<span class="chip c-plain" data-tip="The session has not written its mode down yet; it shows after its next step">mode not known yet</span>';
+  // Model and effort: switched in the session itself (/model, /effort), through its mod, after its current turn.
+  const live = modCan(a), off = live ? '' : ' disabled';
+  const why = live ? 'Runs /model in the session after its current turn, as if you typed it. Claude Code also saves it as your default for new sessions.' : modWhy(a);
+  const models = MODELS.map(([m, label]) => `<option value="${esc(m)}">${esc(label)}</option>`).join('');
+  const efforts = EFFORTS.map(e => `<option value="${e}"${e === a.effort ? ' disabled' : ''}>${e}${e === a.effort ? ' (now)' : ''}</option>`).join('');
+  const note = a.setting && Date.now() - a.setting.at < 120_000
+    ? `<span class="${a.setting.ok ? 'msg-ok' : 'msg-bad'} set-note" data-tip="${esc(a.setting.text)}">${a.setting.ok ? '✓' : '✗'} ${esc(a.setting.text ? a.setting.text.replace(/`/g, '').slice(0, 80) : `/${a.setting.command} ${a.setting.args}`)}</span>`
+    : '';
   return `<div class="sessbar">${chip}
+    <select class="act mini" data-switch-model data-agent="${esc(a.id)}" aria-label="Switch this session's model" data-tip="${esc(why)}"${off}><option value="">${esc(a.model ? modelName(a.model) : 'Model…')}</option>${models}</select>
+    <select class="act mini" data-switch-effort data-agent="${esc(a.id)}" aria-label="Set this session's effort" data-tip="${esc(live ? 'Runs /effort in the session after its current turn. Claude Code saves low to xhigh as your default for new sessions; max is for this session only.' : why)}"${off}><option value="">effort: ${esc(a.effort ?? 'default')}</option>${efforts}</select>
     <select class="act mini" data-restart-mode data-agent="${esc(a.id)}" aria-label="Restart this session in another permission mode"><option value="">Restart in…</option>${options}</select>
-    <button type="button" class="act mini" data-end-session="${esc(a.id)}" data-tip="End this session and close its terminal window (resume it later from ＋ Session)">End session</button></div>`;
+    <button type="button" class="act mini" data-end-session="${esc(a.id)}" data-tip="End this session and close its terminal window (resume it later from ＋ Session)">End session</button>${note}</div>`;
 }
 
 /** An in-page yes/no question: resolves true for the OK button, false for Cancel or Escape. */
@@ -269,6 +296,17 @@ function composeHtml(a) {
   const thumbs = imgs.length ? `<div class="thumbs">${imgs.map((im, i) => `<span class="thumb" data-tip="${esc(`${im.name} · ${sizeText(im.size)}`)}"><img src="${esc(im.url)}" alt="Screenshot ${i + 1}"><button type="button" class="thumb-x" data-remove-img="${i}" data-agent="${esc(a.id)}" aria-label="Remove screenshot ${i + 1}">✕</button></span>`).join('')}</div>` : '';
   return `<div class="compose" data-agent="${esc(a.id)}" style="margin-top:10px"><textarea id="msg-text" data-msg-agent="${esc(a.id)}" rows="2" placeholder="Message ${esc(a.name)}…"${live ? '' : ' disabled'}>${esc(msgDrafts.get(a.id) ?? '')}</textarea>${thumbs}
     <div class="compose-row">${status}<span class="grow"></span><button class="act" id="msg-attach" type="button" data-agent="${esc(a.id)}" data-tip="Attach screenshots (you can also paste or drop them on the box)"${live ? '' : ' disabled'}>📎 Screenshot</button><button class="act primary" id="msg-send" data-agent="${esc(a.id)}"${live ? '' : ' disabled'}>Send</button></div></div>`;
+}
+
+/** Side questions (/btw): asked of the session from its conversation so far, answered without adding to it, even while it works. */
+function asideHtml(a) {
+  if (a.kind === 'codex') return '';
+  const live = modCan(a);
+  const list = (a.asides ?? []).map(x => `<div class="aside"><div class="aside-q"><b>btw</b> ${esc(x.question)}</div>${x.pending
+    ? '<div class="aside-a muted"><span class="spinner"></span> thinking…</div>'
+    : x.answer ? `<div class="aside-a md">${renderMarkdown(x.answer)}</div>` : `<div class="aside-a msg-bad">No answer: ${esc(x.reason ?? 'unknown')}</div>`}</div>`).join('');
+  return `<div class="asides-box"><div class="sec">Side question <span class="faint" style="text-transform:none;letter-spacing:0">(/btw: answered from its conversation, not added to it; works while it's busy)</span></div>
+    <div class="aside-row"><input type="text" id="aside-text" data-aside-agent="${esc(a.id)}" placeholder="${live ? `Ask ${esc(a.name)} something on the side…` : esc(modWhy(a))}" value="${esc(asideDrafts.get(a.id) ?? '')}"${live ? '' : ' disabled'}><button type="button" class="act" id="aside-send" data-agent="${esc(a.id)}"${live ? '' : ' disabled'}>Ask</button></div>${list}</div>`;
 }
 
 const sizeText = bytes => (bytes >= 1_048_576 ? `${(bytes / 1_048_576).toFixed(1)} MB` : `${Math.max(1, Math.round(bytes / 1024))} KB`);

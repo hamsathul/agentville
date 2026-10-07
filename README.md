@@ -78,7 +78,8 @@ how much CPU and memory each one uses.
   have worked in, or resume a session from the last 30 days by its title and last message. It
   opens a new Terminal or iTerm window (the `terminal` setting) running `claude` or
   `claude --resume <id>` there, in the permission mode you pick (ask first, accept edits, plan,
-  auto, or bypass permissions with `--dangerously-skip-permissions`); sessions still running
+  auto, or bypass permissions with `--dangerously-skip-permissions`), with the model and effort
+  you pick for that session only (`--model`, `--effort`); sessions still running
   are marked and not offered. The window closes when Claude exits. The first time, macOS asks
   to let the tracker control that app.
 - **Agents talking to each other:** when one session messages another (Claude Code's
@@ -88,6 +89,15 @@ how much CPU and memory each one uses.
   last message you sent it), **End session** (after you confirm: Claude stops cleanly and its
   iTerm or Terminal window closes; the conversation can be resumed) and **Restart in…** another
   mode (it ends and resumes straight away in a new window, the conversation carrying on).
+- **Switch a session's model or effort:** its bar shows the model it is on and its effort; pick
+  another and, after you confirm, the session runs `/model` or `/effort` itself after its current
+  turn, as if you typed it (what Claude Code said comes back to the bar). As when you type it,
+  Claude Code saves the model, and an effort from low to xhigh, as your default for new sessions;
+  `max` is for that session only.
+- **Side questions (/btw):** ask a session something on the side from its panel. It is answered
+  from the conversation so far, with no tools, even while the session works, and nothing is added
+  to the conversation; the answer shows under the box. Switching and side questions need mod 0.5.0
+  in the session: run `/reload-plugins` in a session started before it, or resume it.
 - **Claude Code mod:** `/tracker` opens a side pane, the status line shows
   `⚑ 1 waiting · 2 working`, and toasts appear when another agent needs you. The mod is also
   what lets the dashboard answer a session's questions and permission prompts and send it messages,
