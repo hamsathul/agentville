@@ -21,6 +21,7 @@ import { SESSION_ID, claudeCommand, listSessions, projectsOf, terminalScript } f
 import { applySince, buildAgent, countStates, sortAgents } from './derive/agent.mjs';
 import { findCollisions } from './derive/collisions.mjs';
 import { reposFor } from './derive/repos.mjs';
+import { planReadings, planUsage } from './derive/plan.mjs';
 import { AlertEngine, notifyMac } from './alerts.mjs';
 import { createTrackerServer } from './server.mjs';
 import { renderTranscriptPage } from './transcript-page.mjs';
@@ -287,7 +288,8 @@ export async function startCollector({ root, claudeDir = join(homedir(), '.claud
       sources: { ...sources },
       counts: countStates(agents, collisions),
       agents: sortAgents(agents),
-      repos: reposFor(agents, { deployRepos: cfg.deployRepos, repoInfo, deploys, lookup: p => resolver.lookup(p), home, now }),
+      repos: reposFor(agents, { deployRepos: cfg.deployRepos, repoInfo, deploys, lookup: p => resolver.lookup(p), home }),
+      plan: planUsage(planReadings(beacons, agents), now),
       collisions,
     };
     prevAgents = new Map(agents.map(a => [a.id, a]));

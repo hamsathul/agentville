@@ -1058,3 +1058,31 @@ test("Activity is its own tab in the farm sidebar, and the Agent tab no longer r
   assert.match(act, /npm test/);
   assert.match(act, /Show all/);
 });
+
+test("the top bar shows the plan's limits (5-hour, weekly) and when they reset; nothing without a reading", () => {
+  const page = loadPage();
+  const snap = richSnapshot([richAgent()]);
+  snap.plan = { from: 'x', at: Date.now() - 60_000, windows: [
+    { kind: 'five_hour', percentUsed: 6, resetsAt: Date.now() + 3_600_000 },
+    { kind: 'seven_day', percentUsed: 47, resetsAt: Date.now() + 4 * 86_400_000 },
+    { kind: 'seven_day_opus', percentUsed: 92, resetsAt: null },
+  ] };
+  page.push(snap);
+  const stats = page.el('hstats').innerHTML;
+  assert.match(stats, />Plan</);
+  assert.match(stats, /5-hour 6%/);
+  assert.match(stats, /week 47%/);
+  assert.match(stats, /week · Opus 92%/);
+  assert.match(stats, /5-hour limit: 6% used, resets at/);
+  assert.match(stats, /class="[^"]*\bbad\b[^"]*"[\s\S]*92%|92%/);
+  page.push(richSnapshot([richAgent()]));
+  assert.doesNotMatch(page.el('hstats').innerHTML, />Plan</);
+});
+
+test("an agent's panel shows what its session has cost so far", async () => {
+  const page = loadPage();
+  page.push(richSnapshot([richAgent({ usage: { costUsd: 2.5, contextPercent: 41.5 } })]));
+  assert.match(page.side(), /Cost[\s\S]*\$2\.50/);
+  page.push(richSnapshot([richAgent()]));
+  assert.doesNotMatch(page.side(), />Cost</);
+});

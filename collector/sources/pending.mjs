@@ -99,6 +99,21 @@ export function writeAnswerFile(dir, toolUseId, payload) {
 const BEACON_LIVE_MS = 10_000;
 
 /** The mod in each session writes state/mods/<sessionId>.json every 2 s while it is listening. */
+const num = (v, max) => (typeof v === 'number' && Number.isFinite(v) && v >= 0 && v <= max ? v : null);
+/** A mod's usage reading ($.session.usage()), kept to plain numbers and short names. */
+function usageOf(u) {
+  const windows = Array.isArray(u.rateLimits) ? u.rateLimits : [];
+  return {
+    costUsd: num(u.costUsd, 1e7),
+    contextPercent: num(u.contextPercent, 100),
+    rateLimits: windows.slice(0, 6).flatMap(w => {
+      if (!w || typeof w !== 'object' || typeof w.kind !== 'string' || num(w.percentUsed, 1000) === null) return [];
+      const resetsAt = typeof w.resetsAt === 'string' ? Date.parse(w.resetsAt) : NaN;
+      return [{ kind: w.kind.slice(0, 40), percentUsed: w.percentUsed, resetsAt: Number.isFinite(resetsAt) ? resetsAt : null }];
+    }),
+  };
+}
+
 export function readBeacons(dir, now) {
   let names;
   try {
@@ -113,7 +128,9 @@ export function readBeacons(dir, now) {
     try {
       const b = JSON.parse(readFileSync(join(dir, name), 'utf8'));
       if (typeof b.sessionId !== 'string' || !b.sessionId) continue;
-      beacons.set(b.sessionId, { version: text(b.version, 20), live: now - (Number(b.at) || 0) < BEACON_LIVE_MS });
+      const beacon = { version: text(b.version, 20), live: now - (Number(b.at) || 0) < BEACON_LIVE_MS };
+      if (b.usage && typeof b.usage === 'object') Object.assign(beacon, { at: Number(b.at) || 0, usage: usageOf(b.usage) });
+      beacons.set(b.sessionId, beacon);
     } catch {
       // half-written: next tick
     }

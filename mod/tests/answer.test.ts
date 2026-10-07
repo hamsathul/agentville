@@ -1,6 +1,6 @@
 import { expect, test } from 'claude-code/testing'
 
-import { answerFromDashboard, deliverMessages, offerContext, permitFromDashboard } from '../hooks/register'
+import { answerFromDashboard, deliverMessages, offerContext, permitFromDashboard, usageNow } from '../hooks/register'
 
 // The hook bodies only call $.fs.write and $.process.run, so a small stand-in records them.
 type Run = { exitCode: number; stdout: string; stderr: string }
@@ -222,4 +222,17 @@ test('a message the dashboard already withdrew is not sent', async () => {
 test('no inbox folder means nothing to deliver', async () => {
   const $ = { fs: { list: async () => { throw new Error('ENOENT') } } }
   await deliverMessages($, '/repo/state', 's1')
+})
+
+test("the beacon carries the session's usage as the status line has it: cost, context and the plan's windows", async () => {
+  const $ = { session: { usage: async () => ({
+    startedAt: 1, context: { window: 200_000, tokens: 83_000, percent: 41.5 },
+    rateLimits: [{ kind: 'five_hour', percentUsed: 34.5, resetsAt: '2026-10-07T16:00:00Z' }, { kind: 'seven_day', percentUsed: 61 }],
+    cost: { usd: 2.5 },
+  }) } }
+  expect(await usageNow($)).toEqual({
+    costUsd: 2.5, contextPercent: 41.5,
+    rateLimits: [{ kind: 'five_hour', percentUsed: 34.5, resetsAt: '2026-10-07T16:00:00Z' }, { kind: 'seven_day', percentUsed: 61, resetsAt: undefined }],
+  })
+  expect(await usageNow({ session: { usage: async () => { throw new Error('no usage here') } } })).toBe(undefined)
 })

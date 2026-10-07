@@ -207,3 +207,9 @@ test('crops grow through six stages, from seeds to ripe, and each crop looks dif
   }
   assert.equal(looks.size, crops.length * 4, 'from young plants on, no two crops look the same');
 });
+
+test("a farmer's tooltip says what its session has cost so far", () => {
+  const { toScene } = load();
+  const scene = plain(toScene(snapOf([agent('a', { usage: { costUsd: 3.456 } }), agent('b')], []), { cpuAlertPct: 90 }));
+  assert.deepEqual(scene.farmers.map(f => f.cost), [3.456, null]);
+});

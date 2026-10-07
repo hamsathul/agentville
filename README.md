@@ -8,7 +8,8 @@ how much CPU and memory each one uses.
 - **Dashboard** at <http://localhost:7777>, served only to this machine, laid out like an
   editor in three columns. **Left:** compact agent rows, waiting ones first, then working ones
   (each with a live tool ticker); idle and stale agents fold away, and repos sit below. The
-  agents' memory and CPU are in the top bar. **Centre:** the agent you picked (the one at
+  agents' memory and CPU are in the top bar, with your Claude plan's usage (the 5-hour and
+  weekly limits, and when they reset, as Claude Code reports them). **Centre:** the agent you picked (the one at
   work, until you pick another) with its activity feed, charts, subagents, the repos it
   touched and its process tree. **Right:** an explorer of the agent's working folder, with git status letters (M, U, D) and a dot on
   files the agent edited or read. Repos are marked with their branch (and a ✗ when their
@@ -57,7 +58,9 @@ how much CPU and memory each one uses.
   time, macOS asks to let the tracker control that app.
 - **Claude Code mod:** `/tracker` opens a side pane, the status line shows
   `⚑ 1 waiting · 2 working`, and toasts appear when another agent needs you. The mod is also
-  what lets the dashboard answer a session's questions and permission prompts and send it messages.
+  what lets the dashboard answer a session's questions and permission prompts and send it messages,
+  and it reports the session's usage (`$.session.usage()`): its cost so far, shown on the agent,
+  and the plan's limits, shown in the top bar. Sessions started before mod 0.4.0 show neither.
 - **macOS notifications** when an agent needs you, finishes, collides with another agent in
   the same repo, or runs hot on CPU or memory. Each event notifies once.
 
@@ -112,7 +115,7 @@ Without a `config.json`, the defaults in `config.example.json` apply.
 | `memoryAlertGb`, `cpuAlertPct`, `cpuAlertSustainSec` | Resource alert thresholds |
 | `notify` | Turn each notification type on or off: `waiting`, `collision`, `yourTurn`, `memory`, `cpu` |
 | `modToasts` | Toasts inside Claude Code sessions |
-| `deployRepos` | Checkout path → `owner/repo` whose latest GitHub Actions run is shown, e.g. `{ "/Users/me/code/api": "me/api" }`. With no agent in it, such a repo is listed only while its deploy runs and for two hours after it started |
+| `deployRepos` | Checkout path → `owner/repo` whose latest GitHub Actions run is shown, e.g. `{ "/Users/me/code/api": "me/api" }`. With no agent in it, such a repo is listed only while its deploy runs |
 | `terminal` | Where ＋ Session opens: `"Terminal"` (default) or `"iTerm"` |
 
 ## How it works

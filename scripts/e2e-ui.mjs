@@ -101,6 +101,8 @@ for (const d of ['pending', 'answers', 'mods']) mkdirSync(join(state, d), { recu
 const offer = join(state, 'pending', 'toolu_ASK1.json');
 writeFileSync(offer, JSON.stringify({ kind: 'question', toolUseId: 'toolu_ASK1', sessionId: 'ui-asker', createdAt: now - 20_000, questions: [QUESTION] }));
 let answered = null;
+// What the mod reads from $.session.usage(): this session's cost and the plan's limits.
+const USAGE = { costUsd: 1.23, rateLimits: [{ kind: 'five_hour', percentUsed: 34, resetsAt: new Date(Date.now() + 2 * 3_600_000).toISOString() }, { kind: 'seven_day', percentUsed: 61, resetsAt: new Date(Date.now() + 3 * 86_400_000).toISOString() }] };
 const received = []; // messages the fake mod took from the dashboard
 const fakeMod = setInterval(() => {
   const inbox = join(state, 'messages', 'ui-asker');
@@ -109,7 +111,7 @@ const fakeMod = setInterval(() => {
     received.push(JSON.parse(readFileSync(join(inbox, name), 'utf8')).text);
     unlinkSync(join(inbox, name));
   }
-  writeFileSync(join(state, 'mods', 'ui-asker.json'), JSON.stringify({ sessionId: 'ui-asker', version: 'ui-test', at: Date.now() }));
+  writeFileSync(join(state, 'mods', 'ui-asker.json'), JSON.stringify({ sessionId: 'ui-asker', version: 'ui-test', at: Date.now(), usage: USAGE }));
   if (existsSync(offer)) utimesSync(offer, new Date(), new Date());
   for (const name of readdirSync(join(state, 'answers'))) {
     if (!name.endsWith('.json')) continue;
@@ -161,6 +163,8 @@ try {
   check(/Which crop next\?/.test(await js("document.querySelector('.ask legend')?.textContent ?? ''")), 'the centre shows the question');
   check(await until("[...document.querySelectorAll('#tree .tn')].some(b => b.textContent.includes('README.md'))"), "the explorer lists the agent's folder");
   check(await js("[...document.querySelectorAll('#center-body .bub.you')].some(b => b.textContent.includes('Plan the next crop'))"), 'the conversation shows the prompt');
+  check(await until("/Plan.*5-hour 34%.*week 61%/.test(document.getElementById('hstats').textContent)"), "the top bar shows the plan's 5-hour and weekly limits");
+  check(await js("/Cost\\s*\\$1\\.23/.test(document.getElementById('center-body').textContent)"), 'the agent panel shows what the session has cost so far');
   const key = (type, mods = 0) => send('Input.dispatchKeyEvent', { type, key: 'Enter', code: 'Enter', windowsVirtualKeyCode: 13, modifiers: mods, ...(type === 'keyDown' ? { text: '\r' } : {}) }); // a real key press carries its text
   await js("document.getElementById('msg-text').focus()");
   await send('Input.insertText', { text: 'First line' });
@@ -180,6 +184,7 @@ try {
   check(await until("document.getElementById('main').dataset.view === 'farm' && document.querySelectorAll('.px-tag').length >= 2"), 'the farm shows both farmers');
   check(await until("[...document.querySelectorAll('.px-tag')].some(t => t.textContent.startsWith('ui-asker') && t.classList.contains('st-waiting'))"), 'the waiting agent is on the porch');
   check(/1 needs you/.test(await js("document.querySelector('.px-hud')?.textContent ?? ''")), 'the farm says one needs you');
+  check(!/energy/i.test(await js("document.querySelector('.px-hud')?.textContent ?? ''")) && /5-hour 34%/.test(await js("document.getElementById('hstats').textContent")), 'the farm has no vague energy bar; the plan stays in the top bar');
   check(await until("[...document.querySelectorAll('.px-lab')].some(l => l.textContent.startsWith('farm-repo'))"), 'the repo is a field');
   await js("document.querySelector('[data-farm-help]').click()");
   check(await js("document.querySelector('.px-help').open"), 'the info button opens how to read the farm');

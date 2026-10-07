@@ -92,6 +92,22 @@ test('mod beacons say which sessions are listening for dashboard answers', () =>
   assert.equal(readBeacons('/nonexistent/mods', NOW).size, 0);
 });
 
+test("a beacon can carry the session's usage: its cost and the plan's rate-limit windows, cleaned up", () => {
+  const dir = tmp();
+  const resets = new Date(NOW + 3_600_000).toISOString();
+  put(dir, 's1.json', { sessionId: 's1', version: '0.4.0', at: NOW - 1000, usage: {
+    costUsd: 1.2345, contextPercent: 41.5,
+    rateLimits: [{ kind: 'five_hour', percentUsed: 34.5, resetsAt: resets }, { kind: 'seven_day', percentUsed: 61 }, { kind: 'x'.repeat(80), percentUsed: 5 }, { kind: 'bad', percentUsed: 'lots' }, 'nope'],
+  } });
+  put(dir, 's2.json', { sessionId: 's2', version: '0.4.0', at: NOW - 1000, usage: { costUsd: -3, rateLimits: 'no' } });
+  const beacons = readBeacons(dir, NOW);
+  assert.deepEqual(beacons.get('s1'), { version: '0.4.0', live: true, at: NOW - 1000, usage: {
+    costUsd: 1.2345, contextPercent: 41.5,
+    rateLimits: [{ kind: 'five_hour', percentUsed: 34.5, resetsAt: Date.parse(resets) }, { kind: 'seven_day', percentUsed: 61, resetsAt: null }, { kind: 'x'.repeat(40), percentUsed: 5, resetsAt: null }],
+  } });
+  assert.deepEqual(beacons.get('s2'), { version: '0.4.0', live: true, at: NOW - 1000, usage: { costUsd: null, contextPercent: null, rateLimits: [] } });
+});
+
 test('an offer whose heartbeat stopped over 10 minutes ago is cleaned up', () => {
   const dir = tmp();
   put(dir, 'toolu_Dead.json', question('toolu_Dead', 's1', NOW - 20 * 60_000));

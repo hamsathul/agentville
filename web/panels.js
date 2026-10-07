@@ -18,6 +18,22 @@ function kpisHtml() {
 }
 
 /** The agents' share of this Mac, in the top bar: memory by agent, and CPU as a share of all cores. */
+// The plan's rate-limit windows, as Claude Code names them, in plain words.
+const WINDOW_NAMES = { five_hour: '5-hour', seven_day: 'week', seven_day_opus: 'week · Opus', seven_day_sonnet: 'week · Sonnet', spend_limit: 'spend' };
+const windowName = kind => WINDOW_NAMES[kind] ?? String(kind).replace(/_/g, ' ');
+const resetText = ms => (!ms ? '' : ms - Date.now() < 86_400_000 ? `at ${hhmm(ms)}` : `${new Date(ms).toLocaleDateString([], { weekday: 'short', day: 'numeric', month: 'short' })}, ${hhmm(ms)}`);
+const agoText = ms => { const m = Math.round((Date.now() - ms) / 60_000); return m < 1 ? 'just now' : m < 60 ? `${m} min ago` : m < 1440 ? `${Math.round(m / 60)} h ago` : `${Math.round(m / 1440)} d ago`; };
+
+/** The plan's usage (the 5-hour and weekly limits), from Claude Code's last API response in any session. */
+function planHtml() {
+  const plan = snap.plan;
+  if (!plan?.windows?.length) return '';
+  const said = w => `${windowName(w.kind)} limit: ${w.reset ? 'reset since the last reading' : `${Math.round(w.percentUsed)}% used${w.resetsAt ? `, resets ${resetText(w.resetsAt)}` : ''}`}`;
+  const read = ` (Claude Code's reading, ${agoText(plan.at)})`;
+  const meters = plan.windows.map(w => { const r = w.percentUsed / 100; return `${meter(r, severityOf(r, 0.7, 0.9), said(w) + read)}<b>${esc(windowName(w.kind))} ${Math.round(w.percentUsed)}%</b>`; }).join(' ');
+  return `<span class="hstat" data-tip="${esc(`Your Claude plan: ${plan.windows.map(said).join(' · ')}${read}`)}"><span class="ml">Plan</span>${meters}</span>`;
+}
+
 function hstatsHtml() {
   const totalMb = snap.machine?.totalMemMb || 1;
   const withMem = snap.agents.filter(a => a.proc?.rssMb).sort((x, y) => y.proc.rssMb - x.proc.rssMb);
@@ -27,7 +43,8 @@ function hstatsHtml() {
   const cpuUsed = snap.agents.reduce((t, a) => t + (a.proc?.cpu ?? 0), 0);
   const cpuRatio = cpuUsed / (cores * 100);
   return `<span class="hstat" data-tip="${esc(`Memory used by agents · ${withMem.map(a => `${a.name} ${gb(a.proc.rssMb)}`).join(' · ') || 'none'}`)}"><span class="ml">Agents RAM</span>${memBar}<b>${gb(usedMb)}</b><span class="faint">of ${gb(totalMb)}</span></span>
-    <span class="hstat"><span class="ml">Agents CPU</span>${meter(cpuRatio, severityOf(cpuRatio, 0.5, 0.8), `${Math.round(cpuUsed)}% of one core · ${cores} cores`)}<b>${Math.round(cpuRatio * 100)}% of this Mac</b></span>`;
+    <span class="hstat"><span class="ml">Agents CPU</span>${meter(cpuRatio, severityOf(cpuRatio, 0.5, 0.8), `${Math.round(cpuUsed)}% of one core · ${cores} cores`)}<b>${Math.round(cpuRatio * 100)}% of this Mac</b></span>
+    ${planHtml()}`;
 }
 
 function askLine(a) {
@@ -50,6 +67,7 @@ function metricsHtml(a) {
     const r = a.contextTokens / limit;
     parts.push(`<div class="m"><span class="ml">Context</span>${meter(r, severityOf(r, 0.7, 0.9), `${Math.round(a.contextTokens / 1000)}k of ${limit / 1000}k tokens`)}<span class="mv">${Math.round(r * 100)}%</span></div>`);
   }
+  if (a.usage?.costUsd != null) parts.push(`<div class="m" data-tip="What this session has cost so far at API prices, as /cost shows it (on a subscription it comes out of your plan's limits, not a bill)"><span class="ml">Cost</span><span class="mv">$${a.usage.costUsd.toFixed(2)}</span></div>`);
   const heat = a.kind === 'codex' ? '' : heatStrip(a.activity);
   return `${parts.length ? `<div class="metrics">${parts.join('')}</div>` : ''}${heat}`;
 }

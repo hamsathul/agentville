@@ -161,6 +161,14 @@ test("an agent shows whether its session's mod is listening for dashboard answer
   assert.equal(buildAgent({ base: base(), model: null, repoOf, now: at(0), cfg, home: '/h' }).mod, undefined);
 });
 
+test("an agent carries its session's cost and context from its mod; the plan's windows stay out of it", () => {
+  const beacon = { version: '0.4.0', live: true, usage: { costUsd: 2.5, contextPercent: 41.5, rateLimits: [{ kind: 'five_hour', percentUsed: 30, resetsAt: null }] } };
+  const a = buildAgent({ base: base(), model: null, beacon, repoOf, now: at(0), cfg, home: '/h' });
+  assert.deepEqual(a.usage, { costUsd: 2.5, contextPercent: 41.5 });
+  assert.deepEqual(a.mod, { version: '0.4.0', live: true });
+  assert.equal(buildAgent({ base: base(), model: null, beacon: { version: '0.3.1', live: true }, repoOf, now: at(0), cfg, home: '/h' }).usage, undefined);
+});
+
 test('documents come from the session and its subagents, newest first', () => {
   const parent = modelOf(prompt(0, 'go'), toolUse(1, 'p1', 'Read', { file_path: '/p/README.md' }), toolUse(3, 'p2', 'Write', { file_path: '/p/docs/spec.md' }));
   const child = modelOf(prompt(1, 'task'), toolUse(2, 'c1', 'Write', { file_path: '/p/docs/plan.md' }), toolUse(4, 'c2', 'Read', { file_path: '/p/README.md' }));

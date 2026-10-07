@@ -76,6 +76,7 @@ export function buildAgent({ base, model, registry, proc, cpuHistory = [], child
     sinceHint: derived.since,
     ask,
     mod: beacon ? { version: beacon.version, live: beacon.live } : undefined,
+    usage: beacon?.usage ? { costUsd: beacon.usage.costUsd, contextPercent: beacon.usage.contextPercent } : undefined, // the plan's windows go in snapshot.plan
     lastActivityAt: model?.lastActivityAt || undefined,
     now: nowOf(model),
     lastPrompt: model?.lastPrompt ?? undefined,

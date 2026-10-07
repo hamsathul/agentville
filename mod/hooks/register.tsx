@@ -26,7 +26,7 @@ const DASHBOARD_REASON = 'Answered from the Agent Tracker dashboard'
 type Offer = { stateDir: string; sessionId: string; isLive: boolean; windowSec: number; now: number }
 type Waited = { kind: 'answer'; text: string } | { kind: 'withdrawn' } | { kind: 'timeout' }
 
-const MOD_VERSION = '0.3.1'
+const MOD_VERSION = '0.4.0'
 
 let latest: TrackerView = EMPTY
 let selfId = ''
@@ -91,7 +91,25 @@ export async function deliverMessages($: any, stateDir: string, sessionId: strin
   }
 }
 
-/** Reads the collector's state for the pane, status line and toasts, and leaves a beacon saying this session's mod is listening. */
+/**
+ * This session's usage as the status line has it ($.session.usage(), free without a breakdown):
+ * its cost so far, its context fill, and the plan's rate-limit windows from the last API response.
+ * The dashboard shows the cost per session and the windows as the plan's usage.
+ */
+export async function usageNow($: any) {
+  try {
+    const u = await $.session.usage()
+    return {
+      costUsd: u.cost?.usd,
+      contextPercent: u.context?.percent,
+      rateLimits: (u.rateLimits ?? []).map((w: any) => ({ kind: w.kind, percentUsed: w.percentUsed, resetsAt: w.resetsAt })),
+    }
+  } catch {
+    return undefined
+  }
+}
+
+/** Reads the collector's state for the pane, status line and toasts, and leaves a beacon saying this session's mod is listening (with its usage). */
 async function pollOnce($: any) {
   const now = await $.clock.now()
   let fresh: TrackerView
@@ -103,7 +121,7 @@ async function pollOnce($: any) {
     }
     previous = snapshot
     if (selfId) {
-      await $.fs.write(`${stateDirFor($.plugin.root)}/mods/${selfId}.json`, JSON.stringify({ sessionId: selfId, version: MOD_VERSION, at: now }))
+      await $.fs.write(`${stateDirFor($.plugin.root)}/mods/${selfId}.json`, JSON.stringify({ sessionId: selfId, version: MOD_VERSION, at: now, usage: await usageNow($) }))
       await deliverMessages($, stateDirFor($.plugin.root), selfId)
     }
   } catch (err) {

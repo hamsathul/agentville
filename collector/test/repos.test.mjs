@@ -22,15 +22,15 @@ test('a stale agent (no activity for a day) no longer keeps its folder listed', 
   assert.deepEqual(paths(repos), ['/code/app']);
 });
 
-test('a repo watched for deploys shows without agents only while its deploy runs or just after', () => {
+test('a repo watched for deploys shows without agents only while its deploy runs', () => {
   const deployRepos = { '/code/backend': 'o/backend', '/code/frontend': 'o/frontend', '/code/docs': 'o/docs', '/code/web': 'o/web' };
   const deploys = new Map([
     ['/code/backend', { status: 'completed', conclusion: 'failure', at: NOW - 5 * HOUR }],
     ['/code/frontend', { status: 'in_progress', at: NOW - 5 * 60_000 }],
-    ['/code/docs', { status: 'completed', conclusion: 'success', at: NOW - 30 * 60_000 }],
+    ['/code/docs', { status: 'completed', conclusion: 'failure', at: NOW - 9 * 60_000 }], // you closed the project just after pushing
   ]);
   const repos = reposFor([], opts({ deployRepos, deploys }));
-  assert.deepEqual(paths(repos).sort(), ['/code/docs', '/code/frontend']);
+  assert.deepEqual(paths(repos), ['/code/frontend']);
   // with an agent there it is listed whatever its deploy did
   const withAgent = reposFor([agent('a', { cwd: '/code/backend' })], opts({ deployRepos, deploys }));
   assert.equal(withAgent.find(r => r.path === '/code/backend').deploy.conclusion, 'failure');
