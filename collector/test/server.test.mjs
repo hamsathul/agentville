@@ -108,3 +108,10 @@ test('ids with shell or AppleScript characters never reach an action', async () 
   assert.deepEqual(calls, []);
   await srv.close();
 });
+
+test('the transcript page follows the theme saved on the dashboard', () => {
+  const page = renderTranscriptPage('s1', []);
+  assert.match(page, /localStorage\.getItem\('tracker-theme'\)/);
+  assert.match(page, /:root\[data-theme="dark"\]\s*\{/);
+  assert.match(page, /:root:not\(\[data-theme="light"\]\)/);
+});

@@ -4,16 +4,21 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Agent Tracker</title>
+<script>try { const t = localStorage.getItem('tracker-theme'); if (t === 'light' || t === 'dark') document.documentElement.dataset.theme = t; } catch {}</script>
 <style>
 :root {
   --bg: #f5f5f7; --panel: #ffffff; --line: #d9d9de; --text: #1d1d1f; --muted: #6e6e73; --faint: #a1a1a6;
   --red: #d70015; --red-bg: rgba(255, 59, 48, .12); --amber: #b25000; --amber-bg: rgba(255, 159, 10, .16);
   --green: #1f8a3b; --green-bg: rgba(52, 199, 89, .14); --blue: #0066cc; --blue-bg: rgba(10, 132, 255, .12);
+  color-scheme: light;
 }
+/* Auto follows macOS; the header button pins Light or Dark (data-theme on <html>). */
 @media (prefers-color-scheme: dark) {
-  :root { --bg: #161618; --panel: #222225; --line: #3a3a3e; --text: #f2f2f4; --muted: #a1a1a6; --faint: #6e6e73;
-    --red: #ff6961; --amber: #ffb340; --green: #4cd964; --blue: #64a8ff; }
+  :root:not([data-theme="light"]) { --bg: #161618; --panel: #222225; --line: #3a3a3e; --text: #f2f2f4; --muted: #a1a1a6; --faint: #6e6e73;
+    --red: #ff6961; --amber: #ffb340; --green: #4cd964; --blue: #64a8ff; color-scheme: dark; }
 }
+:root[data-theme="dark"] { --bg: #161618; --panel: #222225; --line: #3a3a3e; --text: #f2f2f4; --muted: #a1a1a6; --faint: #6e6e73;
+    --red: #ff6961; --amber: #ffb340; --green: #4cd964; --blue: #64a8ff; color-scheme: dark; }
 * { box-sizing: border-box; }
 body { margin: 0; font: 13px/1.4 -apple-system, BlinkMacSystemFont, system-ui, sans-serif; background: var(--bg); color: var(--text); }
 header { position: sticky; top: 0; z-index: 2; display: flex; flex-wrap: wrap; gap: 8px; align-items: center; padding: 10px 16px; background: var(--panel); border-bottom: 1px solid var(--line); }
@@ -73,6 +78,7 @@ dialog::backdrop { background: rgba(0, 0, 0, .35); }
   <span class="grow"></span>
   <span id="errors"></span>
   <span id="meta" class="muted"></span>
+  <button class="act" id="theme-toggle" type="button" style="margin:0">◐ Auto</button>
 </header>
 <div id="banner" class="banner">Disconnected from the collector — retrying…</div>
 <div id="notice" class="banner"></div>
@@ -260,7 +266,8 @@ document.addEventListener('click', async e => {
   }
   const el = e.target.closest('button');
   if (!el) return;
-  if (el.id === 'close-drawer') { selected = null; render(); }
+  if (el.id === 'theme-toggle') { theme = THEMES[(THEMES.indexOf(theme) + 1) % THEMES.length]; saveTheme(theme); applyTheme(theme); }
+  else if (el.id === 'close-drawer') { selected = null; render(); }
   else if (el.id === 'toggle-stale') { showStale = !showStale; render(); }
   else if (el.id === 'open-cleanup') openCleanup();
   else if (el.id === 'act-copy') { await navigator.clipboard.writeText(el.dataset.text); notice('Resume command copied.'); }
@@ -310,6 +317,29 @@ function connect() {
   });
   events.onerror = () => $('banner').classList.add('show');
 }
+
+const THEMES = ['auto', 'light', 'dark'];
+const THEME_LABELS = { auto: '◐ Auto', light: '☀ Light', dark: '☾ Dark' };
+function loadTheme() {
+  try {
+    const t = localStorage.getItem('tracker-theme');
+    return THEMES.includes(t) ? t : 'auto';
+  } catch {
+    return 'auto';
+  }
+}
+function saveTheme(t) {
+  try { localStorage.setItem('tracker-theme', t); } catch { /* private window: the choice lasts this page only */ }
+}
+function applyTheme(t) {
+  if (t === 'auto') delete document.documentElement.dataset.theme;
+  else document.documentElement.dataset.theme = t;
+  const button = $('theme-toggle');
+  button.textContent = THEME_LABELS[t];
+  button.title = `Theme: ${t} — click to change`;
+}
+let theme = loadTheme();
+applyTheme(theme);
 
 setInterval(updateTimers, 1000);
 connect();

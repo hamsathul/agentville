@@ -6,17 +6,18 @@ import { fileURLToPath } from 'node:url';
 import vm from 'node:vm';
 
 const html = readFileSync(fileURLToPath(new URL('../../web/index.html', import.meta.url)), 'utf8');
-const script = html.slice(html.indexOf('<script>') + '<script>'.length, html.lastIndexOf('</script>'));
+const script = html.slice(html.lastIndexOf('<script>') + '<script>'.length, html.lastIndexOf('</script>'));
 
-function loadPage() {
+function loadPage({ stored = {}, storageThrows = false } = {}) {
   const els = new Map();
-  const el = () => ({ innerHTML: '', textContent: '', className: '', dataset: {}, classList: { add() {}, remove() {}, toggle() {} }, addEventListener() {}, showModal() {}, querySelectorAll: () => [] });
+  const el = id => ({ id, title: '', innerHTML: '', textContent: '', className: '', dataset: {}, classList: { add() {}, remove() {}, toggle() {} }, addEventListener() {}, showModal() {}, querySelectorAll: () => [] });
   const docListeners = {};
   let sourceListener = null;
   let selectedText = '';
   const ctx = {
     document: {
-      getElementById: id => (els.has(id) ? els.get(id) : els.set(id, el()).get(id)),
+      getElementById: id => (els.has(id) ? els.get(id) : els.set(id, el(id)).get(id)),
+      documentElement: { dataset: {} },
       querySelectorAll: () => [],
       addEventListener: (type, fn) => { (docListeners[type] ??= []).push(fn); },
     },
@@ -25,6 +26,10 @@ function loadPage() {
     setInterval() {},
     setTimeout: fn => fn(),
     navigator: {},
+    localStorage: {
+      getItem: key => { if (storageThrows) throw new Error('denied'); return stored[key] ?? null; },
+      setItem: (key, value) => { if (storageThrows) throw new Error('denied'); stored[key] = String(value); },
+    },
     fetch: async () => ({}),
     console, Date, Math, JSON, String, Number, Object, Boolean, Map, Set, encodeURIComponent,
   };
@@ -36,6 +41,10 @@ function loadPage() {
     push: snap => sourceListener({ data: JSON.stringify(snap) }),
     select: text => { selectedText = text; },
     fire: type => (docListeners[type] ?? []).forEach(fn => fn({ target: { closest: () => null } })),
+    click: id => Promise.all((docListeners.click ?? []).map(fn => fn({ target: { closest: sel => (sel === 'button' ? ctx.document.getElementById(id) : null) } }))),
+    el: id => ctx.document.getElementById(id),
+    theme: () => ctx.document.documentElement.dataset.theme,
+    stored,
   };
 }
 
@@ -91,4 +100,38 @@ test('a waiting agent with a Remote Control link gets an Answer link in its row 
   assert.deepEqual(links, ['href="https://claude.ai/code/session_01AbC"']);
   assert.match(page.ctx.drawerHtml(snap.agents[0]), /Answer in Claude app/);
   assert.doesNotMatch(page.ctx.drawerHtml(snap.agents[1]), /Answer in Claude app/);
+});
+
+test('the theme button cycles Auto → Light → Dark → Auto and remembers the choice', async () => {
+  const page = loadPage();
+  assert.equal(page.theme(), undefined);
+  assert.equal(page.el('theme-toggle').textContent, '◐ Auto');
+  await page.click('theme-toggle');
+  assert.equal(page.theme(), 'light');
+  assert.equal(page.stored['tracker-theme'], 'light');
+  assert.equal(page.el('theme-toggle').textContent, '☀ Light');
+  await page.click('theme-toggle');
+  assert.equal(page.theme(), 'dark');
+  assert.equal(page.el('theme-toggle').textContent, '☾ Dark');
+  await page.click('theme-toggle');
+  assert.equal(page.theme(), undefined);
+  assert.equal(page.stored['tracker-theme'], 'auto');
+});
+
+test('a saved theme is applied when the page loads', () => {
+  const page = loadPage({ stored: { 'tracker-theme': 'dark' } });
+  assert.equal(page.theme(), 'dark');
+  assert.equal(page.el('theme-toggle').textContent, '☾ Dark');
+});
+
+test('blocked browser storage falls back to Auto and the button still switches', async () => {
+  const page = loadPage({ storageThrows: true });
+  assert.equal(page.theme(), undefined);
+  await page.click('theme-toggle');
+  assert.equal(page.theme(), 'light');
+});
+
+test('the page CSS gives both an explicit dark theme and a system-dark theme that Light overrides', () => {
+  assert.match(html, /:root\[data-theme="dark"\]\s*\{/);
+  assert.match(html, /@media \(prefers-color-scheme: dark\)\s*\{\s*:root:not\(\[data-theme="light"\]\)\s*\{/);
 });
