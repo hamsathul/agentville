@@ -65,6 +65,17 @@ header.top { flex: none; z-index: 3; display: flex; flex-wrap: wrap; gap: 10px; 
 .compose-row { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-top: 6px; font-size: 12px; }
 .compose-row .act { margin: 0; }
 .msg-ok { color: var(--good-text); font-weight: 600; }
+.thumbs { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 8px; }
+.thumb { position: relative; width: 96px; height: 64px; border: 1px solid var(--line); border-radius: 8px; overflow: hidden; background: var(--page); }
+.thumb img { display: block; width: 100%; height: 100%; object-fit: cover; }
+.thumb-x { position: absolute; top: 3px; right: 3px; width: 20px; height: 20px; padding: 0; border: 0; border-radius: 50%; background: rgba(0, 0, 0, .65); color: #fff; font-size: 11px; line-height: 20px; cursor: pointer; }
+.compose.dragging textarea { outline: 2px dashed var(--accent); outline-offset: -2px; }
+.ex-repo { display: flex; align-items: center; gap: 5px; padding: 2px 10px 6px; margin-bottom: 3px; border-bottom: 1px solid var(--grid); font-size: 12px; color: var(--muted); white-space: nowrap; overflow: hidden; }
+.ex-repo b { color: var(--text); }
+.repo-tag { margin-left: auto; padding-left: 8px; font-size: 11px; color: var(--faint); white-space: nowrap; }
+.tn.repo .tname { font-weight: 650; }
+.dep { font-size: 11px; font-weight: 700; padding-left: 4px; }
+.dep.bad { color: var(--crit); } .dep.ok { color: var(--good-text); } .dep.run { color: var(--st-mod); }
 .msg-bad { color: var(--crit); font-weight: 600; }
 .k-waiting { --k: var(--crit); } .k-working { --k: var(--good); } .k-turn { --k: var(--warn); } .k-collide { --k: var(--serious); }
 .panel { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 10px 12px; margin-bottom: 6px; }
@@ -286,6 +297,7 @@ pre.code .l:hover { background: var(--panel-2); }
   </aside>
 </main>
 <div id="tip" class="tip" role="tooltip"></div>
+<input type="file" id="img-picker" accept="image/png,image/jpeg,image/gif,image/webp" multiple hidden>
 <dialog id="cleanup">
   <h3>Remove stale background sessions</h3>
   <p class="muted">Runs <span class="mono">claude rm</span> for each one you tick. Removal is permanent: the session and its conversation are deleted.</p>
@@ -302,6 +314,11 @@ let snap = null;
 const drafts = new Map(); // toolUseId → { picks: Map<question index, Set<label>>, other: Map<question index, text> }
 const msgDrafts = new Map(); // agent id → half-typed chat message
 const msgStatus = new Map(); // agent id → { text, bad, at }: the last send's result, shown under the box
+const msgImages = new Map(); // agent id → screenshots waiting to go with the next message: [{ file, url, name, size }]
+let pickerFor = null; // the agent the file picker is choosing screenshots for
+const IMAGE_TYPES = /^image\/(png|jpeg|gif|webp)$/;
+const MAX_SHOTS = 6;
+const MAX_SHOT_BYTES = 10 * 1024 * 1024;
 let selected = null; // the agent in the centre: the one you clicked, else the first one at work, then kept
 const openChildren = new Map();
 const tabs = new Map(); // agent id → { files: [absolute paths], active: a path, or '' for the agent itself }
@@ -620,25 +637,59 @@ function askHtml(a) {
   return `<div class="ask"><div class="sec" style="margin-top:0">❓ Needs your answer</div>${questions}<button class="act primary" id="ask-send" ${ids}>Send answer</button></div>`;
 }
 
-/** Chat box: sends a message into the session as the person's own words (queued if it is busy). */
+/** Chat box: sends a message, with any screenshots, into the session as the person's own words (queued if it is busy). */
 function composeHtml(a) {
   if (a.kind === 'codex') return '';
   const live = Boolean(a.mod?.live);
   const hint = !live ? "This session isn't listening for dashboard messages yet. Send it anything in its terminal once, or start a new session."
     : a.state === 'working' ? `${esc(a.name)} is busy: your message waits until its current step ends. ⌘↩ sends.`
-    : 'Sent as your own message. ⌘↩ sends.';
+    : 'Sent as your own message. Paste or drop screenshots on the box. ⌘↩ sends.';
   const sent = msgStatus.get(a.id);
   const status = sent && Date.now() - sent.at < 20_000
     ? `<span id="msg-status" class="${sent.bad ? 'msg-bad' : 'msg-ok'}">${esc(sent.text)}</span>`
     : `<span id="msg-status" class="faint">${hint}</span>`;
-  return `<div class="compose" style="margin-top:10px"><textarea id="msg-text" data-msg-agent="${esc(a.id)}" rows="2" placeholder="Message ${esc(a.name)}…"${live ? '' : ' disabled'}>${esc(msgDrafts.get(a.id) ?? '')}</textarea>
-    <div class="compose-row">${status}<span class="grow"></span><button class="act primary" id="msg-send" data-agent="${esc(a.id)}"${live ? '' : ' disabled'}>Send</button></div></div>`;
+  const imgs = msgImages.get(a.id) ?? [];
+  const thumbs = imgs.length ? `<div class="thumbs">${imgs.map((im, i) => `<span class="thumb" data-tip="${esc(`${im.name} · ${sizeText(im.size)}`)}"><img src="${esc(im.url)}" alt="Screenshot ${i + 1}"><button type="button" class="thumb-x" data-remove-img="${i}" data-agent="${esc(a.id)}" aria-label="Remove screenshot ${i + 1}">✕</button></span>`).join('')}</div>` : '';
+  return `<div class="compose" data-agent="${esc(a.id)}" style="margin-top:10px"><textarea id="msg-text" data-msg-agent="${esc(a.id)}" rows="2" placeholder="Message ${esc(a.name)}…"${live ? '' : ' disabled'}>${esc(msgDrafts.get(a.id) ?? '')}</textarea>${thumbs}
+    <div class="compose-row">${status}<span class="grow"></span><button class="act" id="msg-attach" type="button" data-agent="${esc(a.id)}" data-tip="Attach screenshots (you can also paste or drop them on the box)"${live ? '' : ' disabled'}>📎 Screenshot</button><button class="act primary" id="msg-send" data-agent="${esc(a.id)}"${live ? '' : ' disabled'}>Send</button></div></div>`;
+}
+
+const sizeText = bytes => (bytes >= 1_048_576 ? `${(bytes / 1_048_576).toFixed(1)} MB` : `${Math.max(1, Math.round(bytes / 1024))} KB`);
+
+function toBase64(bytes) {
+  let bin = '';
+  for (let i = 0; i < bytes.length; i += 0x8000) bin += String.fromCharCode(...bytes.subarray(i, i + 0x8000));
+  return btoa(bin);
+}
+
+/** Screenshots pasted, dropped or picked for an agent's next message. */
+function addImages(agentId, files) {
+  const list = msgImages.get(agentId) ?? [];
+  let refused = '';
+  for (const file of files) {
+    if (!IMAGE_TYPES.test(file?.type ?? '')) { refused = 'Only PNG, JPEG, GIF and WebP images can be attached.'; continue; }
+    if (file.size > MAX_SHOT_BYTES) { refused = `${file.name} is too large (10 MB at most).`; continue; }
+    if (list.length >= MAX_SHOTS) { refused = `At most ${MAX_SHOTS} screenshots per message.`; break; }
+    list.push({ file, url: URL.createObjectURL(file), name: file.name || 'screenshot.png', size: file.size });
+  }
+  msgImages.set(agentId, list);
+  if (refused) msgStatus.set(agentId, { at: Date.now(), bad: true, text: refused });
+  render();
+}
+
+function removeImage(agentId, index) {
+  const list = msgImages.get(agentId) ?? [];
+  const [gone] = list.splice(index, 1);
+  if (gone) URL.revokeObjectURL(gone.url);
+  render();
 }
 
 async function sendMessage(agentId, button) {
   const text = (msgDrafts.get(agentId) ?? '').trim();
-  if (!text) {
-    notice('Type a message first.');
+  const imgs = msgImages.get(agentId) ?? [];
+  if (!text && !imgs.length) {
+    msgStatus.set(agentId, { at: Date.now(), bad: true, text: 'Type a message or add a screenshot first.' });
+    render();
     return;
   }
   const agent = snap?.agents.find(a => a.id === agentId);
@@ -646,12 +697,25 @@ async function sendMessage(agentId, button) {
     button.disabled = true;
     button.textContent = 'Sending…';
   }
-  const r = await post('/api/actions/message', { agentId, text });
-  if (r.ok) msgDrafts.delete(agentId);
+  let images = [];
+  try {
+    images = await Promise.all(imgs.map(async im => ({ name: im.name, data: toBase64(new Uint8Array(await im.file.arrayBuffer())) })));
+  } catch (err) {
+    msgStatus.set(agentId, { at: Date.now(), bad: true, text: `Could not read a screenshot: ${err?.message ?? err}` });
+    render();
+    return;
+  }
+  const r = await post('/api/actions/message', images.length ? { agentId, text, images } : { agentId, text });
+  if (r.ok) {
+    msgDrafts.delete(agentId);
+    for (const im of imgs) URL.revokeObjectURL(im.url);
+    msgImages.delete(agentId);
+  }
+  const extra = images.length ? ` with ${images.length} screenshot${images.length > 1 ? 's' : ''}` : '';
   msgStatus.set(agentId, {
     at: Date.now(),
     bad: !r.ok,
-    text: r.ok ? (agent?.state === 'working' ? `Queued for ${agent.name}: it reads it when its current step ends.` : `✓ Sent to ${agent?.name ?? 'the session'}.`) : `Not sent: ${r.error}`,
+    text: r.ok ? (agent?.state === 'working' ? `Queued for ${agent.name}${extra}: it reads it when its current step ends.` : `✓ Sent to ${agent?.name ?? 'the session'}${extra}.`) : `Not sent: ${r.error}`,
   });
   render();
 }
@@ -1114,12 +1178,23 @@ function fileRow(path, label, depth, ctx, sub = '') {
   return `<button class="tn file${st ? ` st-${st}` : ''}${on ? ' on' : ''}" type="button" data-file="${esc(path)}" style="--d:${depth}" data-tip="${esc(tip)}"><span class="tw"></span><span class="tname">${esc(label)}</span>${sub ? `<span class="tsub">${esc(sub)}</span>` : ''}${t ? `<i class="mine${t.wrote ? '' : ' read'}" style="--c:${ctx.color}"></i>` : ''}${st ? `<span class="tst">${esc(st)}</span>` : ''}</button>`;
 }
 
+/** A small deploy mark for a repo, from the Repos panel's GitHub Actions status. */
+function deployMark(d) {
+  if (!d) return '';
+  if (d.status !== 'completed') return `<span class="dep run" data-tip="${esc(`${d.workflow ?? 'Deploy'} ${d.status} · ${d.sha}`)}">●</span>`;
+  return d.conclusion === 'success' ? '<span class="dep ok" data-tip="Deployed">✓</span>'
+    : d.conclusion === 'failure' ? `<span class="dep bad" data-tip="${esc(`${d.workflow ?? 'Deploy'} failed at ${d.sha}`)}">✗</span>` : '';
+}
+const deployOf = top => snap?.repos?.find(r => r.path === top)?.deploy;
+
 function treeRows(node, prefix, depth, out, ctx) {
   for (const name of [...node.dirs.keys()].sort(byName)) {
     const path = prefix ? `${prefix}/${name}` : name;
     const open = ctx.open.has(path);
     const mine = ctx.mine.has(path) ? `<i class="mine" style="--c:${ctx.color}" data-tip="${esc(`${ctx.name} edited files in here`)}"></i>` : '';
-    out.push(`<button class="tn dir${ctx.changed.has(path) ? ' changed' : ''}" type="button" data-dir="${esc(path)}" aria-expanded="${open}" style="--d:${depth}"><span class="tw">${open ? '▾' : '▸'}</span><span class="tname">${esc(name)}</span>${mine}</button>`);
+    const repo = ctx.repos.get(path);
+    const tag = repo ? `<span class="repo-tag" data-tip="${esc(`Git repo ${repo.name}, on ${repo.branch}`)}">⎇ ${esc(repo.branch)}</span>${deployMark(deployOf(repo.top))}` : '';
+    out.push(`<button class="tn dir${repo ? ' repo' : ''}${ctx.changed.has(path) ? ' changed' : ''}" type="button" data-dir="${esc(path)}" aria-expanded="${open}" style="--d:${depth}"><span class="tw">${open ? '▾' : '▸'}</span><span class="tname">${esc(name)}</span>${mine}${tag}</button>`);
     if (open) treeRows(node.dirs.get(name), path, depth + 1, out, ctx);
   }
   for (const name of [...node.files].sort(byName)) out.push(fileRow(prefix ? `${prefix}/${name}` : name, name, depth, ctx));
@@ -1138,8 +1213,14 @@ function renderTree() {
   const mine = new Set();
   for (const path of Object.keys(d.status ?? {})) for (const a of ancestors(path)) changed.add(a);
   for (const [path, t] of Object.entries(d.touched ?? {})) if (t.wrote) for (const a of ancestors(path)) mine.add(a);
-  const ctx = { root: d.root, status: d.status ?? {}, touched: d.touched ?? {}, open: openDirs(agent.id), changed, mine, color: colorOf(agent.id), name: agent.name };
+  const repos = d.repos ?? [];
+  const ctx = { root: d.root, status: d.status ?? {}, touched: d.touched ?? {}, open: openDirs(agent.id), changed, mine, color: colorOf(agent.id), name: agent.name, repos: new Map(repos.filter(r => r.path).map(r => [r.path, r])) };
   const out = [];
+  const own = repos.find(r => r.path === '');
+  if (own) {
+    const n = Object.keys(ctx.status).length;
+    out.push(`<div class="ex-repo" data-tip="${esc(`Git repo at ${short(own.top)}`)}">⎇ <b>${esc(own.name)}</b><span>${esc(own.branch)}</span><span class="faint">· ${n ? `${n} changed` : 'clean'}</span>${deployMark(deployOf(own.top))}</div>`);
+  }
   const q = filterText.trim().toLowerCase();
   if (q) {
     const hits = d.files.filter(f => f.toLowerCase().includes(q));
@@ -1308,6 +1389,13 @@ document.addEventListener('click', async e => {
   if (!el) return;
   const d = el.dataset;
   if (el.id === 'msg-send') { await sendMessage(d.agent, el); return; }
+  if (d.removeImg !== undefined) { removeImage(d.agent, Number(d.removeImg)); return; }
+  if (el.id === 'msg-attach') {
+    pickerFor = d.agent;
+    $('img-picker').value = '';
+    $('img-picker').click?.();
+    return;
+  }
   if (d.docPath) { await openFile(d.docAgent, d.docPath); return; }
   if (d.closeTab !== undefined) { closeTab(d.closeTab); return; }
   if (d.tab !== undefined) {
@@ -1392,6 +1480,11 @@ document.addEventListener('selectionchange', captureReaderSelection);
 // Answer drafts survive the drawer re-rendering on every snapshot.
 document.addEventListener('change', e => {
   const t = e.target;
+  if (t?.id === 'img-picker') {
+    if (pickerFor) addImages(pickerFor, [...(t.files ?? [])]);
+    t.value = '';
+    return;
+  }
   if (!t?.dataset?.tool || t.dataset.q === undefined || t.type === 'text') return;
   const d = draftFor(t.dataset.tool);
   const qi = Number(t.dataset.q);
@@ -1399,6 +1492,28 @@ document.addEventListener('change', e => {
   if (t.checked) picks.add(t.value);
   else picks.delete(t.value);
   d.picks.set(qi, picks);
+});
+// Screenshots: paste them into the message box, or drop them on it.
+document.addEventListener('paste', e => {
+  const agentId = e.target?.dataset?.msgAgent;
+  const files = [...(e.clipboardData?.files ?? [])];
+  if (agentId === undefined || !files.some(f => f.type?.startsWith('image/'))) return; // plain text pastes as usual
+  e.preventDefault();
+  addImages(agentId, files);
+});
+const draggingFiles = e => [...(e.dataTransfer?.types ?? [])].includes('Files');
+document.addEventListener('dragover', e => {
+  if (!draggingFiles(e)) return;
+  e.preventDefault(); // a dropped file must not replace the dashboard
+  document.querySelectorAll('.compose.dragging').forEach(c => c.classList.remove('dragging'));
+  e.target?.closest?.('.compose[data-agent]')?.classList.add('dragging');
+});
+document.addEventListener('drop', e => {
+  if (!draggingFiles(e)) return;
+  e.preventDefault();
+  document.querySelectorAll('.compose.dragging').forEach(c => c.classList.remove('dragging'));
+  const box = e.target?.closest?.('.compose[data-agent]');
+  if (box) addImages(box.dataset.agent, [...(e.dataTransfer?.files ?? [])]);
 });
 document.addEventListener('keydown', e => {
   if (e.key === 'Enter' && (e.metaKey || e.ctrlKey) && e.target?.id === 'msg-text') {

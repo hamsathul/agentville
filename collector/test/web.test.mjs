@@ -11,6 +11,7 @@ const script = html.slice(html.lastIndexOf('<script>') + '<script>'.length, html
 function loadPage({ stored = {}, storageThrows = false, files = {}, replies = {}, listing = null } = {}) {
   const posts = [];
   const gets = [];
+  const revoked = [];
   let active = null;
   const els = new Map();
   const el = id => ({ id, title: '', innerHTML: '', textContent: '', value: '', className: '', dataset: {}, classList: { add() {}, remove() {}, toggle() {} }, addEventListener() {}, showModal() { this.open = true; }, close() { this.open = false; }, focus() {}, querySelectorAll: () => [] });
@@ -49,7 +50,8 @@ function loadPage({ stored = {}, storageThrows = false, files = {}, replies = {}
       }
       return { ok: true, json: async () => replies[path] ?? { ok: true } };
     },
-    console, Date, Math, JSON, String, Number, Object, Boolean, Map, Set, encodeURIComponent, decodeURIComponent,
+    console, Date, Math, JSON, String, Number, Object, Boolean, Map, Set, encodeURIComponent, decodeURIComponent, btoa,
+    URL: { createObjectURL: f => `blob:${f.name}`, revokeObjectURL: url => { revoked.push(url); } },
   };
   vm.createContext(ctx);
   vm.runInContext(script, ctx);
@@ -67,6 +69,8 @@ function loadPage({ stored = {}, storageThrows = false, files = {}, replies = {}
     settle: async () => { for (let i = 0; i < 40; i++) await Promise.resolve(); },
     posts,
     gets,
+    revoked,
+    paste: (target, files) => (docListeners.paste ?? []).forEach(fn => fn({ target: { closest: () => null, ...target }, clipboardData: { files }, preventDefault() {} })),
     focus: element => { active = element; },
     openAgent: id => Promise.all((docListeners.click ?? []).map(fn => fn({ target: { closest: sel => (sel === '.row[data-id]' ? { dataset: { id } } : null) } }))),
     clickButton: (id, dataset) => { Object.assign(ctx.document.getElementById(id).dataset, dataset); return Promise.all((docListeners.click ?? []).map(fn => fn({ target: { closest: sel => (sel === 'button' ? ctx.document.getElementById(id) : null) } }))); },
@@ -567,4 +571,64 @@ test('a file opens read-only in a centre tab with line numbers and its HTML kept
   assert.match(page.side(), /data-msg-agent="r1"/);
   await page.clickButton('x', { closeTab: '/w/src/app.ts' });
   assert.doesNotMatch(page.tabs(), /app\.ts/);
+});
+
+const shot = (name, bytes = [0x89, 0x50, 0x4e, 0x47, 1, 2, 3, 4, 5, 6]) => ({ name, type: 'image/png', size: bytes.length, arrayBuffer: async () => new Uint8Array(bytes).buffer });
+
+test('pasted screenshots show as thumbnails under the message box and go with the message', async () => {
+  const page = loadPage();
+  page.push(richSnapshot([richAgent({ mod: { version: '0.3.1', live: true }, state: 'yourTurn' })]));
+  await page.openAgent('r1');
+  page.paste({ id: 'msg-text', dataset: { msgAgent: 'r1' } }, [shot('one.png'), shot('two.png'), { name: 'notes.txt', type: 'text/plain', size: 3 }]);
+  assert.equal((page.side().match(/class="thumb"/g) ?? []).length, 2);
+  assert.match(page.side(), /<img src="blob:one\.png"/);
+  page.edit('input', { tagName: 'TEXTAREA', value: 'The button is cut off', dataset: { msgAgent: 'r1' } });
+  await page.clickButton('msg-send', { agent: 'r1' });
+  const sent = page.posts.find(p => p.path === '/api/actions/message').body;
+  assert.equal(sent.text, 'The button is cut off');
+  assert.deepEqual(sent.images, [{ name: 'one.png', data: 'iVBORwECAwQFBg==' }, { name: 'two.png', data: 'iVBORwECAwQFBg==' }]);
+  assert.doesNotMatch(page.side(), /class="thumb"/);
+  assert.deepEqual(page.revoked, ['blob:one.png', 'blob:two.png']);
+  assert.match(page.side(), /id="msg-status"[^>]*>✓ Sent to busy-one with 2 screenshots/);
+});
+
+test('a screenshot alone can be sent, one can be removed, and screenshots can be picked from files', async () => {
+  const page = loadPage();
+  page.push(richSnapshot([richAgent({ mod: { version: '0.3.1', live: true } })]));
+  await page.openAgent('r1');
+  await page.clickButton('msg-attach', { agent: 'r1' });
+  page.edit('change', { id: 'img-picker', files: [shot('a.png'), shot('b.png')], value: 'x' });
+  assert.equal((page.side().match(/class="thumb"/g) ?? []).length, 2);
+  await page.clickButton('thumb-x', { removeImg: '0', agent: 'r1' });
+  assert.equal((page.side().match(/class="thumb"/g) ?? []).length, 1);
+  assert.match(page.side(), /blob:b\.png/);
+  await page.clickButton('msg-send', { agent: 'r1' });
+  const sent = page.posts.find(p => p.path === '/api/actions/message').body;
+  assert.equal(sent.text, '');
+  assert.equal(sent.images.length, 1);
+});
+
+test('the explorer names the repo the folder belongs to, with its branch', async () => {
+  const page = loadPage({ listing: { ...LISTING, repos: [{ path: '', top: '/w', name: 'w', branch: 'main' }] } });
+  page.push(richSnapshot([richAgent()]));
+  await page.settle();
+  assert.match(page.tree(), /class="ex-repo"[\s\S]*?⎇[\s\S]*?\bw\b[\s\S]*?main[\s\S]*?2 changed/);
+});
+
+test('in a folder holding several repos, each repo folder shows its branch and deploy state', async () => {
+  const listing = {
+    root: '/w', git: false, truncated: false,
+    files: ['api/a.ts', 'notes.md', 'web/b.ts'],
+    status: { 'api/a.ts': 'M' }, touched: {},
+    repos: [{ path: 'api', top: '/w/api', name: 'api', branch: 'main' }, { path: 'web', top: '/w/web', name: 'web', branch: 'dev' }],
+  };
+  const page = loadPage({ listing });
+  const snap = richSnapshot([richAgent()]);
+  snap.repos = [{ path: '/w/api', name: 'api', branch: 'main', agentIds: [], deploy: { status: 'completed', conclusion: 'failure', workflow: 'Deploy', sha: 'abc' } }];
+  page.push(snap);
+  await page.settle();
+  const tree = page.tree();
+  assert.match(tree, /data-dir="api"[^>]*>[\s\S]*?class="repo-tag"[^>]*>⎇ main[\s\S]*?✗/);
+  assert.match(tree, /data-dir="web"[^>]*>[\s\S]*?class="repo-tag"[^>]*>⎇ dev/);
+  assert.doesNotMatch(tree, /class="ex-repo"/);
 });

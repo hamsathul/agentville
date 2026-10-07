@@ -185,3 +185,17 @@ test('the explorer listing and file contents are served only with the token', as
     await srv.close();
   }
 });
+
+test('a message may carry screenshots, so its body may be large; other actions stay small', async () => {
+  const { srv, port, calls } = await start();
+  try {
+    const headers = { 'content-type': 'application/json', 'x-tracker-token': 'tok', origin: `http://127.0.0.1:${port}` };
+    const big = JSON.stringify({ agentId: 's1', text: 'see', images: [{ data: 'A'.repeat(200_000) }] });
+    assert.equal((await request(port, { method: 'POST', path: '/api/actions/message', headers, body: big })).status, 200);
+    assert.equal(calls.at(-1)[1].images[0].data.length, 200_000);
+    const r = await request(port, { method: 'POST', path: '/api/actions/answer', headers, body: big });
+    assert.equal(r.status, 413);
+  } finally {
+    await srv.close();
+  }
+});

@@ -13,6 +13,7 @@ import { RepoResolver, repoStatus } from './sources/git.mjs';
 import { deployStatus } from './sources/gh.mjs';
 import { confirmDelivery, readBeacons, readPending, validateAnswers, writeAnswerFile, writeMessageFile } from './sources/pending.mjs';
 import { listFolder, readFolderFile } from './sources/files.mjs';
+import { checkImages, pruneUploads, saveImages, withScreenshots } from './sources/uploads.mjs';
 import { applySince, buildAgent, countStates, sortAgents } from './derive/agent.mjs';
 import { findCollisions } from './derive/collisions.mjs';
 import { AlertEngine, notifyMac } from './alerts.mjs';
@@ -57,7 +58,8 @@ export async function startCollector({ root, claudeDir = join(homedir(), '.claud
   const answersDir = join(stateDir, 'answers');
   const modsDir = join(stateDir, 'mods');
   const messagesDir = join(stateDir, 'messages');
-  for (const dir of [stateDir, pendingDir, answersDir, modsDir, messagesDir]) mkdirSync(dir, { recursive: true });
+  const uploadsDir = join(stateDir, 'uploads');
+  for (const dir of [stateDir, pendingDir, answersDir, modsDir, messagesDir, uploadsDir]) mkdirSync(dir, { recursive: true });
   const configPath = join(root, 'config.json');
 
   const sources = {};
@@ -314,6 +316,7 @@ export async function startCollector({ root, claudeDir = join(homedir(), '.claud
     timers.push(setInterval(() => void pollAgents(), cfg.agentsCliPollMs));
     timers.push(setInterval(() => void pollGit(), cfg.gitPollMs));
     timers.push(setInterval(() => void pollDeploys(), cfg.deployPollMs));
+    timers.push(setInterval(() => pruneUploads(uploadsDir, Date.now()), 3_600_000));
   }
 
   function reloadConfig() {
@@ -417,10 +420,13 @@ export async function startCollector({ root, claudeDir = join(homedir(), '.claud
       const agent = snapshot?.agents.find(a => a.id === body?.agentId);
       if (!agent || agent.kind === 'codex') return { ok: false, error: 'That session was not found.' };
       const text = typeof body.text === 'string' ? body.text.trim() : '';
-      if (!text) return { ok: false, error: 'Type a message first.' };
+      const checked = checkImages(body.images);
+      if (checked.error) return { ok: false, error: checked.error };
+      if (!text && !checked.images.length) return { ok: false, error: 'Type a message first.' };
       if (text.length > 20_000) return { ok: false, error: 'That message is too long (20,000 characters at most).' };
       if (!agent.mod?.live) return { ok: false, error: "That session isn't listening for dashboard messages yet. Send it anything in its terminal once, or start a new session." };
-      const file = writeMessageFile(messagesDir, agent.id, text);
+      const shots = saveImages(uploadsDir, agent.id, checked.images);
+      const file = writeMessageFile(messagesDir, agent.id, withScreenshots(text, shots));
       return confirmDelivery(file, { timeoutMs: deliveryTimeoutMs, failure: "The session didn't pick up the message. Please send it in its terminal." });
     },
     async answer(body) {
@@ -487,6 +493,7 @@ export async function startCollector({ root, claudeDir = join(homedir(), '.claud
   }));
 
   startTimers();
+  pruneUploads(uploadsDir, Date.now());
   void pollGit();
   void pollDeploys();
   log(`collector started on 127.0.0.1:${port}`);

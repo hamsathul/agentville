@@ -2,8 +2,9 @@
 # End-to-end check of answering from the dashboard, with real Claude Code sessions.
 # Starts short background Haiku sessions (one asks a question, one needs permission to run
 # mkdir), answers both through the dashboard's HTTP API, sends the first one a chat message,
-# has it read a markdown file and fetches that file for the document reader, messages a busy
-# interactive session, then removes the sessions. Needs the collector running.
+# has it read a markdown file and fetches that file for the document reader, sends it a
+# screenshot, messages a busy interactive session, then removes the sessions. Needs the
+# collector running.
 set -eo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 PORT="$(/usr/bin/plutil -extract port raw "$ROOT/config.json" 2>/dev/null || echo 7777)"
@@ -60,7 +61,7 @@ transcript_has() { # session id, text → exit 0 when the transcript contains it
   return 1
 }
 
-echo "1/5 question answered from the dashboard"
+echo "1/6 question answered from the dashboard"
 Q=$(start e2e-ask "Use the AskUserQuestion tool to ask me exactly one question: 'Pick a colour?' with the options Red and Blue (header: Colour). After I answer, reply with only the colour I chose and stop. Do not read or change any files.")
 [ -n "$Q" ] || fail "could not start the question session"
 IDS+=("$Q")
@@ -71,7 +72,7 @@ R="$(post /api/actions/answer "{\"agentId\":\"$QS\",\"toolUseId\":\"$QID\",\"ans
 transcript_has "$QS" '\"Pick a colour?\"=\"Blue\"' || fail "Claude never received the answer"
 echo "   ok: Claude received \"Blue\""
 
-echo "2/5 permission prompt allowed from the dashboard"
+echo "2/6 permission prompt allowed from the dashboard"
 P=$(start e2e-permit "Run exactly this one Bash command and nothing else: mkdir $PERMIT_DIR   Then reply DONE. Do not read or change any other files.")
 [ -n "$P" ] || fail "could not start the permission session"
 IDS+=("$P")
@@ -83,7 +84,7 @@ for _ in $(seq 1 60); do [ -d "$PERMIT_DIR" ] && break; sleep 1; done
 [ -d "$PERMIT_DIR" ] || fail "the allowed command never ran"
 echo "   ok: the command ran"
 
-echo "3/5 chat message sent from the dashboard"
+echo "3/6 chat message sent from the dashboard"
 WORD="tracker-e2e-$$"
 for _ in $(seq 1 60); do
   R="$(post /api/actions/message "{\"agentId\":\"$QS\",\"text\":\"Reply with only the word $WORD and stop.\"}")"
@@ -94,7 +95,7 @@ done
 transcript_has "$QS" "Reply with only the word $WORD" || fail "the message never reached the session"
 echo "   ok: the session got the message"
 
-echo "4/5 the document reader and the explorer, and what they refuse"
+echo "4/6 the document reader and the explorer, and what they refuse"
 DOC="$ROOT/README.md"
 R="$(post /api/actions/message "{\"agentId\":\"$QS\",\"text\":\"Use the Read tool to read README.md (first 5 lines are enough), then reply with only DONE.\"}")"
 [ "$R" = '{"ok":true}' ] || fail "message refused: $R"
@@ -113,10 +114,41 @@ curl -s -H "x-tracker-token: $TOKEN" "$BASE/api/agent/$QS/file?path=$ROOT/packag
 [ "$(curl -s -o /dev/null -w '%{http_code}' -H "x-tracker-token: $TOKEN" "$BASE/api/agent/$QS/file?path=$ROOT/state/token")" = 403 ] || fail "the git-ignored token file was served"
 echo "   ok: the explorer lists and opens the folder, and never the git-ignored token"
 
-echo "5/5 a message to a busy interactive session is taken at once and queued once"
+echo "5/6 a screenshot sent with a message is seen by the session"
+# A 64x64 solid red PNG, made here so the test needs no image files.
+SHOT="$(node -e '
+const zlib = require("zlib");
+const w = 64, h = 64, raw = Buffer.alloc((w * 3 + 1) * h);
+for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) raw.set([220, 20, 20], y * (w * 3 + 1) + 1 + x * 3);
+const chunk = (type, data) => { const td = Buffer.concat([Buffer.from(type), data]); const len = Buffer.alloc(4); len.writeUInt32BE(data.length); const crc = Buffer.alloc(4); crc.writeUInt32BE(zlib.crc32(td)); return Buffer.concat([len, td, crc]); };
+const ihdr = Buffer.alloc(13); ihdr.writeUInt32BE(w, 0); ihdr.writeUInt32BE(h, 4); ihdr.set([8, 2, 0, 0, 0], 8);
+process.stdout.write(Buffer.concat([Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]), chunk("IHDR", ihdr), chunk("IDAT", zlib.deflateSync(raw)), chunk("IEND", Buffer.alloc(0))]).toString("base64"));
+')"
+SHOT_WORD="shot-e2e-$$"
+R="$(post /api/actions/message "{\"agentId\":\"$QS\",\"text\":\"($SHOT_WORD) What single colour fills this screenshot? Reply with only the colour name.\",\"images\":[{\"name\":\"red.png\",\"data\":\"$SHOT\"}]}")"
+[ "$R" = '{"ok":true}' ] || fail "a message with a screenshot was refused: $R"
+SAW=""
+for _ in $(seq 1 120); do
+  F="$(ls "$HOME"/.claude/projects/*/"$QS".jsonl | head -1)"
+  SAW="$(node -e '
+const lines = require("fs").readFileSync(process.argv[1], "utf8").trim().split("\n").map(l => { try { return JSON.parse(l); } catch { return {}; } });
+const at = lines.findIndex(l => l.type === "user" && JSON.stringify(l.message?.content ?? "").includes(process.argv[2]));
+if (at < 0) process.exit(0);
+const after = lines.slice(at + 1);
+const read = after.some(l => (l.message?.content ?? []).some?.(c => c.type === "tool_use" && c.name === "Read" && /state\/uploads\//.test(c.input?.file_path ?? "")));
+const reply = after.flatMap(l => l.type === "assistant" ? (l.message?.content ?? []).filter(c => c.type === "text").map(c => c.text) : []).join(" ");
+if (read && /\bred\b/i.test(reply)) process.stdout.write("yes");
+' "$F" "$SHOT_WORD")"
+  [ "$SAW" = yes ] && break
+  sleep 1
+done
+[ "$SAW" = yes ] || fail "the session never opened the screenshot and named its colour"
+echo "   ok: the session opened the screenshot and said it is red"
+
+echo "6/6 a message to a busy interactive session is taken at once and queued once"
 if ! command -v python3 >/dev/null; then
   echo "   skipped: needs python3 to run an interactive session"
-  echo "PASS (step 5 skipped)"
+  echo "PASS (step 6 skipped)"
   exit 0
 fi
 # An interactive session in a pseudo-terminal, busy writing a long answer. Variables that would

@@ -1,9 +1,9 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
-import { mkdirSync, mkdtempSync, symlinkSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, realpathSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { dirname, join } from 'node:path';
+import { basename, dirname, join } from 'node:path';
 import { listFolder, readFolderFile } from '../sources/files.mjs';
 
 const write = (dir, rel, body) => {
@@ -14,7 +14,7 @@ const write = (dir, rel, body) => {
 function repo() {
   const dir = mkdtempSync(join(tmpdir(), 'tracker-files-'));
   const git = (...args) => execFileSync('git', ['-C', dir, '-c', 'user.email=t@t', '-c', 'user.name=t', ...args]);
-  git('init', '-q');
+  git('init', '-q', '-b', 'main');
   write(dir, '.gitignore', 'node_modules/\n.env\n*.log\n');
   write(dir, 'README.md', '# Hi\n');
   write(dir, 'src/app.ts', 'export const a = 1;\n');
@@ -38,6 +38,7 @@ test('a git folder lists tracked and new files with their status; ignored and se
     git: true,
     files: ['.gitignore', 'README.md', 'big.txt', 'bin.dat', 'notes.txt', 'src/app.ts', 'src/util/x.ts'],
     status: { 'big.txt': 'U', 'bin.dat': 'U', 'notes.txt': 'U', 'src/app.ts': 'M' },
+    repos: [{ path: '', top: realpathSync(dir), name: basename(dir), branch: 'main' }],
     truncated: false,
   });
 });
@@ -47,6 +48,7 @@ test('a subfolder of a repo lists only its own files, relative to itself', async
   const r = await listFolder(join(dir, 'src'), { home: '/nowhere' });
   assert.deepEqual(r.files, ['app.ts', 'util/x.ts']);
   assert.deepEqual(r.status, { 'app.ts': 'M' });
+  assert.deepEqual(r.repos, [{ path: '', top: realpathSync(dir), name: basename(dir), branch: 'main' }]);
 });
 
 test('a long listing is cut at the limit and says so', async () => {
@@ -63,7 +65,7 @@ test('a folder outside git is walked, skipping dependencies, hidden folders and 
   write(dir, '.hidden/y.txt', '');
   write(dir, '.env', 'S=1');
   write(dir, 'keys/server.pem', 'k');
-  assert.deepEqual(await listFolder(dir, { home: '/nowhere' }), { git: false, files: ['a.md', 'sub/b.ts'], status: {}, truncated: false });
+  assert.deepEqual(await listFolder(dir, { home: '/nowhere' }), { git: false, files: ['a.md', 'sub/b.ts'], status: {}, repos: [], truncated: false });
 });
 
 test('the home folder and the disk root are not listed', async () => {
@@ -107,7 +109,7 @@ test('a plain folder holding git repos lists each repo the way git sees it', asy
   write(outer, 'svc/.gitignore', 'dist/\n');
   write(outer, 'svc/src.ts', 'one');
   const git = (...args) => execFileSync('git', ['-C', join(outer, 'svc'), '-c', 'user.email=t@t', '-c', 'user.name=t', ...args]);
-  git('init', '-q');
+  git('init', '-q', '-b', 'dev');
   git('add', '.');
   git('commit', '-q', '-m', 'init');
   write(outer, 'svc/src.ts', 'two');
@@ -116,6 +118,7 @@ test('a plain folder holding git repos lists each repo the way git sees it', asy
     git: false,
     files: ['notes.md', 'svc/.gitignore', 'svc/src.ts'],
     status: { 'svc/src.ts': 'M' },
+    repos: [{ path: 'svc', top: realpathSync(join(outer, 'svc')), name: 'svc', branch: 'dev' }],
     truncated: false,
   });
   assert.equal((await readFolderFile(outer, join(outer, 'svc/src.ts'))).doc.text, 'two');

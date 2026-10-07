@@ -33,19 +33,26 @@ function parsePorcelain(out, prefix) {
 /** A git folder as git sees it: tracked files plus new ones it doesn't ignore, with their status. Null outside git. */
 async function listRepo(dir, runner) {
   const git = args => runner('git', ['-C', dir, ...args], { env: GIT_ENV, timeoutMs: 10_000 });
-  const inRepo = await git(['rev-parse', '--show-prefix']);
+  const inRepo = await git(['rev-parse', '--show-toplevel', '--show-prefix']);
   if (inRepo.code !== 0) return null;
+  const [top, prefix = ''] = inRepo.stdout.split('\n');
   const listed = await git(['ls-files', '-z', '--cached', '--others', '--exclude-standard']);
   if (listed.code !== 0) return { error: `git could not list this folder (${listed.stderr.trim().slice(0, 200)}).` };
   const files = [...new Set(listed.stdout.split('\0').filter(Boolean))].filter(p => !SECRET_FILE.test(p)).sort();
   const st = await git(['status', '--porcelain=v1', '-z', '--untracked-files=all', '--', '.']);
-  return { files, status: st.code === 0 ? parsePorcelain(st.stdout, inRepo.stdout.trim()) : {} };
+  let branch = (await git(['branch', '--show-current'])).stdout.trim();
+  if (!branch) {
+    const head = (await git(['rev-parse', '--short', 'HEAD'])).stdout.trim();
+    branch = head ? `detached ${head}` : '?';
+  }
+  return { files, status: st.code === 0 ? parsePorcelain(st.stdout, prefix.trim()) : {}, top, name: basename(top), branch };
 }
 
 /** A folder outside git: walked breadth-first, skipping dependency and hidden folders; repos inside it are listed by git. */
 async function walk(cwd, max, runner) {
   const files = [];
   const status = {};
+  const repos = [];
   const queue = [['', 0]];
   const add = rel => {
     if (files.length >= max) return false;
@@ -66,19 +73,20 @@ async function walk(cwd, max, runner) {
         if (SKIP_DIRS.has(e.name) || e.name.startsWith('.')) continue;
         const repo = existsSync(join(cwd, rel, '.git')) ? await listRepo(join(cwd, rel), runner) : null;
         if (repo?.files) {
-          for (const f of repo.files) if (!add(`${rel}/${f}`)) return { files: files.sort(), status, truncated: true };
+          repos.push({ path: rel, top: repo.top, name: repo.name, branch: repo.branch });
+          for (const f of repo.files) if (!add(`${rel}/${f}`)) return { files: files.sort(), status, repos, truncated: true };
           for (const [path, code] of Object.entries(repo.status)) status[`${rel}/${path}`] = code;
         } else if (depth + 1 < WALK_DEPTH) {
           queue.push([rel, depth + 1]);
         }
       } else if ((e.isFile() || e.isSymbolicLink()) && !SECRET_FILE.test(rel)) {
-        if (!add(rel)) return { files: files.sort(), status, truncated: true };
+        if (!add(rel)) return { files: files.sort(), status, repos, truncated: true };
       }
     }
   }
   const shown = new Set(files);
   for (const path of Object.keys(status)) if (!shown.has(path)) delete status[path];
-  return { files: files.sort(), status, truncated: false };
+  return { files: files.sort(), status, repos: repos.sort((a, b) => (a.path < b.path ? -1 : 1)), truncated: false };
 }
 
 /** The files under `cwd`, relative to it, with git status where there is one. */
@@ -92,7 +100,7 @@ export async function listFolder(cwd, { home = homedir(), runner = run, max = MA
   const files = repo.files.slice(0, max);
   const shown = new Set(files);
   const status = Object.fromEntries(Object.entries(repo.status).filter(([path]) => shown.has(path)));
-  return { git: true, files, status, truncated: repo.files.length > max };
+  return { git: true, files, status, repos: [{ path: '', top: repo.top, name: repo.name, branch: repo.branch }], truncated: repo.files.length > max };
 }
 
 /** One file from the agent's folder, under the same rules the listing follows. */

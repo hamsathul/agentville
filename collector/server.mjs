@@ -2,6 +2,7 @@ import { createServer } from 'node:http';
 import { readFileSync } from 'node:fs';
 
 const BODY_LIMIT = 64 * 1024;
+const MESSAGE_LIMIT = 90 * 1024 * 1024; // up to six 10 MB screenshots, base64-encoded
 
 function send(res, status, type, body) {
   res.writeHead(status, { 'content-type': type, 'cache-control': 'no-store' });
@@ -9,13 +10,13 @@ function send(res, status, type, body) {
 }
 const sendJson = (res, status, value) => send(res, status, 'application/json', JSON.stringify(value));
 
-function readBody(req) {
+function readBody(req, limit = BODY_LIMIT) {
   return new Promise((resolve, reject) => {
     let size = 0;
     const chunks = [];
     req.on('data', chunk => {
       size += chunk.length;
-      if (size > BODY_LIMIT) { reject(new Error('body too large')); req.destroy(); return; }
+      if (size > limit) { reject(Object.assign(new Error('body too large'), { status: 413 })); return; }
       chunks.push(chunk);
     });
     req.on('end', () => {
@@ -84,7 +85,13 @@ export function createTrackerServer({ port, token, webFile, getSnapshot, getFeed
         if (req.headers['x-tracker-token'] !== token || !isAllowedOrigin(req.headers.origin ?? '')) {
           return sendJson(res, 403, { error: 'forbidden' });
         }
-        const body = await readBody(req);
+        let body;
+        try {
+          body = await readBody(req, path === '/api/actions/message' ? MESSAGE_LIMIT : BODY_LIMIT);
+        } catch (err) {
+          if (err.status === 413) return sendJson(res, 413, { error: 'That is too large to send.' });
+          throw err;
+        }
         if (path === '/api/actions/rm') return sendJson(res, 200, await actions.rm(Array.isArray(body.ids) ? body.ids : []));
         if (path === '/api/actions/answer') return sendJson(res, 200, await actions.answer(body));
         if (path === '/api/actions/permit') return sendJson(res, 200, await actions.permit(body));

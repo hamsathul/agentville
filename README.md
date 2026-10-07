@@ -11,12 +11,15 @@ how much CPU and memory each one uses.
   sit below. **Centre:** the agent you picked (the one at work, until you pick another) with
   its activity feed, charts, subagents, the repos it touched and its process tree. **Right:**
   an explorer of the agent's working folder, with git status letters (M, U, D) and a dot on
-  files the agent edited or read. Click a file to open it read-only in a tab: markdown is
+  files the agent edited or read. Repos are marked with their branch (and a ✗ when their
+  last deploy failed), including several repos inside one folder. Click a file to open it read-only in a tab: markdown is
   rendered, code gets line numbers.
   **Answer from the dashboard:** a waiting agent shows its question with clickable options (or
   an "Other" box), and a permission prompt shows the command with **Allow** / **Deny**.
   **Message any session** like a chat: type under "Now" and press Send (or ⌘↩). It arrives
-  as your own prompt; if the agent is busy, it is read when the current step ends.
+  as your own prompt; if the agent is busy, it is read when the current step ends. **Attach
+  screenshots** by pasting (⌘V) or dropping them on the box, or with 📎: up to 6 images,
+  10 MB each; the agent opens them with its Read tool.
   **Read and reply:** specs, plans and other markdown files the agent wrote or read are also
   listed under "Documents". In any open file, select a passage and **Quote** it (code quotes
   carry their line numbers), then reply; the agent gets it as a message about that file.
@@ -110,6 +113,8 @@ stream. Action endpoints require a per-install token and a same-origin request.
   a folder that isn't a repo, dependency and hidden folders are skipped. It stays off for an
   agent working in your home folder. Files over 2 MB and binary files aren't shown; at most
   5,000 files are listed.
+- Screenshots are saved under `state/uploads/` (kept for 7 days) and the message names them
+  for the agent to open: a plugin's prompt can't carry an image itself.
 - "Documents" and the explorer's dots come from the agent's Write, Edit and Read tool calls
   (not shell commands). After the collector restarts, a long session's list starts from its
   recent history.
@@ -127,7 +132,7 @@ stream. Action endpoints require a per-install token and a same-origin request.
 ```bash
 npm test                    # collector + dashboard (node:test)
 claude plugin test mod      # the Claude Code mod
-scripts/e2e-answer.sh       # answering, messaging (also to a busy interactive session) and the reader
+scripts/e2e-answer.sh       # answering, messaging (with a screenshot, and to a busy session), the reader
 ```
 
 ## License

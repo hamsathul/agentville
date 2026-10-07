@@ -296,3 +296,41 @@ test("the explorer lists the agent's folder with git status and the files the ag
     await handle.stop();
   }
 });
+
+test('screenshots sent with a message are saved for the agent, and the message tells it where they are', async () => {
+  const root = mkdtempSync(join(tmpdir(), 'tracker-root-shot-'));
+  mkdirSync(join(root, 'web'));
+  writeFileSync(join(root, 'web', 'index.html'), '<html></html>');
+  writeFileSync(join(root, 'config.json'), JSON.stringify({ port: 0, deployRepos: {} }));
+  const claudeDir = mkdtempSync(join(tmpdir(), 'tracker-claude-shot-'));
+  mkdirSync(join(claudeDir, 'sessions'));
+  mkdirSync(join(claudeDir, 'projects', '-w'), { recursive: true });
+  writeFileSync(join(claudeDir, 'sessions', `${process.pid}.json`), JSON.stringify({ pid: process.pid, sessionId: 'sess-shot', cwd: '/w', name: 'viewer', status: 'idle' }));
+  writeFileSync(join(claudeDir, 'projects', '-w', 'sess-shot.jsonl'), `${JSON.stringify({ type: 'user', timestamp: new Date().toISOString(), message: { content: 'hi' } })}\n`);
+  mkdirSync(join(root, 'state', 'mods'), { recursive: true });
+  writeFileSync(join(root, 'state', 'mods', 'sess-shot.json'), JSON.stringify({ sessionId: 'sess-shot', version: '0.3.1', at: Date.now() }));
+  const received = [];
+  const inbox = join(root, 'state', 'messages', 'sess-shot');
+  const fakeMod = setInterval(() => {
+    if (!existsSync(inbox)) return;
+    for (const name of readdirSync(inbox).sort()) {
+      if (!name.endsWith('.json')) continue;
+      received.push(JSON.parse(readFileSync(join(inbox, name), 'utf8')).text);
+      unlinkSync(join(inbox, name));
+    }
+  }, 50);
+  const png = Buffer.from('89504e470d0a1a0a0000000d49484452', 'hex').toString('base64');
+  const handle = await startCollector({ root, claudeDir, claudeBin: '/usr/bin/false', notify: () => {}, log: () => {}, deliveryTimeoutMs: 1000 });
+  try {
+    assert.match((await handle.actions.message({ agentId: 'sess-shot', text: 'x', images: [{ data: 'bm9wZQ==' }] })).error, /PNG, JPEG/);
+    assert.deepEqual(await handle.actions.message({ agentId: 'sess-shot', text: '', images: [{ data: png }, { data: png }] }), { ok: true });
+    const saved = readdirSync(join(root, 'state', 'uploads', 'sess-shot')).sort();
+    assert.equal(saved.length, 2);
+    assert.equal(received.length, 1);
+    assert.match(received[0], /^Please look at the screenshots I attached\. Open each with the Read tool to see it:\n/);
+    for (const name of saved) assert.ok(received[0].includes(join(root, 'state', 'uploads', 'sess-shot', name)));
+  } finally {
+    clearInterval(fakeMod);
+    await handle.stop();
+  }
+});
