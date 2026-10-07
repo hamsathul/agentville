@@ -77,6 +77,7 @@ const sessions = {
   // Two finished sessions: they stand side by side on the porch, each with a speech bubble.
   'ui-done-a': { pid: doneA.pid, status: 'idle', lines: [
     line(now - 90_000, { content: 'Update the docs' }, 'user'),
+    use(now - 85_000, 'toolu_SM1', 'SendMessage', { to: 'ui-done-b', summary: 'Docs are done', message: 'The README is updated; the release notes can link to it.' }),
     line(now - 80_000, { model: 'claude-haiku', content: [{ type: 'text', text: 'I updated the README and the changelog. Everything is committed and the tests pass on every platform.' }] }),
     JSON.stringify({ type: 'system', subtype: 'turn_duration', timestamp: iso(now - 79_000), durationMs: 1000 }),
   ] },
@@ -168,6 +169,10 @@ try {
   check(/Which crop next\?/.test(await js("document.querySelector('.ask legend')?.textContent ?? ''")), 'the centre shows the question');
   check(await until("[...document.querySelectorAll('#tree .tn')].some(b => b.textContent.includes('README.md'))"), "the explorer lists the agent's folder");
   check(await js("[...document.querySelectorAll('#center-body .bub.you')].some(b => b.textContent.includes('Plan the next crop'))"), 'the conversation shows the prompt');
+  await js("document.querySelector('.row[data-id=\"ui-done-a\"]').click()");
+  check(await until("[...document.querySelectorAll('#center-body .bub.peer.out')].some(b => /to ui-done-b · Docs are done/.test(b.textContent))"), "an agent's conversation shows the message it sent another agent");
+  await js("document.querySelector('.row[data-id=\"ui-asker\"]').click()");
+  await until("!!document.querySelector('.ask legend')");
   check(await until("/Plan.*5-hour 34%.*week 61%/.test(document.getElementById('hstats').textContent)"), "the top bar shows the plan's 5-hour and weekly limits");
   check(await js("/Cost\\s*\\$1\\.23/.test(document.getElementById('center-body').textContent)"), 'the agent panel shows what the session has cost so far');
   const key = (type, mods = 0) => send('Input.dispatchKeyEvent', { type, key: 'Enter', code: 'Enter', windowsVirtualKeyCode: 13, modifiers: mods, ...(type === 'keyDown' ? { text: '\r' } : {}) }); // a real key press carries its text
@@ -197,6 +202,7 @@ try {
   check(await until("!document.querySelector('.px-tag[data-farmer=\"ui-idle\"]') && /Resting: hidden \\([1-9]\\d*\\)/.test(document.querySelector('[data-farm-resting]').textContent)"), 'the Resting switch hides idle and stale farmers, and says how many');
   await js("document.querySelector('[data-farm-resting]').click()");
   check(await until("!!document.querySelector('.px-tag[data-farmer=\"ui-idle\"]')"), 'and shows them again');
+  check(await until("/ui-done-a\\s*sends a note to ui-done-b/.test(document.getElementById('farm-diary').textContent)"), "a message from one agent to another goes in the farm diary (and flies as a pigeon)");
   check(!/energy/i.test(await js("document.querySelector('.px-hud')?.textContent ?? ''")) && /5-hour 34%/.test(await js("document.getElementById('hstats').textContent")), 'the farm has no vague energy bar; the plan stays in the top bar');
   check(await until("[...document.querySelectorAll('.px-lab')].some(l => l.textContent.startsWith('farm-repo'))"), 'the repo is a field');
   await js("document.querySelector('[data-farm-help]').click()");

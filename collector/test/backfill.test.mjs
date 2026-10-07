@@ -46,3 +46,15 @@ test('the conversation before a byte offset is found too: your prompts (typed or
   assert.deepEqual(h.files.map(c => c.input.file_path), ['/w/a.md']);
   assert.deepEqual(await earlierHistory('/no/such/file', 100), { files: [], said: [] });
 });
+
+test('messages between sessions before the offset are found too', async () => {
+  const f = join(mkdtempSync(join(tmpdir(), 'tracker-backfill-')), 's.jsonl');
+  const t = sec => new Date(Date.UTC(2026, 9, 7, 10, 0, sec)).toISOString();
+  const head = [
+    JSON.stringify({ type: 'user', timestamp: t(0), origin: { kind: 'peer', name: 'docs-2', msg_id: 'm1' }, message: { content: '<cross-session-message from-name="docs-2">\nAll clear.\n</cross-session-message>' } }),
+    JSON.stringify({ type: 'assistant', timestamp: t(1), message: { model: 'm', content: [{ type: 'tool_use', id: 't1', name: 'SendMessage', input: { to: 'docs-2', summary: 'Thanks', message: 'Thanks, deploying now.' } }] } }),
+  ].join('\n') + '\n';
+  writeFileSync(f, head);
+  const h = await earlierHistory(f, Buffer.byteLength(head));
+  assert.deepEqual(h.said.map(s => [s.kind, s.dir, s.other, s.text]), [['peer', 'in', 'docs-2', 'All clear.'], ['peer', 'out', 'docs-2', 'Thanks, deploying now.']]);
+});

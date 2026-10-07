@@ -252,6 +252,10 @@ dialog.sess-dlg { width: min(680px, calc(100vw - 32px)); max-width: none; paddin
 dialog.confirm-dlg { max-width: min(460px, calc(100vw - 32px)); }
 .confirm-dlg p { margin: 6px 0; line-height: 1.45; }
 .confirm-actions { display: flex; justify-content: flex-end; gap: 8px; }
+/* messages between sessions in a conversation */
+.bub.peer { background: color-mix(in srgb, #8a5fc0 14%, var(--panel)); border-left: 3px solid #8a5fc0; }
+.bub.peer.out { margin-left: auto; }
+.bub.peer .peer-head { font-size: 11px; font-weight: 700; color: var(--muted); margin-bottom: 2px; }
 #sess-status { margin: 8px 0 6px; min-height: 1.2em; }
 @media (max-width: 560px) { .sess-when { display: none; } }
 .docs { display: grid; gap: 4px; }

@@ -22,7 +22,8 @@ export class SessionModel {
     this.fileCap = fileCap;
     this.files = new Map(); // path → { path, wrote, at } for files the session wrote or read, oldest first
     this.feed = [];
-    this.said = []; // prompts and replies, newest first: kept apart so a run of tool steps can't push them out
+    this.said = []; // prompts, replies and messages between sessions, newest first: kept apart so a run of tool steps can't push them out
+    this.peerIds = new Set(); // messages from other sessions already counted
     this.pending = new Map();
     this.openItems = new Map();
     this.calls = [];
@@ -88,6 +89,10 @@ export class SessionModel {
         const item = { at: when, kind: 'tool', tool: ev.name, step: stepOf(ev.name, ev.input), text: summarizeTool(ev.name, ev.input) };
         this.openItems.set(ev.id, item);
         this.#push(item);
+        if (ev.name === 'SendMessage' && typeof ev.input?.to === 'string') { // this session wrote to another session, or to one of its helpers
+          const to = ev.input.to.slice(0, 80), message = String(ev.input.message ?? '');
+          this.#push({ at: when, kind: 'peer', dir: 'out', other: to, ...(typeof ev.input.summary === 'string' ? { summary: ev.input.summary.slice(0, 160) } : {}), ...(/^a[0-9a-f]{16}$/.test(to) ? { helper: true } : {}), text: firstLine(message), body: bodyOf(message) });
+        }
         const isBackground = ev.input?.run_in_background === true;
         const kind = CHILD_KIND[ev.name] ?? (ev.name === 'Bash' && isBackground ? 'bgjob' : null);
         if (kind) {
@@ -127,6 +132,11 @@ export class SessionModel {
         break;
       case 'title':
         this.title = ev.text;
+        break;
+      case 'peer_in': // another session wrote to this one (each message once, by its id)
+        if (ev.id && this.peerIds.has(ev.id)) break;
+        if (ev.id) this.peerIds.add(ev.id);
+        this.#push({ at: when, kind: 'peer', dir: 'in', other: ev.from, ...(ev.pid ? { pid: ev.pid } : {}), text: firstLine(ev.text), body: bodyOf(ev.text) });
         break;
       case 'mode':
         this.permissionMode = ev.mode;
@@ -174,7 +184,7 @@ export class SessionModel {
   /** Messages from earlier in the transcript ([{ kind, text, at }], oldest first), added behind the ones known. */
   addEarlierSaid(items) {
     const oldest = this.said.length ? this.said[this.said.length - 1].at : Infinity;
-    const older = items.filter(i => i.at < oldest).map(i => ({ at: i.at, kind: i.kind, text: firstLine(i.text), body: bodyOf(i.text) }));
+    const older = items.filter(i => i.at < oldest).map(({ text, ...rest }) => ({ ...rest, text: firstLine(text), body: bodyOf(text) }));
     this.said.push(...older.reverse());
     if (this.said.length > this.saidCap) this.said.length = this.saidCap;
   }
@@ -210,7 +220,7 @@ export class SessionModel {
   #push(item) {
     this.feed.unshift(item);
     if (this.feed.length > this.feedCap) this.feed.length = this.feedCap;
-    if (item.kind === 'prompt' || item.kind === 'reply') {
+    if (item.kind === 'prompt' || item.kind === 'reply' || item.kind === 'peer') {
       this.said.unshift(item);
       if (this.said.length > this.saidCap) this.said.length = this.saidCap;
     }

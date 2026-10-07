@@ -1152,3 +1152,14 @@ test("a stale background session's panel offers Remove, and removes it only afte
   await new Promise(r => setTimeout(r, 0));
   assert.deepEqual(page.posts, [{ path: '/api/actions/rm', body: { ids: ['b1'] } }]);
 });
+
+test('the conversation shows messages from and to other sessions as their own bubbles', () => {
+  const page = loadPage();
+  page.push(richSnapshot([richAgent({ feed: [
+    { at: Date.now() - 1000, kind: 'peer', dir: 'in', other: 'shop-api-3', text: 'Hold the deploy.', body: 'Hold the deploy.' },
+    { at: Date.now() - 500, kind: 'peer', dir: 'out', other: 'shop-api-3', summary: 'Holding', text: 'Holding until you say so.', body: 'Holding until you say so.' },
+  ] })]));
+  const side = page.side();
+  assert.match(side, /class="bub peer in"[\s\S]*from shop-api-3[\s\S]*Hold the deploy\./);
+  assert.match(side, /class="bub peer out"[\s\S]*to shop-api-3 · Holding[\s\S]*Holding until you say so\./);
+});

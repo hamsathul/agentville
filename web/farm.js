@@ -60,6 +60,24 @@
     return { fill: Math.max(0, Math.min(1, p / 100)), lamp: p >= 90 ? 'red' : p >= 70 ? 'amber' : null, label: `${Math.round(p)}%`, resetsAt: w.resetsAt ?? null };
   }
 
+  /**
+   * Messages between two farmers in the last 3 minutes, oldest first: { from, to, at, text }. Each
+   * is seen once, from whichever side wrote it down; messages to a session's own helpers stay out.
+   */
+  function mailOf(agents, now) {
+    const byName = new Map(agents.map(a => [a.name, a.id]));
+    const out = [];
+    for (const a of agents) for (const f of a.feed ?? []) {
+      if (f.kind !== 'peer' || f.helper || now - f.at > 180_000) continue;
+      const other = byName.get(f.other);
+      if (!other || other === a.id) continue;
+      const [from, to] = f.dir === 'out' ? [a.id, other] : [other, a.id];
+      if (out.some(m => m.from === from && m.to === to && Math.abs(m.at - f.at) < 10_000)) continue;
+      out.push({ from, to, at: f.at, text: f.text });
+    }
+    return out.sort((x, y) => x.at - y.at);
+  }
+
   /** Share of the context window used: the list view's rule (1M window once past 200k). */
   function contextPct(tokens) {
     if (!tokens) return 0;
@@ -115,6 +133,7 @@
     const kids = agents.map(a => a.children ?? []);
     return {
       plan: snap?.plan ?? null,
+      mail: mailOf(agents, snap?.generatedAt ?? Date.now()),
       // The henhouse: eggs for subagents that finished lately; running ones beyond the four a farmer leads roost there.
       henhouse: {
         eggs: Math.min(6, kids.flat().filter(c => c.state === 'done').length),
@@ -1125,6 +1144,7 @@
       <b>Silo</b><span>its grain is your plan's weekly limit used (the % under it; when it resets on hover); its lamp turns amber from 70% and blinks red from 90%</span>
       <b>Seasons</b><span>follow your plan's 5-hour limit: spring while it is fresh (blossom), then summer, autumn (falling leaves), and winter (snow) when it is nearly used up; a new window brings spring back</span>
       <b>Henhouse, pond</b><span>eggs in the nest = subagents that finished lately; a hen at the door and a +N sign = more subagents running than their farmers can lead</span>
+      <b>Pigeons</b><span>one agent messaging another (Claude Code's SendMessage between sessions): a pigeon flies the note from one farmer to the other, and the diary says what it said; the agents' conversations show it too</span>
       <b>Day and night</b><span>the sky follows your clock: at night the windows, the barn lamp and lanterns glow. The Sky switch holds it at day or night</span>
       <b>Click</b><span>a farmer to answer or message it in the sidebar; a field for the files agents touched there</span>
       <b>Zoom</b><span>− / + (or ⌘/Ctrl + scroll, or pinch) zooms the farm inside its frame; drag or scroll to move around; the % button shows the whole farm again</span>
@@ -1160,6 +1180,7 @@
     const closedSays = new Map(); // farmer id → the text that was closed
     const bots = new Map(), log = [];
     const parts = []; // particles on the farm now
+    const flights = [], seenMail = new Set(); // carrier pigeons between farmers: { from, to, start }
     const addPart = p => { if (parts.length < 400) parts.push(p); };
 
     function targets() {
@@ -1385,6 +1406,19 @@
         first = false;
       }
     }
+    /** Carrier pigeons: from the sender over an arc to the receiver in 2.4 s, then a ✉ pops there. */
+    function drawFlights() {
+      for (let i = flights.length - 1; i >= 0; i--) {
+        const fl = flights[i], a = bots.get(fl.from), z = bots.get(fl.to), t = (T - fl.start) / 2.4;
+        if (!a || !z) { flights.splice(i, 1); continue; }
+        if (t >= 1) { pop(z.x, z.y - th.SH * SC - 16, '✉', 'good'); flights.splice(i, 1); continue; }
+        const ay = a.y - th.SH * SC, zy = z.y - th.SH * SC, e = t < 0.5 ? 2 * t * t : 1 - (-2 * t + 2) ** 2 / 2;
+        const x = Math.round(a.x + (z.x - a.x) * e), y = Math.round(ay + (zy - ay) * e - Math.sin(Math.PI * t) * 34), m = z.x >= a.x ? 1 : -1, up = Math.floor(T * 12) % 2;
+        px(x - 3, y, 6, 3, '#e6eef5'); px(x + (m > 0 ? 2 : -4), y - 2, 2, 2, '#e6eef5'); px(x + (m > 0 ? 4 : -5), y - 1, 1, 1, '#f08a24'); px(x + (m > 0 ? 3 : -4), y - 2, 1, 1, '#1b1420'); // body, head, beak, eye
+        px(x - 2, y + (up ? -2 : 1), 4, 1, '#9aa4ad'); // a wing, flapping
+        px(x - 1, y + 3, 3, 2, '#fff4d6'); px(x, y + 4, 1, 1, '#e04a3a'); // the letter, sealed
+      }
+    }
     function step(dt, f, b) {
       if (b.path.length) {
         const [qx, qy] = b.path[0], dx = qx - b.x, dy = qy - b.y, d = Math.hypot(dx, dy), sp = 40 * dt;
@@ -1421,6 +1455,7 @@
       items.sort((p, q) => p[0] - q[0]).forEach(it => it[1]());
       for (const f of scene.farmers) { const b = bots.get(f.id); if (b) th.drawFx(f, b); }
       if (!still) drawParticles(parts);
+      drawFlights();
       th.top();
       drawNight(sky, th.layout().H, PXG.lights);
       const picked = selectedId && bots.get(selectedId);
@@ -1534,6 +1569,13 @@
     function apply(next) {
       got = true;
       host?.querySelector('.px-loading')?.remove();
+      for (const m of next.mail ?? []) { // a new message between two farmers: a pigeon carries it, the diary notes it
+        const key = `${m.from}>${m.to}@${m.at}`;
+        if (seenMail.has(key)) continue;
+        seenMail.add(key);
+        const from = next.farmers.find(f => f.id === m.from), to = next.farmers.find(f => f.id === m.to);
+        if (from && to) { addLog(from, `sends a note to ${to.name}: ${clip(m.text ?? '', 60)}`); if (!still) flights.push({ from: m.from, to: m.to, start: T }); }
+      }
       scene = next;
       th.setScene(next);
       const want = layoutFor(next.fields).key;

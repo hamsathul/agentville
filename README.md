@@ -67,6 +67,9 @@ how much CPU and memory each one uses.
   auto, or bypass permissions with `--dangerously-skip-permissions`); sessions still running
   are marked and not offered. The window closes when Claude exits. The first time, macOS asks
   to let the tracker control that app.
+- **Agents talking to each other:** when one session messages another (Claude Code's
+  SendMessage between sessions), both conversations show the message (from or to whom), and on
+  the farm a pigeon carries it from one farmer to the other, noted in the diary.
 - **End or restart a session:** a terminal session's panel shows its permission mode (as of the
   last message you sent it), **End session** (after you confirm: Claude stops cleanly and its
   iTerm or Terminal window closes; the conversation can be resumed) and **Restart in…** another

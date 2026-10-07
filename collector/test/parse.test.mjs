@@ -101,3 +101,14 @@ test("the transcript's own permission-mode entries say the session's mode as it 
   assert.deepEqual(parseEntry({ type: 'permission-mode', permissionMode: 'bypassPermissions', sessionId: 's' }).events, [{ kind: 'mode', mode: 'bypassPermissions' }]);
   assert.deepEqual(parseEntry({ type: 'permission-mode' }).events, []);
 });
+
+const crossMessage = (name, text) => `<cross-session-message from="uds:/tmp/cc-socks/42.sock" from-name="${name}" from-mode="bypass">\n${text}\n</cross-session-message>`;
+const peerOrigin = { kind: 'peer', from: 'uds:/tmp/cc-socks/42.sock', verifiedPeerPid: 42, msg_id: 'm1', name: 'shop-api-3', fromMode: 'bypass' };
+
+test('a message from another session is read as from that session, whether it came to an idle or a busy session', () => {
+  const idle = parseEntry({ type: 'user', origin: peerOrigin, message: { content: `Another Claude session sent a message:\n${crossMessage('shop-api-3', 'Hold the deploy, please.')}` } });
+  assert.deepEqual(idle.events, [{ kind: 'peer_in', from: 'shop-api-3', pid: 42, id: 'm1', text: 'Hold the deploy, please.' }, { kind: 'turn_start' }]);
+  const busy = parseEntry({ type: 'attachment', origin: peerOrigin, attachment: { type: 'queued_command', prompt: crossMessage('shop-api-3', 'Done, go ahead.') } });
+  assert.deepEqual(busy.events, [{ kind: 'peer_in', from: 'shop-api-3', pid: 42, id: 'm1', text: 'Done, go ahead.' }]);
+  assert.deepEqual(parseEntry({ type: 'queue-operation', operation: 'enqueue', content: crossMessage('shop-api-3', 'x') }).events, [], 'the queue copy is not a second message');
+});

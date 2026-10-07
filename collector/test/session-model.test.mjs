@@ -225,3 +225,13 @@ test('the session remembers its latest permission mode', () => {
   const m = modelOf(prompt(1, 'go', { permissionMode: 'default' }), prompt(5, 'again', { permissionMode: 'acceptEdits' }));
   assert.equal(m.permissionMode, 'acceptEdits');
 });
+
+test('messages between sessions go into the conversation: from another session, to another session, to a helper; each once', () => {
+  const peer = (sec, id, text) => JSON.stringify({ type: 'user', timestamp: new Date(at(sec)).toISOString(), origin: { kind: 'peer', verifiedPeerPid: 42, msg_id: id, name: 'shop-api-3' }, message: { content: `<cross-session-message from-name="shop-api-3">\n${text}\n</cross-session-message>` } });
+  const m = modelOf(prompt(1, 'go'), peer(2, 'm1', 'Hold the deploy.'), peer(3, 'm1', 'Hold the deploy.'),
+    toolUse(4, 's1', 'SendMessage', { to: 'shop-api-3', summary: 'Holding', message: 'Holding until you say so.' }),
+    toolUse(5, 's2', 'SendMessage', { to: 'aed8a9f3e491b8ac1', message: 'Fix round 1' }));
+  const mail = m.history(50).filter(f => f.kind === 'peer').map(f => [f.dir, f.other, f.text, f.helper ?? false]);
+  assert.deepEqual(mail, [['out', 'aed8a9f3e491b8ac1', 'Fix round 1', true], ['out', 'shop-api-3', 'Holding until you say so.', false], ['in', 'shop-api-3', 'Hold the deploy.', false]]);
+  assert.equal(m.history(50).find(f => f.kind === 'peer' && f.dir === 'out' && !f.helper).summary, 'Holding');
+});
