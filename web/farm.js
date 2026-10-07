@@ -1321,8 +1321,8 @@
       },
       /**
        * The farm's controls, laid over it so it fills the window: top left, the panel with what the
-       * dashboard's top bar and count cards say; top right, the dashboard's own buttons; on the right,
-       * zoom; along the bottom, below the fields' fence, a slim row of switches.
+       * dashboard's top bar and count cards say; top right, the dashboard's own buttons; along the
+       * bottom, below the fields' fence, a slim row of switches and zoom.
        */
       hud({ still, zoom = 1, saysOn = true, skyMode = 'live', follow = false, canFollow = false, restingHidden = null, bell = false, nav = {}, panelOpen = true }) {
         const need = scene.farmers.filter(a => a.state === 'waiting' || a.question).length;
@@ -1363,9 +1363,6 @@
             ${navBtn('side', 'side', 'SIDEBAR', "Show the selected farmer's answer box, activity and files beside the farm", Boolean(nav.side))}
             ${navBtn('theme', nav.theme === 'light' ? 'day' : nav.theme === 'auto' ? 'live' : 'night', String(nav.theme ?? 'dark').toUpperCase(), 'Theme: dark, light, or auto (as macOS is): click to change')}
           </div>
-          <div class="px-dock">
-            <div class="px-zoombar" title="Zoom the farm inside its frame (or ⌘/Ctrl + scroll, or pinch); drag to move around when zoomed in"><button type="button" data-farm-zoom="1" aria-label="Zoom in">${pxt('+', '#4e3626', null)}</button><button type="button" data-farm-zoom="0" title="Show the whole farm">${pxt(`${Math.round(zoom * 100)}%`, '#4e3626', null)}</button><button type="button" data-farm-zoom="-1" aria-label="Zoom out">${pxt('-', '#4e3626', null)}</button></div>
-          </div>
           <div class="px-tools">
               ${tool('data-farm-follow', 'follow', 'Follow', follow ? 'on' : 'off', canFollow ? 'Keep the farmer you picked in the middle of the view (zooms in); dragging the view turns it off' : 'Pick a farmer first, then Follow keeps it in view', !canFollow)}
               ${tool('data-farm-resting', 'resting', 'Resting', restingHidden === null ? 'shown' : `hidden (${restingHidden})`, 'Idle farmers (under the tree) and stale ones (scarecrows): show them, or hide them to keep the farm to the agents at work')}
@@ -1374,6 +1371,7 @@
               ${tool('class="px-motion" data-farm-motion', still ? 'pause' : 'play', 'Motion', still ? 'off' : 'on', 'Walking and animation on the farm')}
               ${tool('data-farm-bell', 'bell', 'Bell', bell ? 'on' : 'off', 'A chime, and a desktop notice when the page is in the background, whenever an agent starts waiting on you (in the list view too)')}
               ${tool('class="px-info" data-farm-help aria-label="How to read the farm"', 'help', 'Help', '', 'How to read the farm')}
+              <span class="px-zoombar" title="Zoom the farm inside its frame (or ⌘/Ctrl + scroll, or pinch); drag to move around when zoomed in"><button type="button" data-farm-zoom="-1" aria-label="Zoom out">${pxt('-', '#4e3626', null)}</button><button type="button" data-farm-zoom="0" title="Show the whole farm">${pxt(`${Math.round(zoom * 100)}%`, '#4e3626', null)}</button><button type="button" data-farm-zoom="1" aria-label="Zoom in">${pxt('+', '#4e3626', null)}</button></span>
           </div>`;
       },
       bg(f, season, ext) { drawLand(f, L, season, ext); },
@@ -2110,10 +2108,10 @@
       // The frame's spare room is more land, not empty frame: the forest round the farm.
       const spareW = Math.max(0, (fw - 2) / fit - W), spareH = fh > 60 ? Math.floor(Math.max(0, (fh - 2) / fit - H)) : 0;
       const was = `${pad.l},${pad.r},${pad.t},${pad.b}`;
-      // The panel (left) and the switches (right) lie over the frame's edges: with room to spare, the
-      // farm sits between them rather than in the middle.
+      // The panel lies over the frame's left edge: with room to spare, the farm sits beside it rather
+      // than in the middle.
       const edge = sel => { const el = hudEl?.querySelector(sel); return el ? (el.offsetWidth + 16) / fit : 0; };
-      const left = edge('.px-stats'), right = edge('.px-dock'), room = spareW - left - right;
+      const left = edge('.px-stats'), right = 0, room = spareW - left - right;
       const padL = spareW <= 0 ? 0 : room >= 0 ? left + room / 2 : (spareW * left) / Math.max(1, left + right);
       pad = { l: Math.floor(padL), r: Math.floor(spareW) - Math.floor(padL), t: Math.floor(spareH / 2), b: spareH - Math.floor(spareH / 2) };
       const EW = W + pad.l + pad.r, EH = H + pad.t + pad.b;
