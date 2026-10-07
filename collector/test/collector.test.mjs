@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, readFileSync, utimesSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { startCollector } from '../collector.mjs';
@@ -34,6 +34,7 @@ test('collector serves a waiting agent from a fixture ~/.claude and survives a b
     assert.equal(snap.sources.agents.ok, false);
     assert.equal(snap.settings.modToasts, true);
     assert.ok(snap.machine.totalMemMb > 0 && snap.machine.cpuCount > 0);
+    assert.equal(snap.settings.memoryAlertGb, 2);
 
     const onDisk = JSON.parse(readFileSync(join(root, 'state', 'state.json'), 'utf8'));
     assert.equal(onDisk.agents.find(x => x.id === 'sess-1').state, 'waiting');
@@ -105,6 +106,38 @@ test('questions and permission prompts offered by the mod can be answered throug
     assert.equal((await handle.actions.permit({ agentId: 'sess-ask', toolUseId: 'toolu_P1', decision: 'maybe' })).ok, false);
     assert.deepEqual(await handle.actions.permit({ agentId: 'sess-ask', toolUseId: 'toolu_P1', decision: 'allow' }), { ok: true });
     assert.deepEqual(JSON.parse(readFileSync(join(root, 'state', 'answers', 'toolu_P1.json'), 'utf8')), { decision: 'allow' });
+  } finally {
+    await handle.stop();
+  }
+});
+
+test('a session resumed in another folder is read from its newest transcript copy', async () => {
+  const root = mkdtempSync(join(tmpdir(), 'tracker-root-dup-'));
+  mkdirSync(join(root, 'web'));
+  writeFileSync(join(root, 'web', 'index.html'), '<html></html>');
+  writeFileSync(join(root, 'config.json'), JSON.stringify({ port: 0, deployRepos: {} }));
+  const claudeDir = mkdtempSync(join(tmpdir(), 'tracker-claude-dup-'));
+  mkdirSync(join(claudeDir, 'sessions'));
+  writeFileSync(join(claudeDir, 'sessions', `${process.pid}.json`), JSON.stringify({ pid: process.pid, sessionId: 'sess-dup', cwd: '/new', name: 'moved', status: 'idle' }));
+  const now = Date.now();
+  const iso = ms => new Date(ms).toISOString();
+  for (const [dir, lines, mtime] of [
+    ['-a-old', [{ type: 'user', timestamp: iso(now - 90_000), message: { content: 'old copy' } }], (now - 3_600_000) / 1000],
+    ['-b-new', [
+      { type: 'user', timestamp: iso(now - 5000), message: { content: 'new copy' } },
+      { type: 'assistant', timestamp: iso(now - 4000), message: { model: 'm', content: [{ type: 'tool_use', id: 'toolu_N1', name: 'AskUserQuestion', input: {} }] } },
+    ], now / 1000],
+  ]) {
+    mkdirSync(join(claudeDir, 'projects', dir), { recursive: true });
+    const file = join(claudeDir, 'projects', dir, 'sess-dup.jsonl');
+    writeFileSync(file, `${lines.map(l => JSON.stringify(l)).join('\n')}\n`);
+    utimesSync(file, mtime, mtime);
+  }
+  const handle = await startCollector({ root, claudeDir, claudeBin: '/usr/bin/false', notify: () => {}, log: () => {} });
+  try {
+    const agent = handle.getSnapshot().agents.find(a => a.id === 'sess-dup');
+    assert.equal(agent.lastPrompt, 'new copy');
+    assert.equal(agent.state, 'waiting');
   } finally {
     await handle.stop();
   }

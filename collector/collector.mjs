@@ -90,15 +90,21 @@ export async function startCollector({ root, claudeDir = join(homedir(), '.claud
   let isResolving = false;
   let cpuMark = { usage: process.cpuUsage(), at: Date.now() };
 
+  // A session resumed from another folder leaves a frozen copy of its transcript in the old
+  // project; the live one is the most recently written.
   function findTranscript(sessionId) {
     const projects = join(claudeDir, 'projects');
     let dirs;
     try { dirs = readdirSync(projects); } catch { return null; }
+    let best = null;
     for (const d of dirs) {
       const p = join(projects, d, `${sessionId}.jsonl`);
-      if (existsSync(p)) return p;
+      try {
+        const mtime = statSync(p).mtimeMs;
+        if (!best || mtime > best.mtime) best = { path: p, mtime };
+      } catch { /* not in this project */ }
     }
-    return null;
+    return best?.path ?? null;
   }
 
   function sessionRecord(sessionId, now) {
@@ -250,7 +256,7 @@ export async function startCollector({ root, claudeDir = join(homedir(), '.claud
     const collisions = findCollisions(agents, now, cfg.collisionWindowMin * 60_000);
     snapshot = {
       generatedAt: now,
-      settings: { modToasts: cfg.modToasts, permissionDashboardSec: cfg.permissionDashboardSec },
+      settings: { modToasts: cfg.modToasts, permissionDashboardSec: cfg.permissionDashboardSec, memoryAlertGb: cfg.memoryAlertGb },
       collector: selfStats(),
       machine: { totalMemMb: Math.round(totalmem() / 1_048_576), cpuCount: cpus().length },
       sources: { ...sources },
