@@ -183,11 +183,14 @@ function farmSideHtml(a) {
 }
 
 /** A farmer was clicked: show it in the farm's sidebar, where it can be answered or messaged. */
-function pickFromFarm(id) {
+async function pickFromFarm(id, { from } = {}) {
   if (selected !== id) openChildren.clear();
   selected = id;
   farmTab = 'agent';
   save('tracker-farm-tab', farmTab);
+  // A speech bubble only shows the start of a message: when its reply was cut, open the sidebar with it whole.
+  const reply = snap?.agents.find(a => a.id === id)?.feed?.find(f => f.kind === 'reply');
+  if (from === 'say' && reply?.more && !fullFeeds.has(id)) await loadFullFeed(id);
   if (farmSide) { applyFarmSide(); render(); }
   else setFarmSide(true);
 }

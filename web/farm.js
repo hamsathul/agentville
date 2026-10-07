@@ -759,7 +759,7 @@
         return;
       }
       const say = e.target.closest?.('[data-say]');
-      if (say) { e.stopPropagation(); opts.onPickAgent?.(say.dataset.say); return; }
+      if (say) { e.stopPropagation(); opts.onPickAgent?.(say.dataset.say, { from: 'say' }); return; }
       const help = host.querySelector('.px-help');
       if (e.target.closest?.('[data-farm-help]')) { e.stopPropagation(); help.showModal(); return; }
       if (e.target.closest?.('[data-farm-help-close]') || e.target === help) { e.stopPropagation(); help.close(); return; } // × or a click on the backdrop
@@ -1036,7 +1036,7 @@
     field = makeField(view);
   }
   window.TrackerFarm = {
-    /** Builds the farm inside hostEl. options: { token, onPickAgent(id), onOpenDoc(agentId, path), onShowRepos(), still } */
+    /** Builds the farm inside hostEl. options: { token, onPickAgent(id, { from: 'say' }?), onOpenDoc(agentId, path), onShowRepos(), still } */
     mount(hostEl, options = {}) {
       ensure();
       const still = options.still ?? Boolean(window.matchMedia?.('(prefers-reduced-motion: reduce)').matches);

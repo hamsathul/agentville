@@ -693,6 +693,7 @@ function fakeFarm() {
   return {
     calls,
     pick: id => options.onPickAgent(id),
+    pickSay: id => options.onPickAgent(id, { from: 'say' }),
     openDoc: (id, path) => options.onOpenDoc(id, path),
     showRepos: () => options.onShowRepos(),
     farm: {
@@ -961,6 +962,22 @@ test('a long message shows its preview and "Show the whole message", which loads
   await page.clickButton('more', { fullFeed: 'r1' });
   assert.match(page.side(), /THE END/);
   assert.doesNotMatch(page.side(), /Show the whole message/);
+});
+
+test('clicking a cut-off speech bubble opens the sidebar with the whole message loaded; a farmer click does not', async () => {
+  const full = `Start\n\n${'w'.repeat(700)} THE END`;
+  const preview = { at: Date.now() - 2000, kind: 'reply', text: 'Start', body: `${full.slice(0, 600)}…`, more: true };
+  const f = fakeFarm();
+  const page = loadPage({ farm: f.farm, stored: { 'tracker-view': 'farm' }, feeds: { r1: [{ ...preview, body: full, more: undefined }] } });
+  page.push(richSnapshot([richAgent({ mod: { version: '0.3.1', live: true }, feed: [preview] })]));
+  f.pick('r1');
+  await page.settle();
+  assert.ok(!page.gets.some(g => g.path.startsWith('/api/agent/r1/feed')), 'a farmer click shows the preview only');
+  assert.doesNotMatch(page.el('farm-agent').innerHTML, /THE END/);
+  f.pickSay('r1');
+  await page.settle();
+  assert.match(page.el('farm-agent').innerHTML, /THE END/);
+  assert.doesNotMatch(page.el('farm-agent').innerHTML, /Show the whole message/);
 });
 
 test('the farm sidebar shows the question card too', () => {
