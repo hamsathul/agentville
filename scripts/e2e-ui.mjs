@@ -147,6 +147,8 @@ try {
   await send('Page.enable');
   await send('Runtime.enable');
   if (process.env.THROTTLE) await send('Emulation.setCPUThrottlingRate', { rate: Number(process.env.THROTTLE) }); // e.g. THROTTLE=6 to act like a slow CI runner
+  if (process.env.REDUCED_MOTION) await send('Emulation.setEmulatedMedia', { features: [{ name: 'prefers-reduced-motion', value: 'reduce' }] }); // the farm stands still
+  console.log(`reduced motion: ${await js("matchMedia('(prefers-reduced-motion: reduce)').matches")}`);
   await send('Emulation.setDeviceMetricsOverride', { width: 1400, height: 950, deviceScaleFactor: 1, mobile: false });
   await send('Page.navigate', { url: `http://127.0.0.1:${handle.port}/` });
 
@@ -219,7 +221,14 @@ try {
   await js("document.querySelector('[data-farm-bubbles]').click()");
   check(/Bubbles: off/.test(await js("document.querySelector('[data-farm-bubbles]').textContent")) && await until("!document.querySelector('.px-say, .px-say-min')"), 'the bubbles switch hides them all');
   await js("document.querySelector('[data-farm-bubbles]').click()");
-  check(await until("document.querySelectorAll('.px-say').length === 3 && !document.querySelector('.px-say-min')"), 'switching them back on shows them all, hidden ones too');
+  const allBack = await until("document.querySelectorAll('.px-say').length === 3 && !document.querySelector('.px-say-min')");
+  const sayState = allBack ? '' : await js(`JSON.stringify({
+    hud: document.querySelector('[data-farm-bubbles]')?.textContent, huds: document.querySelectorAll('[data-farm-bubbles]').length,
+    says: [...document.querySelectorAll('.px-say')].map(b => b.dataset.say), mins: [...document.querySelectorAll('.px-say-min')].map(b => b.dataset.say),
+    farmers: TrackerFarm.toScene(snap).farmers.map(f => [f.id, f.state, Boolean(f.ask), Boolean(f.question), Boolean(f.said)]),
+    visibility: document.visibilityState, still: matchMedia('(prefers-reduced-motion: reduce)').matches, stored: localStorage.getItem('tracker-farm-bubbles'),
+  })`);
+  check(allBack, `switching them back on shows them all, hidden ones too${sayState ? ` (now: ${sayState})` : ''}`);
 
   const closeUp = "(() => { const c = document.querySelector('#farm canvas'); const r = c.getBoundingClientRect(), cs = r.width / 400; c.dispatchEvent(new MouseEvent('click', { bubbles: true, clientX: r.left + 70 * cs, clientY: r.top + 48 * cs })); })()";
   await js(closeUp);
