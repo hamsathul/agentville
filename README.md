@@ -90,11 +90,11 @@ It listens on `127.0.0.1` only and reads what Claude Code already writes to disk
 
 ### 1. Get the code and the command
 
-The repo and its command keep the project's first name, `agent-tracker`.
+Its command keeps the project's first name, `agent-tracker`.
 
 ```bash
-git clone https://github.com/hamsathul/agent-tracker.git ~/tools/agent-tracker
-cd ~/tools/agent-tracker
+git clone https://github.com/hamsathul/agentville.git ~/tools/agentville
+cd ~/tools/agentville
 mkdir -p ~/.local/bin
 ln -sf "$PWD/bin/agent-tracker" ~/.local/bin/agent-tracker   # ~/.local/bin must be on your PATH
 ```
@@ -116,7 +116,7 @@ cost, plan usage and working line. Add the `mod` folder to `~/.claude/settings.j
 own clone path:
 
 ```json
-{ "env": { "CLAUDE_CODE_PLUGIN_DIRS": "/Users/you/tools/agent-tracker/mod" } }
+{ "env": { "CLAUDE_CODE_PLUGIN_DIRS": "/Users/you/tools/agentville/mod" } }
 ```
 
 New sessions load it. In a session that is already running, type `/reload-plugins`. A session
@@ -149,7 +149,7 @@ cp config.example.json config.json   # then edit; it is re-read when you save it
 ### Update and uninstall
 
 ```bash
-cd ~/tools/agent-tracker && git pull && agent-tracker restart   # update; then /reload-plugins in open sessions
+cd ~/tools/agentville && git pull && agent-tracker restart   # update; then /reload-plugins in open sessions
 agent-tracker uninstall                                          # remove the service
 ```
 
