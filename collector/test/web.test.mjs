@@ -319,12 +319,14 @@ test('agent colours come from the agent, so a reload with agents in another orde
   assert.equal(new Set(Object.values(first)).size, 3);
 });
 
-test('the CPU panel states its headline as a share of the whole Mac', () => {
+test("the top bar shows the agents' memory and CPU, CPU as a share of the whole Mac", () => {
   const page = loadPage();
   page.push(richSnapshot([richAgent({ proc: { ...richAgent().proc, cpu: 200 } })]));
-  const fleet = page.el('fleet').innerHTML;
-  assert.match(fleet, /CPU used by agents<span class="pv">20% of this Mac</);
-  assert.match(fleet, /200% of one core · 10 cores/);
+  const stats = page.el('hstats').innerHTML;
+  assert.match(stats, /20% of this Mac/);
+  assert.match(stats, /200% of one core · 10 cores/);
+  assert.match(stats, /600 MB[\s\S]*of 16\.0 GB/);
+  assert.doesNotMatch(page.list(), /Memory used by agents|This Mac/);
 });
 
 test('a waiting question the dashboard cannot answer says to answer it in the terminal', async () => {
@@ -631,4 +633,49 @@ test('in a folder holding several repos, each repo folder shows its branch and d
   assert.match(tree, /data-dir="api"[^>]*>[\s\S]*?class="repo-tag"[^>]*>⎇ main[\s\S]*?✗/);
   assert.match(tree, /data-dir="web"[^>]*>[\s\S]*?class="repo-tag"[^>]*>⎇ dev/);
   assert.doesNotMatch(tree, /class="ex-repo"/);
+});
+
+const MORE = {
+  ...LISTING,
+  scratch: { root: '/tmp/s', git: false, files: ['plan.md', 'shots/a.png'], status: {}, repos: [], truncated: false, touched: { 'plan.md': { wrote: true, at: Date.now() } } },
+  memory: [
+    { path: '/h/.claude/CLAUDE.md', label: 'CLAUDE.md', where: 'all projects' },
+    { path: '/h/.claude/projects/-w/memory/MEMORY.md', label: 'MEMORY.md', where: 'auto memory' },
+  ],
+};
+
+test("the explorer has the session's scratchpad, and its files open in a tab", async () => {
+  const page = loadPage({ listing: MORE, files: { '/tmp/s/plan.md': '# The plan' } });
+  page.push(richSnapshot([richAgent()]));
+  await page.settle();
+  const tree = page.tree();
+  assert.match(tree, /data-group="ex-memory"[\s\S]*data-group="ex-scratch"[\s\S]*data-group="ex-folder"/);
+  assert.match(tree, /data-sfile="plan\.md"[^>]*>[\s\S]*?class="mine"/);
+  assert.match(tree, /data-sdir="shots"/);
+  await page.clickButton('tn', { sfile: 'plan.md' });
+  assert.ok(page.gets.some(g => g.path === '/api/agent/r1/file?path=%2Ftmp%2Fs%2Fplan.md'));
+  assert.match(page.tabs(), /class="tab on"[^]*?plan\.md/);
+  assert.match(page.el('reader-body').innerHTML, /<h1[^>]*>The plan<\/h1>/);
+  await page.clickButton('grp', { group: 'ex-scratch' });
+  assert.doesNotMatch(page.tree(), /data-sfile=/);
+});
+
+test("the explorer's Memory lists the conversation summary and the memory files, and the summary opens as a document", async () => {
+  const page = loadPage({ listing: MORE, files: { '@summary': '# Summary\n\n- built the tracker' } });
+  page.push(richSnapshot([richAgent({ mod: { version: '0.3.1', live: true } })]));
+  await page.settle();
+  const tree = page.tree();
+  assert.match(tree, /data-mem="@summary"[^>]*>[\s\S]*?Conversation summary[\s\S]*?data-mem="\/h\/\.claude\/CLAUDE\.md"[^>]*>[\s\S]*?all projects[\s\S]*?MEMORY\.md[\s\S]*?auto memory/);
+  await page.clickButton('tn', { mem: '@summary' });
+  assert.ok(page.gets.some(g => g.path === '/api/agent/r1/file?path=%40summary'));
+  assert.match(page.tabs(), /class="tab on"[^]*?Conversation summary/);
+  assert.match(page.el('reader-body').innerHTML, /<li>built the tracker<\/li>/);
+});
+
+test('when the folder itself is off, the explorer says why and still shows memory', async () => {
+  const page = loadPage({ listing: { ...MORE, files: [], status: {}, repos: [], touched: {}, folderError: 'This agent works in your home folder (or the disk root), so the explorer stays off here.', scratch: null } });
+  page.push(richSnapshot([richAgent()]));
+  await page.settle();
+  assert.match(page.tree(), /data-mem="@summary"[\s\S]*home folder/);
+  assert.doesNotMatch(page.tree(), /data-group="ex-scratch"/);
 });

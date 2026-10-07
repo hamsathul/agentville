@@ -7,13 +7,16 @@ how much CPU and memory each one uses.
 
 - **Dashboard** at <http://localhost:7777>, served only to this machine, laid out like an
   editor in three columns. **Left:** compact agent rows, waiting ones first, then working ones
-  (each with a live tool ticker); idle and stale agents fold away, and repos and machine load
-  sit below. **Centre:** the agent you picked (the one at work, until you pick another) with
-  its activity feed, charts, subagents, the repos it touched and its process tree. **Right:**
-  an explorer of the agent's working folder, with git status letters (M, U, D) and a dot on
+  (each with a live tool ticker); idle and stale agents fold away, and repos sit below. The
+  agents' memory and CPU are in the top bar. **Centre:** the agent you picked (the one at
+  work, until you pick another) with its activity feed, charts, subagents, the repos it
+  touched and its process tree. **Right:** an explorer of the agent's working folder, with git status letters (M, U, D) and a dot on
   files the agent edited or read. Repos are marked with their branch (and a ✗ when their
-  last deploy failed), including several repos inside one folder. Click a file to open it read-only in a tab: markdown is
-  rendered, code gets line numbers.
+  last deploy failed), including several repos inside one folder. Above the folder, the
+  explorer shows the session's **Scratchpad** (its working files under Claude Code's temp
+  folder) and its **Memory**: the conversation summary it carries after a compaction, the
+  CLAUDE.md files it loads, and the project's auto memory. Click a file to open it read-only
+  in a tab: markdown is rendered, code gets line numbers.
   **Answer from the dashboard:** a waiting agent shows its question with clickable options (or
   an "Other" box), and a permission prompt shows the command with **Allow** / **Deny**.
   **Message any session** like a chat: type under "Now" and press Send (or ⌘↩). It arrives

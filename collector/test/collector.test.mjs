@@ -334,3 +334,70 @@ test('screenshots sent with a message are saved for the agent, and the message t
     await handle.stop();
   }
 });
+
+test("the explorer also lists the session's scratchpad and memory, and opens them, including the conversation summary", async () => {
+  const root = mkdtempSync(join(tmpdir(), 'tracker-root-mem-'));
+  mkdirSync(join(root, 'web'));
+  writeFileSync(join(root, 'web', 'index.html'), '<html></html>');
+  writeFileSync(join(root, 'config.json'), JSON.stringify({ port: 0, deployRepos: {} }));
+  const home = mkdtempSync(join(tmpdir(), 'tracker-home-mem-'));
+  const work = join(home, 'app');
+  mkdirSync(work);
+  writeFileSync(join(work, 'CLAUDE.md'), '# Project rules');
+  const claudeDir = join(home, '.claude');
+  mkdirSync(join(claudeDir, 'sessions'), { recursive: true });
+  mkdirSync(join(claudeDir, 'projects', '-app', 'memory'), { recursive: true });
+  writeFileSync(join(claudeDir, 'CLAUDE.md'), '# Global rules');
+  writeFileSync(join(claudeDir, 'settings.json'), '{"secret":true}');
+  writeFileSync(join(claudeDir, 'projects', '-app', 'memory', 'MEMORY.md'), '- [Note](note.md)');
+  writeFileSync(join(claudeDir, 'sessions', `${process.pid}.json`), JSON.stringify({ pid: process.pid, sessionId: 'sess-mem', cwd: work, name: 'rememberer', status: 'idle' }));
+  writeFileSync(join(claudeDir, 'projects', '-app', 'sess-mem.jsonl'), [
+    JSON.stringify({ type: 'user', timestamp: new Date(Date.now() - 9000).toISOString(), isCompactSummary: true, message: { content: 'Summary: we built the tracker.' } }),
+    JSON.stringify({ type: 'user', timestamp: new Date(Date.now() - 5000).toISOString(), message: { content: 'carry on' } }),
+  ].join('\n') + '\n');
+  const scratchBase = mkdtempSync(join(tmpdir(), 'tracker-claudetmp-'));
+  const scratch = join(scratchBase, '-app', 'sess-mem', 'scratchpad');
+  mkdirSync(join(scratch, 'shots'), { recursive: true });
+  writeFileSync(join(scratch, 'plan.md'), '# Plan');
+  writeFileSync(join(scratch, 'shots', 'a.txt'), 'note');
+  const handle = await startCollector({ root, claudeDir, claudeBin: '/usr/bin/false', notify: () => {}, log: () => {}, home, scratchBase });
+  try {
+    const list = await handle.listFiles('sess-mem');
+    assert.deepEqual(list.files, ['CLAUDE.md']);
+    assert.equal(list.scratch.root, scratch);
+    assert.deepEqual(list.scratch.files, ['plan.md', 'shots/a.txt']);
+    assert.deepEqual(list.memory.map(m => [m.label, m.where]), [['CLAUDE.md', 'all projects'], ['CLAUDE.md', 'this project'], ['MEMORY.md', 'auto memory']]);
+    assert.equal((await handle.readFile('sess-mem', '@summary')).doc.text, 'Summary: we built the tracker.');
+    assert.equal((await handle.readFile('sess-mem', join(claudeDir, 'CLAUDE.md'))).doc.text, '# Global rules');
+    assert.equal((await handle.readFile('sess-mem', join(claudeDir, 'projects', '-app', 'memory', 'MEMORY.md'))).doc.text, '- [Note](note.md)');
+    assert.equal((await handle.readFile('sess-mem', join(scratch, 'plan.md'))).doc.text, '# Plan');
+    assert.match((await handle.readFile('sess-mem', join(claudeDir, 'settings.json'))).error, /outside/);
+  } finally {
+    await handle.stop();
+  }
+});
+
+test('an agent working in the home folder still shows its scratchpad and memory, with the folder itself left out', async () => {
+  const root = mkdtempSync(join(tmpdir(), 'tracker-root-homecwd-'));
+  mkdirSync(join(root, 'web'));
+  writeFileSync(join(root, 'web', 'index.html'), '<html></html>');
+  writeFileSync(join(root, 'config.json'), JSON.stringify({ port: 0, deployRepos: {} }));
+  const home = mkdtempSync(join(tmpdir(), 'tracker-home-only-'));
+  const claudeDir = join(home, '.claude');
+  mkdirSync(join(claudeDir, 'sessions'), { recursive: true });
+  mkdirSync(join(claudeDir, 'projects', '-h'), { recursive: true });
+  writeFileSync(join(claudeDir, 'CLAUDE.md'), '# Global');
+  writeFileSync(join(claudeDir, 'sessions', `${process.pid}.json`), JSON.stringify({ pid: process.pid, sessionId: 'sess-home', cwd: home, name: 'homebody', status: 'idle' }));
+  writeFileSync(join(claudeDir, 'projects', '-h', 'sess-home.jsonl'), `${JSON.stringify({ type: 'user', timestamp: new Date().toISOString(), message: { content: 'hi' } })}\n`);
+  const handle = await startCollector({ root, claudeDir, claudeBin: '/usr/bin/false', notify: () => {}, log: () => {}, home, scratchBase: '/nonexistent' });
+  try {
+    const list = await handle.listFiles('sess-home');
+    assert.match(list.folderError, /home folder/);
+    assert.deepEqual(list.files, []);
+    assert.equal(list.scratch, null);
+    assert.deepEqual(list.memory.map(m => m.where), ['all projects']);
+    assert.match((await handle.readFile('sess-home', '@summary')).error, /hasn't been compacted/);
+  } finally {
+    await handle.stop();
+  }
+});

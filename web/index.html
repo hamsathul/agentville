@@ -106,7 +106,6 @@ header.top { flex: none; z-index: 3; display: flex; flex-wrap: wrap; gap: 10px; 
 .tab.on button:first-child { color: var(--text); font-weight: 600; }
 .ex-head { flex: none; display: flex; align-items: center; gap: 6px; padding: 8px 10px 6px; }
 .ex-title { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: .08em; color: var(--muted); }
-#ex-root { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; font-size: 12px; }
 #ex-filter { flex: none; margin: 0 10px 6px; padding: 5px 8px; border: 1px solid var(--line); border-radius: 7px; background: var(--page); color: var(--text); font: inherit; }
 .tree { flex: 1; min-height: 0; overflow: auto; padding: 2px 0 10px; }
 .tn { display: flex; align-items: center; gap: 4px; width: 100%; border: 0; background: none; color: var(--text); font: inherit; text-align: left; padding: 2px 10px 2px calc(8px + var(--d, 0) * 12px); cursor: pointer; white-space: nowrap; }
@@ -126,6 +125,14 @@ header.top { flex: none; z-index: 3; display: flex; flex-wrap: wrap; gap: 10px; 
 .grp { flex: 1; display: flex; align-items: center; gap: 4px; border: 0; background: none; padding: 2px 0; font: inherit; font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: .08em; color: var(--muted); cursor: pointer; text-align: left; }
 .grp-n { margin-left: 4px; color: var(--faint); }
 .act.mini { padding: 2px 8px; font-size: 12px; margin: 0; }
+.hstats { display: flex; align-items: center; gap: 16px; flex-wrap: wrap; }
+.hstat { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; white-space: nowrap; }
+.hstat .meter { width: 64px; }
+.hbar { display: inline-flex; gap: 1px; width: 96px; height: 8px; border-radius: 4px; overflow: hidden; background: var(--track); }
+.hbar i { display: block; height: 100%; }
+.ex-sec { display: flex; align-items: center; gap: 4px; width: 100%; border: 0; background: none; padding: 7px 10px 3px; font: inherit; font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: .08em; color: var(--muted); cursor: pointer; text-align: left; white-space: nowrap; }
+.ex-sec .tsub { text-transform: none; letter-spacing: 0; font-weight: 400; }
+.tn.mem .tw { font-size: 12px; }
 @media (max-width: 1200px) { .app { grid-template-columns: 240px minmax(0, 1fr) 240px; } }
 @media (max-width: 900px) {
   html, body { height: auto; }
@@ -274,6 +281,7 @@ pre.code .l:hover { background: var(--panel-2); }
   <span id="live" class="live"><i></i>live</span>
   <span class="grow"></span>
   <span id="errors"></span>
+  <span id="hstats" class="hstats"></span>
   <span id="meta" class="faint"></span>
   <button class="act" id="theme-toggle" type="button" style="margin:0">☾ Dark</button>
 </header>
@@ -284,14 +292,13 @@ pre.code .l:hover { background: var(--panel-2); }
   <aside class="col left" aria-label="Agents">
     <section id="list"></section>
     <section id="rail"></section>
-    <section id="fleet"></section>
   </aside>
   <section class="col center" aria-label="Selected agent">
     <div id="center-tabs" class="tabs" role="tablist"></div>
     <div id="center-body" class="center-body"></div>
   </section>
   <aside class="col right" aria-label="Files in the agent's folder">
-    <div class="ex-head"><span class="ex-title">Explorer</span><span id="ex-root" class="faint"></span><span class="grow"></span><button class="act mini" id="ex-refresh" type="button" data-tip="Reload the file list">↻</button></div>
+    <div class="ex-head"><span class="ex-title">Explorer</span><span class="grow"></span><button class="act mini" id="ex-refresh" type="button" data-tip="Reload the file list">↻</button></div>
     <input id="ex-filter" type="search" placeholder="Filter files…" autocomplete="off" spellcheck="false">
     <div id="tree" class="tree"></div>
   </aside>
@@ -324,24 +331,26 @@ const openChildren = new Map();
 const tabs = new Map(); // agent id → { files: [absolute paths], active: a path, or '' for the agent itself }
 let shownKey = ''; // which agent and tab the centre body holds, so an open file isn't redrawn on every snapshot
 let viewerLoading = Promise.resolve();
-// Collapsible groups in the left column; idle and stale start closed. The choice is remembered.
-const DEFAULT_GROUPS = ['waiting', 'working', 'yourTurn', 'repos', 'mac'];
-const openGroups = loadGroups();
-function loadGroups() {
+// Collapsible groups (left column and explorer). Idle and stale start closed; what you close or
+// open is remembered. Saving the closed ones means a group added later starts open.
+const closedGroups = loadClosed();
+const isOpen = key => !closedGroups.has(key);
+function loadClosed() {
   try {
-    const saved = JSON.parse(localStorage.getItem('tracker-groups'));
+    const saved = JSON.parse(localStorage.getItem('tracker-closed-groups'));
     if (Array.isArray(saved)) return new Set(saved);
   } catch { /* nothing saved yet, or storage blocked */ }
-  return new Set(DEFAULT_GROUPS);
+  return new Set(['idle', 'stale']);
 }
 function toggleGroup(key) {
-  if (openGroups.has(key)) openGroups.delete(key);
-  else openGroups.add(key);
-  try { localStorage.setItem('tracker-groups', JSON.stringify([...openGroups])); } catch { /* lasts this page only */ }
+  if (closedGroups.has(key)) closedGroups.delete(key);
+  else closedGroups.add(key);
+  try { localStorage.setItem('tracker-closed-groups', JSON.stringify([...closedGroups])); } catch { /* lasts this page only */ }
   render();
+  if (key.startsWith('ex-')) renderTree();
 }
 const groupHead = (key, title, count, extra = '') => {
-  const open = openGroups.has(key);
+  const open = isOpen(key);
   return `<div class="grp-row"><button class="grp" type="button" data-group="${key}" aria-expanded="${open}"><span class="tw">${open ? '▾' : '▸'}</span>${title}${count === '' ? '' : `<span class="grp-n">${count}</span>`}</button>${extra}</div>`;
 };
 
@@ -494,21 +503,17 @@ function kpisHtml() {
   return tiles.map(([k, icon, label, val, sub, hot]) => `<div class="kpi ${k}${hot ? ' hot' : ''}"><span>${icon}</span><span class="kpi-label">${label}</span><b class="val">${val}</b><span class="sub">${sub}</span></div>`).join('');
 }
 
-function fleetHtml() {
-  const head = groupHead('mac', 'This Mac', '');
-  if (!openGroups.has('mac')) return head;
+/** The agents' share of this Mac, in the top bar: memory by agent, and CPU as a share of all cores. */
+function hstatsHtml() {
   const totalMb = snap.machine?.totalMemMb || 1;
   const withMem = snap.agents.filter(a => a.proc?.rssMb).sort((x, y) => y.proc.rssMb - x.proc.rssMb);
   const usedMb = withMem.reduce((t, a) => t + a.proc.rssMb, 0);
-  const memBar = `<div class="stack">${withMem.map(a => `<i style="width:${((a.proc.rssMb / totalMb) * 100).toFixed(2)}%;background:${colorOf(a.id)}" data-tip="${esc(`${a.name} · ${gb(a.proc.rssMb)}`)}"></i>`).join('')}<i class="rest" style="flex:1 1 0" data-tip="${esc(`Rest of this Mac · ${gb(Math.max(0, totalMb - usedMb))}`)}"></i></div>
-    <div class="legend">${withMem.slice(0, 6).map(a => `<span><i class="key" style="background:${colorOf(a.id)}"></i>${esc(a.name)} <b>${gb(a.proc.rssMb)}</b></span>`).join('')}</div>`;
+  const memBar = `<span class="hbar">${withMem.map(a => `<i style="width:${Math.max(1.5, (a.proc.rssMb / totalMb) * 100).toFixed(2)}%;background:${colorOf(a.id)}" data-tip="${esc(`${a.name} · ${gb(a.proc.rssMb)}`)}"></i>`).join('')}</span>`;
   const cores = snap.machine?.cpuCount || 1;
   const cpuUsed = snap.agents.reduce((t, a) => t + (a.proc?.cpu ?? 0), 0);
   const cpuRatio = cpuUsed / (cores * 100);
-  return `${head}<div class="panel"><div class="ptitle">Memory<span class="pv">${gb(usedMb)} of ${gb(totalMb)}</span></div>${memBar}</div>
-    <div class="panel"><div class="ptitle">CPU used by agents<span class="pv">${Math.round(cpuRatio * 100)}% of this Mac</span></div>
-      ${meter(cpuRatio, severityOf(cpuRatio, 0.5, 0.8), `${Math.round(cpuRatio * 100)}% of all ${cores} cores`)}
-      <div class="legend"><span>${Math.round(cpuUsed)}% of one core · ${cores} cores</span></div></div>`;
+  return `<span class="hstat" data-tip="${esc(`Memory used by agents · ${withMem.map(a => `${a.name} ${gb(a.proc.rssMb)}`).join(' · ') || 'none'}`)}"><span class="ml">Agents RAM</span>${memBar}<b>${gb(usedMb)}</b><span class="faint">of ${gb(totalMb)}</span></span>
+    <span class="hstat"><span class="ml">Agents CPU</span>${meter(cpuRatio, severityOf(cpuRatio, 0.5, 0.8), `${Math.round(cpuUsed)}% of one core · ${cores} cores`)}<b>${Math.round(cpuRatio * 100)}% of this Mac</b></span>`;
 }
 
 function askLine(a) {
@@ -552,7 +557,7 @@ function listHtml() {
   for (const [state, title] of GROUPS) {
     const agents = snap.agents.filter(a => a.state === state);
     if (!agents.length) continue;
-    const open = openGroups.has(state);
+    const open = isOpen(state);
     html += groupHead(state, title, agents.length, state === 'stale' && open ? '<button class="act mini" id="open-cleanup" type="button">Clean up…</button>' : '');
     if (open) html += agents.map(rowHtml).join('');
   }
@@ -579,7 +584,7 @@ function railHtml() {
     ? `<div class="sec">⚠ Collisions · ${snap.collisions.length}</div>${snap.collisions.map(c => `<div class="card collide"><div class="top"><span class="chip c-serious">⚠ ${esc(c.severity)}</span><b>${esc(c.repo.split('/').pop())}</b></div><div class="muted" style="margin-top:4px">${esc(c.reason)} · since ${clock(c.since)}</div><div class="badges">${who(c.agentIds)}</div></div>`).join('')}`
     : '';
   html += groupHead('repos', 'Repos', snap.repos.length);
-  if (!openGroups.has('repos')) return html;
+  if (!isOpen('repos')) return html;
   html += snap.repos.map(r => {
     const dirty = r.dirty ?? 0;
     const dirtyMeter = r.dirty === undefined ? '' : `<div class="m" style="margin-top:8px"><span class="ml">Changes</span>${meter(Math.min(dirty, 20) / 20, severityOf(dirty / 20, 0.5, 0.9), `${dirty} uncommitted file${dirty === 1 ? '' : 's'}`)}<span class="mv">${dirty ? `${dirty} uncommitted` : 'clean ✓'}</span></div>`;
@@ -873,10 +878,10 @@ let readerLines = null; // [first, last] line numbers of the quoted code selecti
 const readerDrafts = new Map(); // agent id + path → half-typed reply
 const readerKey = () => (reader ? `${reader.agentId}\n${reader.path}` : '');
 const docName = path => String(path).split('/').pop();
-const isMarkdown = path => /\.(md|markdown|mdx)$/i.test(path);
+const isMarkdown = path => path === '@summary' || /\.(md|markdown|mdx)$/i.test(path);
 const docEntry = (agentId, path) => snap?.agents.find(a => a.id === agentId)?.docs?.find(d => d.path === path);
 /** The path as the agent knows it: relative to its folder when inside it. */
-const docLabel = (agent, path) => (agent?.cwd && path.startsWith(`${agent.cwd}/`) ? path.slice(agent.cwd.length + 1) : path);
+const docLabel = (agent, path) => (path === '@summary' ? 'your conversation summary' : agent?.cwd && path.startsWith(`${agent.cwd}/`) ? path.slice(agent.cwd.length + 1) : path);
 /** When the agent last wrote or read a file: from its documents, or from the explorer listing. */
 function touchOf(agentId, path) {
   const doc = docEntry(agentId, path);
@@ -887,6 +892,7 @@ function touchOf(agentId, path) {
   return { wrote: doc.wrote || listed.wrote, at: Math.max(doc.at, listed.at) };
 }
 const docSub = (agent, path) => {
+  if (path === '@summary') return 'What this session remembers of its earlier conversation, written when it was compacted';
   const t = agent ? touchOf(agent.id, path) : null;
   return `${docLabel(agent, path)}${t ? ` · ${t.wrote ? 'written' : 'read'} by ${agent.name} at ${hhmm(t.at)}` : ''}`;
 };
@@ -906,7 +912,7 @@ const tabsOf = id => {
 
 function tabsHtml(a, t) {
   const agentTab = `<div class="tab${t.active ? '' : ' on'}"><button type="button" data-tab=""><span class="swatch" style="background:${colorOf(a.id)}"></span>${esc(a.name)}</button></div>`;
-  return agentTab + t.files.map(f => `<div class="tab${t.active === f ? ' on' : ''}"><button type="button" data-tab="${esc(f)}" data-tip="${esc(short(f))}">${isMarkdown(f) ? '📄' : '⌗'} ${esc(docName(f))}</button><button type="button" class="x" data-close-tab="${esc(f)}" aria-label="Close ${esc(docName(f))}">✕</button></div>`).join('');
+  return agentTab + t.files.map(f => `<div class="tab${t.active === f ? ' on' : ''}"><button type="button" data-tab="${esc(f)}" data-tip="${esc(f === '@summary' ? 'What this session remembers of its earlier conversation' : short(f))}">${f === '@summary' ? '🧠' : isMarkdown(f) ? '📄' : '⌗'} ${esc(fileLabel(f))}</button><button type="button" class="x" data-close-tab="${esc(f)}" aria-label="Close ${esc(fileLabel(f))}">✕</button></div>`).join('');
 }
 
 function readerHtml() {
@@ -915,7 +921,7 @@ function readerHtml() {
   const hint = live ? 'Select text above, then Quote to reply about that part. ⌘↩ sends.'
     : "This session isn't listening for dashboard messages yet. Send it anything in its terminal once, or start a new session.";
   return `<div class="reader-head">
-      <div class="reader-title"><b>${isMarkdown(reader.path) ? '📄' : '⌗'} ${esc(docName(reader.path))}</b><div class="faint mono" id="reader-sub">${esc(docSub(agent, reader.path))}</div></div>
+      <div class="reader-title"><b>${reader.path === '@summary' ? '🧠' : isMarkdown(reader.path) ? '📄' : '⌗'} ${esc(fileLabel(reader.path))}</b><div class="faint mono" id="reader-sub">${esc(docSub(agent, reader.path))}</div></div>
       <span class="grow"></span>
       <button class="act" id="reader-reload" type="button">↻ Reload</button>
     </div>
@@ -1147,6 +1153,8 @@ async function fetchListing() {
     // First look at this folder: open the folders holding files the agent wrote.
     const dirs = openDirs(id);
     for (const [path, t] of Object.entries(data.touched ?? {})) if (t.wrote) for (const d of ancestors(path)) dirs.add(d);
+    const scratchDirs = openDirs(`${id}\nscratch`);
+    for (const [path, t] of Object.entries(data.scratch?.touched ?? {})) if (t.wrote) for (const d of ancestors(path)) scratchDirs.add(d);
   }
   if (data) explorer.data = data;
   explorer.error = data ? '' : error;
@@ -1175,7 +1183,7 @@ function fileRow(path, label, depth, ctx, sub = '') {
   const t = ctx.touched[path];
   const tip = [t ? `${t.wrote ? 'Edited' : 'Read'} by ${ctx.name} at ${hhmm(t.at)}` : '', st ? `git: ${STATUS_WORD[st] ?? st}` : ''].filter(Boolean).join(' · ') || path;
   const on = reader?.path === `${ctx.root}/${path}`;
-  return `<button class="tn file${st ? ` st-${st}` : ''}${on ? ' on' : ''}" type="button" data-file="${esc(path)}" style="--d:${depth}" data-tip="${esc(tip)}"><span class="tw"></span><span class="tname">${esc(label)}</span>${sub ? `<span class="tsub">${esc(sub)}</span>` : ''}${t ? `<i class="mine${t.wrote ? '' : ' read'}" style="--c:${ctx.color}"></i>` : ''}${st ? `<span class="tst">${esc(st)}</span>` : ''}</button>`;
+  return `<button class="tn file${st ? ` st-${st}` : ''}${on ? ' on' : ''}" type="button" data-${ctx.fileAttr}="${esc(path)}" style="--d:${depth}" data-tip="${esc(tip)}"><span class="tw"></span><span class="tname">${esc(label)}</span>${sub ? `<span class="tsub">${esc(sub)}</span>` : ''}${t ? `<i class="mine${t.wrote ? '' : ' read'}" style="--c:${ctx.color}"></i>` : ''}${st ? `<span class="tst">${esc(st)}</span>` : ''}</button>`;
 }
 
 /** A small deploy mark for a repo, from the Repos panel's GitHub Actions status. */
@@ -1194,49 +1202,80 @@ function treeRows(node, prefix, depth, out, ctx) {
     const mine = ctx.mine.has(path) ? `<i class="mine" style="--c:${ctx.color}" data-tip="${esc(`${ctx.name} edited files in here`)}"></i>` : '';
     const repo = ctx.repos.get(path);
     const tag = repo ? `<span class="repo-tag" data-tip="${esc(`Git repo ${repo.name}, on ${repo.branch}`)}">⎇ ${esc(repo.branch)}</span>${deployMark(deployOf(repo.top))}` : '';
-    out.push(`<button class="tn dir${repo ? ' repo' : ''}${ctx.changed.has(path) ? ' changed' : ''}" type="button" data-dir="${esc(path)}" aria-expanded="${open}" style="--d:${depth}"><span class="tw">${open ? '▾' : '▸'}</span><span class="tname">${esc(name)}</span>${mine}${tag}</button>`);
+    out.push(`<button class="tn dir${repo ? ' repo' : ''}${ctx.changed.has(path) ? ' changed' : ''}" type="button" data-${ctx.dirAttr}="${esc(path)}" aria-expanded="${open}" style="--d:${depth}"><span class="tw">${open ? '▾' : '▸'}</span><span class="tname">${esc(name)}</span>${mine}${tag}</button>`);
     if (open) treeRows(node.dirs.get(name), path, depth + 1, out, ctx);
   }
   for (const name of [...node.files].sort(byName)) out.push(fileRow(prefix ? `${prefix}/${name}` : name, name, depth, ctx));
 }
 
+const emptyRow = text => `<div class="empty" style="padding:2px 10px 4px">${text}</div>`;
+const sectionHead = (key, title, sub = '') => `<button class="ex-sec" type="button" data-group="${key}" aria-expanded="${isOpen(key)}"><span class="tw">${isOpen(key) ? '▾' : '▸'}</span>${title}${sub ? `<span class="tsub">${esc(sub)}</span>` : ''}</button>`;
+const fileLabel = path => (path === '@summary' ? 'Conversation summary' : docName(path));
+
+// The explorer's sections: Memory and Scratchpad first (short), then the agent's folder (long).
+/** One listed folder (the agent's, or its scratchpad) as a tree, or as flat matches while filtering. */
+function folderRows(list, ctx, out) {
+  const q = filterText.trim().toLowerCase();
+  if (q) {
+    const hits = list.files.filter(f => f.toLowerCase().includes(q));
+    for (const f of hits.slice(0, 300)) out.push(fileRow(f, docName(f), 0, ctx, f.split('/').slice(0, -1).join('/')));
+    if (!hits.length) out.push(emptyRow('No file names match.'));
+    else if (hits.length > 300) out.push(emptyRow(`Showing 300 of ${hits.length} matches.`));
+  } else {
+    treeRows(treeOf(list), '', 0, out, ctx);
+    if (!list.files.length) out.push(emptyRow('This folder is empty.'));
+  }
+  if (list.truncated) out.push(emptyRow(`Only the first ${list.files.length.toLocaleString()} files are listed.`));
+}
+
+function treeContext(agent, list, { fileAttr, dirAttr, openKey }) {
+  const changed = new Set();
+  const mine = new Set();
+  for (const path of Object.keys(list.status ?? {})) for (const a of ancestors(path)) changed.add(a);
+  for (const [path, t] of Object.entries(list.touched ?? {})) if (t.wrote) for (const a of ancestors(path)) mine.add(a);
+  const repos = list.repos ?? [];
+  return { root: list.root, status: list.status ?? {}, touched: list.touched ?? {}, open: openDirs(openKey), changed, mine, color: colorOf(agent.id), name: agent.name, repos: new Map(repos.filter(r => r.path).map(r => [r.path, r])), fileAttr, dirAttr };
+}
+
 function renderTree() {
   const box = $('tree');
   const agent = snap?.agents.find(x => x.id === explorer.agentId);
-  $('ex-root').textContent = agent?.cwd ? short(agent.cwd) : '';
-  if (!agent) { box.innerHTML = '<div class="empty" style="padding:4px 10px">No agent selected.</div>'; return; }
-  if (!browsable(agent)) { box.innerHTML = '<div class="empty" style="padding:4px 10px">This agent has no folder to show.</div>'; return; }
-  if (explorer.error) { box.innerHTML = `<div class="empty" style="padding:4px 10px">${esc(explorer.error)}</div>`; return; }
+  if (!agent) { box.innerHTML = emptyRow('No agent selected.'); return; }
+  if (!browsable(agent)) { box.innerHTML = emptyRow('This agent has no folder to show.'); return; }
+  if (explorer.error) { box.innerHTML = emptyRow(esc(explorer.error)); return; }
   const d = explorer.data;
-  if (!d) { box.innerHTML = '<div class="empty" style="padding:4px 10px">Loading…</div>'; return; }
-  const changed = new Set();
-  const mine = new Set();
-  for (const path of Object.keys(d.status ?? {})) for (const a of ancestors(path)) changed.add(a);
-  for (const [path, t] of Object.entries(d.touched ?? {})) if (t.wrote) for (const a of ancestors(path)) mine.add(a);
-  const repos = d.repos ?? [];
-  const ctx = { root: d.root, status: d.status ?? {}, touched: d.touched ?? {}, open: openDirs(agent.id), changed, mine, color: colorOf(agent.id), name: agent.name, repos: new Map(repos.filter(r => r.path).map(r => [r.path, r])) };
+  if (!d) { box.innerHTML = emptyRow('Loading…'); return; }
   const out = [];
-  const own = repos.find(r => r.path === '');
-  if (own) {
-    const n = Object.keys(ctx.status).length;
-    out.push(`<div class="ex-repo" data-tip="${esc(`Git repo at ${short(own.top)}`)}">⎇ <b>${esc(own.name)}</b><span>${esc(own.branch)}</span><span class="faint">· ${n ? `${n} changed` : 'clean'}</span>${deployMark(deployOf(own.top))}</div>`);
+
+  out.push(sectionHead('ex-memory', 'Memory'));
+  if (isOpen('ex-memory')) {
+    const memRow = (path, label, where, icon, tip) => `<button class="tn file mem${reader?.path === path ? ' on' : ''}" type="button" data-mem="${esc(path)}" style="--d:0" data-tip="${esc(tip)}"><span class="tw">${icon}</span><span class="tname">${esc(label)}</span><span class="tsub">${esc(where)}</span></button>`;
+    out.push(memRow('@summary', 'Conversation summary', 'after compaction', '🧠', 'What this session carries of its earlier conversation, once it has been compacted'));
+    for (const m of d.memory ?? []) out.push(memRow(m.path, m.label, m.where, '📄', short(m.path)));
   }
-  const q = filterText.trim().toLowerCase();
-  if (q) {
-    const hits = d.files.filter(f => f.toLowerCase().includes(q));
-    for (const f of hits.slice(0, 300)) out.push(fileRow(f, docName(f), 0, ctx, f.split('/').slice(0, -1).join('/')));
-    if (!hits.length) out.push('<div class="empty" style="padding:4px 10px">No file names match.</div>');
-    else if (hits.length > 300) out.push(`<div class="empty" style="padding:4px 10px">Showing 300 of ${hits.length} matches.</div>`);
-  } else {
-    treeRows(treeOf(d), '', 0, out, ctx);
-    if (!d.files.length) out.push('<div class="empty" style="padding:4px 10px">This folder is empty.</div>');
+  if (d.scratch) {
+    out.push(sectionHead('ex-scratch', 'Scratchpad', `${d.scratch.files.length} file${d.scratch.files.length === 1 ? '' : 's'}`));
+    if (isOpen('ex-scratch')) folderRows(d.scratch, treeContext(agent, d.scratch, { fileAttr: 'sfile', dirAttr: 'sdir', openKey: `${agent.id}\nscratch` }), out);
   }
-  if (d.truncated) out.push(`<div class="empty" style="padding:4px 10px">Only the first ${d.files.length.toLocaleString()} files are listed.</div>`);
+
+  out.push(sectionHead('ex-folder', 'Folder', short(d.root ?? agent.cwd)));
+  if (isOpen('ex-folder')) {
+    if (d.folderError) out.push(emptyRow(esc(d.folderError)));
+    else {
+      const own = (d.repos ?? []).find(r => r.path === '');
+      if (own) {
+        const n = Object.keys(d.status ?? {}).length;
+        out.push(`<div class="ex-repo" data-tip="${esc(`Git repo at ${short(own.top)}`)}">⎇ <b>${esc(own.name)}</b><span>${esc(own.branch)}</span><span class="faint">· ${n ? `${n} changed` : 'clean'}</span>${deployMark(deployOf(own.top))}</div>`);
+      }
+      folderRows(d, treeContext(agent, d, { fileAttr: 'file', dirAttr: 'dir', openKey: agent.id }), out);
+    }
+  }
+
   box.innerHTML = out.join('');
 }
 
-function toggleDir(path) {
-  const dirs = openDirs(explorer.agentId);
+function toggleDir(key, path) {
+  const dirs = openDirs(key);
   if (dirs.has(path)) dirs.delete(path);
   else dirs.add(path);
   renderTree();
@@ -1293,7 +1332,7 @@ function render() {
     .map(([n, s]) => `<span class="pill p-err" title="${esc(s.error)}">${esc(n)}: ${esc(String(s.error).slice(0, 40))}</span>`).join(' ');
   $('list').innerHTML = listHtml();
   $('rail').innerHTML = railHtml();
-  $('fleet').innerHTML = fleetHtml();
+  $('hstats').innerHTML = hstatsHtml();
   renderCentre();
   syncExplorer();
   updateTimers();
@@ -1408,11 +1447,17 @@ document.addEventListener('click', async e => {
     }
     return;
   }
-  if (d.dir !== undefined) { toggleDir(d.dir); return; }
+  if (d.dir !== undefined) { toggleDir(explorer.agentId, d.dir); return; }
+  if (d.sdir !== undefined) { toggleDir(`${explorer.agentId}\nscratch`, d.sdir); return; }
   if (d.file !== undefined) {
     if (explorer.data) await openFile(explorer.agentId, `${explorer.data.root}/${d.file}`);
     return;
   }
+  if (d.sfile !== undefined) {
+    if (explorer.data?.scratch) await openFile(explorer.agentId, `${explorer.data.scratch.root}/${d.sfile}`);
+    return;
+  }
+  if (d.mem !== undefined) { await openFile(explorer.agentId, d.mem); return; }
   if (d.group) { toggleGroup(d.group); return; }
   if (el.id === 'ex-refresh') { await fetchListing(); return; }
   if (el.id === 'reader-reload') { await loadDoc({ keepScroll: true }); return; }

@@ -14,6 +14,7 @@ import { deployStatus } from './sources/gh.mjs';
 import { confirmDelivery, readBeacons, readPending, validateAnswers, writeAnswerFile, writeMessageFile } from './sources/pending.mjs';
 import { listFolder, readFolderFile } from './sources/files.mjs';
 import { checkImages, pruneUploads, saveImages, withScreenshots } from './sources/uploads.mjs';
+import { compactSummary, memoryFiles, scratchpadOf } from './sources/memory.mjs';
 import { applySince, buildAgent, countStates, sortAgents } from './derive/agent.mjs';
 import { findCollisions } from './derive/collisions.mjs';
 import { AlertEngine, notifyMac } from './alerts.mjs';
@@ -52,7 +53,7 @@ function loadToken(path) {
   return token;
 }
 
-export async function startCollector({ root, claudeDir = join(homedir(), '.claude'), claudeBin = 'claude', home = homedir(), port: portOverride, deliveryTimeoutMs = 5000, notify = notifyMac, log = makeLogger(join(root, 'logs')) }) {
+export async function startCollector({ root, claudeDir = join(homedir(), '.claude'), claudeBin = 'claude', home = homedir(), scratchBase = `/private/tmp/claude-${process.getuid?.() ?? 0}`, port: portOverride, deliveryTimeoutMs = 5000, notify = notifyMac, log = makeLogger(join(root, 'logs')) }) {
   const stateDir = join(root, 'state');
   const pendingDir = join(stateDir, 'pending');
   const answersDir = join(stateDir, 'answers');
@@ -381,24 +382,47 @@ export async function startCollector({ root, claudeDir = join(homedir(), '.claud
     return out;
   }
 
+  const cachedListing = async (key, dir) => {
+    const hit = listings.get(key);
+    if (hit && Date.now() - hit.at < 2000) return hit.value;
+    const value = await listFolder(dir, { home });
+    listings.set(key, { at: Date.now(), value });
+    return value;
+  };
+  const memoryOf = agent => memoryFiles({ cwd: agent.cwd, home, claudeDir, transcriptPath: sessions.get(agent.id)?.path ?? null });
+
+  /** The explorer: the agent's folder, its session's scratchpad, and what the session remembers. */
   async function listFiles(agentId) {
     const agent = snapshot?.agents.find(a => a.id === agentId);
-    if (!agent || agent.kind === 'codex' || !agent.cwd) return { status: 404, error: 'That agent was not found, or has no folder.' };
-    const hit = listings.get(agentId);
-    let listing = hit && Date.now() - hit.at < 2000 ? hit.value : null;
-    if (!listing) {
-      listing = await listFolder(agent.cwd, { home });
-      listings.set(agentId, { at: Date.now(), value: listing });
-    }
-    if (listing.error) return { status: 403, error: listing.error };
-    return { root: agent.cwd, ...listing, touched: touchedIn(agentId, agent.cwd) };
+    if (!agent || agent.kind === 'codex') return { status: 404, error: 'That agent was not found, or has no folder.' };
+    const folder = agent.cwd ? await cachedListing(agentId, agent.cwd) : { error: 'This agent has no folder.' };
+    const scratchRoot = scratchpadOf(agentId, scratchBase, agent.cwd);
+    const scratch = scratchRoot ? { root: scratchRoot, ...(await cachedListing(`scratch:${agentId}`, scratchRoot)) } : null;
+    return {
+      root: agent.cwd,
+      ...(folder.error ? { git: false, files: [], status: {}, repos: [], truncated: false, folderError: folder.error } : folder),
+      touched: agent.cwd ? touchedIn(agentId, agent.cwd) : {},
+      scratch: scratch && !scratch.error ? { ...scratch, touched: touchedIn(agentId, scratchRoot) } : null,
+      memory: memoryOf(agent),
+    };
   }
 
-  /** A file from the agent's folder, or else a markdown document the agent opened elsewhere. */
+  /** A file from the agent's folder or scratchpad, its memory, its conversation summary, or a document it opened. */
   async function readFile(agentId, path) {
     const agent = snapshot?.agents.find(a => a.id === agentId);
     if (!agent) return { status: 404, error: 'That agent was not found.' };
-    if (browsable(agent) && typeof path === 'string' && path.startsWith(`${agent.cwd}/`)) return readFolderFile(agent.cwd, path);
+    if (typeof path !== 'string') return { status: 403, error: "That file is outside the agent's folder." };
+    if (path === '@summary') {
+      const transcript = sessions.get(agentId)?.path;
+      const summary = transcript ? compactSummary(transcript) : null;
+      return summary
+        ? { doc: { path, text: summary.text, mtimeMs: summary.at, size: summary.text.length } }
+        : { status: 404, error: "This session hasn't been compacted yet, so it still holds the whole conversation. Open Full transcript to read it." };
+    }
+    if (agent.kind !== 'codex' && memoryOf(agent).some(m => m.path === path)) return readFolderFile(dirname(path), path);
+    const scratchRoot = agent.kind === 'codex' ? null : scratchpadOf(agentId, scratchBase, agent.cwd);
+    if (scratchRoot && path.startsWith(`${scratchRoot}/`)) return readFolderFile(scratchRoot, path);
+    if (browsable(agent) && path.startsWith(`${agent.cwd}/`)) return readFolderFile(agent.cwd, path);
     const doc = readDoc(agentId, path);
     return doc.doc ? doc : { status: 403, error: "That file is outside the agent's folder." };
   }
