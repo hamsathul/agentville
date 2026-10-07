@@ -1,12 +1,12 @@
 import { appendFileSync, existsSync, mkdirSync, readFileSync, readdirSync, realpathSync, renameSync, statSync, unlinkSync, watch, writeFileSync } from 'node:fs';
 import { randomBytes } from 'node:crypto';
 import { cpus, homedir, totalmem } from 'node:os';
-import { basename, dirname, join } from 'node:path';
+import { dirname, join } from 'node:path';
 import { loadConfig, mergeConfig } from './config.mjs';
 import { run } from './lib/exec.mjs';
 import { TailReader } from './lib/tail-reader.mjs';
 import { SessionModel } from './transcript/session-model.mjs';
-import { earlierFileCalls } from './transcript/backfill.mjs';
+import { earlierHistory } from './transcript/backfill.mjs';
 import { readRegistry } from './sources/registry.mjs';
 import { readAgentsCli } from './sources/agents-cli.mjs';
 import { childrenIndex, findCodexRoots, findPidByArg, readPs, treeStats } from './sources/ps.mjs';
@@ -19,6 +19,7 @@ import { checkImages, pruneUploads, saveImages, withScreenshots } from './source
 import { compactSummary, memoryFiles, scratchpadOf } from './sources/memory.mjs';
 import { applySince, buildAgent, countStates, sortAgents } from './derive/agent.mjs';
 import { findCollisions } from './derive/collisions.mjs';
+import { reposFor } from './derive/repos.mjs';
 import { AlertEngine, notifyMac } from './alerts.mjs';
 import { createTrackerServer } from './server.mjs';
 import { renderTranscriptPage } from './transcript-page.mjs';
@@ -144,9 +145,10 @@ export async function startCollector({ root, claudeDir = join(homedir(), '.claud
     backfilled.add(path);
     if (start === 0) return;
     backfills = backfills.then(async () => {
-      const calls = await earlierFileCalls(path, start);
+      const earlier = await earlierHistory(path, start);
       if (stopped) return;
-      model.addEarlierFiles(calls);
+      model.addEarlierFiles(earlier.files);
+      model.addEarlierSaid(earlier.said);
       scheduleLight();
     }).catch(err => log(`backfill of ${path} failed: ${err?.stack ?? err}`));
   }
@@ -203,27 +205,6 @@ export async function startCollector({ root, claudeDir = join(homedir(), '.claud
   }
 
   const ownFolder = a => Boolean(a.cwd) && a.cwd !== home && a.cwd !== '/';
-
-  function reposFor(agents) {
-    const map = new Map();
-    const ensure = path => {
-      if (!map.has(path)) map.set(path, { ...(repoInfo.get(path) ?? { path, name: basename(path) }), deploy: deploys.get(path), agentIds: [] });
-      return map.get(path);
-    };
-    for (const path of Object.keys(cfg.deployRepos)) ensure(path);
-    const addAgent = (path, id) => {
-      const r = ensure(path);
-      if (!r.agentIds.includes(id)) r.agentIds.push(id);
-    };
-    for (const a of agents) {
-      for (const t of a.touching) if (t.repo) addAgent(t.repo, a.id);
-      // The repo an agent works in stays listed while the agent is around, even when it touched
-      // nothing lately, so the repo rail and the farm's fields don't come and go.
-      const own = ownFolder(a) ? resolver.lookup(a.cwd) : null;
-      if (own) addAgent(own, a.id);
-    }
-    return [...map.values()].sort((x, y) => y.agentIds.length - x.agentIds.length || x.name.localeCompare(y.name));
-  }
 
   function queueResolve(agents) {
     if (isResolving) return;
@@ -305,7 +286,7 @@ export async function startCollector({ root, claudeDir = join(homedir(), '.claud
       sources: { ...sources },
       counts: countStates(agents, collisions),
       agents: sortAgents(agents),
-      repos: reposFor(agents),
+      repos: reposFor(agents, { deployRepos: cfg.deployRepos, repoInfo, deploys, lookup: p => resolver.lookup(p), home, now }),
       collisions,
     };
     prevAgents = new Map(agents.map(a => [a.id, a]));
@@ -543,7 +524,7 @@ export async function startCollector({ root, claudeDir = join(homedir(), '.claud
   server = createTrackerServer({
     port: portOverride ?? cfg.port, token, webFile: join(root, 'web', 'index.html'),
     getSnapshot: () => snapshot,
-    getFeed: (id, limit) => modelFor(id)?.feed.slice(0, limit) ?? null,
+    getFeed: (id, limit) => modelFor(id)?.history(limit) ?? null,
     getTranscriptHtml, getDoc: readDoc, listFiles, readFile, repoTouched, actions, log,
   });
   const port = await server.listen();

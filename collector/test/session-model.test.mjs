@@ -174,3 +174,30 @@ test("the turn's final reply is kept whole; a later tool call or prompt clears i
   m.applyLines([reply(7, 'Pushing.'), toolUse(8, 't2', 'Bash')]);
   assert.equal(m.finalReply, null);
 });
+
+test('the conversation is kept apart from tool steps, so a busy session does not push your messages out', () => {
+  const m = new SessionModel({ feedCap: 5 });
+  m.applyLines([prompt(1, 'first ask'), reply(2, 'on it'), ...Array.from({ length: 12 }, (_, i) => toolUse(3 + i, `t${i}`, 'Bash', { command: `step ${i}` }))]);
+  assert.ok(!m.feed.some(f => f.kind === 'prompt'), 'the tool steps filled the feed');
+  const all = m.history(200);
+  assert.deepEqual(all.filter(f => f.kind !== 'tool').map(f => f.text), ['on it', 'first ask']);
+  assert.deepEqual(all.map(f => f.at), [...all.map(f => f.at)].sort((x, y) => y - x), 'newest first');
+  const recent = m.recent(4, 10);
+  assert.deepEqual(recent.filter(f => f.kind !== 'tool').map(f => f.text), ['on it', 'first ask'], 'the snapshot carries the latest messages too');
+  assert.equal(recent.filter(f => f.kind === 'tool').length, 4);
+});
+
+test('messages found earlier in the transcript are added as older ones, without repeating any', () => {
+  const m = modelOf(prompt(20, 'latest ask'), reply(21, 'latest reply'));
+  m.addEarlierSaid([
+    { kind: 'prompt', text: 'old ask', at: at(1) },
+    { kind: 'reply', text: 'old reply\nwith detail', at: at(2) },
+    { kind: 'prompt', text: 'latest ask', at: at(20) },
+  ]);
+  assert.deepEqual(m.history(50).map(f => [f.kind, f.text, f.body]), [
+    ['reply', 'latest reply', 'latest reply'],
+    ['prompt', 'latest ask', 'latest ask'],
+    ['reply', 'old reply', 'old reply\nwith detail'],
+    ['prompt', 'old ask', 'old ask'],
+  ]);
+});

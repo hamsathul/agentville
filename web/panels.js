@@ -209,8 +209,8 @@ function composeHtml(a) {
   if (a.kind === 'codex') return '';
   const live = Boolean(a.mod?.live);
   const hint = !live ? "This session isn't listening for dashboard messages yet. Send it anything in its terminal once, or start a new session."
-    : a.state === 'working' ? `${esc(a.name)} is busy: your message waits until its current step ends. ⌘↩ sends.`
-    : 'Sent as your own message. Paste or drop screenshots on the box. ⌘↩ sends.';
+    : a.state === 'working' ? `${esc(a.name)} is busy: your message waits until its current step ends. ↩ sends, ⇧↩ new line.`
+    : 'Sent as your own message. Paste or drop screenshots on the box. ↩ sends, ⇧↩ new line.';
   const sent = msgStatus.get(a.id);
   const status = sent && Date.now() - sent.at < 20_000
     ? `<span id="msg-status" class="${sent.bad ? 'msg-bad' : 'msg-ok'}">${esc(sent.text)}</span>`

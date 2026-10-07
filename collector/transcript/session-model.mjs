@@ -14,12 +14,14 @@ const bodyOf = text => {
 
 /** Everything the tracker knows about one session, built incrementally from its transcript. */
 export class SessionModel {
-  constructor({ feedCap = 200, callCap = 500, fileCap = 300 } = {}) {
+  constructor({ feedCap = 200, saidCap = 200, callCap = 500, fileCap = 300 } = {}) {
     this.feedCap = feedCap;
+    this.saidCap = saidCap;
     this.callCap = callCap;
     this.fileCap = fileCap;
     this.files = new Map(); // path → { path, wrote, at } for files the session wrote or read, oldest first
     this.feed = [];
+    this.said = []; // prompts and replies, newest first: kept apart so a run of tool steps can't push them out
     this.pending = new Map();
     this.openItems = new Map();
     this.calls = [];
@@ -154,6 +156,27 @@ export class SessionModel {
     this.files = merged;
   }
 
+  /** Messages from earlier in the transcript ([{ kind, text, at }], oldest first), added behind the ones known. */
+  addEarlierSaid(items) {
+    const oldest = this.said.length ? this.said[this.said.length - 1].at : Infinity;
+    const older = items.filter(i => i.at < oldest).map(i => ({ at: i.at, kind: i.kind, text: firstLine(i.text), body: bodyOf(i.text) }));
+    this.said.push(...older.reverse());
+    if (this.said.length > this.saidCap) this.said.length = this.saidCap;
+  }
+
+  /** The newest `steps` feed items and `messages` messages together, newest first. */
+  recent(steps, messages = steps) {
+    const items = this.feed.slice(0, steps);
+    const have = new Set(items);
+    for (const s of this.said.slice(0, messages)) if (!have.has(s)) items.push(s);
+    return items.sort((x, y) => y.at - x.at);
+  }
+
+  /** The whole history kept, up to `limit` feed items plus up to `limit` messages, newest first. */
+  history(limit) {
+    return this.recent(limit, limit);
+  }
+
   /** Every file touched, newest first. */
   touchedFiles() {
     return [...this.files.values()].reverse();
@@ -172,6 +195,10 @@ export class SessionModel {
   #push(item) {
     this.feed.unshift(item);
     if (this.feed.length > this.feedCap) this.feed.length = this.feedCap;
+    if (item.kind === 'prompt' || item.kind === 'reply') {
+      this.said.unshift(item);
+      if (this.said.length > this.saidCap) this.said.length = this.saidCap;
+    }
   }
 
   latestPending() {

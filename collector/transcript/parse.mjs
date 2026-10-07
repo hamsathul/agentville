@@ -27,7 +27,8 @@ export function parseEntry(obj) {
       events.push({ kind: 'turn_start' });
     } else if (obj.isMeta !== true) {
       const text = typeof content === 'string' ? content : blocks.filter(b => b?.type === 'text').map(b => b.text ?? '').join('\n');
-      const isHuman = !obj.origin || obj.origin.kind === 'human';
+      // The person typed it, or sent it from the dashboard (the mod submits it as the user's own words).
+      const isHuman = !obj.origin || obj.origin.kind === 'human' || obj.origin.asUser === true;
       const clean = cleanPrompt(text);
       if (isHuman && clean) events.push({ kind: 'prompt', text: clean });
       else if (!isHuman) events.push({ kind: 'turn_start' });

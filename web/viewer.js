@@ -47,7 +47,7 @@ function tabsHtml(a, t) {
 function readerHtml() {
   const agent = snap?.agents.find(a => a.id === reader.agentId);
   const live = Boolean(agent?.mod?.live);
-  const hint = live ? 'Select text above, then Quote to reply about that part. ⌘↩ sends.'
+  const hint = live ? 'Select text above, then Quote to reply about that part. ↩ sends, ⇧↩ new line.'
     : "This session isn't listening for dashboard messages yet. Send it anything in its terminal once, or start a new session.";
   return `<div class="reader-head">
       <div class="reader-title"><b>${reader.path === '@summary' ? '🧠' : isMarkdown(reader.path) ? '📄' : '⌗'} ${esc(fileLabel(reader.path))}</b><div class="faint mono" id="reader-sub">${esc(docSub(agent, reader.path))}</div></div>

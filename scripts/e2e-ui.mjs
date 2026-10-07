@@ -95,7 +95,14 @@ for (const d of ['pending', 'answers', 'mods']) mkdirSync(join(state, d), { recu
 const offer = join(state, 'pending', 'toolu_ASK1.json');
 writeFileSync(offer, JSON.stringify({ kind: 'question', toolUseId: 'toolu_ASK1', sessionId: 'ui-asker', createdAt: now - 20_000, questions: [QUESTION] }));
 let answered = null;
+const received = []; // messages the fake mod took from the dashboard
 const fakeMod = setInterval(() => {
+  const inbox = join(state, 'messages', 'ui-asker');
+  if (existsSync(inbox)) for (const name of readdirSync(inbox)) {
+    if (!name.endsWith('.json')) continue;
+    received.push(JSON.parse(readFileSync(join(inbox, name), 'utf8')).text);
+    unlinkSync(join(inbox, name));
+  }
   writeFileSync(join(state, 'mods', 'ui-asker.json'), JSON.stringify({ sessionId: 'ui-asker', version: 'ui-test', at: Date.now() }));
   if (existsSync(offer)) utimesSync(offer, new Date(), new Date());
   for (const name of readdirSync(join(state, 'answers'))) {
@@ -146,6 +153,16 @@ try {
   check(/Which crop next\?/.test(await js("document.querySelector('.ask legend')?.textContent ?? ''")), 'the centre shows the question');
   check(await until("[...document.querySelectorAll('#tree .tn')].some(b => b.textContent.includes('README.md'))"), "the explorer lists the agent's folder");
   check(await js("[...document.querySelectorAll('#center-body .bub.you')].some(b => b.textContent.includes('Plan the next crop'))"), 'the conversation shows the prompt');
+  const key = (type, mods = 0) => send('Input.dispatchKeyEvent', { type, key: 'Enter', code: 'Enter', windowsVirtualKeyCode: 13, modifiers: mods, ...(type === 'keyDown' ? { text: '\r' } : {}) }); // a real key press carries its text
+  await js("document.getElementById('msg-text').focus()");
+  await send('Input.insertText', { text: 'First line' });
+  await key('keyDown', 8); await key('keyUp', 8); // Shift+Enter
+  await send('Input.insertText', { text: 'second line' });
+  check(/First line\nsecond line/.test(await js("document.getElementById('msg-text').value")) && received.length === 0, 'Shift+Enter in the message box starts a new line');
+  await key('keyDown'); await key('keyUp');
+  for (let i = 0; i < 40 && !received.length; i++) await sleep(150);
+  check(received[0] === 'First line\nsecond line', `Enter sends the message (got ${JSON.stringify(received)})`);
+  check(await until("document.getElementById('msg-text')?.value === ''"), 'the message box clears once it is sent');
   const theme = await js('document.documentElement.dataset.theme ?? "auto"');
   await js("document.getElementById('theme-toggle').click()");
   check((await js('document.documentElement.dataset.theme ?? "auto"')) !== theme, 'the theme button switches the theme');

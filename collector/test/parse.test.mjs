@@ -24,6 +24,13 @@ test('a message from a task notification or peer opens a turn but is not a promp
   assert.deepEqual(kinds({ type: 'user', origin: { kind: 'task-notification' }, message: { content: 'job done' } }), ['turn_start']);
 });
 
+test('a message sent from the dashboard (a plugin submitting as the user) is the person\'s prompt', () => {
+  const r = parseEntry({ type: 'user', origin: { kind: 'plugin', name: 'agent-tracker', asUser: true }, message: { content: 'move the box to the top' } });
+  assert.deepEqual(r.events, [{ kind: 'prompt', text: 'move the box to the top' }]);
+  assert.deepEqual(kinds({ type: 'user', origin: { kind: 'plugin', name: 'other' }, message: { content: 'automated' } }), ['turn_start']);
+  assert.deepEqual(kinds({ type: 'user', origin: { kind: 'peer', name: 'other-session' }, message: { content: 'heads-up' } }), ['turn_start']);
+});
+
 test('assistant entries give tool_use, reply and model events', () => {
   const r = parseEntry({ type: 'assistant', cwd: '/w', message: { model: 'claude-opus-5-5', content: [
     { type: 'thinking', thinking: '' },

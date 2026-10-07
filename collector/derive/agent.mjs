@@ -80,7 +80,7 @@ export function buildAgent({ base, model, registry, proc, cpuHistory = [], child
     lastPrompt: model?.lastPrompt ?? undefined,
     lastReply: model?.lastReply ?? undefined,
     question: derived.state === 'yourTurn' ? trailingQuestion(model?.finalReply) ?? undefined : undefined,
-    feed: model ? model.feed.slice(0, 20).map(previewOf) : [],
+    feed: model ? model.recent(20, 10).map(previewOf) : [], // the latest steps, and the latest messages however busy it was
     children: model ? childrenOf(model, childModels, now) : [],
     touching,
     docs: docsOf(model, childModels),

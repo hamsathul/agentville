@@ -448,12 +448,14 @@ document.addEventListener('drop', e => {
   const box = e.target?.closest?.('.compose[data-agent]');
   if (box) addImages(box.dataset.agent, [...(e.dataTransfer?.files ?? [])]);
 });
+// Enter sends a message; Shift+Enter starts a new line (and Enter while an input method is composing is left alone).
+const sendKey = e => e.key === 'Enter' && !e.shiftKey && !e.altKey && !e.isComposing && e.keyCode !== 229;
 document.addEventListener('keydown', e => {
-  if (e.key === 'Enter' && (e.metaKey || e.ctrlKey) && e.target?.id === 'msg-text') {
+  if (sendKey(e) && e.target?.id === 'msg-text') {
     e.preventDefault();
     sendMessage(e.target.dataset.msgAgent, $('msg-send'));
   }
-  if (e.key === 'Enter' && (e.metaKey || e.ctrlKey) && e.target?.id === 'reader-text') {
+  if (sendKey(e) && e.target?.id === 'reader-text') {
     e.preventDefault();
     sendReaderReply();
   }

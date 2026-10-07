@@ -19,7 +19,7 @@ how much CPU and memory each one uses.
   in a tab: markdown is rendered, code gets line numbers.
   **Answer from the dashboard:** a waiting agent shows its question with clickable options (or
   an "Other" box), and a permission prompt shows the command with **Allow** / **Deny**.
-  **Message any session** like a chat: type under "Now" and press Send (or ⌘↩). It arrives
+  **Message any session** like a chat: type under "Now" and press Enter (Shift+Enter for a new line). It arrives
   as your own prompt; if the agent is busy, it is read when the current step ends. **Attach
   screenshots** by pasting (⌘V) or dropping them on the box, or with 📎: up to 6 images,
   10 MB each; the agent opens them with its Read tool.
@@ -103,7 +103,7 @@ Without a `config.json`, the defaults in `config.example.json` apply.
 | `memoryAlertGb`, `cpuAlertPct`, `cpuAlertSustainSec` | Resource alert thresholds |
 | `notify` | Turn each notification type on or off: `waiting`, `collision`, `yourTurn`, `memory`, `cpu` |
 | `modToasts` | Toasts inside Claude Code sessions |
-| `deployRepos` | Checkout path → `owner/repo` whose latest GitHub Actions run is shown, e.g. `{ "/Users/me/code/api": "me/api" }` |
+| `deployRepos` | Checkout path → `owner/repo` whose latest GitHub Actions run is shown, e.g. `{ "/Users/me/code/api": "me/api" }`. With no agent in it, such a repo is listed only while its deploy runs and for two hours after it started |
 
 ## How it works
 
