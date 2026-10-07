@@ -33,8 +33,9 @@ how much CPU and memory each one uses.
   listed under "Documents". In any open file, select a passage and **Quote** it (code quotes
   carry their line numbers), then reply; the agent gets it as a message about that file.
 - **Pixel farm view** (☰ List | 🌾 Farm in the top bar): the same live data as a little farm.
-  Every agent is a farmer and every repo a field. A farmer that needs you walks to your porch
-  and waves a red "!"; one whose turn it is brings a basket. Working farmers stand in the field
+  Every agent is a farmer and every repo a field. Each farmer has its own hat, hair and clothes;
+  each field its own crop (the seed packet on its fence), soil and fence, and a pennant when it is
+  on a branch other than main. A farmer that needs you walks to your porch and waves a red "!"; one whose turn it is brings a basket. Working farmers stand in the field
   of the repo they write to, holding a tool that matches their current step. Above each field,
   hay bales are uncommitted files, crates unpushed commits and a mailbox commits behind; the
   weather is the last deploy (rainbow, rain, windmill) and a rope marks two agents in one repo.
@@ -43,7 +44,7 @@ how much CPU and memory each one uses.
   (answer its question or permission prompt, message it with screenshots, the conversation newest
   first), **Activity** (its tool steps), **Files** (its folder, scratchpad and memory) and **Diary**
   (who went where). Speech bubbles over the farmers show what each last said (its question when
-  it waits on you); close one with ×, or turn them off. Zoom with − / + or ⌘/Ctrl + scroll. Click a field for a close-up of the files agents touched there.
+  it waits on you); × hides one to a 💬 that shows it again, and the Bubbles switch hides or shows them all. Zoom with − / + or ⌘/Ctrl + scroll. Click a field for a close-up of the files agents touched there.
   It pauses when hidden and follows the system's reduce-motion setting.
 - **Claude Code mod:** `/tracker` opens a side pane, the status line shows
   `⚑ 1 waiting · 2 working`, and toasts appear when another agent needs you. The mod is also

@@ -7,12 +7,43 @@
   /* ---------- the scene: what the farm draws, from the snapshot (pure, tested) ---------- */
 
   const SHIRT = ['#d9673a', '#4a7bd0', '#2fa57a', '#8a6fd8', '#d55181', '#c99a16', '#e05555', '#3c9c3c'];
-  // Shirt colour follows the agent's id, never its place in the list, so colours don't jump.
-  const colorIndex = id => {
+  const hashOf = id => {
     let h = 0;
     for (const ch of String(id)) h = (h * 31 + ch.charCodeAt(0)) >>> 0;
-    return h % SHIRT.length;
+    return h;
   };
+  // Shirt colour follows the agent's id, never its place in the list, so colours don't jump.
+  const colorIndex = id => hashOf(id) % SHIRT.length;
+  /** One of n choices for an id; each salt mixes the hash differently, so the choices don't move together. */
+  const pick = (id, salt, n) => {
+    let h = hashOf(id) ^ Math.imul(salt, 0x9e3779b1);
+    h = Math.imul(h ^ (h >>> 16), 0x85ebca6b);
+    h = Math.imul(h ^ (h >>> 13), 0xc2b2ae35);
+    return ((h ^ (h >>> 16)) >>> 0) % n;
+  };
+
+  // What makes each farmer look like itself, besides its shirt: hat, hair, skin, overalls, an extra.
+  const HATS = ['straw', 'cap', 'beanie', 'bandana', 'none'];
+  const STRAW = [['#e9c46a', '#b5562f'], ['#e2c27a', '#3c5a99'], ['#f0d58c', '#2f6b2f'], ['#d4ad55', '#8e2b2b']]; // [hat, band]
+  const DYED = [['#d64545', '#8e2b2b'], ['#4f9d4a', '#2f6b2f'], ['#4a74c9', '#2c4a85'], ['#8a5fc0', '#5a3b85'], ['#ece6d6', '#9a9488'], ['#3a3a40', '#c9a24a'], ['#e58a2e', '#9a5212']];
+  const CODEX_CAPS = [['#5d7184', '#2a3644'], ['#4a7a8c', '#22404a'], ['#7a8a9c', '#3a4452'], ['#3f4f66', '#cfd8e3']]; // slate caps
+  const HAIR = ['#2b1d14', '#5a3a22', '#a0522d', '#d9b26a', '#9a9a9a'];
+  const SKIN = ['#f1c7a1', '#e0a878', '#c68a5a', '#9c6644', '#7d5236'];
+  const OVERALLS = ['#3c5a99', '#6b4f2a', '#4a4a52', '#2f6b4f', '#7a3b5a'];
+  const EXTRAS = ['none', 'beard', 'glasses', 'cheeks'];
+  function lookOf(a) {
+    const hat = a.kind === 'codex' ? 'cap' : HATS[pick(a.id, 1, HATS.length)];
+    const colors = a.kind === 'codex' ? CODEX_CAPS[pick(a.id, 2, CODEX_CAPS.length)] : hat === 'straw' ? STRAW[pick(a.id, 2, STRAW.length)] : DYED[pick(a.id, 2, DYED.length)];
+    return {
+      hat, hatColor: colors[0], band: colors[1], hair: HAIR[pick(a.id, 3, HAIR.length)], skin: SKIN[pick(a.id, 4, SKIN.length)],
+      overalls: OVERALLS[pick(a.id, 5, OVERALLS.length)], extra: EXTRAS[pick(a.id, 6, EXTRAS.length)],
+    };
+  }
+  // And each field, by its repo: what grows there and the colour of its fence. The branch is a pennant.
+  const CROPS = ['wheat', 'corn', 'carrot', 'cabbage', 'sunflower', 'tomato', 'pumpkin'];
+  const FENCES = ['#c98d4f', '#8a8f96', '#9c3b30', '#5f7f9a', '#6b8f4a', '#4e3626'];
+  const SOILS = ['#7a5230', '#6b4a35', '#86603a', '#7a4632', '#705a3a'];
+  const isMain = b => /^(main|master)$/.test(b ?? '');
 
   /** Share of the context window used: the list view's rule (1M window once past 200k). */
   function contextPct(tokens) {
@@ -64,6 +95,8 @@
       fields: repos.map(r => ({
         key: r.path, name: r.name, branch: r.branch ?? null, dirty: r.dirty ?? 0, ahead: r.ahead ?? 0, behind: r.behind ?? 0,
         weather: weatherOf(r.deploy), deploy: r.deploy ?? null,
+        crop: CROPS[pick(r.path, 7, CROPS.length)], fence: FENCES[pick(r.path, 8, FENCES.length)], soil: SOILS[pick(r.path, 9, SOILS.length)],
+        pennant: Boolean(r.branch) && r.branch !== '(detached)' && !isMain(r.branch),
         collision: (snap.collisions ?? []).find(c => c.repo === r.path)?.severity ?? null,
       })),
       farmers: (snap?.agents ?? []).map(a => {
@@ -73,7 +106,7 @@
           tool: a.now?.tool ?? a.feed?.find(f => f.kind === 'tool')?.tool ?? null, summary: a.now?.summary ?? '',
           pct, hearts: Math.round((1 - pct) * 4), hot: (a.proc?.cpu ?? 0) >= cpuAlertPct,
           ask: askText(a), askKind: a.ask?.kind ?? null, question: a.question ?? null, reply: firstLine(a.lastReply),
-          said: spoken((a.feed ?? []).find(f => f.kind === 'reply')?.body ?? (a.feed ?? []).find(f => f.kind === 'reply')?.text), color: colorIndex(a.id), shirt: SHIRT[colorIndex(a.id)],
+          said: spoken((a.feed ?? []).find(f => f.kind === 'reply')?.body ?? (a.feed ?? []).find(f => f.kind === 'reply')?.text), color: colorIndex(a.id), shirt: SHIRT[colorIndex(a.id)], look: lookOf(a),
           kids: (a.children ?? []).filter(c => c.state === 'running').slice(0, 4).map(c => ({ id: c.id, dog: c.agentType === 'Explore' })),
         };
       }),
@@ -129,20 +162,32 @@
   /* ---------- the farm theme: sprites, ground, weather, labels ---------- */
 
   const K = '#2a1d14';
-  // 14×16 farmer, front view. h straw hat · b hat band · s skin · C shirt · o overalls · P pole
-  const FARMER = [
-    '.....kkkk.....', '....khhhhk....', '...khhhhhhk...', '..kbbbbbbbbk..', '.khhhhhhhhhhk.', '...kssssssk...', '...kssssssk...', '...kssssssk...',
-    '....kkkkkk....', '..kCCCCCCCCk..', '.kCCoCCCCoCCk.', '.kCCooooooCCk.', '.ks.oooooo.sk.', `...k${'o'.repeat(6)}k...`,
+  // 14×16 farmer, front view, put together from its look. h hat · b hat band · r hair · s skin ·
+  // g glasses · p cheeks · C shirt · o overalls · P pole. The eyes are drawn on top (row 6, or 7 looking down).
+  const HEADS = {
+    straw: ['.....kkkk.....', '....khhhhk....', '...khhhhhhk...', '..kbbbbbbbbk..', '.khhhhhhhhhhk.'],
+    cap: ['..............', '.....kkkk.....', '....khhhhk....', '...khhhhhhk...', '...kbbbbbbbbk.'],
+    beanie: ['......kk......', '.....kbbk.....', '....khhhhk....', '...khhhhhhk...', '...kbbbbbbk...'],
+    bandana: ['..............', '....kkkkkk....', '...khhhhhhk...', '...khbhhbhkhk.', '...khhhhhhk.h.'],
+    none: ['..............', '....kkkkkk....', '...krrrrrrk...', '...krrrrrrk...', '...krrrrrrk...'],
+  };
+  const farmerRows = look => [
+    ...(HEADS[look.hat] ?? HEADS.straw),
+    '...krssssrk...',
+    look.extra === 'glasses' ? '...kggkkggk...' : '...kssssssk...',
+    look.extra === 'beard' ? '...krssssrk...' : look.extra === 'cheeks' ? '...kpsssspk...' : '...kssssssk...',
+    look.extra === 'beard' ? '....krrrrk....' : '....kkkkkk....',
+    '..kCCCCCCCCk..', '.kCCoCCCCoCCk.', '.kCCooooooCCk.', '.ks.oooooo.sk.', `...k${'o'.repeat(6)}k...`,
   ];
   const LEGS = { s: ['...koo..ook...', '...kkk..kkk...'], a: ['...koo..ook...', '...kkk........'], b: ['...koo..ook...', '........kkk...'], p: ['......PP......', '......PP......'] };
   const sprites = new Map();
-  function farmerSprite(color, codex, scare, legs, up) {
-    const key = `${color}${codex}${scare}${legs}${up}`;
+  function farmerSprite(look, color, scare, legs, up) {
+    const key = `${Object.values(look).join()}|${color}|${scare}|${legs}|${up}`;
     if (sprites.has(key)) return sprites.get(key);
-    const pal = scare
-      ? { k: '#3a2a1a', h: '#c9a24a', b: '#7a5230', s: '#d8c48a', C: '#8b7a55', o: '#6b5a3a', P: '#6b4320' }
-      : { k: K, h: codex ? '#5d7184' : '#e9c46a', b: codex ? '#2a3644' : '#b5562f', s: '#e0a878', C: color, o: '#3c5a99', P: '#6b4320' };
-    const c = makeSprite(FARMER.concat(LEGS[legs]), pal);
+    const pal = scare // a scarecrow keeps its farmer's hat and shape, in straw and sacking
+      ? { k: '#3a2a1a', h: '#c9a24a', b: '#7a5230', r: '#c9a24a', s: '#d8c48a', g: '#d8c48a', p: '#d8c48a', C: '#8b7a55', o: '#6b5a3a', P: '#6b4320' }
+      : { k: K, h: look.hatColor, b: look.band, r: look.hair, s: look.skin, g: '#e6eef5', p: '#e58a8a', C: color, o: look.overalls, P: '#6b4320' };
+    const c = makeSprite(farmerRows(look).concat(LEGS[legs]), pal);
     if (up) { // one arm up, waving
       const g = c.getContext('2d');
       g.clearRect(11, 11, 2, 2); g.fillStyle = color; g.fillRect(12, 5, 1, 6); g.fillStyle = pal.s; g.fillRect(12, 3, 1, 2); g.fillStyle = K; g.fillRect(13, 3, 1, 8);
@@ -157,7 +202,78 @@
   const toolProp = t => (t === 'Bash' ? 'can' : /^(Edit|MultiEdit|NotebookEdit)$/.test(t ?? '') ? 'hoe' : t === 'Write' ? 'seeds'
     : /^Web(Search|Fetch)$/.test(t ?? '') ? 'pigeon' : /^(Read|Grep|Glob)$/.test(t ?? '') ? 'almanac' : null);
   const VERB = { can: 'watering', hoe: 'hoeing', seeds: 'planting', pigeon: 'sending a pigeon', almanac: 'reading the almanac' };
-  const isMain = b => /^(main|master)$/.test(b ?? '');
+  const shades = new Map();
+  /** A colour made darker (k < 1) or lighter (k > 1). */
+  function shade(hex, k) {
+    const key = hex + k;
+    if (!shades.has(key)) shades.set(key, `#${[1, 3, 5].map(i => Math.min(255, Math.round(parseInt(hex.slice(i, i + 2), 16) * k)).toString(16).padStart(2, '0')).join('')}`);
+    return shades.get(key);
+  }
+  // The seed packet on each field's fence: a 5×6 picture of its crop.
+  const SEED_ICONS = {
+    wheat: ['..y..', '.yyy.', '..y..', '.yyy.', '..g..', '..g..'],
+    corn: ['.g.g.', '.yyy.', '.yyy.', '.yyy.', 'gyyyg', '.ggg.'],
+    carrot: ['.g.g.', '..g..', 'ooooo', '.ooo.', '.oo..', '..o..'],
+    cabbage: ['.....', '.lgl.', 'lgggl', 'lglgl', '.lll.', '.....'],
+    sunflower: ['.yyy.', 'yybyy', '.yyy.', '..g..', '.gg..', '..g..'],
+    tomato: ['.g.g.', '..g..', '.rrr.', 'rrrrr', 'rrrrr', '.rrr.'],
+    pumpkin: ['..g..', '.oOo.', 'oOoOo', 'oOoOo', '.oOo.', '.....'],
+  };
+  const SEED_PAL = { y: '#e9b949', g: '#3f9b3a', l: '#4f9a35', o: '#f08a24', O: '#c8681a', r: '#e04a3a', b: '#6b4320' };
+  function seedSign(crop, x, y) {
+    px(x + 4, y + 9, 1, 8, '#6b4320'); // stake
+    px(x, y, 9, 10, '#6b4320'); px(x + 1, y + 1, 7, 8, '#f4ecd8');
+    (SEED_ICONS[crop] ?? SEED_ICONS.wheat).forEach((row, j) => { for (let i = 0; i < 5; i++) if (row[i] !== '.') px(x + 2 + i, y + 2 + j, 1, 1, SEED_PAL[row[i]]); });
+  }
+  /** One plant at (x, y), grown to p (0–1); ripe past 0.8. Returns the y of its top, for the sparkle. */
+  function drawCrop(crop, x, y, p, sway) {
+    const ripe = p > 0.8;
+    if (crop === 'pumpkin') {
+      const z = 1 + Math.round(p * 3);
+      px(x - 2, y - 1, 5, 1, '#3f9b3a'); px(x - 3, y - 3, 2, 2, '#6cc04a');
+      px(x - Math.floor(z / 2), y - z - 1, z + 1, z, ripe ? '#ff8c1a' : '#f4a261'); px(x, y - z - 2, 1, 1, '#3f9b3a');
+      return y - z - 2;
+    }
+    if (crop === 'corn') {
+      const h = 3 + Math.round(p * 7);
+      px(x, y - h, 1, h, '#4f9a35'); px(x - 2, y - h + 3, 2, 1, '#6cc04a'); px(x + 1, y - h + 5, 2, 1, '#6cc04a');
+      if (ripe) { px(x + 1, y - h + 1, 2, 3, '#f2d14b'); px(x + 1, y - h + 4, 2, 1, '#8fd16a'); } else if (p > 0.4) px(x + 1, y - h + 2, 1, 2, '#9ed36a');
+      px(x + sway, y - h - 1, 1, 1, '#d9b26a');
+      return y - h - 1;
+    }
+    if (crop === 'carrot') {
+      const h = 1 + Math.round(p * 3);
+      px(x, y - h, 1, h, '#3f9b3a'); px(x - 1, y - h, 1, 1, '#6cc04a'); px(x + 1, y - h + 1, 1, 1, '#6cc04a');
+      if (p > 0.5) px(x - 1, y, 3, 1, ripe ? '#ff7a1a' : '#f0a060');
+      return y - h;
+    }
+    if (crop === 'cabbage') {
+      const w = 2 + Math.round(p * 3), h = 1 + Math.round(p * 2);
+      px(x - (w >> 1) - 1, y - 1, w + 2, 1, '#4f9a35');
+      px(x - (w >> 1), y - h - 1, w, h, ripe ? '#7fb24a' : '#8fd16a'); px(x - (w >> 1) + 1, y - h - 1, 1, 1, '#c6e89a');
+      return y - h - 1;
+    }
+    if (crop === 'sunflower') {
+      const h = 3 + Math.round(p * 7);
+      px(x, y - h, 1, h, '#3f9b3a'); px(x + 1, y - h + 4, 2, 1, '#6cc04a');
+      if (ripe) { px(x - 1 + sway, y - h - 2, 3, 3, '#f4c430'); px(x + sway, y - h - 1, 1, 1, '#6b4320'); return y - h - 2; }
+      px(x + sway, y - h - 1, 1, 1, p > 0.4 ? '#d9c24a' : '#8fd16a');
+      return y - h - 1;
+    }
+    if (crop === 'tomato') {
+      const h = 2 + Math.round(p * 5);
+      px(x + 1, y - h - 1, 1, h + 1, '#8b5a2b'); px(x, y - h, 1, h, '#3f9b3a'); px(x - 1, y - h + 1, 1, 1, '#6cc04a');
+      if (p > 0.3) px(x - 1, y - h + 2, 2, 2, ripe ? '#e04a3a' : p > 0.6 ? '#f08a3a' : '#9ed36a');
+      if (p > 0.6) px(x - 1, y - 3, 2, 2, ripe ? '#e04a3a' : '#9ed36a');
+      return y - h - 1;
+    }
+    // wheat
+    const h = 2 + Math.round(p * 6);
+    px(x, y - h, 1, h, '#3f9b3a'); px(x - 1, y - h + 1, 1, 1, '#6cc04a'); px(x + 1, y - h + 2, 1, 1, '#6cc04a');
+    if (ripe) { px(x - 1 + sway, y - h - 2, 3, 2, '#e9c46a'); px(x + sway, y - h - 3, 1, 1, '#f4d58d'); return y - h - 2; }
+    px(x + sway, y - h - 1, 1, 1, '#8fd16a');
+    return y - h - 1;
+  }
 
   function makeFarm() {
     const game = { coins: 0, harvests: 0 }; // page memory only: resets on reload
@@ -168,16 +284,17 @@
 
     function plotState(f) {
       const here = scene.farmers.filter(a => a.field === f.key), on = here.filter(a => ACTIVE.has(a.state));
-      const crop = isMain(f.branch) || f.branch === '(detached)' || !f.branch ? 'wheat' : 'pumpkin'; // crop type = branch
+      const crop = f.crop ?? 'wheat';
       if (on.length) return { kind: 'grow', crop, p: Math.max(...on.map(a => a.pct)), busy: on.some(a => a.state === 'working') };
       if (here.length && here.every(a => a.state === 'stale')) return { kind: 'dry', crop };
       return { kind: 'bare', crop };
     }
     function drawPlot(s) {
-      const f = fieldByKey(s.key), x0 = s.cx - 42, y0 = s.rowTop + 4, st = plotState(f), T = PXG.T;
-      px(x0 - 2, y0 - 2, 88, 48, '#c98d4f'); px(x0 - 1, y0 - 1, 86, 46, '#8b5a2b');
-      px(x0, y0, 84, 44, '#7a5230'); px(x0, y0, 84, 1, '#5e3d22'); px(x0, y0 + 43, 84, 1, '#5e3d22');
-      for (let k = 0; k < 5; k++) { const fy = y0 + 6 + k * 8; px(x0 + 2, fy - 1, 80, 1, '#8d6238'); px(x0 + 2, fy, 80, 2, '#5e3d22'); }
+      const f = fieldByKey(s.key), x0 = s.cx - 42, y0 = s.rowTop + 4, st = plotState(f), T = PXG.T, fence = f.fence ?? '#c98d4f';
+      px(x0 - 2, y0 - 2, 88, 48, fence); px(x0 - 1, y0 - 1, 86, 46, shade(fence, 0.68));
+      const soil = f.soil ?? '#7a5230', furrow = shade(soil, 0.77), ridge = shade(soil, 1.15);
+      px(x0, y0, 84, 44, soil); px(x0, y0, 84, 1, furrow); px(x0, y0 + 43, 84, 1, furrow);
+      for (let k = 0; k < 5; k++) { const fy = y0 + 6 + k * 8; px(x0 + 2, fy - 1, 80, 1, ridge); px(x0 + 2, fy, 80, 2, furrow); }
       for (let k = 0; k < 4; k++) for (let i = 0; i < 10; i++) {
         const x = x0 + 6 + i * 8, y = y0 + 5 + k * 8;
         if (st.kind === 'bare') { // fallow: weeds
@@ -185,19 +302,15 @@
           continue;
         }
         if (st.kind === 'dry') { px(x, y - 2, 1, 2, '#9c7a4a'); px(x + 1, y - 3, 1, 1, '#9c7a4a'); continue; }
-        if (st.crop === 'pumpkin') {
-          const z = 1 + Math.round(st.p * 3);
-          px(x - 2, y - 1, 5, 1, '#3f9b3a'); px(x - 3, y - 3, 2, 2, '#6cc04a');
-          px(x - Math.floor(z / 2), y - z - 1, z + 1, z, st.p > 0.8 ? '#ff8c1a' : '#f4a261'); px(x, y - z - 2, 1, 1, '#3f9b3a');
-          if (st.p > 0.8 && (i * 7 + k * 3 + Math.floor(T * 3)) % 13 === 0) { px(x, y - z - 7, 1, 3, '#ffffff'); px(x - 1, y - z - 6, 3, 1, '#ffffff'); }
-          continue;
-        }
-        const h = 2 + Math.round(st.p * 6), sway = st.busy && (i + k + Math.floor(T * 2)) % 2 ? 1 : 0;
-        px(x, y - h, 1, h, '#3f9b3a'); px(x - 1, y - h + 1, 1, 1, '#6cc04a'); px(x + 1, y - h + 2, 1, 1, '#6cc04a');
-        if (st.p > 0.8) { // golden: context nearly full, ready to harvest
-          px(x - 1 + sway, y - h - 2, 3, 2, '#e9c46a'); px(x + sway, y - h - 3, 1, 1, '#f4d58d');
-          if ((i * 7 + k * 3 + Math.floor(T * 3)) % 13 === 0) { px(x, y - h - 7, 1, 3, '#ffffff'); px(x - 1, y - h - 6, 3, 1, '#ffffff'); }
-        } else px(x + sway, y - h - 1, 1, 1, '#8fd16a');
+        const top = drawCrop(st.crop, x, y, st.p, st.busy && (i + k + Math.floor(T * 2)) % 2 ? 1 : 0);
+        // ripe (context nearly full, ready to harvest): a sparkle now and then
+        if (st.p > 0.8 && (i * 7 + k * 3 + Math.floor(T * 3)) % 13 === 0) { px(x, top - 5, 1, 3, '#ffffff'); px(x - 1, top - 4, 3, 1, '#ffffff'); }
+      }
+      seedSign(f.crop ?? 'wheat', x0 - 6, y0 + 26); // what this field grows, even while it lies fallow
+      if (f.pennant) { // a branch other than main: a pennant by the fence
+        const fx = x0 + 86, fy = y0 + 2, wave = blink(2);
+        px(fx, fy, 1, 15, '#6b4320');
+        for (let r = 0; r < 5; r++) px(fx + 1, fy + r, 5 - r - (r === 2 ? wave : 0), 1, r === 0 ? '#7fb0ff' : '#3d7be0');
       }
       if (f.collision) { // two farmers writing one repo: rope with orange flags (faster when a git command is involved)
         PXG.ctx.globalAlpha = 0.7 + 0.3 * Math.sin(T * (f.collision === 'high' ? 14 : 6));
@@ -280,7 +393,7 @@
           <span title="Average context left across active farmers">energy <em class="hbar"><i style="width:${Math.round(energy * 100)}%"></i></em></span>
           ${need ? `<span class="alert">${need} need${need > 1 ? '' : 's'} you</span>` : ''}
           <span class="px-zoom" title="Zoom (or ⌘/Ctrl + scroll over the farm)"><button type="button" data-farm-zoom="-1" aria-label="Zoom out">−</button><button type="button" data-farm-zoom="0" title="Fit the farm to the width">${Math.round(zoom * 100)}%</button><button type="button" data-farm-zoom="1" aria-label="Zoom in">+</button></span>
-          <button type="button" data-farm-bubbles title="Speech bubbles with what each farmer last said">Bubbles: ${saysOn ? 'on' : 'off'}</button>
+          <button type="button" data-farm-bubbles title="Speech bubbles with what each farmer last said. × hides one; its 💬 shows it again">Bubbles: ${saysOn ? 'on' : 'off'}</button>
           <button type="button" class="px-motion" data-farm-motion title="Walking and animation on the farm">Motion: ${still ? 'off' : 'on'}</button>
           <button type="button" class="px-info" data-farm-help title="How to read the farm" aria-label="How to read the farm">i</button>`;
       },
@@ -318,7 +431,7 @@
       drawChar(f, b) {
         const scare = f.state === 'stale', [ox, oy] = pixelOrigin(b, 16), rp = rpAt(ox, oy);
         if (scare) { rp(0, 10, 14, 1, '#6b4320'); rp(-1, 9, 2, 3, '#d8c48a'); rp(13, 9, 2, 3, '#d8c48a'); }
-        PXG.ctx.drawImage(farmerSprite(SHIRT[f.color], f.kind === 'codex', scare, scare ? 'p' : legFrame(b), f.state === 'waiting'), ox, oy, 14 * SC, 16 * SC);
+        PXG.ctx.drawImage(farmerSprite(f.look, SHIRT[f.color], scare, scare ? 'p' : legFrame(b), f.state === 'waiting'), ox, oy, 14 * SC, 16 * SC);
         if (scare) { rp(5, 6, 1, 1, '#3a2a1a'); rp(8, 6, 1, 1, '#3a2a1a'); rp(5, 7, 4, 1, '#7a5230'); rp(6, 11, 2, 2, '#c97b4a'); return; }
         const look = b.dir < 0 ? -1 : b.dir > 0 ? 1 : 0, ex = 5 + look;
         if (f.state === 'idle' && !b.walk) { rp(ex, 6, 1, 1, '#8a5a3a'); rp(ex + 3, 6, 1, 1, '#8a5a3a'); return; } // eyes closed
@@ -426,10 +539,12 @@
   function helpHtml() {
     return `<div class="px-key">
       <b>Your porch</b><span>a farmer waving a red “!” needs you; a basket means it's your turn</span>
-      <b>Fields</b><span>one per repo; the tool in hand is the current step (almanac = reading, can = shell, hoe = editing, seeds = new file, pigeon = web)</span>
+      <b>Fields</b><span>one per repo, each with its own crop (the seed packet on its fence), soil and fence; a blue pennant = a branch other than main. The tool in hand is the current step (almanac = reading, can = shell, hoe = editing, seeds = new file, pigeon = web)</span>
+      <b>Farmers</b><span>one per agent; each has its own hat, hair and clothes, and its shirt is the agent's colour in the list</span>
+      <b>Speech bubbles</b><span>what a farmer asked or last said; × hides one to a 💬 (click it to show the bubble again); a new message brings it back by itself. The Bubbles switch hides or shows them all</span>
       <b>Above a field</b><span>hay = uncommitted files, crates = unpushed commits, mailbox = behind the remote</span>
       <b>Weather</b><span>the repo's last deploy: rainbow = deployed, rain = deploy failed (hover its sign for GitHub's reason; the close-up links to the run), windmill = deploying; rope = two agents writing one repo</span>
-      <b>Hearts, crops</b><span>context left; golden crops = context nearly full; chickens = subagents, the dog = an Explore subagent</span>
+      <b>Hearts, crops</b><span>context left; ripe crops (golden wheat, red tomatoes, sunflowers in bloom…) with a sparkle = context nearly full; chickens = subagents, the dog = an Explore subagent</span>
       <b>Shade tree, scarecrows</b><span>idle agents nap under the tree; stale ones stand as scarecrows; the meadow is for agents outside any repo</span>
       <b>Click</b><span>a farmer to answer or message it in the sidebar; a field for the files agents touched there</span>
     </div>`;
@@ -502,26 +617,30 @@
       setZoom(wheel < 0 ? 1 : -1);
       wheel = 0;
     }
-    // A closed bubble stays closed while its farmer is in the same situation: still waiting, or no
-    // new question or reply. (A waiting farmer's text can change without it saying anything new.)
+    // A hidden bubble stays hidden (as a 💬 to show it again) while its farmer is in the same situation:
+    // still waiting, or no new question or reply. (A waiting farmer's text can change without it saying anything new.)
     const sayKey = f => (f.state === 'waiting' ? 'waiting' : f.question ? `q:${f.question}` : `said:${f.said}`);
-    /** A farmer's speech bubble: its question when waiting or asking, else what it last said. */
+    /** A farmer's speech bubble: its question when waiting or asking, else what it last said. Hidden, a 💬. */
     function placeBubble(f, b) {
       const text = saysOn && ACTIVE.has(f.state) ? (f.state === 'waiting' ? f.ask : f.question || f.said) : '';
       let s = says.get(f.id);
-      if (!text || closedSays.get(f.id) === sayKey(f)) {
-        if (s) { s.el.remove(); says.delete(f.id); }
-        return;
-      }
+      const min = closedSays.get(f.id) === sayKey(f);
+      if (s && (!text || s.min !== min)) { s.el.remove(); says.delete(f.id); s = null; }
+      if (!text) return;
       if (!s) {
         const el = document.createElement('div');
         el.dataset.say = f.id;
-        el.innerHTML = '<span></span><button type="button" class="x" data-say-close aria-label="Close this bubble">×</button>';
+        el.innerHTML = min
+          ? `<button type="button" data-say-open aria-label="Show ${esc(f.name)}'s bubble">💬</button>`
+          : `<span></span><button type="button" class="x" data-say-close aria-label="Hide this bubble" title="Hide (a 💬 stays to show it again)">×</button>`;
         ov.appendChild(el);
-        s = { el, text: null };
+        s = { el, text: null, min, w: null };
         says.set(f.id, s);
       }
-      if (s.text !== text) {
+      if (min) {
+        const cls = `px-say-min st-${f.state}`;
+        if (s.el.className !== cls) { s.el.className = cls; s.el.title = `${f.name} ${f.state === 'waiting' ? 'is waiting for you' : 'said something'}: click the 💬 to show it`; }
+      } else if (s.text !== text) {
         s.el.querySelector('span').textContent = text;
         s.el.className = `px-say st-${f.state}${f.question ? ' q' : ''}`;
         s.el.title = `${f.name}: ${text} (click to open it in the sidebar)`;
@@ -743,6 +862,7 @@
       if (e.target.closest?.('[data-farm-bubbles]')) {
         e.stopPropagation();
         saysOn = !saysOn;
+        if (saysOn) closedSays.clear(); // on again: every bubble, hidden ones too
         keep('tracker-farm-bubbles', saysOn ? 'on' : 'off');
         renderHud();
         draw();
@@ -754,8 +874,14 @@
         const id = closeSay.closest('[data-say]').dataset.say;
         const f = scene.farmers.find(x => x.id === id);
         if (f) closedSays.set(id, sayKey(f));
-        says.get(id)?.el.remove();
-        says.delete(id);
+        draw();
+        return;
+      }
+      const openSay = e.target.closest?.('[data-say-open]');
+      if (openSay) {
+        e.stopPropagation();
+        closedSays.delete(openSay.closest('[data-say]').dataset.say);
+        draw();
         return;
       }
       const say = e.target.closest?.('[data-say]');

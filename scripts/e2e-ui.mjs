@@ -182,19 +182,23 @@ try {
   }
   check(await js("[...document.querySelectorAll('.px-say')].some(b => b.textContent.includes('One question before I go on'))") === false, 'a waiting farmer shows its question, not its older reply');
   await js(`document.querySelector('.px-say[data-say="ui-asker"] [data-say-close]').click()`);
-  check(await until(`!document.querySelector('.px-say[data-say="ui-asker"]')`), 'the bubble closes with its ×');
+  check(await until(`!document.querySelector('.px-say[data-say="ui-asker"]') && !!document.querySelector('.px-say-min[data-say="ui-asker"]')`), 'the bubble hides with its ×, leaving a 💬 to show it again');
   await sleep(1000);
   const bubbles = await js(`[...document.querySelectorAll('.px-say')].map(b => b.dataset.say + ': ' + b.textContent.replace('×', '').trim()).join(' | ')`);
   check(!/ui-asker/.test(bubbles) && (bubbles.match(/ui-done/g) ?? []).length === 2, `it stays closed while the agent says nothing new; the others stay (now: ${bubbles})`);
+  await js(`document.querySelector('.px-say-min[data-say="ui-asker"] [data-say-open]').click()`);
+  check(await until(`!!document.querySelector('.px-say[data-say="ui-asker"]') && !document.querySelector('.px-say-min')`), 'the 💬 shows the bubble again');
   const width = () => js("parseFloat(document.querySelector('#farm canvas').style.width)");
   const fit = await width();
   await js("document.querySelector('[data-farm-zoom=\"1\"]').click()");
   check(await width() > fit, 'zooming in makes the farm bigger');
   await js("document.querySelector('[data-farm-zoom=\"0\"]').click()");
   check(await width() === fit, 'the zoom reading fits the farm back to the width');
+  await js(`document.querySelector('.px-say[data-say="ui-done-a"] [data-say-close]').click()`);
   await js("document.querySelector('[data-farm-bubbles]').click()");
-  check(/Bubbles: off/.test(await js("document.querySelector('[data-farm-bubbles]').textContent")), 'the bubbles switch turns them off');
+  check(/Bubbles: off/.test(await js("document.querySelector('[data-farm-bubbles]').textContent")) && await until("!document.querySelector('.px-say, .px-say-min')"), 'the bubbles switch hides them all');
   await js("document.querySelector('[data-farm-bubbles]').click()");
+  check(await until("document.querySelectorAll('.px-say').length === 3 && !document.querySelector('.px-say-min')"), 'switching them back on shows them all, hidden ones too');
 
   const closeUp = "(() => { const c = document.querySelector('#farm canvas'); const r = c.getBoundingClientRect(), cs = r.width / 400; c.dispatchEvent(new MouseEvent('click', { bubbles: true, clientX: r.left + 70 * cs, clientY: r.top + 48 * cs })); })()";
   await js(closeUp);

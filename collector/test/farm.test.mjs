@@ -129,3 +129,28 @@ test("a waiting farmer without the mod's offer still shows its question, from th
   assert.equal(askText(agent('a', { state: 'waiting', stateReason: 'question pending', now: { tool: 'AskUserQuestion', summary: 'Which crop next?' } })), 'Which crop next?');
   assert.equal(askText(agent('a', { state: 'waiting', stateReason: 'probably a permission prompt', now: { tool: 'Bash', summary: 'rm -rf x' } })), 'probably a permission prompt');
 });
+
+test('every farmer gets its own look from its id: hat, colours, skin, extras; the same agent always looks the same', () => {
+  const { toScene } = load();
+  const ids = ['babdd0dd-1', '73d4ef43-2', 'e647b95e-3', '628455f7-4', 'cfd1b5ea-5', '4d7ebb45-6', 'a1b2c3d4-7', 'ffeedd00-8'];
+  const looks = plain(toScene(snapOf(ids.map(id => agent(id)), []), { cpuAlertPct: 90 }).farmers.map(f => f.look));
+  for (const l of looks) for (const k of ['hat', 'hatColor', 'hair', 'skin', 'overalls', 'extra']) assert.ok(l[k], k);
+  assert.ok(new Set(looks.map(l => JSON.stringify(l))).size === ids.length, 'eight agents, eight looks');
+  assert.ok(new Set(looks.map(l => l.hat)).size >= 3, 'several hat styles');
+  const again = plain(toScene(snapOf([agent(ids[3])], []), { cpuAlertPct: 90 }).farmers[0].look);
+  assert.deepEqual(again, looks[3]);
+  const codex = plain(toScene(snapOf([agent('codex:1', { kind: 'codex' })], []), { cpuAlertPct: 90 }).farmers[0].look);
+  assert.equal(codex.hat, 'cap');
+});
+
+test('every field gets its own crop and fence from its repo; a branch other than main gets a pennant', () => {
+  const { toScene } = load();
+  const paths = ['/code/a', '/code/b', '/code/c', '/code/d', '/code/e', '/code/f', '/code/g'].map(p => repo(p));
+  paths[1].branch = 'feature/x';
+  paths[2].branch = '(detached)';
+  const fields = plain(toScene(snapOf([], paths), { cpuAlertPct: 90 }).fields);
+  assert.ok(new Set(fields.map(f => f.crop)).size >= 4, 'several crops');
+  assert.ok(fields.every(f => /^#[0-9a-f]{6}$/.test(f.fence) && /^#[0-9a-f]{6}$/.test(f.soil)));
+  assert.deepEqual(fields.map(f => f.pennant), [false, true, false, false, false, false, false]);
+  assert.equal(plain(toScene(snapOf([], [repo('/code/c')]), { cpuAlertPct: 90 }).fields[0]).crop, fields[2].crop);
+});

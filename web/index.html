@@ -347,6 +347,11 @@ a.chip { text-decoration: none; }
 .px-say.st-waiting::after { border-top-color: #b3261e; }
 .px-say.st-waiting::before { background: #b3261e; }
 .px-say.q { background: #fff4cc; }
+.px-say-min { position: absolute; left: 0; top: 0; z-index: 2; pointer-events: auto; }
+.px-say-min button { display: block; padding: 1px 5px 2px; background: #fffdf4; border: 2px solid #2a1d14; border-radius: 9px; font: 12px/1.2 system-ui, sans-serif; cursor: pointer; box-shadow: 0 2px 0 rgba(0, 0, 0, .25); }
+.px-say-min button:hover { background: #fff4cc; }
+.px-say-min::before { content: ''; position: absolute; left: 50%; top: 100%; width: 2px; height: var(--lead, 0px); margin-left: -1px; background: #2a1d14; }
+.px-say-min.st-waiting button { background: #ffe9e6; border-color: #b3261e; }
 .px-stage canvas { display: block; image-rendering: pixelated; cursor: pointer; }
 .px-ov { position: absolute; inset: 0; pointer-events: none; }
 .px-lab { position: absolute; transform: translateX(-50%); white-space: nowrap; font: 700 10px ui-monospace, Menlo, monospace; letter-spacing: .04em; color: #dfe6ec; background: rgba(10, 12, 15, .62); padding: 1px 6px; border-radius: 3px; display: inline-flex; gap: 5px; align-items: center; }
