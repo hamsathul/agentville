@@ -385,6 +385,55 @@
     for (let y = BOT_TOP + 14; y < H - 2; y += 5) for (let x = 290 + (y % 2) * 2; x < 396; x += 6) f(x, y, 1, 2, S.snow ? '#dfe9f2' : '#6d5830');
   }
 
+  /* ---------- the pixel font: names, field names, counts and signs ---------- */
+
+  // A hand-drawn 5×9 font (rows 0–6 above the line, 7–8 below): each glyph is its width, then
+  // nine rows as base-32 bit patterns. Text in it is an image; the words stay in the page too.
+  const FONT = {'A': '5ehhvhhh00', 'B': '5uhhuhhu00', 'C': '5ehggghe00', 'D': '5uhhhhhu00', 'E': '5vgguggv00', 'F': '5vgguggg00', 'G': '5ehgnhhf00', 'H': '5hhhvhhh00', 'I': '3722222700', 'J': '57222iic00', 'K': '5hikokih00', 'L': '5ggggggv00', 'M': '5hrllhhh00', 'N': '5hpljhhh00', 'O': '5ehhhhhe00', 'P': '5uhhuggg00', 'Q': '5ehhhlid00', 'R': '5uhhukih00', 'S': '5ehge1he00', 'T': '5v44444400', 'U': '5hhhhhhe00', 'V': '5hhhhha400', 'W': '5hhhllrh00', 'X': '5hha4ahh00', 'Y': '5hha444400', 'Z': '5v1248gv00', 'a': '500e1fhf00', 'b': '5gguhhhu00', 'c': '4007888700', 'd': '511fhhhf00', 'e': '500ehvge00', 'f': '3347444400', 'g': '500fhhhf1e', 'h': '5gguhhhh00', 'i': '1101111100', 'j': '3101111152', 'k': '4889aca900', 'l': '2222222100', 'm': '500qllll00', 'n': '500uhhhh00', 'o': '500ehhhe00', 'p': '500uhhhugg', 'q': '500fhhhf11', 'r': '400bc88800', 's': '500fge1u00', 't': '444e444300', 'u': '500hhhhf00', 'v': '500hhha400', 'w': '500hhlla00', 'x': '500ha4ah00', 'y': '500hhhhf1e', 'z': '500v248v00', '0': '5ehjlphe00', '1': '3262222700', '2': '5eh1248v00', '3': '5v2421he00', '4': '526aiv2200', '5': '5vgu11he00', '6': '568guhhe00', '7': '5v12488800', '8': '5ehhehhe00', '9': '5ehhf12c00', ' ': '3000000000', '!': '1111110100', '"': '3550000000', '#': '5aavavaa00', '$': '54fke5u400', '%': '5pp248jj00', '&': '5cik8lid00', '\'': '1110000000', '(': '2122222100', ')': '2211111200', '*': '504lel4000', '+': '5044v44000', ',': '2000001120', '-': '4000f00000', '.': '1000000100', '/': '5122488g00', ':': '1001001000', ';': '2001001120', '<': '4124842100', '=': '400f0f0000', '>': '4842124800', '?': '5eh1240400', '@': '5ehnlnge00', '[': '2322222300', '\\': '5g88422100', ']': '2311111300', '^': '54ah000000', '_': '5000000v00', '`': '2210000000', '{': '4344844300', '|': '1111111100', '}': '4c22122c00', '~': '5008l20000', '♥': '50avve4000', '♡': '50alha4000', '✓': '5012ic8000', '✗': '50ha4ah000', '◌': '50ah0ha000', '⏸': '50rrrrr000', '↑': '54el444400', '↓': '54444le400', '…': '5000000l00', '⚠': '54aalhlv00', '·': '1000100000', '—': '5000v00000', '–': '4000f00000', '’': '2120000000', '‘': '2210000000', '“': '3550000000', '”': '3550000000'};
+  /** A glyph: { w, rows } with each row a bit pattern (leftmost pixel = highest bit), or null. */
+  const glyphOf = ch => { const g = FONT[ch]; return g ? { w: Number(g[0]), rows: [...g.slice(1)].map(c => parseInt(c, 32)) } : null; };
+  /** A text's width in font pixels (a pixel between letters), or null when a character has no glyph. */
+  function textWidth(text) {
+    let w = 0, n = 0;
+    for (const ch of text) { const g = glyphOf(ch); if (!g) return null; w += g.w; n++; }
+    return n ? w + n - 1 : 0;
+  }
+  const textImages = new Map();
+  /** A text drawn in the pixel font with a one-pixel shadow, as { url, w, h } (font pixels), or null. */
+  function textImage(text, color, shadow) {
+    const key = `${text}\n${color}\n${shadow}`;
+    if (textImages.has(key)) return textImages.get(key);
+    const w = textWidth(text);
+    if (w === null || !text || typeof document === 'undefined') return null;
+    const c = document.createElement('canvas');
+    c.width = w + 1;
+    c.height = 10;
+    const g = c.getContext('2d');
+    for (const [dx, col] of [...(shadow ? [[1, shadow]] : []), [0, color]]) {
+      g.fillStyle = col;
+      let x = 0;
+      for (const ch of text) {
+        const gl = glyphOf(ch);
+        gl.rows.forEach((bits, y) => { for (let i = 0; i < gl.w; i++) if (bits & (1 << (gl.w - 1 - i))) g.fillRect(x + i + dx, y + dx, 1, 1); });
+        x += gl.w + 1;
+      }
+    }
+    const img = { url: c.toDataURL(), w: w + 1, h: 10 };
+    if (textImages.size > 600) textImages.clear();
+    textImages.set(key, img);
+    return img;
+  }
+  /** Pixels per font pixel on screen: 1.5 on a Retina screen (3 device pixels), 2 on a plain one, so it stays sharp. */
+  const fontPx = () => { const dpr = window.devicePixelRatio || 1; return Math.max(1, Math.round(1.5 * dpr)) / dpr; };
+  /** HTML for a text in the pixel font (its words stay for screen readers, copying and search), or plain text if it has a letter the font lacks. */
+  function pxt(text, color = '#f4ecd8', shadow = '#1b1420') {
+    const t = String(text ?? '');
+    const img = textImage(t, color, shadow);
+    if (!img) return esc(t);
+    const s = fontPx();
+    return `<i class="pxt" aria-hidden="true" style="width:${(img.w * s).toFixed(1)}px;height:${(img.h * s).toFixed(1)}px;background-image:url(${img.url})"></i><span class="px-sr">${esc(t)}</span>`;
+  }
+
   /* ---------- particles: dust, splashes, chips, smoke, leaves, snow ---------- */
 
   /** Moves particles (speed, then gravity), fades them, and drops the ones whose life ran out. */
@@ -879,16 +928,18 @@
         if (z === 'meadow') return 'works in the wild meadow (no repo)';
         return `${doing(f)?.verb ?? 'working'} in the ${fieldByKey(f.field)?.name ?? ''} field`;
       },
-      hud(still, zoom = 1, saysOn = true, skyMode = 'live') {
+      hud(still, zoom = 1, saysOn = true, skyMode = 'live', follow = false, canFollow = false) {
         const need = scene.farmers.filter(a => a.state === 'waiting' || a.question).length;
-        return `<span title="One coin for every tool step since you opened this page"><b class="coin"></b>${game.coins}</span>
-          <span title="Finished turns delivered to your porch"><b class="basket"></b>${game.harvests} harvested</span>
-          ${need ? `<span class="alert">${need} need${need > 1 ? '' : 's'} you</span>` : ''}
-          <span title="${esc(seasonTip())}">${{ spring: '🌱', summer: '☀️', autumn: '🍂', winter: '❄️' }[season]} ${season}</span>
-          <span class="px-zoom" title="Zoom the farm inside its frame (or ⌘/Ctrl + scroll, or pinch); drag to move around when zoomed in"><button type="button" data-farm-zoom="-1" aria-label="Zoom out">−</button><button type="button" data-farm-zoom="0" title="Show the whole farm">${Math.round(zoom * 100)}%</button><button type="button" data-farm-zoom="1" aria-label="Zoom in">+</button></span>
-          <button type="button" data-farm-bubbles title="Speech bubbles with what each farmer last said. × hides one; its 💬 shows it again">Bubbles: ${saysOn ? 'on' : 'off'}</button>
-          <button type="button" data-farm-sky title="The sky: live follows your clock (dawn, day, dusk, night); or hold it at day or night">Sky: ${skyMode}</button>
-          <button type="button" class="px-motion" data-farm-motion title="Walking and animation on the farm">Motion: ${still ? 'off' : 'on'}</button>
+        const w = t => pxt(t, '#fff3d6', '#2a1d14');
+        return `<span title="One coin for every tool step since you opened this page"><b class="coin"></b>${w(String(game.coins))}</span>
+          <span title="Finished turns delivered to your porch"><b class="basket"></b>${w(`${game.harvests} harvested`)}</span>
+          ${need ? `<span class="alert">${pxt(`${need} need${need > 1 ? '' : 's'} you`, '#ffffff', '#5a1f19')}</span>` : ''}
+          <span title="${esc(seasonTip())}">${{ spring: '🌱', summer: '☀️', autumn: '🍂', winter: '❄️' }[season]} ${w(season)}</span>
+          <span class="px-zoom" title="Zoom the farm inside its frame (or ⌘/Ctrl + scroll, or pinch); drag to move around when zoomed in"><button type="button" data-farm-zoom="-1" aria-label="Zoom out">${w('-')}</button><button type="button" data-farm-zoom="0" title="Show the whole farm">${w(`${Math.round(zoom * 100)}%`)}</button><button type="button" data-farm-zoom="1" aria-label="Zoom in">${w('+')}</button></span>
+          <button type="button" data-farm-follow${canFollow ? '' : ' disabled'} title="${canFollow ? 'Keep the farmer you picked in the middle of the view (zooms in); dragging the view turns it off' : 'Pick a farmer first, then Follow keeps it in view'}">${w(`Follow: ${follow ? 'on' : 'off'}`)}</button>
+          <button type="button" data-farm-bubbles title="Speech bubbles with what each farmer last said. × hides one; its 💬 shows it again">${w(`Bubbles: ${saysOn ? 'on' : 'off'}`)}</button>
+          <button type="button" data-farm-sky title="The sky: live follows your clock (dawn, day, dusk, night); or hold it at day or night">${w(`Sky: ${skyMode}`)}</button>
+          <button type="button" class="px-motion" data-farm-motion title="Walking and animation on the farm">${w(`Motion: ${still ? 'off' : 'on'}`)}</button>
           <button type="button" class="px-info" data-farm-help title="How to read the farm" aria-label="How to read the farm">i</button>`;
       },
       bg(f, season) { drawLand(f, L, season); },
@@ -1006,32 +1057,34 @@
       },
       labels(lab, overflow) {
         const { LANE_B, ST, more } = L;
-        lab(200, 11, 'AGENT FARM', 'wood');
+        const cnt = t => pxt(t, '#5a3a1a', null); // a count on a cream tag
+        lab(200, 11, pxt('AGENT FARM', '#fff3d6', '#4e3626'), 'wood');
         for (const s of ST) {
           const f = fieldByKey(s.key);
-          const branch = f.branch === '(detached)' ? ' <span style="opacity:.75">?</span>' : f.branch && !isMain(f.branch) ? ` <span style="opacity:.7">${esc(clip(f.branch, 14))}</span>` : '';
+          const branch = f.branch === '(detached)' ? ` ${pxt('?', '#c3cbd2')}` : f.branch && !isMain(f.branch) ? ` ${pxt(clip(f.branch, 14), '#c3cbd2')}` : '';
           const d = f.lastDeploy;
-          const weather = d ? ` <span class="${{ ok: 'dep-ok', failed: 'dep-bad', running: 'dep-run' }[d.state] ?? 'dep-dim'}">${esc(d.label)}</span>` : '';
+          const weather = d ? ` ${pxt(d.label, { ok: '#8ef0a0', failed: '#ff8a80', running: '#ffd166' }[d.state] ?? '#c9b48a')}` : '';
           const tip = [f.key, f.branch && `on ${f.branch}`, d?.detail, 'Click to see the files agents touched here'].filter(Boolean).join(' · ');
-          lab(s.cx, s.rowTop + 50, `<button type="button" class="px-field" data-farm-field="${esc(f.key)}" title="${esc(tip)}">${esc(clip(f.name, 18))}${branch}${weather}${f.collision ? ' ⚠ crowded' : ''}</button>`, f.collision ? 'bad' : '');
-          if (f.behind > 0) lab(s.cx - 40, s.rowTop - 17, `↓${f.behind}`, 'cnt', `${f.behind} commit${f.behind === 1 ? '' : 's'} behind the remote`);
-          if (f.ahead > 0) lab(s.cx - 23, s.rowTop - 7 - Math.ceil(Math.min(f.ahead, 16) / 8) * 6, `↑${f.ahead}`, 'cnt', `${f.ahead} unpushed commit${f.ahead === 1 ? '' : 's'}`);
-          if (f.dirty > 0) lab(s.cx + 30, s.rowTop - 7 - Math.ceil(Math.min(f.dirty, 12) / 9) * 6, `+${f.dirty}`, 'cnt', `${f.dirty} uncommitted file${f.dirty === 1 ? '' : 's'}`);
+          lab(s.cx, s.rowTop + 50, `<button type="button" class="px-field" data-farm-field="${esc(f.key)}" title="${esc(tip)}">${pxt(clip(f.name, 18), f.collision ? '#ffd166' : '#e6eef5')}${branch}${weather}${f.collision ? ` ${pxt('⚠ crowded', '#ffd166')}` : ''}</button>`, f.collision ? 'bad' : '');
+          if (f.behind > 0) lab(s.cx - 53, s.rowTop - 7, cnt(`↓${f.behind}`), 'cnt', `${f.behind} commit${f.behind === 1 ? '' : 's'} behind the remote`);
+          if (f.ahead > 0) lab(s.cx - 23, s.rowTop - 7 - Math.ceil(Math.min(f.ahead, 16) / 8) * 6, cnt(`↑${f.ahead}`), 'cnt', `${f.ahead} unpushed commit${f.ahead === 1 ? '' : 's'}`);
+          if (f.dirty > 0) lab(s.cx + 30, s.rowTop - 7 - Math.ceil(Math.min(f.dirty, 12) / 9) * 6, cnt(`+${f.dirty}`), 'cnt', `${f.dirty} uncommitted file${f.dirty === 1 ? '' : 's'}`);
         }
-        if (!ST.length) lab(220, TOP + 30, 'No fields yet: no agent has touched a repo in the last 30 minutes', 'zone');
+        if (!ST.length) lab(220, TOP + 30, pxt('No fields yet: no agent has touched a repo in the last 30 minutes', '#fff3d6', '#4e3626'), 'zone');
         const silo = siloOf(scene.plan);
-        if (silo) lab(382, 33, silo.label, `cnt${silo.lamp ? ` silo-${silo.lamp}` : ''}`, `The silo: your plan's weekly limit, ${silo.label} used${silo.resetsAt ? `, resets ${new Date(silo.resetsAt).toLocaleString([], { weekday: 'short', hour: '2-digit', minute: '2-digit' })}` : ''}`);
-        if (scene.henhouse?.roosting) lab(47, L.BOT_TOP - 32, `+${scene.henhouse.roosting}`, 'cnt', `${scene.henhouse.roosting} more subagent${scene.henhouse.roosting === 1 ? '' : 's'} running than the farmers can lead`);
-        if (scene.henhouse?.eggs) lab(43, L.BOT_TOP - 2, `${scene.henhouse.eggs} egg${scene.henhouse.eggs === 1 ? '' : 's'}`, 'cnt', 'Eggs: subagents that finished lately');
-        lab(25, TOP + 2, 'MEADOW', 'zone');
-        lab(58, LANE_B + 6, 'SHADE TREE', 'zone'); lab(200, LANE_B + 10, 'YOUR PORCH', 'zone'); lab(343, LANE_B + 6, 'SCARECROWS', 'zone');
-        const plus = (x, y, n, what) => n > 0 && lab(x, y, `+${n} ${what}`, 'cnt');
+        if (silo) lab(382, 33, silo.lamp === 'red' ? pxt(silo.label, '#ffffff', null) : cnt(silo.label), `cnt${silo.lamp ? ` silo-${silo.lamp}` : ''}`, `The silo: your plan's weekly limit, ${silo.label} used${silo.resetsAt ? `, resets ${new Date(silo.resetsAt).toLocaleString([], { weekday: 'short', hour: '2-digit', minute: '2-digit' })}` : ''}`);
+        if (scene.henhouse?.roosting) lab(47, L.BOT_TOP - 32, cnt(`+${scene.henhouse.roosting}`), 'cnt', `${scene.henhouse.roosting} more subagent${scene.henhouse.roosting === 1 ? '' : 's'} running than the farmers can lead`);
+        if (scene.henhouse?.eggs) lab(43, L.BOT_TOP - 2, cnt(`${scene.henhouse.eggs} egg${scene.henhouse.eggs === 1 ? '' : 's'}`), 'cnt', 'Eggs: subagents that finished lately');
+        const sign = t => pxt(t, '#fff3d6', '#4e3626');
+        lab(25, TOP + 2, sign('MEADOW'), 'zone');
+        lab(58, LANE_B + 6, sign('SHADE TREE'), 'zone'); lab(200, LANE_B + 10, sign('YOUR PORCH'), 'zone'); lab(343, LANE_B + 6, sign('SCARECROWS'), 'zone');
+        const plus = (x, y, n, what) => n > 0 && lab(x, y, cnt(`+${n} ${what}`), 'cnt');
         plus(150, LANE_B - 40, overflow.desk, 'waiting');
         plus(250, LANE_B - 40, overflow.turn, 'your turn');
         plus(58, L.BOT_TOP + 22, overflow.charge, 'idle');
         plus(343, L.BOT_TOP + 22, overflow.storage, 'stale');
         plus(25, L.BOT_TOP - 8, overflow.meadow, 'in the meadow');
-        if (more > 0) lab(320, 11, `<button type="button" class="px-more" data-farm-more>+${more} more field${more === 1 ? '' : 's'}</button>`, 'wood');
+        if (more > 0) lab(320, 11, `<button type="button" class="px-more" data-farm-more>${pxt(`+${more} more field${more === 1 ? '' : 's'}`, '#fff3d6', '#4e3626')}</button>`, 'wood');
       },
     };
   }
@@ -1074,6 +1127,8 @@
     const SKIES = ['live', 'day', 'night'];
     let skyMode = SKIES.includes(stored('tracker-farm-sky')) ? stored('tracker-farm-sky') : 'live';
     let bgSeason = null;
+    let follow = false; // keep the picked farmer in the middle of the view
+    let glide = null; // a zoom easing in: { from: scale, start, ox, oy }
     const skyNow = () => skyAt(skyMode === 'day' ? new Date(2000, 0, 1, 12) : skyMode === 'night' ? new Date(2000, 0, 1, 23) : new Date());
     let wheel = 0;
     const says = new Map(); // farmer id → { el, text }
@@ -1111,34 +1166,65 @@
       if (!ov || still) return;
       const el = document.createElement('div');
       el.className = `px-pop ${cls}`;
-      el.textContent = text;
+      el.innerHTML = pxt(text, cls === 'good' ? '#c6e89a' : cls === 'warn' ? '#ffffff' : cls === 'dim' ? '#e6eef5' : '#ffd43b', '#4e3626');
       if (cls === 'coin' || cls === 'good') for (let i = 0; i < (cls === 'good' ? 14 : 7); i++) addPart({ x, y: y + 8, vx: rand(-30, 30), vy: rand(-40, -15), g: 60, life: 0.7, max: 0.7, size: rand(1, 2), color: i % 3 ? '#ffd43b' : '#ffffff' }); // a little burst
       el.style.left = `${Math.round(x * cs)}px`;
       el.style.top = `${Math.round(y * cs)}px`;
       ov.appendChild(el);
       setTimeout(() => el.remove(), 1700);
     }
-    function renderHud() { if (hudEl) hudEl.innerHTML = th.hud(still, zoom, saysOn, skyMode); }
+    function renderHud() { if (hudEl) hudEl.innerHTML = th.hud(still, zoom, saysOn, skyMode, follow, Boolean(selectedId && bots.has(selectedId))); }
     /**
      * Zoom changes the farm inside the frame, never the frame. The farm point under `at` (a point of
      * the frame: its middle, or the pointer) stays where it is.
      */
-    function setZoom(step, at) {
-      const next = step === 0 ? 1 : ZOOMS[Math.max(0, Math.min(ZOOMS.length - 1, ZOOMS.indexOf(zoom) + step))];
-      const stage = canvas?.parentElement;
+    function setZoom(step, at, to) {
+      const next = to ?? (step === 0 ? 1 : ZOOMS[Math.max(0, Math.min(ZOOMS.length - 1, ZOOMS.indexOf(zoom) + step))]);
+      const stage = canvas?.parentElement, was = cs;
       const ax = at?.[0] ?? (viewEl?.clientWidth ?? 0) / 2, ay = at?.[1] ?? (viewEl?.clientHeight ?? 0) / 2;
       const wx = viewEl ? (viewEl.scrollLeft + ax - stage.offsetLeft) / cs : 0, wy = viewEl ? (viewEl.scrollTop + ay - stage.offsetTop) / cs : 0;
       zoom = next;
       keep('tracker-farm-zoom', String(zoom));
       resize();
       renderHud();
-      if (viewEl) {
-        viewEl.scrollLeft = step === 0 ? 0 : wx * cs + stage.offsetLeft - ax;
-        viewEl.scrollTop = step === 0 ? 0 : wy * cs + stage.offsetTop - ay;
+      if (!viewEl) return;
+      viewEl.scrollLeft = step === 0 && to == null ? 0 : wx * cs + stage.offsetLeft - ax;
+      viewEl.scrollTop = step === 0 && to == null ? 0 : wy * cs + stage.offsetTop - ay;
+      if (!still && was !== cs) { glide = { from: was / cs, start: performance.now(), ox: wx * cs, oy: wy * cs }; applyGlide(glide.start); }
+    }
+    /**
+     * The zoom glide, driven by the frame loop (so it always ends): the farm starts at its old size
+     * around the point that stays put and eases to the new one in 0.2 s.
+     */
+    function applyGlide(now) {
+      if (!glide || !canvas) return;
+      const stage = canvas.parentElement, t = Math.min(1, (now - glide.start) / 200);
+      if (t >= 1) { stage.style.transform = ''; glide = null; return; }
+      const e = 1 - (1 - t) ** 3;
+      stage.style.transformOrigin = `${glide.ox}px ${glide.oy}px`;
+      stage.style.transform = `scale(${glide.from + (1 - glide.from) * e})`;
+    }
+    /** Follow: ease the view toward the picked farmer (all at once when the farm stands still). */
+    function followTick(dt) {
+      const b = follow && selectedId ? bots.get(selectedId) : null;
+      if (!b || !viewEl || drag?.moving) return;
+      const stage = canvas.parentElement;
+      const tx = b.x * cs + stage.offsetLeft - viewEl.clientWidth / 2, ty = (b.y - 14) * cs + stage.offsetTop - viewEl.clientHeight / 2;
+      const ease = (cur, t) => { const d = t - cur, stepBy = dt ? d * Math.min(1, dt * 3.5) : d; return cur + (Math.abs(stepBy) < 1 ? Math.sign(d) * Math.min(1, Math.abs(d)) : stepBy); };
+      viewEl.scrollLeft = ease(viewEl.scrollLeft, tx);
+      viewEl.scrollTop = ease(viewEl.scrollTop, ty);
+    }
+    function setFollow(on) {
+      follow = on && Boolean(selectedId && bots.has(selectedId));
+      if (follow && zoom < 2) {
+        const b = bots.get(selectedId), stage = canvas.parentElement;
+        setZoom(0, [b.x * cs + stage.offsetLeft - viewEl.scrollLeft, b.y * cs + stage.offsetTop - viewEl.scrollTop], 2);
       }
+      renderHud();
+      if (follow && still) followTick(0);
     }
     function onWheel(e) { // ⌘/Ctrl + scroll (or a trackpad pinch) zooms around the pointer; plain scrolling moves around
-      if (!e.ctrlKey && !e.metaKey) return;
+      if (!e.ctrlKey && !e.metaKey) { if (follow) { follow = false; renderHud(); } return; } // you took the view back
       e.preventDefault();
       wheel += e.deltaY;
       if (Math.abs(wheel) < 40) return;
@@ -1158,6 +1244,7 @@
       if (!drag.moving) {
         if (Math.hypot(dx, dy) < 5 || (viewEl.scrollWidth <= viewEl.clientWidth && viewEl.scrollHeight <= viewEl.clientHeight)) return;
         drag.moving = true;
+        if (follow) { follow = false; renderHud(); } // you took the view back
         viewEl.setPointerCapture?.(e.pointerId);
         viewEl.classList.add('panning');
       }
@@ -1333,7 +1420,7 @@
         const text = th.tag(f), tip = th.tip(f), sel = f.id === selectedId;
         if (b.tagText !== f.state + text + tip + sel) {
           b.tag.className = `px-tag st-${f.state}${sel ? ' sel' : ''}`;
-          b.tag.textContent = text;
+          b.tag.innerHTML = f.state === 'turn' ? pxt(text, '#1b1420', null) : pxt(text, '#ffffff');
           b.tagW = null;
           b.tag.title = tip;
           b.tagText = f.state + text + tip + sel;
@@ -1350,6 +1437,7 @@
       raf = 0;
       if (!canvas || still || !visible()) return;
       raf = requestAnimationFrame(frame);
+      applyGlide(now);
       if (now - last < 33) return; // ~30 fps is plenty for pixel art
       const dt = last ? Math.min(0.1, (now - last) / 1000) : 0;
       last = now;
@@ -1357,6 +1445,7 @@
       for (const f of scene.farmers) { const b = bots.get(f.id); if (b) { step(dt, f, b); th.emit?.(f, b, dt, addPart); } }
       th.ambient?.(dt, addPart);
       stepParticles(parts, dt);
+      followTick(dt);
       draw();
     }
     function startLoop() { if (!raf && canvas && !still && visible()) { last = 0; raf = requestAnimationFrame(frame); } }
@@ -1429,6 +1518,7 @@
       const sign = e.target.closest?.('[data-farm-field]');
       if (sign) { e.stopPropagation(); opts.onOpenField?.(sign.dataset.farmField); return; }
       if (e.target.closest?.('[data-farm-motion]')) { e.stopPropagation(); setStill(!still); return; }
+      if (e.target.closest?.('[data-farm-follow]')) { e.stopPropagation(); setFollow(!follow); return; }
       if (e.target.closest?.('[data-farm-sky]')) {
         e.stopPropagation();
         skyMode = SKIES[(SKIES.indexOf(skyMode) + 1) % SKIES.length];
@@ -1471,7 +1561,7 @@
       if (e.target.closest?.('[data-farm-help-close]') || e.target === help) { e.stopPropagation(); help.close(); return; } // × or a click on the backdrop
       if (help?.contains(e.target)) return;
       if (e.target !== canvas) return;
-      const r = canvas.getBoundingClientRect(), x = (e.clientX - r.left) / cs, y = (e.clientY - r.top) / cs;
+      const r = canvas.getBoundingClientRect(), on = r.width / W || cs, x = (e.clientX - r.left) / on, y = (e.clientY - r.top) / on; // the size on screen: right even while a zoom glides
       for (const [id, b] of bots) if (Math.abs(x - b.x) <= 7 * SC + 1 && y >= b.y - th.SH * SC - 1 && y <= b.y + 1) { opts.onPickAgent?.(id); return; }
       const key = th.fieldAt(x, y);
       if (key) opts.onOpenField?.(key);
@@ -1525,6 +1615,9 @@
       update(next) { apply(next); },
       select(id) {
         selectedId = id;
+        if (!id && follow) follow = false;
+        renderHud();
+        if (follow && still) followTick(0);
         if (canvas && still) draw();
       },
       unmount() {
@@ -1770,7 +1863,7 @@
     },
     /** A farmer's shirt colour, so the page can match it. */
     colorOf: id => SHIRT[colorIndex(id)],
-    actionOf, paint, growthStage, STAGES, skyAt, PALETTE, ink, spriteRows, walkFrame, stepParticles, seasonOf, siloOf,
+    actionOf, paint, growthStage, STAGES, skyAt, PALETTE, ink, spriteRows, walkFrame, stepParticles, seasonOf, siloOf, glyphOf, textWidth,
     unmount() {
       if (!view) return;
       field.close();

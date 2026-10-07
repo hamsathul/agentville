@@ -308,3 +308,15 @@ test('the henhouse: eggs for subagents that finished lately, a sign for running 
   assert.equal(plain(toScene(snapOf([agent('a')], []), { cpuAlertPct: 90 })).henhouse.eggs, 0);
   assert.deepEqual(plain(toScene({ ...snapOf([], []), plan: planWith(90, 50) }, { cpuAlertPct: 90 })).plan.windows.length, 2);
 });
+
+test('the pixel font has every printable character and the farm symbols; widths add up with a pixel between letters', () => {
+  const { textWidth, glyphOf } = load();
+  for (let c = 32; c < 127; c++) assert.ok(glyphOf(String.fromCharCode(c)), `glyph for ${String.fromCharCode(c)}`);
+  for (const ch of '♥♡✓✗◌⏸↑↓…⚠·—’') assert.ok(glyphOf(ch), `glyph for ${ch}`);
+  assert.equal(textWidth('AB'), 11);
+  assert.equal(textWidth('a b'), 5 + 1 + 3 + 1 + 5);
+  assert.equal(textWidth(''), 0);
+  assert.equal(textWidth('façade'), null, 'a letter it lacks: the label falls back to plain text');
+  for (const ch of 'gjpqy') assert.ok(plain(glyphOf(ch)).rows.slice(7).some(r => r > 0), `${ch} reaches below the line`);
+  assert.ok(plain(glyphOf('A')).rows.slice(7).every(r => r === 0));
+});

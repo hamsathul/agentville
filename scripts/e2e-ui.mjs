@@ -237,7 +237,22 @@ try {
   const left1 = await view('v.scrollLeft');
   check(Math.abs(left1 - left0 - 120) <= 2 && (await picked()) === pickedBefore, `dragging moves around the farm and picks nobody (scrolled ${left0} → ${left1})`);
   await js("document.querySelector('[data-farm-zoom=\"0\"]').click()");
-  check(await width() === fit && (await frameBox()) === frame && await view('v.scrollWidth <= v.clientWidth'), 'the zoom reading fits the whole farm back in the frame');
+  check(await width() === fit && (await frameBox()) === frame && await until("(v => v.scrollWidth <= v.clientWidth && !document.querySelector('#farm .px-stage').style.transform)(document.querySelector('#farm .px-view'))"), 'the zoom reading fits the whole farm back in the frame (once its glide ends)');
+  check(await js("!!document.querySelector('.px-tag .pxt') && !!document.querySelector('.px-lab .pxt') && [...document.querySelectorAll('.px-tag')].some(t => t.textContent.startsWith('ui-asker'))"), 'names and signs are in the pixel font, with their text still in the page');
+  await js("document.querySelector('.px-tag[data-farmer=\"ui-worker\"]').click()");
+  await until("document.querySelector('.px-tag.sel')?.dataset.farmer === 'ui-worker'");
+  await js("document.querySelector('[data-farm-follow]').click()");
+  const followed = await until(`(() => { const v = document.querySelector('#farm .px-view').getBoundingClientRect(), t = document.querySelector('.px-tag[data-farmer="ui-worker"]').getBoundingClientRect(), cx = t.left + t.width / 2, cy = t.bottom;
+    return v.width > 0 && Math.abs(cx - (v.left + v.width / 2)) < v.width / 5 && Math.abs(cy - (v.top + v.height / 2)) < v.height / 3 && parseFloat(document.querySelector('#farm canvas').style.width) > v.width; })()`, 4000);
+  check(followed && /Follow: on/.test(await js("document.querySelector('[data-farm-follow]').textContent")), 'Follow zooms in and keeps the picked farmer in the middle of the view');
+  {
+    const [fx, fy] = JSON.parse(await view('JSON.stringify((r => [Math.round(r.left + r.width / 2), Math.round(r.top + r.height / 2)])(v.getBoundingClientRect()))'));
+    await mouse('mousePressed', fx, fy, { buttons: 1, clickCount: 1 });
+    for (let i = 1; i <= 4; i++) await mouse('mouseMoved', fx + i * 25, fy, { buttons: 1 });
+    await mouse('mouseReleased', fx + 100, fy, { buttons: 0, clickCount: 1 });
+  }
+  check(await until("/Follow: off/.test(document.querySelector('[data-farm-follow]').textContent)"), 'dragging the view hands it back to you (Follow turns off)');
+  await js("document.querySelector('[data-farm-zoom=\"0\"]').click()");
   await js(`document.querySelector('.px-say[data-say="ui-done-a"] [data-say-close]').click()`);
   await js("document.querySelector('[data-farm-bubbles]').click()");
   check(/Bubbles: off/.test(await js("document.querySelector('[data-farm-bubbles]').textContent")) && await until("!document.querySelector('.px-say, .px-say-min')"), 'the bubbles switch hides them all');
@@ -253,7 +268,9 @@ try {
 
   const closeUp = "(() => { const c = document.querySelector('#farm canvas'); const r = c.getBoundingClientRect(), cs = r.width / 400; c.dispatchEvent(new MouseEvent('click', { bubbles: true, clientX: r.left + 70 * cs, clientY: r.top + 48 * cs })); })()";
   await js(closeUp);
-  check(await until("[...document.querySelectorAll('.fv-f')].map(b => b.textContent).join(' ').includes('app.ts')"), 'a field close-up lists the files agents touched');
+  const closeUpOpen = await until("[...document.querySelectorAll('.fv-f')].map(b => b.textContent).join(' ').includes('app.ts')");
+  const closeUpState = closeUpOpen ? '' : await js(`JSON.stringify({ fv: !!document.querySelector('.fv-back'), files: [...document.querySelectorAll('.fv-f')].length, canvas: (r => [r.left, r.top, r.width, r.height].map(Math.round))(document.querySelector('#farm canvas').getBoundingClientRect()), stage: document.querySelector('#farm .px-stage').style.transform, side: document.getElementById('main').dataset.side, sel: document.querySelector('.px-tag.sel')?.dataset.farmer, tags: [...document.querySelectorAll('.px-tag')].map(t => t.dataset.farmer + '@' + Math.round(t.getBoundingClientRect().left)) })`);
+  check(closeUpOpen, `a field close-up lists the files agents touched${closeUpState ? ` (now: ${closeUpState})` : ''}`);
   check(await js("[...document.querySelectorAll('.fv-f')].some(b => b.textContent.includes('plan.md') && b.querySelector('.k-doc'))"), 'a document in the close-up is a noticeboard');
   await js("document.querySelector('[data-fv-close]').click()");
   check(await js("!document.querySelector('.fv-back')"), 'the close-up closes');

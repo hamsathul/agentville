@@ -52,6 +52,13 @@ how much CPU and memory each one uses.
   first), **Activity** (its tool steps), **Files** (its folder, scratchpad and memory) and **Diary**
   (who went where). Speech bubbles over the farmers show what each last said (its question when
   it waits on you); × hides one to a 💬 that shows it again, and the Bubbles switch hides or shows them all. The farm fits its frame; − / + (or ⌘/Ctrl + scroll, or a pinch) zooms it inside the frame, and you drag or scroll to move around. Click a field for a close-up of the files agents touched there.
+  The farm is drawn in one palette, with shadows, textured ground and a pixel font for names
+  and signs. The sky follows your clock (at night the windows and lanterns glow; the Sky
+  switch holds it at day or night), farmers face where they walk, rain falls on a field whose
+  deploy failed, and dust, splashes and chimney smoke move with the work. The silo's grain is
+  your plan's weekly usage, the season follows its 5-hour limit (spring when fresh, winter when
+  nearly used up), and the henhouse's eggs are subagents that finished lately. Follow keeps the
+  farmer you picked in view.
   It pauses when hidden and follows the system's reduce-motion setting.
 - **Start or resume sessions** (＋ Session in the top bar): start Claude Code in a folder you
   have worked in, or resume a session from the last 30 days by its title and last message. It

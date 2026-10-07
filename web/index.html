@@ -406,6 +406,19 @@ a.chip { text-decoration: none; }
 .px-log li time { margin-left: auto; flex: none; color: var(--faint); font: 11px ui-monospace, Menlo, monospace; }
 .px-log .st-waiting { --st: var(--crit); } .px-log .st-working { --st: var(--good); } .px-log .st-turn { --st: var(--warn); }
 .px-key { display: grid; grid-template-columns: auto 1fr; gap: 6px 14px; font-size: 13px; color: var(--muted); }
+/* the pixel font: text as a crisp image, its words kept for screen readers */
+.pxt { display: inline-block; vertical-align: middle; flex: none; background: no-repeat 0 0 / 100% 100%; image-rendering: pixelated; }
+.px-sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+/* the HUD and place names as wooden signs */
+.px-hud span, .px-hud button { background: linear-gradient(180deg, #b07a46 0%, #a8703c 50%, #8b5a2b 100%); color: #fff3d6; border: 2px solid #4e3626; border-radius: 3px; box-shadow: inset 0 1px 0 rgba(255, 232, 163, .35), 0 2px 0 #2a1d14; padding: 3px 8px; }
+.px-hud span.alert { background: linear-gradient(180deg, #e04a3a, #9c3b30); border-color: #5a1f19; box-shadow: inset 0 1px 0 rgba(255, 200, 190, .4), 0 2px 0 #5a1f19; }
+.px-hud button:hover { background: linear-gradient(180deg, #c98d4f 0%, #b07a46 50%, #8b5a2b 100%); }
+.px-hud button:disabled { opacity: .55; cursor: default; }
+.px-hud .px-zoom { padding: 0; } .px-hud .px-zoom button { background: transparent; border: 0; box-shadow: none; padding: 3px 7px; } .px-hud .px-zoom button + button { border-left: 1px solid #4e3626; }
+.px-lab.zone { background: linear-gradient(#a8703c, #8b5a2b); border: 1px solid #4e3626; border-radius: 2px; padding: 1px 4px; box-shadow: 0 1px 0 #2a1d14; }
+.px-tag, .px-lab, .px-field, .px-more, .px-pop { line-height: 0; }
+.px-tag { padding: 2px 4px; }
+.px-lab.cnt { padding: 2px 3px; }
 .px-hud .px-info { width: 22px; height: 22px; padding: 0; justify-content: center; border-radius: 50%; font: italic 800 13px Georgia, serif; }
 dialog.px-help { max-width: min(560px, calc(100vw - 32px)); padding: 0; }
 .px-help header { display: flex; align-items: center; gap: 8px; padding: 12px 16px; border-bottom: 1px solid var(--line); }
