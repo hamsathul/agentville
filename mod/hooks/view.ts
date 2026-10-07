@@ -1,8 +1,12 @@
 import type { TrackerAgent, TrackerSnapshot, TrackerView } from '../types'
 
-/** The collector writes state/state.json beside the mod folder: <repo>/mod → <repo>/state/state.json. */
+/** The collector's state folder sits beside the mod folder: <repo>/mod → <repo>/state. */
+export function stateDirFor(pluginRoot: string): string {
+  return `${pluginRoot.replace(/\/+$/, '').replace(/\/[^/]+$/, '')}/state`
+}
+
 export function stateFileFor(pluginRoot: string): string {
-  return `${pluginRoot.replace(/\/+$/, '').replace(/\/[^/]+$/, '')}/state/state.json`
+  return `${stateDirFor(pluginRoot)}/state.json`
 }
 
 export const DASHBOARD_URL = 'http://localhost:7777'
@@ -53,15 +57,51 @@ export function elapsed(fromMs: number, now: number): string {
   return m >= 60 ? `${Math.floor(m / 60)}h${String(m % 60).padStart(2, '0')}m` : `${m}:${String(s % 60).padStart(2, '0')}`
 }
 
-/** The session's Remote Control page, where a waiting question or permission prompt can be answered. */
-export function answerUrl(agent: TrackerAgent): string | undefined {
-  const isClaudeSession = /^https:\/\/claude\.ai\/code\/session_[A-Za-z0-9]+$/.test(agent.remoteUrl ?? '')
-  return agent.state === 'waiting' && isClaudeSession ? agent.remoteUrl : undefined
-}
-
 export function rowText(agent: TrackerAgent, now: number): string {
   if (agent.state === 'waiting') return `${agent.stateReason} · ${elapsed(agent.stateSince, now)}`
   if (agent.now) return `${agent.now.tool} ${agent.now.summary} · ${elapsed(agent.now.startedAt, now)}`
   if (agent.state === 'yourTurn') return agent.lastReply ?? 'finished'
   return agent.stateReason
+}
+
+type Question = { question: string }
+
+const parse = (text: string): any => {
+  try {
+    return JSON.parse(text)
+  } catch {
+    return null
+  }
+}
+
+/** The AskUserQuestion result for a dashboard answer, or null unless every question has one. */
+export function buildQuestionResult<Q extends Question>(questions: Q[], text: string): { questions: Q[]; answers: Record<string, string> } | null {
+  const answers = parse(text)?.answers
+  if (!answers || typeof answers !== 'object') return null
+  const out: Record<string, string> = {}
+  for (const q of questions) {
+    const value = answers[q.question]
+    if (typeof value !== 'string' || !value.trim()) return null
+    out[q.question] = value.trim()
+  }
+  return { questions, answers: out }
+}
+
+export function decisionFrom(text: string): 'allow' | 'deny' | null {
+  const decision = parse(text)?.decision
+  return decision === 'allow' || decision === 'deny' ? decision : null
+}
+
+/** One line saying what a tool call would do, for the dashboard's Allow / Deny prompt. */
+export function permissionSummary(_tool: string, input: unknown): string {
+  const i = (input && typeof input === 'object' ? input : {}) as Record<string, unknown>
+  const pick = ['command', 'file_path', 'notebook_path', 'url', 'path', 'pattern', 'query'].map(k => i[k]).find(v => typeof v === 'string')
+  return String(pick ?? JSON.stringify(i)).slice(0, 300)
+}
+
+/** Seconds a permission prompt is offered to the dashboard: 0 when the collector isn't running. */
+export function dashboardWindowSec(view: TrackerView, now: number): number {
+  if (!view.snapshot || !isFresh(view, now)) return 0
+  const sec = Number(view.snapshot.settings?.permissionDashboardSec ?? 15)
+  return Number.isFinite(sec) ? Math.min(120, Math.max(0, sec)) : 0
 }

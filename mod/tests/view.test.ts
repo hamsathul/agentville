@@ -1,7 +1,7 @@
 import { expect, test } from 'claude-code/testing'
 
 import type { TrackerAgent, TrackerSnapshot } from '../types'
-import { answerUrl, elapsed, groups, isFresh, newlyWaiting, rowText, stateFileFor, statusText } from '../hooks/view'
+import { buildQuestionResult, dashboardWindowSec, decisionFrom, elapsed, groups, isFresh, newlyWaiting, permissionSummary, rowText, stateDirFor, stateFileFor, statusText } from '../hooks/view'
 
 const agent = (over: Partial<TrackerAgent>): TrackerAgent => ({
   id: 'a', kind: 'interactive', name: 'a', cwd: '/w', state: 'working', stateReason: 'busy', stateSince: 0,
@@ -72,10 +72,43 @@ test('the state file is found next to the mod folder, wherever the repo is clone
   expect(stateFileFor('/home/me/agent-tracker/mod/')).toBe('/home/me/agent-tracker/state/state.json')
 })
 
-test('Answer is offered only for a waiting agent with a claude.ai session link', () => {
-  const url = 'https://claude.ai/code/session_01AbC'
-  expect(answerUrl(agent({ state: 'waiting', remoteUrl: url }))).toBe(url)
-  expect(answerUrl(agent({ state: 'working', remoteUrl: url }))).toBe(undefined)
-  expect(answerUrl(agent({ state: 'waiting' }))).toBe(undefined)
-  expect(answerUrl(agent({ state: 'waiting', remoteUrl: 'https://evil.example/session_01AbC' }))).toBe(undefined)
+test('the state folder sits next to the mod folder', () => {
+  expect(stateDirFor('/home/me/agent-tracker/mod')).toBe('/home/me/agent-tracker/state')
+})
+
+const QUESTIONS = [
+  { question: 'Pick a colour?', header: 'Colour', multiSelect: false, options: [{ label: 'Red' }, { label: 'Blue' }] },
+  { question: 'Size?', header: 'Size', multiSelect: false, options: [{ label: 'S' }, { label: 'L' }] },
+]
+
+test('a dashboard answer becomes the question result only when every question is answered', () => {
+  const ok = buildQuestionResult(QUESTIONS, JSON.stringify({ answers: { 'Pick a colour?': 'Blue', 'Size?': 'L' } }))
+  expect(ok).toEqual({ questions: QUESTIONS, answers: { 'Pick a colour?': 'Blue', 'Size?': 'L' } })
+  expect(buildQuestionResult(QUESTIONS, JSON.stringify({ answers: { 'Pick a colour?': 'Blue' } }))).toBe(null)
+  expect(buildQuestionResult(QUESTIONS, '{ not json')).toBe(null)
+  expect(buildQuestionResult(QUESTIONS, JSON.stringify({ answers: { 'Pick a colour?': ' ', 'Size?': 'L' } }))).toBe(null)
+})
+
+test('a permission decision is only allow or deny', () => {
+  expect(decisionFrom('{"decision":"allow"}')).toBe('allow')
+  expect(decisionFrom('{"decision":"deny"}')).toBe('deny')
+  expect(decisionFrom('{"decision":"maybe"}')).toBe(null)
+  expect(decisionFrom('nope')).toBe(null)
+})
+
+test('the permission summary shows what the tool would do', () => {
+  expect(permissionSummary('Bash', { command: 'mkdir /tmp/x', description: 'Make a folder' })).toBe('mkdir /tmp/x')
+  expect(permissionSummary('Edit', { file_path: '/repo/src/a.ts', old_string: 'x' })).toBe('/repo/src/a.ts')
+  expect(permissionSummary('WebFetch', { url: 'https://example.com' })).toBe('https://example.com')
+  expect(permissionSummary('mcp__x__y', { table: 't', n: 2 })).toBe('{"table":"t","n":2}')
+  expect(permissionSummary('Bash', { command: 'x'.repeat(900) }).length).toBe(300)
+})
+
+test('the dashboard gets the configured window only while the collector is running', () => {
+  const view = (generatedAt: number, sec?: number) => ({ snapshot: snapshot([agent({})]) && { ...snapshot([agent({})]), generatedAt, settings: { modToasts: true, permissionDashboardSec: sec } }, readAt: 0 }) as any
+  expect(dashboardWindowSec(view(100_000, 15), 101_000)).toBe(15)
+  expect(dashboardWindowSec(view(100_000, 0), 101_000)).toBe(0)
+  expect(dashboardWindowSec(view(100_000, 999), 101_000)).toBe(120)
+  expect(dashboardWindowSec(view(100_000, 15), 200_000)).toBe(0)
+  expect(dashboardWindowSec({ snapshot: null, readAt: 0 }, 1)).toBe(0)
 })

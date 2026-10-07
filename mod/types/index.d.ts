@@ -8,7 +8,6 @@ export type TrackerAgent = {
   state: TrackerState
   stateReason: string
   stateSince: number
-  remoteUrl?: string
   now?: { tool: string; summary: string; startedAt: number }
   lastPrompt?: string
   lastReply?: string
@@ -20,7 +19,7 @@ export type TrackerAgent = {
 
 export type TrackerSnapshot = {
   generatedAt: number
-  settings?: { modToasts: boolean }
+  settings?: { modToasts: boolean; permissionDashboardSec?: number }
   counts: { waiting: number; working: number; yourTurn: number; stale: number; idle: number; collisions: number }
   agents: TrackerAgent[]
   collisions: { repo: string; agentIds: string[]; severity: 'normal' | 'high'; since: number; reason: string }[]
