@@ -6,6 +6,7 @@ let snap = null;
 const drafts = new Map(); // toolUseId → { picks: Map<question index, Set<label>>, other: Map<question index, text> }
 const msgDrafts = new Map(); // agent id → half-typed chat message
 const msgStatus = new Map(); // agent id → { text, bad, at }: the last send's result, shown under the box
+const fullFeeds = new Map(); // agent id → { items, at }: the whole history, while Show all is on
 const msgImages = new Map(); // agent id → screenshots waiting to go with the next message: [{ file, url, name, size }]
 let pickerFor = null; // the agent the file picker is choosing screenshots for
 const IMAGE_TYPES = /^image\/(png|jpeg|gif|webp)$/;

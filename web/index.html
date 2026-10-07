@@ -282,6 +282,13 @@ pre.code .l:hover { background: var(--panel-2); }
 .app[data-view="farm"][data-side="open"] > #farm { grid-row: 1 / span 2; grid-column: 1; }
 .app[data-view="farm"][data-side="open"] > #farm-side { display: block; grid-row: 1; grid-column: 2; }
 .app[data-view="farm"][data-side="open"] > .col.right { display: flex; grid-row: 2; grid-column: 2; }
+.qcard { border: 1px solid color-mix(in srgb, var(--warn) 65%, transparent); background: color-mix(in srgb, var(--warn) 10%, transparent); border-radius: 12px; padding: 10px 13px; margin: 12px 0; display: grid; gap: 8px; }
+.qtext { font-weight: 600; font-size: 14px; }
+.qbtns { display: flex; gap: 6px; }
+.qbtns .act { margin: 0; }
+.bub-reply { margin-left: 8px; padding: 0 6px; border: 1px solid var(--line); border-radius: 6px; background: var(--panel); color: var(--muted); font: inherit; font-size: 10.5px; cursor: pointer; opacity: 0; }
+.bub:hover .bub-reply, .bub-reply:focus { opacity: 1; }
+.sec .act.mini { text-transform: none; letter-spacing: 0; font-weight: 600; }
 .chat { display: grid; gap: 6px; }
 .bub { max-width: 88%; padding: 6px 10px 4px; border-radius: 12px; white-space: pre-wrap; overflow-wrap: anywhere; font-size: 13px; }
 .bub time { display: block; margin-top: 2px; font-size: 10.5px; color: var(--faint); }

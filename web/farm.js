@@ -66,7 +66,7 @@
           id: a.id, name: a.name, kind: a.kind, state: a.state === 'yourTurn' ? 'turn' : a.state, field: fieldOf(a, repos),
           tool: a.now?.tool ?? a.feed?.find(f => f.kind === 'tool')?.tool ?? null, summary: a.now?.summary ?? '',
           pct, hearts: Math.round((1 - pct) * 4), hot: (a.proc?.cpu ?? 0) >= cpuAlertPct,
-          ask: askText(a), askKind: a.ask?.kind ?? null, reply: firstLine(a.lastReply), color: colorIndex(a.id), shirt: SHIRT[colorIndex(a.id)],
+          ask: askText(a), askKind: a.ask?.kind ?? null, question: a.question ?? null, reply: firstLine(a.lastReply), color: colorIndex(a.id), shirt: SHIRT[colorIndex(a.id)],
           kids: (a.children ?? []).filter(c => c.state === 'running').slice(0, 4).map(c => ({ id: c.id, dog: c.agentType === 'Explore' })),
         };
       }),
@@ -99,6 +99,7 @@
   function bubble(rp, x, y, glyph) {
     rp(x, y, 9, 8, '#15191e'); rp(x + 1, y + 1, 7, 6, '#ffffff'); rp(x + 1, y + 8, 1, 2, '#15191e');
     if (glyph === '!') { rp(x + 4, y + 2, 1, 3, '#d03b3b'); rp(x + 4, y + 6, 1, 1, '#d03b3b'); }
+    else if (glyph === '?') { rp(x + 3, y + 2, 3, 1, '#c98500'); rp(x + 5, y + 3, 1, 1, '#c98500'); rp(x + 4, y + 4, 1, 1, '#c98500'); rp(x + 4, y + 6, 1, 1, '#c98500'); }
     else for (const [dx, dy] of [[2, 4], [3, 5], [4, 4], [5, 3], [6, 2]]) rp(x + dx, y + dy, 1, 1, '#0ca30c');
   }
 
@@ -244,7 +245,7 @@
       tag: f => (f.kind === 'codex' ? clip(f.name, 16) : `${clip(f.name, 16)} ${'♥'.repeat(f.hearts)}${'♡'.repeat(4 - f.hearts)}`),
       tip: f => {
         const field = fieldByKey(f.field);
-        const what = f.state === 'waiting' ? `needs you: ${f.ask}` : f.state === 'turn' ? `your turn: ${f.reply || 'finished'}`
+        const what = f.state === 'waiting' ? `needs you: ${f.ask}` : f.state === 'turn' ? (f.question ? `asks you: ${f.question}` : `your turn: ${f.reply || 'finished'}`)
           : f.state === 'working' ? `${VERB[toolProp(f.tool)] ?? f.tool ?? 'working'}${field ? ` in ${field.name}` : ''}${f.summary ? ` · ${f.summary}` : ''}`
           : f.state === 'stale' ? 'stale' : 'idle';
         return `${f.name} · ${what}${f.kind === 'codex' ? '' : ` · ${Math.round((1 - f.pct) * 100)}% context left`}`;
@@ -258,14 +259,14 @@
       },
       zoneText(f, z) {
         if (z === 'desk') return f.askKind === 'permission' ? 'comes up to your porch: needs a permission' : 'comes up to your porch with a question';
-        if (z === 'turn') return 'brings a basket of finished work to your porch';
+        if (z === 'turn') return f.question ? 'comes to your porch with a question' : 'brings a basket of finished work to your porch';
         if (z === 'storage') return 'stands still as a scarecrow (stale)';
         if (z === 'charge') return 'rests under the shade tree (idle)';
         if (z === 'meadow') return 'works in the wild meadow (no repo)';
         return `${VERB[toolProp(f.tool)] ?? 'working'} in the ${fieldByKey(f.field)?.name ?? ''} field`;
       },
       hud(still) {
-        const on = scene.farmers.filter(a => ACTIVE.has(a.state)), need = scene.farmers.filter(a => a.state === 'waiting').length;
+        const on = scene.farmers.filter(a => ACTIVE.has(a.state)), need = scene.farmers.filter(a => a.state === 'waiting' || a.question).length;
         const energy = on.length ? on.reduce((t, a) => t + (1 - a.pct), 0) / on.length : 1;
         return `<span title="One coin for every tool step since you opened this page"><b class="coin"></b>${game.coins}</span>
           <span title="Finished turns delivered to your porch"><b class="basket"></b>${game.harvests} harvested</span>
@@ -343,7 +344,7 @@
           else {
             const x = Math.round(b.x) + 8, y = L.LANE_B - 10;
             px(x, y, 16, 9, '#a8703c'); px(x, y, 16, 2, '#c98d4f'); px(x + 2, y - 3, 4, 3, '#e76f51'); px(x + 7, y - 4, 4, 4, '#f4a261'); px(x + 11, y - 3, 3, 3, '#e9c46a'); px(x + 8, y - 6, 1, 2, '#3f9b3a');
-            bubble(rp, 14, -6, 'v');
+            bubble(rp, 14, -6 - (f.question ? blink(3) : 0), f.question ? '?' : 'v'); // a question waits for your answer
           }
         }
         if (f.state === 'idle' && !b.walk) { const zy = -1 - Math.floor((T * 2) % 4); PXG.ctx.globalAlpha = 0.8; rp(12, zy, 3, 1, '#e6f4ff'); rp(13, zy + 1, 1, 1, '#e6f4ff'); rp(12, zy + 2, 3, 1, '#e6f4ff'); PXG.ctx.globalAlpha = 1; }

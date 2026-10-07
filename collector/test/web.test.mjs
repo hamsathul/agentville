@@ -13,7 +13,7 @@ const pageScripts = [...html.matchAll(/<script src="\/([a-z]+)\.js"><\/script>/g
 const inlineStart = html.lastIndexOf('<script>') + '<script>'.length;
 const script = html.slice(inlineStart, html.indexOf('</script>', inlineStart)) + pageScripts.map(web).join('\n');
 
-function loadPage({ stored = {}, storageThrows = false, files = {}, replies = {}, listing = null, farm = null } = {}) {
+function loadPage({ stored = {}, storageThrows = false, files = {}, replies = {}, listing = null, farm = null, feeds = {} } = {}) {
   const posts = [];
   const gets = [];
   const revoked = [];
@@ -43,6 +43,8 @@ function loadPage({ stored = {}, storageThrows = false, files = {}, replies = {}
     fetch: async (path, init) => {
       if (init?.method === 'POST') posts.push({ path, body: JSON.parse(init.body) });
       else gets.push({ path, token: init?.headers?.['x-tracker-token'] });
+      const feed = String(path).match(/^\/api\/agent\/([^/]+)\/feed\?limit=200$/);
+      if (feed) return { ok: true, status: 200, json: async () => feeds[decodeURIComponent(feed[1])] ?? [] };
       if (/^\/api\/agent\/[^/]+\/files$/.test(path)) {
         return listing ? { ok: true, status: 200, json: async () => listing } : { ok: false, status: 404, json: async () => ({ error: 'That agent was not found, or has no folder.' }) };
       }
@@ -891,4 +893,65 @@ test('the farm sidebar has the conversation too', async () => {
   const page = loadPage({ farm: f.farm, stored: { 'tracker-view': 'farm', 'tracker-farm-side': 'open' } });
   page.push(richSnapshot([chatty()]));
   assert.match(page.el('farm-agent').innerHTML, />Conversation<[\s\S]*class="bub you"/);
+});
+
+const asking = (over = {}) => richAgent({ state: 'yourTurn', stateReason: 'turn finished', now: undefined, lastReply: 'Done.', question: 'Should I push them to main?', mod: { version: '0.3.1', live: true }, ...over });
+const turnSnapshot = agents => ({ ...richSnapshot(agents), counts: { waiting: 0, working: 0, yourTurn: agents.length, stale: 0, idle: 0, collisions: 0 } });
+
+test('an agent whose turn ended with a question is marked as asking you, in its row, the tiles and the tab title', () => {
+  const page = loadPage();
+  page.push(turnSnapshot([asking()]));
+  assert.match(page.list(), /asks you[\s\S]*Should I push them to main\?/);
+  assert.match(page.el('kpis').innerHTML, /1 asks you/);
+  assert.equal(page.ctx.document.title, '(1) Agent Tracker');
+});
+
+test('the question card answers a yes/no question in one click, or starts a "No, …" reply', async () => {
+  const page = loadPage();
+  page.push(turnSnapshot([asking()]));
+  assert.match(page.side(), /class="qcard"[\s\S]*Should I push them to main\?/);
+  await page.clickButton('quick-yes', { quickReply: 'Yes.', agent: 'r1' });
+  assert.deepEqual(page.posts, [{ path: '/api/actions/message', body: { agentId: 'r1', text: 'Yes.' } }]);
+  await page.clickButton('quick-no', { quickDraft: 'No, ', agent: 'r1' });
+  assert.match(page.side(), /<textarea id="msg-text"[^>]*>No, <\/textarea>/);
+});
+
+test('an open question gets no yes/no buttons, only the reply box', () => {
+  const page = loadPage();
+  page.push(turnSnapshot([asking({ question: 'Which colour do you want?' })]));
+  assert.match(page.side(), /class="qcard"[\s\S]*Which colour do you want\?/);
+  assert.doesNotMatch(page.side(), /data-quick-reply/);
+});
+
+test("Reply on one of the agent's messages quotes it into the message box", async () => {
+  const page = loadPage();
+  page.push(richSnapshot([chatty()]));
+  assert.match(page.side(), /class="bub agent"[\s\S]*?data-quote="Done\.\nAll &lt;b&gt;tests&lt;\/b&gt; pass\."/);
+  await page.clickButton('quote', { quote: 'Done.\nAll <b>tests</b> pass.', agent: 'r1' });
+  assert.match(page.side(), /<textarea id="msg-text"[^>]*>&gt; Done\.\n&gt; All &lt;b&gt;tests&lt;\/b&gt; pass\.\n\n<\/textarea>/);
+});
+
+test('Show all loads the whole history for the conversation and activity, with a link to the full transcript', async () => {
+  const older = [
+    { at: Date.now() - 900_000, kind: 'tool', tool: 'Grep', text: 'an old search', ok: true, durationMs: 10 },
+    { at: Date.now() - 950_000, kind: 'prompt', text: 'An early request', body: 'An early request' },
+  ];
+  const page = loadPage({ feeds: { r1: [...chatty().feed, ...older] } });
+  page.push(richSnapshot([chatty()]));
+  assert.match(page.side(), /href="\/agent\/r1\/transcript"[^>]*>Full transcript ↗/);
+  assert.doesNotMatch(page.side(), /an old search/);
+  await page.clickButton('more', { fullFeed: 'r1' });
+  assert.ok(page.gets.some(g => g.path === '/api/agent/r1/feed?limit=200'));
+  assert.match(page.side(), /an old search/);
+  assert.match(page.side(), /An early request/);
+  assert.match(page.side(), /Show less/);
+  await page.clickButton('more', { fullFeed: 'r1' });
+  assert.doesNotMatch(page.side(), /an old search/);
+});
+
+test('the farm sidebar shows the question card too', () => {
+  const f = fakeFarm();
+  const page = loadPage({ farm: f.farm, stored: { 'tracker-view': 'farm', 'tracker-farm-side': 'open' } });
+  page.push(turnSnapshot([asking()]));
+  assert.match(page.el('farm-agent').innerHTML, /class="qcard"[\s\S]*Should I push them to main\?/);
 });

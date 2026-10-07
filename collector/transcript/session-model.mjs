@@ -24,6 +24,7 @@ export class SessionModel {
     this.lastPrompt = null;
     this.lastPromptAt = 0;
     this.lastReply = null;
+    this.finalReply = null; // the whole last reply, while nothing has come after it in the turn
     this.lastActivityAt = 0;
     this.lastTurnEndAt = 0;
     this.turnOpen = false;
@@ -58,6 +59,7 @@ export class SessionModel {
         this.#abandonPending();
         this.lastPrompt = firstLine(ev.text);
         this.lastPromptAt = when;
+        this.finalReply = null;
         this.turnOpen = true;
         this.#push({ at: when, kind: 'prompt', text: this.lastPrompt, body: bodyOf(ev.text) });
         break;
@@ -66,11 +68,13 @@ export class SessionModel {
         break;
       case 'reply':
         this.lastReply = firstLine(ev.text);
+        this.finalReply = String(ev.text ?? '').slice(0, 8000);
         this.turnOpen = true;
         this.#push({ at: when, kind: 'reply', text: this.lastReply, body: bodyOf(ev.text) });
         break;
       case 'tool_use': {
         const call = { id: ev.id, name: ev.name, input: ev.input, at: when, cwd: ev.cwd };
+        this.finalReply = null;
         this.pending.set(ev.id, call);
         this.calls.push(call);
         if (this.calls.length > this.callCap) this.calls.splice(0, this.calls.length - this.callCap);

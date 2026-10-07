@@ -4,13 +4,14 @@
 
 function kpisHtml() {
   const c = snap.counts;
+  const asking = snap.agents.filter(a => a.question).length;
   const waiting = snap.agents.filter(a => a.state === 'waiting');
   const oldest = waiting.reduce((m, a) => Math.min(m, a.stateSince || Infinity), Infinity);
   const withSubagents = snap.agents.filter(a => a.children?.some(ch => ch.state === 'running')).length;
   const tiles = [
     ['k-waiting', '❓', 'Waiting on you', c.waiting, c.waiting ? `oldest waiting <b data-since="${oldest}"></b>` : 'all clear', c.waiting > 0],
     ['k-working', '▶', 'Working', c.working, withSubagents ? `${withSubagents} running subagents` : `${snap.agents.length} agents tracked`, false],
-    ['k-turn', '↩', 'Your turn', c.yourTurn, `${c.idle} idle · ${c.stale} stale`, false],
+    ['k-turn', '↩', 'Your turn', c.yourTurn, `${asking ? `${asking} asks you · ` : ''}${c.idle} idle · ${c.stale} stale`, asking > 0],
     ['k-collide', '⚠', 'Collisions', c.collisions, c.collisions ? 'two agents writing one repo' : 'none', c.collisions > 0],
   ];
   return tiles.map(([k, icon, label, val, sub, hot]) => `<div class="kpi ${k}${hot ? ' hot' : ''}"><span>${icon}</span><span class="kpi-label">${label}</span><b class="val">${val}</b><span class="sub">${sub}</span></div>`).join('');
@@ -57,12 +58,13 @@ function metricsHtml(a) {
 function rowHtml(a) {
   const sub = a.state === 'waiting' ? `${askLine(a)} · <span data-since="${a.stateSince}"></span>`
     : a.now ? `<span class="pulse"></span><span class="mono">${esc(a.now.tool)} ${esc(a.now.summary)} · <span data-since="${a.now.startedAt}"></span></span>`
+    : a.question ? `❓ ${esc(a.question)}`
     : a.state === 'yourTurn' ? esc(a.lastReply ?? 'finished')
     : '';
   const nums = a.state === 'stale' ? `<span class="rn">${ago(a.lastActivityAt)}</span>`
     : a.proc ? `<span class="rn">${Math.round(a.proc.cpu)}%</span><span class="rn">${gb(a.proc.rssMb)}</span>` : '';
   return `<button class="row ${a.state}${a.id === selected ? ' sel' : ''}" data-id="${esc(a.id)}" data-tip="${esc(`${short(a.cwd)}${a.kind === 'background' ? ' · background' : ''}`)}">
-    <span class="rtop"><span class="swatch" style="background:${colorOf(a.id)}"></span><span class="name">${esc(a.name)}</span>${a.ask ? '<span class="chip c-waiting live-dot">answer here</span>' : ''}<span class="grow"></span>${nums}</span>${sub ? `<span class="rsub">${sub}</span>` : ''}</button>`;
+    <span class="rtop"><span class="swatch" style="background:${colorOf(a.id)}"></span><span class="name">${esc(a.name)}</span>${a.ask ? '<span class="chip c-waiting live-dot">answer here</span>' : a.question ? '<span class="chip c-yourTurn">asks you</span>' : ''}<span class="grow"></span>${nums}</span>${sub ? `<span class="rsub">${sub}</span>` : ''}</button>`;
 }
 
 function listHtml() {
@@ -156,19 +158,40 @@ function askHtml(a) {
 }
 
 /** Your prompts (typed or sent from here) and the agent's replies, oldest first, like a chat. */
+/** The feed to show: the whole history once Show all has loaded it, else the snapshot's latest. */
+const feedOf = a => fullFeeds.get(a.id)?.items ?? a.feed;
+
 function conversationHtml(a) {
-  const said = a.feed.filter(f => f.kind === 'prompt' || f.kind === 'reply').slice(0, 10).reverse();
+  const all = fullFeeds.has(a.id);
+  const said = feedOf(a).filter(f => f.kind === 'prompt' || f.kind === 'reply').slice(0, all ? Infinity : 10).reverse();
   if (!said.length) return '';
   // Replies are markdown (rendered by the escape-everything renderer); your prompts stay as typed.
+  // Reply on an agent message quotes it into the message box.
   const bubble = f => (f.kind === 'prompt'
     ? `<div class="bub you">${esc(f.body || f.text)}<time>${hhmm(f.at)}</time></div>`
-    : `<div class="bub agent"><div class="bub-md">${renderMarkdown(f.body || f.text)}</div><time>${hhmm(f.at)}</time></div>`);
+    : `<div class="bub agent"><div class="bub-md">${renderMarkdown(f.body || f.text)}</div><time>${hhmm(f.at)}<button type="button" class="bub-reply" data-quote="${esc(f.body || f.text)}" data-agent="${esc(a.id)}" title="Quote this in your reply">↩ Reply</button></time></div>`);
   return `<div class="sec">Conversation</div><div class="chat">${said.map(bubble).join('')}</div>`;
 }
 
-/** The tool steps, newest first (the conversation is shown on its own). */
+/** The tool steps, newest first (the conversation is shown on its own); Show all loads the whole history. */
 function activityHtml(a) {
-  return `<div class="feed">${a.feed.filter(f => f.kind === 'tool').slice(0, 25).map(feedRow).join('') || '<div class="empty">No tool steps yet.</div>'}</div>`;
+  const all = fullFeeds.has(a.id);
+  const steps = feedOf(a).filter(f => f.kind === 'tool');
+  const links = a.kind === 'codex' ? '' : `<span class="grow"></span><button type="button" class="act mini" data-full-feed="${esc(a.id)}">${all ? 'Show less' : 'Show all'}</button><a class="act mini" href="/agent/${encodeURIComponent(a.id)}/transcript" target="_blank" rel="noopener">Full transcript ↗</a>`;
+  return `<div class="sec">Activity${all ? ` · ${steps.length} steps` : ''}${links}</div><div class="feed">${steps.slice(0, all ? Infinity : 25).map(feedRow).join('') || '<div class="empty">No tool steps yet.</div>'}</div>`;
+}
+
+/** A question the agent ended its turn with: yes/no ones get one-click answers. */
+const YES_NO = /^(should|shall|do|does|did|can|could|would|will|is|are|am|want|may|have|has|ok|okay)\b/i;
+function questionHtml(a) {
+  if (!a.question) return '';
+  const live = Boolean(a.mod?.live);
+  const off = live ? '' : ' disabled';
+  const buttons = YES_NO.test(a.question)
+    ? `<div class="qbtns"><button type="button" class="act primary" data-quick-reply="Yes." data-agent="${esc(a.id)}"${off}>Yes</button><button type="button" class="act" data-quick-draft="No, " data-agent="${esc(a.id)}"${off}>No…</button></div>`
+    : '';
+  return `<div class="qcard"><div class="sec" style="margin-top:0">↩ ${esc(a.name)} asks you</div><div class="qtext">${esc(a.question)}</div>${buttons}
+    <div class="muted" style="font-size:12px">${live ? 'Or answer in your own words in the message box below.' : "This session isn't listening for dashboard messages yet: answer it in its terminal."}</div></div>`;
 }
 
 /** Chat box: sends a message, with any screenshots, into the session as the person's own words (queued if it is busy). */
@@ -218,9 +241,10 @@ function removeImage(agentId, index) {
   render();
 }
 
-async function sendMessage(agentId, button) {
-  const text = (msgDrafts.get(agentId) ?? '').trim();
-  const imgs = msgImages.get(agentId) ?? [];
+/** Sends the message box (with its screenshots), or `quick` text (a one-click answer) leaving the box as it is. */
+async function sendMessage(agentId, button, quick = null) {
+  const text = (quick ?? msgDrafts.get(agentId) ?? '').trim();
+  const imgs = quick === null ? msgImages.get(agentId) ?? [] : [];
   if (!text && !imgs.length) {
     msgStatus.set(agentId, { at: Date.now(), bad: true, text: 'Type a message or add a screenshot first.' });
     render();
@@ -240,7 +264,7 @@ async function sendMessage(agentId, button) {
     return;
   }
   const r = await post('/api/actions/message', images.length ? { agentId, text, images } : { agentId, text });
-  if (r.ok) {
+  if (r.ok && quick === null) {
     msgDrafts.delete(agentId);
     for (const im of imgs) URL.revokeObjectURL(im.url);
     msgImages.delete(agentId);

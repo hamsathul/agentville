@@ -102,3 +102,9 @@ test('how to read the farm is one block of help, for the info dialog', () => {
   for (const item of ['Your porch', 'Fields', 'Above a field', 'Weather', 'Hearts, crops', 'Click']) assert.match(html, new RegExp(`<b>${item}</b>`));
   assert.match(html, /^<div class="px-key">/);
 });
+
+test('a farmer whose turn ended with a question carries it, for the porch bubble', () => {
+  const { toScene } = load();
+  const [f] = plain(toScene(snapOf([agent('t', { state: 'yourTurn', question: 'Should I deploy?' })], []), { cpuAlertPct: 90 }).farmers);
+  assert.equal(f.question, 'Should I deploy?');
+});

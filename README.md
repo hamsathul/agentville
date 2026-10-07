@@ -23,6 +23,12 @@ how much CPU and memory each one uses.
   as your own prompt; if the agent is busy, it is read when the current step ends. **Attach
   screenshots** by pasting (⌘V) or dropping them on the box, or with 📎: up to 6 images,
   10 MB each; the agent opens them with its Read tool.
+  **Questions in replies:** when an agent ends its turn by asking something ("Should I push?"),
+  the dashboard shows it as a question: an "asks you" chip, a card with the question (one-click
+  **Yes** / **No…** for yes/no questions), a "?" on the farm's porch, and the tab title count.
+  **Reply** on any of the agent's messages quotes it into your answer. The **Conversation**
+  thread sits above the message box; **Show all** loads the session's whole history (or open the
+  **Full transcript**).
   **Read and reply:** specs, plans and other markdown files the agent wrote or read are also
   listed under "Documents". In any open file, select a passage and **Quote** it (code quotes
   carry their line numbers), then reply; the agent gets it as a message about that file.

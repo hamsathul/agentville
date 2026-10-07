@@ -2,7 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { DEFAULTS } from '../config.mjs';
 import { applySince, buildAgent, countStates, sortAgents } from '../derive/agent.mjs';
-import { at, modelOf, prompt, title, toolResult, toolUse } from './fixtures.mjs';
+import { at, modelOf, prompt, reply, title, toolResult, toolUse, turnEnd } from './fixtures.mjs';
 
 const cfg = { ...DEFAULTS };
 const repoOf = p => (p.startsWith('/p/backend') ? '/p/backend' : null);
@@ -177,4 +177,13 @@ test("children carry their subagent type", () => {
   const parent = modelOf(prompt(0, 'go'), toolUse(1, 'tE', 'Agent', { description: 'Look around', subagent_type: 'Explore' }));
   const a = buildAgent({ base: base(), model: parent, repoOf, now: at(2), cfg, home: '/h' });
   assert.equal(a.children[0].agentType, 'Explore');
+});
+
+test('an agent whose turn ended with a question says what it asks', () => {
+  const asking = modelOf(prompt(0, 'go'), reply(1, 'Built it.\n\nShould I deploy?'), turnEnd(2));
+  assert.equal(buildAgent({ base: base(), model: asking, repoOf, now: at(3), cfg, home: '/h' }).question, 'Should I deploy?');
+  const telling = modelOf(prompt(0, 'go'), reply(1, 'Built and deployed.'), turnEnd(2));
+  assert.equal(buildAgent({ base: base(), model: telling, repoOf, now: at(3), cfg, home: '/h' }).question, undefined);
+  const busy = modelOf(prompt(0, 'go'), reply(1, 'Should I? Let me check.'), toolUse(2, 't', 'Bash'));
+  assert.equal(buildAgent({ base: base(), model: busy, repoOf, now: at(3), cfg, home: '/h' }).question, undefined);
 });

@@ -2,6 +2,7 @@ import { basename } from 'node:path';
 import { summarizeTool } from '../transcript/summarize.mjs';
 import { collectTouches } from './touches.mjs';
 import { STATE_ORDER, deriveCodexState, deriveState } from './state.mjs';
+import { trailingQuestion } from './question.mjs';
 
 const CHILD_KEEP_MS = 60 * 60_000;
 const HISTORY_SAMPLES = 200; // 10 minutes at the 3 s poll
@@ -78,6 +79,7 @@ export function buildAgent({ base, model, registry, proc, cpuHistory = [], child
     now: nowOf(model),
     lastPrompt: model?.lastPrompt ?? undefined,
     lastReply: model?.lastReply ?? undefined,
+    question: derived.state === 'yourTurn' ? trailingQuestion(model?.finalReply) ?? undefined : undefined,
     feed: model ? model.feed.slice(0, 20) : [],
     children: model ? childrenOf(model, childModels, now) : [],
     touching,

@@ -159,3 +159,13 @@ test('prompts and replies keep up to 600 characters of their text, line breaks a
   assert.equal(r.body.length, 600);
   assert.ok(r.body.startsWith('First line\n\nyyy'));
 });
+
+test("the turn's final reply is kept whole; a later tool call or prompt clears it", () => {
+  const long = `Done.\n\n${'z'.repeat(1000)}\n\nShould I push?`;
+  const m = modelOf(prompt(0, 'go'), reply(1, 'Checking.'), toolUse(2, 't1', 'Bash'), toolResult(3, 't1'), reply(4, long), turnEnd(5));
+  assert.equal(m.finalReply, long);
+  m.applyLines([prompt(6, 'yes')]);
+  assert.equal(m.finalReply, null);
+  m.applyLines([reply(7, 'Pushing.'), toolUse(8, 't2', 'Bash')]);
+  assert.equal(m.finalReply, null);
+});

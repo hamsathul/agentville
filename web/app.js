@@ -28,9 +28,10 @@ function overviewHtml(a) {
         : ' <span class="chip c-plain" data-tip="The Agent Tracker mod in this session isn\'t listening. It starts with the next message you send the session, or with a new session.">dashboard answers off</span>'}</div>
     ${a.state === 'stale' ? '' : `<div style="margin-top:8px">${metricsHtml(a)}</div>`}
     <div class="sec">Now</div>${a.now ? `<div class="now mono"><span class="pulse"></span> ${esc(a.now.tool)} ${esc(a.now.summary)} · <b data-since="${a.now.startedAt}"></b></div>` : `<div class="muted">${esc(a.stateReason)}</div>`}
+    ${questionHtml(a)}
     ${conversationHtml(a)}
     ${composeHtml(a)}
-    <div class="sec">Activity</div>${activityHtml(a)}
+    ${activityHtml(a)}
     ${docsHtml(a)}
     ${charts ? `<div class="sec">Last 10 minutes</div>${charts}` : ''}
     ${a.kind === 'codex' ? '' : `<div class="sec">Tool calls · last 30 minutes</div>${timelineChart(a.timeline)}`}
@@ -50,7 +51,9 @@ function render() {
   $('errors').innerHTML = Object.entries(snap.sources).filter(([, s]) => !s.ok)
     .map(([n, s]) => `<span class="pill p-err" title="${esc(s.error)}">${esc(n)}: ${esc(String(s.error).slice(0, 40))}</span>`).join(' ');
   $('hstats').innerHTML = hstatsHtml();
-  document.title = snap.counts.waiting ? `(${snap.counts.waiting}) Agent Tracker` : 'Agent Tracker';
+  const needs = snap.counts.waiting + snap.agents.filter(a => a.question).length; // waiting, or asked something
+  document.title = needs ? `(${needs}) Agent Tracker` : 'Agent Tracker';
+  refreshFullFeeds();
   if (view === 'farm') {
     // The farm draws the agents; the list and the centre are not drawn (so their ids don't exist twice).
     // The sidebar shows the selected farmer: its answer form, message box and activity, then its files.
@@ -70,6 +73,35 @@ function render() {
   renderCentre();
   syncExplorer();
   updateTimers();
+}
+
+/* ---------- the whole history (Show all) ---------- */
+
+async function loadFullFeed(id) {
+  const prev = fullFeeds.get(id);
+  try {
+    const r = await fetch(`/api/agent/${encodeURIComponent(id)}/feed?limit=200`);
+    const items = r.ok ? await r.json() : prev?.items ?? [];
+    fullFeeds.set(id, { items, at: Date.now(), activity: snap?.agents.find(a => a.id === id)?.lastActivityAt });
+  } catch {
+    if (!prev) fullFeeds.set(id, { items: [], at: Date.now() });
+  }
+}
+async function toggleFullFeed(id) {
+  if (fullFeeds.has(id)) fullFeeds.delete(id);
+  else await loadFullFeed(id);
+  render();
+}
+/** While Show all is on, the history follows the agent: reloaded when it has done something, at most every 3 s. */
+function refreshFullFeeds() {
+  for (const [id, f] of fullFeeds) {
+    const a = snap.agents.find(x => x.id === id);
+    if (!a) { fullFeeds.delete(id); continue; }
+    if (a.lastActivityAt !== f.activity && Date.now() - f.at > 3000 && !f.loading) {
+      f.loading = true;
+      void loadFullFeed(id).then(() => requestRender());
+    }
+  }
 }
 
 /* ---------- two views: the list (default) and the pixel farm ---------- */
@@ -134,10 +166,11 @@ function farmSideHtml(a) {
   return `<div class="fs-head"><span class="swatch" style="background:${color}"></span><span class="name">${esc(a.name)}</span><span class="chip c-${a.state}">${STATE_CHIP[a.state] ?? esc(a.state)} · <span data-since="${a.stateSince}"></span></span><span class="grow"></span><button class="act mini" id="fs-list" type="button" data-tip="Show this agent in the list view">☰ List</button></div>
     <div class="muted" style="margin-top:4px">${esc(short(a.cwd))}${a.model ? ` · ${esc(a.model)}` : ''}</div>
     ${askHtml(a)}
+    ${questionHtml(a)}
     <div class="sec">Now</div>${now}
     ${conversationHtml(a)}
     ${composeHtml(a)}
-    <div class="sec">Activity</div>${activityHtml(a)}`;
+    ${activityHtml(a)}`;
 }
 
 /** A farmer was clicked: show it in the farm's sidebar, where it can be answered or messaged. */
@@ -253,6 +286,16 @@ document.addEventListener('click', async e => {
   if (el.id === 'side-toggle') { setFarmSide(!farmSide); return; }
   if (el.id === 'fs-list') { setView('list'); return; }
   if (el.id === 'msg-send') { await sendMessage(d.agent, el); return; }
+  if (d.quickReply !== undefined) { await sendMessage(d.agent, el, d.quickReply); return; }
+  if (d.quickDraft !== undefined || d.quote !== undefined) {
+    const prev = msgDrafts.get(d.agent) ?? '';
+    const add = d.quote !== undefined ? `${d.quote.split('\n').map(l => `> ${l}`.trimEnd()).join('\n')}\n\n` : d.quickDraft;
+    msgDrafts.set(d.agent, prev && d.quote !== undefined ? `${prev.replace(/\n*$/, '')}\n\n${add}` : d.quote !== undefined ? add : `${add}${prev}`);
+    render();
+    $('msg-text')?.focus?.();
+    return;
+  }
+  if (d.fullFeed !== undefined) { await toggleFullFeed(d.fullFeed); return; }
   if (d.removeImg !== undefined) { removeImage(d.agent, Number(d.removeImg)); return; }
   if (el.id === 'msg-attach') {
     pickerFor = d.agent;
