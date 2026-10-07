@@ -103,3 +103,20 @@ test('only the 40 most recent documents are kept', () => {
   assert.equal(docs[0].path, '/w/d45.md');
   assert.equal(docs.at(-1).path, '/w/d6.md');
 });
+
+test('every file the session wrote, edited or read is remembered for the explorer, newest first', () => {
+  const m = modelOf(
+    prompt(0, 'go'),
+    toolUse(1, 'a', 'Read', { file_path: '/w/src/a.ts' }),
+    toolUse(2, 'b', 'Edit', { file_path: '/w/src/b.ts' }),
+    toolUse(3, 'c', 'NotebookEdit', { notebook_path: '/w/n.ipynb' }),
+    toolUse(4, 'd', 'Read', { file_path: '/w/src/b.ts' }),
+    toolUse(5, 'e', 'Bash', { command: 'ls' }),
+  );
+  assert.deepEqual(m.touchedFiles(), [
+    { path: '/w/src/b.ts', wrote: true, at: at(4) },
+    { path: '/w/n.ipynb', wrote: true, at: at(3) },
+    { path: '/w/src/a.ts', wrote: false, at: at(1) },
+  ]);
+  assert.deepEqual(m.documents(), []);
+});

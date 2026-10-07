@@ -1,4 +1,5 @@
 import { test } from 'node:test';
+import { execFileSync } from 'node:child_process';
 import assert from 'node:assert/strict';
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, symlinkSync, unlinkSync, utimesSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -244,6 +245,53 @@ test('a document can be read only if the agent opened it, and only if it is a ma
     assert.match(handle.readDoc('sess-doc', join(work, 'big.md')).error, /too large/);
     unlinkSync(join(work, 'gone.md'));
     assert.match(handle.readDoc('sess-doc', join(work, 'gone.md')).error, /no longer exists/);
+  } finally {
+    await handle.stop();
+  }
+});
+
+test("the explorer lists the agent's folder with git status and the files the agent touched, and opens files from it", async () => {
+  const root = mkdtempSync(join(tmpdir(), 'tracker-root-files-'));
+  mkdirSync(join(root, 'web'));
+  writeFileSync(join(root, 'web', 'index.html'), '<html></html>');
+  writeFileSync(join(root, 'config.json'), JSON.stringify({ port: 0, deployRepos: {} }));
+  const work = mkdtempSync(join(tmpdir(), 'tracker-work-files-'));
+  const git = (...args) => execFileSync('git', ['-C', work, '-c', 'user.email=t@t', '-c', 'user.name=t', ...args]);
+  git('init', '-q');
+  mkdirSync(join(work, 'src'));
+  writeFileSync(join(work, 'src', 'app.ts'), 'one');
+  writeFileSync(join(work, 'README.md'), '# R');
+  git('add', '.');
+  git('commit', '-q', '-m', 'init');
+  writeFileSync(join(work, 'src', 'app.ts'), 'two');
+  const outside = join(mkdtempSync(join(tmpdir(), 'tracker-out-')), 'plan.md');
+  writeFileSync(outside, '# Plan');
+  const claudeDir = mkdtempSync(join(tmpdir(), 'tracker-claude-files-'));
+  mkdirSync(join(claudeDir, 'sessions'));
+  mkdirSync(join(claudeDir, 'projects', '-w'), { recursive: true });
+  writeFileSync(join(claudeDir, 'sessions', `${process.pid}.json`), JSON.stringify({ pid: process.pid, sessionId: 'sess-files', cwd: work, name: 'coder', status: 'idle' }));
+  const now = Date.now();
+  const use = (n, name, file) => JSON.stringify({ type: 'assistant', timestamp: new Date(now - 5000 + n).toISOString(), cwd: work, message: { model: 'm', content: [{ type: 'tool_use', id: `t${n}`, name, input: { file_path: file } }] } });
+  writeFileSync(join(claudeDir, 'projects', '-w', 'sess-files.jsonl'), [
+    JSON.stringify({ type: 'user', timestamp: new Date(now - 6000).toISOString(), cwd: work, message: { content: 'edit it' } }),
+    use(1, 'Read', join(work, 'README.md')),
+    use(2, 'Edit', join(work, 'src', 'app.ts')),
+    use(3, 'Write', outside),
+  ].join('\n') + '\n');
+  const handle = await startCollector({ root, claudeDir, claudeBin: '/usr/bin/false', notify: () => {}, log: () => {}, home: '/nowhere' });
+  try {
+    const list = await handle.listFiles('sess-files');
+    assert.equal(list.root, work);
+    assert.equal(list.git, true);
+    assert.deepEqual(list.files, ['README.md', 'src/app.ts']);
+    assert.deepEqual(list.status, { 'src/app.ts': 'M' });
+    assert.deepEqual(Object.keys(list.touched).sort(), ['README.md', 'src/app.ts']);
+    assert.equal(list.touched['src/app.ts'].wrote, true);
+    assert.equal(list.touched['README.md'].wrote, false);
+    assert.match((await handle.listFiles('nope')).error, /not found/);
+    assert.equal((await handle.readFile('sess-files', join(work, 'src', 'app.ts'))).doc.text, 'two');
+    assert.equal((await handle.readFile('sess-files', outside)).doc.text, '# Plan');
+    assert.match((await handle.readFile('sess-files', '/etc/hosts')).error, /outside/);
   } finally {
     await handle.stop();
   }

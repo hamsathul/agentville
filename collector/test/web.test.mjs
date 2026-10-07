@@ -8,8 +8,9 @@ import vm from 'node:vm';
 const html = readFileSync(fileURLToPath(new URL('../../web/index.html', import.meta.url)), 'utf8');
 const script = html.slice(html.lastIndexOf('<script>') + '<script>'.length, html.lastIndexOf('</script>'));
 
-function loadPage({ stored = {}, storageThrows = false, files = {}, replies = {} } = {}) {
+function loadPage({ stored = {}, storageThrows = false, files = {}, replies = {}, listing = null } = {}) {
   const posts = [];
+  const gets = [];
   let active = null;
   const els = new Map();
   const el = id => ({ id, title: '', innerHTML: '', textContent: '', value: '', className: '', dataset: {}, classList: { add() {}, remove() {}, toggle() {} }, addEventListener() {}, showModal() { this.open = true; }, close() { this.open = false; }, focus() {}, querySelectorAll: () => [] });
@@ -34,8 +35,12 @@ function loadPage({ stored = {}, storageThrows = false, files = {}, replies = {}
       setItem: (key, value) => { if (storageThrows) throw new Error('denied'); stored[key] = String(value); },
     },
     fetch: async (path, init) => {
-      posts.push({ path, body: init?.body ? JSON.parse(init.body) : undefined });
-      const doc = String(path).match(/^\/api\/agent\/[^/]+\/doc\?path=(.*)$/);
+      if (init?.method === 'POST') posts.push({ path, body: JSON.parse(init.body) });
+      else gets.push({ path, token: init?.headers?.['x-tracker-token'] });
+      if (/^\/api\/agent\/[^/]+\/files$/.test(path)) {
+        return listing ? { ok: true, status: 200, json: async () => listing } : { ok: false, status: 404, json: async () => ({ error: 'That agent was not found, or has no folder.' }) };
+      }
+      const doc = String(path).match(/^\/api\/agent\/[^/]+\/(?:doc|file)\?path=(.*)$/);
       if (doc) {
         const file = decodeURIComponent(doc[1]);
         return file in files
@@ -56,8 +61,12 @@ function loadPage({ stored = {}, storageThrows = false, files = {}, replies = {}
     fire: type => (docListeners[type] ?? []).forEach(fn => fn({ target: { closest: () => null } })),
     click: id => Promise.all((docListeners.click ?? []).map(fn => fn({ target: { closest: sel => (sel === 'button' ? ctx.document.getElementById(id) : null) } }))),
     el: id => ctx.document.getElementById(id),
-    side: () => ctx.document.getElementById('side').innerHTML,
+    side: () => ctx.document.getElementById('center-body').innerHTML,
+    tabs: () => ctx.document.getElementById('center-tabs').innerHTML,
+    tree: () => ctx.document.getElementById('tree').innerHTML,
+    settle: async () => { for (let i = 0; i < 40; i++) await Promise.resolve(); },
     posts,
+    gets,
     focus: element => { active = element; },
     openAgent: id => Promise.all((docListeners.click ?? []).map(fn => fn({ target: { closest: sel => (sel === '.row[data-id]' ? { dataset: { id } } : null) } }))),
     clickButton: (id, dataset) => { Object.assign(ctx.document.getElementById(id).dataset, dataset); return Promise.all((docListeners.click ?? []).map(fn => fn({ target: { closest: sel => (sel === 'button' ? ctx.document.getElementById(id) : null) } }))); },
@@ -253,20 +262,23 @@ test('number tiles show each state count with its label', () => {
   assert.match(kpis, /class="val">1</);
 });
 
-test('each agent row has a CPU sparkline, memory and context meters, and a 30-minute activity strip', () => {
+test('agent rows are compact: name and CPU and memory numbers, no charts; the centre has the sparkline, meters and activity strip', () => {
   const page = loadPage();
   page.push(richSnapshot([richAgent()]));
   const list = page.list();
-  assert.match(list, /<svg class="spark"/);
-  assert.equal((list.match(/class="meter /g) ?? []).length, 2);
-  assert.equal((list.match(/class="h h\d"/g) ?? []).length, 30);
+  assert.doesNotMatch(list, /<svg class="spark"|class="meter |class="h h\d"/);
+  assert.match(list, /busy-one[\s\S]*12%[\s\S]*600 MB/);
+  const side = page.side();
+  assert.match(side, /<svg class="spark"/);
+  assert.equal((side.match(/class="meter /g) ?? []).length, 2);
+  assert.equal((side.match(/class="h h\d"/g) ?? []).length, 30);
 });
 
 test('memory near the alert threshold turns its meter critical, with a warning sign', () => {
   const page = loadPage();
   page.push(richSnapshot([richAgent({ proc: { ...richAgent().proc, rssMb: 1900 } })]));
-  assert.match(page.list(), /class="meter crit"/);
-  assert.match(page.list(), /⚠/);
+  assert.match(page.side(), /class="meter crit"/);
+  assert.match(page.side(), /⚠/);
 });
 
 test('the drawer charts CPU and memory over 10 minutes and plots the tool timeline', async () => {
@@ -394,9 +406,9 @@ test('Documents lists the markdown files the agent wrote or read, and one opens 
   assert.match(side, />Documents</);
   assert.match(side, /spec\.md[\s\S]*written[\s\S]*README\.md[\s\S]*read/);
   await openSpec(page);
-  assert.ok(page.posts.some(p => p.path === '/api/agent/r1/doc?path=%2Fw%2Fdocs%2Fspec.md'));
-  assert.equal(page.el('reader').open, true);
-  assert.match(page.el('reader').innerHTML, /docs\/spec\.md/);
+  assert.ok(page.gets.some(p => p.path === '/api/agent/r1/file?path=%2Fw%2Fdocs%2Fspec.md' && p.token));
+  assert.match(page.tabs(), /class="tab on"[^]*?spec\.md/);
+  assert.match(page.side(), /docs\/spec\.md/);
   const body = page.el('reader-body').innerHTML;
   assert.match(body, /<h1[^>]*>Spec<\/h1>/);
   assert.match(body, /<strong>bold<\/strong>/);
@@ -431,8 +443,8 @@ test('the reader reply box is disabled when the session is not listening', async
   const page = loadPage({ files: { '/w/docs/spec.md': SPEC } });
   page.push(richSnapshot([docAgent({ mod: undefined })]));
   await openSpec(page);
-  assert.match(page.el('reader').innerHTML, /<textarea[^>]*id="reader-text"[^>]*disabled/);
-  assert.match(page.el('reader').innerHTML, /isn't listening/);
+  assert.match(page.side(), /<textarea[^>]*id="reader-text"[^>]*disabled/);
+  assert.match(page.side(), /isn't listening/);
 });
 
 test('markdown renders headings, lists, code, tables and quotes, and never passes HTML or unsafe links through', () => {
@@ -472,4 +484,87 @@ test('if the session did not take the message, the text stays in the box and the
   await page.clickButton('msg-send', { agent: 'r1' });
   assert.match(page.side(), />keep me<\/textarea>/);
   assert.match(page.side(), /id="msg-status"[^>]*>Not sent: The session didn(&#39;|')t pick up the message\./);
+});
+
+const crew = () => richSnapshot([
+  richAgent(),
+  richAgent({ id: 'i1', name: 'idler', state: 'idle', now: undefined }),
+  richAgent({ id: 's9', name: 'sleeper', state: 'stale', now: undefined, lastActivityAt: Date.now() - 3 * 86_400_000 }),
+]);
+
+test('idle and stale agents sit in collapsed groups; a click opens one, and the choice is remembered', async () => {
+  const page = loadPage();
+  page.push(crew());
+  assert.match(page.list(), /data-group="idle" aria-expanded="false"/);
+  assert.match(page.list(), /data-group="stale" aria-expanded="false"/);
+  assert.doesNotMatch(page.list(), /data-id="i1"|data-id="s9"/);
+  assert.match(page.list(), /data-id="r1"/);
+  await page.clickButton('grp', { group: 'idle' });
+  assert.match(page.list(), /data-group="idle" aria-expanded="true"/);
+  assert.match(page.list(), /data-id="i1"/);
+  const again = loadPage({ stored: { ...page.stored } });
+  again.push(crew());
+  assert.match(again.list(), /data-id="i1"/);
+  assert.doesNotMatch(again.list(), /data-id="s9"/);
+});
+
+test('the agent that is working fills the centre without a click, and stays there when another needs you', () => {
+  const page = loadPage();
+  page.push(crew());
+  assert.match(page.side(), /data-msg-agent="r1"/);
+  const later = crew();
+  later.agents.unshift({ ...richAgent({ id: 'w2', name: 'asker' }), state: 'waiting', stateReason: 'question pending' });
+  page.push(later);
+  assert.match(page.side(), /data-msg-agent="r1"/);
+});
+
+const LISTING = {
+  root: '/w', git: true, truncated: false,
+  files: ['README.md', 'docs/spec.md', 'src/app.ts', 'src/util/x.ts', 'z.txt'],
+  status: { 'src/app.ts': 'M', 'z.txt': 'U' },
+  touched: { 'src/app.ts': { wrote: true, at: Date.now() - 1000 }, 'README.md': { wrote: false, at: Date.now() - 2000 } },
+};
+
+test("the explorer shows the centre agent's folder: folders first, the agent's edits revealed and marked, git status letters", async () => {
+  const page = loadPage({ listing: LISTING });
+  page.push(richSnapshot([richAgent()]));
+  await page.settle();
+  assert.ok(page.gets.some(p => p.path === '/api/agent/r1/files' && p.token));
+  const tree = page.tree();
+  const at = name => tree.indexOf(`>${name}<`);
+  assert.ok(at('docs') >= 0 && at('docs') < at('src') && at('src') < at('README.md') && at('README.md') < at('z.txt'), tree);
+  assert.match(tree, /data-file="src\/app\.ts"[^>]*>[\s\S]*?class="mine"[\s\S]*?>M</);
+  assert.match(tree, /data-file="README\.md"[^>]*>[\s\S]*?class="mine read"/);
+  assert.match(tree, /data-file="z\.txt"[^>]*>[\s\S]*?>U</);
+  assert.doesNotMatch(tree, /data-file="docs\/spec\.md"|data-file="src\/util\/x\.ts"/);
+});
+
+test('folders open and close on click, and the filter lists matching files from anywhere', async () => {
+  const page = loadPage({ listing: LISTING });
+  page.push(richSnapshot([richAgent()]));
+  await page.settle();
+  await page.clickButton('tn', { dir: 'docs' });
+  assert.match(page.tree(), /data-file="docs\/spec\.md"/);
+  await page.clickButton('tn', { dir: 'docs' });
+  assert.doesNotMatch(page.tree(), /data-file="docs\/spec\.md"/);
+  page.edit('input', { id: 'ex-filter', value: 'x.ts', dataset: {} });
+  assert.match(page.tree(), /data-file="src\/util\/x\.ts"/);
+  assert.doesNotMatch(page.tree(), /data-file="README\.md"/);
+});
+
+test('a file opens read-only in a centre tab with line numbers and its HTML kept as text; the agent tab goes back; ✕ closes it', async () => {
+  const page = loadPage({ listing: LISTING, files: { '/w/src/app.ts': 'const a = 1;\n<b>x</b>\n' } });
+  page.push(richSnapshot([richAgent({ mod: { version: '0.3.1', live: true } })]));
+  await page.settle();
+  await page.clickButton('tn', { file: 'src/app.ts' });
+  assert.ok(page.gets.some(p => p.path === '/api/agent/r1/file?path=%2Fw%2Fsrc%2Fapp.ts' && p.token));
+  assert.match(page.tabs(), /class="tab on"[^]*?app\.ts/);
+  const body = page.el('reader-body').innerHTML;
+  assert.match(body, /<span class="l" data-n="1">const a = 1;<\/span>/);
+  assert.match(body, /<span class="l" data-n="2">&lt;b&gt;x&lt;\/b&gt;<\/span>/);
+  assert.match(page.side(), /id="reader-text"/);
+  await page.clickButton('tab', { tab: '' });
+  assert.match(page.side(), /data-msg-agent="r1"/);
+  await page.clickButton('x', { closeTab: '/w/src/app.ts' });
+  assert.doesNotMatch(page.tabs(), /app\.ts/);
 });

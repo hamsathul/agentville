@@ -31,7 +31,7 @@ function clampInt(value, min, max, fallback) {
   return Number.isFinite(n) ? Math.min(max, Math.max(min, n)) : fallback;
 }
 
-export function createTrackerServer({ port, token, webFile, getSnapshot, getFeed, getTranscriptHtml, getDoc, actions, log = () => {} }) {
+export function createTrackerServer({ port, token, webFile, getSnapshot, getFeed, getTranscriptHtml, getDoc, listFiles, readFile, actions, log = () => {} }) {
   const clients = new Set();
   let server;
   const actualPort = () => server.address()?.port ?? port;
@@ -61,10 +61,16 @@ export function createTrackerServer({ port, token, webFile, getSnapshot, getFeed
           const feed = getFeed(m[1], clampInt(url.searchParams.get('limit'), 1, 200, 200));
           return feed ? sendJson(res, 200, feed) : sendJson(res, 404, { error: 'unknown agent' });
         }
-        if ((m = path.match(/^\/api\/agent\/([\w:-]+)\/doc$/))) {
-          // File contents: the page sends its token, which other sites can't do without a CORS preflight.
+        if ((m = path.match(/^\/api\/agent\/([\w:-]+)\/(doc|file|files)$/))) {
+          // Folder listings and file contents: the page sends its token, which other sites can't
+          // do without a CORS preflight.
           if (req.headers['x-tracker-token'] !== token) return sendJson(res, 403, { error: 'forbidden' });
-          const found = getDoc(m[1], url.searchParams.get('path') ?? '');
+          if (m[2] === 'files') {
+            const listing = await listFiles(m[1]);
+            return listing.error ? sendJson(res, listing.status ?? 404, { error: listing.error }) : sendJson(res, 200, listing);
+          }
+          const file = url.searchParams.get('path') ?? '';
+          const found = m[2] === 'doc' ? getDoc(m[1], file) : await readFile(m[1], file);
           return found.doc ? sendJson(res, 200, found.doc) : sendJson(res, found.status ?? 404, { error: found.error });
         }
         if ((m = path.match(/^\/agent\/([\w:-]+)\/transcript$/))) {

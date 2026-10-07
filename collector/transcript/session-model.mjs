@@ -4,15 +4,16 @@ import { firstLine, summarizeTool } from './summarize.mjs';
 
 const CHILD_KIND = { Agent: 'subagent', Task: 'subagent', Workflow: 'workflow' };
 const DOC_FILE = /\.(md|markdown|mdx)$/i;
-const DOC_MODE = { Write: 'write', Edit: 'write', MultiEdit: 'write', Read: 'read' };
+const FILE_MODE = { Write: 'write', Edit: 'write', MultiEdit: 'write', NotebookEdit: 'write', Read: 'read' };
+const DOCS_KEPT = 40;
 
 /** Everything the tracker knows about one session, built incrementally from its transcript. */
 export class SessionModel {
-  constructor({ feedCap = 200, callCap = 500, docCap = 40 } = {}) {
+  constructor({ feedCap = 200, callCap = 500, fileCap = 300 } = {}) {
     this.feedCap = feedCap;
     this.callCap = callCap;
-    this.docCap = docCap;
-    this.docs = new Map(); // markdown path → { path, wrote, at }, oldest first
+    this.fileCap = fileCap;
+    this.files = new Map(); // path → { path, wrote, at } for files the session wrote or read, oldest first
     this.feed = [];
     this.pending = new Map();
     this.openItems = new Map();
@@ -71,7 +72,7 @@ export class SessionModel {
         this.pending.set(ev.id, call);
         this.calls.push(call);
         if (this.calls.length > this.callCap) this.calls.splice(0, this.calls.length - this.callCap);
-        this.#noteDoc(call);
+        this.#noteFile(call);
         const item = { at: when, kind: 'tool', tool: ev.name, text: summarizeTool(ev.name, ev.input) };
         this.openItems.set(ev.id, item);
         this.#push(item);
@@ -114,22 +115,27 @@ export class SessionModel {
     }
   }
 
-  /** Markdown files (specs, plans, READMEs) the session wrote or read, for the dashboard's reader. */
-  #noteDoc(call) {
-    const mode = DOC_MODE[call.name];
-    const raw = call.input?.file_path;
-    if (!mode || typeof raw !== 'string' || !DOC_FILE.test(raw)) return;
+  /** Files the session wrote or read with its file tools, for the explorer and the document list. */
+  #noteFile(call) {
+    const mode = FILE_MODE[call.name];
+    const raw = call.input?.file_path ?? call.input?.notebook_path;
+    if (!mode || typeof raw !== 'string' || !raw) return;
     const path = isAbsolute(raw) ? raw : call.cwd ? resolve(call.cwd, raw) : null;
     if (!path) return;
-    const wrote = mode === 'write' || Boolean(this.docs.get(path)?.wrote);
-    this.docs.delete(path);
-    this.docs.set(path, { path, wrote, at: call.at });
-    if (this.docs.size > this.docCap) this.docs.delete(this.docs.keys().next().value);
+    const wrote = mode === 'write' || Boolean(this.files.get(path)?.wrote);
+    this.files.delete(path);
+    this.files.set(path, { path, wrote, at: call.at });
+    if (this.files.size > this.fileCap) this.files.delete(this.files.keys().next().value);
   }
 
-  /** Newest first. */
+  /** Every file touched, newest first. */
+  touchedFiles() {
+    return [...this.files.values()].reverse();
+  }
+
+  /** Markdown files (specs, plans, READMEs) touched, newest first. */
   documents() {
-    return [...this.docs.values()].reverse();
+    return this.touchedFiles().filter(f => DOC_FILE.test(f.path)).slice(0, DOCS_KEPT);
   }
 
   #abandonPending() {

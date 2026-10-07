@@ -18,6 +18,8 @@ async function start() {
     getSnapshot: () => ({ generatedAt: 1, agents: [], collisions: [] }),
     getFeed: id => (id === 's1' ? [{ at: 1, kind: 'prompt', text: 'hi' }] : null),
     getTranscriptHtml: async id => (id === 's1' ? renderTranscriptPage('s1', [{ at: 1, kind: 'prompt', text: '<script>alert(1)</script>' }]) : null),
+    listFiles: async id => (id === 's1' ? { root: '/w', git: true, files: ['a.ts'], status: {}, touched: {}, truncated: false } : { status: 404, error: 'That agent was not found.' }),
+    readFile: async (id, path) => (id === 's1' && path === '/w/a.ts' ? { doc: { path, text: 'const a = 1;', mtimeMs: 1, size: 12 } } : { status: 403, error: 'That file is outside the agent\'s folder.' }),
     getDoc: (id, path) => (id === 's1' && path === '/w/spec.md' ? { doc: { path, text: '# Spec', mtimeMs: 1, size: 6 } } : { status: 404, error: 'That document is not one this agent has opened.' }),
     actions: {
       open: async id => { calls.push(['open', id]); return { ok: true }; },
@@ -157,6 +159,28 @@ test('a document is served only with the token, and only one the agent has opene
     const other = await request(port, { path: '/api/agent/s1/doc?path=%2Fetc%2Fpasswd', headers: { 'x-tracker-token': 'tok' } });
     assert.equal(other.status, 404);
     assert.match(JSON.parse(other.body).error, /not one this agent has opened/);
+  } finally {
+    await srv.close();
+  }
+});
+
+test('the explorer listing and file contents are served only with the token', async () => {
+  const { srv, port } = await start();
+  try {
+    const tok = { 'x-tracker-token': 'tok' };
+    assert.equal((await request(port, { path: '/api/agent/s1/files' })).status, 403);
+    const list = await request(port, { path: '/api/agent/s1/files', headers: tok });
+    assert.equal(list.status, 200);
+    assert.deepEqual(JSON.parse(list.body).files, ['a.ts']);
+    assert.equal((await request(port, { path: '/api/agent/zz/files', headers: tok })).status, 404);
+    const file = `/api/agent/s1/file?path=${encodeURIComponent('/w/a.ts')}`;
+    assert.equal((await request(port, { path: file })).status, 403);
+    const ok = await request(port, { path: file, headers: tok });
+    assert.equal(ok.status, 200);
+    assert.equal(JSON.parse(ok.body).text, 'const a = 1;');
+    const out = await request(port, { path: '/api/agent/s1/file?path=%2Fetc%2Fhosts', headers: tok });
+    assert.equal(out.status, 403);
+    assert.match(JSON.parse(out.body).error, /outside/);
   } finally {
     await srv.close();
   }

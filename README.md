@@ -5,16 +5,21 @@ and background), their subagents and background jobs, and Codex. It shows who is
 you, what each agent is doing right now, which repos two agents are writing to at once, and
 how much CPU and memory each one uses.
 
-- **Dashboard** at <http://localhost:7777>, served only to this machine. Agents waiting on
-  you are listed first, then agents working (each with a live tool ticker), then finished ones.
-  Click an agent to see its activity feed, subagents, the repos it touched and its process tree.
+- **Dashboard** at <http://localhost:7777>, served only to this machine, laid out like an
+  editor in three columns. **Left:** compact agent rows, waiting ones first, then working ones
+  (each with a live tool ticker); idle and stale agents fold away, and repos and machine load
+  sit below. **Centre:** the agent you picked (the one at work, until you pick another) with
+  its activity feed, charts, subagents, the repos it touched and its process tree. **Right:**
+  an explorer of the agent's working folder, with git status letters (M, U, D) and a dot on
+  files the agent edited or read. Click a file to open it read-only in a tab: markdown is
+  rendered, code gets line numbers.
   **Answer from the dashboard:** a waiting agent shows its question with clickable options (or
   an "Other" box), and a permission prompt shows the command with **Allow** / **Deny**.
   **Message any session** like a chat: type under "Now" and press Send (or ⌘↩). It arrives
   as your own prompt; if the agent is busy, it is read when the current step ends.
-  **Read its documents:** specs, plans and other markdown files the agent wrote or read are
-  listed under "Documents". Open one to read it rendered, select a passage and **Quote** it,
-  and reply; the agent gets your reply as a message about that file.
+  **Read and reply:** specs, plans and other markdown files the agent wrote or read are also
+  listed under "Documents". In any open file, select a passage and **Quote** it (code quotes
+  carry their line numbers), then reply; the agent gets it as a message about that file.
 - **Claude Code mod:** `/tracker` opens a side pane, the status line shows
   `⚑ 1 waiting · 2 working`, and toasts appear when another agent needs you. The mod is also
   what lets the dashboard answer a session's questions and permission prompts and send it messages.
@@ -100,9 +105,14 @@ stream. Action endpoints require a per-install token and a same-origin request.
 
 ## Known limits
 
-- The reader shows only markdown files the agent opened with its Write, Edit or Read tools
-  (not ones it touched through shell commands), up to 2 MB each. After the collector restarts,
-  a long session's list starts from its recent history.
+- The explorer shows what git shows: files git ignores (`node_modules`, `.env`, build output)
+  are neither listed nor served, and nor are files that look like secrets (`.env*`, keys). In
+  a folder that isn't a repo, dependency and hidden folders are skipped. It stays off for an
+  agent working in your home folder. Files over 2 MB and binary files aren't shown; at most
+  5,000 files are listed.
+- "Documents" and the explorer's dots come from the agent's Write, Edit and Read tool calls
+  (not shell commands). After the collector restarts, a long session's list starts from its
+  recent history.
 - Only sessions that load the mod can be answered or messaged from the dashboard. While a permission prompt
   is offered there, the terminal shows a spinner; after `permissionDashboardSec` it shows the
   normal prompt.
@@ -117,7 +127,7 @@ stream. Action endpoints require a per-install token and a same-origin request.
 ```bash
 npm test                    # collector + dashboard (node:test)
 claude plugin test mod      # the Claude Code mod
-scripts/e2e-answer.sh       # answering, messaging and the document reader, with short real sessions
+scripts/e2e-answer.sh       # answering, messaging (also to a busy interactive session) and the reader
 ```
 
 ## License

@@ -94,7 +94,7 @@ done
 transcript_has "$QS" "Reply with only the word $WORD" || fail "the message never reached the session"
 echo "   ok: the session got the message"
 
-echo "4/5 a markdown file the session read opens in the document reader"
+echo "4/5 the document reader and the explorer, and what they refuse"
 DOC="$ROOT/README.md"
 R="$(post /api/actions/message "{\"agentId\":\"$QS\",\"text\":\"Use the Read tool to read README.md (first 5 lines are enough), then reply with only DONE.\"}")"
 [ "$R" = '{"ok":true}' ] || fail "message refused: $R"
@@ -106,6 +106,12 @@ done
 curl -s -H "x-tracker-token: $TOKEN" "$BASE/api/agent/$QS/doc?path=$DOC" | grep -q '# Agent Tracker' || fail "the reader could not fetch README.md"
 [ "$(curl -s -o /dev/null -w '%{http_code}' -H "x-tracker-token: $TOKEN" "$BASE/api/agent/$QS/doc?path=$ROOT/package.json")" = 404 ] || fail "a file the session never opened was served"
 echo "   ok: README.md is listed and readable, other files are not"
+L="$(curl -s -H "x-tracker-token: $TOKEN" "$BASE/api/agent/$QS/files")"
+echo "$L" | grep -q '"package.json"' || fail "the explorer did not list the session's folder"
+if echo "$L" | grep -q 'state/token'; then fail "the explorer listed the git-ignored token file"; fi
+curl -s -H "x-tracker-token: $TOKEN" "$BASE/api/agent/$QS/file?path=$ROOT/package.json" | grep -q 'agent-tracker' || fail "the explorer could not open package.json"
+[ "$(curl -s -o /dev/null -w '%{http_code}' -H "x-tracker-token: $TOKEN" "$BASE/api/agent/$QS/file?path=$ROOT/state/token")" = 403 ] || fail "the git-ignored token file was served"
+echo "   ok: the explorer lists and opens the folder, and never the git-ignored token"
 
 echo "5/5 a message to a busy interactive session is taken at once and queued once"
 if ! command -v python3 >/dev/null; then

@@ -12,6 +12,7 @@ import { childrenIndex, findCodexRoots, findPidByArg, readPs, treeStats } from '
 import { RepoResolver, repoStatus } from './sources/git.mjs';
 import { deployStatus } from './sources/gh.mjs';
 import { confirmDelivery, readBeacons, readPending, validateAnswers, writeAnswerFile, writeMessageFile } from './sources/pending.mjs';
+import { listFolder, readFolderFile } from './sources/files.mjs';
 import { applySince, buildAgent, countStates, sortAgents } from './derive/agent.mjs';
 import { findCollisions } from './derive/collisions.mjs';
 import { AlertEngine, notifyMac } from './alerts.mjs';
@@ -359,6 +360,46 @@ export async function startCollector({ root, claudeDir = join(homedir(), '.claud
     }
   }
 
+  // The explorer: the agent's working folder, with the files the agent itself touched marked.
+  const listings = new Map(); // agent id → { at, value }, so several open pages share one git call
+  const browsable = agent => Boolean(agent?.cwd) && agent.kind !== 'codex' && agent.cwd !== home && agent.cwd !== '/';
+
+  function touchedIn(agentId, cwd) {
+    const rec = sessions.get(agentId);
+    const out = {};
+    for (const m of rec ? [rec.model, ...rec.childModels.values()] : []) {
+      for (const f of m?.touchedFiles() ?? []) {
+        if (!f.path.startsWith(`${cwd}/`)) continue;
+        const rel = f.path.slice(cwd.length + 1);
+        const prev = out[rel];
+        out[rel] = prev ? { wrote: prev.wrote || f.wrote, at: Math.max(prev.at, f.at) } : { wrote: f.wrote, at: f.at };
+      }
+    }
+    return out;
+  }
+
+  async function listFiles(agentId) {
+    const agent = snapshot?.agents.find(a => a.id === agentId);
+    if (!agent || agent.kind === 'codex' || !agent.cwd) return { status: 404, error: 'That agent was not found, or has no folder.' };
+    const hit = listings.get(agentId);
+    let listing = hit && Date.now() - hit.at < 2000 ? hit.value : null;
+    if (!listing) {
+      listing = await listFolder(agent.cwd, { home });
+      listings.set(agentId, { at: Date.now(), value: listing });
+    }
+    if (listing.error) return { status: 403, error: listing.error };
+    return { root: agent.cwd, ...listing, touched: touchedIn(agentId, agent.cwd) };
+  }
+
+  /** A file from the agent's folder, or else a markdown document the agent opened elsewhere. */
+  async function readFile(agentId, path) {
+    const agent = snapshot?.agents.find(a => a.id === agentId);
+    if (!agent) return { status: 404, error: 'That agent was not found.' };
+    if (browsable(agent) && typeof path === 'string' && path.startsWith(`${agent.cwd}/`)) return readFolderFile(agent.cwd, path);
+    const doc = readDoc(agentId, path);
+    return doc.doc ? doc : { status: 403, error: "That file is outside the agent's folder." };
+  }
+
   // The mod deletes the answer file once it has handed the answer to Claude. If that doesn't
   // happen within the timeout, the session isn't listening: withdraw it and say so.
   async function deliver(toolUseId, payload) {
@@ -426,7 +467,7 @@ export async function startCollector({ root, claudeDir = join(homedir(), '.claud
     port: portOverride ?? cfg.port, token, webFile: join(root, 'web', 'index.html'),
     getSnapshot: () => snapshot,
     getFeed: (id, limit) => modelFor(id)?.feed.slice(0, limit) ?? null,
-    getTranscriptHtml, getDoc: readDoc, actions, log,
+    getTranscriptHtml, getDoc: readDoc, listFiles, readFile, actions, log,
   });
   const port = await server.listen();
 
@@ -459,5 +500,5 @@ export async function startCollector({ root, claudeDir = join(homedir(), '.claud
     await server.close();
   }
 
-  return { port, getSnapshot: () => snapshot, reloadConfig, actions, readDoc, stop };
+  return { port, getSnapshot: () => snapshot, reloadConfig, actions, readDoc, listFiles, readFile, stop };
 }
