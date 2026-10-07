@@ -45,6 +45,21 @@
   const SOILS = ['#7a5230', '#6b4a35', '#86603a', '#7a4632', '#705a3a'];
   const isMain = b => /^(main|master)$/.test(b ?? '');
 
+  /** The season by the plan's 5-hour limit: spring while it is fresh, then summer, autumn, and winter when it is nearly used up. No reading: summer. */
+  function seasonOf(plan) {
+    const w = plan?.windows?.find(x => x.kind === 'five_hour');
+    if (!w) return 'summer';
+    const p = w.reset ? 0 : w.percentUsed;
+    return p < 25 ? 'spring' : p < 60 ? 'summer' : p < 85 ? 'autumn' : 'winter';
+  }
+  /** The silo: the plan's weekly usage as grain, and a lamp near the limit (amber from 70%, red from 90%). */
+  function siloOf(plan) {
+    const w = plan?.windows?.find(x => x.kind === 'seven_day');
+    if (!w) return null;
+    const p = w.reset ? 0 : w.percentUsed;
+    return { fill: Math.max(0, Math.min(1, p / 100)), lamp: p >= 90 ? 'red' : p >= 70 ? 'amber' : null, label: `${Math.round(p)}%`, resetsAt: w.resetsAt ?? null };
+  }
+
   /** Share of the context window used: the list view's rule (1M window once past 200k). */
   function contextPct(tokens) {
     if (!tokens) return 0;
@@ -96,7 +111,15 @@
 
   function toScene(snap, { cpuAlertPct = snap?.settings?.cpuAlertPct ?? 90 } = {}) {
     const repos = snap?.repos ?? [];
+    const agents = snap?.agents ?? [];
+    const kids = agents.map(a => a.children ?? []);
     return {
+      plan: snap?.plan ?? null,
+      // The henhouse: eggs for subagents that finished lately; running ones beyond the four a farmer leads roost there.
+      henhouse: {
+        eggs: Math.min(6, kids.flat().filter(c => c.state === 'done').length),
+        roosting: kids.reduce((t, k) => t + Math.max(0, k.filter(c => c.state === 'running').length - 4), 0),
+      },
       fields: repos.map(r => ({
         key: r.path, name: r.name, branch: r.branch ?? null, dirty: r.dirty ?? 0, ahead: r.ahead ?? 0, behind: r.behind ?? 0,
         weather: weatherOf(r.lastDeploy !== undefined ? r.lastDeploy : r.deploy), deploy: r.deploy ?? null, lastDeploy: r.lastDeploy ?? null,
@@ -339,6 +362,24 @@
     f(276, BOT_TOP + 14, 4, LANE_B - BOT_TOP - 8, '#24361f'); f(124, LANE_B + 6, 62, 2, '#2f5a2a'); f(214, LANE_B + 6, 62, 2, '#2f5a2a'); // the house's shadow
     // the shade tree's shadow (the tree itself is drawn with the farmers, so they can stand in front of it)
     for (const [dx, w] of [[0, 52], [-6, 64], [-2, 56]]) f(31 + dx, LANE_B - 2 + (w === 64 ? 1 : w === 56 ? 2 : 0), w, 1, '#2f5a2a');
+    // the silo, top right: its grain gauge (the plan's weekly usage) is drawn every frame
+    f(371, 4, 22, 28, '#2a1d14'); f(372, 5, 20, 26, '#9aa4ad'); for (let x = 375; x < 391; x += 3) f(x, 5, 1, 26, '#8a8f96'); f(373, 5, 2, 26, '#c3cbd2');
+    f(372, 1, 20, 4, '#2a1d14'); f(373, 1, 18, 4, '#b23a2e'); f(375, 0, 14, 1, '#b23a2e'); f(374, 1, 6, 1, '#e04a3a');
+    if (S.snow) { f(373, 0, 18, 2, '#ffffff'); }
+    f(378, 7, 8, 22, '#2a1d14'); f(369, 30, 26, 2, '#5f6b7a'); f(393, 6, 2, 26, '#24361f');
+    // the pond and the henhouse, at the foot of the meadow
+    const py = BOT_TOP - 22;
+    f(4, py, 28, 15, '#2f5a2a'); f(3, py + 2, 30, 11, '#2f5a2a');
+    f(5, py + 1, 26, 13, S.snow ? '#c3cbd2' : '#3d7be0'); f(4, py + 3, 28, 9, S.snow ? '#c3cbd2' : '#3d7be0');
+    f(6, py + 2, 10, 1, S.snow ? '#e6eef5' : '#5ab4ff'); f(5, py + 4, 2, 6, S.snow ? '#e6eef5' : '#5ab4ff');
+    if (!S.snow) { f(22, py + 9, 4, 2, '#6cc04a'); f(23, py + 9, 1, 1, '#9ed36a'); f(9, py + 10, 3, 2, '#6cc04a'); } // lily pads
+    for (const [rx, h] of [[2, 7], [31, 9], [33, 6]]) { f(rx, py + 12 - h, 1, h, '#6b8f4a'); f(rx, py + 10 - h, 1, 2, '#6b4320'); } // reeds
+    const hx = 36, hy = BOT_TOP - 27;
+    f(hx - 1, hy + 4, 24, 18, '#2a1d14'); f(hx, hy + 5, 22, 16, '#c98d4f'); for (let y = hy + 8; y < hy + 21; y += 3) f(hx, y, 22, 1, '#a8703c');
+    f(hx - 2, hy + 2, 26, 4, '#2a1d14'); f(hx - 1, hy + 2, 24, 3, '#b23a2e'); f(hx + 2, hy, 18, 3, '#b23a2e'); f(hx + 2, hy, 18, 1, '#e04a3a');
+    if (S.snow) f(hx - 1, hy, 24, 2, '#ffffff');
+    f(hx + 8, hy + 12, 7, 9, '#2a1d14'); f(hx + 15, hy + 18, 6, 2, '#8b5a2b'); f(hx + 3, hy + 8, 4, 3, '#2a1d14'); // door, ramp, window
+    f(hx + 22, hy + 6, 2, 16, '#24361f');
     // the scarecrow corner: dry stubble
     f(287, BOT_TOP + 9, 112, H - BOT_TOP - 10, '#6d5830'); f(288, BOT_TOP + 10, 110, H - BOT_TOP - 12, '#8a7140');
     for (let y = BOT_TOP + 14; y < H - 2; y += 5) for (let x = 290 + (y % 2) * 2; x < 396; x += 6) f(x, y, 1, 2, S.snow ? '#dfe9f2' : '#6d5830');
@@ -744,6 +785,32 @@
       for (let i = 0; i < Math.min(4, Math.ceil(f.ahead / 4)); i++) { const x = cx - 30 + (i % 2) * 8, yy = y - 6 - Math.floor(i / 2) * 6; px(x, yy, 7, 6, '#8b5a2b'); px(x, yy, 7, 1, '#b07a46'); px(x + 3, yy, 1, 6, '#6b4320'); }
       for (let i = 0; i < Math.min(4, Math.ceil(f.dirty / 3)); i++) { const x = cx + 16 + (i % 3) * 10, yy = y - 6 - Math.floor(i / 3) * 6; px(x, yy, 9, 6, '#e2c26b'); px(x, yy, 9, 1, '#f1d98a'); px(x + 2, yy, 1, 6, '#c9a24a'); px(x + 6, yy, 1, 6, '#c9a24a'); }
     }
+    /** The silo's grain and lamp, the pond's ripples and duck, the henhouse's eggs: each frame. */
+    function seasonTip() {
+      const w = scene.plan?.windows?.find(x => x.kind === 'five_hour');
+      return `The season follows your plan's 5-hour limit${w ? `: ${w.reset ? 'just reset' : `${Math.round(w.percentUsed)}% used`}` : ' (no reading yet: summer)'}. Spring while it is fresh, then summer and autumn; winter when it is nearly used up`;
+    }
+    function drawScenery() {
+      const T = PXG.T, silo = siloOf(scene.plan);
+      px(379, 8, 6, 20, '#3a3a40');
+      if (silo) {
+        const h = Math.round(20 * silo.fill);
+        if (h) { px(379, 28 - h, 6, h, '#e9c46a'); px(379, 28 - h, 6, 1, '#f4d58d'); }
+        for (const t of [0.25, 0.5, 0.75]) px(385, 28 - Math.round(20 * t), 1, 1, '#c3cbd2');
+        if (silo.lamp && (silo.lamp === 'amber' || blink(2))) { px(380, 0, 4, 2, silo.lamp === 'red' ? '#e04a3a' : '#f0b429'); PXG.lights?.push([382, 1, 6, [380, 0, 4, 2]]); }
+      }
+      const py = L.BOT_TOP - 22;
+      if (season !== 'winter') {
+        for (let i = 0; i < 2; i++) { const ph = (T * 0.5 + i * 0.5) % 1, r = Math.round(ph * 5); PXG.ctx.globalAlpha = 0.6 * (1 - ph); px(16 - r, py + 6 + i * 3, r * 2 + 1, 1, '#a9dcf7'); }
+        PXG.ctx.globalAlpha = 1;
+        const dx = Math.round(10 + Math.sin(T * 0.25) * 8), face = Math.cos(T * 0.25) > 0 ? 1 : -1; // a duck paddles
+        px(dx, py + 5, 5, 3, '#ffffff'); px(dx + (face > 0 ? 3 : -1), py + 3, 3, 3, '#ffffff'); px(dx + (face > 0 ? 6 : -2), py + 4, 2, 1, '#f08a24'); px(dx + (face > 0 ? 4 : 0), py + 4, 1, 1, '#1b1420');
+      } else if (blink(1.5)) px(14, py + 4, 2, 1, '#ffffff'); // ice glints
+      const hx = 36, hy = L.BOT_TOP - 27, eggs = scene.henhouse?.eggs ?? 0;
+      px(hx + 1, hy + 21, 12, 3, '#c9a24a'); px(hx + 1, hy + 21, 12, 1, '#e9c46a'); // the nest
+      for (let i = 0; i < eggs; i++) { px(hx + 2 + i * 2, hy + 20 - (i % 2), 2, 2, i % 3 ? '#f4ecd8' : '#ffffff'); }
+      if (scene.henhouse?.roosting) { px(hx + 10, hy + 14, 3, 3, '#ffffff'); px(hx + 11, hy + 13, 1, 1, '#e04a3a'); px(hx + 13, hy + 15, 1, 1, '#f0b429'); } // a hen looks out
+    }
     function drawTree() { // the shade tree, by season: blossom in spring, apples in summer, orange in autumn, bare and snowy in winter
       const { BOT_TOP, LANE_B } = L, S = SEASONS[season], [dark, mid, light] = S.canopy;
       px(51, BOT_TOP + 12, 11, LANE_B - BOT_TOP - 14, '#2a1d14'); px(52, BOT_TOP + 12, 9, LANE_B - BOT_TOP - 14, '#6b4320'); px(52, BOT_TOP + 12, 2, LANE_B - BOT_TOP - 14, '#8b5a2b');
@@ -769,7 +836,7 @@
 
     return {
       key: 'farm', SH: 16, game,
-      setScene(next) { scene = next; },
+      setScene(next) { scene = next; season = seasonOf(next.plan); },
       layout: () => L,
       relayout(fields) { L = layoutFor(fields); return L; },
       // Where each farmer stands. Porch, tree, scarecrows and meadow hold four each; the rest show as a "+N" sign.
@@ -817,6 +884,7 @@
         return `<span title="One coin for every tool step since you opened this page"><b class="coin"></b>${game.coins}</span>
           <span title="Finished turns delivered to your porch"><b class="basket"></b>${game.harvests} harvested</span>
           ${need ? `<span class="alert">${need} need${need > 1 ? '' : 's'} you</span>` : ''}
+          <span title="${esc(seasonTip())}">${{ spring: '🌱', summer: '☀️', autumn: '🍂', winter: '❄️' }[season]} ${season}</span>
           <span class="px-zoom" title="Zoom the farm inside its frame (or ⌘/Ctrl + scroll, or pinch); drag to move around when zoomed in"><button type="button" data-farm-zoom="-1" aria-label="Zoom out">−</button><button type="button" data-farm-zoom="0" title="Show the whole farm">${Math.round(zoom * 100)}%</button><button type="button" data-farm-zoom="1" aria-label="Zoom in">+</button></span>
           <button type="button" data-farm-bubbles title="Speech bubbles with what each farmer last said. × hides one; its 💬 shows it again">Bubbles: ${saysOn ? 'on' : 'off'}</button>
           <button type="button" data-farm-sky title="The sky: live follows your clock (dawn, day, dusk, night); or hold it at day or night">Sky: ${skyMode}</button>
@@ -824,7 +892,7 @@
           <button type="button" class="px-info" data-farm-help title="How to read the farm" aria-label="How to read the farm">i</button>`;
       },
       bg(f, season) { drawLand(f, L, season); },
-      ground() { L.ST.forEach(drawPlot); L.ST.forEach(drawPiles); },
+      ground() { drawScenery(); L.ST.forEach(drawPlot); L.ST.forEach(drawPiles); },
       season: () => season,
       /** Particles a farmer gives off: dust when walking; splashes, clods, sparks, chips from its tool. */
       emit(f, b, dt, add) {
@@ -842,8 +910,12 @@
         if ((prop === 'cart' || prop === 'barrow') && Math.random() < dt * 5) add({ x: ox + 17 * SC, y: b.y, vx: rand(-8, 4), vy: rand(-6, -2), g: 10, life: 0.6, max: 0.6, size: 2, color: '#c9a46a', alpha: 0.6 });
         if (prop === 'crate' && T % 1.6 < dt) for (let i = 0; i < 3; i++) add({ x: ox + 16 * SC, y: oy + 10 * SC, vx: rand(-10, 10), vy: rand(-18, -8), g: 40, life: 0.4, max: 0.4, size: 1, color: '#f4d58d' });
       },
-      /** The farm's own particles: smoke from the chimney while agents work. */
+      /** The farm's own particles: smoke from the chimney while agents work; petals, leaves or snow by the season. */
       ambient(dt, add) {
+        const { BOT_TOP, H } = L;
+        if (season === 'spring' && Math.random() < dt * 3) add({ x: rand(22, 92), y: BOT_TOP + rand(-8, 10), vx: rand(3, 9), vy: rand(5, 9), g: 0, life: 3, max: 3, size: 1, color: '#f4b6c2', sway: 3 });
+        if (season === 'autumn' && Math.random() < dt * 4) add({ x: rand(20, 94), y: BOT_TOP + rand(-8, 12), vx: rand(2, 8), vy: rand(6, 11), g: 0, life: 3.2, max: 3.2, size: 1.5, color: ['#c8681a', '#e9a23b', '#b5562f'][Math.floor(rand(0, 3))], sway: 4 });
+        if (season === 'winter' && Math.random() < dt * 28) add({ x: rand(0, W), y: -2, vx: rand(-2, 2), vy: rand(9, 16), g: 0, life: H / 10, max: H / 10, size: rand(1, 1.6), color: '#ffffff', sway: 2, alpha: 0.9 });
         if (scene.farmers.some(a => a.state === 'working') && Math.random() < dt * 2.2) {
           add({ x: 244 + rand(-1, 1), y: L.BOT_TOP - 5, vx: rand(2, 6), vy: rand(-9, -6), g: 0, life: 2.6, max: 2.6, size: 2, grow: 1.4, color: '#c3cbd2', alpha: 0.55 });
         }
@@ -947,6 +1019,10 @@
           if (f.dirty > 0) lab(s.cx + 30, s.rowTop - 7 - Math.ceil(Math.min(f.dirty, 12) / 9) * 6, `+${f.dirty}`, 'cnt', `${f.dirty} uncommitted file${f.dirty === 1 ? '' : 's'}`);
         }
         if (!ST.length) lab(220, TOP + 30, 'No fields yet: no agent has touched a repo in the last 30 minutes', 'zone');
+        const silo = siloOf(scene.plan);
+        if (silo) lab(382, 33, silo.label, `cnt${silo.lamp ? ` silo-${silo.lamp}` : ''}`, `The silo: your plan's weekly limit, ${silo.label} used${silo.resetsAt ? `, resets ${new Date(silo.resetsAt).toLocaleString([], { weekday: 'short', hour: '2-digit', minute: '2-digit' })}` : ''}`);
+        if (scene.henhouse?.roosting) lab(47, L.BOT_TOP - 32, `+${scene.henhouse.roosting}`, 'cnt', `${scene.henhouse.roosting} more subagent${scene.henhouse.roosting === 1 ? '' : 's'} running than the farmers can lead`);
+        if (scene.henhouse?.eggs) lab(43, L.BOT_TOP - 2, `${scene.henhouse.eggs} egg${scene.henhouse.eggs === 1 ? '' : 's'}`, 'cnt', 'Eggs: subagents that finished lately');
         lab(25, TOP + 2, 'MEADOW', 'zone');
         lab(58, LANE_B + 6, 'SHADE TREE', 'zone'); lab(200, LANE_B + 10, 'YOUR PORCH', 'zone'); lab(343, LANE_B + 6, 'SCARECROWS', 'zone');
         const plus = (x, y, n, what) => n > 0 && lab(x, y, `+${n} ${what}`, 'cnt');
@@ -972,6 +1048,10 @@
       <b>Weather</b><span>the repo's last deploy, from GitHub Actions or a deploy an agent ran itself (a deploy script over ssh, rsync, vercel…), whichever is newer: rainbow = deployed, rain = deploy failed (hover its sign for why; the close-up links to the run), windmill = deploying. A run GitHub never started (billing, spending limit) brings no weather: ⏸ Actions didn't run. Rope = two agents writing one repo</span>
       <b>Hearts, crops</b><span>hearts = context left. Crops grow as the context fills: seeds, sprouts, young plants, in flower, ripening, then ripe with a sparkle (golden wheat, red tomatoes, sunflowers in bloom…) when it is nearly full. Chickens = subagents, the dog = an Explore subagent</span>
       <b>Shade tree, scarecrows</b><span>idle agents nap under the tree; stale ones stand as scarecrows; the meadow is for agents outside any repo</span>
+      <b>Silo</b><span>its grain is your plan's weekly limit used (the % under it; when it resets on hover); its lamp turns amber from 70% and blinks red from 90%</span>
+      <b>Seasons</b><span>follow your plan's 5-hour limit: spring while it is fresh (blossom), then summer, autumn (falling leaves), and winter (snow) when it is nearly used up; a new window brings spring back</span>
+      <b>Henhouse, pond</b><span>eggs in the nest = subagents that finished lately; a hen at the door and a +N sign = more subagents running than their farmers can lead</span>
+      <b>Day and night</b><span>the sky follows your clock: at night the windows, the barn lamp and lanterns glow. The Sky switch holds it at day or night</span>
       <b>Click</b><span>a farmer to answer or message it in the sidebar; a field for the files agents touched there</span>
       <b>Zoom</b><span>− / + (or ⌘/Ctrl + scroll, or pinch) zooms the farm inside its frame; drag or scroll to move around; the % button shows the whole farm again</span>
     </div>`;
@@ -1690,7 +1770,7 @@
     },
     /** A farmer's shirt colour, so the page can match it. */
     colorOf: id => SHIRT[colorIndex(id)],
-    actionOf, paint, growthStage, STAGES, skyAt, PALETTE, ink, spriteRows, walkFrame, stepParticles,
+    actionOf, paint, growthStage, STAGES, skyAt, PALETTE, ink, spriteRows, walkFrame, stepParticles, seasonOf, siloOf,
     unmount() {
       if (!view) return;
       field.close();

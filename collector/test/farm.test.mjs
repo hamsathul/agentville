@@ -276,3 +276,35 @@ test('particles move with their speed and gravity, fade, and are gone when their
   assert.ok(Math.abs(parts[0].vy - -16) < 1e-9);
   assert.ok(Math.abs(parts[0].life - 0.9) < 1e-9);
 });
+
+const planWith = (five, week) => ({ from: 'a', at: NOW, windows: [
+  ...(five == null ? [] : [five === 'reset' ? { kind: 'five_hour', percentUsed: 0, resetsAt: null, reset: true } : { kind: 'five_hour', percentUsed: five, resetsAt: NOW + 3_600_000 }]),
+  ...(week == null ? [] : [{ kind: 'seven_day', percentUsed: week, resetsAt: NOW + 3 * 86_400_000 }]),
+] });
+
+test('the season follows the 5-hour limit: spring when it is fresh, winter when it is nearly used up', () => {
+  const { seasonOf } = load();
+  assert.equal(seasonOf(null), 'summer', 'no reading: summer');
+  assert.deepEqual([0, 24, 25, 59, 60, 84, 85, 100].map(p => seasonOf(planWith(p))), ['spring', 'spring', 'summer', 'summer', 'autumn', 'autumn', 'winter', 'winter']);
+  assert.equal(seasonOf(planWith('reset')), 'spring');
+  assert.equal(seasonOf(planWith(null, 50)), 'summer', 'no 5-hour window: summer');
+});
+
+test("the silo's grain is the week's usage, with a lamp that warns near the limit", () => {
+  const { siloOf } = load();
+  assert.equal(siloOf(null), null);
+  assert.equal(siloOf(planWith(10, null)), null, 'no weekly window: no silo reading');
+  assert.deepEqual(plain(siloOf(planWith(10, 47))), { fill: 0.47, lamp: null, label: '47%', resetsAt: NOW + 3 * 86_400_000 });
+  assert.equal(siloOf(planWith(10, 75)).lamp, 'amber');
+  assert.equal(siloOf(planWith(10, 93)).lamp, 'red');
+  assert.equal(siloOf(planWith(10, 140)).fill, 1);
+});
+
+test('the henhouse: eggs for subagents that finished lately, a sign for running ones no farmer can lead', () => {
+  const { toScene } = load();
+  const kids = (running, done) => [...Array.from({ length: running }, (_, i) => ({ id: `r${i}`, state: 'running' })), ...Array.from({ length: done }, (_, i) => ({ id: `d${i}`, state: 'done' }))];
+  const scene = plain(toScene(snapOf([agent('a', { children: kids(6, 2) }), agent('b', { children: kids(1, 9) })], []), { cpuAlertPct: 90 }));
+  assert.deepEqual(scene.henhouse, { eggs: 6, roosting: 2 });
+  assert.equal(plain(toScene(snapOf([agent('a')], []), { cpuAlertPct: 90 })).henhouse.eggs, 0);
+  assert.deepEqual(plain(toScene({ ...snapOf([], []), plan: planWith(90, 50) }, { cpuAlertPct: 90 })).plan.windows.length, 2);
+});
