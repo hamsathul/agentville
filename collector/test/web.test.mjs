@@ -905,7 +905,7 @@ test('the conversation shows your prompts and the replies as a thread, newest fi
   assert.doesNotMatch(feed.slice(0, feed.indexOf('</div></div>') + 1), /Fix the build|Done\./);
 });
 
-test('the latest exchange (your last message and the replies after it) is framed apart from older messages', async () => {
+test('the newest message is framed as the latest, with your message when it is right below it', async () => {
   const exchange = feed => richSnapshot([richAgent({ mod: { version: '0.3.1', live: true }, feed })]);
   const page = loadPage();
   page.push(exchange([
@@ -916,14 +916,21 @@ test('the latest exchange (your last message and the replies after it) is framed
     { at: Date.now() - 4000, kind: 'prompt', text: 'Fix the build' },
   ]));
   const latest = page.side().match(/<div class="latest"[^>]*><span class="latest-tag">Latest<\/span>([\s\S]*?)<\/div><\/div><div class="bub agent"><div class="bub-md"><p>Done\./);
-  assert.ok(latest, 'the frame closes before the older reply');
+  assert.ok(latest, 'a reply and your message right below it: the frame closes before the older reply');
   assert.match(latest[1], /Shipped\.[\s\S]*class="bub you">Ship it/);
   assert.doesNotMatch(latest[1], /Fix the build/);
   assert.equal((page.side().match(/class="latest"/g) ?? []).length, 1);
   page.push(exchange([{ at: Date.now() - 1000, kind: 'prompt', text: 'Anyone there?' }, { at: Date.now() - 2000, kind: 'reply', text: 'Done.' }]));
   assert.match(page.side(), /<div class="latest"[^>]*><span class="latest-tag">Latest<\/span><div class="bub you">Anyone there\?<time>[^<]*<\/time><\/div><\/div><div class="bub agent">/, 'just sent, no reply yet');
-  page.push(exchange([{ at: Date.now() - 1000, kind: 'reply', text: 'Still going.' }, { at: Date.now() - 2000, kind: 'reply', text: 'Working on it.' }]));
-  assert.match(page.side(), /<div class="latest"[^>]*><span class="latest-tag">Latest<\/span>[\s\S]*Still going\.[\s\S]*Working on it\.[\s\S]*<\/div><\/div><\/div>/, 'your message is further back than shown: all of it is the latest');
+  // A long working turn: progress notes one after another since your message. Only the newest is the latest.
+  page.push(exchange([
+    { at: Date.now() - 1000, kind: 'reply', text: 'Build is running.' },
+    { at: Date.now() - 2000, kind: 'reply', text: 'All green.' },
+    { at: Date.now() - 3000, kind: 'reply', text: 'Writing the files.' },
+    { at: Date.now() - 4000, kind: 'prompt', text: 'Deploy it' },
+  ]));
+  assert.match(page.side(), /<div class="latest"[^>]*><span class="latest-tag">Latest<\/span><div class="bub agent"><div class="bub-md"><p>Build is running\.<\/p><\/div>[\s\S]*?<\/time><\/div><\/div><div class="bub agent"><div class="bub-md"><p>All green\./, 'only the newest note');
+  assert.doesNotMatch(page.side().match(/<div class="latest"[\s\S]*?<\/div><\/div><div class="bub/)[0], /Deploy it|Writing the files/);
 });
 
 test('the farm sidebar has the conversation too', async () => {

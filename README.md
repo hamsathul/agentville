@@ -178,8 +178,8 @@ The page is laid out like an editor, in three columns:
   - its controls: permission mode, model, effort, Restart in…, End session;
   - CPU, memory, context left and cost;
   - **Now**: its working line and current tool;
-  - the message box, side questions and the conversation, newest first, with the latest exchange
-    (your last message and the replies to it) framed in teal under a **Latest** tag;
+  - the message box, side questions and the conversation, newest first, with the newest message
+    framed in teal under a **Latest** tag (with your message, when it is right below it);
   - its activity, subagents, the repos it touched and its process tree.
 - **Right: the explorer.** The agent's folder with git status letters (M, U, D) and a dot on files
   it edited or read, its **Scratchpad** and its **Memory**.
