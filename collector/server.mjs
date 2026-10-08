@@ -33,7 +33,7 @@ function clampInt(value, min, max, fallback) {
   return Number.isFinite(n) ? Math.min(max, Math.max(min, n)) : fallback;
 }
 
-export function createTrackerServer({ port, token, webFile, getSnapshot, getFeed, getConversation, claudePlugins, claudeMcp, claudeRules, getTranscriptHtml, getDoc, listFiles, readFile, repoTouched, actions, pastSessions, log = () => {} }) {
+export function createTrackerServer({ port, token, webFile, getSnapshot, getFeed, getConversation, getSubagent, claudePlugins, claudeMcp, claudeRules, getTranscriptHtml, getDoc, listFiles, readFile, repoTouched, actions, pastSessions, log = () => {} }) {
   const clients = new Set();
   let server;
   const actualPort = () => server.address()?.port ?? port;
@@ -68,9 +68,18 @@ export function createTrackerServer({ port, token, webFile, getSnapshot, getFeed
           const feed = getFeed(m[1], clampInt(url.searchParams.get('limit'), 1, 200, 200));
           return feed ? sendJson(res, 200, feed) : sendJson(res, 404, { error: 'unknown agent' });
         }
-        if ((m = path.match(/^\/api\/agent\/([\w:-]+)\/conversation$/))) { // every message, whole: token only, like files
+        // A session's whole conversation, or a subagent's prompt, steps and result: token only, like files.
+        // The id comes encoded from the page (a subagent's is session:call), so it is decoded, then checked.
+        if ((m = path.match(/^\/api\/agent\/([^/]+)\/(conversation|subagent)$/))) {
           if (req.headers['x-tracker-token'] !== token) return sendJson(res, 403, { error: 'forbidden' });
-          const convo = await getConversation(m[1], clampInt(url.searchParams.get('from'), 0, 1_000_000, 0));
+          let id = '';
+          try { id = decodeURIComponent(m[1]); } catch { /* not an id */ }
+          if (!/^[\w-]+(?::[\w-]+)?$/.test(id)) return sendJson(res, 404, { error: 'unknown agent' });
+          if (m[2] === 'subagent') {
+            const sub = id.includes(':') ? getSubagent(id) : null;
+            return sub ? sendJson(res, 200, sub) : sendJson(res, 404, { error: 'That subagent is not known.' });
+          }
+          const convo = await getConversation(id, clampInt(url.searchParams.get('from'), 0, 1_000_000, 0));
           return convo ? sendJson(res, 200, convo) : sendJson(res, 404, { error: 'That session has no transcript to read.' });
         }
         if ((m = path.match(/^\/api\/agent\/([\w:-]+)\/(doc|file|files)$/))) {

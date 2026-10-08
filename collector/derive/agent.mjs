@@ -1,5 +1,5 @@
 import { basename } from 'node:path';
-import { summarizeTool } from '../transcript/summarize.mjs';
+import { firstLine, summarizeTool } from '../transcript/summarize.mjs';
 import { serviceOf, stepOf } from './step.mjs';
 import { collectTouches } from './touches.mjs';
 import { STATE_ORDER, deriveCodexState, deriveState } from './state.mjs';
@@ -38,10 +38,14 @@ export function childrenOf(model, childModels, now) {
   for (const c of model.children.values()) {
     const cm = childModels.get(c.id);
     let state = c.state;
-    if (cm && (cm.pending.size > 0 || now - cm.lastActivityAt < CHILD_RECENT_MS)) state = 'running';
+    if (cm && !c.endedAt && (cm.pending.size > 0 || now - cm.lastActivityAt < CHILD_RECENT_MS)) state = 'running'; // a finish the parent recorded stands
     const lastAt = cm?.lastActivityAt || c.startedAt;
     if (state !== 'running' && now - lastAt > CHILD_KEEP_MS) continue;
-    out.push({ id: c.id, kind: c.kind, agentType: c.agentType, label: c.label, state, startedAt: c.startedAt, now: cm ? nowOf(cm) : undefined });
+    out.push({
+      id: c.id, kind: c.kind, agentType: c.agentType, label: c.label, state, startedAt: c.startedAt, now: cm ? nowOf(cm) : undefined,
+      // from its own transcript: its steps so far, what it last said; from the parent: when it finished, and its result's first line
+      steps: cm?.toolCount, lastSaid: cm?.lastReply ? firstLine(cm.lastReply) : undefined, lastAt, endedAt: c.endedAt, result: c.result ? firstLine(c.result) : undefined,
+    });
   }
   return out.sort((a, b) => b.startedAt - a.startedAt).slice(0, 20);
 }

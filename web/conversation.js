@@ -30,11 +30,20 @@ const convoSub = () => {
   $('convo-sub').textContent = convo.total ? `${convo.total} message${convo.total === 1 ? '' : 's'} since ${convoWhen(convo.first)}` : '';
 };
 
+/** Whose conversation it is (a session's, or a subagent's: session:call), and when it last did something. */
+function convoSubject(id) {
+  const [sessionId, childId] = id.split(':');
+  const a = snap?.agents.find(x => x.id === sessionId);
+  if (!childId) return { title: `${a?.name ?? 'Session'} · conversation`, activity: a?.lastActivityAt };
+  const c = a?.children?.find(x => x.id === childId);
+  return { title: `${c?.agentType ?? 'subagent'} · ${c?.label ?? childId} · ${a?.name ?? 'a session'}'s subagent`, activity: c?.lastAt };
+}
+
 async function openConversation(id) {
-  const a = snap?.agents.find(x => x.id === id);
-  convo = { id, total: 0, first: null, activity: a?.lastActivityAt, loading: true, hits: [], at: -1 };
+  const who = convoSubject(id);
+  convo = { id, total: 0, first: null, activity: who.activity, loading: true, hits: [], at: -1 };
   const mine = convo;
-  $('convo-title').textContent = `${a?.name ?? 'Session'} · conversation`;
+  $('convo-title').textContent = who.title;
   $('convo-sub').textContent = '';
   $('convo-q').value = '';
   $('convo-count').textContent = '';
@@ -56,9 +65,9 @@ async function openConversation(id) {
 /** While the dialog is open it follows the session: new messages are added at the bottom (called on each render). */
 async function followConversation() {
   if (!convo || convo.loading || !$('convo').open) return;
-  const a = snap?.agents.find(x => x.id === convo.id);
-  if (!a || a.lastActivityAt === convo.activity) return;
-  convo.activity = a.lastActivityAt;
+  const activity = convoSubject(convo.id).activity;
+  if (activity === undefined || activity === convo.activity) return;
+  convo.activity = activity;
   convo.loading = true;
   const mine = convo;
   const r = await fetchConversation(convo.total);

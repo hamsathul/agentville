@@ -324,6 +324,45 @@ function composeHtml(a, ids = 'msg') {
     <div class="compose-row">${status}<span class="grow"></span><button class="act" id="${ids}-attach" type="button" data-agent="${esc(a.id)}" data-tip="Attach files: screenshots, PDFs, Markdown, text… (you can also paste or drop them on the box)"${live ? '' : ' disabled'}>📎 Attach</button><button class="act primary" id="${ids}-send" data-agent="${esc(a.id)}"${live ? '' : ' disabled'}>Send</button></div></div>`;
 }
 
+/** A session's subagents, a card each: its task, how long and how many steps, its step now, what it last said or its result. */
+function subagentsHtml(a) {
+  const subs = (a.children ?? []).filter(c => c.kind === 'subagent');
+  if (!subs.length) return '';
+  const running = subs.filter(c => c.state === 'running').length;
+  const counts = [running && `${running} running`, subs.length - running && `${subs.length - running} finished lately`].filter(Boolean).join(' · ');
+  return `<div class="sec">Subagents <span class="faint" style="text-transform:none;letter-spacing:0">${counts}</span></div>${subs.map(c => subCardHtml(a, c)).join('')}`;
+}
+
+function subCardHtml(a, c) {
+  const open = openChildren.get(c.id), running = c.state === 'running';
+  const steps = c.steps ? ` · ${c.steps} step${c.steps === 1 ? '' : 's'}` : '';
+  const how = running ? `running · <span data-lasted="${c.startedAt}">${lasted(c.startedAt)}</span>${steps}`
+    : c.endedAt ? `${c.state === 'failed' ? 'failed after' : 'done in'} ${took(c.endedAt - c.startedAt)}${steps}`
+    : `${esc(c.state)}${steps}`;
+  const now = running && c.now ? `<div class="sub-now mono">🔧 <b>${esc(c.now.tool)}</b> ${esc(c.now.summary)} · <span data-lasted="${c.now.startedAt}">${lasted(c.now.startedAt)}</span></div>` : '';
+  const said = !running && c.result ? `<div class="sub-said">Result: “${esc(c.result)}”</div>` : c.lastSaid ? `<div class="sub-said">“${esc(c.lastSaid)}”</div>` : '';
+  return `<div class="sub-card ${running ? 'running' : esc(c.state)}"><div class="sub-head"><button type="button" class="act mini" data-child="${esc(c.id)}" data-agent="${esc(a.id)}" aria-expanded="${Boolean(open)}" data-tip="${open ? 'Close' : 'What it was asked, its steps and words (followed while it works), and its result'}">${open ? '▾' : '▸'}</button><b>${esc(c.agentType ?? 'subagent')}</b><span class="sub-task">${esc(c.label)}</span><span class="grow"></span><button type="button" class="act mini" data-convo="${esc(`${a.id}:${c.id}`)}" data-tip="Its whole transcript, with search: the prompt, everything it said, its result">⤢ Read</button></div>
+    <div class="sub-how faint">${how}</div>${now}${said}${open ? subDetailHtml(open) : ''}</div>`;
+}
+
+/** An open card: what it was asked, its latest steps and words (newest first), and its result once it has one. */
+function subDetailHtml(open) {
+  const d = open.data;
+  if (!d) return '<div class="loading"><span class="spinner"></span>Reading it…</div>';
+  if (d.error) return `<div class="empty">${esc(d.error)}</div>`;
+  const steps = (d.feed ?? []).filter(f => f.kind !== 'prompt'); // its prompt is shown whole above
+  return `<div class="sub-detail">${d.prompt ? `<div class="sub-label">What it was asked</div><div class="sub-prompt">${esc(d.prompt)}</div>` : ''}
+    <div class="sub-label">Its steps and words, newest first</div><div class="feed">${steps.map(feedRow).join('') || '<div class="empty">Nothing yet.</div>'}</div>
+    ${d.result ? `<div class="sub-label">Its result</div><div class="bub-md sub-result">${renderMarkdown(d.result)}</div>` : ''}</div>`;
+}
+
+/** A session's background jobs and workflows, a line each. */
+function jobsHtml(a) {
+  const jobs = (a.children ?? []).filter(c => c.kind !== 'subagent');
+  if (!jobs.length) return '';
+  return `<div class="sec">Background jobs${jobs.some(c => c.kind === 'workflow') ? ' and workflows' : ''}</div>${jobs.map(c => `<div class="child"><b>${esc(c.kind === 'bgjob' ? 'job' : c.kind)}</b> ${esc(c.label)} <span class="chip ${c.state === 'running' ? 'c-working live-dot' : 'c-plain'}">${esc(c.state)}${c.now ? ` · ${esc(c.now.tool)}` : ''}</span></div>`).join('')}`;
+}
+
 /** Tokens in short, as the working line has them: 860, 28.5k, 1.2M. */
 const tokensShort = n => (n >= 1e6 ? `${(n / 1e6).toFixed(1)}M` : n >= 1000 ? `${(n / 1000).toFixed(1)}k` : String(n));
 /**

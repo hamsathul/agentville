@@ -54,6 +54,21 @@ test("a subagent's own transcript keeps it running, and its calls count as the p
   assert.ok(a.touching.some(t => t.repo === '/p/backend' && t.mode === 'write'));
 });
 
+test("each subagent goes out with its steps so far, what it last said, its step now in words, and once done its result", () => {
+  const finished = JSON.stringify({ type: 'user', timestamp: new Date(at(40)).toISOString(), message: { content: [{ type: 'tool_result', tool_use_id: 'tB', content: 'No blocking issues.\nTwo nits.' }] } });
+  const parent = modelOf(prompt(0, 'go'),
+    toolUse(1, 'tA', 'Agent', { description: 'Find callers', subagent_type: 'Explore', prompt: 'Find every caller of createOrder' }),
+    toolUse(2, 'tB', 'Agent', { description: 'Review it', subagent_type: 'code-reviewer', prompt: 'Review' }), finished);
+  const working = modelOf(prompt(1, 'Find every caller of createOrder'), toolUse(3, 'c1', 'Read', { file_path: '/w/a.ts' }), toolResult(4, 'c1'), reply(5, 'Two callers so far.\nChecking the webhook.'), toolUse(50, 'c2', 'Grep', { pattern: 'createOrder', path: '/w/src' }));
+  const reviewed = modelOf(prompt(2, 'Review'), toolUse(10, 'r1', 'Read', { file_path: '/w/order.ts' }), toolResult(11, 'r1'), reply(39, 'No blocking issues.'));
+  const a = buildAgent({ base: base(), model: parent, childModels: new Map([['tA', working], ['tB', reviewed]]), repoOf, now: at(55), cfg, home: '/h' });
+  const [review, explore] = a.children;
+  assert.deepEqual({ ...explore, now: undefined }, { id: 'tA', kind: 'subagent', agentType: 'Explore', label: 'Find callers', state: 'running', startedAt: at(1), now: undefined, steps: 2, lastSaid: 'Two callers so far.', lastAt: at(50), endedAt: undefined, result: undefined });
+  assert.equal(explore.now.tool, 'Grep');
+  assert.match(explore.now.summary, /createOrder/);
+  assert.deepEqual([review.state, review.steps, review.endedAt, review.result, review.lastSaid], ['done', 1, at(40), 'No blocking issues.', 'No blocking issues.']);
+});
+
 test('finished children older than an hour are dropped', () => {
   const parent = modelOf(prompt(0, 'go'), toolUse(1, 'tA', 'Agent', { description: 'Old' }), toolResult(2, 'tA'));
   const a = buildAgent({ base: base(), model: parent, repoOf, now: at(2 + 3700), cfg, home: '/h' });

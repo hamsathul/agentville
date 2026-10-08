@@ -8,11 +8,6 @@ function overviewHtml(a) {
       const j = h.at.length - arr.length + i;
       return `<tr><td>${clock(t)}</td><td>${Math.round(h.cpu[j])}%</td><td>${gb(h.rssMb[j])}</td></tr>`;
     }).join('')}</table></details>` : '';
-  const children = a.children.length ? a.children.map(c => {
-    const isOpen = openChildren.has(c.id);
-    const feed = isOpen ? `<div class="feed">${(openChildren.get(c.id) ?? []).map(feedRow).join('') || '<div class="empty">No activity.</div>'}</div>` : '';
-    return `<div class="child"><button class="act" data-child="${esc(c.id)}">${isOpen ? '▾' : '▸'}</button><b>${esc(c.kind)}</b> ${esc(c.label)} <span class="chip ${c.state === 'running' ? 'c-working live-dot' : 'c-plain'}">${esc(c.state)}${c.now ? ` · ${esc(c.now.tool)}` : ''}</span>${feed}</div>`;
-  }).join('') : '<div class="empty">None.</div>';
   const touching = a.touching.length
     ? `<div class="badges">${a.touching.slice(0, 12).map(t => `<span class="chip ${t.mode === 'read' ? 'c-plain' : t.mode === 'git' ? 'c-serious' : 'c-warn'}" data-tip="${esc(t.path)}">${esc(short(t.repo ?? t.path))} · ${esc(t.mode)}</span>`).join('')}</div>`
     : '<div class="empty">Nothing in the last 30 minutes.</div>';
@@ -29,6 +24,7 @@ function overviewHtml(a) {
     ${sessionBarHtml(a)}
     ${a.state === 'stale' ? '' : `<div style="margin-top:8px">${metricsHtml(a)}</div>`}
     <div class="sec">Now</div>${workingLineHtml(a)}${a.now ? `<div class="now mono"><span class="pulse"></span> ${esc(a.now.tool)} ${esc(a.now.summary)} · <b data-since="${a.now.startedAt}"></b></div>` : a.turn ? '' : `<div class="muted">${esc(a.stateReason)}</div>`}
+    ${subagentsHtml(a)}
     ${questionHtml(a)}
     ${composeHtml(a)}
     ${asideHtml(a)}
@@ -37,7 +33,7 @@ function overviewHtml(a) {
     ${docsHtml(a)}
     ${charts ? `<div class="sec">Last 10 minutes</div>${charts}` : ''}
     ${a.kind === 'codex' ? '' : `<div class="sec">Tool calls · last 30 minutes</div>${timelineChart(a.timeline)}`}
-    <div class="sec">Subagents &amp; background jobs</div>${children}
+    ${jobsHtml(a)}
     <div class="sec">Touching</div>${touching}
     <div class="sec">Process</div><div>${proc}</div>
     <div class="sec">Actions</div>
@@ -57,6 +53,7 @@ function render() {
   document.title = needs ? `(${needs}) Agentville` : 'Agentville';
   window.Agentville?.favicon(needs > 0); // a red light on the tab's farmhouse while an agent waits
   refreshFullFeeds();
+  refreshSubagents();
   void followConversation(); // the conversation dialog, if open, takes the new messages
   renderConvoCompose(); // and its message box
   if (view === 'farm') {
@@ -95,6 +92,29 @@ async function toggleFullFeed(id) {
   if (fullFeeds.has(id)) fullFeeds.delete(id);
   else await loadFullFeed(id);
   render();
+}
+/** Reads a subagent's prompt, steps and result for its open card. */
+async function loadSubagent(agentId, childId) {
+  const entry = openChildren.get(childId) ?? { agentId, data: null };
+  entry.loading = true;
+  entry.at = Date.now();
+  entry.lastAt = snap?.agents.find(a => a.id === agentId)?.children?.find(c => c.id === childId)?.lastAt;
+  openChildren.set(childId, entry);
+  try {
+    const r = await fetch(`/api/agent/${encodeURIComponent(`${agentId}:${childId}`)}/subagent`, { headers: { 'x-tracker-token': TOKEN } });
+    entry.data = r.ok ? await r.json() : { error: `The tracker said ${r.status}.` };
+  } catch (err) {
+    entry.data = { error: String(err) };
+  }
+  entry.loading = false;
+}
+/** An open subagent card follows it: read again when it has done something, at most every 3 s. */
+function refreshSubagents() {
+  for (const [id, entry] of openChildren) {
+    const child = snap.agents.find(a => a.id === entry.agentId)?.children?.find(c => c.id === id);
+    if (!child) { openChildren.delete(id); continue; }
+    if (!entry.loading && child.lastAt !== entry.lastAt && Date.now() - entry.at > 3000) void loadSubagent(entry.agentId, id).then(() => requestRender());
+  }
 }
 /** While Show all is on, the history follows the agent: reloaded when it has done something, at most every 3 s. */
 function refreshFullFeeds() {
@@ -189,6 +209,7 @@ function farmSideHtml(a) {
     ${sessionBarHtml(a)}
     ${askHtml(a)}
     <div class="sec">Now</div>${workingLineHtml(a)}${a.turn && !a.now ? '' : now}
+    ${subagentsHtml(a)}
     ${questionHtml(a)}
     ${composeHtml(a)}
     ${asideHtml(a)}
@@ -394,13 +415,9 @@ document.addEventListener('click', async e => {
   else if (el.id === 'open-cleanup') openCleanup();
   else if (el.id === 'act-copy') { await navigator.clipboard.writeText(d.text); notice('Resume command copied.'); }
   else if (el.id === 'act-open') { const r = await post(`/api/actions/open/${encodeURIComponent(selected)}`, {}); notice(r.ok ? 'Opened in Terminal.' : `Could not open: ${r.error}`); }
-  else if (d.child) {
-    const id = d.child;
-    if (openChildren.has(id)) openChildren.delete(id);
-    else {
-      const r = await fetch(`/api/agent/${encodeURIComponent(selected)}:${encodeURIComponent(id)}/feed?limit=30`);
-      openChildren.set(id, r.ok ? await r.json() : []);
-    }
+  else if (d.child) { // a subagent's card: opened, it is read (and followed while it works); or closed
+    if (openChildren.has(d.child)) openChildren.delete(d.child);
+    else await loadSubagent(d.agent ?? selected, d.child);
     render();
   }
 });

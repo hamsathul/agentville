@@ -50,6 +50,7 @@ export class SessionModel {
     this.wakeAt = 0; // when a session that scheduled a wake-up (/loop) comes back by itself
     this.turnStartedAt = 0; // when the current turn began, and the tokens its replies have come back with so far
     this.turnOut = new Map(); // reply id → output tokens (each of a reply's entries repeats its count)
+    this.toolCount = 0; // tool calls so far (a subagent's steps)
   }
 
   /** Output tokens the current turn has received, as the terminal's working line counts them (↓ 28.5k tokens). */
@@ -103,6 +104,7 @@ export class SessionModel {
         this.#push({ at: when, kind: 'reply', text: this.lastReply, body: bodyOf(ev.text) });
         break;
       case 'tool_use': {
+        this.toolCount += 1;
         const call = { id: ev.id, name: ev.name, input: ev.input, at: when, cwd: ev.cwd, background: ev.input?.run_in_background === true };
         this.finalReply = null;
         this.pending.set(ev.id, call);
@@ -122,7 +124,8 @@ export class SessionModel {
         const kind = CHILD_KIND[ev.name] ?? (ev.name === 'Bash' && isBackground ? 'bgjob' : null);
         if (kind) {
           const agentType = kind === 'subagent' && typeof ev.input?.subagent_type === 'string' ? ev.input.subagent_type : undefined;
-          this.children.set(ev.id, { id: ev.id, kind, agentType, label: summarizeTool(ev.name, ev.input), state: 'running', startedAt: when, isBackground });
+          const prompt = kind === 'subagent' && typeof ev.input?.prompt === 'string' ? ev.input.prompt.slice(0, 4000) : undefined; // what it was asked
+          this.children.set(ev.id, { id: ev.id, kind, agentType, label: summarizeTool(ev.name, ev.input), state: 'running', startedAt: when, isBackground, prompt });
         }
         this.turnOpen = true;
         break;
@@ -141,7 +144,16 @@ export class SessionModel {
           this.openItems.delete(ev.toolUseId);
         }
         const child = this.children.get(ev.toolUseId);
-        if (child) child.state = !ev.ok ? 'failed' : child.kind === 'subagent' && !child.isBackground ? 'done' : 'unknown';
+        if (child?.kind === 'subagent' && ev.async && ev.ok) { // launched in the background: its notice says when it ends
+          child.isBackground = true;
+          child.state = 'running';
+        } else if (child) {
+          child.state = !ev.ok ? 'failed' : child.kind === 'subagent' && !child.isBackground ? 'done' : 'unknown';
+          if (child.state === 'done' || child.state === 'failed') { // a background one's result only says it started
+            child.endedAt = when;
+            if (ev.text) child.result = ev.text;
+          }
+        }
         break;
       }
       case 'task_done': {
@@ -149,6 +161,15 @@ export class SessionModel {
         if (call?.background && call.endedAt === undefined && ev.status !== 'running') { call.ok = ev.status === 'completed'; call.endedAt = when; } // the first notice says it
         const job = this.children.get(ev.toolUseId);
         if (job?.kind === 'bgjob') job.state = ev.status === 'completed' ? 'done' : ev.status === 'running' ? 'running' : 'failed';
+        if (job?.kind === 'subagent') { // a background subagent stopped (resumed, it may notify again: the latest says)
+          const state = ev.status === 'completed' ? 'done' : ev.status === 'running' ? 'running' : 'failed';
+          const again = state === job.state && (ev.result ?? job.result) === job.result; // the same notice: queued, then handed over
+          if (!again) {
+            job.state = state;
+            job.endedAt = state === 'running' ? undefined : when;
+            if (ev.result) job.result = ev.result;
+          }
+        }
         break;
       }
       case 'turn_end':

@@ -66,6 +66,8 @@ const sessions = {
   'ui-asker': { pid: process.pid, lines: [
     line(now - 60_000, { content: 'Plan the next crop' }, 'user'),
     use(now - 50_000, 'toolu_W1', 'Write', { file_path: join(repo, 'docs', 'plan.md'), content: '# Plan' }),
+    // a subagent at work: its own transcript is written below
+    use(now - 46_000, 'toolu_SUB1', 'Agent', { description: 'Survey the fields', subagent_type: 'Explore', prompt: 'Survey every field and list what grows where.' }),
     // a reply with a code block wider than any panel: it scrolls inside its bubble, the panel stays put
     line(now - 45_000, { model: 'claude-haiku', content: [{ type: 'text', text: `The rotation:\n\n\`\`\`\n${'wheat → barley → clover → pumpkins → '.repeat(6)}fallow\n\`\`\`` }] }),
     use(now - 40_000, 'toolu_E1', 'Edit', { file_path: join(repo, 'src', 'app.ts'), old_string: '1', new_string: '2' }),
@@ -95,6 +97,17 @@ for (const [id, s] of Object.entries(sessions)) {
   writeFileSync(join(claudeDir, 'sessions', `${s.pid}.json`), JSON.stringify({ pid: s.pid, sessionId: id, cwd: repo, name: id, status: s.status ?? 'busy' }));
   writeFileSync(join(claudeDir, 'projects', '-farm-repo', `${id}.jsonl`), `${s.lines.join('\n')}\n`);
 }
+// The subagent's own transcript, where Claude Code keeps it: <session>/subagents/agent-<id>.jsonl, and its .meta.json.
+const subDir = join(claudeDir, 'projects', '-farm-repo', 'ui-asker', 'subagents');
+mkdirSync(subDir, { recursive: true });
+writeFileSync(join(subDir, 'agent-a1.meta.json'), JSON.stringify({ toolUseId: 'toolu_SUB1', agentType: 'Explore' }));
+writeFileSync(join(subDir, 'agent-a1.jsonl'), `${[
+  line(now - 45_000, { content: 'Survey every field and list what grows where.' }, 'user'),
+  use(now - 40_000, 'toolu_G1', 'Grep', { pattern: 'wheat', path: repo }),
+  JSON.stringify({ type: 'user', timestamp: iso(now - 39_000), cwd: repo, message: { content: [{ type: 'tool_result', tool_use_id: 'toolu_G1', content: 'north.md' }] } }),
+  line(now - 30_000, { model: 'claude-haiku', content: [{ type: 'text', text: 'Wheat in the north field so far.' }] }),
+  use(now - 3_000, 'toolu_G2', 'Grep', { pattern: 'pumpkins', path: repo }),
+].join('\n')}\n`);
 // A past session in the repo, finished and closed: the sessions dialog offers to resume it.
 const PAST = '5e551011-aaaa-4bbb-8ccc-000000000001';
 writeFileSync(join(claudeDir, 'projects', '-farm-repo', `${PAST}.jsonl`), `${[line(now - 86_400_000, { content: 'Plan the harvest' }, 'user'), JSON.stringify({ type: 'ai-title', aiTitle: 'Harvest planning' })].join('\n')}\n`);
@@ -202,8 +215,16 @@ try {
   })()`);
   const fits = sel => js(`(() => { const p = document.querySelector('${sel}'), pre = p.querySelector('.bub pre'); return !!pre && p.scrollWidth <= p.clientWidth + 1 && pre.scrollWidth > pre.clientWidth; })()`);
   check(await fits('#center-body'), `a reply with a wide code block scrolls inside its bubble; the agent panel doesn't scroll sideways (${await sideways('#center-body')})`);
+  // Its subagent: a card saying what it is doing, opened to its prompt; ⤢ Read for its own transcript.
+  check(await until("[...document.querySelectorAll('#center-body .sub-card.running')].some(c => /Explore/.test(c.textContent) && /Survey the fields/.test(c.textContent) && /Grep/.test(c.textContent) && /Wheat in the north field/.test(c.textContent))"), "a subagent's card says what it is doing: its task, its step now, what it last said");
+  await js("document.querySelector('#center-body .sub-card [data-child]').click()");
+  check(await until("/Survey every field and list what grows where/.test(document.querySelector('#center-body .sub-prompt')?.textContent ?? '')"), 'opened, it shows the prompt it was given and its steps');
+  await js("document.querySelector('#center-body .sub-card [data-convo]').click()");
+  check(await until("document.getElementById('convo').open && /^Explore · Survey the fields · ui-asker's subagent$/.test(document.getElementById('convo-title').textContent) && /Wheat in the north field/.test(document.getElementById('convo-body').textContent)"), "⤢ Read opens the subagent's own transcript");
+  check(await js("document.getElementById('convo-compose').innerHTML === ''"), 'a subagent takes no messages: no box');
+  await js("document.getElementById('convo').close()");
   // The conversation dialog: the whole conversation, oldest first, with search.
-  await js("document.querySelector('#center-body [data-convo]').click()");
+  await js("document.querySelector('#center-body [data-convo=\"ui-asker\"]').click()");
   check(await until("document.getElementById('convo').open && document.querySelectorAll('#convo-body .bub').length >= 3"), '⤢ Read all opens the whole conversation in a dialog');
   check(await js("document.querySelector('#convo-body .bub').textContent.includes('Plan the next crop')"), 'oldest first');
   const search = q => js(`(() => { const i = document.getElementById('convo-q'); i.value = ${JSON.stringify(q)}; i.dispatchEvent(new Event('input', { bubbles: true })); })()`);
@@ -229,7 +250,7 @@ try {
   for (let i = 0; i < 40 && !received.length; i++) await sleep(150);
   check(received[0] === 'First line\nsecond line', `Enter sends the message (got ${JSON.stringify(received)})`);
   check(await until("document.getElementById('msg-text')?.value === ''"), 'the message box clears once it is sent');
-  await js("document.querySelector('#center-body [data-convo]').click()");
+  await js("document.querySelector('#center-body [data-convo=\"ui-asker\"]').click()");
   await until("!!document.getElementById('convo-msg-text')");
   await js("document.getElementById('convo-msg-text').focus()"); // before the conversation has loaded
   await until("/messages since/.test(document.getElementById('convo-sub').textContent)");

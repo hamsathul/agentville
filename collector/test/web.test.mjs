@@ -1605,3 +1605,63 @@ test('the permission rules tab lists each file\'s rules, and removes one after a
   await page.settle();
   assert.deepEqual(page.posts.at(-1), { path: '/api/actions/rule', body: { path: '/Users/me/.claude/settings.json', list: 'deny', value: 'Bash(rm:*)' } });
 });
+
+// Subagents: a card each, what it is doing now, expanded live; ⤢ Read for its whole transcript.
+const withHelpers = (over = {}) => richAgent({ mod: { version: '0.6.1', live: true }, ...over, children: [
+  { id: 'toolu_S1', kind: 'subagent', agentType: 'Explore', label: 'Find every caller', state: 'running', startedAt: Date.now() - 151_000, steps: 14, lastSaid: 'Two callers so far.', lastAt: Date.now() - 2000,
+    now: { tool: 'Grep', summary: 'createOrder in src/', startedAt: Date.now() - 12_000 } },
+  { id: 'toolu_S2', kind: 'subagent', agentType: 'code-reviewer', label: 'Review the change', state: 'done', startedAt: Date.now() - 600_000, endedAt: Date.now() - 358_000, steps: 31, lastSaid: 'No blocking issues.', result: 'No blocking issues.', lastAt: Date.now() - 358_000 },
+  { id: 'toolu_J1', kind: 'bgjob', label: 'npm run dev', state: 'running', startedAt: Date.now() - 60_000 },
+] });
+
+test('each subagent is a card: its task, how long and how many steps, its step now in words, what it last said or its result', () => {
+  const page = loadPage();
+  page.push(richSnapshot([withHelpers()]));
+  const side = page.side();
+  assert.match(side, /class="sub-card running"[\s\S]*?<b>Explore<\/b>[\s\S]*?Find every caller[\s\S]*?running · <span data-lasted="\d+">[^<]*<\/span> · 14 steps[\s\S]*?🔧 <b>Grep<\/b> createOrder in src\/[\s\S]*?“Two callers so far\.”/);
+  assert.match(side, /class="sub-card done"[\s\S]*?<b>code-reviewer<\/b>[\s\S]*?Review the change[\s\S]*?done in 4m 2s · 31 steps[\s\S]*?Result: “No blocking issues\.”/);
+  assert.match(side, /data-convo="r1:toolu_S1"[^>]*>⤢ Read<\/button>/, 'its whole transcript, in the conversation dialog');
+  assert.match(side, /npm run dev/, 'a background job keeps its line');
+  assert.doesNotMatch(side, /data-convo="r1:toolu_J1"/);
+});
+
+test("a subagent's card opens to its prompt, its steps (followed while it works) and its result", async () => {
+  const S1 = '/api/agent/r1%3Atoolu_S1/subagent';
+  const page = loadPage({ replies: { [S1]: { prompt: 'Find every caller of createOrder.\nList them by file.', result: null, feed: [{ at: Date.now() - 3000, kind: 'tool', tool: 'Grep', text: 'createOrder', ok: true }] } } });
+  page.push(richSnapshot([withHelpers()]));
+  await page.clickButton('open-sub', { child: 'toolu_S1' });
+  await page.settle();
+  const get = page.gets.filter(g => g.path === S1);
+  assert.equal(get.length, 1);
+  assert.ok(get[0].token, 'with the token');
+  assert.match(page.side(), /class="sub-prompt"[\s\S]*Find every caller of createOrder\.\nList them by file\.[\s\S]*Grep[\s\S]*createOrder/);
+  page.push(richSnapshot([withHelpers()])); // nothing new from it
+  await page.settle();
+  assert.equal(page.gets.filter(g => g.path === S1).length, 1);
+  const later = withHelpers();
+  later.children[0].lastAt = Date.now() + 10_000; // it did something
+  const realNow = Date.now;
+  page.ctx.Date.now = () => realNow() + 5000; // and the last read is more than 3 s old
+  page.push(richSnapshot([later]));
+  await page.settle();
+  page.ctx.Date.now = realNow;
+  assert.equal(page.gets.filter(g => g.path === S1).length, 2, 'it is read again: followed while it works');
+});
+
+test('⤢ Read on a subagent opens its own transcript in the conversation dialog, named for it, with no message box', async () => {
+  const page = loadPage({ replies: { '/api/agent/r1%3Atoolu_S1/conversation': { total: 1, from: 0, items: [{ at: Date.now() - 9000, kind: 'prompt', text: 'Find every caller', body: 'Find every caller' }] } } });
+  page.push(richSnapshot([withHelpers()]));
+  await page.clickButton('read-sub', { convo: 'r1:toolu_S1' });
+  await page.settle();
+  assert.equal(page.el('convo').open, true);
+  assert.match(page.el('convo-title').textContent, /^Explore · Find every caller · busy-one's subagent$/);
+  assert.match(page.el('convo-body').innerHTML, /Find every caller/);
+  assert.equal(page.el('convo-compose').innerHTML, '', 'a subagent takes no messages');
+});
+
+test('the farm sidebar shows the subagents too', async () => {
+  const f = fakeFarm();
+  const page = loadPage({ farm: f.farm, stored: { 'tracker-view': 'farm', 'tracker-farm-side': 'open' } });
+  page.push(richSnapshot([withHelpers()]));
+  assert.match(page.el('farm-agent').innerHTML, />Subagents[\s\S]*class="sub-card running"[\s\S]*Find every caller/);
+});

@@ -81,10 +81,14 @@ function syncSlots(agents) {
 }
 const colorOf = id => (agentSlots.get(id) === 'other' || !agentSlots.has(id) ? 'var(--s-other)' : `var(--s${agentSlots.get(id)})`);
 
-/** How long since, as Claude Code's working line says it: 12s, 5m 31s, 1h 4m. */
-function lasted(from) {
-  const s = Math.max(0, Math.floor((Date.now() - from) / 1000)), m = Math.floor(s / 60);
+/** A length of time, as Claude Code's working line says it: 12s, 5m 31s, 1h 4m. */
+function took(ms) {
+  const s = Math.max(0, Math.floor(ms / 1000)), m = Math.floor(s / 60);
   return m >= 60 ? `${Math.floor(m / 60)}h ${m % 60}m` : m ? `${m}m ${s % 60}s` : `${s}s`;
+}
+/** How long since, in the same words. */
+function lasted(from) {
+  return took(Date.now() - from);
 }
 
 function updateTimers() {

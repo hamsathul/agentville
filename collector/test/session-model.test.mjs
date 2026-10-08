@@ -265,6 +265,33 @@ test('compactions are counted, the latest remembered', () => {
   assert.equal(m.lastCompactAt, at(40));
 });
 
+test('a subagent keeps the prompt it was given, and its result and when it finished; every model counts its tool steps', () => {
+  const done = JSON.stringify({ type: 'user', timestamp: new Date(at(9)).toISOString(), message: { content: [{ type: 'tool_result', tool_use_id: 'tA', content: [{ type: 'text', text: 'No blocking issues.\nTwo nits in order.ts.' }] }] } });
+  const m = modelOf(prompt(0, 'go'), toolUse(1, 'tA', 'Agent', { description: 'Review it', subagent_type: 'code-reviewer', prompt: `Review the change.\n${'details '.repeat(800)}` }), toolUse(2, 'tB', 'Bash', { command: 'ls' }), done);
+  const c = m.children.get('tA');
+  assert.equal(c.agentType, 'code-reviewer');
+  assert.match(c.prompt, /^Review the change\.\n/);
+  assert.equal(c.prompt.length, 4000, 'its prompt, up to 4,000 characters');
+  assert.equal(c.state, 'done');
+  assert.equal(c.endedAt, at(9));
+  assert.equal(c.result, 'No blocking issues.\nTwo nits in order.ts.');
+  assert.equal(m.toolCount, 2);
+});
+
+test('a subagent launched in the background keeps running past its launch, until its notice says it finished, with its result', () => {
+  const launched = JSON.stringify({ type: 'user', timestamp: new Date(at(2)).toISOString(), toolUseResult: { isAsync: true, status: 'async_launched' }, message: { content: [{ type: 'tool_result', tool_use_id: 'tA', content: 'Async agent launched successfully.' }] } });
+  const notice = (sec, status) => JSON.stringify({ type: 'queue-operation', operation: 'enqueue', timestamp: new Date(at(sec)).toISOString(), content: `<task-notification>\n<tool-use-id>tA</tool-use-id>\n<status>${status}</status>\n<result>Found 3 callers.</result>\n</task-notification>` });
+  const m = modelOf(prompt(0, 'go'), toolUse(1, 'tA', 'Agent', { description: 'Find callers', prompt: 'Find them' }), launched);
+  const c = m.children.get('tA');
+  assert.deepEqual([c.state, c.endedAt, c.result], ['running', undefined, undefined], 'its launch is not its end');
+  m.applyLine(notice(30, 'completed'));
+  assert.deepEqual([c.state, c.endedAt, c.result], ['done', at(30), 'Found 3 callers.']);
+  m.applyLine(notice(45, 'completed'));
+  assert.equal(c.endedAt, at(30), 'the same notice again (queued, then handed over) is not a later end');
+  m.applyLine(notice(60, 'failed'));
+  assert.deepEqual([c.state, c.endedAt], ['failed', at(60)], 'resumed and stopped again: the latest notice says');
+});
+
 test('fast mode is read from the latest reply', () => {
   const fast = speed => JSON.stringify({ type: 'assistant', timestamp: new Date(at(3)).toISOString(), message: { model: 'claude-opus-5-5', role: 'assistant', content: [{ type: 'text', text: 'hi' }], usage: { input_tokens: 1, speed } } });
   assert.equal(modelOf(prompt(0, 'go'), fast('fast')).fast, true);

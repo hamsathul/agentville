@@ -49,6 +49,22 @@ test('what /model printed names the model it set, however Claude Code worded it'
   assert.deepEqual(said("Model 'opus 4.8' not found"), []);
 });
 
+test("a tool result carries the start of its text (a subagent's result, mostly), as a string or text blocks", () => {
+  const result = content => parseEntry({ type: 'user', message: { content: [{ type: 'tool_result', tool_use_id: 't1', content }] } }).events[0].text;
+  assert.equal(result('All done.'), 'All done.');
+  assert.equal(result([{ type: 'text', text: 'Found 3 callers.' }, { type: 'image' }, { type: 'text', text: 'And a fourth.' }]), 'Found 3 callers.\nAnd a fourth.');
+  assert.equal(result('x'.repeat(5000)).length, 2000, 'only its start is kept');
+  assert.equal(result(undefined), undefined, 'no text: no field');
+});
+
+test("a subagent launched in the background is said so by its result; its notice says how it ended, with its result", () => {
+  const launched = parseEntry({ type: 'user', toolUseResult: { isAsync: true, status: 'async_launched', agentId: 'a1' }, message: { content: [{ type: 'tool_result', tool_use_id: 'tA', content: 'Async agent launched successfully.' }] } });
+  assert.equal(launched.events[0].async, true);
+  assert.equal(parseEntry({ type: 'user', message: { content: [{ type: 'tool_result', tool_use_id: 'tB', content: 'done' }] } }).events[0].async, undefined);
+  const notice = parseEntry({ type: 'queue-operation', operation: 'enqueue', content: '<task-notification>\n<task-id>a1</task-id>\n<tool-use-id>tA</tool-use-id>\n<status>completed</status>\n<summary>Agent finished</summary>\n<result>The 12 files total 5,205 lines.\n- app.js</result>\n</task-notification>' });
+  assert.deepEqual(notice.events, [{ kind: 'task_done', toolUseId: 'tA', status: 'completed', result: 'The 12 files total 5,205 lines.\n- app.js' }]);
+});
+
 test('tool results carry the error flag', () => {
   const r = parseEntry({ type: 'user', message: { content: [{ type: 'tool_result', tool_use_id: 't1', is_error: true }] } });
   assert.deepEqual(r.events, [{ kind: 'tool_result', toolUseId: 't1', ok: false }]);

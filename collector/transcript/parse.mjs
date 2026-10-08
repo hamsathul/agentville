@@ -25,8 +25,13 @@ function peerMessages(text, origin) {
 
 /** A background command's notices: which call each was and how it ended (completed, failed, killed…). */
 function taskNotices(text) {
-  return [...text.matchAll(/<task-notification>[\s\S]*?<tool-use-id>([^<]+)<\/tool-use-id>[\s\S]*?<status>([a-z]+)<\/status>/g)]
-    .map(n => ({ kind: 'task_done', toolUseId: n[1].trim(), status: n[2] }));
+  return text.split('<task-notification>').slice(1).flatMap(notice => {
+    const body = notice.split('</task-notification>')[0];
+    const id = body.match(/<tool-use-id>([^<]+)<\/tool-use-id>/)?.[1], status = body.match(/<status>([a-z]+)<\/status>/)?.[1];
+    if (!id || !status) return [];
+    const result = body.match(/<result>([\s\S]*?)(?:<\/result>|$)/)?.[1].trim().slice(0, 2000); // a background subagent's answer
+    return [{ kind: 'task_done', toolUseId: id.trim(), status, ...(result ? { result } : {}) }];
+  });
 }
 
 /** The id of the task a TaskCreate call made: its result's task, or "Task #7 created…" in its text. */
@@ -35,6 +40,19 @@ function createdTaskId(obj, block) {
   if (typeof id === 'string' || Number.isInteger(id)) return String(id);
   const text = typeof block.content === 'string' ? block.content : Array.isArray(block.content) ? block.content.map(c => c?.text ?? '').join(' ') : '';
   return text.match(/^Task #([\w-]+) created/)?.[1];
+}
+
+/** The start of a tool result's text (a subagent's result, mostly): 2,000 characters at most. */
+function resultText(content) {
+  if (typeof content === 'string') return content.slice(0, 2000);
+  if (!Array.isArray(content)) return '';
+  let out = '';
+  for (const c of content) {
+    if (c?.type !== 'text' || typeof c.text !== 'string') continue;
+    out += (out ? '\n' : '') + c.text.slice(0, 2000);
+    if (out.length >= 2000) break;
+  }
+  return out.slice(0, 2000);
 }
 
 // What /effort printed when it set the level (typed, or run from the dashboard).
@@ -63,7 +81,10 @@ export function parseEntry(obj) {
     const results = blocks.filter(b => b?.type === 'tool_result');
     if (results.length) {
       for (const b of results) {
-        const ev = { kind: 'tool_result', toolUseId: b.tool_use_id, ok: b.is_error !== true };
+        const text = resultText(b.content);
+        const ev = { kind: 'tool_result', toolUseId: b.tool_use_id, ok: b.is_error !== true, ...(text ? { text } : {}) };
+        const tur = results.length === 1 ? obj.toolUseResult : undefined; // a subagent launched in the background: it ends with a notice
+        if (tur?.status === 'async_launched' || tur?.isAsync === true) ev.async = true;
         const taskId = results.length === 1 ? createdTaskId(obj, b) : undefined; // a task list item made by TaskCreate
         if (taskId) ev.taskId = taskId;
         events.push(ev);

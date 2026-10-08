@@ -398,6 +398,15 @@ export async function startCollector({ root, claudeDir = join(homedir(), '.claud
     return childId ? rec.childModels.get(childId) ?? null : rec.model;
   }
 
+  /** A subagent's card, opened: the prompt it was given, its result once done, and its latest steps and words (newest first). */
+  function getSubagent(id) {
+    const [sessionId, childId] = id.split(':');
+    const rec = sessions.get(sessionId);
+    const child = childId ? rec?.model.children.get(childId) : undefined;
+    if (child?.kind !== 'subagent') return null;
+    return { prompt: child.prompt ?? null, result: child.result ?? null, feed: rec.childModels.get(childId)?.history(40) ?? [] };
+  }
+
   // The conversation dialog's whole conversations: the last three opened, each dropped after ten minutes unused.
   const conversations = new Map(); // transcript path → Conversation, least recently used first
   /** A session's (or subagent's) messages from the `from`-th on, oldest first; null if it has no transcript. */
@@ -825,7 +834,7 @@ export async function startCollector({ root, claudeDir = join(homedir(), '.claud
     port: portOverride ?? cfg.port, token, webFile: join(root, 'web', 'index.html'),
     getSnapshot: () => snapshot,
     getFeed: (id, limit) => modelFor(id)?.history(limit) ?? null,
-    getConversation, claudePlugins, claudeMcp, claudeRules,
+    getConversation, getSubagent, claudePlugins, claudeMcp, claudeRules,
     getTranscriptHtml, getDoc: readDoc, listFiles, readFile, repoTouched, actions, pastSessions, log,
   });
   const port = await server.listen();

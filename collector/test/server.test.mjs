@@ -39,6 +39,7 @@ async function start() {
       mcp: async body => { calls.push(['mcp', body]); return { ok: true }; },
       rule: async body => { calls.push(['rule', body]); return { ok: true }; },
     },
+    getSubagent: id => (id === 's1:tA' ? { prompt: 'Find callers', result: null, feed: [] } : null),
     claudePlugins: async () => ({ plugins: [{ id: 'alpha@m' }], skills: [] }),
     claudeMcp: async opts => { calls.push(['claudeMcp', opts]); return { servers: [], projects: [] }; },
     claudeRules: () => ({ files: [] }),
@@ -278,6 +279,20 @@ test("Claude Code's setup is read only with the token, and changed only with the
       assert.equal((await request(port, { method: 'POST', path, headers: { ...headers, origin, 'content-type': 'application/json' }, body })).status, 200, path);
     }
     assert.deepEqual(calls.map(c => c[0]), ['plugin', 'reload', 'mcp', 'rule']);
+  } finally {
+    await srv.close();
+  }
+});
+
+test("a subagent's prompt, steps and result need the token", async () => {
+  const { srv, port } = await start();
+  try {
+    assert.equal((await request(port, { path: '/api/agent/s1:tA/subagent' })).status, 403);
+    const r = await request(port, { path: '/api/agent/s1:tA/subagent', headers: { 'x-tracker-token': 'tok' } });
+    assert.deepEqual(JSON.parse(r.body), { prompt: 'Find callers', result: null, feed: [] });
+    assert.equal((await request(port, { path: '/api/agent/s1%3AtA/subagent', headers: { 'x-tracker-token': 'tok' } })).status, 200, 'its id encoded, as the page sends it');
+    assert.equal((await request(port, { path: '/api/agent/s1:nope/subagent', headers: { 'x-tracker-token': 'tok' } })).status, 404);
+    assert.equal((await request(port, { path: '/api/agent/s1%2F..%2Fx/subagent', headers: { 'x-tracker-token': 'tok' } })).status, 404, 'nothing but an id');
   } finally {
     await srv.close();
   }

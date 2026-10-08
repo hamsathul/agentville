@@ -268,6 +268,19 @@ dialog.confirm-dlg { max-width: min(460px, calc(100vw - 32px)); }
 .bub.peer.out { margin-left: auto; }
 .bub.peer .peer-head { font-size: 11px; font-weight: 700; color: var(--muted); margin-bottom: 2px; }
 #sess-status { margin: 8px 0 6px; min-height: 1.2em; }
+/* a session's subagents, a card each */
+.sub-card { margin: 6px 0; padding: 7px 9px; border: 1px solid var(--line); border-radius: 8px; background: var(--panel); }
+.sub-card.running { border-left: 3px solid var(--good); }
+.sub-card.failed { border-left: 3px solid var(--crit); }
+.sub-head { display: flex; align-items: center; gap: 6px; min-width: 0; }
+.sub-task { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--muted); }
+.sub-how { margin: 3px 0 0 30px; font-size: 12px; }
+.sub-now { margin: 3px 0 0 30px; font-size: 12px; overflow-wrap: anywhere; }
+.sub-said { margin: 3px 0 0 30px; font-size: 12px; color: var(--muted); overflow-wrap: anywhere; }
+.sub-detail { margin: 8px 0 2px 30px; display: grid; gap: 4px; min-width: 0; }
+.sub-label { font-size: 11px; font-weight: 700; color: var(--muted); margin-top: 4px; }
+.sub-prompt { white-space: pre-wrap; overflow-wrap: anywhere; max-height: 240px; overflow: auto; padding: 6px 8px; border-radius: 6px; background: var(--panel-2); font-size: 12px; }
+.sub-result { padding: 6px 8px; border-radius: 6px; background: var(--panel-2); font-size: 12.5px; overflow-x: auto; }
 /* the ⚙ Claude Code dialog: plugins and skills, MCP servers, permission rules */
 dialog.setup-dlg { width: min(860px, calc(100vw - 32px)); height: min(86vh, 900px); max-width: none; padding: 14px 16px 12px; }
 dialog.setup-dlg[open] { display: flex; flex-direction: column; }
