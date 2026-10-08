@@ -338,6 +338,9 @@ try {
   await js("document.querySelector('[data-farm-nav=\"theme\"]').click()");
   check(await until("document.documentElement.dataset.theme !== 'dark'"), "the farm's own buttons work the dashboard: the theme changes");
   for (let i = 0; i < 2 && (await js("document.documentElement.dataset.theme")) !== 'dark'; i++) await js("document.querySelector('[data-farm-nav=\"theme\"]').click()");
+  await js("document.querySelector('[data-farm-nav=\"setup\"]')?.click()");
+  check(await until("document.getElementById('setup').open"), "the farm's buttons have ⚙ Claude Code too, opening its dialog");
+  await js("document.getElementById('setup').close()");
   if (process.env.SHOTS) { // optional: SHOTS=<folder> saves a picture of the farm at this point
     const shot = await send('Page.captureScreenshot', { format: 'png' });
     writeFileSync(join(process.env.SHOTS, 'farm-bubbles.png'), Buffer.from(shot.result.data, 'base64'));

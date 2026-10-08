@@ -727,6 +727,7 @@ function fakeFarm() {
     pickSay: id => options.onPickAgent(id, { from: 'say' }),
     openDoc: (id, path) => options.onOpenDoc(id, path),
     showRepos: () => options.onShowRepos(),
+    nav: what => options.onNav(what),
     farm: {
       mount(host, opts) { options = opts; calls.push(['mount', host.id, opts.token]); },
       diaryId: () => options?.diary?.id,
@@ -1676,4 +1677,14 @@ test('the farm sidebar has a Subagents tab, with how many on it; its Agent tab k
   await page.clickButton('tab-subagents', { farmTab: 'subagents' });
   assert.equal(page.stored['tracker-farm-tab'], 'subagents');
   assert.match(page.el('farm-subagents').innerHTML, /class="sub-card running"[\s\S]*Find every caller/);
+});
+
+test("the farm's own buttons include ⚙ Claude Code, opening the same dialog", async () => {
+  const f = fakeFarm();
+  const page = loadPage({ farm: f.farm, stored: { 'tracker-view': 'farm' }, replies: SETUP });
+  page.push(richSnapshot([richAgent()]));
+  await f.nav('setup');
+  await page.settle();
+  assert.equal(page.el('setup').open, true);
+  assert.match(page.el('setup-body').innerHTML, /together they add/);
 });

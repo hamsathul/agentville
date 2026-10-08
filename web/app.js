@@ -171,7 +171,7 @@ function setView(next, { remember = true } = {}) {
     window.TrackerFarm.mount($('farm'), {
       token: TOKEN, diary: $('farm-diary'), onPickAgent: pickFromFarm, onOpenDoc: openDocFromFarm, onShowRepos: showReposFromFarm, onStartSession: () => $('sessions-open').click(), onBell: bellSwitched,
       // the top bar's buttons, on the farm
-      onNav: what => ({ list: () => setView('list'), session: () => $('sessions-open').click(), side: () => setFarmSide(!farmSide), theme: () => $('theme-toggle').click() })[what]?.(),
+      onNav: what => ({ list: () => setView('list'), session: () => $('sessions-open').click(), setup: () => openSetup(), side: () => setFarmSide(!farmSide), theme: () => $('theme-toggle').click() })[what]?.(),
       navState: () => ({ theme, side: farmSide, live: !$('live').classList.contains('off') }),
     });
   } else {

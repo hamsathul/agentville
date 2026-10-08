@@ -365,7 +365,7 @@ can hold.
 - **Top left, the panel.** The money spent and harvests, then waiting on you, working, your turn
   and collisions (click one to open its first agent), then RAM, CPU and plan gauges and a
   **needs you** button. Click its title to fold it away.
-- **Top right.** List, ＋ Session, Sidebar and the theme.
+- **Top right.** List, ＋ Session, ⚙ Claude Code, Sidebar and the theme.
 - **Bottom.** Follow (keep the picked farmer in view), Resting (hide idle and stale farmers),
   Bubbles, Sky (live, day or night), Motion, Bell, Help, and zoom.
 - **Mouse.** ⌘/Ctrl + scroll or a pinch zooms, drag moves around, and a minimap appears while you
