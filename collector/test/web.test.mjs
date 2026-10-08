@@ -1253,3 +1253,110 @@ test("a working session shows its terminal's working line: its word, how long, t
   page.push(richSnapshot([richAgent({ turn: { startedAt: Date.now() - 12_000, outTokens: 860 } })]));
   assert.match(page.side(), /<b>Working…<\/b> <span class="muted">\(<span data-lasted="\d+">1\ds<\/span> · ↓ 860 tokens\)/, 'without its mod: from its steps, a tool running');
 });
+
+// The sessions dialog: past sessions to resume, with search, filters and sorting.
+const H = 3_600_000;
+const pastSessions = () => {
+  const now = Date.now();
+  const sessions = [
+    { id: 'a', cwd: '/code/app', title: 'Release planning', firstPrompt: 'Plan the release', lastPrompt: 'Ship it', at: now - 1 * H, startedAt: now - 72 * H, size: 3 * 1_048_576, model: 'claude-opus-5-5', branch: 'main', live: false },
+    { id: 'b', cwd: '/code/api', title: 'Login bug fix', firstPrompt: 'Fix login', lastPrompt: 'Try again', at: now - 2 * H, startedAt: now - 2.2 * H, size: 200 * 1024, model: 'claude-sonnet-5-5', branch: 'fix/login', live: true },
+    { id: 'c', cwd: '/code/app', title: null, firstPrompt: 'Add charts', lastPrompt: 'Add charts', at: now - 5 * H, startedAt: now - 24 * H, size: 1_048_576, model: 'claude-opus-4-8', branch: 'feature/charts', live: false },
+  ];
+  return { terminal: 'Terminal', sessions, projects: [{ cwd: '/code/app', name: 'app', at: now - H, sessions: 2 }, { cwd: '/code/api', name: 'api', at: now - 2 * H, sessions: 1 }] };
+};
+const allSessions = () => {
+  const d = pastSessions();
+  d.sessions.push({ id: 'd', cwd: '/code/old', title: 'Ancient work', firstPrompt: 'Old', lastPrompt: 'Old', at: Date.now() - 60 * 24 * H, startedAt: Date.now() - 61 * 24 * H, size: 4096, model: 'claude-haiku-4-5-20251001', branch: 'main', live: false });
+  d.projects.push({ cwd: '/code/old', name: 'old', at: Date.now() - 60 * 24 * H, sessions: 1 });
+  return d;
+};
+const sessPage = async (opts = {}) => {
+  const page = loadPage({ ...opts, replies: { '/api/sessions': pastSessions(), '/api/sessions?days=all': allSessions() } });
+  await page.ctx.openSessions();
+  await page.settle();
+  return page;
+};
+const shownSessions = page => [...page.el('sess-body').innerHTML.matchAll(/class="sess-row" data-sess-id="([^"]+)"/g)].map(m => m[1]);
+const shownFolders = page => [...page.el('sess-body').innerHTML.matchAll(/data-sess-new="([^"]+)"/g)].map(m => m[1]);
+const pickIn = async (page, id, value) => { await page.change({ id, value }); await page.settle(); };
+
+test('past sessions show their folder, branch, model, length and when they started, newest first, with a count', async () => {
+  const page = await sessPage();
+  assert.deepEqual(page.gets.map(g => g.path).filter(p => p.startsWith('/api/sessions')), ['/api/sessions'], 'the last 30 days');
+  assert.deepEqual(shownSessions(page), ['a', 'b', 'c']);
+  const body = page.el('sess-body').innerHTML;
+  assert.match(body, /data-sess-id="a"[\s\S]*?Release planning[\s\S]*?app · ⎇ main · Opus 5\.5 · 3\.0 MB[\s\S]*?started /);
+  assert.match(body, /data-sess-id="b"[\s\S]*?running/);
+  assert.match(page.el('sess-count').innerHTML, /Showing 3 of 3 sessions/);
+  assert.doesNotMatch(page.el('sess-count').innerHTML, /data-sess-clear/, 'nothing to clear');
+  assert.match(page.el('sess-f-folder').innerHTML, /<option value="">All folders \(3\)<\/option><option value="\/code\/app">app \(2\)<\/option><option value="\/code\/api">api \(1\)<\/option>/);
+  assert.match(page.el('sess-f-model').innerHTML, /<option value="opus">Opus \(2\)<\/option><option value="sonnet">Sonnet \(1\)<\/option>/);
+  assert.match(page.el('sess-f-branch').innerHTML, /<option value="main">main \(1\)<\/option>/);
+});
+
+test('past sessions filter by folder (both lists), model, branch, running and search, and the filters clear', async () => {
+  const page = await sessPage();
+  await pickIn(page, 'sess-f-folder', '/code/app');
+  assert.deepEqual(shownSessions(page), ['a', 'c']);
+  assert.deepEqual(shownFolders(page), ['/code/app'], 'the folders to start in narrow too');
+  assert.match(page.el('sess-count').innerHTML, /Showing 2 of 3 sessions[\s\S]*data-sess-clear/);
+  await pickIn(page, 'sess-f-folder', '');
+  await pickIn(page, 'sess-f-model', 'opus');
+  assert.deepEqual(shownSessions(page), ['a', 'c']);
+  await pickIn(page, 'sess-f-model', 'sonnet');
+  assert.deepEqual(shownSessions(page), ['b']);
+  await pickIn(page, 'sess-f-model', '');
+  await pickIn(page, 'sess-f-branch', 'feature/charts');
+  assert.deepEqual(shownSessions(page), ['c']);
+  await pickIn(page, 'sess-f-branch', '');
+  await pickIn(page, 'sess-f-live', 'live');
+  assert.deepEqual(shownSessions(page), ['b']);
+  await pickIn(page, 'sess-f-live', 'idle');
+  assert.deepEqual(shownSessions(page), ['a', 'c']);
+  page.edit('input', { id: 'sess-filter', value: 'fix/' });
+  assert.deepEqual(shownSessions(page), [], 'search and filters combine');
+  await pickIn(page, 'sess-f-live', '');
+  assert.deepEqual(shownSessions(page), ['b'], 'search finds a branch');
+  page.edit('input', { id: 'sess-filter', value: 'CHARTS' });
+  assert.deepEqual(shownSessions(page), ['c'], 'and a message, in any case');
+  await pickIn(page, 'sess-f-folder', '/code/api');
+  assert.match(page.el('sess-body').innerHTML, /No sessions match/);
+  page.ctx.clearSessionFilters();
+  assert.deepEqual(shownSessions(page), ['a', 'b', 'c']);
+  assert.equal(page.el('sess-filter').value, '');
+  assert.equal(page.el('sess-f-folder').value, '');
+});
+
+test('past sessions sort by last active, started, name, folder or length, and the sort is remembered', async () => {
+  const page = await sessPage();
+  await pickIn(page, 'sess-sort', 'started');
+  assert.deepEqual(shownSessions(page), ['b', 'c', 'a']);
+  await pickIn(page, 'sess-sort', 'name');
+  assert.deepEqual(shownSessions(page), ['c', 'b', 'a'], 'Add charts, Login bug fix, Release planning');
+  assert.deepEqual(shownFolders(page), ['/code/api', '/code/app'], 'folders A–Z too');
+  await pickIn(page, 'sess-sort', 'folder');
+  assert.deepEqual(shownSessions(page), ['b', 'a', 'c'], 'api, then app (newest first within it)');
+  await pickIn(page, 'sess-sort', 'length');
+  assert.deepEqual(shownSessions(page), ['a', 'c', 'b']);
+  assert.deepEqual(shownFolders(page), ['/code/app', '/code/api'], 'folders by last active otherwise');
+  assert.equal(page.stored['tracker-sess-sort'], 'length');
+  const again = await sessPage({ stored: { ...page.stored } });
+  assert.equal(again.el('sess-sort').value, 'length');
+  assert.deepEqual(shownSessions(again), ['a', 'c', 'b']);
+});
+
+test('All time reads every past session, showing that it is reading, and is remembered', async () => {
+  const page = await sessPage();
+  const switching = pickIn(page, 'sess-range', 'all');
+  assert.match(page.el('sess-body').innerHTML, /class="spinner"[\s\S]*Reading every session/, 'while it reads');
+  await switching;
+  assert.equal(page.gets.at(-1).path, '/api/sessions?days=all');
+  assert.ok(page.gets.at(-1).token, 'with the token');
+  assert.deepEqual(shownSessions(page), ['a', 'b', 'c', 'd']);
+  assert.match(page.el('sess-count').innerHTML, /Showing 4 of 4 sessions · all time/);
+  assert.equal(page.stored['tracker-sess-range'], 'all');
+  const again = await sessPage({ stored: { ...page.stored } });
+  assert.equal(again.gets.find(g => g.path.startsWith('/api/sessions')).path, '/api/sessions?days=all');
+  assert.equal(again.el('sess-range').value, 'all');
+});

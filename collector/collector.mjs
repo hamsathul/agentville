@@ -512,10 +512,10 @@ export async function startCollector({ root, claudeDir = join(homedir(), '.claud
 
   const sessionCache = new Map();
   const isDir = p => { try { return statSync(p).isDirectory(); } catch { return false; } };
-  /** Past sessions to resume and the folders to start a new one in (only ones that still exist). */
-  async function pastSessions() {
+  /** Past sessions to resume (the last 30 days, or `all`) and the folders to start a new one in (only ones that still exist). */
+  async function pastSessions({ all = false } = {}) {
     const live = new Set(snapshot?.agents.map(a => a.id) ?? []);
-    const sessions = listSessions({ claudeDir, cache: sessionCache }).map(s => ({ ...s, live: live.has(s.id) }));
+    const sessions = listSessions({ claudeDir, cache: sessionCache, maxAgeDays: all ? Infinity : 30 }).map(s => ({ ...s, live: live.has(s.id) }));
     return { terminal: cfg.terminal === 'iTerm' ? 'iTerm' : 'Terminal', projects: projectsOf(sessions).filter(p => isDir(p.cwd)), sessions };
   }
   const openTerminal = async command => {

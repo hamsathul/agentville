@@ -82,7 +82,7 @@ export function createTrackerServer({ port, token, webFile, getSnapshot, getFeed
         }
         if (path === '/api/sessions') { // past sessions' titles and messages: token only, like files
           if (req.headers['x-tracker-token'] !== token) return sendJson(res, 403, { error: 'forbidden' });
-          return sendJson(res, 200, await pastSessions());
+          return sendJson(res, 200, await pastSessions({ all: url.searchParams.get('days') === 'all' }));
         }
         if (path === '/api/repo/touched') {
           if (req.headers['x-tracker-token'] !== token) return sendJson(res, 403, { error: 'forbidden' });

@@ -251,7 +251,10 @@ dialog.sess-dlg { width: min(680px, calc(100vw - 32px)); max-width: none; paddin
 .sess-when { font-size: 12px; white-space: nowrap; }
 .sess-more { padding: 6px 2px 2px; border-top: 1px solid var(--line); }
 .sess-modes { display: flex; align-items: center; gap: 8px; margin-top: 8px; font-size: 12px; flex-wrap: wrap; }
-.sess-modes select { padding: 3px 6px; border: 1px solid var(--line); border-radius: 6px; background: var(--page); color: var(--text); font: inherit; }
+.sess-modes select, .sess-tools select { padding: 3px 6px; border: 1px solid var(--line); border-radius: 6px; background: var(--page); color: var(--text); font: inherit; }
+.sess-tools { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; margin-top: 6px; font-size: 12px; }
+.sess-tools select { max-width: 180px; }
+#sess-count { display: flex; align-items: center; gap: 8px; min-height: 24px; margin: 6px 0 2px; font-size: 12px; }
 .sessbar { display: flex; align-items: center; gap: 6px; margin-top: 6px; flex-wrap: wrap; }
 .sessbar select.act { padding: 2px 6px; }
 dialog.confirm-dlg { max-width: min(460px, calc(100vw - 32px)); }
@@ -616,7 +619,17 @@ a.pile { text-decoration: none; color: inherit; }
   <div class="sess-modes"><label for="sess-mode">Permission mode</label><select id="sess-mode"><option value="default">Ask first</option><option value="acceptEdits">Accept edits</option><option value="plan">Plan mode</option><option value="auto">Auto</option><option value="bypassPermissions">Bypass permissions</option></select><span id="sess-mode-warn" class="msg-bad" hidden>⚠ every tool runs without asking (--dangerously-skip-permissions)</span></div>
   <div class="sess-modes"><label for="sess-model">Model</label><select id="sess-model"><option value="default">Your default</option><option value="opus">Opus</option><option value="opus[1m]">Opus, 1M context</option><option value="sonnet">Sonnet</option><option value="haiku">Haiku</option><option value="fable">Fable</option></select>
     <label for="sess-effort">Effort</label><select id="sess-effort"><option value="">Its default</option><option value="low">low</option><option value="medium">medium</option><option value="high">high</option><option value="xhigh">xhigh</option><option value="max">max</option></select><span class="faint">for this session only (--model, --effort)</span></div>
-  <input id="sess-filter" type="search" placeholder="Filter by folder, title or message…" autocomplete="off" spellcheck="false">
+  <input id="sess-filter" type="search" placeholder="Search titles, messages, folders and branches…" autocomplete="off" spellcheck="false">
+  <div class="sess-tools">
+    <select id="sess-f-folder" aria-label="Folder"><option value="">All folders</option></select>
+    <select id="sess-f-model" aria-label="Model it last ran on"><option value="">Any model</option></select>
+    <select id="sess-f-branch" aria-label="Git branch"><option value="">Any branch</option></select>
+    <select id="sess-f-live" aria-label="Running or not"><option value="">Running or not</option><option value="live">Running now</option><option value="idle">Not running</option></select>
+    <span class="grow"></span>
+    <label for="sess-sort">Sort</label><select id="sess-sort"><option value="active">Last active</option><option value="started">Started</option><option value="name">Name A–Z</option><option value="folder">Folder A–Z</option><option value="length">Longest first</option></select>
+    <select id="sess-range" aria-label="How far back"><option value="30">Last 30 days</option><option value="all">All time</option></select>
+  </div>
+  <div id="sess-count" class="faint" role="status"></div>
   <div id="sess-body"></div>
   <p id="sess-status" class="faint" role="status"></p>
 </dialog>

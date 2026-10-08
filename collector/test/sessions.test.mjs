@@ -42,6 +42,40 @@ test('past sessions come newest first with their folder, title and last message'
   assert.equal(sessions[0].at, NOW - 2 * 60_000);
 });
 
+test('each session says when it started, how long it is, its last model and its git branch', () => {
+  const claudeDir = mkdtempSync(join(tmpdir(), 'tracker-sessions-'));
+  const dir = join(claudeDir, 'projects', '-code-app');
+  mkdirSync(dir, { recursive: true });
+  const on = (branch, line) => JSON.stringify({ ...JSON.parse(line), gitBranch: branch });
+  const lines = [
+    JSON.stringify({ type: 'permission-mode', permissionMode: 'default' }), // no time: not when it started
+    on('main', user(NOW - DAY, 'Start here')),
+    on('main', said(NOW - DAY + 1000, 'ok')),
+    JSON.stringify({ type: 'assistant', timestamp: iso(NOW - 3000), gitBranch: 'feature/x', message: { model: 'claude-opus-5-5', content: [{ type: 'text', text: 'done' }] } }),
+    JSON.stringify({ type: 'assistant', timestamp: iso(NOW - 2000), gitBranch: 'feature/x', message: { model: '<synthetic>', content: [{ type: 'text', text: 'API error' }] } }),
+    on('', user(NOW - 1000, 'thanks')),
+  ];
+  writeFileSync(join(dir, `${ID(5)}.jsonl`), `${lines.join('\n')}\n`);
+  const [s] = listSessions({ claudeDir, now: NOW });
+  assert.equal(s.startedAt, NOW - DAY);
+  assert.equal(s.model, 'claude-opus-5-5', 'the last real model, not a synthetic error');
+  assert.equal(s.branch, 'feature/x', 'the last branch named');
+  assert.equal(s.size, `${lines.join('\n')}\n`.length);
+});
+
+test('every session in the time asked for is listed, not only the newest few; Infinity days lists them all', () => {
+  const claudeDir = fixture();
+  const dir = join(claudeDir, 'projects', '-code-many');
+  mkdirSync(dir, { recursive: true });
+  for (let n = 10; n < 110; n++) {
+    const file = join(dir, `${String(n).padStart(8, '0')}-bbbb-4bbb-8ccc-${String(n).padStart(12, '0')}.jsonl`);
+    writeFileSync(file, `${user(NOW - 1000, `task ${n}`, { kind: 'human' }, '/code/many')}\n`);
+    utimesSync(file, new Date(NOW - 1000), new Date(NOW - 1000));
+  }
+  assert.equal(listSessions({ claudeDir, now: NOW }).length, 102);
+  assert.equal(listSessions({ claudeDir, now: NOW, maxAgeDays: Infinity }).length, 103, 'the 90-day-old one too');
+});
+
 test('a file read before is not read again while it is unchanged', () => {
   const claudeDir = fixture();
   const cache = new Map();

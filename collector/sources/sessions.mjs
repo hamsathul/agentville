@@ -39,8 +39,12 @@ function entriesOf(text, { cutStart, cutEnd }) {
 const promptsOf = entries => entries.flatMap(e => parseEntry(e).events.filter(ev => ev.kind === 'prompt').map(ev => ev.text));
 const titleOf = entries => entries.findLast(e => e?.type === 'ai-title' && typeof e.aiTitle === 'string')?.aiTitle ?? null;
 const cwdOf = entries => entries.find(e => typeof e?.cwd === 'string' && e.cwd)?.cwd ?? null;
+const timeOf = e => (typeof e?.timestamp === 'string' ? Date.parse(e.timestamp) : NaN);
+const startOf = entries => entries.map(timeOf).find(Number.isFinite) ?? null;
+const branchOf = entries => entries.findLast(e => typeof e?.gitBranch === 'string' && e.gitBranch)?.gitBranch ?? null;
+const modelOf = entries => entries.findLast(e => e?.type === 'assistant' && typeof e.message?.model === 'string' && !e.message.model.startsWith('<'))?.message.model ?? null;
 
-/** { cwd, title, firstPrompt, lastPrompt } of one transcript, or null when nobody said anything in it. */
+/** { cwd, title, firstPrompt, lastPrompt, startedAt, model, branch } of one transcript, or null when nobody said anything in it. */
 function readSessionInfo(path, size) {
   let head, tail;
   if (size <= HEAD_BYTES + TAIL_BYTES) {
@@ -56,15 +60,18 @@ function readSessionInfo(path, size) {
     title: titleOf(tail) ?? titleOf(head),
     firstPrompt: firstLine(first[0] ?? last[0]),
     lastPrompt: firstLine(last.at(-1) ?? first.at(-1)),
+    startedAt: startOf(head),
+    model: modelOf(tail) ?? modelOf(head), // the model of its last reply
+    branch: branchOf(tail) ?? branchOf(head), // the git branch it was last on
   };
 }
 
 /**
- * Sessions with a transcript changed in the last `maxAgeDays`, newest first:
- * [{ id, cwd, title, firstPrompt, lastPrompt, at }]. `cache` (path → { key, info }) skips files
- * that have not changed since they were last read.
+ * Sessions with a transcript changed in the last `maxAgeDays` (Infinity: all of them), newest first:
+ * [{ id, cwd, title, firstPrompt, lastPrompt, startedAt, model, branch, size, at }]. `cache`
+ * (path → { key, info }) skips files that have not changed since they were last read.
  */
-export function listSessions({ claudeDir, now = Date.now(), maxAgeDays = 30, limit = 80, cache = new Map() }) {
+export function listSessions({ claudeDir, now = Date.now(), maxAgeDays = 30, limit = Infinity, cache = new Map() }) {
   const projects = join(claudeDir, 'projects');
   const files = [];
   let dirs = [];
@@ -95,7 +102,7 @@ export function listSessions({ claudeDir, now = Date.now(), maxAgeDays = 30, lim
       hit = { key, info };
       cache.set(f.path, hit);
     }
-    if (hit.info) out.push({ id: f.id, ...hit.info, at: f.at });
+    if (hit.info) out.push({ id: f.id, ...hit.info, size: f.size, at: f.at });
   }
   return out;
 }

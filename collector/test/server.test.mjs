@@ -34,7 +34,7 @@ async function start() {
       end: async body => { calls.push(['end', body]); return { ok: true }; },
       restart: async body => { calls.push(['restart', body]); return { ok: true }; },
     },
-    pastSessions: async () => ({ terminal: 'iTerm', projects: [{ cwd: '/code/app' }], sessions: [] }),
+    pastSessions: async opts => { calls.push(['pastSessions', opts]); return { terminal: 'iTerm', projects: [{ cwd: '/code/app' }], sessions: [] }; },
   });
   const port = await srv.listen();
   return { srv, port, calls };
@@ -258,6 +258,9 @@ test('past sessions need the token; starting one needs the token and a same-orig
     const list = await request(port, { path: '/api/sessions', headers: { 'x-tracker-token': 'tok' } });
     assert.equal(list.status, 200);
     assert.equal(JSON.parse(list.body).terminal, 'iTerm');
+    await request(port, { path: '/api/sessions?days=all', headers: { 'x-tracker-token': 'tok' } });
+    await request(port, { path: '/api/sessions?days=9999', headers: { 'x-tracker-token': 'tok' } });
+    assert.deepEqual(calls.splice(0), [['pastSessions', { all: false }], ['pastSessions', { all: true }], ['pastSessions', { all: false }]], 'the last 30 days, unless all are asked for');
     const origin = `http://127.0.0.1:${port}`;
     const body = JSON.stringify({ cwd: '/code/app' });
     assert.equal((await request(port, { method: 'POST', path: '/api/actions/start', headers: { 'x-tracker-token': 'tok', origin: 'https://evil.example', 'content-type': 'application/json' }, body })).status, 403);

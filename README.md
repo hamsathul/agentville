@@ -63,7 +63,8 @@ It listens on `127.0.0.1` only and reads what Claude Code already writes to disk
 - Ask a session a side question (`/btw`) without interrupting or adding to its conversation.
 
 **Steer your sessions**
-- Start a new session in a folder you've worked in, or resume one from the last 30 days, in the
+- Start a new session in a folder you've worked in, or find a past one (search, filter by folder,
+  model, branch or running, sort by activity, start, name, folder or length) and resume it, in the
   permission mode, model and effort you choose.
 - Switch a running session's model or effort, restart it in another permission mode, or end it
   (its terminal window closes too).
@@ -240,8 +241,16 @@ run `/reload-plugins` in it.
 
 ### Starting, resuming, ending and restarting sessions
 
-- **＋ Session** starts Claude Code in a folder you have worked in, or resumes a session from the
-  last 30 days, found by its title and last message.
+- **＋ Session** starts Claude Code in a folder you have worked in, or resumes a past session.
+  - **Search** matches titles, messages, folders and git branches.
+  - **Filters**: folder (it narrows the folders to start in too), the model it last ran on, its git
+    branch, and running or not. Each choice says how many sessions it holds; **Clear filters**
+    resets them.
+  - **Sort** by last active, started, name, folder or length (the transcript's size).
+  - **Range**: the last 30 days, or **All time**. The list says how many it shows of how many, and
+    the sort and range are kept for next time.
+  - Each past session shows its folder, branch, model, length, and when it started and was last
+    active.
   - You pick the permission mode, model and effort. Model and effort apply to that session only
     (`--model`, `--effort`), not your defaults.
   - It opens a new Terminal or iTerm window (the `terminal` setting), and the window closes when
