@@ -81,6 +81,8 @@ It listens on `127.0.0.1` only and reads what Claude Code already writes to disk
 - Browse an agent's folder with git status, its scratchpad and its memory (CLAUDE.md, auto
   memory, the summary it keeps after a compaction).
 - Open specs and plans it wrote, quote a passage and reply about it.
+- See pictures, PDFs, video, audio, HTML pages (as the page itself), Word documents and
+  spreadsheets as themselves, not as code.
 
 **Get told when it matters**
 - macOS notifications when an agent needs you, finishes, collides with another or runs hot.
@@ -311,12 +313,28 @@ The **⚙ Claude Code** button in the top bar opens your Claude Code setup in th
 
 ### Files, documents and quoting
 
-- Click a file in the explorer to open it read-only in a tab: markdown is rendered, and code gets
-  line numbers. In the farm view it opens in a dialog over the farm instead, which stays (**Open in
-  a tab** moves it to the list view).
+- Click a file in the explorer to open it read-only in a tab. In the farm view it opens in a dialog
+  over the farm instead, which stays (**Open in a tab** moves it to the list view).
+- Each kind of file shows as itself:
+
+  | File | Shown as |
+  |---|---|
+  | Markdown | rendered |
+  | Code, including React (`.jsx`, `.tsx`) | text with line numbers |
+  | Pictures (png, jpg, gif, webp, svg…) | the picture, fitted, on a checkerboard, with its size |
+  | PDF | the browser's PDF viewer, with pages, zoom and search |
+  | Video and audio | a player that seeks |
+  | HTML | **Preview**: the page itself, with the CSS, scripts and pictures beside it, sealed off from the dashboard. Or **Source** |
+  | Word (docx, doc, rtf, odt) | **Page**: its headings, lists and tables, read by macOS's `textutil`. Or **Text** |
+  | Excel (xlsx) and CSV | tables with column letters and row numbers, a tab per sheet, values as Excel shows them |
+  | PowerPoint, Keynote, Pages, Numbers… | a picture of the first page, made by Quick Look |
+  | Anything else (zip, fonts…) | a note saying it can't be shown |
+
+- **Show in Finder** reveals the file, to open it in its own app. It never opens or runs it.
 - **Documents** lists the specs, plans and other markdown files the agent wrote or read.
-- In any open file, select a passage and **Quote** it, then reply. Quotes from code keep their
-  line numbers, and the agent gets your reply as a message about that file.
+- In a file with text (code, markdown, a page's Source, a document's Text, a sheet), select a
+  passage and **Quote** it, then reply. Quotes from code keep their line numbers, and the agent
+  gets your reply as a message about that file. The reply box is there for every kind.
 
 ### The farm view
 
@@ -472,6 +490,13 @@ canvas, with its text drawn as HTML on top so it stays crisp.
   start, end, switch…) also needs a same-origin request.
 - The explorer shows what git shows. Ignored files (`node_modules`, `.env`, build output) and
   files that look like secrets (`.env*`, keys) are neither listed nor served.
+- Pictures, PDFs, players and page previews load through links that are random, last 10 minutes
+  and open one file (a page's preview: its folder, under the same rules). An `<img>` or a player
+  can't send the token, so the link stands in for it.
+- Those files are served with their real type and `nosniff`, so a browser never runs one as
+  something else, and in a sandbox. A previewed page's scripts run in an origin of their own,
+  without the dashboard, its token or its data, and can load the files beside it but not read
+  them. A Word document's page shows with no scripts at all.
 - Files you attach are kept under `state/uploads/` for 7 days.
 - The ⚙ Claude Code dialog runs `claude plugin …` and `claude mcp …` for you, and removing a rule
   edits that one entry in its settings file. A server's full command line or URL is never shown,
@@ -500,8 +525,12 @@ canvas, with its text drawn as HTML on top so it stays crisp.
   with no tool call open).
 - A project is a folder holding sibling repos. Your home folder and catch-all folders like `~/code`
   or `~/tools` are never a project.
-- The explorer skips files over 2 MB and binary files, lists at most 5,000 files, and stays off for
-  an agent working in your home folder.
+- Text files over 2 MB aren't shown. Pictures, PDFs, video and audio go up to 200 MB, documents
+  and sheets up to 50 MB.
+- Sheets show their first 2,000 rows and 100 columns, without colours, merged cells or charts, and
+  a formula's last saved result. A Word page loses its layout (headers, footers, page breaks) and
+  its pictures. Word pages and first-page pictures need macOS's `textutil` and Quick Look.
+- The explorer lists at most 5,000 files, and stays off for an agent working in your home folder.
 - "Documents" and the explorer's dots come from the agent's Write, Edit and Read tool calls (not
   shell commands).
 - claude.ai cloud sessions and Remote Control sessions on other machines aren't visible locally.

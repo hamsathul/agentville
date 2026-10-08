@@ -1,7 +1,7 @@
-import { appendFileSync, existsSync, mkdirSync, readFileSync, readdirSync, realpathSync, renameSync, statSync, unlinkSync, watch, writeFileSync } from 'node:fs';
+import { appendFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, realpathSync, renameSync, rmSync, statSync, unlinkSync, watch, writeFileSync } from 'node:fs';
 import { randomBytes } from 'node:crypto';
-import { cpus, homedir, totalmem } from 'node:os';
-import { basename, dirname, join } from 'node:path';
+import { cpus, homedir, tmpdir, totalmem } from 'node:os';
+import { basename, dirname, isAbsolute, join, relative, resolve, sep } from 'node:path';
 import { loadConfig, mergeConfig } from './config.mjs';
 import { run } from './lib/exec.mjs';
 import { TailReader } from './lib/tail-reader.mjs';
@@ -14,7 +14,8 @@ import { childrenIndex, findCodexRoots, findPidByArg, readPs, treeStats } from '
 import { GIT_ENV, RepoResolver, githubSlug, repoStatus } from './sources/git.mjs';
 import { deployStatus, pullRequests } from './sources/gh.mjs';
 import { confirmDelivery, modAtLeast, readBeacons, readPending, readReplies, validateAnswers, writeAnswerFile, writeMessageFile, writeRequestFile } from './sources/pending.mjs';
-import { listFolder, parsePorcelain, readFolderFile } from './sources/files.mjs';
+import { checkFolderFile, listFolder, parsePorcelain, readFolderFile } from './sources/files.mjs';
+import { contentTypeOf, parseCsv, readXlsx, viewOf } from './sources/previews.mjs';
 import { repoFiles } from './derive/repo-files.mjs';
 import { checkFiles, pruneUploads, saveFiles, withAttachments } from './sources/uploads.mjs';
 import { compactSummary, memoryFiles, scratchpadOf } from './sources/memory.mjs';
@@ -69,7 +70,20 @@ function loadToken(path) {
   return token;
 }
 
-export async function startCollector({ root, claudeDir = join(homedir(), '.claude'), claudeBin = 'claude', home = homedir(), scratchBase = `/private/tmp/claude-${process.getuid?.() ?? 0}`, port: portOverride, deliveryTimeoutMs = 5000, notify = notifyMac, launch = args => run('osascript', args, { timeoutMs: 15_000 }), sessionProcs = systemProcs, endWaitMs = 8000, readProcs = readPs, deployStatusOf = deployStatus, pullRequestsOf = pullRequests, githubSlugOf = githubSlug, log = makeLogger(join(root, 'logs')) }) {
+/** Quick Look's picture of a document's first page (qlmanage -t), as PNG bytes. */
+async function quickLookPicture(real) {
+  const dir = mkdtempSync(join(tmpdir(), 'agentville-ql-'));
+  try {
+    const r = await run('qlmanage', ['-t', '-s', '1600', '-o', dir, real], { timeoutMs: 30_000 });
+    const png = join(dir, `${basename(real)}.png`);
+    if (!existsSync(png)) throw new Error(r.stderr.trim().split('\n')[0] || 'no picture');
+    return readFileSync(png);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+}
+
+export async function startCollector({ root, claudeDir = join(homedir(), '.claude'), claudeBin = 'claude', home = homedir(), scratchBase = `/private/tmp/claude-${process.getuid?.() ?? 0}`, port: portOverride, deliveryTimeoutMs = 5000, notify = notifyMac, launch = args => run('osascript', args, { timeoutMs: 15_000 }), sessionProcs = systemProcs, endWaitMs = 8000, readProcs = readPs, deployStatusOf = deployStatus, pullRequestsOf = pullRequests, githubSlugOf = githubSlug, ticketMs = 600_000, quickLook = quickLookPicture, revealFile = real => run('open', ['-R', real], { timeoutMs: 10_000 }), log = makeLogger(join(root, 'logs')) }) {
   // readProcs, deployStatusOf, pullRequestsOf and githubSlugOf read the machine and GitHub; a test or the demo video passes stand-ins.
   const stateDir = join(root, 'state');
   const pendingDir = join(stateDir, 'pending');
@@ -494,11 +508,88 @@ export async function startCollector({ root, claudeDir = join(homedir(), '.claud
     };
   }
 
+  /** The folder a file of the agent's may be shown from: its memory's, its scratchpad, or its working folder; else null. */
+  function fileRoot(agentId, path) {
+    const agent = snapshot?.agents.find(a => a.id === agentId);
+    if (!agent || typeof path !== 'string') return null;
+    if (agent.kind !== 'codex' && memoryOf(agent).some(m => m.path === path)) return dirname(path);
+    const scratchRoot = agent.kind === 'codex' ? null : scratchpadOf(agentId, scratchBase, agent.cwd);
+    if (scratchRoot && path.startsWith(`${scratchRoot}/`)) return scratchRoot;
+    if (browsable(agent) && path.startsWith(`${agent.cwd}/`)) return agent.cwd;
+    return null;
+  }
+  const OUTSIDE = { status: 403, error: "That file is outside the agent's folder." };
+
+  // ---- Files that aren't text: their bytes through short-lived links, documents read for the reader ----
+  // An <img>, <video> or the PDF viewer can't send the page's token, so a file's bytes are reached
+  // through a link that is random, lasts ticketMs, and opens one file, or (for a page's preview)
+  // whatever the same rules allow in the agent's folder, so the page loads what sits beside it.
+  const RAW_MAX = 200 * 1024 * 1024;
+  const tickets = new Map(); // id → { root, file (one file) | null (the folder's), until }
+  async function fileTicket(agentId, path, { folder = false } = {}) {
+    const root = fileRoot(agentId, path);
+    if (!root) return OUTSIDE;
+    const ok = await checkFolderFile(root, path);
+    if (ok.error) return ok;
+    if (ok.size > RAW_MAX) return { status: 413, error: 'That file is too large to show here (200 MB at most).' };
+    const now = Date.now();
+    for (const [k, t] of tickets) if (t.until < now) tickets.delete(k);
+    const id = randomBytes(16).toString('hex');
+    tickets.set(id, { root, file: folder ? null : ok.real, until: now + ticketMs });
+    const rel = folder ? relative(realpathSync(root), ok.real) : basename(ok.real);
+    return { url: `/raw/${id}/${rel.split(sep).map(encodeURIComponent).join('/')}`, type: contentTypeOf(ok.real), size: ok.size };
+  }
+  /** What a link opens: { real, type, size } of the file, or { status, error }. `rel` is the path after the link's id, decoded. */
+  async function rawFile(id, rel) {
+    const t = tickets.get(id);
+    if (!t || t.until < Date.now()) { tickets.delete(id); return { status: 404, error: 'That link has expired: open the file again.' }; }
+    const abs = resolve(t.root, rel), inside = relative(t.root, abs);
+    if (!t.file && (!inside || inside.startsWith('..') || isAbsolute(inside))) return OUTSIDE; // said before whether it exists
+    const ok = t.file ? { real: t.file } : await checkFolderFile(t.root, abs);
+    if (ok.error) return ok;
+    try {
+      const size = statSync(ok.real).size;
+      return size > RAW_MAX ? { status: 413, error: 'That file is too large to show here (200 MB at most).' } : { real: ok.real, type: contentTypeOf(ok.real), size };
+    } catch {
+      return { status: 404, error: 'That file no longer exists.' };
+    }
+  }
+  /** A document read for the reader: a sheet's tables, a Word document as a page and as text, or a first-page picture. */
+  async function officeView(agentId, path) {
+    const root = fileRoot(agentId, path);
+    if (!root) return OUTSIDE;
+    const ok = await checkFolderFile(root, path);
+    if (ok.error) return ok;
+    const view = viewOf(ok.real);
+    if (ok.size > 50 * 1024 * 1024) return { status: 413, error: 'That document is too large to read here (50 MB at most).' };
+    if (view === 'sheet' && /\.csv$/i.test(ok.real)) {
+      const rows = parseCsv(readFileSync(ok.real, 'utf8'));
+      return { view: 'sheet', sheets: [{ name: basename(ok.real), rows: rows.slice(0, 2000).map(r => r.slice(0, 100)), truncated: rows.length > 2000 || rows.some(r => r.length > 100) }] };
+    }
+    if (view === 'sheet') {
+      const book = readXlsx(readFileSync(ok.real));
+      return book.error ? { status: 415, error: book.error } : { view: 'sheet', sheets: book.sheets };
+    }
+    if (view === 'word') { // macOS's textutil: the document as a page, and as plain text to quote from
+      const [html, text] = await Promise.all(['html', 'txt'].map(as => run('textutil', ['-convert', as, '-stdout', ok.real], { timeoutMs: 30_000 })));
+      if (html.code !== 0) return { status: 415, error: `macOS could not read this document (${html.stderr.trim().split('\n')[0] || `exit ${html.code}`}).` };
+      return { view: 'word', html: html.stdout, text: text.code === 0 ? text.stdout : '' };
+    }
+    if (view === 'office') {
+      try {
+        return { view: 'picture', picture: `data:image/png;base64,${(await quickLook(ok.real)).toString('base64')}` };
+      } catch (err) {
+        return { status: 415, error: `Quick Look could not make a picture of it (${err.message}).` };
+      }
+    }
+    return { status: 415, error: 'This is not a document to read this way.' };
+  }
+
   /** A file from the agent's folder or scratchpad, its memory, its conversation summary, or a document it opened. */
   async function readFile(agentId, path) {
     const agent = snapshot?.agents.find(a => a.id === agentId);
     if (!agent) return { status: 404, error: 'That agent was not found.' };
-    if (typeof path !== 'string') return { status: 403, error: "That file is outside the agent's folder." };
+    if (typeof path !== 'string') return OUTSIDE;
     if (path === '@summary') {
       const transcript = sessions.get(agentId)?.path;
       const summary = transcript ? compactSummary(transcript) : null;
@@ -506,10 +597,8 @@ export async function startCollector({ root, claudeDir = join(homedir(), '.claud
         ? { doc: { path, text: summary.text, mtimeMs: summary.at, size: summary.text.length } }
         : { status: 404, error: "This session hasn't been compacted yet, so it still holds the whole conversation. Open Full transcript to read it." };
     }
-    if (agent.kind !== 'codex' && memoryOf(agent).some(m => m.path === path)) return readFolderFile(dirname(path), path);
-    const scratchRoot = agent.kind === 'codex' ? null : scratchpadOf(agentId, scratchBase, agent.cwd);
-    if (scratchRoot && path.startsWith(`${scratchRoot}/`)) return readFolderFile(scratchRoot, path);
-    if (browsable(agent) && path.startsWith(`${agent.cwd}/`)) return readFolderFile(agent.cwd, path);
+    const folder = fileRoot(agentId, path);
+    if (folder) return readFolderFile(folder, path);
     const doc = readDoc(agentId, path);
     return doc.doc ? doc : { status: 403, error: "That file is outside the agent's folder." };
   }
@@ -756,6 +845,15 @@ export async function startCollector({ root, claudeDir = join(homedir(), '.claud
       if (body.decision === 'always' && !modAtLeast(agent?.mod?.version, '0.6.0')) return { ok: false, error: `That session runs an older tracker mod (${agent?.mod?.version}). Run /reload-plugins in it (or resume it) for Always allow.` };
       return deliver(ask.toolUseId, { decision: body.decision });
     },
+    /** Shows a file of the agent's in Finder (open -R): only reveals it, never opens or runs it. */
+    async reveal(body) {
+      const root = fileRoot(body?.agentId, body?.path);
+      if (!root) return { ok: false, error: OUTSIDE.error };
+      const ok = await checkFolderFile(root, body.path);
+      if (ok.error) return { ok: false, error: ok.error };
+      const r = await revealFile(ok.real);
+      return r.code === 0 ? { ok: true } : { ok: false, error: 'Finder could not show it.' };
+    },
     /** Turns an installed plugin on or off, updates or uninstalls it (claude plugin …). */
     async plugin(body) {
       if (!['enable', 'disable', 'update', 'uninstall'].includes(body?.op)) return { ok: false, error: 'Enable, disable, update or uninstall.' };
@@ -834,7 +932,7 @@ export async function startCollector({ root, claudeDir = join(homedir(), '.claud
     port: portOverride ?? cfg.port, token, webFile: join(root, 'web', 'index.html'),
     getSnapshot: () => snapshot,
     getFeed: (id, limit) => modelFor(id)?.history(limit) ?? null,
-    getConversation, getSubagent, claudePlugins, claudeMcp, claudeRules,
+    getConversation, getSubagent, claudePlugins, claudeMcp, claudeRules, fileTicket, rawFile, officeView,
     getTranscriptHtml, getDoc: readDoc, listFiles, readFile, repoTouched, actions, pastSessions, log,
   });
   const port = await server.listen();
@@ -872,5 +970,5 @@ export async function startCollector({ root, claudeDir = join(homedir(), '.claud
     await server.close();
   }
 
-  return { port, getSnapshot: () => snapshot, reloadConfig, actions, pastSessions, getConversation, claudePlugins, claudeMcp, claudeRules, readDoc, listFiles, readFile, repoTouched, stop };
+  return { port, getSnapshot: () => snapshot, reloadConfig, actions, pastSessions, getConversation, claudePlugins, claudeMcp, claudeRules, fileTicket, rawFile, officeView, readDoc, listFiles, readFile, repoTouched, stop };
 }

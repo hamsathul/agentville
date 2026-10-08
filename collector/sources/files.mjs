@@ -103,8 +103,12 @@ export async function listFolder(cwd, { home = homedir(), runner = run, max = MA
   return { git: true, files, status, repos: [{ path: '', top: repo.top, name: repo.name, branch: repo.branch }], truncated: repo.files.length > max };
 }
 
-/** One file from the agent's folder, under the same rules the listing follows. */
-export async function readFolderFile(cwd, path, { runner = run, maxBytes = MAX_BYTES } = {}) {
+/**
+ * Whether a file may be shown, under the rules the listing follows: inside the folder (links
+ * followed), not git's own, not one that may hold secrets, not one git ignores or in a skipped
+ * folder. { real, size, mtimeMs } (its real path), or { status, error }.
+ */
+export async function checkFolderFile(cwd, path, { runner = run } = {}) {
   const outside = { status: 403, error: "That file is outside the agent's folder." };
   if (typeof path !== 'string' || !isAbsolute(path)) return outside;
   try {
@@ -126,10 +130,22 @@ export async function readFolderFile(cwd, path, { runner = run, maxBytes = MAX_B
     }
     const st = statSync(real);
     if (!st.isFile()) return { status: 403, error: 'Only files can be shown here.' };
-    if (st.size > maxBytes) return { status: 413, error: 'That file is too large to show here (2 MB at most).' };
-    const buf = readFileSync(real);
+    return { real, size: st.size, mtimeMs: st.mtimeMs };
+  } catch (err) {
+    if (err?.code === 'ENOENT') return { status: 404, error: 'That file no longer exists.' };
+    return { status: 500, error: `Could not read it (${err?.code ?? err?.message}).` };
+  }
+}
+
+/** One text file from the agent's folder, under those rules: 2 MB at most, and not binary. */
+export async function readFolderFile(cwd, path, { runner = run, maxBytes = MAX_BYTES } = {}) {
+  const ok = await checkFolderFile(cwd, path, { runner });
+  if (ok.error) return ok;
+  if (ok.size > maxBytes) return { status: 413, error: 'That file is too large to show here (2 MB at most).' };
+  try {
+    const buf = readFileSync(ok.real);
     if (buf.subarray(0, 8000).includes(0)) return { status: 415, error: "This is a binary file, so it isn't shown here." };
-    return { doc: { path, text: buf.toString('utf8'), mtimeMs: st.mtimeMs, size: st.size } };
+    return { doc: { path, text: buf.toString('utf8'), mtimeMs: ok.mtimeMs, size: ok.size } };
   } catch (err) {
     if (err?.code === 'ENOENT') return { status: 404, error: 'That file no longer exists.' };
     return { status: 500, error: `Could not read it (${err?.code ?? err?.message}).` };

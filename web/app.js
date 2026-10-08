@@ -397,6 +397,9 @@ document.addEventListener('click', async e => {
   if (el.id === 'reader-reload') { await loadDoc({ keepScroll: true }); return; }
   if (el.id === 'reader-quote') { quoteSelection(); return; }
   if (el.id === 'reader-send') { await sendReaderReply(); return; }
+  if (d.readerMode) { await setReaderMode(d.readerMode); return; }
+  if (d.sheet !== undefined) { showSheet(Number(d.sheet)); return; }
+  if (d.readerReveal !== undefined) { await revealReaderFile(); return; }
   if (el.id === 'ask-send') {
     el.disabled = true;
     el.textContent = 'Sending…';
@@ -459,6 +462,8 @@ document.addEventListener('pointerup', () => {
 });
 document.addEventListener('focusout', () => setTimeout(() => { if (isRenderPending) requestRender(); }, 0));
 document.addEventListener('selectionchange', () => { if (isRenderPending && !hasSelection()) requestRender(); });
+// A picture in the reader says its own size once it has loaded (load doesn't bubble, so it is caught on the way down).
+document.addEventListener('load', e => { if (e.target?.id === 'reader-img') noteImageSize(e.target); }, true);
 document.addEventListener('selectionchange', captureReaderSelection);
 
 // Answer drafts survive the drawer re-rendering on every snapshot.

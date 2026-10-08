@@ -338,6 +338,28 @@ pre.code { margin: 0; padding: 8px 0 16px; font: 12.5px/1.55 ui-monospace, SFMon
 pre.code .l { display: block; min-height: 1.55em; padding-right: 16px; white-space: pre; }
 pre.code .l::before { content: attr(data-n); display: inline-block; width: 5ch; margin-right: 14px; padding-right: 8px; text-align: right; color: var(--faint); border-right: 1px solid var(--grid); user-select: none; }
 pre.code .l:hover { background: var(--panel-2); }
+/* files that aren't text: a picture fitted on a checkerboard, a player, a page or a PDF filling the panel, a sheet */
+#reader-body.mediaview { padding: 0; display: flex; flex-direction: column; }
+.media { flex: 1; min-height: 0; display: flex; align-items: center; justify-content: center; padding: 16px; overflow: auto; }
+.media img, .media video { max-width: 100%; max-height: 100%; object-fit: contain; }
+.media video { background: #000; border-radius: 6px; }
+.media audio { width: min(560px, 100%); }
+img.checker { background: repeating-conic-gradient(var(--grid) 0 25%, var(--panel) 0 50%) 0 0 / 16px 16px; box-shadow: 0 0 0 1px var(--line); }
+img.page-pic { background: #fff; box-shadow: 0 1px 6px rgba(0, 0, 0, .25); }
+.media-meta { flex: none; text-align: center; font-size: 12px; padding: 0 12px 10px; }
+.media-frame { flex: 1; min-height: 0; width: 100%; border: 0; display: block; }
+.media-frame.page { background: #fff; }
+.doc-text { max-width: 780px; white-space: pre-wrap; overflow-wrap: anywhere; }
+#reader-body.sheetview { padding: 0; overflow: hidden; display: flex; flex-direction: column; }
+.sheet-tabs { flex: none; align-self: flex-start; max-width: calc(100% - 24px); overflow-x: auto; margin: 8px 12px; }
+.sheet-wrap { flex: 1; min-height: 0; overflow: auto; }
+table.sheet { border-collapse: separate; border-spacing: 0; font-size: 12.5px; }
+table.sheet th, table.sheet td { border-right: 1px solid var(--grid); border-bottom: 1px solid var(--grid); padding: 3px 8px; white-space: nowrap; max-width: 360px; overflow: hidden; text-overflow: ellipsis; text-align: left; }
+table.sheet td.num { text-align: right; font-variant-numeric: tabular-nums; }
+table.sheet th { background: var(--panel-2); color: var(--faint); font-weight: 600; text-align: center; }
+table.sheet thead th { position: sticky; top: 0; z-index: 1; }
+table.sheet tbody th { position: sticky; left: 0; }
+table.sheet thead th:first-child { left: 0; z-index: 2; }
 .md { max-width: 780px; font-size: 14.5px; line-height: 1.6; overflow-wrap: anywhere; }
 .md h1, .md h2, .md h3, .md h4, .md h5, .md h6 { line-height: 1.25; margin: 1.3em 0 .5em; }
 .md h1 { font-size: 1.7em; }

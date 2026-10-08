@@ -7,6 +7,12 @@ import { join } from 'node:path';
 import { createTrackerServer } from '../server.mjs';
 import { renderTranscriptPage } from '../transcript-page.mjs';
 
+const RAW_DIR = mkdtempSync(join(tmpdir(), 'tracker-raw-'));
+writeFileSync(join(RAW_DIR, 'clip.mp4'), '0123456789');
+writeFileSync(join(RAW_DIR, 'page.html'), '<h1>Hi</h1>');
+const RAW = { clip: join(RAW_DIR, 'clip.mp4'), page: join(RAW_DIR, 'page.html'), doc: join(RAW_DIR, 'clip.mp4') };
+const RAW_TYPE = { clip: 'video/mp4', page: 'text/html; charset=utf-8', doc: 'application/pdf' };
+
 async function start() {
   const calls = [];
   const webFile = join(mkdtempSync(join(tmpdir(), 'tracker-web-')), 'index.html');
@@ -35,11 +41,15 @@ async function start() {
       end: async body => { calls.push(['end', body]); return { ok: true }; },
       restart: async body => { calls.push(['restart', body]); return { ok: true }; },
       plugin: async body => { calls.push(['plugin', body]); return { ok: true }; },
+      reveal: async body => { calls.push(['reveal', body]); return { ok: true }; },
       reload: async () => { calls.push(['reload']); return { ok: true, sessions: 2 }; },
       mcp: async body => { calls.push(['mcp', body]); return { ok: true }; },
       rule: async body => { calls.push(['rule', body]); return { ok: true }; },
     },
     getSubagent: id => (id === 's1:tA' ? { prompt: 'Find callers', result: null, feed: [] } : null),
+    fileTicket: async (id, path, opts) => { calls.push(['ticket', id, path, opts]); return { url: '/raw/abc/x.png', type: 'image/png', size: 10 }; },
+    officeView: async (id, path) => ({ view: 'sheet', sheets: [{ name: path, rows: [], truncated: false }] }),
+    rawFile: async (id, rel) => (RAW[id] ? { real: RAW[id], type: RAW_TYPE[id], size: 10 } : { status: 404, error: 'That link has expired: open the file again.' }),
     claudePlugins: async () => ({ plugins: [{ id: 'alpha@m' }], skills: [] }),
     claudeMcp: async opts => { calls.push(['claudeMcp', opts]); return { servers: [], projects: [] }; },
     claudeRules: () => ({ files: [] }),
@@ -279,6 +289,42 @@ test("Claude Code's setup is read only with the token, and changed only with the
       assert.equal((await request(port, { method: 'POST', path, headers: { ...headers, origin, 'content-type': 'application/json' }, body })).status, 200, path);
     }
     assert.deepEqual(calls.map(c => c[0]), ['plugin', 'reload', 'mcp', 'rule']);
+  } finally {
+    await srv.close();
+  }
+});
+
+test("a file's link and a document's reading need the token; its bytes need only the link, served so they never run as the dashboard", async () => {
+  const { srv, port, calls } = await start();
+  try {
+    const headers = { 'x-tracker-token': 'tok' };
+    for (const path of ['/api/agent/s1/ticket?path=%2Fw%2Fx.png', '/api/agent/s1/office?path=%2Fw%2Fb.xlsx']) assert.equal((await request(port, { path })).status, 403, path);
+    assert.deepEqual(JSON.parse((await request(port, { path: '/api/agent/s1/ticket?path=%2Fw%2Fx.png&folder=1', headers })).body).url, '/raw/abc/x.png');
+    assert.deepEqual(calls.at(-1), ['ticket', 's1', '/w/x.png', { folder: true }]);
+    assert.equal(JSON.parse((await request(port, { path: '/api/agent/s1/office?path=%2Fw%2Fb.xlsx', headers })).body).view, 'sheet');
+
+    const clip = await request(port, { path: '/raw/clip/clip.mp4' });
+    assert.equal(clip.status, 200);
+    assert.equal(clip.body, '0123456789');
+    assert.deepEqual([clip.headers['content-type'], clip.headers['x-content-type-options'], clip.headers['content-security-policy'], clip.headers['accept-ranges'], clip.headers['cache-control']],
+      ['video/mp4', 'nosniff', 'sandbox', 'bytes', 'no-store']);
+    const part = await request(port, { path: '/raw/clip/clip.mp4', headers: { range: 'bytes=2-5' } });
+    assert.deepEqual([part.status, part.body, part.headers['content-range']], [206, '2345', 'bytes 2-5/10'], 'a player seeks with ranges');
+    assert.equal((await request(port, { path: '/raw/clip/clip.mp4', headers: { range: 'bytes=20-30' } })).status, 416);
+    const page = await request(port, { path: '/raw/page/page.html' });
+    assert.equal(page.headers['content-security-policy'], 'sandbox allow-scripts', 'a page runs its scripts, in a sandbox of its own');
+    const from = dest => request(port, { path: '/raw/page/page.html', headers: { origin: 'null', 'sec-fetch-dest': dest } });
+    assert.equal((await from('script')).headers['access-control-allow-origin'], 'null', 'its own module scripts load from its sandbox');
+    assert.equal((await from('font')).headers['access-control-allow-origin'], 'null', 'and its fonts');
+    assert.equal((await from('empty')).headers['access-control-allow-origin'], undefined, "but its scripts can't fetch() and read the files beside it");
+    assert.equal((await request(port, { path: '/raw/doc/a.pdf' })).headers['content-security-policy'], undefined, "the PDF viewer won't open in a sandbox");
+    assert.equal((await request(port, { path: '/raw/nope/x' })).status, 404);
+
+    const origin = `http://127.0.0.1:${port}`;
+    const body = JSON.stringify({ agentId: 's1', path: '/w/x.png' });
+    assert.equal((await request(port, { method: 'POST', path: '/api/actions/reveal', headers: { ...headers, origin: 'https://evil.example', 'content-type': 'application/json' }, body })).status, 403);
+    assert.equal((await request(port, { method: 'POST', path: '/api/actions/reveal', headers: { ...headers, origin, 'content-type': 'application/json' }, body })).status, 200);
+    assert.deepEqual(calls.at(-1), ['reveal', { agentId: 's1', path: '/w/x.png' }]);
   } finally {
     await srv.close();
   }

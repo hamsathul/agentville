@@ -1714,3 +1714,127 @@ test('in the farm, a file opens in a dialog over it, and the farm stays: the sam
   assert.equal(page.el('main').dataset.view, 'list', 'Open in a tab: the list view');
   assert.match(page.tabs(), /class="tab on"><button type="button" data-tab="\/w\/src\/app\.ts"/);
 });
+
+/* ---------- files that are not text: pictures, players, PDFs, pages, documents, sheets ---------- */
+
+const linkOf = (path, folder = false) => `/api/agent/r1/ticket?path=${encodeURIComponent(path)}${folder ? '&folder=1' : ''}`;
+const officeOf = path => `/api/agent/r1/office?path=${encodeURIComponent(path)}`;
+
+test('each kind of file is shown as itself, matching what the collector serves', async () => {
+  const { VIEWS } = await import('../sources/previews.mjs');
+  const page = loadPage();
+  for (const [view, exts] of Object.entries(VIEWS)) for (const ext of exts) assert.equal(page.ctx.viewKind(`/w/x.${ext.toUpperCase()}`), view, ext);
+  assert.deepEqual(['/w/app.tsx', '/w/notes.md', '@summary', '/w/Makefile'].map(p => page.ctx.viewKind(p)), ['text', 'text', 'text', 'text']);
+});
+
+test('a picture, a PDF, a video and a song open through a short-lived link: the picture on a checkerboard with its size, the rest in players', async () => {
+  const replies = {
+    [linkOf('/w/shot.png')]: { url: '/raw/t1/shot.png', type: 'image/png', size: 2048 },
+    [linkOf('/w/r.pdf')]: { url: '/raw/t2/r.pdf', type: 'application/pdf', size: 90_000 },
+    [linkOf('/w/demo.mp4')]: { url: '/raw/t3/demo.mp4', type: 'video/mp4', size: 5_000_000 },
+    [linkOf('/w/song.mp3')]: { url: '/raw/t4/song.mp3', type: 'audio/mpeg', size: 3_000_000 },
+  };
+  const page = loadPage({ replies });
+  page.push(richSnapshot([richAgent({ mod: { version: '0.6.1', live: true } })]));
+  await page.ctx.openFile('r1', '/w/shot.png');
+  await page.settle();
+  assert.match(page.el('reader-body').innerHTML, /<img[^>]*class="checker"[^>]*src="\/raw\/t1\/shot\.png"/);
+  assert.match(page.el('reader-body').innerHTML, /id="reader-media-meta"[^>]*>2 KB</);
+  assert.match(page.tabs(), /🖼 shot\.png/);
+  assert.ok(page.gets.find(g => g.path === linkOf('/w/shot.png'))?.token, 'the link is asked for with the token');
+  assert.match(page.side(), /id="reader-text"/, 'the reply box stays');
+  assert.doesNotMatch(page.side(), /id="reader-quote"/, 'nothing to quote in a picture');
+  assert.match(page.side(), /data-reader-reveal[^>]*>Show in Finder/);
+
+  await page.ctx.openFile('r1', '/w/r.pdf');
+  await page.settle();
+  assert.match(page.el('reader-body').innerHTML, /<iframe class="media-frame" src="\/raw\/t2\/r\.pdf" title="r\.pdf"><\/iframe>/, "the browser's PDF viewer");
+  await page.ctx.openFile('r1', '/w/demo.mp4');
+  await page.settle();
+  assert.match(page.el('reader-body').innerHTML, /<video[^>]*controls[^>]*src="\/raw\/t3\/demo\.mp4"/);
+  await page.ctx.openFile('r1', '/w/song.mp3');
+  await page.settle();
+  assert.match(page.el('reader-body').innerHTML, /<audio[^>]*controls[^>]*src="\/raw\/t4\/song\.mp3"/);
+});
+
+test('a page shows as itself in a sandbox, loading what sits beside it; Source shows its code, to quote', async () => {
+  const replies = { [linkOf('/w/site/index.html', true)]: { url: '/raw/t5/site/index.html', type: 'text/html; charset=utf-8', size: 300 } };
+  const page = loadPage({ replies, files: { '/w/site/index.html': '<h1>Hi</h1>\n<script src="app.js"></script>' } });
+  page.push(richSnapshot([richAgent({ mod: { version: '0.6.1', live: true } })]));
+  await page.ctx.openFile('r1', '/w/site/index.html');
+  await page.settle();
+  assert.match(page.el('reader-body').innerHTML, /<iframe class="media-frame page" sandbox="allow-scripts" src="\/raw\/t5\/site\/index\.html"/, 'its scripts run, never as the dashboard');
+  assert.match(page.side(), /data-reader-mode="preview" aria-pressed="true"/);
+  assert.doesNotMatch(page.side(), /id="reader-quote"/);
+  await page.clickButton('mode-btn', { readerMode: 'source' });
+  await page.settle();
+  assert.match(page.el('reader-body').innerHTML, /data-n="1">&lt;h1&gt;Hi&lt;\/h1&gt;/);
+  assert.match(page.side(), /data-reader-mode="source" aria-pressed="true"[\s\S]*id="reader-quote"/);
+  await page.ctx.openFile('r1', '/w/site/index.html'); // the same file again: still its source
+  await page.settle();
+  assert.match(page.el('reader-body').innerHTML, /data-n="1">/);
+});
+
+test('a Word document shows as a page, sealed off, or as its words to quote', async () => {
+  const replies = { [officeOf('/w/brief.docx')]: { view: 'word', html: '<p><b>Bold</b> "quoted"</p><script>alert(1)</script>', text: 'Bold "quoted"\nSecond <para>' } };
+  const page = loadPage({ replies });
+  page.push(richSnapshot([richAgent({ mod: { version: '0.6.1', live: true } })]));
+  await page.ctx.openFile('r1', '/w/brief.docx');
+  await page.settle();
+  const body = page.el('reader-body').innerHTML;
+  assert.match(body, /<iframe class="media-frame page" sandbox="" srcdoc="&lt;p&gt;&lt;b&gt;Bold&lt;\/b&gt; &quot;quoted&quot;/, 'no scripts in the page');
+  assert.match(page.tabs(), /📝 brief\.docx/);
+  await page.clickButton('mode-btn', { readerMode: 'text' });
+  await page.settle();
+  assert.match(page.el('reader-body').innerHTML, /<div class="doc-text">Bold &quot;quoted&quot;\nSecond &lt;para&gt;<\/div>/);
+  assert.match(page.side(), /id="reader-quote"/);
+});
+
+test('a spreadsheet shows as tables with column letters and row numbers, a tab for each sheet, and says when it is cut short', async () => {
+  const replies = { [officeOf('/w/budget.xlsx')]: { view: 'sheet', sheets: [
+    { name: 'Budget & Plan', rows: [['Item', 'Cost'], ['Rent <office>', '1200']], truncated: false },
+    { name: 'Notes', rows: [['', 'only B']], truncated: true },
+  ] } };
+  const page = loadPage({ replies });
+  page.push(richSnapshot([richAgent({ mod: { version: '0.6.1', live: true } })]));
+  await page.ctx.openFile('r1', '/w/budget.xlsx');
+  await page.settle();
+  let body = page.el('reader-body').innerHTML;
+  assert.match(body, /data-sheet="0" aria-pressed="true">Budget &amp; Plan<[\s\S]*data-sheet="1" aria-pressed="false">Notes</);
+  assert.match(body, /<th><\/th><th>A<\/th><th>B<\/th>/);
+  assert.match(body, /<th>2<\/th><td>Rent &lt;office&gt;<\/td><td class="num">1200<\/td>/);
+  assert.match(page.side(), /id="reader-quote"/, 'cells are text to quote');
+  await page.clickButton('sheet-btn', { sheet: '1' });
+  body = page.el('reader-body').innerHTML;
+  assert.match(body, /<th>1<\/th><td><\/td><td>only B<\/td>/);
+  assert.match(body, /first 2,000 rows and 100 columns/);
+  assert.equal(page.gets.filter(g => g.path === officeOf('/w/budget.xlsx')).length, 1, 'another sheet without asking again');
+});
+
+test('slides and other documents show a picture of the first page; what cannot be shown says so; Show in Finder reveals it', async () => {
+  const replies = {
+    [officeOf('/w/deck.pptx')]: { view: 'picture', picture: 'data:image/png;base64,AAAA' },
+    '/api/actions/reveal': { ok: true },
+  };
+  const page = loadPage({ replies });
+  page.push(richSnapshot([richAgent({ mod: { version: '0.6.1', live: true } })]));
+  await page.ctx.openFile('r1', '/w/deck.pptx');
+  await page.settle();
+  assert.match(page.el('reader-body').innerHTML, /<img class="page-pic" src="data:image\/png;base64,AAAA" alt="The first page of deck\.pptx">[\s\S]*Quick Look/);
+  await page.ctx.openFile('r1', '/w/build.zip');
+  await page.settle();
+  assert.match(page.el('reader-body').innerHTML, /\.zip file can't be shown here[\s\S]*data-reader-reveal/);
+  assert.equal(page.gets.filter(g => /build\.zip/.test(g.path)).length, 0, 'nothing is fetched for it');
+  await page.clickButton('reveal-btn', { readerReveal: '' });
+  await page.settle();
+  assert.deepEqual(page.posts.at(-1), { path: '/api/actions/reveal', body: { agentId: 'r1', path: '/w/build.zip' } });
+  assert.match(page.el('reader-status').textContent, /Finder/);
+});
+
+test("a picture's link that could not be made says why", async () => {
+  const page = loadPage({ replies: { [linkOf('/w/.env.png')]: { error: 'That file looks like it holds secrets, so it is not shown.' } } });
+  page.push(richSnapshot([richAgent({ mod: { version: '0.6.1', live: true } })]));
+  await page.ctx.openFile('r1', '/w/.env.png');
+  await page.settle();
+  assert.match(page.el('reader-body').innerHTML, /holds secrets/);
+});

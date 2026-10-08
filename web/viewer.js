@@ -1,13 +1,39 @@
 // The file viewer: a file from the agent's folder (or a markdown document it opened elsewhere),
 // read-only in a centre tab, with a reply box that messages the agent about it. Markdown is
-// rendered; anything else is shown as text with line numbers.
-let reader = null; // { agentId, path, at } for the file tab on screen
+// rendered, code shown with line numbers; pictures, PDFs, players and a page's preview come through
+// short-lived links (an <img> can't send the token), Word documents and sheets as the collector reads them.
+let reader = null; // { agentId, path, at, dialog?, mode, sheets? } for the file on screen
+let loadSeq = 0; // the latest load: an earlier one that ends after it is dropped
+const readerModes = new Map(); // agent id + path → Preview or Source, Page or Text, or the sheet shown
 let readerQuote = '';
 let readerLines = null; // [first, last] line numbers of the quoted code selection
 const readerDrafts = new Map(); // agent id + path → half-typed reply
 const readerKey = () => (reader ? `${reader.agentId}\n${reader.path}` : '');
 const docName = path => String(path).split('/').pop();
 const isMarkdown = path => path === '@summary' || /\.(md|markdown|mdx)$/i.test(path);
+
+// How each file is shown, by its extension: the collector serves them the same way (collector/sources/previews.mjs).
+const VIEW_EXTS = {
+  image: 'png jpg jpeg gif webp avif svg ico bmp', pdf: 'pdf', video: 'mp4 m4v webm mov', audio: 'mp3 m4a wav ogg oga flac aac',
+  html: 'html htm', word: 'docx doc rtf odt', sheet: 'xlsx csv', office: 'pptx ppt xls key pages numbers odp ods',
+  binary: 'zip gz tgz tar 7z rar dmg exe bin so dylib class jar wasm sqlite db woff woff2 ttf otf',
+};
+const VIEW_OF_EXT = new Map(Object.entries(VIEW_EXTS).flatMap(([kind, exts]) => exts.split(' ').map(e => [e, kind])));
+/** How the reader shows a file: text (markdown rendered, code with line numbers), or one of VIEW_EXTS's kinds. */
+function viewKind(path) {
+  if (path === '@summary') return 'text';
+  return VIEW_OF_EXT.get(String(path).toLowerCase().match(/\.([a-z0-9]+)$/)?.[1] ?? '') ?? 'text';
+}
+const KIND_ICON = { text: '⌗', image: '🖼', pdf: '📕', video: '🎬', audio: '🎵', html: '🌐', word: '📝', sheet: '📊', office: '📽', binary: '📦' };
+const fileIcon = path => (path === '@summary' ? '🧠' : isMarkdown(path) ? '📄' : KIND_ICON[viewKind(path)]);
+// A page shows as itself or as its code; a Word document as a page or as its words; a sheet, one at a time.
+const SHOW_AS = { html: [['preview', 'Preview'], ['source', 'Source']], word: [['page', 'Page'], ['text', 'Text']] };
+const modeOf = (agentId, path) => readerModes.get(`${agentId}\n${path}`) ?? SHOW_AS[viewKind(path)]?.[0][0] ?? '';
+/** Whether what's on screen is text to select and quote: code, markdown, a page's source, a document's words, a sheet's cells. */
+function readerHasText() {
+  const kind = viewKind(reader.path);
+  return kind === 'text' || kind === 'sheet' || (kind === 'html' && reader.mode === 'source') || (kind === 'word' && reader.mode === 'text');
+}
 const docEntry = (agentId, path) => snap?.agents.find(a => a.id === agentId)?.docs?.find(d => d.path === path);
 /** The path as the agent knows it: relative to its folder when inside it. */
 const docLabel = (agent, path) => (path === '@summary' ? 'your conversation summary' : agent?.cwd && path.startsWith(`${agent.cwd}/`) ? path.slice(agent.cwd.length + 1) : path);
@@ -43,23 +69,37 @@ function tabsHtml(a, t) {
   const agentTab = `<div class="tab${t.active ? '' : ' on'}"><button type="button" data-tab=""><span class="swatch" style="background:${colorOf(a.id)}"></span>${esc(a.name)}</button></div>`;
   const subs = subagentsOf(a); // their own tab, while it has any: the agent's own view keeps to the conversation
   const subTab = subs.length ? `<div class="tab${t.active === '@subagents' ? ' on' : ''}"><button type="button" data-tab="@subagents" data-tip="Its subagents: what each is doing, opened live">${subTabLabel(subs)}</button></div>` : '';
-  return agentTab + subTab + t.files.map(f => `<div class="tab${t.active === f ? ' on' : ''}"><button type="button" data-tab="${esc(f)}" data-tip="${esc(f === '@summary' ? 'What this session remembers of its earlier conversation' : short(f))}">${f === '@summary' ? '🧠' : isMarkdown(f) ? '📄' : '⌗'} ${esc(fileLabel(f))}</button><button type="button" class="x" data-close-tab="${esc(f)}" aria-label="Close ${esc(fileLabel(f))}">✕</button></div>`).join('');
+  return agentTab + subTab + t.files.map(f => `<div class="tab${t.active === f ? ' on' : ''}"><button type="button" data-tab="${esc(f)}" data-tip="${esc(f === '@summary' ? 'What this session remembers of its earlier conversation' : short(f))}">${fileIcon(f)} ${esc(fileLabel(f))}</button><button type="button" class="x" data-close-tab="${esc(f)}" aria-label="Close ${esc(fileLabel(f))}">✕</button></div>`).join('');
+}
+
+/** The reader body's look: markdown, code, a table, a document's words, or something shown whole (a picture, a player, a page). */
+function bodyClass() {
+  const kind = viewKind(reader.path);
+  if (kind === 'text') return isMarkdown(reader.path) ? 'md' : 'codeview';
+  if (kind === 'sheet') return 'sheetview';
+  if (kind === 'html' && reader.mode === 'source') return 'codeview';
+  if (kind === 'word' && reader.mode === 'text') return 'md';
+  return 'mediaview';
 }
 
 function readerHtml() {
   const agent = snap?.agents.find(a => a.id === reader.agentId);
   const live = Boolean(agent?.mod?.live);
-  const hint = live ? 'Select text above, then Quote to reply about that part. ↩ sends, ⇧↩ new line.'
-    : "This session isn't listening for dashboard messages yet. Send it anything in its terminal once, or start a new session.";
+  const quotes = readerHasText();
+  const hint = !live ? "This session isn't listening for dashboard messages yet. Send it anything in its terminal once, or start a new session."
+    : quotes ? 'Select text above, then Quote to reply about that part. ↩ sends, ⇧↩ new line.' : `Tell ${agent?.name ?? 'the agent'} about this file. ↩ sends, ⇧↩ new line.`;
+  const kind = viewKind(reader.path);
+  const modes = SHOW_AS[kind] ? `<span class="seg" role="group" aria-label="Show it as">${SHOW_AS[kind].map(([m, label]) => `<button type="button" data-reader-mode="${m}" aria-pressed="${reader.mode === m}">${label}</button>`).join('')}</span>` : '';
+  const reveal = kind !== 'text' ? '<button class="act" type="button" data-reader-reveal data-tip="Show it in Finder, to open it in its own app">Show in Finder</button>' : '';
   return `<div class="reader-head">
-      <div class="reader-title"><b>${reader.path === '@summary' ? '🧠' : isMarkdown(reader.path) ? '📄' : '⌗'} ${esc(fileLabel(reader.path))}</b><div class="faint mono" id="reader-sub">${esc(docSub(agent, reader.path))}</div></div>
+      <div class="reader-title"><b>${fileIcon(reader.path)} ${esc(fileLabel(reader.path))}</b><div class="faint mono" id="reader-sub">${esc(docSub(agent, reader.path))}</div></div>
       <span class="grow"></span>
-      <button class="act" id="reader-reload" type="button">↻ Reload</button>${reader.dialog ? `<button class="act" id="reader-tab" type="button" data-tip="Open it in a tab of the list view">Open in a tab</button><button class="act" type="button" data-file-close aria-label="Close">×</button>` : ''}
+      ${modes}${reveal}<button class="act" id="reader-reload" type="button">↻ Reload</button>${reader.dialog ? `<button class="act" id="reader-tab" type="button" data-tip="Open it in a tab of the list view">Open in a tab</button><button class="act" type="button" data-file-close aria-label="Close">×</button>` : ''}
     </div>
-    <article id="reader-body" class="${isMarkdown(reader.path) ? 'md' : 'codeview'}"></article>
+    <article id="reader-body" class="${bodyClass()}"></article>
     <div class="reader-foot compose">
       <textarea id="reader-text" rows="2" placeholder="Reply to ${esc(agent?.name ?? 'the agent')} about this file…"${live ? '' : ' disabled'}>${esc(readerDrafts.get(readerKey()) ?? '')}</textarea>
-      <div class="compose-row"><span class="faint" id="reader-status">${hint}</span><span class="grow"></span><button class="act" id="reader-quote" type="button"${live ? '' : ' disabled'}>❝ Quote selection</button><button class="act primary" id="reader-send" type="button"${live ? '' : ' disabled'}>Send</button></div>
+      <div class="compose-row"><span class="faint" id="reader-status">${hint}</span><span class="grow"></span>${quotes ? `<button class="act" id="reader-quote" type="button"${live ? '' : ' disabled'}>❝ Quote selection</button>` : ''}<button class="act primary" id="reader-send" type="button"${live ? '' : ' disabled'}>Send</button></div>
     </div>`;
 }
 
@@ -90,14 +130,25 @@ async function openFile(agentId, path) {
 
 /** In the farm, a file opens in a dialog over it, which stays: the list view's reader, quoting and replying as there. */
 async function openFileDialog(agentId, path) {
-  reader = { agentId, path, at: touchOf(agentId, path)?.at ?? 0, dialog: true };
+  reader = { agentId, path, at: touchOf(agentId, path)?.at ?? 0, dialog: true, mode: modeOf(agentId, path) };
+  if (!$('file-dlg').open) $('file-dlg').showModal();
+  await showReader();
+}
+/** Draws the reader (in its tab, or in the farm's dialog) and loads the file into it. */
+async function showReader() {
   readerQuote = '';
   readerLines = null;
-  $('file-dlg-body').innerHTML = readerHtml();
-  $('reader-body').innerHTML = '<div class="empty" style="padding:12px 16px">Loading…</div>';
-  if (!$('file-dlg').open) $('file-dlg').showModal();
+  $(reader.dialog ? 'file-dlg-body' : 'center-body').innerHTML = readerHtml();
+  $('reader-body').innerHTML = emptyBox('Loading…');
   viewerLoading = loadDoc();
   await viewerLoading;
+}
+/** Preview or Source, Page or Text: remembered for that file, and drawn again. */
+async function setReaderMode(mode) {
+  if (!reader || !SHOW_AS[viewKind(reader.path)]?.some(([m]) => m === mode) || reader.mode === mode) return;
+  readerModes.set(readerKey(), mode);
+  reader.mode = mode;
+  await showReader();
 }
 function closeFileDialog() {
   if (reader?.dialog) reader = null;
@@ -117,24 +168,103 @@ function closeTab(path) {
   renderTree();
 }
 
+const emptyBox = html => `<div class="empty" style="padding:12px 16px">${html}</div>`;
+const revealButton = '<button class="act" type="button" data-reader-reveal>Show in Finder</button>';
+
+/** A token-only read: its JSON, or { error, status }. */
+async function getJson(url) {
+  const r = await fetch(url, { headers: { 'x-tracker-token': TOKEN } });
+  const body = await r.json();
+  return !r.ok || body.error ? { error: body.error ?? `Could not load it (HTTP ${r.status}).`, status: r.status } : body;
+}
+
+/** A sheet as a table, with its column letters and row numbers, and tabs for the workbook's other sheets. */
+function sheetHtml(sheets, at) {
+  const i = Math.min(Number(at) || 0, sheets.length - 1);
+  const s = sheets[i];
+  const tabs = sheets.length > 1 ? `<div class="seg sheet-tabs" role="group" aria-label="Sheets">${sheets.map((x, n) => `<button type="button" data-sheet="${n}" aria-pressed="${n === i}">${esc(x.name || `Sheet ${n + 1}`)}</button>`).join('')}</div>` : '';
+  if (!s.rows.length) return tabs + emptyBox('This sheet is empty.');
+  const cols = Math.max(1, ...s.rows.map(r => r.length));
+  const letter = n => (n >= 26 ? letter(Math.floor(n / 26) - 1) : '') + String.fromCharCode(65 + (n % 26));
+  const head = `<tr><th></th>${Array.from({ length: cols }, (_, c) => `<th>${letter(c)}</th>`).join('')}</tr>`;
+  const cell = v => `<td${/^-?[\d,]*\.?\d+%?$/.test(v) ? ' class="num"' : ''}>${esc(v)}</td>`;
+  const rows = s.rows.map((r, n) => `<tr><th>${n + 1}</th>${Array.from({ length: cols }, (_, c) => cell(r[c] ?? '')).join('')}</tr>`).join('');
+  const cut = s.truncated ? '<div class="empty" style="padding:8px 12px">Showing the first 2,000 rows and 100 columns. Show in Finder to open it whole.</div>' : '';
+  return `${tabs}<div class="sheet-wrap"><table class="sheet"><thead>${head}</thead><tbody>${rows}</tbody></table>${cut}</div>`;
+}
+
+/** What the reader shows of a file, as HTML: by its kind, and the mode chosen for it. */
+async function docHtml({ agentId, path, mode }) {
+  const kind = viewKind(path);
+  const api = `/api/agent/${encodeURIComponent(agentId)}`, q = `path=${encodeURIComponent(path)}`;
+  if (kind === 'text' || (kind === 'html' && mode === 'source')) {
+    const body = await getJson(`${api}/file?${q}`);
+    if (body.error) return emptyBox(`${esc(body.error)}${body.status === 413 || body.status === 415 ? ` ${revealButton}` : ''}`);
+    return body.text === '' ? emptyBox('This file is empty.') : isMarkdown(path) ? renderMarkdown(body.text) : codeHtml(body.text);
+  }
+  const name = esc(docName(path));
+  if (kind === 'binary') return emptyBox(`A .${esc(path.split('.').pop().toLowerCase())} file can't be shown here. ${revealButton} to open it in its own app.`);
+  if (kind === 'word' || kind === 'sheet' || kind === 'office') {
+    const body = await getJson(`${api}/office?${q}`);
+    if (body.error) return emptyBox(`${esc(body.error)} ${revealButton}`);
+    if (body.view === 'sheet') {
+      reader.sheets = body.sheets;
+      return sheetHtml(body.sheets, mode);
+    }
+    if (body.view === 'word') {
+      return mode === 'text' ? `<div class="doc-text">${esc(body.text)}</div>` // its words, to select and quote
+        : `<iframe class="media-frame page" sandbox="" srcdoc="${esc(body.html.replace(/<head[^>]*>/i, h => `${h}<style>body { margin: 24px 32px; max-width: 820px; }</style>`))}" title="${name}"></iframe>`; // its look, with no scripts
+    }
+    return `<div class="media"><img class="page-pic" src="${esc(body.picture)}" alt="The first page of ${name}"></div><div class="media-meta faint">The first page, as Quick Look pictures it. Show in Finder to open it in its own app.</div>`;
+  }
+  const link = await getJson(`${api}/ticket?${q}${kind === 'html' ? '&folder=1' : ''}`);
+  if (link.error) return emptyBox(esc(link.error));
+  const src = esc(link.url);
+  if (kind === 'image') return `<div class="media"><img class="checker" id="reader-img" src="${src}" alt="${name}"></div><div class="media-meta faint" id="reader-media-meta">${sizeText(link.size)}</div>`;
+  if (kind === 'pdf') return `<iframe class="media-frame" src="${src}" title="${name}"></iframe>`;
+  if (kind === 'video') return `<div class="media"><video controls preload="metadata" src="${src}"></video></div>`;
+  if (kind === 'audio') return `<div class="media"><audio controls preload="metadata" src="${src}"></audio></div>`;
+  // A page, as itself: its scripts run, but in an origin of their own (no allow-same-origin), never the dashboard's.
+  return `<iframe class="media-frame page" sandbox="allow-scripts" src="${src}" title="${name}"></iframe>`;
+}
+
 async function loadDoc({ keepScroll = false } = {}) {
   if (!reader) return;
-  const { agentId, path } = reader;
+  const seq = ++loadSeq;
   let html;
   try {
-    const r = await fetch(`/api/agent/${encodeURIComponent(agentId)}/file?path=${encodeURIComponent(path)}`, { headers: { 'x-tracker-token': TOKEN } });
-    const body = await r.json();
-    html = !r.ok ? `<div class="empty" style="padding:12px 16px">${esc(body.error ?? `Could not load it (HTTP ${r.status}).`)}</div>`
-      : body.text === '' ? '<div class="empty" style="padding:12px 16px">This file is empty.</div>'
-      : isMarkdown(path) ? renderMarkdown(body.text) : codeHtml(body.text);
+    html = await docHtml(reader);
   } catch (err) {
-    html = `<div class="empty" style="padding:12px 16px">Could not load it: ${esc(err?.message ?? err)}</div>`;
+    html = emptyBox(`Could not load it: ${esc(err?.message ?? err)}`);
   }
-  if (reader?.agentId !== agentId || reader.path !== path) return;
+  if (seq !== loadSeq || !reader) return;
   const box = $('reader-body');
   const top = box.scrollTop;
   box.innerHTML = html;
   if (keepScroll) box.scrollTop = top;
+}
+
+/** Another sheet of the workbook on screen, from what was read already. */
+function showSheet(at) {
+  if (!reader?.sheets) return;
+  readerModes.set(readerKey(), String(at));
+  reader.mode = String(at);
+  $('reader-body').innerHTML = sheetHtml(reader.sheets, at);
+}
+
+/** A picture's own size, once it has loaded, beside its size on disk. */
+function noteImageSize(img) {
+  const meta = $('reader-media-meta');
+  if (!meta || !img.naturalWidth || meta.dataset.sized) return;
+  meta.dataset.sized = '1';
+  meta.textContent = `${img.naturalWidth} × ${img.naturalHeight} · ${meta.textContent}`;
+}
+
+/** Shows the file in Finder: only reveals it, never opens or runs it. */
+async function revealReaderFile() {
+  if (!reader) return;
+  const r = await post('/api/actions/reveal', { agentId: reader.agentId, path: reader.path });
+  $('reader-status').textContent = r.ok ? 'Shown in Finder.' : `Finder could not show it: ${r.error}`;
 }
 
 /** When the agent changes the open file, show the new text in place. */
@@ -239,12 +369,8 @@ function renderCentre() {
     body.innerHTML = t.active ? subagentsHtml(a) : overviewHtml(a);
   } else if (key !== shownKey) {
     shownKey = key;
-    reader = { agentId: a.id, path: t.active, at: touchOf(a.id, t.active)?.at ?? 0 };
-    readerQuote = '';
-    readerLines = null;
+    reader = { agentId: a.id, path: t.active, at: touchOf(a.id, t.active)?.at ?? 0, mode: modeOf(a.id, t.active) };
     body.className = 'center-body viewing';
-    body.innerHTML = readerHtml();
-    $('reader-body').innerHTML = '<div class="empty" style="padding:12px 16px">Loading…</div>';
-    viewerLoading = loadDoc();
+    void showReader();
   }
 }

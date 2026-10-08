@@ -1,5 +1,5 @@
 import { createServer } from 'node:http';
-import { readFileSync } from 'node:fs';
+import { createReadStream, readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 
 const BODY_LIMIT = 64 * 1024;
@@ -28,12 +28,37 @@ function readBody(req, limit = BODY_LIMIT) {
   });
 }
 
+// A file's bytes through a link (pictures, players, PDFs, a page's preview): the real type, never sniffed
+// into something else; a sandbox around anything opened as a page (a page's own scripts may run, in an
+// origin of their own, never the dashboard's); ranges, so players can seek. The PDF viewer won't run in
+// a sandbox, and a PDF's scripts run in the viewer's own, so PDFs alone go without.
+function sendRaw(req, res, { real, type, size }) {
+  const headers = { 'content-type': type, 'x-content-type-options': 'nosniff', 'cache-control': 'no-store', 'accept-ranges': 'bytes' };
+  if (!type.startsWith('application/pdf')) headers['content-security-policy'] = type.startsWith('text/html') ? 'sandbox allow-scripts' : 'sandbox';
+  // A sandboxed page's module scripts and fonts load only with CORS; nothing else gets it, so its
+  // scripts can't fetch() the files beside it and read them.
+  if (req.headers.origin === 'null' && ['script', 'font'].includes(req.headers['sec-fetch-dest'])) headers['access-control-allow-origin'] = 'null';
+  const range = String(req.headers.range ?? '').match(/^bytes=(\d*)-(\d*)$/);
+  let start = 0, end = size - 1;
+  if (range && (range[1] || range[2])) {
+    if (range[1]) { start = Number(range[1]); end = range[2] ? Math.min(Number(range[2]), size - 1) : size - 1; }
+    else { start = Math.max(0, size - Number(range[2])); }
+    if (start >= size || start > end) {
+      res.writeHead(416, { ...headers, 'content-range': `bytes */${size}` });
+      return res.end();
+    }
+    res.writeHead(206, { ...headers, 'content-range': `bytes ${start}-${end}/${size}`, 'content-length': end - start + 1 });
+  } else res.writeHead(200, { ...headers, 'content-length': size });
+  if (req.method === 'HEAD' || size === 0) return res.end();
+  createReadStream(real, { start, end }).on('error', () => res.destroy()).pipe(res);
+}
+
 function clampInt(value, min, max, fallback) {
   const n = Number.parseInt(value ?? '', 10);
   return Number.isFinite(n) ? Math.min(max, Math.max(min, n)) : fallback;
 }
 
-export function createTrackerServer({ port, token, webFile, getSnapshot, getFeed, getConversation, getSubagent, claudePlugins, claudeMcp, claudeRules, getTranscriptHtml, getDoc, listFiles, readFile, repoTouched, actions, pastSessions, log = () => {} }) {
+export function createTrackerServer({ port, token, webFile, getSnapshot, getFeed, getConversation, getSubagent, claudePlugins, claudeMcp, claudeRules, fileTicket, rawFile, officeView, getTranscriptHtml, getDoc, listFiles, readFile, repoTouched, actions, pastSessions, log = () => {} }) {
   const clients = new Set();
   let server;
   const actualPort = () => server.address()?.port ?? port;
@@ -54,6 +79,14 @@ export function createTrackerServer({ port, token, webFile, getSnapshot, getFeed
       const url = new URL(req.url ?? '/', `http://127.0.0.1:${actualPort()}`);
       const path = url.pathname;
       let m;
+
+      if ((req.method === 'GET' || req.method === 'HEAD') && (m = path.match(/^\/raw\/([\w-]+)\/(.+)$/))) {
+        // A link's bytes: the random id is all it takes (an <img> or a player can't send the token).
+        let rel;
+        try { rel = m[2].split('/').map(decodeURIComponent).join('/'); } catch { return send(res, 404, 'text/plain', 'not found'); }
+        const found = await rawFile(m[1], rel);
+        return found.real ? sendRaw(req, res, found) : send(res, found.status ?? 404, 'text/plain; charset=utf-8', found.error ?? 'not found');
+      }
 
       if (req.method === 'GET') {
         if (path === '/') return send(res, 200, 'text/html; charset=utf-8', readFileSync(webFile, 'utf8').replace('__TRACKER_TOKEN__', token));
@@ -82,7 +115,7 @@ export function createTrackerServer({ port, token, webFile, getSnapshot, getFeed
           const convo = await getConversation(id, clampInt(url.searchParams.get('from'), 0, 1_000_000, 0));
           return convo ? sendJson(res, 200, convo) : sendJson(res, 404, { error: 'That session has no transcript to read.' });
         }
-        if ((m = path.match(/^\/api\/agent\/([\w:-]+)\/(doc|file|files)$/))) {
+        if ((m = path.match(/^\/api\/agent\/([\w:-]+)\/(doc|file|files|ticket|office)$/))) {
           // Folder listings and file contents: the page sends its token, which other sites can't
           // do without a CORS preflight.
           if (req.headers['x-tracker-token'] !== token) return sendJson(res, 403, { error: 'forbidden' });
@@ -91,6 +124,10 @@ export function createTrackerServer({ port, token, webFile, getSnapshot, getFeed
             return listing.error ? sendJson(res, listing.status ?? 404, { error: listing.error }) : sendJson(res, 200, listing);
           }
           const file = url.searchParams.get('path') ?? '';
+          if (m[2] === 'ticket' || m[2] === 'office') { // a link to a file's bytes, or a document read into tables or a page
+            const got = m[2] === 'ticket' ? await fileTicket(m[1], file, { folder: url.searchParams.get('folder') === '1' }) : await officeView(m[1], file);
+            return got.error ? sendJson(res, got.status ?? 404, { error: got.error }) : sendJson(res, 200, got);
+          }
           const found = m[2] === 'doc' ? getDoc(m[1], file) : await readFile(m[1], file);
           return found.doc ? sendJson(res, 200, found.doc) : sendJson(res, found.status ?? 404, { error: found.error });
         }
@@ -115,7 +152,7 @@ export function createTrackerServer({ port, token, webFile, getSnapshot, getFeed
         }
       }
 
-      const isBodyAction = ['/api/actions/rm', '/api/actions/answer', '/api/actions/permit', '/api/actions/always', '/api/actions/plugin', '/api/actions/reload', '/api/actions/mcp', '/api/actions/rule', '/api/actions/message', '/api/actions/start', '/api/actions/end', '/api/actions/restart', '/api/actions/setting', '/api/actions/aside'].includes(path);
+      const isBodyAction = ['/api/actions/rm', '/api/actions/answer', '/api/actions/permit', '/api/actions/always', '/api/actions/plugin', '/api/actions/reload', '/api/actions/mcp', '/api/actions/rule', '/api/actions/message', '/api/actions/start', '/api/actions/end', '/api/actions/restart', '/api/actions/setting', '/api/actions/aside', '/api/actions/reveal'].includes(path);
       if (req.method === 'POST' && (isBodyAction || /^\/api\/actions\/open\/[\w-]+$/.test(path))) {
         if (req.headers['x-tracker-token'] !== token || !isAllowedOrigin(req.headers.origin ?? '')) {
           return sendJson(res, 403, { error: 'forbidden' });
@@ -139,6 +176,7 @@ export function createTrackerServer({ port, token, webFile, getSnapshot, getFeed
         if (path === '/api/actions/start') return sendJson(res, 200, await actions.start(body));
         if (path === '/api/actions/setting') return sendJson(res, 200, await actions.setting(body));
         if (path === '/api/actions/aside') return sendJson(res, 200, await actions.aside(body));
+        if (path === '/api/actions/reveal') return sendJson(res, 200, await actions.reveal(body));
         if (path === '/api/actions/end') return sendJson(res, 200, await actions.end(body));
         if (path === '/api/actions/restart') return sendJson(res, 200, await actions.restart(body));
         return sendJson(res, 200, await actions.open(path.split('/').pop()));

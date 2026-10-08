@@ -4,7 +4,7 @@ import { execFileSync } from 'node:child_process';
 import { mkdirSync, mkdtempSync, realpathSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { basename, dirname, join } from 'node:path';
-import { listFolder, readFolderFile } from '../sources/files.mjs';
+import { checkFolderFile, listFolder, readFolderFile } from '../sources/files.mjs';
 
 const write = (dir, rel, body) => {
   mkdirSync(dirname(join(dir, rel)), { recursive: true });
@@ -91,6 +91,16 @@ test('a file inside the folder is read; everything the explorer hides is refused
   await refused(dir, join(dir, 'bin.dat'), /binary/);
   await refused(dir, join(dir, 'big.txt'), /too large/);
   await refused(dir, join(dir, 'gone.txt'), /no longer exists/);
+});
+
+test("a picture, a PDF or any binary passes the same rules for its bytes: binary and large files too, the rest refused alike", async () => {
+  const dir = repo();
+  const ok = await checkFolderFile(dir, join(dir, 'bin.dat'));
+  assert.equal(ok.real, join(realpathSync(dir), 'bin.dat'));
+  assert.ok(ok.size > 0);
+  assert.ok((await checkFolderFile(dir, join(dir, 'big.txt'))).real, 'size is for the caller to judge');
+  for (const [path, re] of [['debug.log', /ignores/], ['.env.local', /secrets/], ['.git/config', /Git's own/], ['gone.txt', /no longer exists/]]) assert.match((await checkFolderFile(dir, join(dir, path))).error, re, path);
+  assert.match((await checkFolderFile(join(dir, 'src'), join(dir, 'README.md'))).error, /outside/);
 });
 
 test('outside git, files in skipped folders are refused too', async () => {

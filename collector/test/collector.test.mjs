@@ -3,7 +3,7 @@ import { execFileSync } from 'node:child_process';
 import assert from 'node:assert/strict';
 import { appendFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, realpathSync, symlinkSync, unlinkSync, utimesSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { basename, join } from 'node:path';
 import { startCollector } from '../collector.mjs';
 
 test('collector serves a waiting agent from a fixture ~/.claude and survives a bad config edit', async () => {
@@ -760,6 +760,63 @@ test("Claude Code's setup for the ⚙ dialog: plugins with their costs, MCP serv
     assert.equal((await handle.actions.rule({ path: '/etc/passwd', list: 'allow', value: 'Read' })).ok, false, 'only the settings files listed');
     assert.deepEqual(await handle.actions.rule({ path: join(claudeDir, 'settings.json'), list: 'allow', value: 'Read' }), { ok: true });
     assert.deepEqual(JSON.parse(readFileSync(join(claudeDir, 'settings.json'), 'utf8')).permissions.allow, ['Bash(npm test:*)']);
+  } finally {
+    await handle.stop();
+  }
+});
+
+test('files that are not text: a short-lived link to the bytes, for one file or a page and its folder; Word, sheets and other documents read for the reader', async () => {
+  const root = mkdtempSync(join(tmpdir(), 'tracker-root-view-'));
+  mkdirSync(join(root, 'web'));
+  writeFileSync(join(root, 'web', 'index.html'), '<html></html>');
+  writeFileSync(join(root, 'config.json'), JSON.stringify({ port: 0, deployRepos: {} }));
+  const work = realpathSync(mkdtempSync(join(tmpdir(), 'tracker-view-work-')));
+  mkdirSync(join(work, 'css'));
+  writeFileSync(join(work, 'picture.png'), Buffer.from('89504e470d0a1a0a0000000d49484452', 'hex'));
+  writeFileSync(join(work, 'page.html'), '<link rel="stylesheet" href="css/site.css"><h1>Hi</h1>');
+  writeFileSync(join(work, 'css', 'site.css'), 'h1 { color: red }');
+  writeFileSync(join(work, '.env'), 'SECRET=1');
+  writeFileSync(join(work, 'notes.rtf'), '{\\rtf1\\ansi {\\b Bold} plain\\par}');
+  writeFileSync(join(work, 'data.csv'), 'name,qty\nbolts,4\n');
+  writeFileSync(join(work, 'deck.pptx'), 'PK fake');
+  const claudeDir = mkdtempSync(join(tmpdir(), 'tracker-claude-view-'));
+  mkdirSync(join(claudeDir, 'sessions'));
+  mkdirSync(join(claudeDir, 'projects', '-w'), { recursive: true });
+  writeFileSync(join(claudeDir, 'sessions', `${process.pid}.json`), JSON.stringify({ pid: process.pid, sessionId: 'sess-view', cwd: work, name: 'viewer', status: 'idle' }));
+  writeFileSync(join(claudeDir, 'projects', '-w', 'sess-view.jsonl'), `${JSON.stringify({ type: 'user', timestamp: new Date().toISOString(), cwd: work, message: { content: 'hi' } })}\n`);
+  const revealed = [];
+  const handle = await startCollector({ root, claudeDir, claudeBin: '/usr/bin/false', notify: () => {}, log: () => {}, home: '/nowhere', ticketMs: 300,
+    quickLook: async real => Buffer.from(`picture of ${basename(real)}`), revealFile: async real => { revealed.push(real); return { code: 0 }; } });
+  const idOf = url => url.split('/')[2];
+  try {
+    const pic = await handle.fileTicket('sess-view', join(work, 'picture.png'));
+    assert.match(pic.url, /^\/raw\/[0-9a-f]{32}\/picture\.png$/);
+    assert.deepEqual([pic.type, pic.size], ['image/png', 16]);
+    assert.equal((await handle.rawFile(idOf(pic.url), 'picture.png')).real, join(work, 'picture.png'));
+    assert.match((await handle.fileTicket('sess-view', join(work, '.env'))).error, /secrets/);
+    assert.match((await handle.fileTicket('sess-view', '/etc/hosts')).error, /outside/);
+
+    const page = await handle.fileTicket('sess-view', join(work, 'page.html'), { folder: true });
+    assert.match(page.url, /^\/raw\/[0-9a-f]{32}\/page\.html$/);
+    const id = idOf(page.url);
+    assert.equal((await handle.rawFile(id, 'css/site.css')).real, join(work, 'css', 'site.css'), 'the page loads what sits beside it');
+    assert.match((await handle.rawFile(id, '.env')).error, /secrets/);
+    assert.match((await handle.rawFile(id, '../../etc/hosts')).error, /outside/);
+    assert.equal((await handle.rawFile('0'.repeat(32), 'x')).status, 404);
+    await new Promise(r => setTimeout(r, 400));
+    assert.equal((await handle.rawFile(id, 'page.html')).status, 404, 'a link lasts only so long');
+
+    assert.deepEqual(await handle.officeView('sess-view', join(work, 'data.csv')), { view: 'sheet', sheets: [{ name: 'data.csv', rows: [['name', 'qty'], ['bolts', '4']], truncated: false }] });
+    const word = await handle.officeView('sess-view', join(work, 'notes.rtf')); // macOS's textutil
+    assert.equal(word.view, 'word');
+    assert.match(word.html, /<b>Bold<\/b>|font-weight: bold[\s\S]*Bold/);
+    assert.match(word.text, /Bold plain/);
+    assert.deepEqual(await handle.officeView('sess-view', join(work, 'deck.pptx')), { view: 'picture', picture: `data:image/png;base64,${Buffer.from('picture of deck.pptx').toString('base64')}` });
+    assert.match((await handle.officeView('sess-view', join(work, '.env'))).error, /secrets/);
+
+    assert.deepEqual(await handle.actions.reveal({ agentId: 'sess-view', path: join(work, 'deck.pptx') }), { ok: true });
+    assert.deepEqual(revealed, [join(work, 'deck.pptx')]);
+    assert.equal((await handle.actions.reveal({ agentId: 'sess-view', path: join(work, '.env') })).ok, false);
   } finally {
     await handle.stop();
   }

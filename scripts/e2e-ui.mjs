@@ -18,6 +18,14 @@ const CHROME = process.env.CHROME ?? [
   '/usr/bin/chromium',
 ].find(p => existsSync(p));
 const sleep = ms => new Promise(r => setTimeout(r, ms));
+/** A one-page PDF saying `text`. */
+function tinyPdf(text) {
+  const stream = `BT /F1 18 Tf 20 40 Td (${text}) Tj ET`;
+  const objs = ['<</Type/Catalog/Pages 2 0 R>>', '<</Type/Pages/Kids[3 0 R]/Count 1>>', '<</Type/Page/Parent 2 0 R/MediaBox[0 0 300 100]/Contents 4 0 R/Resources<</Font<</F1 5 0 R>>>>>>', `<</Length ${stream.length}>>stream\n${stream}\nendstream`, '<</Type/Font/Subtype/Type1/BaseFont/Helvetica>>'];
+  let out = '%PDF-1.4\n';
+  const at = objs.map((o, i) => { const n = out.length; out += `${i + 1} 0 obj${o}endobj\n`; return n; });
+  return `${out}xref\n0 ${objs.length + 1}\n0000000000 65535 f \n${at.map(n => `${String(n).padStart(10, '0')} 00000 n \n`).join('')}trailer<</Size ${objs.length + 1}/Root 1 0 R>>\nstartxref\n${out.length}\n%%EOF\n`;
+}
 const failures = [];
 const check = (ok, what) => {
   console.log(`${ok ? '  ok  ' : '  FAIL'} ${what}`);
@@ -49,6 +57,25 @@ git('commit', '-q', '-m', 'init');
 writeFileSync(join(repo, 'src', 'app.ts'), 'export const a = 2;\n'); // one uncommitted change
 mkdirSync(join(repo, 'docs'));
 writeFileSync(join(repo, 'docs', 'plan.md'), '# Plan\n\n- grow pumpkins\n');
+// Files that aren't text: a picture, a PDF, a page with its CSS, script and picture beside it, a sheet, a Word document.
+writeFileSync(join(repo, 'pic.svg'), '<svg xmlns="http://www.w3.org/2000/svg" width="30" height="20"><rect width="30" height="20" fill="#4a4"/></svg>');
+writeFileSync(join(repo, 'report.pdf'), tinyPdf('Harvest report'));
+mkdirSync(join(repo, 'site'));
+writeFileSync(join(repo, 'site', 'index.html'), '<!doctype html><link rel="stylesheet" href="style.css"><h1>Harvest</h1><img src="../pic.svg"><script type="module" src="app.js"></script>');
+writeFileSync(join(repo, 'site', 'style.css'), 'body { color: rgb(1, 2, 3); }');
+writeFileSync(join(repo, 'site', 'app.js'), `addEventListener('load', async () => {
+  let sealed = false;
+  try { void parent.document.title; } catch { sealed = true; }
+  const api = await fetch('/api/state').then(() => 'read', () => 'blocked');
+  const beside = await fetch('style.css').then(r => r.text()).then(() => 'read', () => 'blocked');
+  parent.postMessage({ ran: true, sealed, api, beside, origin: self.origin, color: getComputedStyle(document.body).color, img: document.querySelector('img').naturalWidth }, '*');
+});`);
+writeFileSync(join(repo, 'crops.csv'), 'crop,acres\nWheat,12\nPumpkins,3\n');
+const hasTextutil = existsSync('/usr/bin/textutil');
+if (hasTextutil) {
+  writeFileSync(join(temp, 'brief.html'), '<h1>Brief</h1><p><b>Bold</b> words</p>');
+  execFileSync('textutil', ['-convert', 'docx', '-output', join(repo, 'brief.docx'), join(temp, 'brief.html')]);
+}
 
 const claudeDir = join(temp, 'claude');
 mkdirSync(join(claudeDir, 'sessions'), { recursive: true });
@@ -178,6 +205,11 @@ try {
   });
   const send = (method, params = {}) => new Promise(r => { const n = ++id; pending.set(n, r); ws.send(JSON.stringify({ id: n, method, params })); });
   const js = async expr => (await send('Runtime.evaluate', { expression: expr, returnByValue: true, awaitPromise: true })).result.result?.value;
+  const shot = async name => { // optional: SHOTS=<folder> saves pictures of the page along the way
+    if (!process.env.SHOTS) return;
+    await sleep(400);
+    writeFileSync(join(process.env.SHOTS, `${name}.png`), Buffer.from((await send('Page.captureScreenshot', { format: 'png' })).result.data, 'base64'));
+  };
   const until = async (expr, ms = 8000) => {
     for (const end = Date.now() + ms; Date.now() < end; await sleep(150)) if (await js(expr)) return true;
     return false;
@@ -268,6 +300,44 @@ try {
   await js("document.getElementById('theme-toggle').click()");
   check((await js('document.documentElement.dataset.theme ?? "auto"')) !== theme, 'the theme button switches the theme');
 
+  console.log('Files that are not text');
+  const openIn = path => js(`openFile('ui-asker', ${JSON.stringify(join(repo, path))})`);
+  await openIn('pic.svg');
+  check(await until("document.getElementById('reader-img')?.naturalWidth === 30"), 'a picture shows, through its short-lived link');
+  check(await until("/^30 × 20 · 1 KB$/.test(document.getElementById('reader-media-meta')?.textContent ?? '')"), `with its size (${await js("document.getElementById('reader-media-meta')?.textContent")})`);
+  await shot('file-picture');
+  await openIn('report.pdf');
+  const frames = async () => {
+    const all = [], walk = f => { all.push(f.frame); (f.childFrames ?? []).forEach(walk); };
+    walk((await send('Page.getFrameTree')).result.frameTree);
+    return all;
+  };
+  let pdf;
+  for (let i = 0; i < 40 && !pdf; i++, await sleep(150)) pdf = (await frames()).find(f => /\/raw\/\w+\/report\.pdf$/.test(f.url) && f.mimeType === 'application/pdf');
+  check(Boolean(pdf), `a PDF opens in the browser's PDF viewer (${JSON.stringify((await frames()).slice(1).map(f => [f.url, f.mimeType]))})`);
+  await shot('file-pdf');
+  await js("window.fromPage = []; addEventListener('message', e => fromPage.push(e.data)); true");
+  await openIn('site/index.html');
+  check(await until('fromPage.some(m => m?.ran)'), 'a page previews as itself: its script runs (a module, from beside it)');
+  const got = JSON.parse(await js('JSON.stringify(fromPage.find(m => m?.ran) ?? {})'));
+  check(got.sealed === true && got.origin === 'null' && got.api === 'blocked' && got.beside === 'blocked', `sealed off: an origin of its own, reaching neither the dashboard nor its data, nor reading the files beside it (${JSON.stringify(got)})`);
+  check(got.color === 'rgb(1, 2, 3)' && got.img === 30, 'with the CSS and the picture beside it');
+  await shot('file-page');
+  await js("document.querySelector('[data-reader-mode=\"source\"]').click()");
+  check(await until("/<h1>Harvest<\\/h1>/.test(document.querySelector('#reader-body .l')?.textContent ?? '') && !!document.getElementById('reader-quote')"), 'Source shows its code, to quote');
+  await openIn('crops.csv');
+  check(await until("/Wheat/.test(document.querySelector('#reader-body table.sheet')?.textContent ?? '') && document.querySelector('#reader-body td.num')?.textContent === '12'"), 'a CSV shows as a table');
+  await shot('file-sheet');
+  if (hasTextutil) {
+    await openIn('brief.docx');
+    check(await until("/<b>Bold<\\/b>|font-weight: bold/.test(document.querySelector('#reader-body iframe.page')?.srcdoc ?? '')"), 'a Word document shows as a page');
+    await shot('file-word');
+    await js("document.querySelector('[data-reader-mode=\"text\"]').click()");
+    check(await until("/Bold words/.test(document.querySelector('#reader-body .doc-text')?.textContent ?? '')"), 'and as its words');
+  }
+  check(errors.length === 0, `no errors on the page (${errors.join(' | ')})`);
+  await js("document.querySelector('#center-tabs [data-tab=\"\"]').click()");
+
   console.log('Farm');
   await js("document.getElementById('view-farm').click()");
   check(await until("document.getElementById('main').dataset.view === 'farm' && document.querySelectorAll('.px-tag').length >= 2"), 'the farm shows both farmers');
@@ -341,10 +411,7 @@ try {
   await js("document.querySelector('[data-farm-nav=\"setup\"]')?.click()");
   check(await until("document.getElementById('setup').open"), "the farm's buttons have ⚙ Claude Code too, opening its dialog");
   await js("document.getElementById('setup').close()");
-  if (process.env.SHOTS) { // optional: SHOTS=<folder> saves a picture of the farm at this point
-    const shot = await send('Page.captureScreenshot', { format: 'png' });
-    writeFileSync(join(process.env.SHOTS, 'farm-bubbles.png'), Buffer.from(shot.result.data, 'base64'));
-  }
+  await shot('farm-bubbles');
   check(await js("[...document.querySelectorAll('.px-say')].some(b => b.textContent.includes('One question before I go on'))") === false, 'a waiting farmer shows its question, not its older reply');
   await js(`document.querySelector('.px-say[data-say="ui-asker"] [data-say-close]').click()`);
   check(await until(`!document.querySelector('.px-say[data-say="ui-asker"]') && !!document.querySelector('.px-say-min[data-say="ui-asker"]')`), 'the bubble hides with its ×, leaving a 💬 to show it again');
