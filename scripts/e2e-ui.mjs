@@ -66,6 +66,8 @@ const sessions = {
   'ui-asker': { pid: process.pid, lines: [
     line(now - 60_000, { content: 'Plan the next crop' }, 'user'),
     use(now - 50_000, 'toolu_W1', 'Write', { file_path: join(repo, 'docs', 'plan.md'), content: '# Plan' }),
+    // a reply with a code block wider than any panel: it scrolls inside its bubble, the panel stays put
+    line(now - 45_000, { model: 'claude-haiku', content: [{ type: 'text', text: `The rotation:\n\n\`\`\`\n${'wheat → barley → clover → pumpkins → '.repeat(6)}fallow\n\`\`\`` }] }),
     use(now - 40_000, 'toolu_E1', 'Edit', { file_path: join(repo, 'src', 'app.ts'), old_string: '1', new_string: '2' }),
     line(now - 30_000, { model: 'claude-haiku', content: [{ type: 'text', text: 'Plan written. One question before I go on.' }] }),
     use(now - 20_000, 'toolu_ASK1', 'AskUserQuestion', { questions: [QUESTION] }),
@@ -175,6 +177,18 @@ try {
   await until("!!document.querySelector('.ask legend')");
   check(await until("/Plan.*5-hour 34%.*week 61%/.test(document.getElementById('hstats').textContent)"), "the top bar shows the plan's 5-hour and weekly limits");
   check(await js("/Cost\\s*\\$1\\.23/.test(document.getElementById('center-body').textContent)"), 'the agent panel shows what the session has cost so far');
+  // What sticks out past a panel's right edge, innermost first: names the culprit when a check fails.
+  const sideways = sel => js(`(() => {
+    const p = document.querySelector('${sel}'), pre = p.querySelector('.bub pre'), edge = p.getBoundingClientRect().right;
+    const clipped = e => { for (let a = e.parentElement; a && a !== p; a = a.parentElement) if (getComputedStyle(a).overflowX !== 'visible') return true; return false; };
+    const reach = e => e.getBoundingClientRect().left + (getComputedStyle(e).overflowX === 'visible' ? Math.max(e.scrollWidth, e.getBoundingClientRect().width) : e.getBoundingClientRect().width); // its box, or its text spilling out
+    const sticks = e => reach(e) > edge + 1 && !clipped(e);
+    const out = [...p.querySelectorAll('*')].filter(e => sticks(e) && ![...e.children].some(sticks));
+    const name = e => e.tagName.toLowerCase() + (e.id ? '#' + e.id : '') + [...e.classList].map(c => '.' + c).join('') + ' ' + Math.round(reach(e) - e.getBoundingClientRect().left) + 'px "' + e.textContent.trim().slice(0, 40) + '"';
+    return \`panel \${p.clientWidth}, content \${p.scrollWidth}, code block \${pre ? pre.clientWidth + ' of ' + pre.scrollWidth : 'none'}\${out.length ? ', sticking out: ' + out.slice(0, 4).map(name).join(', ') : ''}\`;
+  })()`);
+  const fits = sel => js(`(() => { const p = document.querySelector('${sel}'), pre = p.querySelector('.bub pre'); return !!pre && p.scrollWidth <= p.clientWidth + 1 && pre.scrollWidth > pre.clientWidth; })()`);
+  check(await fits('#center-body'), `a reply with a wide code block scrolls inside its bubble; the agent panel doesn't scroll sideways (${await sideways('#center-body')})`);
   const key = (type, mods = 0) => send('Input.dispatchKeyEvent', { type, key: 'Enter', code: 'Enter', windowsVirtualKeyCode: 13, modifiers: mods, ...(type === 'keyDown' ? { text: '\r' } : {}) }); // a real key press carries its text
   await js("document.getElementById('msg-text').focus()");
   await send('Input.insertText', { text: 'First line' });
@@ -335,6 +349,7 @@ try {
 
   await js("document.querySelector('[data-farm-need]').click()");
   check(await until("document.getElementById('main').dataset.side === 'open' && /Which crop next/.test(document.getElementById('farm-agent').textContent)"), "the farm's “needs you” button opens the waiting farmer in the sidebar, with its question");
+  check(await fits('#farm-side'), `in the narrower farm sidebar too, the wide code block scrolls inside its bubble (${await sideways('#farm-side')})`);
   check(await js("document.getElementById('center-body').innerHTML === ''"), 'the hidden centre holds no second answer form');
   await js("(() => { const r = document.querySelector('#farm-agent input[value=\"Pumpkins\"]'); r.checked = true; r.dispatchEvent(new Event('change', { bubbles: true })); document.getElementById('ask-send').click(); })()");
   check(await until("/Answer sent to ui-asker/.test(document.getElementById('notice').textContent)"), 'the answer is sent from the farm sidebar');

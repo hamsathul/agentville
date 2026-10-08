@@ -340,8 +340,10 @@ a.chip { text-decoration: none; }
 .px-fl { display: inline-flex; gap: 5px; align-items: center; }
 .px-lab.silo-amber { background: #f0b429; color: #2a1d14; } .px-lab.silo-red { background: #e04a3a; color: #fff; }
 .px-field .dep-bad { color: #ff8a80; } .px-field .dep-ok { color: #8ef0a0; } .px-field .dep-run { color: #ffd166; } .px-field .dep-dim { color: #c9c2b0; opacity: .85; }
-.chat { display: grid; gap: 6px; }
-.latest { display: grid; gap: 6px; padding: 6px 8px 8px; border-left: 3px solid var(--latest); border-radius: 8px; background: color-mix(in srgb, var(--latest) 9%, transparent); }
+/* one column the panel's width: a reply's wide code block scrolls inside its bubble, the panel stays put */
+.where { overflow-wrap: anywhere; } /* a session's folder line: a long path wraps instead of widening the panel */
+.chat { display: grid; grid-template-columns: minmax(0, 1fr); gap: 6px; }
+.latest { display: grid; grid-template-columns: minmax(0, 1fr); gap: 6px; padding: 6px 8px 8px; border-left: 3px solid var(--latest); border-radius: 8px; background: color-mix(in srgb, var(--latest) 9%, transparent); }
 .latest-tag { justify-self: start; font-size: 10.5px; font-weight: 700; letter-spacing: .04em; text-transform: uppercase; color: var(--latest); }
 .bub { max-width: 88%; padding: 6px 10px 4px; border-radius: 12px; white-space: pre-wrap; overflow-wrap: anywhere; font-size: 13px; }
 .bub time { display: block; margin-top: 2px; font-size: 10.5px; color: var(--faint); }
