@@ -212,6 +212,20 @@
 
   const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
   const clip = (s, n) => (s.length > n ? `${s.slice(0, n - 1)}…` : s);
+  /** A name shortened in the middle, so both ends stay readable: inventory_management → inventor…agement. */
+  const cutMid = (s, n) => {
+    const t = String(s ?? '');
+    if (t.length <= n) return t;
+    const head = Math.ceil((n - 1) / 2);
+    return `${t.slice(0, head)}…${t.slice(t.length - (n - 1 - head))}`;
+  };
+  /** A farmer's name tag: on the porch just its name, short enough to sit beside its neighbours; in the field its hearts and chores too. */
+  function tagText(f) {
+    const onPorch = (f.state === 'waiting' || f.state === 'turn') && !f.nap;
+    if (onPorch) return cutMid(f.name, 10);
+    if (f.kind === 'codex') return cutMid(f.name, 16);
+    return `${cutMid(f.name, 16)} ${'♥'.repeat(f.hearts)}${'♡'.repeat(4 - f.hearts)}${f.tasks ? ` ${f.tasks.done}/${f.tasks.total}` : ''}`;
+  }
   const ago = ms => {
     const m = Math.max(0, (Date.now() - ms) / 60_000);
     return m < 1 ? 'now' : m < 60 ? `${Math.round(m)}m` : m < 1440 ? `${Math.round(m / 60)}h` : `${Math.round(m / 1440)}d`;
@@ -482,7 +496,7 @@
     fenceDown(f, GRID.x0, GRID.y0, GRID.y1, lanes.map(y => [y - 4, y + 5]));
     fenceDown(f, GRID.x1, GRID.y0, GRID.y1);
     // empty beds waiting for a repo; each project's beds edged with stones, under its sign
-    for (const s of L.empty) bed(f, s, '#6b4320', '#7a5230', S.snow);
+    for (const s of L.empty) fallow(f, s, S); // a bed no repo uses: fallow ground, so the fields in use stand out
     for (const g of L.groups) for (const [r, cols] of rowsOfGroup(g)) {
       const top = 100 + r * ROWH, gx0 = 174 + Math.min(...cols) * COLW - 43, gx1 = 174 + Math.max(...cols) * COLW + 43;
       for (let x = gx0; x <= gx1; x += 3) { f(x, top + 1, 2, 1, '#c3cbd2'); f(x, top + 59, 2, 1, '#c3cbd2'); f(x, top + 2, 2, 1, '#8a8f96'); f(x, top + 60, 2, 1, '#8a8f96'); }
@@ -564,6 +578,13 @@
     for (const [dx, dy] of [[-10, -30], [8, -38], [-4, -16], [12, -24], [-14, -40], [2, -28]]) { f(x + dx, y + dy, 2, 2, fruit); f(x + dx, y + dy, 1, 1, '#fff4d6'); }
   }
   /** A raised bed for a field, at its slot: a wooden frame round the soil, its front face in shade. */
+  /** An empty bed: a patch of darker grass with a thin outline and a few tufts. */
+  function fallow(f, s, S) {
+    const { x0, y0 } = s;
+    f(x0 - 2, y0 - 2, 76, 38, S.tuft);
+    f(x0 - 1, y0 - 1, 74, 36, S.grass[0]);
+    for (let n = 0; n < 14; n++) f(x0 + 3 + noise(n, s.cx) % 66, y0 + 3 + noise(s.cx, n) % 28, 1, 2, n % 3 ? S.tuft : S.blade);
+  }
   function bed(f, s, frame, soil, frost) {
     const { x0, y0 } = s, furrow = shade(soil, 0.77), ridge = shade(soil, 1.15);
     f(x0 - 3, y0 - 3, 78, 41, '#2a1d14'); // outline
@@ -864,6 +885,11 @@
       }
     }
     return { slotOf, groups: groupsOf(units), beds: kept };
+  }
+  /** The ground when the page opens: the fields in the order of the beds they had, packed into the first free beds. */
+  function packedLayout(fields, beds, now = Date.now()) {
+    const at = k => (Number.isInteger(beds?.[k]?.i) ? beds[k].i : Infinity);
+    return layoutFor([...fields].sort((x, y) => at(x.key) - at(y.key)), {}, now);
   }
   /** The ground for these fields: the beds remembered in `beds` stay put (null: laid out afresh, as arrange() does). */
   function layoutFor(fields, beds = null, now = Date.now()) {
@@ -1420,7 +1446,7 @@
         : [b.x + (k % 2 ? 1 : -1) * (7 * SC + 4) + Math.sin(T * 1.3 + k) * 3, b.y + 2 - (k > 1 ? 4 * SC : 0)]),
       startText: n => `Morning: <b>${n}</b> farmer${n === 1 ? '' : 's'} on the farm`,
       arriveText: 'walks out of the barn',
-      tag: f => (f.kind === 'codex' ? clip(f.name, 16) : `${clip(f.name, 16)} ${'♥'.repeat(f.hearts)}${'♡'.repeat(4 - f.hearts)}${f.tasks ? ` ${f.tasks.done}/${f.tasks.total}` : ''}`),
+      tag: tagText,
       tip: f => {
         const field = fieldByKey(f.field);
         const what = f.state === 'waiting' ? `needs you: ${f.ask}` : f.state === 'turn' ? (f.question ? `asks you: ${f.question}` : `your turn: ${f.reply || 'finished'}`)
@@ -1731,7 +1757,7 @@
           const s = carts.get(c.server);
           if (!s || (!s.goal && !s.moving)) continue; // waiting in its place
           const who = c.busy ? scene.farmers.find(f => f.id === c.busy) : null;
-          out.push({ key: `mcp:${c.server}`, x: s.x, y: s.y - 9, html: pxt(clip(c.server, 16), '#5a3a1a', null), title: `${c.server}, an MCP server${who ? `: ${who.name} is calling it` : ''}` });
+          out.push({ key: `mcp:${c.server}`, x: s.x, y: s.y - 9, html: pxt(cutMid(c.server, 16), '#5a3a1a', null), title: `${c.server}, an MCP server${who ? `: ${who.name} is calling it` : ''}` });
         }
         for (const f of scene.farmers) {
           const c = cartOf(f);
@@ -1785,7 +1811,7 @@
           const weather = d ? pxt(d.label, { ok: '#8ef0a0', failed: '#ff8a80', running: '#ffd166' }[d.state] ?? '#c9b48a') : '';
           const tip = [f.key, f.branch && `on ${f.branch}`, d?.detail, 'Click to see the files agents touched here'].filter(Boolean).join(' · ');
           const second = [f.worktree && f.main ? pxt(`worktree of ${f.main.split('/').pop()}`, '#a9dcf7') : '', weather, f.collision ? ` ${pxt('⚠ crowded', '#ffd166')}` : ''].filter(Boolean).join(' ');
-          lab(s.cx, s.rowTop + 49, `<button type="button" class="px-field" data-farm-field="${esc(f.key)}" title="${esc(tip)}"><span class="px-fl">${pxt(clip(f.name, 16), f.collision ? '#ffd166' : '#e6eef5')}${branch}</span>${second ? `<span class="px-fl">${second}</span>` : ''}</button>`, f.collision ? 'bad' : '');
+          lab(s.cx, s.rowTop + 49, `<button type="button" class="px-field" data-farm-field="${esc(f.key)}" title="${esc(tip)}"><span class="px-fl">${pxt(cutMid(f.name, 16), f.collision ? '#ffd166' : '#e6eef5')}${branch}</span>${second ? `<span class="px-fl">${second}</span>` : ''}</button>`, f.collision ? 'bad' : '');
           if (f.behind > 0) lab(s.cx - 40, s.rowTop - 8, cnt(`↓${f.behind}`), 'cnt', `${f.behind} commit${f.behind === 1 ? '' : 's'} behind the remote`);
           if (f.ahead > 0) lab(s.cx - 23, s.rowTop + 3 - Math.ceil(Math.min(f.ahead, 16) / 8) * 6, cnt(`↑${f.ahead}`), 'cnt', `${f.ahead} unpushed commit${f.ahead === 1 ? '' : 's'}`);
           if (f.dirty > 0) lab(s.cx + 25, s.rowTop + 3 - Math.ceil(Math.min(f.dirty, 12) / 9) * 6, cnt(`+${f.dirty}`), 'cnt', `${f.dirty} uncommitted file${f.dirty === 1 ? '' : 's'}`);
@@ -1816,7 +1842,7 @@
   function helpHtml() {
     return `<div class="px-key">
       <b>Your porch</b><span>in front of the farmhouse at the top: a farmer waving a red “!” needs you; a basket means it's your turn. The stats panel's “needs you” button opens the first one</span>
-      <b>Fields</b><span>one raised bed per repo in the fenced grid, each with its own crop (the seed packet on its side), soil and frame; empty beds wait for more repos, and the grid grows to 18. A blue pennant = a branch other than main; a greenhouse = a worktree, beside its repo; stones round some beds and a sign = one project's repos</span>
+      <b>Fields</b><span>one raised bed per repo in the fenced grid, each with its own crop (the seed packet on its side), soil and frame; empty beds lie fallow (darker grass) until a repo needs one, and the grid grows to 18. When the page opens, fields move up into free beds. A blue pennant = a branch other than main; a greenhouse = a worktree, beside its repo; stones round some beds and a sign = one project's repos</span>
       <b>Tools</b><span>what a working farmer holds is its current step: almanac = reading, spyglass = searching, pigeon = the web, hoe = editing, seeds = a new file, magnifier = running tests, rake = lint or format, hammer = a build, wheelbarrow = installing, crate = a commit, cart = a push or a PR (with a red flag: a deploy), mailbag = a pull, lantern = a server or a long wait, sickle = deleting, whistle = calling subagents, clipboard = planning, parcel = a connector (MCP: Gmail, Linear…), recipe card = a skill, blueprint = plan mode, watering can = any other command</span>
       <b>Above a farmer</b><span>a thought cloud = thinking between steps; a scroll on the porch = a plan for you to approve; a chore board beside it = its task list, ticked as items get done (its name says how many, e.g. 3/7)</span>
       <b>On a farmer</b><span>the pin on its hat = its model (purple Opus, blue Sonnet, green Haiku, orange Fable); speed lines = fast mode; a red and white scarf = bypass permissions (no checks); its purse = what it has cost (gold from $50)</span>
@@ -1855,7 +1881,13 @@
     const keep = (key, value) => { try { localStorage.setItem(key, value); } catch { /* this page only */ } };
     // The bed each field has had, kept across reloads, so fields stay put as repos and worktrees come and go.
     let beds = (() => { try { const b = JSON.parse(stored('tracker-farm-beds') ?? '{}'); return b && typeof b === 'object' && !Array.isArray(b) ? b : {}; } catch { return {}; } })();
-    const groundFor = fields => layoutFor(fields, beds);
+    // While you look, a field keeps its bed; when the page opens, fields move up into free beds, so empty rows close up.
+    let packed = false;
+    const groundFor = fields => {
+      if (packed || !fields.length) return layoutFor(fields, beds);
+      packed = true;
+      return packedLayout(fields, beds);
+    };
     const settle = ground => { beds = ground.beds; keep('tracker-farm-beds', JSON.stringify(beds)); th.relayout(ground); layoutKey = ground.key; };
     let zoom = ZOOMS.includes(Number(stored('tracker-farm-zoom'))) ? Number(stored('tracker-farm-zoom')) : 1;
     let saysOn = stored('tracker-farm-bubbles') !== 'off';
@@ -2199,14 +2231,11 @@
         px(Math.round(picked.x) + 8, Math.round(picked.y) - 1, 2, 3, '#ffd43b');
         PXG.ctx.globalAlpha = 1;
       }
-      // Name tags, lifted when two would overlap.
+      // Name tags, lifted when two would overlap (by their widths, once drawn): neighbours on the porch alternate.
       const placed = [];
       for (const f of scene.farmers) {
         const b = bots.get(f.id);
         if (!b) continue;
-        let lift = 0;
-        while (placed.some(q => Math.abs(q.y - b.y) < 4 && Math.abs(q.x - b.x) < 40 && q.lift === lift)) lift += 11;
-        placed.push({ x: b.x, y: b.y, lift: (b.lift = lift) });
         if (!b.tag) {
           b.tag = document.createElement('button');
           b.tag.type = 'button';
@@ -2222,6 +2251,11 @@
           b.tag.title = tip;
           b.tagText = f.state + text + tip + sel + hover + f.nap;
         }
+        if (b.tagW == null) { b.tagW = b.tag.offsetWidth; b.tagH = b.tag.offsetHeight; } // measured again only when its text changes
+        const w = (b.tagW || 120) / cs;
+        let lift = 0;
+        while (placed.some(q => Math.abs(q.y - b.y) < 4 && Math.abs(q.x - b.x) < (q.w + w) / 2 + 2 && q.lift === lift)) lift += 11;
+        placed.push({ x: b.x, y: b.y, w, lift: (b.lift = lift) });
         b.tag.style.transform = `translate(${Math.round(b.x * cs)}px, ${Math.round((b.y - th.SH * SC - 3 - b.lift) * cs)}px) translate(-50%, -100%)`;
         placeBubble(f, b);
       }
@@ -2814,6 +2848,6 @@
       view.unmount();
       mounted = false;
     },
-    toScene, fieldOf, weatherOf, contextPct, askText, helpHtml, layoutFor, rowsOfGroup, cartRoute, cartGoal,
+    toScene, fieldOf, weatherOf, contextPct, askText, helpHtml, layoutFor, packedLayout, rowsOfGroup, cartRoute, cartGoal, cutMid, tagText,
   };
 })();

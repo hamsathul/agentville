@@ -453,3 +453,28 @@ test('a cart stays with its farmer while the call goes on, and a few seconds aft
   assert.deepEqual(plain(cartGoal(busy, farmer, home, 60_000)), farmer, 'a long call: it stays');
   assert.deepEqual(plain(cartGoal(busy, [120, 206], home, 61_000)), [120, 206], 'another farmer calls it: it goes there');
 });
+
+test('a long name is shortened in the middle, so both ends stay readable', () => {
+  const { cutMid } = load();
+  assert.equal(cutMid('inventory_management', 16), 'inventor…agement');
+  assert.equal(cutMid('agent-tracker-a5', 10), 'agent…r-a5');
+  assert.equal(cutMid('ctd', 10), 'ctd');
+});
+
+test('on the porch a name tag is just the name, 10 characters at most; in the field it has its hearts and chores', () => {
+  const { tagText } = load();
+  const f = over => ({ name: 'inventory-management', kind: 'interactive', state: 'working', hearts: 3, tasks: { done: 2, total: 5 }, ...over });
+  assert.equal(tagText(f({ state: 'waiting' })), 'inven…ment');
+  assert.equal(tagText(f({ state: 'turn' })), 'inven…ment');
+  assert.equal(tagText(f({})), 'inventor…agement ♥♥♥♡ 2/5');
+  assert.equal(tagText(f({ state: 'turn', nap: true })), 'inventor…agement ♥♥♥♡ 2/5', 'napping in its hammock, not on the porch');
+});
+
+test('when the page opens, fields move up into free beds in the order they had: empty rows at the bottom close up', () => {
+  const { packedLayout } = load();
+  const fields = ['/c/api', '/c/web', '/c/ctd'].map(key => ({ key, name: key.split('/').pop() }));
+  const ground = packedLayout(fields, { '/c/ctd': { i: 13 }, '/c/api': { i: 0 }, '/c/web': { i: 4 }, '/c/gone': { i: 7, left: 1 } });
+  assert.deepEqual(plain(ground.ST.map(s => [s.key, s.i])), [['/c/api', 0], ['/c/web', 1], ['/c/ctd', 2]]);
+  assert.equal(ground.rows, 3, 'the fewest rows the farm has');
+  assert.deepEqual(plain(ground.beds), { '/c/api': { i: 0 }, '/c/web': { i: 1 }, '/c/ctd': { i: 2 } }, 'remembered from now on');
+});

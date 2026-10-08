@@ -384,10 +384,16 @@ game's.
 
 **The layout.** Along the top are the barn, the silo and your farmhouse, with **your porch** in
 front of it. Below them are the fields, one raised bed per repo, in a fenced grid that grows to 18
-beds. A field keeps its bed: a new repo takes a free one (a worktree right after its repo, a
-project's repo beside the others), and nothing else moves. A repo that goes away leaves its bed
-empty, held for it for a day. The yard down the left holds the henhouse, the meadow, the pond and
-the shade tree, and a forest surrounds the farm.
+beds. While you look, a field keeps its bed: a new repo takes a free one (a worktree right after
+its repo, a project's repo beside the others), and nothing else moves. A repo that goes away
+leaves its bed empty, held for it for a day. An empty bed is fallow ground, a patch of darker
+grass, so the fields in use stand out. When the page opens, the fields move up into free beds in
+the order they had, so empty rows close up. The yard down the left holds the henhouse, the meadow,
+the pond and the shade tree, and a forest surrounds the farm.
+
+**Names.** On the porch a farmer's tag is just its name, and neighbouring tags sit at two heights so
+none covers another. A name that is too long is shortened in the middle (`inventor…agement`);
+hover over it for the whole name.
 
 **Reading the farm.** The **i** button opens the full legend, including every tool a farmer
 can hold.
