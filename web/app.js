@@ -228,9 +228,8 @@ async function pickFromFarm(id, { from } = {}) {
   if (farmSide) { applyFarmSide(); render(); }
   else setFarmSide(true);
 }
-/** A noticeboard in a field close-up: read that document in the list view's reader. */
+/** A noticeboard in a field close-up: read that document over the farm. */
 async function openDocFromFarm(agentId, path) {
-  setView('list');
   await openFile(agentId, path);
 }
 /** The "+N more fields" signpost: the list view, with the repos group open. */
@@ -338,6 +337,14 @@ document.addEventListener('click', async e => {
   if (el.id === 'side-toggle') { setFarmSide(!farmSide); return; }
   if (d.farmTab) { setFarmTab(d.farmTab); return; }
   if (el.id === 'fs-list') { setView('list'); return; }
+  if (d.fileClose !== undefined) { closeFileDialog(); return; }
+  if (el.id === 'reader-tab' && reader?.dialog) { // the file in the dialog, in a tab of the list view instead
+    const { agentId, path } = reader;
+    closeFileDialog();
+    setView('list');
+    await openFile(agentId, path);
+    return;
+  }
   if (el.id === 'msg-send' || el.id === 'convo-msg-send') { await sendMessage(d.agent, el); return; }
   if (el.id === 'aside-send') { await askAside(d.agent, el); return; }
   if (d.quickReply !== undefined) { await sendMessage(d.agent, el, d.quickReply); return; }
@@ -656,6 +663,10 @@ function ringBell() {
     n.onclick = () => { window.focus(); n.close(); };
   }
 }
+
+// The farm's file dialog: Escape (its close event comes a moment after) or the backdrop closes it.
+$('file-dlg').addEventListener('close', () => { if (reader?.dialog && !$('file-dlg').open) closeFileDialog(); });
+$('file-dlg').addEventListener('click', e => { if (e.target === $('file-dlg')) closeFileDialog(); });
 
 function connect() {
   const events = new EventSource('/api/events');

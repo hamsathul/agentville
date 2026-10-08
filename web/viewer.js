@@ -54,7 +54,7 @@ function readerHtml() {
   return `<div class="reader-head">
       <div class="reader-title"><b>${reader.path === '@summary' ? '🧠' : isMarkdown(reader.path) ? '📄' : '⌗'} ${esc(fileLabel(reader.path))}</b><div class="faint mono" id="reader-sub">${esc(docSub(agent, reader.path))}</div></div>
       <span class="grow"></span>
-      <button class="act" id="reader-reload" type="button">↻ Reload</button>
+      <button class="act" id="reader-reload" type="button">↻ Reload</button>${reader.dialog ? `<button class="act" id="reader-tab" type="button" data-tip="Open it in a tab of the list view">Open in a tab</button><button class="act" type="button" data-file-close aria-label="Close">×</button>` : ''}
     </div>
     <article id="reader-body" class="${isMarkdown(reader.path) ? 'md' : 'codeview'}"></article>
     <div class="reader-foot compose">
@@ -73,9 +73,9 @@ function codeHtml(text) {
   return `<pre class="code"><code>${shown}</code></pre>${more}`;
 }
 
-/** Opens a file in a tab of the agent's centre view (or switches to it). */
+/** Opens a file in a tab of the agent's centre view (or switches to it); in the farm, in a dialog over it. */
 async function openFile(agentId, path) {
-  if (view === 'farm') setView('list'); // files open in the list view's tabs
+  if (view === 'farm') return openFileDialog(agentId, path);
   const t = tabsOf(agentId);
   if (!t.files.includes(path)) t.files.push(path);
   t.active = path;
@@ -86,6 +86,23 @@ async function openFile(agentId, path) {
   render();
   renderTree();
   await viewerLoading;
+}
+
+/** In the farm, a file opens in a dialog over it, which stays: the list view's reader, quoting and replying as there. */
+async function openFileDialog(agentId, path) {
+  reader = { agentId, path, at: touchOf(agentId, path)?.at ?? 0, dialog: true };
+  readerQuote = '';
+  readerLines = null;
+  $('file-dlg-body').innerHTML = readerHtml();
+  $('reader-body').innerHTML = '<div class="empty" style="padding:12px 16px">Loading…</div>';
+  if (!$('file-dlg').open) $('file-dlg').showModal();
+  viewerLoading = loadDoc();
+  await viewerLoading;
+}
+function closeFileDialog() {
+  if (reader?.dialog) reader = null;
+  $('file-dlg-body').innerHTML = '';
+  if ($('file-dlg').open) $('file-dlg').close();
 }
 
 function closeTab(path) {

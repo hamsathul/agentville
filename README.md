@@ -312,7 +312,8 @@ The **⚙ Claude Code** button in the top bar opens your Claude Code setup in th
 ### Files, documents and quoting
 
 - Click a file in the explorer to open it read-only in a tab: markdown is rendered, and code gets
-  line numbers.
+  line numbers. In the farm view it opens in a dialog over the farm instead, which stays (**Open in
+  a tab** moves it to the list view).
 - **Documents** lists the specs, plans and other markdown files the agent wrote or read.
 - In any open file, select a passage and **Quote** it, then reply. Quotes from code keep their
   line numbers, and the agent gets your reply as a message about that file.
@@ -373,7 +374,8 @@ can hold.
 
 **Click things.** Click a farmer to open its sidebar, with Agent, Activity, Subagents (its
 subagents' cards, as in the list), Files and Diary tabs, or a field for a close-up of the files
-agents touched there. Click a building for the rest:
+agents touched there. A file you open from the farm, from its Files tab or a close-up, opens in a
+dialog over the farm, with Quote and the reply box as in the list. Click a building for the rest:
 
 | Building | Opens |
 |---|---|

@@ -785,13 +785,13 @@ test('clicking a farmer opens the farm sidebar on that agent, with its answer fo
   assert.deepEqual(page.posts, [{ path: '/api/actions/answer', body: { agentId: 'w1', toolUseId: 'toolu_Q1', answers: { 'Pick a colour?': 'Blue' } } }]);
 });
 
-test('a document picked in the field close-up opens in the reader in the list view', async () => {
+test('a document picked in the field close-up opens in the reader, in a dialog over the farm', async () => {
   const f = fakeFarm();
   const page = loadPage({ farm: f.farm, stored: { 'tracker-view': 'farm' }, files: { '/w/docs/spec.md': '# Spec' } });
   page.push(richSnapshot([richAgent()]));
   await f.openDoc('r1', '/w/docs/spec.md');
-  assert.equal(page.el('main').dataset.view, 'list');
-  assert.match(page.tabs(), /class="tab on"[^]*?spec\.md/);
+  assert.equal(page.el('main').dataset.view, 'farm');
+  assert.equal(page.el('file-dlg').open, true);
   assert.match(page.el('reader-body').innerHTML, /<h1[^>]*>Spec<\/h1>/);
 });
 
@@ -870,14 +870,16 @@ test("entering the farm clears the list's centre and leaving clears the sidebar,
   assert.match(page.side(), /id="msg-text"/);
 });
 
-test('a file picked in the sidebar explorer opens in the list view', async () => {
+test('a file picked in the sidebar explorer opens in a dialog over the farm', async () => {
   const f = fakeFarm();
   const page = loadPage({ farm: f.farm, stored: { 'tracker-view': 'farm', 'tracker-farm-side': 'open', 'tracker-farm-tab': 'files' }, listing: LISTING, files: { '/w/src/app.ts': 'const a = 1;\n' } });
   page.push(richSnapshot([richAgent()]));
   await page.settle();
   await page.clickButton('tn', { file: 'src/app.ts' });
-  assert.equal(page.el('main').dataset.view, 'list');
-  assert.match(page.tabs(), /class="tab on"[^]*?app\.ts/);
+  await page.settle();
+  assert.equal(page.el('main').dataset.view, 'farm');
+  assert.equal(page.el('file-dlg').open, true);
+  assert.match(page.el('reader-body').innerHTML, /data-n="1">const a = 1;/);
 });
 
 test('while you type in the sidebar, new snapshots still reach the farm but the sidebar waits', async () => {
@@ -1687,4 +1689,28 @@ test("the farm's own buttons include ⚙ Claude Code, opening the same dialog", 
   await page.settle();
   assert.equal(page.el('setup').open, true);
   assert.match(page.el('setup-body').innerHTML, /together they add/);
+});
+
+test('in the farm, a file opens in a dialog over it, and the farm stays: the same reader, or a tab if you ask', async () => {
+  const f = fakeFarm();
+  const page = loadPage({ farm: f.farm, stored: { 'tracker-view': 'farm' }, files: { '/w/docs/spec.md': '# Spec\n\nThe plan.', '/w/src/app.ts': 'const a = 1;' } });
+  page.push(richSnapshot([richAgent({ mod: { version: '0.6.1', live: true } })]));
+  await f.openDoc('r1', '/w/docs/spec.md'); // a noticeboard in a field close-up
+  await page.settle();
+  assert.equal(page.el('main').dataset.view, 'farm', 'still the farm');
+  assert.equal(page.el('file-dlg').open, true);
+  assert.match(page.el('file-dlg-body').innerHTML, /📄 spec\.md[\s\S]*id="reader-tab"[^>]*>Open in a tab<[\s\S]*id="reader-text"/, 'the reader, with Quote and the reply box');
+  assert.match(page.el('reader-body').innerHTML, /<h1[^>]*>Spec<\/h1>[\s\S]*The plan\./);
+  assert.ok(page.gets.find(g => g.path === '/api/agent/r1/file?path=%2Fw%2Fdocs%2Fspec.md')?.token, 'read with the token');
+  page.ctx.closeFileDialog();
+  assert.equal(page.el('file-dlg').open, false);
+  await page.ctx.openFile('r1', '/w/src/app.ts'); // from the Files or Activity tab
+  await page.settle();
+  assert.equal(page.el('file-dlg').open, true);
+  assert.match(page.el('reader-body').innerHTML, /data-n="1">const a = 1;/);
+  await page.clickButton('reader-tab', {});
+  await page.settle();
+  assert.equal(page.el('file-dlg').open, false);
+  assert.equal(page.el('main').dataset.view, 'list', 'Open in a tab: the list view');
+  assert.match(page.tabs(), /class="tab on"><button type="button" data-tab="\/w\/src\/app\.ts"/);
 });

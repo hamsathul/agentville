@@ -413,7 +413,15 @@ try {
   const closeUpState = closeUpOpen ? '' : await js(`JSON.stringify({ fv: !!document.querySelector('.fv-back'), files: [...document.querySelectorAll('.fv-f')].length, canvas: (r => [r.left, r.top, r.width, r.height].map(Math.round))(document.querySelector('#farm canvas').getBoundingClientRect()), stage: document.querySelector('#farm .px-stage').style.transform, side: document.getElementById('main').dataset.side, sel: document.querySelector('.px-tag.sel')?.dataset.farmer, tags: [...document.querySelectorAll('.px-tag')].map(t => t.dataset.farmer + '@' + Math.round(t.getBoundingClientRect().left)) })`);
   check(closeUpOpen, `a field close-up lists the files agents touched${closeUpState ? ` (now: ${closeUpState})` : ''}`);
   check(await js("[...document.querySelectorAll('.fv-f')].some(b => b.textContent.includes('plan.md') && b.querySelector('.k-doc'))"), 'a document in the close-up is a noticeboard');
-  await js("document.querySelector('[data-fv-close]').click()");
+  // Reading a document from the close-up: a dialog over the farm, which stays.
+  await js("[...document.querySelectorAll('.fv-f')].find(b => b.textContent.includes('plan.md'))?.click()");
+  await until("!!document.querySelector('[data-fv-read]')");
+  await js("document.querySelector('[data-fv-read]').click()");
+  check(await until("document.getElementById('file-dlg').open && /Plan/.test(document.getElementById('reader-body').textContent)"), 'a document from the close-up opens in a dialog over the farm');
+  check(await js("document.getElementById('main').dataset.view === 'farm' && !!document.querySelector('#file-dlg #reader-text')"), 'the farm stays, and the dialog has the reply box');
+  await js("document.querySelector('#file-dlg [data-file-close]').click()");
+  check(await until("!document.getElementById('file-dlg').open"), 'the file dialog closes');
+  await js("document.querySelector('[data-fv-close]')?.click()");
   check(await js("!document.querySelector('.fv-back')"), 'the close-up closes');
 
   await js("document.querySelector('[data-farm-need]').click()");

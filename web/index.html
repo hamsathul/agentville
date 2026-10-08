@@ -304,6 +304,10 @@ dialog.setup-dlg[open] { display: flex; flex-direction: column; }
 .setup-table th, .setup-table td { padding: 2px 12px 2px 0; text-align: left; font-variant-numeric: tabular-nums; }
 .setup-table th { color: var(--muted); font-weight: 600; }
 .setup-list { margin: 8px 0 2px; font-size: 11px; font-weight: 700; color: var(--muted); }
+/* the farm's file dialog: the list view's reader, over the farm */
+dialog.file-dlg { width: min(960px, calc(100vw - 32px)); height: min(88vh, 960px); max-width: none; padding: 0; overflow: hidden; }
+dialog.file-dlg[open] { display: flex; }
+#file-dlg-body { flex: 1; height: auto; }
 /* the conversation dialog (⤢ Read all): the whole conversation, with search */
 dialog.convo-dlg { width: min(860px, calc(100vw - 32px)); height: min(86vh, 900px); max-width: none; padding: 14px 16px 12px; }
 dialog.convo-dlg[open] { display: flex; flex-direction: column; }
@@ -690,6 +694,7 @@ a.pile { text-decoration: none; color: inherit; }
   <div id="sess-body"></div>
   <p id="sess-status" class="faint" role="status"></p>
 </dialog>
+<dialog id="file-dlg" class="file-dlg" aria-label="File"><div id="file-dlg-body" class="center-body viewing"></div></dialog>
 <dialog id="convo" class="convo-dlg" aria-labelledby="convo-title">
   <div class="sess-head"><h3 id="convo-title">Conversation</h3><span id="convo-sub" class="faint"></span><span class="grow"></span><button type="button" class="act mini" data-convo-close aria-label="Close">×</button></div>
   <div class="convo-find"><input id="convo-q" type="search" placeholder="Search this conversation…" autocomplete="off" spellcheck="false" aria-label="Search this conversation"><span id="convo-count" class="faint" role="status"></span><button type="button" class="act mini" id="convo-prev" aria-label="Older match" data-tip="Older match (Enter)">↑</button><button type="button" class="act mini" id="convo-next" aria-label="Newer match" data-tip="Newer match (Shift+Enter)">↓</button></div>
