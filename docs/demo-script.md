@@ -5,6 +5,8 @@ up. They live in a demo `~/.claude` under `/Users/Shared/agentville-demo`, not o
 
 Each scene lists what is on screen and its caption, which is a title with one line under it. The
 video runs about 7½ minutes over ten chapters, and each chapter starts with a 2-second title card.
+Chapters 1 to 9 are also saved as short videos of their own, each starting at its title card. The
+opening is at the start of chapter 1's video and the closing at the end of chapter 9's.
 
 ## 0. Opening (10 s)
 

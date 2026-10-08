@@ -4,7 +4,8 @@
 // and GitHub), a director keeps the sessions busy, and headless Chrome tours the features with a
 // cursor and captions, following docs/demo-script.md: the farm, answering and messaging from it, an
 // agent's work, its files, the list view, sessions, Claude Code's own setup, notifications. Frames
-// come from Chrome's screencast; ffmpeg makes the MP4 (about 8 minutes).
+// come from Chrome's screencast; ffmpeg makes the MP4 (about 8 minutes), and a short video for each
+// chapter in a folder beside it (out-chapters/01-the-farm.mp4 and so on).
 //
 //   node scripts/demo-video.mjs [out.mp4]      (needs Chrome and ffmpeg)
 //   STILLS=docs node scripts/demo-video.mjs    also saves farm.png and farm-night.png there (no caption or
@@ -475,6 +476,7 @@ const chrome = spawn(CHROME, ['--headless=new', '--remote-debugging-port=0', `--
 const frames = join(temp, 'frames');
 mkdirSync(frames);
 const shot = []; // [file, timestamp]
+const marks = []; // where each chapter's title card comes up: [number, title, the first frame after it was asked for]
 let ws, chooserFiles = []; // what Attach's file chooser picks
 try {
   let port;
@@ -619,6 +621,7 @@ try {
   const pickFarmer = async key => { await click(tag(key), 750); await until(`document.querySelector('#farm-agent .fs-head .name')?.textContent === ${JSON.stringify(byId[key].name)}`, 3000); await hold(400); };
   const chapter = async (n, title) => {
     await say(null);
+    marks.push([n, title, shot.length]);
     await js(`window.__demo.card(${JSON.stringify(`<small>${n}</small><div style="font-size:52px">${title}</div>`)})`);
     await hold(2000);
     await js('window.__demo.card(null)');
@@ -981,15 +984,32 @@ if (process.env.STILLS_ONLY) { // only the stills were asked for
 }
 
 if (shot.length < 10) { console.error(`only ${shot.length} frames: nothing to make`); process.exit(1); }
-const list = [];
-for (let i = 0; i < shot.length; i++) {
-  const [file, t] = shot[i], next = shot[i + 1]?.[1] ?? t + 0.5;
-  list.push(`file '${file}'`, `duration ${Math.max(0.001, next - t).toFixed(4)}`);
+/** The video of the frames shown from `from` to `to` (screencast seconds), each for as long as it stayed. */
+function encode(out, from, to, fades = '') {
+  const list = [];
+  for (let i = 0; i < shot.length; i++) {
+    const [file, t] = shot[i], next = shot[i + 1]?.[1] ?? t + 0.5, a = Math.max(t, from), b = Math.min(next, to);
+    if (b > a) list.push(`file '${file}'`, `duration ${Math.max(0.001, b - a).toFixed(4)}`);
+  }
+  list.push(list.at(-2)); // the concat list ends with its last frame again
+  writeFileSync(join(temp, 'frames.txt'), `${list.join('\n')}\n`);
+  execFileSync('ffmpeg', ['-y', '-loglevel', 'error', '-f', 'concat', '-safe', '0', '-i', join(temp, 'frames.txt'), '-vf', `fps=30,scale=1920:-2:flags=lanczos${fades},format=yuv420p`, '-c:v', 'libx264', '-preset', 'slow', '-crf', '21', '-movflags', '+faststart', out], { stdio: 'inherit' });
 }
-list.push(`file '${shot.at(-1)[0]}'`);
-writeFileSync(join(temp, 'frames.txt'), `${list.join('\n')}\n`);
-log(`${shot.length} frames over ${(shot.at(-1)[1] - shot[0][1]).toFixed(1)} s; encoding…`);
-execFileSync('ffmpeg', ['-y', '-loglevel', 'error', '-f', 'concat', '-safe', '0', '-i', join(temp, 'frames.txt'), '-vf', 'fps=30,scale=1920:-2:flags=lanczos,format=yuv420p', '-c:v', 'libx264', '-preset', 'slow', '-crf', '21', '-movflags', '+faststart', OUT], { stdio: 'inherit' });
+const start = shot[0][1], end = shot.at(-1)[1] + 0.5;
+log(`${shot.length} frames over ${(end - start - 0.5).toFixed(1)} s; encoding…`);
+encode(OUT, start, end);
+// A video for each chapter: from its title card, once faded in, to the next one's. The opening is at the
+// start of the first and the closing at the end of the last.
+const CHAPTERS = OUT.replace(/\.mp4$/i, '') + '-chapters';
+rmSync(CHAPTERS, { recursive: true, force: true });
+mkdirSync(CHAPTERS, { recursive: true });
+const cardAt = i => shot[Math.min(marks[i][2], shot.length - 1)][1];
+for (let i = 0; i < marks.length; i++) {
+  const [n, title] = marks[i], from = i === 0 ? start : cardAt(i) + 0.6, to = i + 1 < marks.length ? cardAt(i + 1) : end;
+  const name = `${String(n).padStart(2, '0')}-${title.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '')}.mp4`;
+  log(`chapter ${n}, ${(to - from).toFixed(0)} s: ${name}`);
+  encode(join(CHAPTERS, name), from, to, `,fade=t=in:st=0:d=0.3,fade=t=out:st=${Math.max(0, to - from - 0.5).toFixed(2)}:d=0.5`);
+}
 rmSync(temp, { recursive: true, force: true });
 rmSync(DEMO, { recursive: true, force: true });
-log(`made ${OUT}`);
+log(`made ${OUT}, and a video for each chapter in ${CHAPTERS}`);

@@ -617,7 +617,8 @@ npm run test:ui             # the dashboard and the farm in headless Chrome, on 
 claude plugin test mod      # the Claude Code mod
 scripts/e2e-answer.sh       # answering and messaging real sessions
 npm start                   # run the collector in the foreground (stop the service first)
-npm run demo [out.mp4]      # record the demo video, made-up sessions only (Chrome, ffmpeg; ~8 min)
+npm run demo [out.mp4]      # record the demo video, made-up sessions only (Chrome, ffmpeg; ~8 min),
+                            # and one short video per chapter in out-chapters/ (01-the-farm.mp4, …);
                             # it follows docs/demo-script.md; STILLS=docs STILLS_ONLY=1 remakes the farm pictures
 ```
 
