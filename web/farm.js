@@ -1620,8 +1620,8 @@
           return [y, () => drawCart(x, y, s?.dir ?? -1, s?.moving, CRATES[hashOf(c.server) % CRATES.length])];
         });
       },
-      /** Each frame, after the farmers have moved: each cart drives towards where cartGoal sends it. */
-      tick(dt, posOf) {
+      /** Each frame, after the farmers have moved: each cart drives towards where cartGoal sends it (or is put there, when the farm stands still). */
+      tick(dt, posOf, snap = false) {
         const now = Date.now();
         for (const c of placeCarts()) {
           const home = RANK[rankOf.get(c.server)];
@@ -1630,6 +1630,11 @@
           const b = c.busy ? posOf(c.busy) : null;
           const goal = cartGoal(s, b ? besideOf(b) : null, home, now);
           if (goal[0] !== s.to[0] || goal[1] !== s.to[1]) { s.to = goal; s.path = cartRoute([s.x, s.y], goal); }
+          if (snap) { // no motion: it stands where it is going, facing the farmer (or the farm, in its place)
+            [s.x, s.y] = goal;
+            s.path = [];
+            s.dir = b && s.goal ? (goal[0] > (Number.isFinite(b.tx) ? b.tx : b.x) ? -1 : 1) : -1;
+          }
           if (s.path.length) {
             const [qx, qy] = s.path[0], dx = qx - s.x, dy = qy - s.y, d = Math.hypot(dx, dy), sp = CART_SPEED * dt;
             if (Math.abs(dx) > 0.1) s.dir = Math.sign(dx);
@@ -2256,6 +2261,7 @@
     function redrawStill() {
       sync(true);
       for (const f of scene.farmers) { const b = bots.get(f.id); if (b) step(0, f, b); }
+      th.tick?.(0, id => bots.get(id), true); // the MCP carts too: each where it is going
       draw();
     }
     function layoutLabels() {

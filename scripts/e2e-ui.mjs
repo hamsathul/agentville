@@ -399,7 +399,7 @@ try {
   check(await until(`!!${moverOf('playwright')}`, 12_000), "an MCP call: its server's cart leaves its place by the road to town, with the server's name");
   const cartStart = JSON.parse(await js(moverOf('playwright')));
   const nearFarmer = `(() => { const c = JSON.parse(${moverOf('playwright')} ?? 'null'), t = document.querySelector('.px-tag[data-farmer="ui-worker"]').getBoundingClientRect(); return c && Math.abs(c[0] - (t.left + t.width / 2)) < 120 && Math.abs(c[1] - t.bottom) < 80; })()`;
-  check(await until(nearFarmer, 20_000), `it drives to the farmer making the call (from ${JSON.stringify(cartStart)} to ${await js(moverOf('playwright'))})`);
+  check(await until(nearFarmer, 20_000), `it goes to the farmer making the call, driving unless the farm stands still (from ${JSON.stringify(cartStart)} to ${await js(moverOf('playwright'))})`);
   await shot('farm-mcp-cart');
   check(!(await js(`!!${moverOf('Gmail')}`)), "a server no one is calling now waits in its place: no name out on the farm");
   check(await until("[...document.querySelectorAll('.px-lab')].some(l => l.textContent.startsWith('farm-repo'))"), 'the repo is a field');
