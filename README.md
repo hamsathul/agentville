@@ -71,6 +71,8 @@ It listens on `127.0.0.1` only and reads what Claude Code already writes to disk
   you choose.
 - Switch a running session's model or effort, compact it, restart it in another permission mode,
   or end it (its terminal window closes too).
+- See the shell commands each session runs right now (how long, CPU, memory), follow a background
+  one's output, and stop one with everything it started.
 
 **Manage Claude Code itself**
 - See every plugin and skill with what it costs in context (always-on tokens per session), turn
@@ -189,6 +191,11 @@ The page is laid out like an editor, in three columns:
   - its controls: permission mode, model, effort, Restart in…, End session;
   - CPU, memory, context left and cost;
   - **Now**: its working line and current tool;
+  - **Commands running**: each shell command it (or a subagent) runs now, foreground or background,
+    with how long it has run and its CPU and memory, everything it started included. **Output**
+    shows a background one's output, followed while the dialog is open (a foreground one hands its
+    output to the session when it ends). **■ Stop** asks first, then ends the command and everything
+    it started. The session sees the command end;
   - the message box, side questions and the conversation, newest first, with the newest message
     framed in teal under a **Latest** tag (with your message, when it is right below it);
   - its activity, background jobs and workflows, the repos it touched and its process tree.
@@ -508,6 +515,10 @@ canvas, with its text drawn as HTML on top so it stays crisp.
   start, end, switch…) also needs a same-origin request.
 - The explorer shows what git shows. Ignored files (`node_modules`, `.env`, build output) and
   files that look like secrets (`.env*`, keys) are neither listed nor served.
+- **■ Stop** only ever stops a session's shell commands, never the session itself, its MCP
+  servers or anything else: the collector checks again in `ps`, then sends SIGTERM to the command's
+  own process group (SIGKILL 3 s later if anything is left). A background command's output is read
+  only with the token, and only from the file Claude Code named for it in the scratch folder.
 - Folders to start a session in are listed only with the token, and only in your home folder or
   on a drive. Making one is an action (token and same origin). Each path is checked where it really
   is, so a `..` or a link can't lead out of those places.

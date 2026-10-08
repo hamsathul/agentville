@@ -3,8 +3,9 @@ import { execFileSync } from 'node:child_process';
 import assert from 'node:assert/strict';
 import { appendFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, realpathSync, symlinkSync, unlinkSync, utimesSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { basename, join } from 'node:path';
+import { basename, dirname, join } from 'node:path';
 import { startCollector } from '../collector.mjs';
+import { parsePs } from '../sources/ps.mjs';
 
 test('collector serves a waiting agent from a fixture ~/.claude and survives a bad config edit', async () => {
   const root = mkdtempSync(join(tmpdir(), 'tracker-root-'));
@@ -684,6 +685,52 @@ test('a session is ended (SIGTERM, then its window closed by its tty) or restart
     assert.equal(stuck.ok, false);
     assert.match(stuck.error, /didn't stop/);
     assert.equal(launched.length, before, 'its window is left alone');
+  } finally {
+    await handle.stop();
+  }
+});
+
+test("a session's shell commands: one is stopped with everything it started (its process group), a background one's output read; nothing else", async () => {
+  const root = mkdtempSync(join(tmpdir(), 'tracker-root-'));
+  mkdirSync(join(root, 'web'));
+  writeFileSync(join(root, 'web', 'index.html'), '<html></html>');
+  writeFileSync(join(root, 'config.json'), JSON.stringify({ port: 0, deployRepos: {} }));
+  const work = realpathSync(mkdtempSync(join(tmpdir(), 'tracker-work-')));
+  const scratch = realpathSync(mkdtempSync(join(tmpdir(), 'tracker-scratch-')));
+  const claudeDir = mkdtempSync(join(tmpdir(), 'tracker-claude-'));
+  mkdirSync(join(claudeDir, 'sessions'));
+  mkdirSync(join(claudeDir, 'projects', '-w'), { recursive: true });
+  const LIVE = '33333333-aaaa-4bbb-8ccc-000000000001', P = process.pid;
+  const output = join(scratch, '-w', LIVE, 'tasks', 'bgx.output');
+  mkdirSync(dirname(output), { recursive: true });
+  writeFileSync(output, 'ready on :3000\n');
+  const line = (type, content) => JSON.stringify({ type, timestamp: new Date().toISOString(), cwd: work, message: { role: type, content } });
+  writeFileSync(join(claudeDir, 'sessions', `${P}.json`), JSON.stringify({ pid: P, sessionId: LIVE, cwd: work, name: 'live', kind: 'interactive', status: 'busy', version: '2.1.293' }));
+  writeFileSync(join(claudeDir, 'projects', '-w', `${LIVE}.jsonl`), [
+    line('user', 'start it'),
+    line('assistant', [{ type: 'tool_use', id: 'bg1', name: 'Bash', input: { command: 'npm run dev', run_in_background: true } }]),
+    line('user', [{ type: 'tool_result', tool_use_id: 'bg1', content: `Command running in background with ID: bgx. Output is being written to: ${output}` }]),
+    line('assistant', [{ type: 'tool_use', id: 'fg1', name: 'Bash', input: { command: 'npm test' } }]),
+  ].join('\n') + '\n');
+  const shell = typed => `/bin/zsh -c source /Users/h/.claude/shell-snapshots/snapshot-zsh-1-x.sh 2>/dev/null || true && eval '${typed}' < /dev/null && pwd -P >| /tmp/claude-1-cwd`;
+  const ps = [`${P} 1 ${P} 01:00 1.0 20480 claude`, `5001 ${P} 5001 00:30 0.0 1024 ${shell('npm run dev')}`, '5002 5001 5001 00:30 25.0 102400 node next dev',
+    `5003 ${P} 5003 00:05 0.0 1024 ${shell('npm test')}`, `5004 ${P} ${P} 01:00 0.5 4096 npm exec @playwright/mcp@latest`].join('\n');
+  const signals = [];
+  let groupUp = true;
+  const sessionProcs = { commandOf: async () => 'claude', ttyOf: async () => null, kill: () => {}, alive: () => true, killGroup: (pgid, sig) => { signals.push([pgid, sig]); if (sig === 'SIGKILL') groupUp = false; }, groupAlive: () => groupUp };
+  const handle = await startCollector({ root, claudeDir, scratchBase: scratch, readProcs: async () => parsePs(ps), sessionProcs, stopWaitMs: 100, claudeBin: '/usr/bin/false', notify: () => {}, log: () => {} });
+  try {
+    const shells = handle.getSnapshot().agents.find(a => a.id === LIVE).shells;
+    assert.deepEqual(shells.map(s => [s.pid, s.command, s.background, s.output, s.cpu, s.rssMb]), [[5001, 'npm run dev', true, true, 25, 101], [5003, 'npm test', false, false, 0, 1]]);
+    assert.deepEqual(await handle.shellOutput(LIVE, 5001), { text: 'ready on :3000\n', size: 15, truncated: false });
+    assert.match((await handle.shellOutput(LIVE, 5003)).error, /only a background command/i);
+    for (const pid of [5004, P, 9999, 'x']) assert.equal((await handle.actions.stopShell({ agentId: LIVE, pid })).ok, false, `not a shell command of that session: ${pid}`);
+    assert.equal((await handle.actions.stopShell({ agentId: 'nope', pid: 5001 })).ok, false);
+    assert.deepEqual(signals, []);
+    assert.deepEqual(await handle.actions.stopShell({ agentId: LIVE, pid: 5001 }), { ok: true });
+    assert.deepEqual(signals, [[5001, 'SIGTERM']]);
+    for (let i = 0; i < 40 && signals.length < 2; i++) await new Promise(r => setTimeout(r, 20));
+    assert.deepEqual(signals, [[5001, 'SIGTERM'], [5001, 'SIGKILL']], 'still there after a moment: killed');
   } finally {
     await handle.stop();
   }

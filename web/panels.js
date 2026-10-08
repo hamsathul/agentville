@@ -361,8 +361,65 @@ function subDetailHtml(open) {
 }
 
 /** A session's background jobs and workflows, a line each. */
+/** Its shell commands running now (from ps): how long, CPU and memory; Output for a background one; ■ Stop for any. */
+function shellsHtml(a) {
+  const shells = a.shells ?? [];
+  if (!shells.length) return '';
+  return `<div class="sec">Commands running <span class="tab-n">${shells.length}</span></div>${shells.map(s => `<div class="shell-row">
+    <div class="shell-main"><code class="shell-cmd"${s.about ? ` data-tip="${esc(s.about)}"` : ''}>$ ${esc(s.command)}</code>
+      <span class="faint">${s.background ? 'background · ' : ''}<span data-lasted="${s.startedAt}">${lasted(s.startedAt)}</span> · ${s.cpu}% CPU · ${s.rssMb} MB</span></div>
+    ${s.output ? `<button type="button" class="act mini" data-shell-output="${s.pid}" data-agent="${esc(a.id)}" data-tip="Its output so far, followed as it grows">Output</button>` : ''}<button type="button" class="act mini" data-shell-stop="${s.pid}" data-agent="${esc(a.id)}" data-tip="Stop it, with everything it started">■ Stop</button></div>`).join('')}`;
+}
+
+/** A background command's output, in a dialog, followed every 2 seconds while it is open. */
+let shellView = null; // { agentId, pid, timer }
+async function openShellOutput(agentId, pid) {
+  const s = snap?.agents.find(a => a.id === agentId)?.shells?.find(x => x.pid === pid);
+  if (!s) return;
+  if (shellView?.timer) clearInterval(shellView.timer);
+  shellView = { agentId, pid };
+  $('shell-title').textContent = `$ ${s.command}`;
+  $('shell-out').textContent = 'Loading…';
+  if (!$('shell-dlg').open) $('shell-dlg').showModal();
+  await refreshShellOutput();
+  shellView.timer = setInterval(refreshShellOutput, 2000);
+}
+async function refreshShellOutput() {
+  if (!shellView) return;
+  const { agentId, pid } = shellView;
+  let body;
+  try {
+    const r = await fetch(`/api/agent/${encodeURIComponent(agentId)}/shell-output?pid=${pid}`, { headers: { 'x-tracker-token': TOKEN } });
+    body = await r.json();
+  } catch (err) {
+    body = { error: String(err) };
+  }
+  if (shellView?.pid !== pid) return;
+  const box = $('shell-out');
+  const atEnd = box.scrollTop + box.clientHeight >= box.scrollHeight - 8; // keep following the end, unless you scrolled up
+  box.textContent = body.error ? body.error : body.text || '(no output yet)';
+  $('shell-sub').textContent = body.error ? '' : `${sizeText(body.size)}${body.truncated ? ' · its last 64 KB' : ''} · followed while open`;
+  if (atEnd) box.scrollTop = box.scrollHeight;
+}
+function closeShellOutput() {
+  if (shellView?.timer) clearInterval(shellView.timer);
+  shellView = null;
+  if ($('shell-dlg').open) $('shell-dlg').close();
+}
+
+/** ■ Stop: asks first, then ends the command and everything it started. */
+async function stopShellFlow(agentId, pid) {
+  const a = snap?.agents.find(x => x.id === agentId);
+  const s = a?.shells?.find(x => x.pid === pid);
+  if (!s) return;
+  if (!(await confirmBox(`Stop “${s.command}”? It ends now, with everything it started, and ${a.name} sees the command end.`, 'Stop it'))) return;
+  const r = await post('/api/actions/stop-shell', { agentId, pid });
+  notice(r.ok ? `Stopped “${s.command}”.` : `Not stopped: ${r.error}`);
+}
+
 function jobsHtml(a) {
-  const jobs = (a.children ?? []).filter(c => c.kind !== 'subagent');
+  const shown = new Set((a.shells ?? []).map(s => s.toolUseId).filter(Boolean)); // running: listed with its command, and Stop
+  const jobs = (a.children ?? []).filter(c => c.kind !== 'subagent' && !shown.has(c.id));
   if (!jobs.length) return '';
   return `<div class="sec">Background jobs${jobs.some(c => c.kind === 'workflow') ? ' and workflows' : ''}</div>${jobs.map(c => `<div class="child"><b>${esc(c.kind === 'bgjob' ? 'job' : c.kind)}</b> ${esc(c.label)} <span class="chip ${c.state === 'running' ? 'c-working live-dot' : 'c-plain'}">${esc(c.state)}${c.now ? ` · ${esc(c.now.tool)}` : ''}</span></div>`).join('')}`;
 }

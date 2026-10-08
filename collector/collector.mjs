@@ -1,4 +1,4 @@
-import { appendFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, realpathSync, renameSync, rmSync, statSync, unlinkSync, watch, writeFileSync } from 'node:fs';
+import { appendFileSync, closeSync, existsSync, mkdirSync, mkdtempSync, openSync, readFileSync, readSync, readdirSync, realpathSync, renameSync, rmSync, statSync, unlinkSync, watch, writeFileSync } from 'node:fs';
 import { randomBytes } from 'node:crypto';
 import { cpus, homedir, tmpdir, totalmem } from 'node:os';
 import { basename, dirname, isAbsolute, join, relative, resolve, sep } from 'node:path';
@@ -10,7 +10,7 @@ import { Conversation } from './transcript/conversation.mjs';
 import { earlierHistory } from './transcript/backfill.mjs';
 import { readRegistry } from './sources/registry.mjs';
 import { readAgentsCli } from './sources/agents-cli.mjs';
-import { childrenIndex, findCodexRoots, findPidByArg, readPs, treeStats } from './sources/ps.mjs';
+import { childrenIndex, findCodexRoots, findPidByArg, isShellCommand, readPs, shellsOf, treeStats } from './sources/ps.mjs';
 import { GIT_ENV, RepoResolver, githubSlug, repoStatus } from './sources/git.mjs';
 import { deployStatus, pullRequests } from './sources/gh.mjs';
 import { confirmDelivery, modAtLeast, readBeacons, readPending, readReplies, validateAnswers, writeAnswerFile, writeMessageFile, writeRequestFile } from './sources/pending.mjs';
@@ -39,6 +39,8 @@ const systemProcs = {
   ttyOf: async pid => { const r = await run('ps', ['-o', 'tty=', '-p', String(pid)], { timeoutMs: 5000 }); const t = r.code === 0 ? r.stdout.trim() : ''; return /^ttys\d+$/.test(t) ? t : null; },
   kill: (pid, sig) => process.kill(pid, sig),
   alive: pid => { try { process.kill(pid, 0); return true; } catch { return false; } },
+  killGroup: (pgid, sig) => process.kill(-pgid, sig), // a shell command and everything it started
+  groupAlive: pgid => { try { process.kill(-pgid, 0); return true; } catch { return false; } },
 };
 const DOC_MAX_BYTES = 2 * 1024 * 1024;
 
@@ -100,7 +102,7 @@ async function quickLookPicture(real) {
   }
 }
 
-export async function startCollector({ root, claudeDir = join(homedir(), '.claude'), claudeBin = 'claude', home = homedir(), scratchBase = `/private/tmp/claude-${process.getuid?.() ?? 0}`, port: portOverride, deliveryTimeoutMs = 5000, notify = notifyMac, launch = args => run('osascript', args, { timeoutMs: 15_000 }), sessionProcs = systemProcs, endWaitMs = 8000, readProcs = readPs, deployStatusOf = deployStatus, pullRequestsOf = pullRequests, githubSlugOf = githubSlug, ticketMs = 600_000, quickLook = quickLookPicture, folderRoots = [home, '/Volumes'], chooseFolder = chooseFolderMac, revealFile = real => run('open', ['-R', real], { timeoutMs: 10_000 }), log = makeLogger(join(root, 'logs')) }) {
+export async function startCollector({ root, claudeDir = join(homedir(), '.claude'), claudeBin = 'claude', home = homedir(), scratchBase = `/private/tmp/claude-${process.getuid?.() ?? 0}`, port: portOverride, deliveryTimeoutMs = 5000, notify = notifyMac, launch = args => run('osascript', args, { timeoutMs: 15_000 }), sessionProcs = systemProcs, endWaitMs = 8000, readProcs = readPs, deployStatusOf = deployStatus, pullRequestsOf = pullRequests, githubSlugOf = githubSlug, ticketMs = 600_000, quickLook = quickLookPicture, folderRoots = [home, '/Volumes'], chooseFolder = chooseFolderMac, stopWaitMs = 3000, revealFile = real => run('open', ['-R', real], { timeoutMs: 10_000 }), log = makeLogger(join(root, 'logs')) }) {
   // readProcs, deployStatusOf, pullRequestsOf and githubSlugOf read the machine and GitHub; a test or the demo video passes stand-ins.
   const stateDir = join(root, 'state');
   const pendingDir = join(stateDir, 'pending');
@@ -201,6 +203,7 @@ export async function startCollector({ root, claudeDir = join(homedir(), '.claud
       model.addEarlierFiles(earlier.files);
       model.addEarlierSaid(earlier.said);
       model.addEarlierTasks(earlier.tasks);
+      model.addEarlierBackground(earlier.background);
       scheduleLight();
     }).catch(err => log(`backfill of ${path} failed: ${err?.stack ?? err}`));
   }
@@ -324,6 +327,7 @@ export async function startCollector({ root, claudeDir = join(homedir(), '.claud
         base, model: rec?.model ?? null, registry: base.registry, proc, command: base.pid ? procs.get(base.pid)?.command : undefined, cpuHistory: cpuHist.get(base.id) ?? [],
         childModels: rec?.childModels, offer: offers.get(base.id), beacon: beacons.get(base.id), repoOf: p => resolver.lookup(p), now, cfg, home,
         asides: asidesOf(base.id, asideAnswers.get(base.id) ?? [], now), setting: settingOf(settingResults.get(base.id)?.[0], now),
+        shells: base.pid && base.kind !== 'codex' ? shellsOf(procs, base.pid, now, idx) : undefined,
       });
       agents.push(applySince(agent, prevAgents.get(agent.id), now));
       if (rec) { // deploys it ran itself (a script over ssh, rsync…), its subagents' too
@@ -571,6 +575,34 @@ export async function startCollector({ root, claudeDir = join(homedir(), '.claud
       return { status: 404, error: 'That file no longer exists.' };
     }
   }
+  /**
+   * The end of a background shell command's output: the file Claude Code writes it to, as its
+   * transcript names it, and only inside the scratch folder ({ text, size, truncated } or { error }).
+   */
+  const OUTPUT_MAX = 64 * 1024;
+  function shellOutput(agentId, pid) {
+    const shell = snapshot?.agents.find(a => a.id === agentId)?.shells?.find(s => s.pid === pid);
+    if (!shell) return { status: 404, error: 'That command is no longer running.' };
+    const rec = sessions.get(agentId);
+    const call = [rec?.model, ...(rec?.childModels?.values() ?? [])].filter(Boolean).flatMap(m => m.bashCalls()).find(c => c.id === shell.toolUseId);
+    if (!shell.output || !call?.outputPath) return { status: 404, error: 'Only a background command writes its output where it can be read; this one hands it to the session when it ends.' };
+    let real;
+    try { real = realpathSync(call.outputPath); } catch { return { status: 404, error: 'Its output file is gone.' }; }
+    let base = scratchBase;
+    try { base = realpathSync(scratchBase); } catch { /* none */ }
+    if (!real.startsWith(`${base}/`) || !real.endsWith('.output')) return { status: 403, error: 'That output file is outside the scratch folder.' };
+    const size = statSync(real).size;
+    const fd = openSync(real, 'r');
+    try {
+      const buf = Buffer.alloc(Math.min(size, OUTPUT_MAX));
+      readSync(fd, buf, 0, buf.length, size - buf.length);
+      const text = buf.toString('utf8');
+      return { text: size > OUTPUT_MAX ? text.slice(text.indexOf('\n') + 1) : text, size, truncated: size > OUTPUT_MAX }; // from a whole line
+    } finally {
+      closeSync(fd);
+    }
+  }
+
   /** Folders to start a session in, suggested as you type (only in your home folder or on a drive). */
   const dirsFor = typed => listDirs(typed, { home, roots: folderRoots });
   let choosing = false; // Finder's folder window is open
@@ -886,6 +918,26 @@ export async function startCollector({ root, claudeDir = join(homedir(), '.claud
         choosing = false;
       }
     },
+    /**
+     * Stops a shell command a session runs (its Bash tool's), with everything it started: SIGTERM to its
+     * process group, SIGKILL if it is still there a moment later. Checked again in ps first: never the
+     * session itself, its MCP servers, or anything that is not one of its shell commands.
+     */
+    async stopShell(body) {
+      const agent = snapshot?.agents.find(a => a.id === body?.agentId);
+      if (!agent?.pid || agent.kind === 'codex') return { ok: false, error: 'That session was not found.' };
+      const pid = Number(body.pid);
+      let procs;
+      try { procs = await readProcs(); } catch { return { ok: false, error: 'The process list could not be read.' }; }
+      if (!Number.isInteger(pid) || !isShellCommand(procs.get(pid), agent.pid)) return { ok: false, error: 'That command is no longer running (or is not one of its shell commands).' };
+      try {
+        sessionProcs.killGroup(pid, 'SIGTERM');
+      } catch (err) {
+        return { ok: false, error: `It could not be stopped (${err.code ?? err.message}).` };
+      }
+      setTimeout(() => { try { if (sessionProcs.groupAlive(pid)) sessionProcs.killGroup(pid, 'SIGKILL'); } catch { /* gone already */ } }, stopWaitMs).unref?.();
+      return { ok: true };
+    },
     /** Makes a folder to start a session in (and any missing above it), only in your home folder or on a drive. */
     async mkdir(body) {
       return makeDir(body?.path, { home, roots: folderRoots });
@@ -977,7 +1029,7 @@ export async function startCollector({ root, claudeDir = join(homedir(), '.claud
     port: portOverride ?? cfg.port, token, webFile: join(root, 'web', 'index.html'),
     getSnapshot: () => snapshot,
     getFeed: (id, limit) => modelFor(id)?.history(limit) ?? null,
-    getConversation, getSubagent, claudePlugins, claudeMcp, claudeRules, fileTicket, rawFile, officeView,
+    getConversation, getSubagent, claudePlugins, claudeMcp, claudeRules, fileTicket, rawFile, officeView, shellOutput,
     getTranscriptHtml, getDoc: readDoc, listFiles, readFile, repoTouched, actions, pastSessions, listDirs: dirsFor, log,
   });
   const port = await server.listen();
@@ -1015,5 +1067,5 @@ export async function startCollector({ root, claudeDir = join(homedir(), '.claud
     await server.close();
   }
 
-  return { port, getSnapshot: () => snapshot, reloadConfig, actions, pastSessions, listDirs: dirsFor, getConversation, claudePlugins, claudeMcp, claudeRules, fileTicket, rawFile, officeView, readDoc, listFiles, readFile, repoTouched, stop };
+  return { port, getSnapshot: () => snapshot, reloadConfig, actions, pastSessions, listDirs: dirsFor, shellOutput, getConversation, claudePlugins, claudeMcp, claudeRules, fileTicket, rawFile, officeView, readDoc, listFiles, readFile, repoTouched, stop };
 }

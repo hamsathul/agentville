@@ -1,5 +1,5 @@
 import { basename } from 'node:path';
-import { firstLine, summarizeTool } from '../transcript/summarize.mjs';
+import { clip, firstLine, summarizeTool } from '../transcript/summarize.mjs';
 import { serviceOf, stepOf } from './step.mjs';
 import { collectTouches } from './touches.mjs';
 import { DECIDES_ALONE, STATE_ORDER, deriveCodexState, deriveState } from './state.mjs';
@@ -126,7 +126,24 @@ export function turnOf(model, beacon) {
   return { startedAt, ...(outTokens ? { outTokens } : {}), ...(beacon?.turn?.word ? { word: beacon.turn.word } : {}), ...(beacon?.turn?.mode ? { mode: beacon.turn.mode } : {}) };
 }
 
-export function buildAgent({ base, model, registry, proc, command, cpuHistory = [], childModels = new Map(), offer, beacon, repoOf, now, cfg, home, asides, setting }) {
+/**
+ * The shell commands it runs now (from ps), each matched to its Bash call where the transcript has it:
+ * whether it runs in the background, and whether its output can be read (a background one's file).
+ */
+function shellsNow(shells, model, childModels) {
+  if (!shells?.length) return undefined;
+  // Its process is alive, so it is running whatever the transcript last said: the latest call with that command.
+  const running = [model, ...childModels.values()].filter(Boolean).flatMap(m => m.bashCalls().filter(c => typeof c.input?.command === 'string'));
+  return shells.map(s => {
+    const call = running.findLast(c => c.input.command === s.command) ?? running.findLast(c => c.input.command && s.command.includes(c.input.command));
+    return {
+      pid: s.pid, command: clip(s.command.split('\n')[0], 200), ...(call?.input.description ? { about: clip(call.input.description) } : {}),
+      startedAt: s.startedAt, cpu: s.cpu, rssMb: s.rssMb, background: Boolean(call?.background), ...(call ? { toolUseId: call.id } : {}), output: Boolean(call?.outputPath),
+    };
+  });
+}
+
+export function buildAgent({ base, model, registry, proc, command, cpuHistory = [], childModels = new Map(), offer, beacon, repoOf, now, cfg, home, asides, setting, shells }) {
   const mode = modeOf(model, command, registry?.startedAt);
   // An older mod offers every call Claude Code's check hands on, even where the mode decides it without you.
   const ask = offer?.kind === 'permission' && DECIDES_ALONE.has(mode) ? undefined : askOf(offer, model, now);
@@ -162,6 +179,7 @@ export function buildAgent({ base, model, registry, proc, command, cpuHistory = 
     ask,
     mod: beacon ? { version: beacon.version, live: beacon.live } : undefined,
     mode,
+    shells: shellsNow(shells, model, childModels), // its shell commands running now, to watch and stop
     effort: beacon?.effort ?? effortOf(model, command, registry?.startedAt),
     turn: derived.state === 'working' ? turnOf(model, beacon) : undefined,
     asides: asides?.length ? asides : undefined, // side questions (/btw) asked from the dashboard, newest first

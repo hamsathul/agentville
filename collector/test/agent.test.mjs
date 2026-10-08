@@ -138,6 +138,22 @@ test("a permission offer from a session whose mode decides without you (bypass, 
   for (const command of ['claude', 'claude --permission-mode acceptEdits']) assert.equal(agentIn(command).stateReason, 'permission needed: mcp__claude-in-chrome__navigate', command);
 });
 
+test('the shell commands it runs now, each matched to its Bash call: background or not, its output file, its time, CPU and memory', () => {
+  const started = sec => JSON.stringify({ type: 'user', timestamp: new Date(at(sec)).toISOString(), message: { role: 'user', content: [{ type: 'tool_result', tool_use_id: 'bg1', content: 'Command running in background with ID: bgx. Output is being written to: /private/tmp/claude-501/-p/s1/tasks/bgx.output' }] } });
+  const m = modelOf(prompt(0, 'go'), toolUse(2, 'bg1', 'Bash', { command: 'npm run dev', description: 'Start the dev server', run_in_background: true }), started(2), toolUse(5, 'fg1', 'Bash', { command: 'npm test' }));
+  const shells = [{ pid: 110, command: 'npm run dev', startedAt: at(2), cpu: 20, rssMb: 100 }, { pid: 120, command: 'npm test', startedAt: at(5), cpu: 50, rssMb: 200 }, { pid: 130, command: 'make\nmake install', startedAt: at(1), cpu: 0, rssMb: 1 }];
+  const a = buildAgent({ base: base(), model: m, shells, repoOf, now: at(10), cfg, home: '/h' });
+  assert.deepEqual(a.shells, [
+    { pid: 110, command: 'npm run dev', about: 'Start the dev server', startedAt: at(2), cpu: 20, rssMb: 100, background: true, toolUseId: 'bg1', output: true },
+    { pid: 120, command: 'npm test', startedAt: at(5), cpu: 50, rssMb: 200, background: false, toolUseId: 'fg1', output: false },
+    { pid: 130, command: 'make', startedAt: at(1), cpu: 0, rssMb: 1, background: false, output: false }, // a subagent's, or one the transcript hasn't written yet: its first line
+  ]);
+  assert.equal(buildAgent({ base: base(), model: m, repoOf, now: at(10), cfg, home: '/h' }).shells, undefined);
+  const later = modelOf(prompt(50, 'later')); // after a restart: the call is in the part of the transcript read in the background
+  later.addEarlierBackground([{ id: 'bg9', name: 'Bash', input: { command: 'npm run dev', run_in_background: true }, background: true, at: at(1), outputPath: '/private/tmp/claude-501/-p/s1/tasks/b9.output' }]);
+  assert.deepEqual(buildAgent({ base: base(), model: later, shells: [shells[0]], repoOf, now: at(60), cfg, home: '/h' }).shells.map(s => [s.toolUseId, s.background, s.output]), [['bg9', true, true]]);
+});
+
 test("Claude Code's options after Always allow… keep the agent waiting, each worded from its suggestion", () => {
   const m = modelOf(prompt(0, 'go'), toolUse(5, 'toolu_P1', 'Bash', { command: 'npm test' }));
   const suggestions = [

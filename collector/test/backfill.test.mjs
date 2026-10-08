@@ -44,7 +44,20 @@ test('the conversation before a byte offset is found too: your prompts (typed or
     ['prompt', 'typed ask', 0], ['reply', 'A reply', 1], ['prompt', 'sent from the dashboard', 4],
   ]);
   assert.deepEqual(h.files.map(c => c.input.file_path), ['/w/a.md']);
-  assert.deepEqual(await earlierHistory('/no/such/file', 100), { files: [], said: [], tasks: { ops: [], compactions: 0, lastCompactAt: 0 } });
+  assert.deepEqual(await earlierHistory('/no/such/file', 100), { files: [], said: [], tasks: { ops: [], compactions: 0, lastCompactAt: 0 }, background: [] });
+});
+
+test('background commands before the offset are found too, with the file their output goes to: one still running is followed after a restart', async () => {
+  const f = join(mkdtempSync(join(tmpdir(), 'tracker-backfill-')), 's.jsonl');
+  const result = (sec, id, text) => JSON.stringify({ type: 'user', timestamp: new Date(Date.UTC(2026, 9, 7, 10, 0, sec)).toISOString(), message: { role: 'user', content: [{ type: 'tool_result', tool_use_id: id, content: text }] } });
+  const head = [
+    use(1, 'Bash', { command: 'npm run dev', description: 'Dev server', run_in_background: true }),
+    result(1, 't1', 'Command running in background with ID: b1. Output is being written to: /private/tmp/claude-501/-w/s/tasks/b1.output'),
+    use(2, 'Bash', { command: 'npm test' }),
+  ].join('\n') + '\n';
+  writeFileSync(f, head);
+  const h = await earlierHistory(f, Buffer.byteLength(head));
+  assert.deepEqual(h.background.map(c => [c.id, c.name, c.input.command, c.input.description, c.background, c.outputPath]), [['t1', 'Bash', 'npm run dev', 'Dev server', true, '/private/tmp/claude-501/-w/s/tasks/b1.output']]);
 });
 
 test('messages between sessions before the offset are found too', async () => {

@@ -136,6 +136,10 @@ export class SessionModel {
         // How a call ended (a deploy command's outcome is the deploy's). A background command only
         // started here: its notice says how it ended (task_done).
         if (call && !(call.background && ev.ok)) { call.ok = ev.ok; call.endedAt = when; }
+        if (call?.background && ev.text) { // where Claude Code writes a background command's output, for the dashboard to follow
+          const out = /Output is being written to: (\S+\.output)\b/.exec(ev.text)?.[1];
+          if (out) call.outputPath = out;
+        }
         if (call?.name === 'TaskCreate' && ev.taskId) this.#taskOp({ op: 'create', id: ev.taskId, subject: firstLine(call.input?.subject ?? ''), activeForm: firstLine(call.input?.activeForm ?? ''), at: when });
         const item = this.openItems.get(ev.toolUseId);
         if (item) {
@@ -249,6 +253,16 @@ export class SessionModel {
   }
 
   /** Task list changes and compactions from before the part of the transcript that was read: they come first. */
+  /** Background commands from the part of the transcript read later, to match the ones still running. */
+  addEarlierBackground(calls = []) {
+    this.earlierBackground = calls.slice(-50);
+  }
+
+  /** Its Bash calls, oldest first, those from the earlier part too: to tell which call a running shell command is. */
+  bashCalls() {
+    return [...(this.earlierBackground ?? []), ...this.calls.filter(c => c.name === 'Bash')];
+  }
+
   addEarlierTasks({ ops = [], compactions = 0, lastCompactAt = 0 } = {}) {
     this.taskOps = [...ops, ...this.taskOps].slice(-TASK_OPS_KEPT);
     this.compactions += compactions;

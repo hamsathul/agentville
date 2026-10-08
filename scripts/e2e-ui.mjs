@@ -10,6 +10,7 @@ import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { startCollector } from '../collector/collector.mjs';
+import { readPs } from '../collector/sources/ps.mjs';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 const CHROME = process.env.CHROME ?? [
@@ -140,7 +141,15 @@ const PAST = '5e551011-aaaa-4bbb-8ccc-000000000001';
 writeFileSync(join(claudeDir, 'projects', '-farm-repo', `${PAST}.jsonl`), `${[line(now - 86_400_000, { content: 'Plan the harvest' }, 'user'), JSON.stringify({ type: 'ai-title', aiTitle: 'Harvest planning' })].join('\n')}\n`);
 const launched = []; // terminal windows the dashboard asked for
 const ended = []; // sessions the dashboard ended (a stand-in: no real process is signalled)
-const sessionProcs = { commandOf: async () => 'claude', ttyOf: async () => 'ttys042', kill: pid => ended.push(pid), alive: pid => !ended.includes(pid) };
+const stopped = []; // shell commands the dashboard stopped (a stand-in: nothing real is signalled)
+const sessionProcs = { commandOf: async () => 'claude', ttyOf: async () => 'ttys042', kill: pid => ended.push(pid), alive: pid => !ended.includes(pid), killGroup: (pgid, sig) => stopped.push([pgid, sig]), groupAlive: () => false };
+// The working session's test run, as the Bash tool runs it: a shell of its own under the session.
+const SHELL_PID = 999_001;
+const readProcs = async () => {
+  const procs = await readPs();
+  procs.set(SHELL_PID, { pid: SHELL_PID, ppid: worker.pid, pgid: SHELL_PID, ageSec: 8, cpu: 30, rssKb: 51_200, command: "/bin/zsh -c source /x/.claude/shell-snapshots/snapshot-zsh-1-a.sh 2>/dev/null || true && eval 'npm test' < /dev/null && pwd -P >| /tmp/claude-1-cwd" });
+  return procs;
+};
 
 // A stand-in for the mod in the asker's session: it says it is listening, keeps its offer of the
 // question fresh, and takes an answer the dashboard hands it (deleting the file, as the mod does).
@@ -185,7 +194,7 @@ esac
 `, { mode: 0o755 });
 writeFileSync(join(claudeDir, 'settings.json'), `${JSON.stringify({ permissions: { allow: ['Bash(npm test:*)'] } }, null, 2)}\n`);
 // Finder's folder window is stood in for: it always picks the farm repo.
-const handle = await startCollector({ root, claudeDir, claudeBin: fakeClaude, notify: () => {}, log: () => {}, home: '/nowhere', folderRoots: [realpathSync(temp)], chooseFolder: async () => ({ path: `${join(realpathSync(temp), 'farm-repo')}/` }), scratchBase: '/nonexistent', sessionProcs, launch: async args => { launched.push(args.at(-1)); return { code: 0, stdout: '', stderr: '' }; } });
+const handle = await startCollector({ root, claudeDir, claudeBin: fakeClaude, notify: () => {}, log: () => {}, home: '/nowhere', readProcs, folderRoots: [realpathSync(temp)], chooseFolder: async () => ({ path: `${join(realpathSync(temp), 'farm-repo')}/` }), scratchBase: '/nonexistent', sessionProcs, launch: async args => { launched.push(args.at(-1)); return { code: 0, stdout: '', stderr: '' }; } });
 const profile = join(temp, 'chrome');
 const chrome = spawn(CHROME, ['--headless=new', '--remote-debugging-port=0', `--user-data-dir=${profile}`, '--no-first-run', '--no-default-browser-check', '--hide-scrollbars', 'about:blank'], { stdio: 'ignore' });
 let ws;
@@ -343,6 +352,15 @@ try {
   }
   check(errors.length === 0, `no errors on the page (${errors.join(' | ')})`);
   await js("document.querySelector('#center-tabs [data-tab=\"\"]').click()");
+
+  console.log('Commands running');
+  await js("document.querySelector('.row[data-id=\"ui-worker\"]').click()");
+  check(await until("/Commands running[\\s\\S]*\\$ npm test[\\s\\S]*30% CPU · 50 MB/.test(document.getElementById('center-body').textContent)"), "the working agent's panel lists the command it runs, with its time, CPU and memory");
+  await js("document.querySelector('#center-body [data-shell-stop]').click()");
+  check(await until("document.getElementById('confirm').open && /Stop “npm test”/.test(document.getElementById('confirm-text').textContent)") && stopped.length === 0, '■ Stop asks first');
+  await js("document.getElementById('confirm-yes').click()");
+  check(await until("/Stopped “npm test”/.test(document.getElementById('notice').textContent)") && JSON.stringify(stopped[0]) === JSON.stringify([SHELL_PID, 'SIGTERM']), `confirmed, it stops the command's whole process group (${JSON.stringify(stopped)})`);
+  await js("document.querySelector('.row[data-id=\"ui-asker\"]').click()");
 
   console.log('Farm');
   await js("document.getElementById('view-farm').click()");

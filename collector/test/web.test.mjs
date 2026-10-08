@@ -1974,3 +1974,41 @@ test('📁 Folder attaches a folder picked in Finder: its path goes with the mes
   assert.match(page.side(), /Sent to busy-one with 1 folder/);
   assert.doesNotMatch(page.side(), /thumb-folder/, 'sent: the box is empty again');
 });
+
+test('the commands it runs now: each with its time, CPU and memory; Output follows a background one; ■ Stop asks first, then stops it', async () => {
+  const shells = [
+    { pid: 5001, command: 'npm run dev', about: 'Start the dev server', startedAt: Date.now() - 60_000, cpu: 25, rssMb: 101, background: true, toolUseId: 'bg1', output: true },
+    { pid: 5003, command: 'npm test', startedAt: Date.now() - 5000, cpu: 0, rssMb: 1, background: false, toolUseId: 'fg1', output: false },
+  ];
+  const children = [{ id: 'bg1', kind: 'bgjob', label: 'Start the dev server', state: 'running', startedAt: Date.now() - 60_000 }, { id: 'bg0', kind: 'bgjob', label: 'old build', state: 'done', startedAt: 1 }];
+  const replies = { '/api/agent/r1/shell-output?pid=5001': { text: 'ready on :3000\n', size: 15, truncated: false }, '/api/actions/stop-shell': { ok: true } };
+  const page = loadPage({ replies });
+  page.push(richSnapshot([richAgent({ shells, children })]));
+  const side = page.side();
+  assert.match(side, /Commands running[\s\S]*\$ npm run dev[\s\S]*background · [\s\S]*25% CPU · 101 MB[\s\S]*data-shell-output="5001"[\s\S]*data-shell-stop="5001"[\s\S]*\$ npm test[\s\S]*data-shell-stop="5003"/);
+  assert.doesNotMatch(side, /data-shell-output="5003"/, 'a foreground command hands its output to the session when it ends');
+  assert.match(side.slice(side.indexOf('Background jobs')), /old build/);
+  assert.doesNotMatch(side.slice(side.indexOf('Background jobs')), /Start the dev server/, 'running, it is listed once: above, with Stop');
+  await page.clickButton('out', { shellOutput: '5001', agent: 'r1' });
+  await page.settle();
+  assert.equal(page.el('shell-dlg').open, true);
+  assert.match(page.el('shell-title').textContent, /npm run dev/);
+  assert.equal(page.el('shell-out').textContent, 'ready on :3000\n');
+  assert.ok(page.gets.find(g => g.path === '/api/agent/r1/shell-output?pid=5001')?.token, 'read with the token');
+  const asked = page.clickButton('stop', { shellStop: '5003', agent: 'r1' });
+  await page.settle();
+  assert.match(page.el('confirm-text').textContent, /Stop “npm test”\?/);
+  page.ctx.settleConfirm(true);
+  await asked;
+  await page.settle();
+  assert.deepEqual(page.posts.at(-1), { path: '/api/actions/stop-shell', body: { agentId: 'r1', pid: 5003 } });
+  assert.match(page.el('notice').textContent, /Stopped “npm test”/);
+});
+
+test("the farm's sidebar shows the commands running too", async () => {
+  const f = fakeFarm();
+  const page = loadPage({ farm: f.farm, stored: { 'tracker-view': 'farm', 'tracker-farm-side': 'open' } });
+  page.push(richSnapshot([richAgent({ shells: [{ pid: 5003, command: 'npm test', startedAt: Date.now() - 5000, cpu: 0, rssMb: 1, background: false, output: false }] })]));
+  await page.settle();
+  assert.match(page.el('farm-agent').innerHTML, /Commands running[\s\S]*data-shell-stop="5003"/);
+});

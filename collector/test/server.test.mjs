@@ -44,11 +44,13 @@ async function start() {
       reveal: async body => { calls.push(['reveal', body]); return { ok: true }; },
       mkdir: async body => { calls.push(['mkdir', body]); return { ok: true, path: '/Users/me/new' }; },
       chooseFolder: async body => { calls.push(['choose', body]); return { ok: true, path: '/Users/me/picked' }; },
+      stopShell: async body => { calls.push(['stop', body]); return { ok: true }; },
       reload: async () => { calls.push(['reload']); return { ok: true, sessions: 2 }; },
       mcp: async body => { calls.push(['mcp', body]); return { ok: true }; },
       rule: async body => { calls.push(['rule', body]); return { ok: true }; },
     },
     getSubagent: id => (id === 's1:tA' ? { prompt: 'Find callers', result: null, feed: [] } : null),
+    shellOutput: async (id, pid) => { calls.push(['output', id, pid]); return { text: 'ready', size: 5, truncated: false }; },
     listDirs: async typed => { calls.push(['dirs', typed]); return { dir: '/Users/me', dirs: ['code'], exists: true }; },
     fileTicket: async (id, path, opts) => { calls.push(['ticket', id, path, opts]); return { url: '/raw/abc/x.png', type: 'image/png', size: 10 }; },
     officeView: async (id, path) => ({ view: 'sheet', sheets: [{ name: path, rows: [], truncated: false }] }),
@@ -347,6 +349,21 @@ test('folders to start in are listed only with the token, and made only from the
     const pick = JSON.stringify({ start: '/Users/me' });
     assert.equal((await request(port, { method: 'POST', path: '/api/actions/choose-folder', headers: { 'x-tracker-token': 'tok', origin: 'https://evil.example', 'content-type': 'application/json' }, body: pick })).status, 403, "only the dashboard opens Finder's window");
     assert.equal(JSON.parse((await request(port, { method: 'POST', path: '/api/actions/choose-folder', headers: { 'x-tracker-token': 'tok', origin: `http://127.0.0.1:${port}`, 'content-type': 'application/json' }, body: pick })).body).path, '/Users/me/picked');
+  } finally {
+    await srv.close();
+  }
+});
+
+test("a shell command's output needs the token; stopping one needs the dashboard", async () => {
+  const { srv, port, calls } = await start();
+  try {
+    assert.equal((await request(port, { path: '/api/agent/s1/shell-output?pid=5001' })).status, 403);
+    assert.equal(JSON.parse((await request(port, { path: '/api/agent/s1/shell-output?pid=5001', headers: { 'x-tracker-token': 'tok' } })).body).text, 'ready');
+    assert.deepEqual(calls.at(-1), ['output', 's1', 5001]);
+    const body = JSON.stringify({ agentId: 's1', pid: 5001 });
+    assert.equal((await request(port, { method: 'POST', path: '/api/actions/stop-shell', headers: { 'x-tracker-token': 'tok', origin: 'https://evil.example', 'content-type': 'application/json' }, body })).status, 403);
+    assert.equal((await request(port, { method: 'POST', path: '/api/actions/stop-shell', headers: { 'x-tracker-token': 'tok', origin: `http://127.0.0.1:${port}`, 'content-type': 'application/json' }, body })).status, 200);
+    assert.deepEqual(calls.at(-1), ['stop', { agentId: 's1', pid: 5001 }]);
   } finally {
     await srv.close();
   }

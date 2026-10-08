@@ -24,6 +24,7 @@ function overviewHtml(a) {
     ${sessionBarHtml(a)}
     ${a.state === 'stale' ? '' : `<div style="margin-top:8px">${metricsHtml(a)}</div>`}
     <div class="sec">Now</div>${workingLineHtml(a)}${a.now ? `<div class="now mono"><span class="pulse"></span> ${esc(a.now.tool)} ${esc(a.now.summary)} · <b data-since="${a.now.startedAt}"></b></div>` : a.turn ? '' : `<div class="muted">${esc(a.stateReason)}</div>`}
+    ${shellsHtml(a)}
     ${questionHtml(a)}
     ${composeHtml(a)}
     ${asideHtml(a)}
@@ -210,6 +211,7 @@ function farmSideHtml(a) {
     ${sessionBarHtml(a)}
     ${askHtml(a)}
     <div class="sec">Now</div>${workingLineHtml(a)}${a.turn && !a.now ? '' : now}
+    ${shellsHtml(a)}
     ${questionHtml(a)}
     ${composeHtml(a)}
     ${asideHtml(a)}
@@ -362,6 +364,9 @@ document.addEventListener('click', async e => {
     return;
   }
   if (d.removeFile !== undefined) { removeFile(d.agent, Number(d.removeFile)); return; }
+  if (d.shellOutput) { await openShellOutput(d.agent, Number(d.shellOutput)); return; }
+  if (d.shellStop) { void stopShellFlow(d.agent, Number(d.shellStop)); return; } // not awaited: the confirm box waits for you
+  if (d.shellClose !== undefined) { closeShellOutput(); return; }
   if (el.id === 'msg-folder' || el.id === 'convo-msg-folder') { await attachFolder(d.agent, el); return; }
   if (el.id === 'msg-attach' || el.id === 'convo-msg-attach') {
     pickerFor = d.agent;
@@ -671,6 +676,8 @@ function ringBell() {
 }
 
 // The farm's file dialog: Escape (its close event comes a moment after) or the backdrop closes it.
+$('shell-dlg').addEventListener('close', () => { if (shellView && !$('shell-dlg').open) closeShellOutput(); }); // Escape: it stops following
+$('shell-dlg').addEventListener('click', e => { if (e.target === $('shell-dlg')) closeShellOutput(); });
 $('file-dlg').addEventListener('close', () => { if (reader?.dialog && !$('file-dlg').open) closeFileDialog(); });
 $('file-dlg').addEventListener('click', e => { if (e.target === $('file-dlg')) closeFileDialog(); });
 
