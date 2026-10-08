@@ -1,5 +1,5 @@
 // The agent overview, rendering, the two views (list and farm with its sidebar), and the
-// page's events: clicks, typing, pasting and dropping screenshots, the theme, start-up.
+// page's events: clicks, typing, pasting and dropping files, the theme, start-up.
 function overviewHtml(a) {
   const color = colorOf(a.id);
   const h = a.proc?.history;
@@ -330,11 +330,11 @@ document.addEventListener('click', async e => {
     await toggleFullFeed(d.fullFeed);
     return;
   }
-  if (d.removeImg !== undefined) { removeImage(d.agent, Number(d.removeImg)); return; }
+  if (d.removeFile !== undefined) { removeFile(d.agent, Number(d.removeFile)); return; }
   if (el.id === 'msg-attach') {
     pickerFor = d.agent;
-    $('img-picker').value = '';
-    $('img-picker').click?.();
+    $('file-picker').value = '';
+    $('file-picker').click?.();
     return;
   }
   if (d.docPath) { await openFile(d.docAgent, d.docPath); return; }
@@ -482,8 +482,8 @@ document.addEventListener('change', e => {
     if (value) void switchFlow(t.dataset.agent, what, value);
     return;
   }
-  if (t?.id === 'img-picker') {
-    if (pickerFor) addImages(pickerFor, [...(t.files ?? [])]);
+  if (t?.id === 'file-picker') {
+    if (pickerFor) addFiles(pickerFor, [...(t.files ?? [])]);
     t.value = '';
     return;
   }
@@ -495,13 +495,13 @@ document.addEventListener('change', e => {
   else picks.delete(t.value);
   d.picks.set(qi, picks);
 });
-// Screenshots: paste them into the message box, or drop them on it.
+// Files (screenshots, PDFs, Markdown…): paste them into the message box, or drop them on it.
 document.addEventListener('paste', e => {
   const agentId = e.target?.dataset?.msgAgent;
   const files = [...(e.clipboardData?.files ?? [])];
-  if (agentId === undefined || !files.some(f => f.type?.startsWith('image/'))) return; // plain text pastes as usual
+  if (agentId === undefined || !files.length) return; // plain text pastes as usual
   e.preventDefault();
-  addImages(agentId, files);
+  addFiles(agentId, files);
 });
 const draggingFiles = e => [...(e.dataTransfer?.types ?? [])].includes('Files');
 document.addEventListener('dragover', e => {
@@ -515,7 +515,7 @@ document.addEventListener('drop', e => {
   e.preventDefault();
   document.querySelectorAll('.compose.dragging').forEach(c => c.classList.remove('dragging'));
   const box = e.target?.closest?.('.compose[data-agent]');
-  if (box) addImages(box.dataset.agent, [...(e.dataTransfer?.files ?? [])]);
+  if (box) addFiles(box.dataset.agent, [...(e.dataTransfer?.files ?? [])]);
 });
 // Enter sends a message; Shift+Enter starts a new line (and Enter while an input method is composing is left alone).
 const sendKey = e => e.key === 'Enter' && !e.shiftKey && !e.altKey && !e.isComposing && e.keyCode !== 229;

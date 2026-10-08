@@ -1,5 +1,5 @@
 // The parts of the page built from a snapshot: number tiles, top-bar stats, agent rows,
-// repos, the answer form, the conversation, the message box (with screenshots) and sending.
+// repos, the answer form, the conversation, the message box (with attached files) and sending.
 /* ---------- sections ---------- */
 
 function kpisHtml() {
@@ -283,21 +283,23 @@ function questionHtml(a) {
     <div class="muted" style="font-size:12px">${live ? 'Or answer in your own words in the message box below.' : "This session isn't listening for dashboard messages yet: answer it in its terminal."}</div></div>`;
 }
 
-/** Chat box: sends a message, with any screenshots, into the session as the person's own words (queued if it is busy). */
+/** Chat box: sends a message, with any attached files, into the session as the person's own words (queued if it is busy). */
 function composeHtml(a) {
   if (a.kind === 'codex') return '';
   const live = Boolean(a.mod?.live);
   const hint = !live ? "This session isn't listening for dashboard messages yet. Send it anything in its terminal once, or start a new session."
     : a.state === 'working' ? `${esc(a.name)} is busy: your message waits until its current step ends. ↩ sends, ⇧↩ new line.`
-    : 'Sent as your own message. Paste or drop screenshots on the box. ↩ sends, ⇧↩ new line.';
+    : 'Sent as your own message. Paste or drop files on the box. ↩ sends, ⇧↩ new line.';
   const sent = msgStatus.get(a.id);
   const status = sent && Date.now() - sent.at < 20_000
     ? `<span id="msg-status" class="${sent.bad ? 'msg-bad' : 'msg-ok'}">${esc(sent.text)}</span>`
     : `<span id="msg-status" class="faint">${hint}</span>`;
-  const imgs = msgImages.get(a.id) ?? [];
-  const thumbs = imgs.length ? `<div class="thumbs">${imgs.map((im, i) => `<span class="thumb" data-tip="${esc(`${im.name} · ${sizeText(im.size)}`)}"><img src="${esc(im.url)}" alt="Screenshot ${i + 1}"><button type="button" class="thumb-x" data-remove-img="${i}" data-agent="${esc(a.id)}" aria-label="Remove screenshot ${i + 1}">✕</button></span>`).join('')}</div>` : '';
+  const files = msgFiles.get(a.id) ?? [];
+  const thumbs = files.length ? `<div class="thumbs">${files.map((f, i) => `<span class="${f.url ? 'thumb' : 'thumb thumb-file'}" data-tip="${esc(`${f.name} · ${sizeText(f.size)}`)}">${f.url
+    ? `<img src="${esc(f.url)}" alt="${esc(f.name)}">`
+    : `<span class="thumb-ext">${esc(extOf(f.name))}</span><span class="thumb-name">${esc(f.name)}</span>`}<button type="button" class="thumb-x" data-remove-file="${i}" data-agent="${esc(a.id)}" aria-label="Remove ${esc(f.name)}">✕</button></span>`).join('')}</div>` : '';
   return `<div class="compose" data-agent="${esc(a.id)}" style="margin-top:10px"><textarea id="msg-text" data-msg-agent="${esc(a.id)}" rows="2" placeholder="Message ${esc(a.name)}…"${live ? '' : ' disabled'}>${esc(msgDrafts.get(a.id) ?? '')}</textarea>${thumbs}
-    <div class="compose-row">${status}<span class="grow"></span><button class="act" id="msg-attach" type="button" data-agent="${esc(a.id)}" data-tip="Attach screenshots (you can also paste or drop them on the box)"${live ? '' : ' disabled'}>📎 Screenshot</button><button class="act primary" id="msg-send" data-agent="${esc(a.id)}"${live ? '' : ' disabled'}>Send</button></div></div>`;
+    <div class="compose-row">${status}<span class="grow"></span><button class="act" id="msg-attach" type="button" data-agent="${esc(a.id)}" data-tip="Attach files: screenshots, PDFs, Markdown, text… (you can also paste or drop them on the box)"${live ? '' : ' disabled'}>📎 Attach</button><button class="act primary" id="msg-send" data-agent="${esc(a.id)}"${live ? '' : ' disabled'}>Send</button></div></div>`;
 }
 
 /** Tokens in short, as the working line has them: 860, 28.5k, 1.2M. */
@@ -337,34 +339,38 @@ function toBase64(bytes) {
   return btoa(bin);
 }
 
-/** Screenshots pasted, dropped or picked for an agent's next message. */
-function addImages(agentId, files) {
-  const list = msgImages.get(agentId) ?? [];
+/** A file name's extension, as its tile shows it: notes.md → md. */
+const extOf = name => (/\.([^.]{1,8})$/.exec(name)?.[1] ?? 'file');
+
+/** Files pasted, dropped or picked for an agent's next message: any kind, pictures shown as thumbnails. */
+function addFiles(agentId, files) {
+  const list = msgFiles.get(agentId) ?? [];
   let refused = '';
   for (const file of files) {
-    if (!IMAGE_TYPES.test(file?.type ?? '')) { refused = 'Only PNG, JPEG, GIF and WebP images can be attached.'; continue; }
-    if (file.size > MAX_SHOT_BYTES) { refused = `${file.name} is too large (10 MB at most).`; continue; }
-    if (list.length >= MAX_SHOTS) { refused = `At most ${MAX_SHOTS} screenshots per message.`; break; }
-    list.push({ file, url: URL.createObjectURL(file), name: file.name || 'screenshot.png', size: file.size });
+    const name = file?.name || 'file';
+    if (!file?.size) { refused = `${name} is empty.`; continue; }
+    if (file.size > MAX_FILE_BYTES) { refused = `${name} is too large (10 MB at most).`; continue; }
+    if (list.length >= MAX_FILES) { refused = `At most ${MAX_FILES} files per message.`; break; }
+    list.push({ file, url: IMAGE_TYPES.test(file.type ?? '') ? URL.createObjectURL(file) : null, name, size: file.size });
   }
-  msgImages.set(agentId, list);
+  msgFiles.set(agentId, list);
   if (refused) msgStatus.set(agentId, { at: Date.now(), bad: true, text: refused });
   render();
 }
 
-function removeImage(agentId, index) {
-  const list = msgImages.get(agentId) ?? [];
+function removeFile(agentId, index) {
+  const list = msgFiles.get(agentId) ?? [];
   const [gone] = list.splice(index, 1);
-  if (gone) URL.revokeObjectURL(gone.url);
+  if (gone?.url) URL.revokeObjectURL(gone.url);
   render();
 }
 
-/** Sends the message box (with its screenshots), or `quick` text (a one-click answer) leaving the box as it is. */
+/** Sends the message box (with its files), or `quick` text (a one-click answer) leaving the box as it is. */
 async function sendMessage(agentId, button, quick = null) {
   const text = (quick ?? msgDrafts.get(agentId) ?? '').trim();
-  const imgs = quick === null ? msgImages.get(agentId) ?? [] : [];
-  if (!text && !imgs.length) {
-    msgStatus.set(agentId, { at: Date.now(), bad: true, text: 'Type a message or add a screenshot first.' });
+  const attached = quick === null ? msgFiles.get(agentId) ?? [] : [];
+  if (!text && !attached.length) {
+    msgStatus.set(agentId, { at: Date.now(), bad: true, text: 'Type a message or attach a file first.' });
     render();
     return;
   }
@@ -373,21 +379,21 @@ async function sendMessage(agentId, button, quick = null) {
     button.disabled = true;
     button.textContent = 'Sending…';
   }
-  let images = [];
+  let files = [];
   try {
-    images = await Promise.all(imgs.map(async im => ({ name: im.name, data: toBase64(new Uint8Array(await im.file.arrayBuffer())) })));
+    files = await Promise.all(attached.map(async f => ({ name: f.name, data: toBase64(new Uint8Array(await f.file.arrayBuffer())) })));
   } catch (err) {
-    msgStatus.set(agentId, { at: Date.now(), bad: true, text: `Could not read a screenshot: ${err?.message ?? err}` });
+    msgStatus.set(agentId, { at: Date.now(), bad: true, text: `Could not read a file: ${err?.message ?? err}` });
     render();
     return;
   }
-  const r = await post('/api/actions/message', images.length ? { agentId, text, images } : { agentId, text });
+  const r = await post('/api/actions/message', files.length ? { agentId, text, files } : { agentId, text });
   if (r.ok && quick === null) {
     msgDrafts.delete(agentId);
-    for (const im of imgs) URL.revokeObjectURL(im.url);
-    msgImages.delete(agentId);
+    for (const f of attached) if (f.url) URL.revokeObjectURL(f.url);
+    msgFiles.delete(agentId);
   }
-  const extra = images.length ? ` with ${images.length} screenshot${images.length > 1 ? 's' : ''}` : '';
+  const extra = files.length ? ` with ${files.length} file${files.length > 1 ? 's' : ''}` : '';
   msgStatus.set(agentId, {
     at: Date.now(),
     bad: !r.ok,

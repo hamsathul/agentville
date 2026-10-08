@@ -125,7 +125,7 @@ const ihdr = Buffer.alloc(13); ihdr.writeUInt32BE(w, 0); ihdr.writeUInt32BE(h, 4
 process.stdout.write(Buffer.concat([Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]), chunk("IHDR", ihdr), chunk("IDAT", zlib.deflateSync(raw)), chunk("IEND", Buffer.alloc(0))]).toString("base64"));
 ')"
 SHOT_WORD="shot-e2e-$$"
-R="$(post /api/actions/message "{\"agentId\":\"$QS\",\"text\":\"($SHOT_WORD) What single colour fills this screenshot? Reply with only the colour name.\",\"images\":[{\"name\":\"red.png\",\"data\":\"$SHOT\"}]}")"
+R="$(post /api/actions/message "{\"agentId\":\"$QS\",\"text\":\"($SHOT_WORD) What single colour fills this screenshot? Reply with only the colour name.\",\"files\":[{\"name\":\"red.png\",\"data\":\"$SHOT\"}]}")"
 [ "$R" = '{"ok":true}' ] || fail "a message with a screenshot was refused: $R"
 SAW=""
 for _ in $(seq 1 120); do

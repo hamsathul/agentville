@@ -592,37 +592,43 @@ test('a file opens read-only in a centre tab with line numbers and its HTML kept
 
 const shot = (name, bytes = [0x89, 0x50, 0x4e, 0x47, 1, 2, 3, 4, 5, 6]) => ({ name, type: 'image/png', size: bytes.length, arrayBuffer: async () => new Uint8Array(bytes).buffer });
 
-test('pasted screenshots show as thumbnails under the message box and go with the message', async () => {
+test('pasted files go with the message: pictures as thumbnails, other files as their name', async () => {
   const page = loadPage();
   page.push(richSnapshot([richAgent({ mod: { version: '0.3.1', live: true }, state: 'yourTurn' })]));
   await page.openAgent('r1');
-  page.paste({ id: 'msg-text', dataset: { msgAgent: 'r1' } }, [shot('one.png'), shot('two.png'), { name: 'notes.txt', type: 'text/plain', size: 3 }]);
+  assert.match(page.side(), /id="msg-attach"[^>]*>📎 Attach</);
+  const notes = { name: 'notes.md', type: 'text/markdown', size: 7, arrayBuffer: async () => new TextEncoder().encode('# Notes').buffer };
+  page.paste({ id: 'msg-text', dataset: { msgAgent: 'r1' } }, [shot('one.png'), shot('two.png'), notes]);
   assert.equal((page.side().match(/class="thumb"/g) ?? []).length, 2);
   assert.match(page.side(), /<img src="blob:one\.png"/);
+  assert.match(page.side(), /class="thumb thumb-file"[^>]*>[\s\S]*?<span class="thumb-ext">md<\/span><span class="thumb-name">notes\.md<\/span>/);
   page.edit('input', { tagName: 'TEXTAREA', value: 'The button is cut off', dataset: { msgAgent: 'r1' } });
   await page.clickButton('msg-send', { agent: 'r1' });
   const sent = page.posts.find(p => p.path === '/api/actions/message').body;
   assert.equal(sent.text, 'The button is cut off');
-  assert.deepEqual(sent.images, [{ name: 'one.png', data: 'iVBORwECAwQFBg==' }, { name: 'two.png', data: 'iVBORwECAwQFBg==' }]);
-  assert.doesNotMatch(page.side(), /class="thumb"/);
+  assert.deepEqual(sent.files, [{ name: 'one.png', data: 'iVBORwECAwQFBg==' }, { name: 'two.png', data: 'iVBORwECAwQFBg==' }, { name: 'notes.md', data: 'IyBOb3Rlcw==' }]);
+  assert.doesNotMatch(page.side(), /class="thumb/);
   assert.deepEqual(page.revoked, ['blob:one.png', 'blob:two.png']);
-  assert.match(page.side(), /id="msg-status"[^>]*>✓ Sent to busy-one with 2 screenshots/);
+  assert.match(page.side(), /id="msg-status"[^>]*>✓ Sent to busy-one with 3 files/);
 });
 
-test('a screenshot alone can be sent, one can be removed, and screenshots can be picked from files', async () => {
+test('a file alone can be sent, one can be removed, and files can be picked; an empty or too big one is refused', async () => {
   const page = loadPage();
   page.push(richSnapshot([richAgent({ mod: { version: '0.3.1', live: true } })]));
   await page.openAgent('r1');
   await page.clickButton('msg-attach', { agent: 'r1' });
-  page.edit('change', { id: 'img-picker', files: [shot('a.png'), shot('b.png')], value: 'x' });
-  assert.equal((page.side().match(/class="thumb"/g) ?? []).length, 2);
-  await page.clickButton('thumb-x', { removeImg: '0', agent: 'r1' });
-  assert.equal((page.side().match(/class="thumb"/g) ?? []).length, 1);
-  assert.match(page.side(), /blob:b\.png/);
+  page.edit('change', { id: 'file-picker', files: [shot('a.png'), { name: 'plan.pdf', type: 'application/pdf', size: 5, arrayBuffer: async () => new Uint8Array([37, 80, 68, 70, 45]).buffer }], value: 'x' });
+  assert.equal((page.side().match(/class="thumb[ "]/g) ?? []).length, 2);
+  await page.clickButton('thumb-x', { removeFile: '0', agent: 'r1' });
+  assert.equal((page.side().match(/class="thumb[ "]/g) ?? []).length, 1);
+  assert.match(page.side(), /plan\.pdf/);
+  page.edit('change', { id: 'file-picker', files: [{ name: 'blank.txt', type: 'text/plain', size: 0 }, { name: 'huge.pdf', type: 'application/pdf', size: 11 * 1024 * 1024 }], value: 'x' });
+  assert.equal((page.side().match(/class="thumb[ "]/g) ?? []).length, 1, 'neither was added');
+  assert.match(page.side(), /huge\.pdf is too large/);
   await page.clickButton('msg-send', { agent: 'r1' });
   const sent = page.posts.find(p => p.path === '/api/actions/message').body;
   assert.equal(sent.text, '');
-  assert.equal(sent.images.length, 1);
+  assert.deepEqual(sent.files, [{ name: 'plan.pdf', data: 'JVBERi0=' }]);
 });
 
 test('the explorer names the repo the folder belongs to, with its branch', async () => {

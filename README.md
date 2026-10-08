@@ -59,7 +59,7 @@ It listens on `127.0.0.1` only and reads what Claude Code already writes to disk
 
 **Respond without switching windows**
 - Answer an agent's question (with its options) or a permission prompt (**Allow** / **Deny**).
-- Message any session like a chat, with screenshots; it arrives as your own prompt.
+- Message any session like a chat, with screenshots, PDFs or other files; it arrives as your own prompt.
 - Ask a session a side question (`/btw`) without interrupting or adding to its conversation.
 
 **Steer your sessions**
@@ -206,8 +206,8 @@ These need the mod in that session.
   it gets an "asks you" chip and a card, with one-click **Yes** / **No…** for yes/no questions.
 - **Messages.** Type in the box under **Now** and press Enter (Shift+Enter for a new line). It
   arrives as your own prompt; a busy agent reads it when its current step ends.
-- **Screenshots.** Paste (⌘V), drop on the box or use 📎: up to 6 images of 10 MB each. The agent
-  opens them with its Read tool.
+- **Attachments.** Paste (⌘V), drop on the box or use 📎 Attach: any file (screenshots, PDFs,
+  Markdown, text…), up to 6 of 10 MB each. The agent opens them with its Read tool.
 - **Reply** on any of the agent's messages to quote it into yours. **Show all** loads the
   session's whole history, and **Full transcript** opens it in a new tab.
 
@@ -407,7 +407,7 @@ canvas, with its text drawn as HTML on top so it stays crisp.
   also needs a same-origin request.
 - The explorer shows what git shows. Ignored files (`node_modules`, `.env`, build output) and
   files that look like secrets (`.env*`, keys) are neither listed nor served.
-- Screenshots you send are kept under `state/uploads/` for 7 days.
+- Files you attach are kept under `state/uploads/` for 7 days.
 
 ## Troubleshooting
 

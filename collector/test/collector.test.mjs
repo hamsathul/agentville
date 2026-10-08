@@ -298,7 +298,7 @@ test("the explorer lists the agent's folder with git status and the files the ag
   }
 });
 
-test('screenshots sent with a message are saved for the agent, and the message tells it where they are', async () => {
+test('files sent with a message are saved for the agent, and the message tells it where they are', async () => {
   const root = mkdtempSync(join(tmpdir(), 'tracker-root-shot-'));
   mkdirSync(join(root, 'web'));
   writeFileSync(join(root, 'web', 'index.html'), '<html></html>');
@@ -323,12 +323,12 @@ test('screenshots sent with a message are saved for the agent, and the message t
   const png = Buffer.from('89504e470d0a1a0a0000000d49484452', 'hex').toString('base64');
   const handle = await startCollector({ root, claudeDir, claudeBin: '/usr/bin/false', notify: () => {}, log: () => {}, deliveryTimeoutMs: 1000 });
   try {
-    assert.match((await handle.actions.message({ agentId: 'sess-shot', text: 'x', images: [{ data: 'bm9wZQ==' }] })).error, /PNG, JPEG/);
-    assert.deepEqual(await handle.actions.message({ agentId: 'sess-shot', text: '', images: [{ data: png }, { data: png }] }), { ok: true });
+    assert.match((await handle.actions.message({ agentId: 'sess-shot', text: 'x', files: [{ name: 'gone.md', data: '' }] })).error, /gone\.md is empty/);
+    assert.deepEqual(await handle.actions.message({ agentId: 'sess-shot', text: '', files: [{ name: 'shot.png', data: png }, { name: 'notes.md', data: 'IyBOb3Rlcw==' }] }), { ok: true });
     const saved = readdirSync(join(root, 'state', 'uploads', 'sess-shot')).sort();
     assert.equal(saved.length, 2);
     assert.equal(received.length, 1);
-    assert.match(received[0], /^Please look at the screenshots I attached\. Open each with the Read tool to see it:\n/);
+    assert.match(received[0], /^Please look at the files I attached\. Open each with the Read tool:\n/);
     for (const name of saved) assert.ok(received[0].includes(join(root, 'state', 'uploads', 'sess-shot', name)));
   } finally {
     clearInterval(fakeMod);

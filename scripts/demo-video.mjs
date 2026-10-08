@@ -539,7 +539,7 @@ try {
   await point(q('#farm-agent .ask'), 600); await hold(1200);
   await click(q('#ask-allow'), 600);
   await until(`document.querySelector('[data-farmer="${P.id}"]')?.className.includes('st-working')`, 6000); await hold(1600);
-  await say('Message it', 'It arrives as your own prompt, even mid-task. Paste or drop screenshots too');
+  await say('Message it', 'It arrives as your own prompt, even mid-task. Paste or drop screenshots, PDFs or notes too');
   await click(q('#msg-text'), 600);
   await type('Post in #releases when it is live.');
   await hold(300); await enter(); await hold(2800);

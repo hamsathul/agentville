@@ -69,6 +69,9 @@ header.top { flex: none; z-index: 3; display: flex; flex-wrap: nowrap; gap: 10px
 .thumbs { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 8px; }
 .thumb { position: relative; width: 96px; height: 64px; border: 1px solid var(--line); border-radius: 8px; overflow: hidden; background: var(--page); }
 .thumb img { display: block; width: 100%; height: 100%; object-fit: cover; }
+.thumb-file { display: flex; flex-direction: column; justify-content: center; align-items: center; gap: 4px; padding: 0 8px; }
+.thumb-ext { font-size: 12px; font-weight: 700; text-transform: uppercase; color: var(--accent); }
+.thumb-name { max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 11px; color: var(--muted); }
 .thumb-x { position: absolute; top: 3px; right: 3px; width: 20px; height: 20px; padding: 0; border: 0; border-radius: 50%; background: rgba(0, 0, 0, .65); color: #fff; font-size: 11px; line-height: 20px; cursor: pointer; }
 .compose.dragging textarea { outline: 2px dashed var(--accent); outline-offset: -2px; }
 .ex-repo { display: flex; align-items: center; gap: 5px; padding: 2px 10px 6px; margin-bottom: 3px; border-bottom: 1px solid var(--grid); font-size: 12px; color: var(--muted); white-space: nowrap; overflow: hidden; }
@@ -601,7 +604,7 @@ a.pile { text-decoration: none; color: inherit; }
   <aside id="farm-diary-pane" aria-label="Farm diary"><div class="sec" style="margin-top:0">Farm diary</div><ol id="farm-diary" class="px-log"></ol></aside>
 </main>
 <div id="tip" class="tip" role="tooltip"></div>
-<input type="file" id="img-picker" accept="image/png,image/jpeg,image/gif,image/webp" multiple hidden>
+<input type="file" id="file-picker" multiple hidden>
 <dialog id="confirm" class="confirm-dlg" aria-labelledby="confirm-text">
   <p id="confirm-text"></p>
   <p class="confirm-actions"><button type="button" class="act" id="confirm-no" data-confirm="no">Cancel</button><button type="button" class="act primary" id="confirm-yes" data-confirm="yes">OK</button></p>

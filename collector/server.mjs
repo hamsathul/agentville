@@ -3,7 +3,7 @@ import { readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 
 const BODY_LIMIT = 64 * 1024;
-const MESSAGE_LIMIT = 90 * 1024 * 1024; // up to six 10 MB screenshots, base64-encoded
+const MESSAGE_LIMIT = 90 * 1024 * 1024; // up to six 10 MB attached files, base64-encoded
 
 function send(res, status, type, body) {
   res.writeHead(status, { 'content-type': type, 'cache-control': 'no-store' });
