@@ -216,6 +216,14 @@ try {
   for (let i = 0; i < 40 && !received.length; i++) await sleep(150);
   check(received[0] === 'First line\nsecond line', `Enter sends the message (got ${JSON.stringify(received)})`);
   check(await until("document.getElementById('msg-text')?.value === ''"), 'the message box clears once it is sent');
+  await js("document.querySelector('#center-body [data-convo]').click()");
+  await until("!!document.getElementById('convo-msg-text')");
+  await js("document.getElementById('convo-msg-text').focus()");
+  await send('Input.insertText', { text: 'Sent from the conversation dialog' });
+  await key('keyDown'); await key('keyUp');
+  for (let i = 0; i < 40 && received.length < 2; i++) await sleep(150);
+  check(received[1] === 'Sent from the conversation dialog', `the conversation dialog has the message box too: Enter sends from it (got ${JSON.stringify(received)})`);
+  await js("document.getElementById('convo').close()");
   const theme = await js('document.documentElement.dataset.theme ?? "auto"');
   await js("document.getElementById('theme-toggle').click()");
   check((await js('document.documentElement.dataset.theme ?? "auto"')) !== theme, 'the theme button switches the theme');

@@ -40,6 +40,7 @@ async function openConversation(id) {
   $('convo-count').textContent = '';
   $('convo-body').innerHTML = '<div class="loading"><span class="spinner"></span>Reading the whole conversation…</div>';
   if (!$('convo').open) $('convo').showModal();
+  renderConvoCompose();
   const r = await fetchConversation(0);
   if (convo !== mine) return; // closed, or another one opened meanwhile
   convo.loading = false;
@@ -75,8 +76,16 @@ async function followConversation() {
   if ($('convo-q').value.trim()) findInConversation(false); // count the new matches too; the view stays
 }
 
+/** The dialog's message box: the side panel's, with its own ids (redrawn on each render, held while you type in it). */
+function renderConvoCompose() {
+  if (!convo || !$('convo').open) return;
+  const a = snap?.agents.find(x => x.id === convo.id);
+  $('convo-compose').innerHTML = a ? composeHtml(a, 'convo-msg') : '';
+}
+
 function closeConversation() {
   convo = null;
+  $('convo-compose').innerHTML = '';
   if ($('convo').open) $('convo').close();
   window.CSS?.highlights?.delete('convo-hit');
   window.CSS?.highlights?.delete('convo-now');

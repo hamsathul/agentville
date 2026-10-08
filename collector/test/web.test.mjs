@@ -1433,3 +1433,25 @@ test('while the dialog is open, new messages are added at the bottom; closing it
   await page.settle();
   assert.equal(page.gets.filter(g => g.path.includes('/conversation')).length, page.gets.slice(0, asked).filter(g => g.path.includes('/conversation')).length, 'closed: nothing more is fetched');
 });
+
+test('the conversation dialog has the message box too, sharing the draft and files with the side panel', async () => {
+  const page = await convoPage();
+  await page.clickButton('read-all', { convo: 'r1' });
+  await page.settle();
+  const box = () => page.el('convo-compose').innerHTML;
+  assert.match(box(), /<textarea id="convo-msg-text" data-msg-agent="r1"/);
+  assert.match(box(), /id="convo-msg-attach"[^>]*>📎 Attach</);
+  assert.match(box(), /id="convo-msg-send"/);
+  assert.doesNotMatch(box(), /id="msg-text"/, 'its own ids: the side panel keeps its box');
+  page.edit('input', { tagName: 'TEXTAREA', value: 'Seen the whole thing', dataset: { msgAgent: 'r1' } });
+  page.push(richSnapshot([richAgent({ mod: { version: '0.5.0', live: true }, feed: [{ at: Date.now() - 1000, kind: 'reply', text: 'Hi' }] })]));
+  assert.match(page.side(), /id="msg-text"[^>]*>Seen the whole thing</, 'the same draft in the side panel');
+  await page.clickButton('convo-msg-attach', { agent: 'r1' });
+  page.edit('change', { id: 'convo-file-picker', files: [{ name: 'notes.md', type: 'text/markdown', size: 7, arrayBuffer: async () => new TextEncoder().encode('# Notes').buffer }], value: 'x' });
+  assert.match(box(), /<span class="thumb-name">notes\.md<\/span>/, "the dialog's own picker adds the file");
+  assert.match(page.side(), /<span class="thumb-name">notes\.md<\/span>/, 'and the side panel shows it too');
+  await page.clickButton('convo-msg-send', { agent: 'r1' });
+  const sent = page.posts.find(p => p.path === '/api/actions/message').body;
+  assert.deepEqual(sent, { agentId: 'r1', text: 'Seen the whole thing', files: [{ name: 'notes.md', data: 'IyBOb3Rlcw==' }] });
+  assert.match(box(), /Queued for busy-one with 1 file/, 'what came of it shows in the dialog too');
+});

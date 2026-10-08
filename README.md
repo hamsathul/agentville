@@ -217,6 +217,8 @@ These need the mod in that session.
   message from the first, oldest first, read from the transcript however long it is. **Search**
   highlights every match in place, with "1 of 12" and ↑ ↓ (Enter for older, Shift+Enter for
   newer); it starts at the newest. While the dialog is open, new messages appear at the bottom.
+  You can reply from it too: it has the same message box, with 📎 Attach, sharing the side
+  panel's draft and files.
 
 ### Side questions (/btw)
 

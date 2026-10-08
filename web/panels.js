@@ -287,8 +287,11 @@ function questionHtml(a) {
     <div class="muted" style="font-size:12px">${live ? 'Or answer in your own words in the message box below.' : "This session isn't listening for dashboard messages yet: answer it in its terminal."}</div></div>`;
 }
 
-/** Chat box: sends a message, with any attached files, into the session as the person's own words (queued if it is busy). */
-function composeHtml(a) {
+/**
+ * Chat box: sends a message, with any attached files, into the session as the person's own words (queued if it is busy).
+ * `ids` names its parts: msg-text, msg-send… in the side panel; convo-msg-… in the conversation dialog, which shares its draft and files.
+ */
+function composeHtml(a, ids = 'msg') {
   if (a.kind === 'codex') return '';
   const live = Boolean(a.mod?.live);
   const hint = !live ? "This session isn't listening for dashboard messages yet. Send it anything in its terminal once, or start a new session."
@@ -296,14 +299,14 @@ function composeHtml(a) {
     : 'Sent as your own message. Paste or drop files on the box. ↩ sends, ⇧↩ new line.';
   const sent = msgStatus.get(a.id);
   const status = sent && Date.now() - sent.at < 20_000
-    ? `<span id="msg-status" class="${sent.bad ? 'msg-bad' : 'msg-ok'}">${esc(sent.text)}</span>`
-    : `<span id="msg-status" class="faint">${hint}</span>`;
+    ? `<span id="${ids}-status" class="${sent.bad ? 'msg-bad' : 'msg-ok'}">${esc(sent.text)}</span>`
+    : `<span id="${ids}-status" class="faint">${hint}</span>`;
   const files = msgFiles.get(a.id) ?? [];
   const thumbs = files.length ? `<div class="thumbs">${files.map((f, i) => `<span class="${f.url ? 'thumb' : 'thumb thumb-file'}" data-tip="${esc(`${f.name} · ${sizeText(f.size)}`)}">${f.url
     ? `<img src="${esc(f.url)}" alt="${esc(f.name)}">`
     : `<span class="thumb-ext">${esc(extOf(f.name))}</span><span class="thumb-name">${esc(f.name)}</span>`}<button type="button" class="thumb-x" data-remove-file="${i}" data-agent="${esc(a.id)}" aria-label="Remove ${esc(f.name)}">✕</button></span>`).join('')}</div>` : '';
-  return `<div class="compose" data-agent="${esc(a.id)}" style="margin-top:10px"><textarea id="msg-text" data-msg-agent="${esc(a.id)}" rows="2" placeholder="Message ${esc(a.name)}…"${live ? '' : ' disabled'}>${esc(msgDrafts.get(a.id) ?? '')}</textarea>${thumbs}
-    <div class="compose-row">${status}<span class="grow"></span><button class="act" id="msg-attach" type="button" data-agent="${esc(a.id)}" data-tip="Attach files: screenshots, PDFs, Markdown, text… (you can also paste or drop them on the box)"${live ? '' : ' disabled'}>📎 Attach</button><button class="act primary" id="msg-send" data-agent="${esc(a.id)}"${live ? '' : ' disabled'}>Send</button></div></div>`;
+  return `<div class="compose" data-agent="${esc(a.id)}" style="margin-top:10px"><textarea id="${ids}-text" data-msg-agent="${esc(a.id)}" rows="2" placeholder="Message ${esc(a.name)}…"${live ? '' : ' disabled'}>${esc(msgDrafts.get(a.id) ?? '')}</textarea>${thumbs}
+    <div class="compose-row">${status}<span class="grow"></span><button class="act" id="${ids}-attach" type="button" data-agent="${esc(a.id)}" data-tip="Attach files: screenshots, PDFs, Markdown, text… (you can also paste or drop them on the box)"${live ? '' : ' disabled'}>📎 Attach</button><button class="act primary" id="${ids}-send" data-agent="${esc(a.id)}"${live ? '' : ' disabled'}>Send</button></div></div>`;
 }
 
 /** Tokens in short, as the working line has them: 860, 28.5k, 1.2M. */

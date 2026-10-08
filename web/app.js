@@ -58,6 +58,7 @@ function render() {
   window.Agentville?.favicon(needs > 0); // a red light on the tab's farmhouse while an agent waits
   refreshFullFeeds();
   void followConversation(); // the conversation dialog, if open, takes the new messages
+  renderConvoCompose(); // and its message box
   if (view === 'farm') {
     // The farm draws the agents; the list and the centre are not drawn (so their ids don't exist twice).
     // The sidebar shows the selected farmer: its answer form, message box and activity, then its files.
@@ -315,7 +316,7 @@ document.addEventListener('click', async e => {
   if (el.id === 'side-toggle') { setFarmSide(!farmSide); return; }
   if (d.farmTab) { setFarmTab(d.farmTab); return; }
   if (el.id === 'fs-list') { setView('list'); return; }
-  if (el.id === 'msg-send') { await sendMessage(d.agent, el); return; }
+  if (el.id === 'msg-send' || el.id === 'convo-msg-send') { await sendMessage(d.agent, el); return; }
   if (el.id === 'aside-send') { await askAside(d.agent, el); return; }
   if (d.quickReply !== undefined) { await sendMessage(d.agent, el, d.quickReply); return; }
   if (d.quickDraft !== undefined || d.quote !== undefined) {
@@ -332,10 +333,11 @@ document.addEventListener('click', async e => {
     return;
   }
   if (d.removeFile !== undefined) { removeFile(d.agent, Number(d.removeFile)); return; }
-  if (el.id === 'msg-attach') {
+  if (el.id === 'msg-attach' || el.id === 'convo-msg-attach') {
     pickerFor = d.agent;
-    $('file-picker').value = '';
-    $('file-picker').click?.();
+    const picker = $(el.id === 'msg-attach' ? 'file-picker' : 'convo-file-picker'); // the dialog's own: a modal dialog makes the page behind it inert
+    picker.value = '';
+    picker.click?.();
     return;
   }
   if (d.docPath) { await openFile(d.docAgent, d.docPath); return; }
@@ -486,7 +488,7 @@ document.addEventListener('change', e => {
     if (value) void switchFlow(t.dataset.agent, what, value);
     return;
   }
-  if (t?.id === 'file-picker') {
+  if (t?.id === 'file-picker' || t?.id === 'convo-file-picker') {
     if (pickerFor) addFiles(pickerFor, [...(t.files ?? [])]);
     t.value = '';
     return;
@@ -524,9 +526,9 @@ document.addEventListener('drop', e => {
 // Enter sends a message; Shift+Enter starts a new line (and Enter while an input method is composing is left alone).
 const sendKey = e => e.key === 'Enter' && !e.shiftKey && !e.altKey && !e.isComposing && e.keyCode !== 229;
 document.addEventListener('keydown', e => {
-  if (sendKey(e) && e.target?.id === 'msg-text') {
+  if (sendKey(e) && (e.target?.id === 'msg-text' || e.target?.id === 'convo-msg-text')) {
     e.preventDefault();
-    sendMessage(e.target.dataset.msgAgent, $('msg-send'));
+    sendMessage(e.target.dataset.msgAgent, $(e.target.id.replace(/text$/, 'send')));
   }
   if (sendKey(e) && e.target?.id === 'aside-text') {
     e.preventDefault();

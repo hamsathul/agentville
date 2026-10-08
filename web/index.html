@@ -651,6 +651,8 @@ a.pile { text-decoration: none; color: inherit; }
   <div class="sess-head"><h3 id="convo-title">Conversation</h3><span id="convo-sub" class="faint"></span><span class="grow"></span><button type="button" class="act mini" data-convo-close aria-label="Close">×</button></div>
   <div class="convo-find"><input id="convo-q" type="search" placeholder="Search this conversation…" autocomplete="off" spellcheck="false" aria-label="Search this conversation"><span id="convo-count" class="faint" role="status"></span><button type="button" class="act mini" id="convo-prev" aria-label="Older match" data-tip="Older match (Enter)">↑</button><button type="button" class="act mini" id="convo-next" aria-label="Newer match" data-tip="Newer match (Shift+Enter)">↓</button></div>
   <div id="convo-body" class="chat convo-body"></div>
+  <div id="convo-compose"></div>
+  <input type="file" id="convo-file-picker" multiple hidden>
 </dialog>
 <dialog id="cleanup">
   <h3>Remove stale background sessions</h3>
