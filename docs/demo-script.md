@@ -1,7 +1,9 @@
 # Agentville demo: the script
 
-What the demo video shows and says, scene by scene. The sessions, repos and files in it are made
-up. They live in a demo `~/.claude` under `/Users/Shared/agentville-demo`, not on a real Mac.
+What the demo videos show and say, scene by scene. There are two: the tour of every feature
+(`npm run demo`), and a short one with sixteen sessions at once (`npm run demo:many`, at the end).
+The sessions, repos and files in them are made up. Each video has its own demo `~/.claude`, under
+`/Users/Shared/agentville-demo` and `/Users/Shared/agentville-many`, not on a real Mac.
 
 Each scene lists what is on screen and its caption, which is a title with one line under it. The
 video runs about 7½ minutes over ten chapters, and each chapter starts with a 2-second title card.
@@ -117,3 +119,27 @@ copy of the whole video, 1280 wide and under 10 MB, can be uploaded to GitHub.
 |---|---|---|---|
 | 10.1 | Light theme, then back to the farm | Light, dark, or following macOS | The farm and the list show the same data. |
 | 10.2 | Title card | Agentville | github.com/hamsathul/agentville |
+
+# Many sessions at once
+
+A travel-booking company with eight repos and sixteen Claude Code sessions: a release team of five
+(a lead who hands out the work, and agents for the API, the web app, testing and the changelog),
+and eleven others working on payments, search, the mobile apps, infrastructure, the design system
+and data. Four need you: a question (pricing), a permission (db-migrate), a plan to approve
+(search-plan), and a session that has finished (docs-agent). About 80 seconds, with a copy under
+10 MB.
+
+The terminal windows are drawn in the page: Claude Code's look, with each window streaming its
+session's steps, and the waiting ones showing the prompt they wait in.
+
+| Time | On screen | Caption | Under it |
+|---|---|---|---|
+| 0:00 | Sixteen terminal windows on a desktop, all streaming; the cursor moves across them | Sixteen Claude Code sessions, sixteen windows | Each one is working on something, and some of them are waiting for you. |
+| 0:09 | The same; a question, a permission prompt and a plan are among them | Which ones need you? | A question, a permission and a plan are in there somewhere, and one session has finished. |
+| 0:17 | Each window shrinks and flies into its farmer; the desktop fades to the farm | Agentville shows them all in one place | Each session is a farmer, and each repo is a field. |
+| 0:23 | Pointing at the four farmers on the porch | The ones that need you wait on the porch | A red ! is a question or a permission, a scroll is a plan to approve, and a basket means it has finished. |
+| 0:30 | pricing: With tax, Send. db-migrate: its command, Allow. Both go back to work | Answer without hunting for the window | The options are the same as in its terminal, and the session carries on. |
+| 0:44 | Pigeons: api-agent to release-lead, release-lead to web-agent, qa-agent to release-lead, release-lead to web-agent | See how they work together | A pigeon is one agent writing to another. Here the release lead hands out work and hears back. |
+| 0:58 | The henhouse, the playwright cart beside qa-agent, the pump at search-index | Subagents, MCP calls and jobs show up too | Subagents wait in the henhouse, each MCP server drives its own cart, and a pump is a job running in the background. |
+| 1:06 | The list view, the collisions count and card | Or read them as a list | Sorted by who needs you, with a warning when two agents write to the same repo. |
+| 1:17 | Title card | Agentville | github.com/hamsathul/agentville |

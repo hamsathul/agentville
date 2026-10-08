@@ -607,7 +607,7 @@ web/         the dashboard: index.html, app.js, panels.js, farm.js…
 mod/         the Claude Code mod: hooks/register.tsx; its tests in tests/
 bin/         the agent-tracker command and the launchd entry point
 launchd/     the service definition
-scripts/     end-to-end checks and the demo video
+scripts/     end-to-end checks and the demo videos (their shared recorder in scripts/demo/)
 docs/        screenshots
 ```
 
@@ -621,6 +621,8 @@ npm run demo [out.mp4]      # record the demo video, made-up sessions only (Chro
                             # a copy under 10 MB for GitHub (out-small.mp4), and one short video per
                             # chapter in out-chapters/ (01-the-farm.mp4, …);
                             # it follows docs/demo-script.md; STILLS=docs STILLS_ONLY=1 remakes the farm pictures
+npm run demo:many [out.mp4] # a short video of sixteen made-up sessions: their terminal windows, then the
+                            # farm (~80 s, and a copy under 10 MB)
 ```
 
 GitHub Actions runs `npm test` and `npm run test:ui` on every push to `main` and on pull requests.
