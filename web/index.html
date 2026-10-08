@@ -242,6 +242,13 @@ dialog::backdrop { background: rgba(0, 0, 0, .45); }
 dialog.sess-dlg { width: min(680px, calc(100vw - 32px)); max-width: none; padding: 14px 16px 6px; }
 .sess-head { display: flex; align-items: center; gap: 8px; }
 .sess-head h3 { margin: 0; font-size: 15px; }
+.sess-dir { display: flex; gap: 6px; margin-top: 2px; }
+#sess-dir { flex: 1; min-width: 0; padding: 5px 9px; border: 1px solid var(--line); border-radius: 7px; background: var(--page); color: var(--text); font: 12.5px ui-monospace, SFMono-Regular, Menlo, monospace; }
+.dir-list { max-height: 168px; overflow: auto; margin-top: 4px; border: 1px solid var(--line); border-radius: 7px; background: var(--page); }
+.dir-row { display: block; width: 100%; text-align: left; border: 0; background: transparent; color: var(--text); font: inherit; font-size: 13px; padding: 4px 10px; cursor: pointer; }
+.dir-row:hover, .dir-row:focus-visible { background: var(--panel-2); }
+.dir-note { min-height: 18px; margin: 4px 0 2px; font-size: 12px; }
+.dir-note .act { margin: 0 0 0 6px; }
 #sess-filter { width: 100%; box-sizing: border-box; margin: 10px 0 2px; padding: 6px 9px; border: 1px solid var(--line); border-radius: 7px; background: var(--page); color: var(--text); font: inherit; }
 #sess-body { max-height: min(62vh, 560px); overflow: auto; }
 .sess-row { display: flex; align-items: center; gap: 10px; padding: 7px 2px; border-top: 1px solid var(--line); }
@@ -702,6 +709,10 @@ a.pile { text-decoration: none; color: inherit; }
   <div class="sess-modes"><label for="sess-mode">Permission mode</label><select id="sess-mode"><option value="default">Ask first</option><option value="acceptEdits">Accept edits</option><option value="plan">Plan mode</option><option value="auto">Auto</option><option value="bypassPermissions">Bypass permissions</option></select><span id="sess-mode-warn" class="msg-bad" hidden>⚠ every tool runs without asking (--dangerously-skip-permissions)</span></div>
   <div class="sess-modes"><label for="sess-model">Model</label><select id="sess-model"><option value="default">Your default</option><option value="opus">Opus</option><option value="opus[1m]">Opus, 1M context</option><option value="sonnet">Sonnet</option><option value="haiku">Haiku</option><option value="fable">Fable</option></select>
     <label for="sess-effort">Effort</label><select id="sess-effort"><option value="">Its default</option><option value="low">low</option><option value="medium">medium</option><option value="high">high</option><option value="xhigh">xhigh</option><option value="max">max</option></select><span class="faint">for this session only (--model, --effort)</span></div>
+  <div class="sec" style="margin-top:12px">New session in any folder</div>
+  <div class="sess-dir"><input id="sess-dir" type="text" placeholder="Type or paste a folder: ~/code/new-app" autocomplete="off" spellcheck="false" aria-label="Folder" aria-describedby="sess-dir-note"><button type="button" class="act mini" id="sess-dir-browse">Browse</button><button type="button" class="act mini primary" id="sess-dir-new" disabled>＋ New</button></div>
+  <div id="sess-dir-list" class="dir-list" hidden></div>
+  <div id="sess-dir-note" class="faint dir-note" role="status"></div>
   <input id="sess-filter" type="search" placeholder="Search titles, messages, folders and branches…" autocomplete="off" spellcheck="false">
   <div class="sess-tools">
     <select id="sess-f-folder" aria-label="Folder"><option value="">All folders</option></select>

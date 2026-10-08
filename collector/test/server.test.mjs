@@ -42,11 +42,13 @@ async function start() {
       restart: async body => { calls.push(['restart', body]); return { ok: true }; },
       plugin: async body => { calls.push(['plugin', body]); return { ok: true }; },
       reveal: async body => { calls.push(['reveal', body]); return { ok: true }; },
+      mkdir: async body => { calls.push(['mkdir', body]); return { ok: true, path: '/Users/me/new' }; },
       reload: async () => { calls.push(['reload']); return { ok: true, sessions: 2 }; },
       mcp: async body => { calls.push(['mcp', body]); return { ok: true }; },
       rule: async body => { calls.push(['rule', body]); return { ok: true }; },
     },
     getSubagent: id => (id === 's1:tA' ? { prompt: 'Find callers', result: null, feed: [] } : null),
+    listDirs: async typed => { calls.push(['dirs', typed]); return { dir: '/Users/me', dirs: ['code'], exists: true }; },
     fileTicket: async (id, path, opts) => { calls.push(['ticket', id, path, opts]); return { url: '/raw/abc/x.png', type: 'image/png', size: 10 }; },
     officeView: async (id, path) => ({ view: 'sheet', sheets: [{ name: path, rows: [], truncated: false }] }),
     rawFile: async (id, rel) => (RAW[id] ? { real: RAW[id], type: RAW_TYPE[id], size: 10 } : { status: 404, error: 'That link has expired: open the file again.' }),
@@ -325,6 +327,22 @@ test("a file's link and a document's reading need the token; its bytes need only
     assert.equal((await request(port, { method: 'POST', path: '/api/actions/reveal', headers: { ...headers, origin: 'https://evil.example', 'content-type': 'application/json' }, body })).status, 403);
     assert.equal((await request(port, { method: 'POST', path: '/api/actions/reveal', headers: { ...headers, origin, 'content-type': 'application/json' }, body })).status, 200);
     assert.deepEqual(calls.at(-1), ['reveal', { agentId: 's1', path: '/w/x.png' }]);
+  } finally {
+    await srv.close();
+  }
+});
+
+test('folders to start in are listed only with the token, and made only from the dashboard', async () => {
+  const { srv, port, calls } = await start();
+  try {
+    assert.equal((await request(port, { path: '/api/dirs?path=~%2F' })).status, 403);
+    const r = await request(port, { path: '/api/dirs?path=~%2Fco', headers: { 'x-tracker-token': 'tok' } });
+    assert.deepEqual(JSON.parse(r.body).dirs, ['code']);
+    assert.deepEqual(calls.at(-1), ['dirs', '~/co']);
+    const body = JSON.stringify({ path: '~/new' });
+    assert.equal((await request(port, { method: 'POST', path: '/api/actions/mkdir', headers: { 'x-tracker-token': 'tok', origin: 'https://evil.example', 'content-type': 'application/json' }, body })).status, 403);
+    assert.equal((await request(port, { method: 'POST', path: '/api/actions/mkdir', headers: { 'x-tracker-token': 'tok', origin: `http://127.0.0.1:${port}`, 'content-type': 'application/json' }, body })).status, 200);
+    assert.deepEqual(calls.at(-1), ['mkdir', { path: '~/new' }]);
   } finally {
     await srv.close();
   }

@@ -58,7 +58,7 @@ function clampInt(value, min, max, fallback) {
   return Number.isFinite(n) ? Math.min(max, Math.max(min, n)) : fallback;
 }
 
-export function createTrackerServer({ port, token, webFile, getSnapshot, getFeed, getConversation, getSubagent, claudePlugins, claudeMcp, claudeRules, fileTicket, rawFile, officeView, getTranscriptHtml, getDoc, listFiles, readFile, repoTouched, actions, pastSessions, log = () => {} }) {
+export function createTrackerServer({ port, token, webFile, getSnapshot, getFeed, getConversation, getSubagent, claudePlugins, claudeMcp, claudeRules, fileTicket, rawFile, officeView, listDirs, getTranscriptHtml, getDoc, listFiles, readFile, repoTouched, actions, pastSessions, log = () => {} }) {
   const clients = new Set();
   let server;
   const actualPort = () => server.address()?.port ?? port;
@@ -141,6 +141,10 @@ export function createTrackerServer({ port, token, webFile, getSnapshot, getFeed
           if (req.headers['x-tracker-token'] !== token) return sendJson(res, 403, { error: 'forbidden' });
           return sendJson(res, 200, await pastSessions({ all: url.searchParams.get('days') === 'all' }));
         }
+        if (path === '/api/dirs') { // folders to start a session in, as you type one: token only, like files
+          if (req.headers['x-tracker-token'] !== token) return sendJson(res, 403, { error: 'forbidden' });
+          return sendJson(res, 200, await listDirs(url.searchParams.get('path') ?? '~/'));
+        }
         if (path === '/api/repo/touched') {
           if (req.headers['x-tracker-token'] !== token) return sendJson(res, 403, { error: 'forbidden' });
           const touched = await repoTouched(url.searchParams.get('path') ?? '');
@@ -152,7 +156,7 @@ export function createTrackerServer({ port, token, webFile, getSnapshot, getFeed
         }
       }
 
-      const isBodyAction = ['/api/actions/rm', '/api/actions/answer', '/api/actions/permit', '/api/actions/always', '/api/actions/plugin', '/api/actions/reload', '/api/actions/mcp', '/api/actions/rule', '/api/actions/message', '/api/actions/start', '/api/actions/end', '/api/actions/restart', '/api/actions/setting', '/api/actions/aside', '/api/actions/reveal'].includes(path);
+      const isBodyAction = ['/api/actions/rm', '/api/actions/answer', '/api/actions/permit', '/api/actions/always', '/api/actions/plugin', '/api/actions/reload', '/api/actions/mcp', '/api/actions/rule', '/api/actions/message', '/api/actions/start', '/api/actions/end', '/api/actions/restart', '/api/actions/setting', '/api/actions/aside', '/api/actions/reveal', '/api/actions/mkdir'].includes(path);
       if (req.method === 'POST' && (isBodyAction || /^\/api\/actions\/open\/[\w-]+$/.test(path))) {
         if (req.headers['x-tracker-token'] !== token || !isAllowedOrigin(req.headers.origin ?? '')) {
           return sendJson(res, 403, { error: 'forbidden' });
@@ -177,6 +181,7 @@ export function createTrackerServer({ port, token, webFile, getSnapshot, getFeed
         if (path === '/api/actions/setting') return sendJson(res, 200, await actions.setting(body));
         if (path === '/api/actions/aside') return sendJson(res, 200, await actions.aside(body));
         if (path === '/api/actions/reveal') return sendJson(res, 200, await actions.reveal(body));
+        if (path === '/api/actions/mkdir') return sendJson(res, 200, await actions.mkdir(body));
         if (path === '/api/actions/end') return sendJson(res, 200, await actions.end(body));
         if (path === '/api/actions/restart') return sendJson(res, 200, await actions.restart(body));
         return sendJson(res, 200, await actions.open(path.split('/').pop()));

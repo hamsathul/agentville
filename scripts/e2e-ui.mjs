@@ -184,7 +184,7 @@ case "$1 $2" in
 esac
 `, { mode: 0o755 });
 writeFileSync(join(claudeDir, 'settings.json'), `${JSON.stringify({ permissions: { allow: ['Bash(npm test:*)'] } }, null, 2)}\n`);
-const handle = await startCollector({ root, claudeDir, claudeBin: fakeClaude, notify: () => {}, log: () => {}, home: '/nowhere', scratchBase: '/nonexistent', sessionProcs, launch: async args => { launched.push(args.at(-1)); return { code: 0, stdout: '', stderr: '' }; } });
+const handle = await startCollector({ root, claudeDir, claudeBin: fakeClaude, notify: () => {}, log: () => {}, home: '/nowhere', folderRoots: [realpathSync(temp)], scratchBase: '/nonexistent', sessionProcs, launch: async args => { launched.push(args.at(-1)); return { code: 0, stdout: '', stderr: '' }; } });
 const profile = join(temp, 'chrome');
 const chrome = spawn(CHROME, ['--headless=new', '--remote-debugging-port=0', `--user-data-dir=${profile}`, '--no-first-run', '--no-default-browser-check', '--hide-scrollbars', 'about:blank'], { stdio: 'ignore' });
 let ws;
@@ -531,6 +531,29 @@ try {
   await js("(() => { const m = document.getElementById('sess-mode'); m.value = 'plan'; m.dispatchEvent(new Event('change', { bubbles: true })); document.getElementById('sess-model').value = 'sonnet'; document.getElementById('sess-effort').value = 'high'; })()");
   await js("document.querySelector('#sessions [data-sess-new]').click()");
   check(await until('!document.getElementById(\'sessions\').open') && launched.at(-1) === `cd '${repo}' && exec claude --permission-mode plan --model 'sonnet' --effort high`, `New session opens a terminal running claude in the folder, in the mode, model and effort you picked (got ${launched.at(-1)})`);
+  // A folder you haven't worked in: typed, with suggestions and Tab, or made, then started in.
+  const places = realpathSync(temp); // the place this run allows (your home folder and drives, really)
+  await js("document.getElementById('sessions-open').click()");
+  await until("document.getElementById('sessions').open");
+  const typeDir = text => js(`(() => { const f = document.getElementById('sess-dir'); f.focus(); f.value = ${JSON.stringify(text)}; f.dispatchEvent(new Event('input', { bubbles: true })); })()`);
+  await typeDir('/etc/');
+  check(await until("/home folder or a drive/.test(document.getElementById('sess-dir-note').textContent) && document.getElementById('sess-dir-new').disabled"), 'a folder outside your home folder and drives is refused');
+  await typeDir(`${places}/fa`);
+  check(await until("[...document.querySelectorAll('#sess-dir-list [data-dir-go]')].some(b => b.textContent.includes('farm-repo'))"), 'typing a folder suggests the folders in it');
+  await send('Input.dispatchKeyEvent', { type: 'keyDown', key: 'Tab', code: 'Tab', windowsVirtualKeyCode: 9 });
+  await send('Input.dispatchKeyEvent', { type: 'keyUp', key: 'Tab', code: 'Tab', windowsVirtualKeyCode: 9 });
+  check(await until(`document.getElementById('sess-dir').value === ${JSON.stringify(`${places}/farm-repo/`)} && document.activeElement?.id === 'sess-dir'`), 'Tab completes the name, as in a terminal');
+  check(await until("[...document.querySelectorAll('#sess-dir-list [data-dir-go]')].some(b => b.textContent.includes('src')) && !document.getElementById('sess-dir-new').disabled"), 'and lists what is in it');
+  await shot('session-folder');
+  await typeDir(`${places}/new crop/field`);
+  check(await until("!!document.querySelector('#sess-dir-note [data-dir-make]') && document.getElementById('sess-dir-new').disabled"), 'a folder that does not exist yet offers Create it');
+  await js("document.querySelector('#sess-dir-note [data-dir-make]').click()");
+  check(await until("document.getElementById('confirm').open && /Create the folder/.test(document.getElementById('confirm-text').textContent)") && !existsSync(join(places, 'new crop')), 'Create it asks first');
+  await js("document.getElementById('confirm-yes').click()");
+  check(await until("!document.getElementById('sess-dir-new').disabled") && existsSync(join(places, 'new crop', 'field')), 'confirmed, it makes the folder and the one above it');
+  await js("document.getElementById('sess-dir-new').click()");
+  check(await until("!document.getElementById('sessions').open") && launched.at(-1) === `cd '${join(places, 'new crop', 'field')}' && exec claude --permission-mode plan --model 'sonnet' --effort high`, `＋ New starts there, in the mode, model and effort picked (got ${launched.at(-1)})`);
+  check(await until("/trust the folder/.test(document.getElementById('notice').textContent)"), 'and says Claude Code may ask there whether to trust it');
 
   console.log('Back to the list');
   await js("document.getElementById('view-list').click()");

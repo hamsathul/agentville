@@ -65,9 +65,10 @@ It listens on `127.0.0.1` only and reads what Claude Code already writes to disk
 - Ask a session a side question (`/btw`) without interrupting or adding to its conversation.
 
 **Steer your sessions**
-- Start a new session in a folder you've worked in, or find a past one (search, filter by folder,
-  model, branch or running, sort by activity, start, name, folder or length) and resume it, in the
-  permission mode, model and effort you choose.
+- Start a new session in any folder of yours (type it, browse to it, or create it) or in one you've
+  worked in, or find a past one (search, filter by folder, model, branch or running, sort by
+  activity, start, name, folder or length) and resume it, in the permission mode, model and effort
+  you choose.
 - Switch a running session's model or effort, compact it, restart it in another permission mode,
   or end it (its terminal window closes too).
 
@@ -270,7 +271,16 @@ before you updated, run `/reload-plugins` in it.
 
 ### Starting, resuming, ending and restarting sessions
 
-- **＋ Session** starts Claude Code in a folder you have worked in, or resumes a past session.
+- **＋ Session** starts Claude Code in any folder, or resumes a past session.
+  - **New session in any folder**: type or paste a path (`~/code/new-app`), and the folders in it
+    are suggested as you type. **Tab** completes a name as a terminal does, and **Browse** starts
+    from your home folder; click a folder to go into it, or `..` to go up. Hidden folders are
+    suggested once you type the dot.
+  - A folder that doesn't exist yet gets **Create it**, which makes it (and any missing folders
+    above it) after asking.
+  - Only folders in your home folder or on a mounted drive (`/Volumes/…`) can be used.
+  - The first time Claude Code runs in a folder, it asks in the new window whether to trust it.
+  - Below are the folders you have worked in, each with **＋ New**.
   - **Search** matches titles, messages, folders and git branches.
   - **Filters**: folder (it narrows the folders to start in too), the model it last ran on, its git
     branch, and running or not. Each choice says how many sessions it holds; **Clear filters**
@@ -490,6 +500,9 @@ canvas, with its text drawn as HTML on top so it stays crisp.
   start, end, switch…) also needs a same-origin request.
 - The explorer shows what git shows. Ignored files (`node_modules`, `.env`, build output) and
   files that look like secrets (`.env*`, keys) are neither listed nor served.
+- Folders to start a session in are listed only with the token, and only in your home folder or
+  on a drive. Making one is an action (token and same origin). Each path is checked where it really
+  is, so a `..` or a link can't lead out of those places.
 - Pictures, PDFs, players and page previews load through links that are random, last 10 minutes
   and open one file (a page's preview: its folder, under the same rules). An `<img>` or a player
   can't send the token, so the link stands in for it.

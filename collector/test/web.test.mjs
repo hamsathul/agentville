@@ -1838,3 +1838,99 @@ test("a picture's link that could not be made says why", async () => {
   await page.settle();
   assert.match(page.el('reader-body').innerHTML, /holds secrets/);
 });
+
+/* ---------- a new session in any folder ---------- */
+
+const dirsReply = (over = {}) => ({ home: '/Users/me', path: '/Users/me/co', exists: false, isFile: false, dir: '/Users/me', up: null, dirs: ['code'], truncated: false, ...over });
+const dirsOf = typed => `/api/dirs?path=${encodeURIComponent(typed)}`;
+
+test('a new session in any folder: type or browse, and the subfolders are suggested; one picked lists its own', async () => {
+  const replies = {
+    [dirsOf('~/')]: dirsReply({ path: '/Users/me', exists: true, dirs: ['code', 'Docs'] }),
+    [dirsOf('~/co')]: dirsReply(),
+    [dirsOf('~/code/')]: dirsReply({ path: '/Users/me/code', exists: true, dir: '/Users/me/code', up: '/Users/me', dirs: ['api', 'app'] }),
+  };
+  const page = loadPage({ replies: { ...replies, '/api/sessions': { terminal: 'Terminal', projects: [], sessions: [] } } });
+  await page.ctx.openSessions();
+  await page.settle();
+  assert.equal(page.el('sess-dir').value, '');
+  assert.equal(page.el('sess-dir-new').disabled, true, 'nothing to start in yet');
+  await page.clickButton('sess-dir-browse', {});
+  await page.settle();
+  assert.equal(page.el('sess-dir').value, '~/', 'browsing starts at your home folder');
+  assert.ok(page.gets.find(g => g.path === dirsOf('~/'))?.token, 'listed with the token');
+  assert.match(page.el('sess-dir-list').innerHTML, /data-dir-go="~\/code\/"[^>]*>[\s\S]*code[\s\S]*data-dir-go="~\/Docs\/"/);
+  assert.equal(page.el('sess-dir-list').hidden, false);
+  page.edit('input', { id: 'sess-dir', value: '~/co' });
+  await page.settle();
+  assert.match(page.el('sess-dir-list').innerHTML, /data-dir-go="~\/code\/"/);
+  assert.match(page.el('sess-dir-note').innerHTML, /~\/co doesn't exist yet[\s\S]*data-dir-make/);
+  await page.clickButton('row', { dirGo: '~/code/' });
+  await page.settle();
+  assert.equal(page.el('sess-dir').value, '~/code/');
+  assert.match(page.el('sess-dir-list').innerHTML, /data-dir-go="~\/"[^>]*>[\s\S]*\.\.[\s\S]*data-dir-go="~\/code\/api\/"/, '.. goes up');
+  assert.equal(page.el('sess-dir-new').disabled, false);
+  assert.match(page.el('sess-dir-note').textContent, /＋ New starts Claude Code in ~\/code/);
+});
+
+test('Tab completes a folder name as a terminal does', async () => {
+  const replies = {
+    [dirsOf('~/co')]: dirsReply(),
+    [dirsOf('~/code/')]: dirsReply({ path: '/Users/me/code', exists: true, dir: '/Users/me/code', up: '/Users/me', dirs: ['api', 'app'] }),
+    [dirsOf('~/code/a')]: dirsReply({ path: '/Users/me/code/a', dir: '/Users/me/code', up: '/Users/me', dirs: ['api', 'app'] }),
+    [dirsOf('~/code/ap')]: dirsReply({ path: '/Users/me/code/ap', dir: '/Users/me/code', up: '/Users/me', dirs: ['api', 'app'] }),
+  };
+  const page = loadPage({ replies: { ...replies, '/api/sessions': { terminal: 'Terminal', projects: [], sessions: [] } } });
+  await page.ctx.openSessions();
+  page.edit('input', { id: 'sess-dir', value: '~/co' });
+  await page.settle();
+  assert.equal(await page.ctx.completeDir(), true);
+  await page.settle();
+  assert.equal(page.el('sess-dir').value, '~/code/', 'one match: the whole name and a slash');
+  page.edit('input', { id: 'sess-dir', value: '~/code/a' });
+  await page.settle();
+  assert.equal(await page.ctx.completeDir(), true);
+  assert.equal(page.el('sess-dir').value, '~/code/ap', 'several: as far as they agree');
+  await page.settle();
+  assert.equal(await page.ctx.completeDir(), false, 'nothing more to complete: Tab moves on');
+});
+
+test('＋ New starts a session in the folder typed, in the mode, model and effort picked; a missing one is made first, after asking', async () => {
+  const replies = {
+    [dirsOf('~/code/new app')]: dirsReply({ path: '/Users/me/code/new app', dir: '/Users/me/code', up: '/Users/me', dirs: [] }),
+    '/api/actions/mkdir': { ok: true, path: '/Users/me/code/new app' },
+    '/api/actions/start': { ok: true, terminal: 'Terminal' },
+    '/api/sessions': { terminal: 'Terminal', projects: [], sessions: [] },
+  };
+  const page = loadPage({ replies });
+  await page.ctx.openSessions();
+  page.el('sess-mode').value = 'plan';
+  page.el('sess-model').value = 'sonnet';
+  page.edit('input', { id: 'sess-dir', value: '~/code/new app' });
+  await page.settle();
+  assert.equal(page.el('sess-dir-new').disabled, true);
+  const asked = page.clickButton('make', { dirMake: '' });
+  await page.settle();
+  assert.match(page.el('confirm-text').textContent, /Create the folder ~\/code\/new app\?/);
+  replies[dirsOf('~/code/new app')] = dirsReply({ path: '/Users/me/code/new app', exists: true, dir: '/Users/me/code', up: '/Users/me', dirs: [] });
+  page.ctx.settleConfirm(true);
+  await asked;
+  await page.settle();
+  assert.deepEqual(page.posts.find(p => p.path === '/api/actions/mkdir')?.body, { path: '/Users/me/code/new app' });
+  assert.equal(page.el('sess-dir-new').disabled, false, 'made: it can start there now');
+  await page.clickButton('sess-dir-new', {});
+  await page.settle();
+  assert.deepEqual(page.posts.at(-1), { path: '/api/actions/start', body: { cwd: '/Users/me/code/new app', mode: 'plan', model: 'sonnet' } });
+  assert.equal(page.el('sessions').open, false);
+  assert.match(page.el('notice').textContent, /trust/, 'Claude Code asks there whether to trust a new folder');
+});
+
+test('a folder outside your home folder and drives says so', async () => {
+  const page = loadPage({ replies: { [dirsOf('/etc')]: { error: 'Only a folder in your home folder or a drive (/Volumes) can be used.' }, '/api/sessions': { terminal: 'Terminal', projects: [], sessions: [] } } });
+  await page.ctx.openSessions();
+  page.edit('input', { id: 'sess-dir', value: '/etc' });
+  await page.settle();
+  assert.match(page.el('sess-dir-note').textContent, /home folder or a drive/);
+  assert.equal(page.el('sess-dir-list').hidden, true);
+  assert.equal(page.el('sess-dir-new').disabled, true);
+});

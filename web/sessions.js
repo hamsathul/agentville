@@ -1,5 +1,6 @@
-// Start a new Claude Code session in a folder you worked in, or resume a past one, in a terminal
-// window (Terminal or iTerm, as config.json says). The collector checks the folder or session again.
+// Start a new Claude Code session in a folder you worked in, or in any other of yours (typed, browsed
+// or made), or resume a past one, in a terminal window (Terminal or iTerm, as config.json says). The
+// collector checks the folder or session again.
 // Past sessions can be searched, filtered (folder, model, branch, running) and sorted; the sort and
 // how far back to look (the last 30 days, or all time) are kept for the next time.
 let sessData = null;
@@ -32,6 +33,7 @@ async function openSessions() {
   $('sess-mode').value = storedMode();
   $('sess-mode-warn').hidden = $('sess-mode').value !== 'bypassPermissions';
   sessAllFolders = false;
+  resetDirPicker();
   syncSessControls();
   $('sessions').showModal();
   await loadSessions();
@@ -127,8 +129,101 @@ function renderSessions() {
       <span class="faint">${esc(when)}${s.lastPrompt ? ` · “${esc(s.lastPrompt)}”` : ''}</span></div>
       ${s.live ? '<span class="chip c-working live-dot" data-tip="Already open: find it in the list">running</span>' : `<button type="button" class="act mini" data-sess-resume="${esc(s.id)}">Resume</button>`}</div>`;
   };
-  $('sess-body').innerHTML = `<div class="sec" style="margin-top:4px">New session in</div>${projects.map(projectRow).join('') || '<div class="empty">No folders match.</div>'}${more}
+  $('sess-body').innerHTML = `<div class="sec" style="margin-top:4px">Or a folder you worked in</div>${projects.map(projectRow).join('') || '<div class="empty">No folders match.</div>'}${more}
     <div class="sec">Resume</div>${sessions.map(sessionRow).join('') || '<div class="empty">No sessions match.</div>'}`;
+}
+
+/* ---------- a new session in any folder: typed, browsed or made ---------- */
+
+const sessDir = { typed: '', data: null, shown: false, asked: 0, waiting: 0 };
+const tildeOf = (path, home) => (home && (path === home || path.startsWith(`${home}/`)) ? `~${path.slice(home.length)}` : path);
+
+function resetDirPicker() {
+  Object.assign(sessDir, { typed: '', data: null, shown: false });
+  $('sess-dir').value = '';
+  renderDirs();
+}
+
+/** Asks for the folders under what is typed (the collector keeps to your home folder and drives). */
+async function loadDirs() {
+  const ask = ++sessDir.asked;
+  let data;
+  try {
+    const r = await fetch(`/api/dirs?path=${encodeURIComponent(sessDir.typed.trim() || '~/')}`, { headers: { 'x-tracker-token': TOKEN } });
+    data = await r.json();
+  } catch (err) {
+    data = { error: String(err) };
+  }
+  if (ask !== sessDir.asked) return; // something else was typed meanwhile
+  sessDir.data = data;
+  renderDirs();
+}
+
+/** The folder typed, as the field shows it: a slash at the end lists what is in it. */
+function setDir(value) {
+  sessDir.typed = value;
+  sessDir.shown = true;
+  const field = $('sess-dir');
+  field.value = value;
+  field.focus?.();
+  field.scrollLeft = field.scrollWidth; // the end of a long path, where you type
+  return loadDirs();
+}
+
+function renderDirs() {
+  const d = sessDir.data, list = $('sess-dir-list'), note = $('sess-dir-note');
+  $('sess-dir-new').disabled = !(d && !d.error && d.exists);
+  note.className = 'faint dir-note';
+  if (!d) {
+    list.hidden = true;
+    note.textContent = 'A folder you have not worked in yet: type or paste it, or Browse from your home folder.';
+    return;
+  }
+  if (d.error) {
+    list.hidden = true;
+    note.className = 'msg-bad dir-note';
+    note.textContent = d.error;
+    return;
+  }
+  const at = path => tildeOf(path, d.home);
+  const inDir = name => `${at(d.dir).replace(/\/$/, '')}/${name}/`;
+  const rows = (d.up ? [`<button type="button" class="dir-row" data-dir-go="${esc(`${at(d.up).replace(/\/$/, '')}/`)}">↰ ..</button>`] : [])
+    .concat(d.dirs.map(name => `<button type="button" class="dir-row" data-dir-go="${esc(inDir(name))}"><span aria-hidden="true">📁</span> ${esc(name)}</button>`));
+  list.innerHTML = rows.join('') + (d.truncated ? '<div class="empty" style="padding:4px 10px">More folders: type the start of a name.</div>' : '');
+  list.hidden = !sessDir.shown || !rows.length;
+  if (d.isFile) note.textContent = `${at(d.path)} is a file, not a folder.`;
+  else if (d.exists) note.textContent = `＋ New starts Claude Code in ${at(d.path)}.${d.unreadable ? ' (Its folders could not be listed: macOS may ask to allow access.)' : ''}`;
+  else note.innerHTML = `${esc(at(d.path))} doesn't exist yet${d.dirs.length ? ': pick a folder above, or' : '.'} <button type="button" class="act mini" data-dir-make>Create it</button>`;
+}
+
+/** Tab, as in a terminal: the one folder that matches (and a slash), or as far as the matches agree. False if nothing changed. */
+async function completeDir() {
+  const d = sessDir.data;
+  if (!d || d.error || !d.dirs.length) return false;
+  const typed = sessDir.typed.trim();
+  const part = typed.endsWith('/') ? '' : typed.split('/').pop();
+  let common = d.dirs[0];
+  for (const name of d.dirs) while (!name.startsWith(common)) common = common.slice(0, -1);
+  const base = `${tildeOf(d.dir, d.home).replace(/\/$/, '')}/`;
+  const next = d.dirs.length === 1 ? `${base}${d.dirs[0]}/` : common.length > part.length ? `${base}${common}` : null;
+  if (!next || next === typed) return false;
+  await setDir(next);
+  return true;
+}
+
+/** Makes the folder typed (and any missing above it), after asking. */
+async function makeDir() {
+  const d = sessDir.data;
+  if (!d?.path || d.exists || d.error) return;
+  if (!(await confirmBox(`Create the folder ${tildeOf(d.path, d.home)}?`, 'Create it', ''))) return;
+  const r = await post('/api/actions/mkdir', { path: d.path });
+  if (!r.ok) {
+    $('sess-dir-note').className = 'msg-bad dir-note';
+    $('sess-dir-note').textContent = r.error ?? 'The folder could not be made.';
+    return;
+  }
+  await loadDirs();
+  $('sess-dir-new').focus?.();
 }
 
 async function startSession(body, button) {
@@ -145,10 +240,35 @@ async function startSession(body, button) {
     return;
   }
   $('sessions').close();
-  notice(`Opened a new ${r.terminal ?? app} window. The session shows up here once it starts.`);
+  notice(`Opened a new ${r.terminal ?? app} window. The session shows up here once it starts.${body.cwd && !sessData?.projects?.some(p => p.cwd === body.cwd) ? ' If Claude Code asks whether to trust the folder, answer in that window.' : ''}`);
 }
 
 $('sessions-open').addEventListener('click', openSessions);
+// The folder field: suggestions as you type (a moment after), Tab to complete, Enter to start there.
+document.addEventListener('input', e => {
+  if (e.target?.id !== 'sess-dir') return;
+  sessDir.typed = e.target.value;
+  sessDir.shown = true;
+  const wait = ++sessDir.waiting;
+  setTimeout(() => { if (wait === sessDir.waiting) void loadDirs(); }, 120);
+});
+$('sess-dir').addEventListener('keydown', e => {
+  if (e.key === 'Tab' && !e.shiftKey && sessDir.data?.dirs?.length) {
+    e.preventDefault();
+    void completeDir();
+  } else if (e.key === 'Enter' && !e.isComposing) {
+    e.preventDefault();
+    if (!$('sess-dir-new').disabled) $('sess-dir-new').click();
+  }
+});
+document.addEventListener('click', e => {
+  const b = e.target.closest('button');
+  if (!b) return;
+  if (b.id === 'sess-dir-browse') void setDir(sessDir.typed.trim() || '~/');
+  else if (b.dataset.dirGo !== undefined) void setDir(b.dataset.dirGo);
+  else if (b.dataset.dirMake !== undefined) return makeDir();
+  else if (b.id === 'sess-dir-new' && sessDir.data?.exists) return startSession({ cwd: sessDir.data.path }, b);
+});
 // The search box, filters, sort and range.
 const SESS_FILTERS = { 'sess-f-folder': 'folder', 'sess-f-model': 'model', 'sess-f-branch': 'branch', 'sess-f-live': 'live' };
 document.addEventListener('input', e => {

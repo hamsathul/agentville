@@ -590,6 +590,31 @@ test('a session starts or resumes in a terminal only in a listed folder, or from
   }
 });
 
+test('a new session starts in any folder of yours, made first if it is new, and nowhere else', async () => {
+  const root = mkdtempSync(join(tmpdir(), 'tracker-root-'));
+  mkdirSync(join(root, 'web'));
+  writeFileSync(join(root, 'web', 'index.html'), '<html>__TRACKER_TOKEN__</html>');
+  writeFileSync(join(root, 'config.json'), JSON.stringify({ port: 0, deployRepos: {}, terminal: 'Terminal' }));
+  const home = realpathSync(mkdtempSync(join(tmpdir(), 'tracker-home-')));
+  mkdirSync(join(home, 'code'));
+  const claudeDir = mkdtempSync(join(tmpdir(), 'tracker-claude-'));
+  mkdirSync(join(claudeDir, 'sessions'));
+  const launched = [];
+  const handle = await startCollector({ root, claudeDir, home, claudeBin: '/usr/bin/false', notify: () => {}, log: () => {}, launch: async args => { launched.push(args.at(-1)); return { code: 0, stdout: '', stderr: '' }; } });
+  try {
+    assert.deepEqual((await handle.listDirs('~/')).dirs, ['code'], 'suggestions from your home folder');
+    assert.match((await handle.actions.start({ cwd: '~/code/new app' })).error, /doesn't exist/);
+    assert.deepEqual(await handle.actions.mkdir({ path: '~/code/new app' }), { ok: true, path: join(home, 'code', 'new app') });
+    assert.deepEqual(await handle.actions.start({ cwd: '~/code/new app', mode: 'plan', model: 'sonnet' }), { ok: true, terminal: 'Terminal' });
+    assert.equal(launched.at(-1), `cd '${join(home, 'code', 'new app')}' && exec claude --permission-mode plan --model 'sonnet'`);
+    for (const body of [{ path: '/etc/x' }, { path: '~/../x' }, {}, null]) assert.equal((await handle.actions.mkdir(body)).ok, false, JSON.stringify(body));
+    for (const cwd of ['/etc', '/', '~/..', 'code']) assert.equal((await handle.actions.start({ cwd })).ok, false, cwd);
+    assert.equal(launched.length, 1);
+  } finally {
+    await handle.stop();
+  }
+});
+
 test('a session is ended (SIGTERM, then its window closed by its tty) or restarted in another mode; only a claude process', async () => {
   const root = mkdtempSync(join(tmpdir(), 'tracker-root-'));
   mkdirSync(join(root, 'web'));

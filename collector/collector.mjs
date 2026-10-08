@@ -15,6 +15,7 @@ import { GIT_ENV, RepoResolver, githubSlug, repoStatus } from './sources/git.mjs
 import { deployStatus, pullRequests } from './sources/gh.mjs';
 import { confirmDelivery, modAtLeast, readBeacons, readPending, readReplies, validateAnswers, writeAnswerFile, writeMessageFile, writeRequestFile } from './sources/pending.mjs';
 import { checkFolderFile, listFolder, parsePorcelain, readFolderFile } from './sources/files.mjs';
+import { listDirs, makeDir, startPlace } from './sources/folders.mjs';
 import { contentTypeOf, parseCsv, readXlsx, viewOf } from './sources/previews.mjs';
 import { repoFiles } from './derive/repo-files.mjs';
 import { checkFiles, pruneUploads, saveFiles, withAttachments } from './sources/uploads.mjs';
@@ -83,7 +84,7 @@ async function quickLookPicture(real) {
   }
 }
 
-export async function startCollector({ root, claudeDir = join(homedir(), '.claude'), claudeBin = 'claude', home = homedir(), scratchBase = `/private/tmp/claude-${process.getuid?.() ?? 0}`, port: portOverride, deliveryTimeoutMs = 5000, notify = notifyMac, launch = args => run('osascript', args, { timeoutMs: 15_000 }), sessionProcs = systemProcs, endWaitMs = 8000, readProcs = readPs, deployStatusOf = deployStatus, pullRequestsOf = pullRequests, githubSlugOf = githubSlug, ticketMs = 600_000, quickLook = quickLookPicture, revealFile = real => run('open', ['-R', real], { timeoutMs: 10_000 }), log = makeLogger(join(root, 'logs')) }) {
+export async function startCollector({ root, claudeDir = join(homedir(), '.claude'), claudeBin = 'claude', home = homedir(), scratchBase = `/private/tmp/claude-${process.getuid?.() ?? 0}`, port: portOverride, deliveryTimeoutMs = 5000, notify = notifyMac, launch = args => run('osascript', args, { timeoutMs: 15_000 }), sessionProcs = systemProcs, endWaitMs = 8000, readProcs = readPs, deployStatusOf = deployStatus, pullRequestsOf = pullRequests, githubSlugOf = githubSlug, ticketMs = 600_000, quickLook = quickLookPicture, folderRoots = [home, '/Volumes'], revealFile = real => run('open', ['-R', real], { timeoutMs: 10_000 }), log = makeLogger(join(root, 'logs')) }) {
   // readProcs, deployStatusOf, pullRequestsOf and githubSlugOf read the machine and GitHub; a test or the demo video passes stand-ins.
   const stateDir = join(root, 'state');
   const pendingDir = join(stateDir, 'pending');
@@ -554,6 +555,9 @@ export async function startCollector({ root, claudeDir = join(homedir(), '.claud
       return { status: 404, error: 'That file no longer exists.' };
     }
   }
+  /** Folders to start a session in, suggested as you type (only in your home folder or on a drive). */
+  const dirsFor = typed => listDirs(typed, { home, roots: folderRoots });
+
   /** A document read for the reader: a sheet's tables, a Word document as a page and as text, or a first-page picture. */
   async function officeView(agentId, path) {
     const root = fileRoot(agentId, path);
@@ -811,9 +815,13 @@ export async function startCollector({ root, claudeDir = join(homedir(), '.claud
         if (!s.cwd || !isDir(s.cwd)) return { ok: false, error: 'The folder that session ran in no longer exists.' };
         ({ cwd } = s);
         resume = s.id;
-      } else {
+      } else { // a folder you worked in, or any other of yours (checked at its real place)
         cwd = known.projects.find(p => p.cwd === body?.cwd)?.cwd;
-        if (!cwd) return { ok: false, error: 'Pick one of the listed folders.' };
+        if (!cwd) {
+          const at = await startPlace(body?.cwd, { home, roots: folderRoots });
+          if (at.error) return { ok: false, error: at.error };
+          cwd = at.path;
+        }
       }
       return openTerminal(claudeCommand(cwd, resume, body?.mode ?? 'default', { model: body?.model ?? 'default', effort: body?.effort }));
     },
@@ -844,6 +852,10 @@ export async function startCollector({ root, claudeDir = join(homedir(), '.claud
       const agent = snapshot?.agents.find(a => a.id === body.agentId);
       if (body.decision === 'always' && !modAtLeast(agent?.mod?.version, '0.6.0')) return { ok: false, error: `That session runs an older tracker mod (${agent?.mod?.version}). Run /reload-plugins in it (or resume it) for Always allow.` };
       return deliver(ask.toolUseId, { decision: body.decision });
+    },
+    /** Makes a folder to start a session in (and any missing above it), only in your home folder or on a drive. */
+    async mkdir(body) {
+      return makeDir(body?.path, { home, roots: folderRoots });
     },
     /** Shows a file of the agent's in Finder (open -R): only reveals it, never opens or runs it. */
     async reveal(body) {
@@ -933,7 +945,7 @@ export async function startCollector({ root, claudeDir = join(homedir(), '.claud
     getSnapshot: () => snapshot,
     getFeed: (id, limit) => modelFor(id)?.history(limit) ?? null,
     getConversation, getSubagent, claudePlugins, claudeMcp, claudeRules, fileTicket, rawFile, officeView,
-    getTranscriptHtml, getDoc: readDoc, listFiles, readFile, repoTouched, actions, pastSessions, log,
+    getTranscriptHtml, getDoc: readDoc, listFiles, readFile, repoTouched, actions, pastSessions, listDirs: dirsFor, log,
   });
   const port = await server.listen();
 
@@ -970,5 +982,5 @@ export async function startCollector({ root, claudeDir = join(homedir(), '.claud
     await server.close();
   }
 
-  return { port, getSnapshot: () => snapshot, reloadConfig, actions, pastSessions, getConversation, claudePlugins, claudeMcp, claudeRules, fileTicket, rawFile, officeView, readDoc, listFiles, readFile, repoTouched, stop };
+  return { port, getSnapshot: () => snapshot, reloadConfig, actions, pastSessions, listDirs: dirsFor, getConversation, claudePlugins, claudeMcp, claudeRules, fileTicket, rawFile, officeView, readDoc, listFiles, readFile, repoTouched, stop };
 }
