@@ -7,6 +7,7 @@
   "scripts": {
     "test": "node --test \"collector/test/*.test.mjs\"",
     "test:ui": "node scripts/e2e-ui.mjs",
+    "demo": "node scripts/demo-video.mjs",
     "start": "node collector/index.mjs"
   },
   "engines": {

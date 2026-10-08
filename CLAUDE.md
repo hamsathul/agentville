@@ -11,3 +11,5 @@ done until the docs match it. Fixes that change what the dashboard shows or does
 - **docs/** screenshots (`farm.png`, `farm-night.png`): refresh them when the change shows in
   them. If you can't, say they are out of date.
 
+The demo video is on demand, not part of this: update its tour (`scripts/demo-video.mjs`) or
+record it (`npm run demo`) only when asked.

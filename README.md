@@ -456,7 +456,7 @@ web/         the dashboard: index.html, app.js, panels.js, farm.js…
 mod/         the Claude Code mod: hooks/register.tsx; its tests in tests/
 bin/         the agent-tracker command and the launchd entry point
 launchd/     the service definition
-scripts/     end-to-end checks
+scripts/     end-to-end checks and the demo video
 docs/        screenshots
 ```
 
@@ -466,6 +466,7 @@ npm run test:ui             # the dashboard and the farm in headless Chrome, on 
 claude plugin test mod      # the Claude Code mod
 scripts/e2e-answer.sh       # answering and messaging real sessions
 npm start                   # run the collector in the foreground (stop the service first)
+npm run demo [out.mp4]      # record the demo video, made-up sessions only (Chrome, ffmpeg; ~4 min)
 ```
 
 GitHub Actions runs `npm test` and `npm run test:ui` on every push to `main` and on pull requests.
