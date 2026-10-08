@@ -311,6 +311,7 @@ document.addEventListener('click', async e => {
   const d = el.dataset;
   if (d.confirm) { settleConfirm(d.confirm === 'yes'); return; }
   if (d.endSession) { void endSessionFlow(d.endSession); return; } // not awaited: the confirm box waits for you
+  if (d.compact) { void compactFlow(d.compact); return; }
   if (d.removeSession) { void removeFlow(d.removeSession); return; }
   if (el.id === 'view-list' || el.id === 'view-farm') { setView(el.id === 'view-farm' ? 'farm' : 'list'); return; }
   if (el.id === 'side-toggle') { setFarmSide(!farmSide); return; }
@@ -456,6 +457,14 @@ async function restartFlow(id, mode) {
   const r = await post('/api/actions/restart', { agentId: id, mode });
   notice(r.ok ? `Restarting ${a.name} in ${modeName(mode)}: a new ${r.terminal ?? 'terminal'} window opens.` : `Could not restart ${a.name}: ${r.error}`);
 }
+/** Compacts a running session (/compact in it) after you confirm, keeping what you say it should. */
+async function compactFlow(id) {
+  const a = snap?.agents.find(x => x.id === id);
+  if (!a) return;
+  if (!(await confirmBox(`Compact ${a.name}? It runs /compact in the session after its current turn: the conversation so far becomes a summary, freeing its context. Say what the summary should keep, if anything.`, 'Compact', 'What to keep (optional), e.g. the API decisions'))) return;
+  const r = await post('/api/actions/setting', { agentId: id, compact: String($('confirm-note').value ?? '').trim() });
+  notice(r.ok ? `${a.name} compacts after its current turn.` : `Could not compact ${a.name}: ${r.error}`);
+}
 /** Switches a running session's model or effort (/model, /effort in it), after you confirm. */
 async function switchFlow(id, what, value) {
   const a = snap?.agents.find(x => x.id === id);
@@ -533,6 +542,10 @@ document.addEventListener('keydown', e => {
   if (sendKey(e) && e.target?.id === 'aside-text') {
     e.preventDefault();
     void askAside(e.target.dataset.asideAgent, $('aside-send'));
+  }
+  if (sendKey(e) && e.target?.id === 'confirm-note') { // the confirm box's line: Enter confirms
+    e.preventDefault();
+    settleConfirm(true);
   }
   if (sendKey(e) && e.target?.id === 'reader-text') {
     e.preventDefault();

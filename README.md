@@ -67,8 +67,8 @@ It listens on `127.0.0.1` only and reads what Claude Code already writes to disk
 - Start a new session in a folder you've worked in, or find a past one (search, filter by folder,
   model, branch or running, sort by activity, start, name, folder or length) and resume it, in the
   permission mode, model and effort you choose.
-- Switch a running session's model or effort, restart it in another permission mode, or end it
-  (its terminal window closes too).
+- Switch a running session's model or effort, compact it, restart it in another permission mode,
+  or end it (its terminal window closes too).
 
 **Read what they wrote**
 - Browse an agent's folder with git status, its scratchpad and its memory (CLAUDE.md, auto
@@ -239,12 +239,15 @@ Each terminal session's bar shows its **permission mode**, its **model** (e.g. *
   after its current turn, as if you had typed it, and what Claude Code replied shows in the bar.
   As when you type them, Claude Code saves the model, and an effort from *low* to *xhigh*, as your
   default for new sessions. *max* stays with that session.
+- **Compact…** asks what the summary should keep (optional, one line), then the session runs
+  `/compact` with it after its current turn: the conversation so far becomes a summary, freeing
+  its context.
 - **Restart in…** another permission mode (ask first, accept edits, plan, auto, or bypass
   permissions). The session ends and resumes straight away in a new terminal window, and the
   conversation carries on.
 
-Switching and side questions need mod 0.5.0 or newer. For a session started before you updated,
-run `/reload-plugins` in it.
+Switching and side questions need mod 0.5.0 or newer, and Compact 0.6.0. For a session started
+before you updated, run `/reload-plugins` in it.
 
 ### Starting, resuming, ending and restarting sessions
 

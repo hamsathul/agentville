@@ -665,6 +665,14 @@ test("a session's model and effort are switched by its mod (/model, /effort), an
     assert.ok(await until(() => agent().asides?.[0]?.answer), 'then the answer');
     assert.deepEqual([agent().asides[0].question, agent().asides[0].answer, agent().asides[0].pending], ['Where does the parser live?', 'The parser lives in parse.mjs.', undefined]);
     assert.deepEqual(taken, [['commands', 'model', 'sonnet'], ['btw', 'Where does the parser live?', undefined]]);
+    assert.match((await handle.actions.setting({ agentId: 'sess-set', compact: '' })).error, /older tracker mod \(0\.5\.0\)/, 'compacting needs mod 0.6.0');
+    writeFileSync(join(root, 'state', 'mods', 'sess-set.json'), JSON.stringify({ sessionId: 'sess-set', version: '0.6.0', at: Date.now() }));
+    await handle.reloadConfig();
+    for (const compact of [42, 'x'.repeat(501)]) assert.equal((await handle.actions.setting({ agentId: 'sess-set', compact })).ok, false, String(compact).slice(0, 20));
+    assert.deepEqual(await handle.actions.setting({ agentId: 'sess-set', compact: '  keep the API decisions\nand the test plan  ' }), { ok: true });
+    assert.ok(await until(() => taken.length === 3));
+    assert.deepEqual(taken[2], ['commands', 'compact', 'keep the API decisions and the test plan'], 'one line, as /compact takes it');
+    assert.deepEqual(await handle.actions.setting({ agentId: 'sess-set', compact: '' }), { ok: true }, 'a note is optional');
     writeFileSync(join(root, 'state', 'mods', 'sess-set.json'), JSON.stringify({ sessionId: 'sess-set', version: '0.4.0', at: Date.now() }));
     await handle.reloadConfig();
     assert.match((await handle.actions.setting({ agentId: 'sess-set', effort: 'high' })).error, /older tracker mod \(0\.4\.0\)\. Run \/reload-plugins/, 'a mod from before switching tells you how to get the new one');

@@ -103,9 +103,10 @@ const MODES = [['default', 'Ask first'], ['acceptEdits', 'Accept edits'], ['plan
 const modeName = mode => (MODES.find(([m]) => m === mode)?.[1] ?? { manual: 'Ask first', dontAsk: "Don't ask" }[mode] ?? mode);
 
 /** Whether a session's mod can switch its model and answer side questions (it is listening, and 0.5.0 or newer). */
-function modCan(a) {
-  const v = String(a.mod?.version ?? '0').split('.').map(n => Number.parseInt(n, 10) || 0);
-  return Boolean(a.mod?.live) && (v[0] > 0 || v[1] >= 5);
+function modCan(a, needs = '0.5.0') {
+  const v = String(a.mod?.version ?? '0').split('.').map(n => Number.parseInt(n, 10) || 0), w = needs.split('.').map(Number);
+  const atLeast = v[0] !== w[0] ? v[0] > w[0] : (v[1] ?? 0) !== w[1] ? (v[1] ?? 0) > w[1] : (v[2] ?? 0) >= w[2];
+  return Boolean(a.mod?.live) && atLeast;
 }
 const modWhy = a => (!a.mod?.live ? "The session isn't listening for the dashboard yet (send it anything in its terminal once)"
   : `Its tracker mod is older (${a.mod.version}): run /reload-plugins in the session (or resume it) to do this from here`);
@@ -145,14 +146,21 @@ function sessionBarHtml(a) {
     <select class="act mini" data-switch-model data-agent="${esc(a.id)}" aria-label="Switch this session's model" data-tip="${esc(why)}"${off}><option value="">${esc(modelOf(a) ? modelName(modelOf(a)) : 'Model…')}</option>${models}</select>
     <select class="act mini" data-switch-effort data-agent="${esc(a.id)}" aria-label="Set this session's effort" data-tip="${esc(live ? 'Runs /effort in the session after its current turn. Claude Code saves low to xhigh as your default for new sessions; max is for this session only.' : why)}"${off}><option value="">effort: ${esc(a.effort ?? 'default')}</option>${efforts}</select>
     <select class="act mini" data-restart-mode data-agent="${esc(a.id)}" aria-label="Restart this session in another permission mode"><option value="">Restart in…</option>${options}</select>
+    <button type="button" class="act mini" data-compact="${esc(a.id)}" data-tip="${esc(modCan(a, '0.6.0') ? 'Runs /compact in the session after its current turn: the conversation so far becomes a summary, freeing its context' : !a.mod?.live ? modWhy(a) : `Compacting from here needs tracker mod 0.6.0 (this session runs ${a.mod.version}): run /reload-plugins in it`)}"${modCan(a, '0.6.0') ? '' : ' disabled'}>Compact…</button>
     <button type="button" class="act mini" data-end-session="${esc(a.id)}" data-tip="End this session and close its terminal window (resume it later from ＋ Session)">End session</button>${note}</div>`;
 }
 
-/** An in-page yes/no question: resolves true for the OK button, false for Cancel or Escape. */
+/**
+ * An in-page yes/no question: resolves true for the OK button, false for Cancel or Escape. With a
+ * `note` (its placeholder), it has a line to fill in too, read from #confirm-note once confirmed.
+ */
 let confirmResolve = null;
-function confirmBox(text, okLabel = 'OK') {
+function confirmBox(text, okLabel = 'OK', note = '') {
   $('confirm-text').textContent = text;
   $('confirm-yes').textContent = okLabel;
+  $('confirm-note').hidden = !note;
+  $('confirm-note').value = '';
+  $('confirm-note').placeholder = note;
   if (!$('confirm').open) $('confirm').showModal();
   return new Promise(resolve => { confirmResolve?.(false); confirmResolve = resolve; });
 }

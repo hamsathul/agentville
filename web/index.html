@@ -258,6 +258,7 @@ dialog.sess-dlg { width: min(680px, calc(100vw - 32px)); max-width: none; paddin
 .sessbar { display: flex; align-items: center; gap: 6px; margin-top: 6px; flex-wrap: wrap; }
 .sessbar select.act { padding: 2px 6px; }
 dialog.confirm-dlg { max-width: min(460px, calc(100vw - 32px)); }
+.confirm-note { width: 100%; box-sizing: border-box; padding: 6px 9px; border: 1px solid var(--line); border-radius: 7px; background: var(--page); color: var(--text); font: inherit; }
 .confirm-dlg p { margin: 6px 0; line-height: 1.45; }
 .confirm-actions { display: flex; justify-content: flex-end; gap: 8px; }
 /* messages between sessions in a conversation */
@@ -626,6 +627,7 @@ a.pile { text-decoration: none; color: inherit; }
 <input type="file" id="file-picker" multiple hidden>
 <dialog id="confirm" class="confirm-dlg" aria-labelledby="confirm-text">
   <p id="confirm-text"></p>
+  <input id="confirm-note" type="text" class="confirm-note" maxlength="500" autocomplete="off" hidden>
   <p class="confirm-actions"><button type="button" class="act" id="confirm-no" data-confirm="no">Cancel</button><button type="button" class="act primary" id="confirm-yes" data-confirm="yes">OK</button></p>
 </dialog>
 <dialog id="sessions" class="sess-dlg" aria-labelledby="sess-title">

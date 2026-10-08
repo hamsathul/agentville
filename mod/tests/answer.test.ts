@@ -270,6 +270,13 @@ test('only /model and /effort, with an alias or a level, are run from the dashbo
   expect(f.ran).toEqual([{ command: 'model', args: 'opus[1m]' }])
 })
 
+test('a compact from the dashboard runs /compact with its note, on one line', async () => {
+  const f = asker$({ '1-a.json': '{"command":"compact","args":"keep the API decisions","id":"1-a"}', '2-b.json': '{"command":"compact","args":"","id":"2-b"}', '3-c.json': '{"command":"compact","args":"two\\nlines","id":"3-c"}' })
+  await runSettings(f.$, '/repo/state', 's1')
+  await settle()
+  expect(f.ran).toEqual([{ command: 'compact', args: 'keep the API decisions' }, { command: 'compact', args: '' }])
+})
+
 test('a switch that fails says why', async () => {
   const f = asker$({ '1-a.json': '{"command":"model","args":"fable","id":"1-a"}' }, { run: async () => { throw new Error('Unknown model') } })
   await runSettings(f.$, '/repo/state', 's1')

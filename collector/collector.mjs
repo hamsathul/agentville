@@ -601,8 +601,9 @@ export async function startCollector({ root, claudeDir = join(homedir(), '.claud
       return openTerminal(claudeCommand(agent.cwd, agent.id, body.mode ?? 'default'));
     },
     /**
-     * Switches a running session's model or effort: its mod runs /model or /effort there, as if you
-     * typed it (after the current turn). Claude Code saves the choice as your default for new sessions.
+     * Switches a running session's model or effort, or compacts it: its mod runs /model, /effort or
+     * /compact there, as if you typed it (after the current turn). Claude Code saves a model or effort
+     * as your default for new sessions. Compacting needs mod 0.6.0.
      */
     async setting(body) {
       const agent = snapshot?.agents.find(a => a.id === body?.agentId);
@@ -616,6 +617,10 @@ export async function startCollector({ root, claudeDir = join(homedir(), '.claud
       } else if (body.effort !== undefined) {
         if (!EFFORTS.includes(body.effort)) return { ok: false, error: 'That is not an effort level.' };
         request = { command: 'effort', args: body.effort };
+      } else if (body.compact !== undefined) {
+        if (typeof body.compact !== 'string' || body.compact.length > 500) return { ok: false, error: 'Say what to keep in a line (500 characters at most), or nothing.' };
+        if (!modAtLeast(agent.mod.version, '0.6.0')) return { ok: false, error: `That session runs an older tracker mod (${agent.mod.version}). Run /reload-plugins in it (or resume it), then try again.` };
+        request = { command: 'compact', args: body.compact.replace(/\s+/g, ' ').trim() }; // /compact takes one line
       } else return { ok: false, error: 'Pick a model or an effort level.' };
       const id = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
       const file = writeRequestFile(commandsDir, agent.id, { ...request, id, at: Date.now() }, id);

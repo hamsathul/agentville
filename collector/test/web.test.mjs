@@ -1455,3 +1455,21 @@ test('the conversation dialog has the message box too, sharing the draft and fil
   assert.deepEqual(sent, { agentId: 'r1', text: 'Seen the whole thing', files: [{ name: 'notes.md', data: 'IyBOb3Rlcw==' }] });
   assert.match(box(), /Queued for busy-one with 1 file/, 'what came of it shows in the dialog too');
 });
+
+test('Compact… in the session bar asks what to keep, then has the session run /compact', async () => {
+  const page = loadPage();
+  page.push(richSnapshot([richAgent({ pid: 4242, mod: { live: true, version: '0.6.0' } })]));
+  assert.match(page.side(), /<button type="button" class="act mini" data-compact="r1"[^>]*>Compact…<\/button>/);
+  const asking = page.clickButton('compact', { compact: 'r1' });
+  await page.settle();
+  assert.match(page.el('confirm-text').textContent, /Compact busy-one\? It runs \/compact in the session after its current turn/);
+  assert.equal(page.el('confirm-note').hidden, false, 'with a box for what to keep');
+  page.el('confirm-note').value = 'keep the API decisions';
+  await page.clickButton('confirm-yes', { confirm: 'yes' });
+  await asking;
+  await page.settle();
+  assert.deepEqual(page.posts, [{ path: '/api/actions/setting', body: { agentId: 'r1', compact: 'keep the API decisions' } }]);
+  const older = loadPage();
+  older.push(richSnapshot([richAgent({ pid: 4242, mod: { live: true, version: '0.5.1' } })]));
+  assert.match(older.side(), /data-compact="r1"[^>]*disabled/, 'an older mod cannot');
+});
