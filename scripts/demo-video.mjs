@@ -4,8 +4,9 @@
 // and GitHub), a director keeps the sessions busy, and headless Chrome tours the features with a
 // cursor and captions, following docs/demo-script.md: the farm, answering and messaging from it, an
 // agent's work, its files, the list view, sessions, Claude Code's own setup, notifications. Frames
-// come from Chrome's screencast; ffmpeg makes the MP4 (about 8 minutes), and a short video for each
-// chapter in a folder beside it (out-chapters/01-the-farm.mp4 and so on).
+// come from Chrome's screencast; ffmpeg makes the MP4 (about 8 minutes), a copy small enough to upload
+// to GitHub (out-small.mp4, under 10 MB), and a short video for each chapter in a folder beside it
+// (out-chapters/01-the-farm.mp4 and so on).
 //
 //   node scripts/demo-video.mjs [out.mp4]      (needs Chrome and ffmpeg)
 //   STILLS=docs node scripts/demo-video.mjs    also saves farm.png and farm-night.png there (no caption or
@@ -998,6 +999,12 @@ function encode(out, from, to, fades = '') {
 const start = shot[0][1], end = shot.at(-1)[1] + 0.5;
 log(`${shot.length} frames over ${(end - start - 0.5).toFixed(1)} s; encoding…`);
 encode(OUT, start, end);
+// The same video in under 10 MB, GitHub's limit for a video: 1280 wide at 15 frames a second, two passes
+// at the bit rate that fills 9.5 MB.
+const SMALL = OUT.replace(/\.mp4$/i, '') + '-small.mp4', kbps = Math.floor((9.5e6 * 8) / (end - start) / 1000) - 2;
+for (const pass of [1, 2]) {
+  execFileSync('ffmpeg', ['-y', '-loglevel', 'error', '-i', OUT, '-vf', 'fps=15,scale=1280:-2:flags=lanczos', '-c:v', 'libx264', '-preset', 'slow', '-b:v', `${kbps}k`, '-pass', String(pass), '-passlogfile', join(temp, 'small'), '-an', ...(pass === 1 ? ['-f', 'mp4', '/dev/null'] : ['-movflags', '+faststart', SMALL])], { stdio: 'inherit' });
+}
 // A video for each chapter: from its title card, once faded in, to the next one's. The opening is at the
 // start of the first and the closing at the end of the last.
 const CHAPTERS = OUT.replace(/\.mp4$/i, '') + '-chapters';
@@ -1012,4 +1019,4 @@ for (let i = 0; i < marks.length; i++) {
 }
 rmSync(temp, { recursive: true, force: true });
 rmSync(DEMO, { recursive: true, force: true });
-log(`made ${OUT}, and a video for each chapter in ${CHAPTERS}`);
+log(`made ${OUT}, ${SMALL}, and a video for each chapter in ${CHAPTERS}`);
