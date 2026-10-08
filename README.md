@@ -94,7 +94,8 @@ It listens on `127.0.0.1` only and reads what Claude Code already writes to disk
 
 **Watch it as a farm** (optional)
 - A pixel farm where every agent is a farmer and every repo a field. Crops grow as context
-  fills, weather shows the last deploy, a cart runs to town for each web call, and you click
+  fills, weather shows the last deploy, a cart runs to town for each web call, each MCP server's
+  cart drives to the farmer calling it, and you click
   the barn to start a session.
 
 ## Requirements
@@ -394,7 +395,8 @@ can hold.
 | A pump by a bed | A background command still running |
 | A farmer in a hammock | It will wake up by itself (`/loop`), with when |
 | Under the shade tree / a scarecrow | Idle / stale |
-| A cart on the road | A web or connector (MCP) call, labelled with where it goes |
+| A cart on the road | A web call (a fetch or a search), labelled with where it goes |
+| Carts at the lane's end, by the road to town | One for each MCP server your agents called in the last hour (Gmail, playwright, Chrome…). While an agent calls one, its cart drives to that farmer with the server's name and waits beside it until the call is done, and a few seconds more |
 | A pigeon | One session messaging another |
 | Hay / crates / a mailbox above a field | Uncommitted files / unpushed commits / commits behind |
 | Rainbow / rain / windmill over a field | Last deploy passed / failed / running |

@@ -5,7 +5,7 @@
 // sidebar, the info dialog and a field close-up. No dependencies; needs Chrome (set CHROME to
 // its path if it isn't in the usual place). Exits 1 if a check fails.
 import { execFileSync, spawn } from 'node:child_process';
-import { cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, realpathSync, rmSync, unlinkSync, utimesSync, writeFileSync } from 'node:fs';
+import { appendFileSync, cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, realpathSync, rmSync, unlinkSync, utimesSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -383,6 +383,17 @@ try {
   check(!/energy/i.test(await js("document.querySelector('.px-hud')?.textContent ?? ''")) && /34%[\s\S]*5-hour limit/.test(await js("document.querySelector('.px-stats').textContent")), "the farm has no vague energy bar; the plan's usage is in its panel");
   check(await js("getComputedStyle(document.querySelector('header.top')).display === 'none' && getComputedStyle(document.getElementById('kpis')).display === 'none'"), 'the farm fills the window: no top bar or count cards above it');
   check(/waiting on you[\s\S]*working[\s\S]*your turn[\s\S]*collisions/.test(await js("document.querySelector('.px-stats').textContent")) && /RAM[\s\S]*CPU/.test(await js("document.querySelector('.px-stats').textContent")), "the count cards and the top bar's meters are in the farm's panel");
+  // The working farmer calls two MCP servers: Gmail (done), then playwright (going on). Each has a cart waiting by the road to town.
+  const done = id => JSON.stringify({ type: 'user', timestamp: iso(Date.now()), cwd: repo, message: { content: [{ type: 'tool_result', tool_use_id: id, content: 'ok' }] } });
+  appendFileSync(join(claudeDir, 'projects', '-farm-repo', 'ui-worker.jsonl'), `${[done('toolu_B1'), use(Date.now(), 'toolu_GM1', 'mcp__claude_ai_Gmail__search_threads', { query: 'harvest' }), done('toolu_GM1'),
+    use(Date.now(), 'toolu_PW1', 'mcp__playwright__browser_navigate', { url: 'http://localhost:3000' })].join('\n')}\n`);
+  const moverOf = name => `(() => { const m = [...document.querySelectorAll('.px-mover')].find(e => e.textContent.includes(${JSON.stringify(name)})); if (!m) return null; const r = m.getBoundingClientRect(); return JSON.stringify([r.left + r.width / 2, r.bottom]); })()`;
+  check(await until(`!!${moverOf('playwright')}`, 12_000), "an MCP call: its server's cart leaves its place by the road to town, with the server's name");
+  const cartStart = JSON.parse(await js(moverOf('playwright')));
+  const nearFarmer = `(() => { const c = JSON.parse(${moverOf('playwright')} ?? 'null'), t = document.querySelector('.px-tag[data-farmer="ui-worker"]').getBoundingClientRect(); return c && Math.abs(c[0] - (t.left + t.width / 2)) < 120 && Math.abs(c[1] - t.bottom) < 80; })()`;
+  check(await until(nearFarmer, 20_000), `it drives to the farmer making the call (from ${JSON.stringify(cartStart)} to ${await js(moverOf('playwright'))})`);
+  await shot('farm-mcp-cart');
+  check(!(await js(`!!${moverOf('Gmail')}`)), "a server no one is calling now waits in its place: no name out on the farm");
   check(await until("[...document.querySelectorAll('.px-lab')].some(l => l.textContent.startsWith('farm-repo'))"), 'the repo is a field');
   check(await js(`Number.isInteger(JSON.parse(localStorage.getItem('tracker-farm-beds') || '{}')[${JSON.stringify(repo)}]?.i)`), 'the farm remembers which bed the field has, so it stays put as repos come and go');
   await js("document.querySelector('[data-farm-help]').click()");

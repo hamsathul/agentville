@@ -143,6 +143,18 @@ function shellsNow(shells, model, childModels) {
   });
 }
 
+/** The MCP servers it (or a subagent) called in the last hour, newest first: [{ server, at }], for their carts on the farm. */
+function mcpUsed(model, childModels, now) {
+  const last = new Map();
+  for (const m of [model, ...childModels.values()].filter(Boolean)) {
+    for (const c of m.callsSince(now - 3_600_000)) {
+      const server = c.name?.startsWith('mcp__') ? serviceOf(c.name) : undefined;
+      if (server && c.at > (last.get(server) ?? 0)) last.set(server, c.at);
+    }
+  }
+  return last.size ? [...last].map(([server, at]) => ({ server, at })).sort((x, y) => y.at - x.at).slice(0, 8) : undefined;
+}
+
 export function buildAgent({ base, model, registry, proc, command, cpuHistory = [], childModels = new Map(), offer, beacon, repoOf, now, cfg, home, asides, setting, shells }) {
   const mode = modeOf(model, command, registry?.startedAt);
   // An older mod offers every call Claude Code's check hands on, even where the mode decides it without you.
@@ -180,6 +192,7 @@ export function buildAgent({ base, model, registry, proc, command, cpuHistory = 
     mod: beacon ? { version: beacon.version, live: beacon.live } : undefined,
     mode,
     shells: shellsNow(shells, model, childModels), // its shell commands running now, to watch and stop
+    mcp: mcpUsed(model, childModels, now),
     effort: beacon?.effort ?? effortOf(model, command, registry?.startedAt),
     turn: derived.state === 'working' ? turnOf(model, beacon) : undefined,
     asides: asides?.length ? asides : undefined, // side questions (/btw) asked from the dashboard, newest first

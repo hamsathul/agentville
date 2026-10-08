@@ -130,6 +130,25 @@
   /** The model's family, for the pin on a farmer's hat. */
   const familyOf = m => { const t = String(m ?? '').toLowerCase(); return ['opus', 'sonnet', 'haiku', 'fable'].find(f => t.includes(f)) ?? null; };
 
+  /**
+   * The MCP servers' carts: one for each server the agents called in the last hour (the latest six), by
+   * name so each keeps its place in the row; one an agent is calling now goes to it (the latest caller).
+   * A browser's tools (chrome, playwright) count too, though their step is the web.
+   */
+  function cartsOf(agents, now) {
+    const last = new Map(), busy = new Map();
+    for (const a of agents) {
+      for (const m of a.mcp ?? []) if (m.at > now - 3_600_000 && m.at > (last.get(m.server) ?? 0)) last.set(m.server, m.at);
+      const call = a.now;
+      if (a.state !== 'working' || !String(call?.tool ?? '').startsWith('mcp__') || !call.service) continue;
+      if (!last.has(call.service)) last.set(call.service, call.startedAt ?? now);
+      if (!busy.has(call.service) || (call.startedAt ?? 0) > busy.get(call.service).at) busy.set(call.service, { id: a.id, at: call.startedAt ?? 0 });
+    }
+    return [...last].sort((x, y) => y[1] - x[1]).slice(0, 6).map(([server]) => server)
+      .sort((x, y) => x.localeCompare(y, undefined, { sensitivity: 'base' }))
+      .map(server => ({ server, busy: busy.get(server)?.id ?? null }));
+  }
+
   function toScene(snap, { cpuAlertPct = snap?.settings?.cpuAlertPct ?? 90 } = {}) {
     const repos = snap?.repos ?? [];
     const agents = snap?.agents ?? [];
@@ -151,6 +170,7 @@
       // subagents for the henhouse's list: what each was asked, whose it is, how it is going
       subagents: agents.flatMap(a => (a.children ?? []).filter(c => c.kind === 'subagent').map(c => ({ id: c.id, label: c.label ?? '', type: c.agentType ?? null, state: c.state, parent: a.name, startedAt: c.startedAt }))),
       mail: mailOf(agents, snap?.generatedAt ?? Date.now()),
+      carts: cartsOf(agents, now),
       // The henhouse: eggs for subagents that finished lately; running ones beyond the four a farmer leads roost there.
       henhouse: {
         eggs: Math.min(6, kids.flat().filter(c => c.kind !== 'bgjob' && c.state === 'done').length),
@@ -720,6 +740,42 @@
   const MEADOW = [[28, 162], [74, 166], [40, 186], [86, 186]]; // where farmers working outside any repo stand
   const NAPS = [[97, 204], [97, 224]]; // hammocks by the pond: sessions that will wake up by themselves (/loop)
   const STALL = { x: 284, y: 48 }, BOARD = { x: 113, y: 62 }; // the market stall (pull requests), the notice board (memory)
+  /** A cart's way between two places: onto the lane (straight down or up to it, or up the path nearest), along it, then down the path nearest the place, and over to it. */
+  function cartRoute([x, y], [tx, ty]) {
+    if (Math.abs(y - ty) < 0.5) return [[tx, ty]];
+    const near = to => CORR.reduce((best, c) => (Math.abs(to - c) < Math.abs(to - best) ? c : best));
+    const pts = [];
+    if (Math.abs(y - LANE) > 0.5) {
+      const c = y < LANE ? x : near(x);
+      if (y > LANE) pts.push([c, y]);
+      pts.push([c, LANE]);
+    }
+    if (Math.abs(ty - LANE) <= 0.5) pts.push([tx, ty]);
+    else {
+      const c = ty < LANE ? tx : near(tx);
+      pts.push([c, LANE]);
+      if (ty > LANE) pts.push([c, ty]);
+      pts.push([tx, ty]);
+    }
+    return pts.filter((p, i) => { const q = i ? pts[i - 1] : [x, y]; return p[0] !== q[0] || p[1] !== q[1]; });
+  }
+  const CART_STAY_MS = 3000;
+  /**
+   * Where a server's cart heads: beside the farmer calling it. Once there it stays while the call goes
+   * on and a few seconds after (so a short call is seen, and a run of them keeps it there), then home.
+   * `c` is the cart's own memory: { goal, arrivedAt, lastBusy }.
+   */
+  function cartGoal(c, busyAt, home, now) {
+    if (busyAt) {
+      if (!c.goal || c.goal[0] !== busyAt[0] || c.goal[1] !== busyAt[1]) { c.goal = busyAt; c.arrivedAt = null; }
+      c.lastBusy = now;
+      return c.goal;
+    }
+    if (c.goal && (c.arrivedAt == null || now - Math.max(c.lastBusy ?? 0, c.arrivedAt) < CART_STAY_MS)) return c.goal;
+    c.goal = null;
+    return home;
+  }
+
   const slotAt = i => { const cx = 174 + (i % 3) * COLW, rowTop = 100 + Math.floor(i / 3) * ROWH; return { i, cx, rowTop, lane: rowTop + 44, x0: cx - 36, y0: rowTop + 12 }; };
   // A project is the folder holding sibling repos (like pmt/backend and pmt/frontend); a home folder or
   // a catch-all one like ~/code holds unrelated repos, so it is none.
@@ -1139,9 +1195,9 @@
     }
   }
 
-  /** Where a farmer's cart is on the road while a web or connector call goes on: out to town past the farm's right edge, and back. */
+  /** Where a farmer's cart is on the road while a web call goes on: out to town past the farm's right edge, and back. (A connector's has a cart of its own.) */
   function cartOf(f) {
-    if (f.state !== 'working' || !f.service || (f.step !== 'web' && f.step !== 'mcp')) return null;
+    if (f.state !== 'working' || !f.service || f.step !== 'web' || String(f.tool ?? '').startsWith('mcp__')) return null;
     const ph = (PXG.T / 8 + (hashOf(f.id) % 97) / 97) % 1, out = ph < 0.5, t = out ? ph * 2 : (1 - ph) * 2;
     return { x: Math.round(280 + t * 150), dir: out ? 1 : -1 };
   }
@@ -1302,6 +1358,30 @@
         for (const [ox, oy, rx, ry] of puffs) { const t = (dy - oy) / (ry + 0.5); if (Math.abs(t) > 1) continue; const half = rx * Math.sqrt(1 - t * t); lo = Math.min(lo, ox - half); hi = Math.max(hi, ox + half); }
         if (hi > lo) px(Math.round(x + lo), y + dy, Math.round(hi - lo), 1, '#1c3320');
       }
+    }
+    // MCP carts: each server's cart waits in its place in a row at the lane's end, by the road to town,
+    // facing the farm; while an agent calls the server it drives to that farmer and waits beside it (cartGoal).
+    const RANK = Array.from({ length: 6 }, (_, i) => [388 - i * 15, LANE]);
+    const CART_SPEED = 55;
+    const CRATES = ['#c9a46a', '#e04a3a', '#3d7be0', '#6cc04a', '#8a5fc0', '#f0b429']; // a crate colour for each server
+    const rankOf = new Map(), carts = new Map(); // server → its place in the row; server → { x, y, path, to, dir, moving, goal, arrivedAt, lastBusy }
+    /** The carts there are now, each with its place in the row (kept while the server has a cart). */
+    function placeCarts() {
+      const list = scene.carts ?? [];
+      for (const k of [...rankOf.keys()]) if (!list.some(c => c.server === k)) { rankOf.delete(k); carts.delete(k); }
+      for (const c of list) if (!rankOf.has(c.server)) { const used = new Set(rankOf.values()); rankOf.set(c.server, RANK.findIndex((_, i) => !used.has(i))); }
+      return list;
+    }
+    /** Beside a farmer, on the side away from the fence: where it is going rather than where it is, so the cart does not chase it step by step. */
+    const besideOf = b => { const x = Number.isFinite(b.tx) ? b.tx : b.x, y = Number.isFinite(b.ty) ? b.ty : b.y; return [Math.round(x + (x > 330 ? -13 : 13)), Math.round(y)]; };
+    /** A cart and its pony, facing `dir`, its crate in the server's colour; the pony's legs move while it drives. */
+    function drawCart(x, y, dir, moving, crate) {
+      const step = moving ? blink(6) : 0, pony = x + dir * 7;
+      px(x - 4, y + 2, 9, 1, '#3f7d3a'); // its shadow
+      px(x - 4, y - 4, 8, 4, '#a8703c'); px(x - 4, y - 4, 8, 1, '#c98d4f'); px(x - 2, y - 7, 4, 3, crate); px(x - 2, y - 7, 4, 1, '#fff4d6');
+      px(x - 3, y, 2, 2, '#4e3626'); px(x + 2, y, 2, 2, '#4e3626');
+      px(pony - 3, y - 4, 6, 3, '#8b5a2b'); px(pony + dir * 3 - (dir < 0 ? 1 : 0), y - 6, 2, 3, '#8b5a2b'); px(pony + dir * 4 - (dir < 0 ? 0 : 1), y - 5, 1, 1, '#1b1420');
+      px(pony - 3 + step, y - 1, 1, 2, '#6b4320'); px(pony + 1 - step, y - 1, 1, 2, '#6b4320'); px(pony - dir * 4, y - 4, 1, 2, '#4e3626');
     }
     const FIREFLIES = [[20, 150], [60, 160], [92, 176], [30, 232], [74, 196], [50, 252], [100, 250], [14, 262], [88, 140], [96, 214], [240, 92], [330, 70]];
 
@@ -1532,7 +1612,33 @@
       },
       /** The projects whose memory the notice board shows: one session in each folder. */
       boardSessions: () => [...new Map(scene.farmers.filter(f => f.kind !== 'codex' && f.cwd).map(f => [f.cwd, f])).values()].slice(0, 8),
-      items: () => [],
+      /** The MCP carts, sorted with the farmers by how far down they stand. */
+      items() {
+        return placeCarts().map(c => {
+          const s = carts.get(c.server), [hx, hy] = RANK[rankOf.get(c.server)];
+          const x = Math.round(s?.x ?? hx), y = Math.round(s?.y ?? hy);
+          return [y, () => drawCart(x, y, s?.dir ?? -1, s?.moving, CRATES[hashOf(c.server) % CRATES.length])];
+        });
+      },
+      /** Each frame, after the farmers have moved: each cart drives towards where cartGoal sends it. */
+      tick(dt, posOf) {
+        const now = Date.now();
+        for (const c of placeCarts()) {
+          const home = RANK[rankOf.get(c.server)];
+          let s = carts.get(c.server);
+          if (!s) carts.set(c.server, (s = { x: home[0], y: home[1], path: [], to: home, dir: -1 }));
+          const b = c.busy ? posOf(c.busy) : null;
+          const goal = cartGoal(s, b ? besideOf(b) : null, home, now);
+          if (goal[0] !== s.to[0] || goal[1] !== s.to[1]) { s.to = goal; s.path = cartRoute([s.x, s.y], goal); }
+          if (s.path.length) {
+            const [qx, qy] = s.path[0], dx = qx - s.x, dy = qy - s.y, d = Math.hypot(dx, dy), sp = CART_SPEED * dt;
+            if (Math.abs(dx) > 0.1) s.dir = Math.sign(dx);
+            if (d <= sp) { s.x = qx; s.y = qy; s.path.shift(); } else { s.x += (dx / d) * sp; s.y += (dy / d) * sp; }
+          } else if (s.goal && s.arrivedAt == null) s.arrivedAt = now; // there: it waits (cartGoal says how long)
+          else if (!s.goal) s.dir = -1; // back in its place, facing the farm
+          s.moving = s.path.length > 0;
+        }
+      },
       drawChar(f, b) {
         if (b.zone === 'nap' && !b.walk) { // lying in its hammock, head to the left, the cloth round it
           const ctx = PXG.ctx, cx = Math.round(b.x), y = Math.round(b.y);
@@ -1613,9 +1719,15 @@
           cp(2, 0, 1, 1, '#e04a3a'); cp(1, 1, 3, 1, '#ffffff'); cp(3, 1, 1, 1, '#1b1420'); cp(0, 2, 4, 1, '#ffffff'); cp(4, 2, 1, 1, '#f0b429'); cp(1, 3, 3, 1, '#e6eef5'); cp(1, 4, 1, 1, '#f0b429'); cp(3, 4, 1, 1, '#f0b429');
         });
       },
-      /** Labels that move with what they name: the carts on the road, the hammocks' wake-up times. */
+      /** Labels that move with what they name: the carts on the road, the MCP carts out of their shed, the hammocks' wake-up times. */
       movers(posOf) {
         const out = [];
+        for (const c of scene.carts ?? []) {
+          const s = carts.get(c.server);
+          if (!s || (!s.goal && !s.moving)) continue; // waiting in its place
+          const who = c.busy ? scene.farmers.find(f => f.id === c.busy) : null;
+          out.push({ key: `mcp:${c.server}`, x: s.x, y: s.y - 9, html: pxt(clip(c.server, 16), '#5a3a1a', null), title: `${c.server}, an MCP server${who ? `: ${who.name} is calling it` : ''}` });
+        }
         for (const f of scene.farmers) {
           const c = cartOf(f);
           if (c) out.push({ key: `cart:${f.id}`, x: c.x, y: LANE - 5, html: pxt(clip(f.service, 18), '#5a3a1a', null), title: `${f.name}: ${f.summary || f.service}` });
@@ -1626,7 +1738,7 @@
       },
       top() {
         const T = PXG.T;
-        for (const f of scene.farmers) { // carts to town and back, one for each web or connector call going on
+        for (const f of scene.farmers) { // carts to town and back, one for each web call going on
           const c = cartOf(f);
           if (!c) continue;
           const { x, dir } = c, y = LANE + 4, step = blink(6), pony = x + dir * 7;
@@ -1703,7 +1815,8 @@
       <b>Tools</b><span>what a working farmer holds is its current step: almanac = reading, spyglass = searching, pigeon = the web, hoe = editing, seeds = a new file, magnifier = running tests, rake = lint or format, hammer = a build, wheelbarrow = installing, crate = a commit, cart = a push or a PR (with a red flag: a deploy), mailbag = a pull, lantern = a server or a long wait, sickle = deleting, whistle = calling subagents, clipboard = planning, parcel = a connector (MCP: Gmail, Linear…), recipe card = a skill, blueprint = plan mode, watering can = any other command</span>
       <b>Above a farmer</b><span>a thought cloud = thinking between steps; a scroll on the porch = a plan for you to approve; a chore board beside it = its task list, ticked as items get done (its name says how many, e.g. 3/7)</span>
       <b>On a farmer</b><span>the pin on its hat = its model (purple Opus, blue Sonnet, green Haiku, orange Fable); speed lines = fast mode; a red and white scarf = bypass permissions (no checks); its purse = what it has cost (gold from $50)</span>
-      <b>Road to town</b><span>a cart on the lane for each web or connector call going on, with where it goes</span>
+      <b>Road to town</b><span>a cart on the lane for each web call going on, with where it goes</span>
+      <b>Carts by the road to town</b><span>a cart for each MCP server (Gmail, playwright, Chrome…) your agents called in the last hour, waiting in a row at the lane's end; while one calls it, its cart drives to that farmer, with the server's name, and waits beside it until the call is done</span>
       <b>Pumps, hammocks</b><span>a pump by a bed = a background command still running; a farmer in a hammock = a session that wakes up by itself (/loop, a scheduled wake-up), with when</span>
       <b>Market stall</b><span>a crate for each open pull request, its tag the checks (green pass, red failed, yellow running, grey draft); “Sold!” = one merged</span>
       <b>Buildings</b><span>click the barn to start or resume a session, the farmhouse for who is on your porch, the silo for your plan's usage, the henhouse for subagents, the notice board for CLAUDE.md and memory, the stall for pull requests</span>
@@ -2132,6 +2245,7 @@
       last = now;
       T += dt;
       for (const f of scene.farmers) { const b = bots.get(f.id); if (b) { step(dt, f, b); th.emit?.(f, b, dt, addPart); } }
+      th.tick?.(dt, id => bots.get(id)); // what else moves, where the farmers are: the MCP carts
       th.ambient?.(dt, addPart);
       stepParticles(parts, dt);
       followTick(dt);
@@ -2694,6 +2808,6 @@
       view.unmount();
       mounted = false;
     },
-    toScene, fieldOf, weatherOf, contextPct, askText, helpHtml, layoutFor, rowsOfGroup,
+    toScene, fieldOf, weatherOf, contextPct, askText, helpHtml, layoutFor, rowsOfGroup, cartRoute, cartGoal,
   };
 })();

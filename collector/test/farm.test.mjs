@@ -406,3 +406,50 @@ test("a project's repos sit side by side under its sign, a worktree right after 
   assert.equal(many.more, 0);
   assert.equal(plain(layoutFor(Array.from({ length: 20 }, (_, i) => f(`/Users/me/code/r${i}`)))).more, 2, 'six rows at most; the rest are "+N more"');
 });
+
+test("MCP servers' carts: one for each server called in the last hour (six at most, the latest), each going to the farmer calling it now (a browser's too)", () => {
+  const { toScene } = load();
+  const t = NOW - 60_000;
+  const agents = [
+    agent('a1', { mcp: [{ server: 'playwright', at: t }, { server: 'Gmail', at: t - 5000 }], now: { tool: 'mcp__playwright__browser_click', step: 'web', service: 'playwright', startedAt: NOW - 2000 } }), // a browser's: a web step, still a connector's cart
+    agent('a2', { mcp: [{ server: 'playwright', at: t - 1000 }], now: { tool: 'mcp__playwright__browser_navigate', step: 'web', service: 'playwright', startedAt: NOW - 500 } }), // called it last
+    agent('a3', { state: 'yourTurn', mcp: [{ server: 'Linear', at: t - 9000 }], now: { tool: 'mcp__linear__x', step: 'mcp', service: 'Linear', startedAt: NOW - 100 } }), // not working: no call going on
+    agent('a4', { mcp: ['s1', 's2', 's3', 's4'].map((server, i) => ({ server, at: t - 20_000 - i })) }),
+  ];
+  const carts = plain(toScene(snapOf(agents, [])).carts);
+  assert.deepEqual(carts, [
+    { server: 'Gmail', busy: null },
+    { server: 'Linear', busy: null },
+    { server: 'playwright', busy: 'a2' },
+    { server: 's1', busy: null },
+    { server: 's2', busy: null },
+    { server: 's3', busy: null },
+  ], "by name, so each keeps its place in the row; the oldest (s4) has none");
+  assert.deepEqual(plain(toScene(snapOf([agent('w', { now: { tool: 'WebFetch', step: 'web', service: 'docs.github.com' } })], [])).carts), [], 'a web call keeps its cart to town');
+});
+
+test("a cart's way: down onto the lane, along it, down the path nearest the farmer, and over to it; back the same way", () => {
+  const { cartRoute } = load();
+  const LANE = 87;
+  assert.deepEqual(plain(cartRoute([10, 79], [270, 144])), [[10, LANE], [306, LANE], [306, 144], [270, 144]], 'from the shed to a field in the right-hand column');
+  assert.deepEqual(plain(cartRoute([270, 144], [10, 79])), [[306, 144], [306, LANE], [10, LANE], [10, 79]], 'and home again');
+  assert.deepEqual(plain(cartRoute([10, 79], [40, 166])), [[10, LANE], [116, LANE], [116, 166], [40, 166]], 'to the meadow: down the yard path');
+  assert.deepEqual(plain(cartRoute([10, LANE], [150, LANE])), [[150, LANE]], 'along the lane');
+  assert.deepEqual(plain(cartRoute([388, LANE], [187, 144])), [[218, LANE], [218, 144], [187, 144]], 'from its place by the road to town, to a farmer in the left-hand column');
+});
+
+test('a cart stays with its farmer while the call goes on, and a few seconds after it has got there, then heads home', () => {
+  const { cartGoal } = load();
+  const home = [10, 79], farmer = [200, 144];
+  const c = {};
+  assert.deepEqual(plain(cartGoal(c, farmer, home, 0)), farmer, 'called: it goes');
+  assert.deepEqual(plain(cartGoal(c, null, home, 1000)), farmer, 'a short call ended on the way: it still gets there');
+  c.arrivedAt = 4000;
+  assert.deepEqual(plain(cartGoal(c, null, home, 6000)), farmer, 'there: it waits a moment');
+  assert.deepEqual(plain(cartGoal(c, null, home, 9000)), home, 'then home');
+  assert.deepEqual(plain(cartGoal(c, null, home, 9500)), home);
+  const busy = { arrivedAt: 0 };
+  cartGoal(busy, farmer, home, 0);
+  assert.deepEqual(plain(cartGoal(busy, farmer, home, 60_000)), farmer, 'a long call: it stays');
+  assert.deepEqual(plain(cartGoal(busy, [120, 206], home, 61_000)), [120, 206], 'another farmer calls it: it goes there');
+});

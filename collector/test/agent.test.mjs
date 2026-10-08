@@ -154,6 +154,16 @@ test('the shell commands it runs now, each matched to its Bash call: background 
   assert.deepEqual(buildAgent({ base: base(), model: later, shells: [shells[0]], repoOf, now: at(60), cfg, home: '/h' }).shells.map(s => [s.toolUseId, s.background, s.output]), [['bg9', true, true]]);
 });
 
+test('the MCP servers it called in the last hour, newest first, for their carts on the farm', () => {
+  const m = modelOf(prompt(0, 'go'),
+    toolUse(10, 'm1', 'mcp__claude_ai_Gmail__search_threads', { query: 'x' }), toolResult(11, 'm1'),
+    toolUse(20, 'm2', 'mcp__playwright__browser_navigate', { url: 'http://localhost' }), toolResult(21, 'm2'),
+    toolUse(30, 'm3', 'mcp__claude_ai_Gmail__get_thread', { id: 'x' }), toolResult(31, 'm3'),
+    toolUse(40, 'b1', 'Bash', { command: 'ls' }));
+  assert.deepEqual(buildAgent({ base: base(), model: m, repoOf, now: at(50), cfg, home: '/h' }).mcp, [{ server: 'Gmail', at: at(30) }, { server: 'playwright', at: at(20) }]);
+  assert.deepEqual(buildAgent({ base: base(), model: m, repoOf, now: at(50) + 3_600_000, cfg, home: '/h' }).mcp, undefined, 'an hour later: none');
+});
+
 test("Claude Code's options after Always allow… keep the agent waiting, each worded from its suggestion", () => {
   const m = modelOf(prompt(0, 'go'), toolUse(5, 'toolu_P1', 'Bash', { command: 'npm test' }));
   const suggestions = [
