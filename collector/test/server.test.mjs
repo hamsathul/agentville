@@ -19,6 +19,7 @@ async function start() {
     webFile,
     getSnapshot: () => ({ generatedAt: 1, agents: [], collisions: [] }),
     getFeed: id => (id === 's1' ? [{ at: 1, kind: 'prompt', text: 'hi' }] : null),
+    getConversation: async (id, from) => (id === 's1' ? { total: 2, from, items: [{ at: 1, kind: 'prompt', body: 'hi' }, { at: 2, kind: 'reply', body: 'hello' }].slice(from) } : null),
     getTranscriptHtml: async id => (id === 's1' ? renderTranscriptPage('s1', [{ at: 1, kind: 'prompt', text: '<script>alert(1)</script>' }]) : null),
     listFiles: async id => (id === 's1' ? { root: '/w', git: true, files: ['a.ts'], status: {}, touched: {}, truncated: false } : { status: 404, error: 'That agent was not found.' }),
     readFile: async (id, path) => (id === 's1' && path === '/w/a.ts' ? { doc: { path, text: 'const a = 1;', mtimeMs: 1, size: 12 } } : { status: 403, error: 'That file is outside the agent\'s folder.' }),
@@ -246,6 +247,21 @@ test("the page's scripts are served from web/ by name, and nothing else is", asy
     assert.equal((await request(port, { path: '/missing.js' })).status, 404);
     assert.equal((await request(port, { path: '/..%2Fpackage.js' })).status, 404);
     assert.equal((await request(port, { path: '/index.html' })).status, 404);
+  } finally {
+    await srv.close();
+  }
+});
+
+test("a session's whole conversation needs the token, like files", async () => {
+  const { srv, port } = await start();
+  try {
+    assert.equal((await request(port, { path: '/api/agent/s1/conversation' })).status, 403);
+    const headers = { 'x-tracker-token': 'tok' };
+    const all = await request(port, { path: '/api/agent/s1/conversation', headers });
+    assert.equal(all.status, 200);
+    assert.deepEqual(JSON.parse(all.body).items.map(m => m.body), ['hi', 'hello']);
+    assert.deepEqual(JSON.parse((await request(port, { path: '/api/agent/s1/conversation?from=1', headers })).body), { total: 2, from: 1, items: [{ at: 2, kind: 'reply', body: 'hello' }] });
+    assert.equal((await request(port, { path: '/api/agent/nobody/conversation', headers })).status, 404);
   } finally {
     await srv.close();
   }

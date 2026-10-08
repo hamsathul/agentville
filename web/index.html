@@ -265,6 +265,18 @@ dialog.confirm-dlg { max-width: min(460px, calc(100vw - 32px)); }
 .bub.peer.out { margin-left: auto; }
 .bub.peer .peer-head { font-size: 11px; font-weight: 700; color: var(--muted); margin-bottom: 2px; }
 #sess-status { margin: 8px 0 6px; min-height: 1.2em; }
+/* the conversation dialog (⤢ Read all): the whole conversation, with search */
+dialog.convo-dlg { width: min(860px, calc(100vw - 32px)); height: min(86vh, 900px); max-width: none; padding: 14px 16px 12px; }
+dialog.convo-dlg[open] { display: flex; flex-direction: column; }
+#convo-sub { font-size: 12px; }
+.convo-find { display: flex; align-items: center; gap: 6px; margin: 10px 0 8px; }
+.convo-find input { flex: 1; min-width: 0; padding: 6px 9px; border: 1px solid var(--line); border-radius: 7px; background: var(--page); color: var(--text); font: inherit; }
+#convo-count { min-width: 64px; text-align: right; font-size: 12px; }
+.convo-body { flex: 1; min-height: 0; overflow: auto; align-content: start; padding: 2px; }
+::highlight(convo-hit) { background-color: color-mix(in srgb, var(--warn) 40%, transparent); color: inherit; }
+::highlight(convo-now) { background-color: var(--warn); color: #000; }
+.bub.cv-match { outline: 2px solid color-mix(in srgb, var(--warn) 55%, transparent); }
+.bub.cv-now { outline: 2px solid var(--warn); }
 @media (max-width: 560px) { .sess-when { display: none; } }
 .docs { display: grid; gap: 4px; }
 .doc { display: grid; grid-template-columns: auto auto minmax(0, 1fr) auto auto; align-items: center; gap: 8px; width: 100%; text-align: left; font: inherit; color: var(--text); background: var(--panel-2); border: 1px solid var(--line); border-radius: 8px; padding: 6px 10px; cursor: pointer; }
@@ -635,6 +647,11 @@ a.pile { text-decoration: none; color: inherit; }
   <div id="sess-body"></div>
   <p id="sess-status" class="faint" role="status"></p>
 </dialog>
+<dialog id="convo" class="convo-dlg" aria-labelledby="convo-title">
+  <div class="sess-head"><h3 id="convo-title">Conversation</h3><span id="convo-sub" class="faint"></span><span class="grow"></span><button type="button" class="act mini" data-convo-close aria-label="Close">×</button></div>
+  <div class="convo-find"><input id="convo-q" type="search" placeholder="Search this conversation…" autocomplete="off" spellcheck="false" aria-label="Search this conversation"><span id="convo-count" class="faint" role="status"></span><button type="button" class="act mini" id="convo-prev" aria-label="Older match" data-tip="Older match (Enter)">↑</button><button type="button" class="act mini" id="convo-next" aria-label="Newer match" data-tip="Newer match (Shift+Enter)">↓</button></div>
+  <div id="convo-body" class="chat convo-body"></div>
+</dialog>
 <dialog id="cleanup">
   <h3>Remove stale background sessions</h3>
   <p class="muted">Runs <span class="mono">claude rm</span> for each one you tick. Removal is permanent: the session and its conversation are deleted.</p>
@@ -652,6 +669,7 @@ a.pile { text-decoration: none; color: inherit; }
 <script src="/markdown.js"></script>
 <script src="/viewer.js"></script>
 <script src="/explorer.js"></script>
+<script src="/conversation.js"></script>
 <script src="/app.js"></script>
 <script src="/sessions.js"></script>
 </body>

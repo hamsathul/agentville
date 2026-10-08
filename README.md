@@ -60,6 +60,7 @@ It listens on `127.0.0.1` only and reads what Claude Code already writes to disk
 **Respond without switching windows**
 - Answer an agent's question (with its options) or a permission prompt (**Allow** / **Deny**).
 - Message any session like a chat, with screenshots, PDFs or other files; it arrives as your own prompt.
+- Read a session's whole conversation, from its first message, in a dialog you can search.
 - Ask a session a side question (`/btw`) without interrupting or adding to its conversation.
 
 **Steer your sessions**
@@ -212,6 +213,10 @@ These need the mod in that session.
   Markdown, text…), up to 6 of 10 MB each. The agent opens them with its Read tool.
 - **Reply** on any of the agent's messages to quote it into yours. **Show all** loads the
   session's whole history, and **Full transcript** opens it in a new tab.
+- **⤢ Read all**, on the Conversation heading, opens the whole conversation in a dialog: every
+  message from the first, oldest first, read from the transcript however long it is. **Search**
+  highlights every match in place, with "1 of 12" and ↑ ↓ (Enter for older, Shift+Enter for
+  newer); it starts at the newest. While the dialog is open, new messages appear at the bottom.
 
 ### Side questions (/btw)
 
@@ -414,9 +419,9 @@ canvas, with its text drawn as HTML on top so it stays crisp.
 
 - Everything stays on your Mac. The collector listens on `127.0.0.1` only and sends nothing
   anywhere. The exception is `gh`, which asks GitHub about your own repos.
-- File contents, folder listings, past sessions and field close-ups are served only with a
-  per-install token that the page carries. Every action (answer, message, start, end, switch…)
-  also needs a same-origin request.
+- File contents, folder listings, past sessions, whole conversations and field close-ups are
+  served only with a per-install token that the page carries. Every action (answer, message,
+  start, end, switch…) also needs a same-origin request.
 - The explorer shows what git shows. Ignored files (`node_modules`, `.env`, build output) and
   files that look like secrets (`.env*`, keys) are neither listed nor served.
 - Files you attach are kept under `state/uploads/` for 7 days.

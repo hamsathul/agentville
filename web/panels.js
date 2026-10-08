@@ -262,7 +262,8 @@ function conversationHtml(a) {
   // The newest message is framed as the latest, with your message when it is right below it: a quick
   // exchange frames the pair, a long working turn only its newest note.
   const cut = said[0].kind !== 'prompt' && said[1]?.kind === 'prompt' ? 2 : 1;
-  return `<div class="sec">Conversation</div><div class="chat"><div class="latest" role="group" aria-label="The latest message"><span class="latest-tag">Latest</span>${said.slice(0, cut).map(bubble).join('')}</div>${said.slice(cut).map(bubble).join('')}</div>`;
+  const readAll = a.kind === 'codex' ? '' : `<span class="grow"></span><button type="button" class="act mini" data-convo="${esc(a.id)}" data-tip="The whole conversation, from its first message, with search">⤢ Read all</button>`;
+  return `<div class="sec">Conversation${readAll}</div><div class="chat"><div class="latest" role="group" aria-label="The latest message"><span class="latest-tag">Latest</span>${said.slice(0, cut).map(bubble).join('')}</div>${said.slice(cut).map(bubble).join('')}</div>`;
 }
 
 /** The tool steps, newest first (the conversation is shown on its own); Show all loads the whole history. */

@@ -57,6 +57,7 @@ function render() {
   document.title = needs ? `(${needs}) Agentville` : 'Agentville';
   window.Agentville?.favicon(needs > 0); // a red light on the tab's farmhouse while an agent waits
   refreshFullFeeds();
+  void followConversation(); // the conversation dialog, if open, takes the new messages
   if (view === 'farm') {
     // The farm draws the agents; the list and the centre are not drawn (so their ids don't exist twice).
     // The sidebar shows the selected farmer: its answer form, message box and activity, then its files.

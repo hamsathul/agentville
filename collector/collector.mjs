@@ -6,6 +6,7 @@ import { loadConfig, mergeConfig } from './config.mjs';
 import { run } from './lib/exec.mjs';
 import { TailReader } from './lib/tail-reader.mjs';
 import { SessionModel } from './transcript/session-model.mjs';
+import { Conversation } from './transcript/conversation.mjs';
 import { earlierHistory } from './transcript/backfill.mjs';
 import { readRegistry } from './sources/registry.mjs';
 import { readAgentsCli } from './sources/agents-cli.mjs';
@@ -396,6 +397,25 @@ export async function startCollector({ root, claudeDir = join(homedir(), '.claud
     return childId ? rec.childModels.get(childId) ?? null : rec.model;
   }
 
+  // The conversation dialog's whole conversations: the last three opened, each dropped after ten minutes unused.
+  const conversations = new Map(); // transcript path → Conversation, least recently used first
+  /** A session's (or subagent's) messages from the `from`-th on, oldest first; null if it has no transcript. */
+  async function getConversation(id, from) {
+    const [sessionId, childId] = id.split(':');
+    const rec = sessions.get(sessionId);
+    const path = childId ? rec?.childPaths.get(childId) : rec?.path;
+    if (!path) return null;
+    const now = Date.now();
+    for (const [p, c] of conversations) if (now - c.usedAt > 600_000) conversations.delete(p);
+    const convo = conversations.get(path) ?? new Conversation(path);
+    conversations.delete(path);
+    conversations.set(path, convo);
+    while (conversations.size > 3) conversations.delete(conversations.keys().next().value);
+    convo.usedAt = now;
+    await convo.update();
+    return convo.messages(from);
+  }
+
   async function getTranscriptHtml(id) {
     const rec = sessions.get(id);
     if (!rec?.path) return null;
@@ -693,6 +713,7 @@ export async function startCollector({ root, claudeDir = join(homedir(), '.claud
     port: portOverride ?? cfg.port, token, webFile: join(root, 'web', 'index.html'),
     getSnapshot: () => snapshot,
     getFeed: (id, limit) => modelFor(id)?.history(limit) ?? null,
+    getConversation,
     getTranscriptHtml, getDoc: readDoc, listFiles, readFile, repoTouched, actions, pastSessions, log,
   });
   const port = await server.listen();
@@ -730,5 +751,5 @@ export async function startCollector({ root, claudeDir = join(homedir(), '.claud
     await server.close();
   }
 
-  return { port, getSnapshot: () => snapshot, reloadConfig, actions, pastSessions, readDoc, listFiles, readFile, repoTouched, stop };
+  return { port, getSnapshot: () => snapshot, reloadConfig, actions, pastSessions, getConversation, readDoc, listFiles, readFile, repoTouched, stop };
 }

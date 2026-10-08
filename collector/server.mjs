@@ -33,7 +33,7 @@ function clampInt(value, min, max, fallback) {
   return Number.isFinite(n) ? Math.min(max, Math.max(min, n)) : fallback;
 }
 
-export function createTrackerServer({ port, token, webFile, getSnapshot, getFeed, getTranscriptHtml, getDoc, listFiles, readFile, repoTouched, actions, pastSessions, log = () => {} }) {
+export function createTrackerServer({ port, token, webFile, getSnapshot, getFeed, getConversation, getTranscriptHtml, getDoc, listFiles, readFile, repoTouched, actions, pastSessions, log = () => {} }) {
   const clients = new Set();
   let server;
   const actualPort = () => server.address()?.port ?? port;
@@ -67,6 +67,11 @@ export function createTrackerServer({ port, token, webFile, getSnapshot, getFeed
         if ((m = path.match(/^\/api\/agent\/([\w:-]+)\/feed$/))) {
           const feed = getFeed(m[1], clampInt(url.searchParams.get('limit'), 1, 200, 200));
           return feed ? sendJson(res, 200, feed) : sendJson(res, 404, { error: 'unknown agent' });
+        }
+        if ((m = path.match(/^\/api\/agent\/([\w:-]+)\/conversation$/))) { // every message, whole: token only, like files
+          if (req.headers['x-tracker-token'] !== token) return sendJson(res, 403, { error: 'forbidden' });
+          const convo = await getConversation(m[1], clampInt(url.searchParams.get('from'), 0, 1_000_000, 0));
+          return convo ? sendJson(res, 200, convo) : sendJson(res, 404, { error: 'That session has no transcript to read.' });
         }
         if ((m = path.match(/^\/api\/agent\/([\w:-]+)\/(doc|file|files)$/))) {
           // Folder listings and file contents: the page sends its token, which other sites can't

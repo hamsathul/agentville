@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import { execFileSync } from 'node:child_process';
 import assert from 'node:assert/strict';
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, realpathSync, symlinkSync, unlinkSync, utimesSync, writeFileSync } from 'node:fs';
+import { appendFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, realpathSync, symlinkSync, unlinkSync, utimesSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { startCollector } from '../collector.mjs';
@@ -500,6 +500,31 @@ test("after a restart, files from early in a long transcript come back in the ba
       await new Promise(r => setTimeout(r, 100));
     }
     assert.deepEqual(docs, ['/w/late.md', '/w/docs/early-spec.md']);
+  } finally {
+    await handle.stop();
+  }
+});
+
+test("a session's whole conversation is read from its transcript, then only what was added; an unknown session has none", async () => {
+  const root = mkdtempSync(join(tmpdir(), 'tracker-root-convo-'));
+  mkdirSync(join(root, 'web'));
+  writeFileSync(join(root, 'web', 'index.html'), '<html></html>');
+  writeFileSync(join(root, 'config.json'), JSON.stringify({ port: 0, deployRepos: {} }));
+  const claudeDir = mkdtempSync(join(tmpdir(), 'tracker-claude-convo-'));
+  mkdirSync(join(claudeDir, 'sessions'));
+  mkdirSync(join(claudeDir, 'projects', '-w'), { recursive: true });
+  writeFileSync(join(claudeDir, 'sessions', `${process.pid}.json`), JSON.stringify({ pid: process.pid, sessionId: 'sess-convo', cwd: '/w', name: 'talker', status: 'idle' }));
+  const transcript = join(claudeDir, 'projects', '-w', 'sess-convo.jsonl');
+  const line = (ms, type, message) => `${JSON.stringify({ type, timestamp: new Date(ms).toISOString(), ...(type === 'user' ? { origin: { kind: 'human' } } : {}), message })}\n`;
+  const t = Date.now() - 60_000;
+  writeFileSync(transcript, line(t, 'user', { content: 'first question' }) + line(t + 1000, 'assistant', { model: 'm', content: [{ type: 'text', text: 'first answer' }] }));
+  const handle = await startCollector({ root, claudeDir, claudeBin: '/usr/bin/false', notify: () => {}, log: () => {} });
+  try {
+    const all = await handle.getConversation('sess-convo', 0);
+    assert.deepEqual(all.items.map(m => [m.kind, m.body]), [['prompt', 'first question'], ['reply', 'first answer']]);
+    appendFileSync(transcript, line(t + 2000, 'user', { content: 'and then?' }));
+    assert.deepEqual((await handle.getConversation('sess-convo', 2)).items.map(m => m.body), ['and then?']);
+    assert.equal(await handle.getConversation('nobody', 0), null);
   } finally {
     await handle.stop();
   }

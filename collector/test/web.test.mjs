@@ -19,7 +19,7 @@ function loadPage({ stored = {}, storageThrows = false, files = {}, replies = {}
   const revoked = [];
   let active = null;
   const els = new Map();
-  const el = id => ({ id, title: '', innerHTML: '', textContent: '', value: '', className: '', dataset: {}, attrs: {}, setAttribute(k, v) { this.attrs[k] = String(v); }, scrollIntoView() {}, classList: { add() {}, remove() {}, toggle() {} }, addEventListener() {}, showModal() { this.open = true; }, close() { this.open = false; }, focus() {}, querySelectorAll: () => [] });
+  const el = id => ({ id, title: '', innerHTML: '', textContent: '', value: '', className: '', dataset: {}, attrs: {}, setAttribute(k, v) { this.attrs[k] = String(v); }, scrollIntoView() {}, classList: { add() {}, remove() {}, toggle() {} }, addEventListener() {}, showModal() { this.open = true; }, close() { this.open = false; }, focus() {}, querySelectorAll: () => [], insertAdjacentHTML(_where, html) { this.innerHTML += html; } });
   const docListeners = {};
   let sourceListener = null;
   let selectedText = '';
@@ -815,7 +815,7 @@ test('without the farm script, the toggle stays on the list and says why', async
 
 test('the page loads its mark, the farm (deferred), then its token, then its own scripts in order', () => {
   const tags = [...html.matchAll(/<script(?: src="\/([a-z]+)\.js"( defer)?)?>/g)].map(m => (m[1] ? `${m[1]}${m[2] ? ' defer' : ''}` : 'inline'));
-  assert.deepEqual(tags, ['inline', 'brand', 'farm defer', 'inline', 'core', 'charts', 'panels', 'markdown', 'viewer', 'explorer', 'app', 'sessions']);
+  assert.deepEqual(tags, ['inline', 'brand', 'farm defer', 'inline', 'core', 'charts', 'panels', 'markdown', 'viewer', 'explorer', 'conversation', 'app', 'sessions']);
   assert.match(html, /<script>const TOKEN = '__TRACKER_TOKEN__';<\/script>/);
 });
 
@@ -1383,4 +1383,53 @@ test('All time reads every past session, showing that it is reading, and is reme
   const again = await sessPage({ stored: { ...page.stored } });
   assert.equal(again.gets.find(g => g.path.startsWith('/api/sessions')).path, '/api/sessions?days=all');
   assert.equal(again.el('sess-range').value, 'all');
+});
+
+// The conversation dialog (⤢ Read all): the whole conversation, oldest first, on demand.
+const talk = (from, list) => ({ total: from + list.length, from, items: list });
+const convoPage = async () => {
+  const t = Date.now() - 3_600_000;
+  const page = loadPage({ replies: {
+    '/api/agent/r1/conversation': talk(0, [
+      { at: t, kind: 'prompt', text: 'First question', body: 'First question' },
+      { at: t + 60_000, kind: 'reply', text: 'The answer', body: 'The **answer**' },
+      { at: t + 120_000, kind: 'peer', dir: 'in', other: 'docs-bot', text: 'Docs are done', body: 'Docs are done' },
+    ]),
+    '/api/agent/r1/conversation?from=3': talk(3, [{ at: t + 180_000, kind: 'reply', text: 'Later', body: 'Later news' }]),
+  } });
+  page.push(richSnapshot([richAgent({ mod: { version: '0.5.0', live: true }, lastActivityAt: t + 120_000, feed: [{ at: Date.now() - 1000, kind: 'reply', text: 'Hi' }] })]));
+  await page.openAgent('r1');
+  return page;
+};
+
+test('⤢ Read all on the conversation opens the whole of it in a dialog, oldest first', async () => {
+  const page = await convoPage();
+  assert.match(page.side(), />Conversation<span class="grow"><\/span><button type="button" class="act mini" data-convo="r1"[^>]*>⤢ Read all<\/button>/);
+  await page.clickButton('read-all', { convo: 'r1' });
+  await page.settle();
+  assert.equal(page.el('convo').open, true);
+  const get = page.gets.find(g => g.path === '/api/agent/r1/conversation');
+  assert.ok(get?.token, 'with the token');
+  assert.match(page.el('convo-title').textContent, /busy-one/);
+  assert.match(page.el('convo-sub').textContent, /3 messages since /);
+  const body = page.el('convo-body').innerHTML;
+  assert.match(body, /class="bub you"><div class="cv-text">First question<\/div>[\s\S]*class="bub agent"><div class="bub-md cv-text"><p>The <strong>answer<\/strong><\/p>[\s\S]*class="bub peer in"[\s\S]*from docs-bot[\s\S]*Docs are done/, 'oldest first; replies as markdown');
+  assert.doesNotMatch(body, /data-quote/, 'no reply buttons: it is for reading');
+});
+
+test('while the dialog is open, new messages are added at the bottom; closing it stops that', async () => {
+  const page = await convoPage();
+  await page.clickButton('read-all', { convo: 'r1' });
+  await page.settle();
+  page.push(richSnapshot([richAgent({ mod: { version: '0.5.0', live: true }, lastActivityAt: Date.now(), feed: [{ at: Date.now() - 1000, kind: 'reply', text: 'Hi' }] })]));
+  await page.settle();
+  assert.ok(page.gets.some(g => g.path === '/api/agent/r1/conversation?from=3'));
+  assert.match(page.el('convo-body').innerHTML, /Docs are done[\s\S]*Later news/, 'appended after the rest');
+  assert.match(page.el('convo-sub').textContent, /4 messages/);
+  page.ctx.closeConversation();
+  assert.equal(page.el('convo').open, false);
+  const asked = page.gets.length;
+  page.push(richSnapshot([richAgent({ mod: { version: '0.5.0', live: true }, lastActivityAt: Date.now() + 5000, feed: [] })]));
+  await page.settle();
+  assert.equal(page.gets.filter(g => g.path.includes('/conversation')).length, page.gets.slice(0, asked).filter(g => g.path.includes('/conversation')).length, 'closed: nothing more is fetched');
 });
