@@ -16,8 +16,8 @@ and watch them work as farmers on a pixel farm.
 ![The farm view: every agent a farmer, every repo a field](docs/farm.png)
 
 <sub>The farm view, from a demo with made-up sessions. Every farmer is an agent and every field a
-repo. Two farmers wait on your porch, one has finished, and the rest work in their fields with the
-tool for their current step.</sub>
+repo. Three farmers wait on your porch, one has finished, and the rest work in their fields with
+the tool for their current step.</sub>
 
 Everything runs on your machine. The collector is a small Node program with no dependencies.
 It listens on `127.0.0.1` only and reads what Claude Code already writes to disk.
