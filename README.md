@@ -29,6 +29,7 @@ It listens on `127.0.0.1` only and reads what Claude Code already writes to disk
   - [Side questions (/btw)](#side-questions-btw)
   - [Model, effort and permission mode](#model-effort-and-permission-mode)
   - [Starting, resuming, ending and restarting sessions](#starting-resuming-ending-and-restarting-sessions)
+  - [⚙ Claude Code: plugins, MCP servers and permission rules](#-claude-code-plugins-mcp-servers-and-permission-rules)
   - [Files, documents and quoting](#files-documents-and-quoting)
   - [The farm view](#the-farm-view)
   - [Notifications and the bell](#notifications-and-the-bell)
@@ -69,6 +70,12 @@ It listens on `127.0.0.1` only and reads what Claude Code already writes to disk
   permission mode, model and effort you choose.
 - Switch a running session's model or effort, compact it, restart it in another permission mode,
   or end it (its terminal window closes too).
+
+**Manage Claude Code itself**
+- See every plugin and skill with what it costs in context (always-on tokens per session), turn
+  plugins on or off, update or uninstall them, and have running sessions reload them.
+- Check every MCP server (yours, claude.ai connectors, each plugin's), sign in where needed, and
+  remove the ones you configured. Review and remove permission rules.
 
 **Read what they wrote**
 - Browse an agent's folder with git status, its scratchpad and its memory (CLAUDE.md, auto
@@ -273,6 +280,29 @@ before you updated, run `/reload-plugins` in it.
   resume the conversation later.
 - A stale background session can be **removed** (`claude rm`).
 
+### ⚙ Claude Code: plugins, MCP servers and permission rules
+
+The **⚙ Claude Code** button in the top bar opens your Claude Code setup in three tabs.
+
+- **Plugins & skills.** Every installed plugin, the costliest first, with what it holds (skills,
+  agents, hooks, MCP servers) and its **always-on** tokens, added to every session while it is
+  on; the total for the plugins that are on heads the list. **More** shows each part's cost, every
+  session and when used. **Turn on / Turn off**, **Update** and **Uninstall…** run `claude plugin …`.
+  A change reaches a running session once it reloads its plugins: **Reload running sessions** has
+  every session listening for the dashboard run `/reload-plugins` (mod 0.6.1). Your own skills
+  (`~/.claude/skills`) are listed with what each costs when used. A plugin loaded from a folder
+  (like this dashboard's mod) is managed where it lives.
+- **MCP servers.** `claude mcp list` checks every server by starting it, so the tab takes about 15
+  seconds; **Check again** checks afresh. Servers are grouped as yours, claude.ai connectors, each
+  plugin's (they come and go with the plugin) and each project's own, with how each is:
+  connected, needs sign-in, failed (with the error) or not configured. **Sign in** opens a terminal
+  window running `claude mcp login`, which opens your browser. **Remove…** forgets a server you
+  configured (`claude mcp remove`).
+- **Permission rules.** The allow, ask and deny rules and extra folders in your settings and in
+  each project's on the dashboard (`.claude/settings.json` shared, `settings.local.json` just
+  you). **Remove…** takes one out of its file and leaves the rest as it was. New rules come from
+  **Always allow…** on a permission prompt.
+
 ### Files, documents and quoting
 
 - Click a file in the explorer to open it read-only in a tab: markdown is rendered, and code gets
@@ -434,6 +464,9 @@ canvas, with its text drawn as HTML on top so it stays crisp.
 - The explorer shows what git shows. Ignored files (`node_modules`, `.env`, build output) and
   files that look like secrets (`.env*`, keys) are neither listed nor served.
 - Files you attach are kept under `state/uploads/` for 7 days.
+- The ⚙ Claude Code dialog runs `claude plugin …` and `claude mcp …` for you, and removing a rule
+  edits that one entry in its settings file. A server's full command line or URL is never shown,
+  as either can carry a key: only its host or the command it runs.
 
 ## Troubleshooting
 

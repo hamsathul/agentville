@@ -118,7 +118,7 @@ export function projectsOf(sessions) {
   return [...map.values()].sort((x, y) => y.at - x.at);
 }
 
-const shellQuote = s => `'${String(s).replace(/'/g, `'\\''`)}'`;
+export const shellQuote = s => `'${String(s).replace(/'/g, `'\\''`)}'`;
 
 // Models and effort levels a session can start with, or switch to (aliases, as --model and /model take them).
 export const MODELS = ['default', 'opus', 'opus[1m]', 'sonnet', 'haiku', 'fable'];

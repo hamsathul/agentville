@@ -310,6 +310,13 @@ test('a compact from the dashboard runs /compact with its note, on one line', as
   expect(f.ran).toEqual([{ command: 'compact', args: 'keep the API decisions' }, { command: 'compact', args: '' }])
 })
 
+test('a reload from the dashboard runs /reload-plugins, with nothing after it', async () => {
+  const f = asker$({ '1-a.json': '{"command":"reload-plugins","args":"","id":"1-a"}', '2-b.json': '{"command":"reload-plugins","args":"--all","id":"2-b"}' })
+  await runSettings(f.$, '/repo/state', 's1')
+  await settle()
+  expect(f.ran).toEqual([{ command: 'reload-plugins', args: '' }])
+})
+
 test('a switch that fails says why', async () => {
   const f = asker$({ '1-a.json': '{"command":"model","args":"fable","id":"1-a"}' }, { run: async () => { throw new Error('Unknown model') } })
   await runSettings(f.$, '/repo/state', 's1')

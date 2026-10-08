@@ -34,7 +34,14 @@ async function start() {
       start: async body => { calls.push(['start', body]); return { ok: true }; },
       end: async body => { calls.push(['end', body]); return { ok: true }; },
       restart: async body => { calls.push(['restart', body]); return { ok: true }; },
+      plugin: async body => { calls.push(['plugin', body]); return { ok: true }; },
+      reload: async () => { calls.push(['reload']); return { ok: true, sessions: 2 }; },
+      mcp: async body => { calls.push(['mcp', body]); return { ok: true }; },
+      rule: async body => { calls.push(['rule', body]); return { ok: true }; },
     },
+    claudePlugins: async () => ({ plugins: [{ id: 'alpha@m' }], skills: [] }),
+    claudeMcp: async opts => { calls.push(['claudeMcp', opts]); return { servers: [], projects: [] }; },
+    claudeRules: () => ({ files: [] }),
     pastSessions: async opts => { calls.push(['pastSessions', opts]); return { terminal: 'iTerm', projects: [{ cwd: '/code/app' }], sessions: [] }; },
   });
   const port = await srv.listen();
@@ -247,6 +254,30 @@ test("the page's scripts are served from web/ by name, and nothing else is", asy
     assert.equal((await request(port, { path: '/missing.js' })).status, 404);
     assert.equal((await request(port, { path: '/..%2Fpackage.js' })).status, 404);
     assert.equal((await request(port, { path: '/index.html' })).status, 404);
+  } finally {
+    await srv.close();
+  }
+});
+
+test("Claude Code's setup is read only with the token, and changed only with the token from the page itself", async () => {
+  const { srv, port, calls } = await start();
+  try {
+    for (const path of ['/api/claude/plugins', '/api/claude/mcp', '/api/claude/rules']) assert.equal((await request(port, { path })).status, 403, path);
+    const headers = { 'x-tracker-token': 'tok' };
+    assert.deepEqual(JSON.parse((await request(port, { path: '/api/claude/plugins', headers })).body).plugins, [{ id: 'alpha@m' }]);
+    await request(port, { path: '/api/claude/mcp?fresh=1', headers });
+    await request(port, { path: '/api/claude/rules', headers });
+    assert.deepEqual(calls.splice(0), [['claudeMcp', { fresh: true }]]);
+    const origin = `http://127.0.0.1:${port}`;
+    const body = JSON.stringify({ id: 'alpha@m', op: 'disable' });
+    for (const path of ['/api/actions/plugin', '/api/actions/reload', '/api/actions/mcp', '/api/actions/rule']) {
+      assert.equal((await request(port, { method: 'POST', path, headers: { ...headers, origin: 'https://evil.example', 'content-type': 'application/json' }, body })).status, 403, path);
+    }
+    assert.deepEqual(calls, []);
+    for (const path of ['/api/actions/plugin', '/api/actions/reload', '/api/actions/mcp', '/api/actions/rule']) {
+      assert.equal((await request(port, { method: 'POST', path, headers: { ...headers, origin, 'content-type': 'application/json' }, body })).status, 200, path);
+    }
+    assert.deepEqual(calls.map(c => c[0]), ['plugin', 'reload', 'mcp', 'rule']);
   } finally {
     await srv.close();
   }

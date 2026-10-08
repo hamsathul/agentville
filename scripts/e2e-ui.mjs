@@ -131,7 +131,20 @@ const fakeMod = setInterval(() => {
 
 /* ---------- browser ---------- */
 
-const handle = await startCollector({ root, claudeDir, claudeBin: '/usr/bin/false', notify: () => {}, log: () => {}, home: '/nowhere', scratchBase: '/nonexistent', sessionProcs, launch: async args => { launched.push(args.at(-1)); return { code: 0, stdout: '', stderr: '' }; } });
+// A stand-in for the claude CLI, for the ⚙ Claude Code dialog: two plugins, their details, MCP servers.
+const fakeClaude = join(temp, 'claude-cli');
+const cliLog = join(temp, 'claude-cli.log');
+writeFileSync(fakeClaude, `#!/bin/sh
+case "$1 $2" in
+  "agents --json") echo '[]' ;;
+  "plugin list") echo '[{"id":"crops@farm-market","version":"1.2.0","enabled":true,"scope":"user"},{"id":"weather@farm-market","version":"0.3.0","enabled":false,"scope":"user"}]' ;;
+  "plugin details") printf '$2 1.0\\n  Description: For the farm.\\n\\nComponent inventory\\n  Skills (2)  sow, reap\\n  Agents (0)\\n  Hooks (0)\\n  MCP servers (1)  barn\\n  LSP servers (0)\\n\\nProjected token cost\\n  Always-on:   ~1,500 tok   added to every session\\n' ;;
+  "plugin enable"|"plugin disable"|"plugin update"|"plugin uninstall") echo "$*" >> '${cliLog}'; echo "Done" ;;
+  "mcp list") printf 'Checking MCP server health…\\n\\nsilo: https://silo.example/mcp (HTTP) - ! Needs authentication\\nplugin:crops:barn: https://barn.example/mcp (HTTP) - ✔ Connected\\n' ;;
+esac
+`, { mode: 0o755 });
+writeFileSync(join(claudeDir, 'settings.json'), `${JSON.stringify({ permissions: { allow: ['Bash(npm test:*)'] } }, null, 2)}\n`);
+const handle = await startCollector({ root, claudeDir, claudeBin: fakeClaude, notify: () => {}, log: () => {}, home: '/nowhere', scratchBase: '/nonexistent', sessionProcs, launch: async args => { launched.push(args.at(-1)); return { code: 0, stdout: '', stderr: '' }; } });
 const profile = join(temp, 'chrome');
 const chrome = spawn(CHROME, ['--headless=new', '--remote-debugging-port=0', `--user-data-dir=${profile}`, '--no-first-run', '--no-default-browser-check', '--hide-scrollbars', 'about:blank'], { stdio: 'ignore' });
 let ws;
@@ -383,6 +396,19 @@ try {
   check(await until("/Answer sent to ui-asker/.test(document.getElementById('notice').textContent)"), 'the answer is sent from the farm sidebar');
   check(answered?.answers?.['Which crop next?'] === 'Pumpkins', 'the session received the answer');
 
+  console.log('Claude Code setup');
+  await js("document.getElementById('setup-open').click()");
+  check(await until("document.getElementById('setup').open && /2 plugins<\\/b>, 1 on: together they add <b>~1,500 tokens/.test(document.getElementById('setup-body').innerHTML)"), '⚙ Claude Code lists the plugins, with what the ones on cost every session');
+  await js("document.querySelector('[data-plugin-op=\"disable\"][data-plugin=\"crops@farm-market\"]').click()");
+  for (let i = 0; i < 40 && !(existsSync(cliLog) && /plugin disable crops@farm-market/.test(readFileSync(cliLog, 'utf8'))); i++) await sleep(100);
+  check(existsSync(cliLog) && /plugin disable crops@farm-market/.test(readFileSync(cliLog, 'utf8')), 'Turn off runs claude plugin disable for that plugin');
+  check(await until("/Running sessions keep their plugins/.test(document.getElementById('setup-note').textContent)"), 'and says running sessions need a reload, with the button for it');
+  await js("document.querySelector('[data-setup-tab=\"mcp\"]').click()");
+  check(await until("/2 servers: 1 connected, 1 need sign-in/.test(document.getElementById('setup-body').textContent) && !!document.querySelector('[data-mcp-login=\"silo\"]')"), 'the MCP tab shows each server and how it is, with Sign in where it is needed');
+  await js("document.querySelector('[data-setup-tab=\"rules\"]').click()");
+  check(await until("/Bash\\(npm test:\\*\\)/.test(document.getElementById('setup-body').textContent)"), 'the rules tab lists your permission rules');
+  check(await js("(() => { const b = document.getElementById('setup-body'); return b.scrollWidth <= b.clientWidth + 1; })()"), "the dialog doesn't scroll sideways");
+  await js("document.getElementById('setup').close()");
   console.log('Sessions');
   await js("document.getElementById('sessions-open').click()");
   check(await until("document.getElementById('sessions').open && [...document.querySelectorAll('#sessions [data-sess-resume]')].some(b => b.closest('.sess-row').textContent.includes('Harvest planning'))"), 'the sessions dialog offers to resume a past session by its title');

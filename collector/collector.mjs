@@ -1,7 +1,7 @@
 import { appendFileSync, existsSync, mkdirSync, readFileSync, readdirSync, realpathSync, renameSync, statSync, unlinkSync, watch, writeFileSync } from 'node:fs';
 import { randomBytes } from 'node:crypto';
 import { cpus, homedir, totalmem } from 'node:os';
-import { dirname, join } from 'node:path';
+import { basename, dirname, join } from 'node:path';
 import { loadConfig, mergeConfig } from './config.mjs';
 import { run } from './lib/exec.mjs';
 import { TailReader } from './lib/tail-reader.mjs';
@@ -18,7 +18,8 @@ import { listFolder, parsePorcelain, readFolderFile } from './sources/files.mjs'
 import { repoFiles } from './derive/repo-files.mjs';
 import { checkFiles, pruneUploads, saveFiles, withAttachments } from './sources/uploads.mjs';
 import { compactSummary, memoryFiles, scratchpadOf } from './sources/memory.mjs';
-import { EFFORTS, MODELS, MODE_FLAGS, SESSION_ID, claudeCommand, closeTerminalScript, listSessions, projectsOf, terminalScript } from './sources/sessions.mjs';
+import { EFFORTS, MODELS, MODE_FLAGS, SESSION_ID, claudeCommand, closeTerminalScript, listSessions, projectsOf, shellQuote, terminalScript } from './sources/sessions.mjs';
+import { parseMcpList, parsePluginDetails, projectServersOf, readOwnSkills, readRules, removeRule } from './sources/claude-setup.mjs';
 import { applySince, buildAgent, countStates, sortAgents } from './derive/agent.mjs';
 import { findCollisions } from './derive/collisions.mjs';
 import { reposFor } from './derive/repos.mjs';
@@ -538,6 +539,59 @@ export async function startCollector({ root, claudeDir = join(homedir(), '.claud
     const sessions = listSessions({ claudeDir, cache: sessionCache, maxAgeDays: all ? Infinity : 30 }).map(s => ({ ...s, live: live.has(s.id) }));
     return { terminal: cfg.terminal === 'iTerm' ? 'iTerm' : 'Terminal', projects: projectsOf(sessions).filter(p => isDir(p.cwd)), sessions };
   }
+  // ---- The ⚙ Claude Code dialog: plugins (with what each costs in context), MCP servers, permission rules ----
+  const homeDir = () => (isDir(home) ? home : undefined); // where the claude CLI runs from, when that folder exists
+  const pluginDetails = new Map(); // id@version → parsed `claude plugin details`: they change only with the version
+  let pluginIds = new Set(); // the plugins last listed: only these can be changed
+  /** Installed plugins with their details (fetched four at a time, then kept), and your own skills. */
+  async function claudePlugins() {
+    const res = await run(claudeBin, ['plugin', 'list', '--json'], { cwd: homeDir(), timeoutMs: 30_000 });
+    let list;
+    try { list = JSON.parse(res.stdout); } catch { return { error: `claude plugin list did not answer: ${(res.stderr || res.stdout).trim().split('\n')[0] || `exit ${res.code}`}` }; }
+    const plugins = (Array.isArray(list) ? list : []).filter(p => typeof p?.id === 'string').map(p => {
+      const [name, marketplace = ''] = p.id.split('@');
+      // a plugin loaded from a folder (@inline, like this dashboard's mod) is managed where it lives
+      return { id: p.id, name, marketplace, version: String(p.version ?? ''), enabled: p.enabled === true, scope: p.scope ?? null, lastUpdated: p.lastUpdated ?? null, managed: marketplace !== 'inline' };
+    });
+    pluginIds = new Set(plugins.filter(p => p.managed).map(p => p.id));
+    const missing = plugins.filter(p => !pluginDetails.has(`${p.id}@${p.version}`));
+    for (let i = 0; i < missing.length; i += 4) {
+      await Promise.all(missing.slice(i, i + 4).map(async p => {
+        const r = await run(claudeBin, ['plugin', 'details', p.name], { cwd: homeDir(), timeoutMs: 30_000 });
+        if (r.code === 0) pluginDetails.set(`${p.id}@${p.version}`, parsePluginDetails(r.stdout));
+      }));
+    }
+    return { plugins: plugins.map(p => ({ ...p, details: pluginDetails.get(`${p.id}@${p.version}`) ?? null })), skills: readOwnSkills(home) };
+  }
+  // `claude mcp list` starts every server to check it (15 s or more): one run at a time, its answer kept for 2 minutes.
+  let mcpChecked = null, mcpRunning = null;
+  async function claudeMcp({ fresh = false } = {}) {
+    if (!fresh && mcpChecked && Date.now() - mcpChecked.at < 120_000) return mcpChecked;
+    mcpRunning ??= (async () => {
+      const res = await run(claudeBin, ['mcp', 'list'], { cwd: homeDir(), timeoutMs: 120_000 });
+      let config = null;
+      try { config = JSON.parse(readFileSync(join(home, '.claude.json'), 'utf8')); } catch { /* no per-project servers to show */ }
+      const servers = parseMcpList(res.stdout);
+      mcpChecked = res.code !== 0 && !servers.length
+        ? { error: `claude mcp list did not answer: ${(res.stderr || res.stdout).trim().split('\n')[0] || `exit ${res.code}`}`, at: Date.now() }
+        : { servers, projects: projectServersOf(config), at: Date.now() };
+      return mcpChecked;
+    })().finally(() => { mcpRunning = null; });
+    return mcpRunning;
+  }
+  /** The settings files that hold permission rules: yours, then each project's on the dashboard (only those that exist are read). */
+  function rulesFiles() {
+    const files = [{ path: join(claudeDir, 'settings.json'), label: 'You, everywhere' }, { path: join(claudeDir, 'settings.local.json'), label: 'Your home folder, just you' }];
+    const folders = new Set([...(snapshot?.repos ?? []).map(r => r.path), ...(snapshot?.agents ?? []).map(a => resolver.lookup(a.cwd)?.path ?? a.cwd)].filter(Boolean));
+    for (const dir of [...folders].sort()) {
+      if (dir === home) continue;
+      const name = basename(dir);
+      files.push({ path: join(dir, '.claude', 'settings.json'), label: `${name}, shared` }, { path: join(dir, '.claude', 'settings.local.json'), label: `${name}, just you` });
+    }
+    return files;
+  }
+  const claudeRules = () => ({ files: readRules(rulesFiles()) });
+
   const openTerminal = async command => {
     const res = await launch(terminalScript(cfg.terminal, command));
     const app = cfg.terminal === 'iTerm' ? 'iTerm' : 'Terminal';
@@ -621,6 +675,9 @@ export async function startCollector({ root, claudeDir = join(homedir(), '.claud
         if (typeof body.compact !== 'string' || body.compact.length > 500) return { ok: false, error: 'Say what to keep in a line (500 characters at most), or nothing.' };
         if (!modAtLeast(agent.mod.version, '0.6.0')) return { ok: false, error: `That session runs an older tracker mod (${agent.mod.version}). Run /reload-plugins in it (or resume it), then try again.` };
         request = { command: 'compact', args: body.compact.replace(/\s+/g, ' ').trim() }; // /compact takes one line
+      } else if (body.reload === true) { // after plugins changed: /reload-plugins (mod 0.6.1)
+        if (!modAtLeast(agent.mod.version, '0.6.1')) return { ok: false, error: `That session runs an older tracker mod (${agent.mod.version}). Run /reload-plugins in it yourself.` };
+        request = { command: 'reload-plugins', args: '' };
       } else return { ok: false, error: 'Pick a model or an effort level.' };
       const id = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
       const file = writeRequestFile(commandsDir, agent.id, { ...request, id, at: Date.now() }, id);
@@ -690,6 +747,47 @@ export async function startCollector({ root, claudeDir = join(homedir(), '.claud
       if (body.decision === 'always' && !modAtLeast(agent?.mod?.version, '0.6.0')) return { ok: false, error: `That session runs an older tracker mod (${agent?.mod?.version}). Run /reload-plugins in it (or resume it) for Always allow.` };
       return deliver(ask.toolUseId, { decision: body.decision });
     },
+    /** Turns an installed plugin on or off, updates or uninstalls it (claude plugin …). */
+    async plugin(body) {
+      if (!['enable', 'disable', 'update', 'uninstall'].includes(body?.op)) return { ok: false, error: 'Enable, disable, update or uninstall.' };
+      if (!pluginIds.size) await claudePlugins();
+      if (!pluginIds.has(body.id)) return { ok: false, error: 'That plugin is not one to change from here.' };
+      const res = await run(claudeBin, ['plugin', body.op, body.id], { cwd: homeDir(), timeoutMs: 180_000 });
+      for (const key of pluginDetails.keys()) if (key.startsWith(`${body.id}@`)) pluginDetails.delete(key);
+      const said = (res.stdout || res.stderr).trim().split('\n').filter(Boolean).at(-1) ?? '';
+      return res.code === 0 ? { ok: true, text: said } : { ok: false, error: said || `claude plugin ${body.op} failed (exit ${res.code}).` };
+    },
+    /** Has every listening session (mod 0.6.1 or newer) run /reload-plugins, so plugin changes take effect in it. */
+    async reload() {
+      const live = (snapshot?.agents ?? []).filter(a => a.kind !== 'codex' && a.mod?.live);
+      const able = live.filter(a => modAtLeast(a.mod.version, '0.6.1'));
+      for (const a of able) {
+        const id = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+        writeRequestFile(commandsDir, a.id, { command: 'reload-plugins', args: '', id, at: Date.now() }, id);
+      }
+      return { ok: true, sessions: able.length, older: live.length - able.length };
+    },
+    /** An MCP server: sign in (claude mcp login, in a terminal window), or remove one you configured. */
+    async mcp(body) {
+      const checked = mcpChecked ?? await claudeMcp();
+      if (body?.op === 'login') {
+        if (!checked.servers?.some(s => s.name === body.name)) return { ok: false, error: 'That server is not in the list.' };
+        return openTerminal(`cd ~ && exec claude mcp login ${shellQuote(body.name)}`);
+      }
+      if (body?.op !== 'remove') return { ok: false, error: 'Sign in or remove.' };
+      const local = body.project !== undefined && checked.projects?.some(p => p.project === body.project && p.names.includes(body.name));
+      const user = body.project === undefined && checked.servers?.some(s => s.name === body.name && s.group === 'yours');
+      if (!local && !user) return { ok: false, error: "Only a server you configured can be removed here (a plugin's comes and goes with the plugin)." };
+      const res = await run(claudeBin, ['mcp', 'remove', body.name, '-s', local ? 'local' : 'user'], { cwd: local ? body.project : homeDir(), timeoutMs: 30_000 });
+      mcpChecked = null;
+      return res.code === 0 ? { ok: true } : { ok: false, error: (res.stderr || res.stdout).trim().split('\n')[0] || 'claude mcp remove failed.' };
+    },
+    /** Removes one permission rule (or extra folder) from one of the settings files listed. */
+    async rule(body) {
+      if (!rulesFiles().some(f => f.path === body?.path)) return { ok: false, error: 'That is not one of the settings files listed.' };
+      const r = removeRule(body.path, body.list, body.value);
+      return r.ok ? { ok: true } : { ok: false, error: r.error };
+    },
     /** After Always allow…: one of Claude Code's own options for the call (by its place in its list), or null to leave it to the terminal. */
     async always(body) {
       const ask = askFor(body?.agentId, body?.toolUseId, 'always');
@@ -727,7 +825,7 @@ export async function startCollector({ root, claudeDir = join(homedir(), '.claud
     port: portOverride ?? cfg.port, token, webFile: join(root, 'web', 'index.html'),
     getSnapshot: () => snapshot,
     getFeed: (id, limit) => modelFor(id)?.history(limit) ?? null,
-    getConversation,
+    getConversation, claudePlugins, claudeMcp, claudeRules,
     getTranscriptHtml, getDoc: readDoc, listFiles, readFile, repoTouched, actions, pastSessions, log,
   });
   const port = await server.listen();
@@ -765,5 +863,5 @@ export async function startCollector({ root, claudeDir = join(homedir(), '.claud
     await server.close();
   }
 
-  return { port, getSnapshot: () => snapshot, reloadConfig, actions, pastSessions, getConversation, readDoc, listFiles, readFile, repoTouched, stop };
+  return { port, getSnapshot: () => snapshot, reloadConfig, actions, pastSessions, getConversation, claudePlugins, claudeMcp, claudeRules, readDoc, listFiles, readFile, repoTouched, stop };
 }

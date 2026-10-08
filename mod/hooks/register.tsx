@@ -26,7 +26,7 @@ const DASHBOARD_REASON = 'Answered from the Agentville dashboard'
 type Offer = { stateDir: string; sessionId: string; isLive: boolean; windowSec: number; now: number }
 type Waited = { kind: 'answer'; text: string } | { kind: 'withdrawn' } | { kind: 'timeout' }
 
-const MOD_VERSION = '0.6.0'
+const MOD_VERSION = '0.6.1'
 
 let latest: TrackerView = EMPTY
 // The terminal's working line (Slithering… while thinking), for the dashboard: when the turn began,
@@ -102,10 +102,10 @@ export async function claimRequests($: any, inbox: string): Promise<any[]> {
   return out
 }
 
-// Model and effort switches and compacting from the dashboard run as the person's own /model,
-// /effort and /compact, the arguments checked again here: an alias (opus, sonnet, opus[1m]…), an
-// effort level, or what the summary should keep, on one line.
-const SETTINGS: Record<string, RegExp> = { model: /^(?:default|opus|sonnet|haiku|fable)(?:\[1m\])?$/, effort: /^(?:low|medium|high|xhigh|max)$/, compact: /^[^\n\r]{0,500}$/ }
+// Model and effort switches, compacting and plugin reloads from the dashboard run as the person's
+// own /model, /effort, /compact and /reload-plugins, the arguments checked again here: an alias
+// (opus, sonnet, opus[1m]…), an effort level, what the summary should keep (one line), or nothing.
+const SETTINGS: Record<string, RegExp> = { model: /^(?:default|opus|sonnet|haiku|fable)(?:\[1m\])?$/, effort: /^(?:low|medium|high|xhigh|max)$/, compact: /^[^\n\r]{0,500}$/, 'reload-plugins': /^$/ }
 
 /**
  * Runs the switches the dashboard asked for. A slash command waits for the session to be idle, so

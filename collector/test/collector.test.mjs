@@ -697,3 +697,70 @@ test("a session's model and effort are switched by its mod (/model, /effort), an
     await handle.stop();
   }
 });
+
+// A stand-in for the claude CLI: plugins, their details, MCP servers; what it was asked to change goes to a log.
+function fakeClaude(dir) {
+  const log = join(dir, 'claude.log'), bin = join(dir, 'claude');
+  writeFileSync(bin, `#!/bin/sh
+case "$1 $2" in
+  "agents --json") echo '[]' ;;
+  "plugin list") echo '[{"id":"alpha@market","version":"1.0.0","enabled":true,"scope":"user","lastUpdated":"2026-10-01T00:00:00Z"},{"id":"agent-tracker@inline","version":"0.6.1","enabled":true,"scope":"user"}]' ;;
+  "plugin details") printf 'alpha 1.0.0\\n  Description: Alpha things.\\n\\nComponent inventory\\n  Skills (2)  one, two\\n  Agents (0)\\n  Hooks (0)\\n  MCP servers (1)  mine\\n  LSP servers (0)\\n\\nProjected token cost\\n  Always-on:   ~1,200 tok   added to every session\\n' ;;
+  "plugin enable"|"plugin disable"|"plugin update"|"plugin uninstall") echo "$*" >> "${log}"; echo "Done: $2 $3" ;;
+  "mcp list") printf 'Checking MCP server health…\\n\\nmine: https://mine.example/mcp (HTTP) - ! Needs authentication\\nplugin:alpha:extra: https://extra.example/mcp (HTTP) - ✔ Connected\\n' ;;
+  "mcp remove") echo "$* in $(pwd -P)" >> "${log}" ;;
+esac
+`, { mode: 0o755 });
+  return { bin, log: () => (existsSync(log) ? readFileSync(log, 'utf8') : '') };
+}
+
+test("Claude Code's setup for the ⚙ dialog: plugins with their costs, MCP servers, rules; changes only to what is listed", async () => {
+  const root = mkdtempSync(join(tmpdir(), 'tracker-root-setup-'));
+  mkdirSync(join(root, 'web'));
+  writeFileSync(join(root, 'web', 'index.html'), '<html></html>');
+  writeFileSync(join(root, 'config.json'), JSON.stringify({ port: 0, deployRepos: {} }));
+  const home = realpathSync(mkdtempSync(join(tmpdir(), 'tracker-home-setup-')));
+  const claudeDir = join(home, '.claude');
+  mkdirSync(join(claudeDir, 'sessions'), { recursive: true });
+  mkdirSync(join(claudeDir, 'skills', 'mine'), { recursive: true });
+  writeFileSync(join(claudeDir, 'skills', 'mine', 'SKILL.md'), '---\nname: mine\ndescription: My skill\n---\nbody');
+  writeFileSync(join(claudeDir, 'settings.json'), `${JSON.stringify({ permissions: { allow: ['Bash(npm test:*)', 'Read'] } }, null, 2)}\n`);
+  const project = join(home, 'proj');
+  mkdirSync(project);
+  writeFileSync(join(home, '.claude.json'), JSON.stringify({ projects: { [project]: { mcpServers: { local1: {} } } } }));
+  const claude = fakeClaude(home);
+  const launched = [];
+  const handle = await startCollector({ root, claudeDir, home, claudeBin: claude.bin, notify: () => {}, log: () => {}, launch: async args => { launched.push(args.at(-1)); return { code: 0, stdout: '', stderr: '' }; } });
+  try {
+    const p = await handle.claudePlugins();
+    assert.deepEqual(p.plugins.map(x => [x.id, x.name, x.marketplace, x.enabled, x.details?.alwaysOn ?? null, x.managed]), [['alpha@market', 'alpha', 'market', true, 1200, true], ['agent-tracker@inline', 'agent-tracker', 'inline', true, 1200, false]]);
+    assert.deepEqual(p.plugins[0].details.inventory.skills, ['one', 'two']);
+    assert.deepEqual(p.skills.map(s => [s.name, s.description]), [['mine', 'My skill']]);
+    for (const body of [{ id: 'alpha@market', op: 'explode' }, { id: 'nobody@x', op: 'disable' }, { id: 'agent-tracker@inline', op: 'disable' }]) assert.equal((await handle.actions.plugin(body)).ok, false, JSON.stringify(body));
+    assert.deepEqual(await handle.actions.plugin({ id: 'alpha@market', op: 'disable' }), { ok: true, text: 'Done: disable alpha@market' });
+    assert.match(claude.log(), /^plugin disable alpha@market$/m);
+
+    const m = await handle.claudeMcp();
+    assert.deepEqual(m.servers.map(s => [s.name, s.group, s.status, s.where]), [['mine', 'yours', 'auth', 'mine.example'], ['plugin:alpha:extra', 'plugin', 'connected', 'extra.example']]);
+    assert.deepEqual(m.projects, [{ project, names: ['local1'] }]);
+    assert.equal((await handle.actions.mcp({ name: 'plugin:alpha:extra', op: 'remove' })).ok, false, "a plugin's server is the plugin's");
+    assert.equal((await handle.actions.mcp({ name: 'ghost', op: 'login' })).ok, false);
+    assert.deepEqual(await handle.actions.mcp({ name: 'mine', op: 'login' }), { ok: true, terminal: 'Terminal' });
+    assert.equal(launched.at(-1), "cd ~ && exec claude mcp login 'mine'");
+    assert.deepEqual(await handle.actions.mcp({ name: 'mine', op: 'remove' }), { ok: true });
+    assert.deepEqual(await handle.actions.mcp({ name: 'local1', op: 'remove', project }), { ok: true });
+    assert.match(claude.log(), new RegExp(`^mcp remove mine -s user in .*\\n^mcp remove local1 -s local in ${project}$`, 'm'));
+
+    mkdirSync(join(project, '.claude'));
+    writeFileSync(join(project, '.claude', 'settings.local.json'), JSON.stringify({ permissions: { deny: ['Bash(rm:*)'] } }));
+    writeFileSync(join(claudeDir, 'sessions', `${process.pid}.json`), JSON.stringify({ pid: process.pid, sessionId: 'sess-proj', cwd: project, name: 'proj', status: 'idle' }));
+    await handle.reloadConfig();
+    const r = await handle.claudeRules();
+    assert.deepEqual(r.files.map(f => [f.label, f.allow, f.deny]), [['You, everywhere', ['Bash(npm test:*)', 'Read'], []], ['proj, just you', [], ['Bash(rm:*)']]], "a project on the dashboard has its own");
+    assert.equal((await handle.actions.rule({ path: '/etc/passwd', list: 'allow', value: 'Read' })).ok, false, 'only the settings files listed');
+    assert.deepEqual(await handle.actions.rule({ path: join(claudeDir, 'settings.json'), list: 'allow', value: 'Read' }), { ok: true });
+    assert.deepEqual(JSON.parse(readFileSync(join(claudeDir, 'settings.json'), 'utf8')).permissions.allow, ['Bash(npm test:*)']);
+  } finally {
+    await handle.stop();
+  }
+});

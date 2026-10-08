@@ -268,6 +268,27 @@ dialog.confirm-dlg { max-width: min(460px, calc(100vw - 32px)); }
 .bub.peer.out { margin-left: auto; }
 .bub.peer .peer-head { font-size: 11px; font-weight: 700; color: var(--muted); margin-bottom: 2px; }
 #sess-status { margin: 8px 0 6px; min-height: 1.2em; }
+/* the ⚙ Claude Code dialog: plugins and skills, MCP servers, permission rules */
+dialog.setup-dlg { width: min(860px, calc(100vw - 32px)); height: min(86vh, 900px); max-width: none; padding: 14px 16px 12px; }
+dialog.setup-dlg[open] { display: flex; flex-direction: column; }
+.setup-tabs { display: flex; gap: 4px; margin-left: 10px; flex-wrap: wrap; }
+.setup-tabs .act.on { background: var(--accent); border-color: var(--accent); color: #fff; }
+#setup-note { min-height: 1.2em; margin: 8px 0 4px; font-size: 12px; }
+#setup-body { flex: 1; min-height: 0; overflow: auto; }
+.setup-sum { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; padding: 8px 10px; border: 1px solid var(--line); border-radius: 8px; background: var(--panel-2); font-size: 13px; }
+.setup-row { display: flex; align-items: center; gap: 10px; padding: 7px 2px; border-top: 1px solid var(--line); }
+.setup-row.sub { padding-left: 16px; }
+.setup-row.off .setup-main b, .setup-row.off .setup-cost { opacity: .55; }
+.setup-main { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.setup-main > * { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.setup-main code { font-family: ui-monospace, Menlo, monospace; font-size: 12px; white-space: normal; overflow-wrap: anywhere; }
+.setup-cost { font-size: 12px; white-space: nowrap; font-variant-numeric: tabular-nums; }
+.setup-acts { display: flex; gap: 4px; flex-wrap: wrap; justify-content: flex-end; }
+.setup-more { margin: 0 0 8px 16px; padding: 8px 10px; border-left: 3px solid var(--line); font-size: 12px; display: grid; gap: 6px; }
+.setup-table { border-collapse: collapse; font-size: 12px; }
+.setup-table th, .setup-table td { padding: 2px 12px 2px 0; text-align: left; font-variant-numeric: tabular-nums; }
+.setup-table th { color: var(--muted); font-weight: 600; }
+.setup-list { margin: 8px 0 2px; font-size: 11px; font-weight: 700; color: var(--muted); }
 /* the conversation dialog (⤢ Read all): the whole conversation, with search */
 dialog.convo-dlg { width: min(860px, calc(100vw - 32px)); height: min(86vh, 900px); max-width: none; padding: 14px 16px 12px; }
 dialog.convo-dlg[open] { display: flex; flex-direction: column; }
@@ -599,6 +620,7 @@ a.pile { text-decoration: none; color: inherit; }
   <span id="meta" class="faint"></span>
   <span class="seg" role="group" aria-label="View"><button type="button" id="view-list" aria-pressed="true">☰ List</button><button type="button" id="view-farm" aria-pressed="false">🌾 Farm</button></span>
   <button class="act" id="sessions-open" type="button" style="margin:0" data-tip="Start a new Claude Code session in a folder, or resume a past one">＋ Session</button>
+  <button class="act" id="setup-open" type="button" style="margin:0" data-tip="Your Claude Code setup: plugins and skills (and what each costs in context), MCP servers, permission rules">⚙ Claude Code</button>
   <button class="act" id="side-toggle" type="button" style="margin:0" aria-pressed="false" hidden data-tip="Show the selected farmer's answer box, activity and files beside the farm">◨ Sidebar</button>
   <button class="act" id="theme-toggle" type="button" style="margin:0">☾ Dark</button>
 </header>
@@ -658,6 +680,11 @@ a.pile { text-decoration: none; color: inherit; }
   <div id="convo-compose"></div>
   <input type="file" id="convo-file-picker" multiple hidden>
 </dialog>
+<dialog id="setup" class="setup-dlg" aria-labelledby="setup-title">
+  <div class="sess-head"><h3 id="setup-title">Claude Code</h3><span id="setup-tabs" class="setup-tabs" role="group" aria-label="Part"></span><span class="grow"></span><button type="button" class="act mini" data-setup-close aria-label="Close">×</button></div>
+  <div id="setup-note" role="status"></div>
+  <div id="setup-body"></div>
+</dialog>
 <dialog id="cleanup">
   <h3>Remove stale background sessions</h3>
   <p class="muted">Runs <span class="mono">claude rm</span> for each one you tick. Removal is permanent: the session and its conversation are deleted.</p>
@@ -678,5 +705,6 @@ a.pile { text-decoration: none; color: inherit; }
 <script src="/conversation.js"></script>
 <script src="/app.js"></script>
 <script src="/sessions.js"></script>
+<script src="/setup.js"></script>
 </body>
 </html>

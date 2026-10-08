@@ -815,7 +815,7 @@ test('without the farm script, the toggle stays on the list and says why', async
 
 test('the page loads its mark, the farm (deferred), then its token, then its own scripts in order', () => {
   const tags = [...html.matchAll(/<script(?: src="\/([a-z]+)\.js"( defer)?)?>/g)].map(m => (m[1] ? `${m[1]}${m[2] ? ' defer' : ''}` : 'inline'));
-  assert.deepEqual(tags, ['inline', 'brand', 'farm defer', 'inline', 'core', 'charts', 'panels', 'markdown', 'viewer', 'explorer', 'conversation', 'app', 'sessions']);
+  assert.deepEqual(tags, ['inline', 'brand', 'farm defer', 'inline', 'core', 'charts', 'panels', 'markdown', 'viewer', 'explorer', 'conversation', 'app', 'sessions', 'setup']);
   assert.match(html, /<script>const TOKEN = '__TRACKER_TOKEN__';<\/script>/);
 });
 
@@ -1495,4 +1495,113 @@ test('Always allow… on a permission prompt, then a pick among Claude Code\'s o
   assert.deepEqual(page.posts.at(-1), { path: '/api/actions/always', body: { agentId: 'w1', toolUseId: 'toolu_P1', option: 3 } });
   await page.clickButton('always-cancel', { agent: 'w1', tool: 'toolu_P1', alwaysPick: 'cancel' });
   assert.deepEqual(page.posts.at(-1), { path: '/api/actions/always', body: { agentId: 'w1', toolUseId: 'toolu_P1', option: null } });
+});
+
+// The ⚙ Claude Code dialog: plugins and skills, MCP servers, permission rules.
+const SETUP = {
+  '/api/claude/plugins': { skills: [{ name: 'mine', description: 'My skill', tokens: 800 }], plugins: [
+    { id: 'beta@m', name: 'beta', marketplace: 'm', version: '2.0.0', enabled: false, managed: true, details: { description: 'Beta.', alwaysOn: 300, inventory: { skills: ['b1'], agents: [], hooks: [], mcpServers: [], lspServers: [] }, components: [] } },
+    { id: 'alpha@m', name: 'alpha', marketplace: 'm', version: '1.0.0', enabled: true, managed: true, details: { description: 'Alpha things.', alwaysOn: 1200, inventory: { skills: ['one', 'two'], agents: [], hooks: ['SessionStart'], mcpServers: ['extra'], lspServers: [] }, components: [{ name: 'one', alwaysOn: 70, onInvoke: 6300 }, { name: 'two', alwaysOn: 50, onInvoke: 900 }] } },
+    { id: 'agent-tracker@inline', name: 'agent-tracker', marketplace: 'inline', version: '0.6.1', enabled: true, managed: false, details: null },
+  ] },
+  '/api/claude/mcp': { at: Date.now(), projects: [{ project: '/Users/me/proj', names: ['local1'] }], servers: [
+    { name: 'magic', where: 'npx @21st-dev/magic', status: 'failed', statusText: 'Failed to connect', detail: 'Not authenticated', group: 'yours' },
+    { name: 'plan', where: 'plan.example.com', status: 'auth', statusText: 'Needs authentication', detail: '', group: 'yours' },
+    { name: 'claude.ai Gmail', where: 'gmail.example.com', status: 'connected', statusText: 'Connected', detail: '', group: 'connector' },
+    { name: 'plugin:alpha:extra', where: 'extra.example.com', status: 'auth', statusText: 'Needs authentication', detail: '', group: 'plugin', plugin: 'alpha', server: 'extra' },
+  ] },
+  '/api/claude/mcp?fresh=1': { at: Date.now(), projects: [], servers: [] },
+  '/api/claude/rules': { files: [{ path: '/Users/me/.claude/settings.json', label: 'You, everywhere', allow: ['Bash(npm test:*)'], ask: [], deny: ['Bash(rm:*)'], additionalDirectories: ['/Users/me/data'] }] },
+  '/api/actions/plugin': { ok: true, text: 'Disabled alpha@m' },
+  '/api/actions/reload': { ok: true, sessions: 2, older: 1 },
+};
+
+test('⚙ Claude Code opens on Plugins & skills: each plugin with what it costs, the total for those on, and your own skills', async () => {
+  const page = loadPage({ replies: SETUP });
+  await page.clickButton('setup-open', {});
+  await page.settle();
+  assert.equal(page.el('setup').open, true);
+  assert.ok(page.gets.find(g => g.path === '/api/claude/plugins')?.token, 'with the token');
+  const body = page.el('setup-body').innerHTML;
+  assert.match(body, /<b>3 plugins<\/b>, 2 on: together they add <b>~1,200 tokens<\/b> to every session/);
+  assert.match(body, /data-plugin-row="alpha@m"[\s\S]*?2 skills · 1 hook · 1 MCP server[\s\S]*?~1,200 tok[\s\S]*?data-plugin-row="beta@m"/, 'the costliest first');
+  assert.match(body, /class="setup-row off" data-plugin-row="beta@m"/, 'one that is off looks it');
+  assert.match(body, /data-plugin-op="disable" data-plugin="alpha@m"[^>]*>Turn off<\/button>[\s\S]*data-plugin-op="enable" data-plugin="beta@m"[^>]*>Turn on</);
+  assert.doesNotMatch(body, /data-plugin="agent-tracker@inline"/, 'one loaded from a folder is managed there');
+  assert.match(body, /Your own skills[\s\S]*mine[\s\S]*My skill[\s\S]*~800 tok when used/);
+  await page.clickButton('more', { pluginMore: 'alpha@m' });
+  assert.match(page.el('setup-body').innerHTML, /Alpha things\.[\s\S]*one[\s\S]*~70[\s\S]*~6,300[\s\S]*MCP servers:<\/span> extra[\s\S]*Hooks:<\/span> SessionStart/);
+});
+
+test('turning a plugin off, uninstalling one (after asking), and reloading running sessions', async () => {
+  const page = loadPage({ replies: SETUP });
+  await page.clickButton('setup-open', {});
+  await page.settle();
+  await page.clickButton('off', { pluginOp: 'disable', plugin: 'alpha@m' });
+  await page.settle();
+  assert.deepEqual(page.posts.at(-1), { path: '/api/actions/plugin', body: { id: 'alpha@m', op: 'disable' } });
+  assert.match(page.el('setup-note').innerHTML, /Disabled alpha@m[\s\S]*Running sessions[\s\S]*data-reload-sessions/);
+  const uninstalling = page.clickButton('uninstall', { pluginOp: 'uninstall', plugin: 'beta@m' });
+  await page.settle();
+  assert.match(page.el('confirm-text').textContent, /Uninstall beta\?/);
+  assert.equal(page.posts.filter(p => p.body.op === 'uninstall').length, 0, 'nothing until you confirm');
+  await page.clickButton('confirm-yes', { confirm: 'yes' });
+  await uninstalling;
+  await page.settle();
+  assert.deepEqual(page.posts.at(-1), { path: '/api/actions/plugin', body: { id: 'beta@m', op: 'uninstall' } });
+  await page.clickButton('reload', { reloadSessions: '' });
+  await page.settle();
+  assert.deepEqual(page.posts.at(-1), { path: '/api/actions/reload', body: {} });
+  assert.match(page.el('setup-note').innerHTML, /Reloading plugins in 2 sessions; 1 on an older tracker mod/);
+});
+
+test('the MCP servers tab: yours, claude.ai connectors, per plugin and per project, each with how it is', async () => {
+  const page = loadPage({ replies: SETUP });
+  await page.clickButton('setup-open', {});
+  await page.settle();
+  const loading = page.clickButton('mcp-tab', { setupTab: 'mcp' });
+  assert.match(page.el('setup-body').innerHTML, /class="spinner"[\s\S]*Checking each server/);
+  await loading;
+  await page.settle();
+  const body = page.el('setup-body').innerHTML;
+  assert.match(body, /4 servers: 1 connected, 2 need sign-in, 1 failed/);
+  assert.match(body, /Yours[\s\S]*magic[\s\S]*Not authenticated[\s\S]*✗ Failed[\s\S]*plan[\s\S]*Needs sign-in[\s\S]*data-mcp-login="plan"/);
+  assert.match(body, /claude\.ai connectors[\s\S]*claude\.ai Gmail[\s\S]*Connected/);
+  assert.match(body, /From plugins[\s\S]*alpha[\s\S]*1 server · 1 needs sign-in/);
+  assert.match(body, /Per project[\s\S]*~\/proj[\s\S]*local1[\s\S]*data-mcp-remove="local1" data-project="\/Users\/me\/proj"/);
+  assert.doesNotMatch(body, /data-mcp-remove="plugin:alpha:extra"/, "a plugin's server is not removed here");
+  await page.clickButton('login', { mcpLogin: 'plan' });
+  await page.settle();
+  assert.deepEqual(page.posts.at(-1), { path: '/api/actions/mcp', body: { name: 'plan', op: 'login' } });
+  const removing = page.clickButton('remove', { mcpRemove: 'local1', project: '/Users/me/proj' });
+  await page.settle();
+  await page.clickButton('confirm-yes', { confirm: 'yes' });
+  await removing;
+  await page.settle();
+  assert.deepEqual(page.posts.at(-1), { path: '/api/actions/mcp', body: { name: 'local1', op: 'remove', project: '/Users/me/proj' } });
+  const odd = loadPage({ replies: { ...SETUP, '/api/claude/mcp': { ok: true } } });
+  await odd.clickButton('setup-open', {});
+  await odd.settle();
+  await odd.clickButton('mcp-tab', { setupTab: 'mcp' });
+  await odd.settle();
+  assert.match(odd.el('setup-body').innerHTML, /sent something unexpected/, 'an odd answer is said, not a crash');
+  await page.clickButton('check', { mcpCheck: '' });
+  assert.ok(page.gets.some(g => g.path === '/api/claude/mcp?fresh=1'), 'Check again asks for a fresh check');
+});
+
+test('the permission rules tab lists each file\'s rules, and removes one after asking', async () => {
+  const page = loadPage({ replies: SETUP });
+  await page.clickButton('setup-open', {});
+  await page.settle();
+  await page.clickButton('rules-tab', { setupTab: 'rules' });
+  await page.settle();
+  const body = page.el('setup-body').innerHTML;
+  assert.match(body, /You, everywhere[\s\S]*Allowed[\s\S]*Bash\(npm test:\*\)[\s\S]*Denied[\s\S]*Bash\(rm:\*\)[\s\S]*Extra folders[\s\S]*\/Users\/me\/data/);
+  const removing = page.clickButton('rm', { ruleRemove: '', path: '/Users/me/.claude/settings.json', list: 'deny', value: 'Bash(rm:*)' });
+  await page.settle();
+  assert.match(page.el('confirm-text').textContent, /Remove Bash\(rm:\*\) from Denied/);
+  await page.clickButton('confirm-yes', { confirm: 'yes' });
+  await removing;
+  await page.settle();
+  assert.deepEqual(page.posts.at(-1), { path: '/api/actions/rule', body: { path: '/Users/me/.claude/settings.json', list: 'deny', value: 'Bash(rm:*)' } });
 });
