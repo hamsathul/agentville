@@ -184,7 +184,8 @@ case "$1 $2" in
 esac
 `, { mode: 0o755 });
 writeFileSync(join(claudeDir, 'settings.json'), `${JSON.stringify({ permissions: { allow: ['Bash(npm test:*)'] } }, null, 2)}\n`);
-const handle = await startCollector({ root, claudeDir, claudeBin: fakeClaude, notify: () => {}, log: () => {}, home: '/nowhere', folderRoots: [realpathSync(temp)], scratchBase: '/nonexistent', sessionProcs, launch: async args => { launched.push(args.at(-1)); return { code: 0, stdout: '', stderr: '' }; } });
+// Finder's folder window is stood in for: it always picks the farm repo.
+const handle = await startCollector({ root, claudeDir, claudeBin: fakeClaude, notify: () => {}, log: () => {}, home: '/nowhere', folderRoots: [realpathSync(temp)], chooseFolder: async () => ({ path: `${join(realpathSync(temp), 'farm-repo')}/` }), scratchBase: '/nonexistent', sessionProcs, launch: async args => { launched.push(args.at(-1)); return { code: 0, stdout: '', stderr: '' }; } });
 const profile = join(temp, 'chrome');
 const chrome = spawn(CHROME, ['--headless=new', '--remote-debugging-port=0', `--user-data-dir=${profile}`, '--no-first-run', '--no-default-browser-check', '--hide-scrollbars', 'about:blank'], { stdio: 'ignore' });
 let ws;
@@ -536,6 +537,8 @@ try {
   await js("document.getElementById('sessions-open').click()");
   await until("document.getElementById('sessions').open");
   const typeDir = text => js(`(() => { const f = document.getElementById('sess-dir'); f.focus(); f.value = ${JSON.stringify(text)}; f.dispatchEvent(new Event('input', { bubbles: true })); })()`);
+  await js("document.getElementById('sess-dir-browse').click()");
+  check(await until(`document.getElementById('sess-dir').value === ${JSON.stringify(`${places}/farm-repo/`)} && !document.getElementById('sess-dir-new').disabled`), "Browse… fills the field with the folder picked in Finder's window");
   await typeDir('/etc/');
   check(await until("/home folder or a drive/.test(document.getElementById('sess-dir-note').textContent) && document.getElementById('sess-dir-new').disabled"), 'a folder outside your home folder and drives is refused');
   await typeDir(`${places}/fa`);

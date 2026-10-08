@@ -277,9 +277,11 @@ before you updated, run `/reload-plugins` in it.
 
 - **＋ Session** starts Claude Code in any folder, or resumes a past session.
   - **New session in any folder**: type or paste a path (`~/code/new-app`), and the folders in it
-    are suggested as you type. **Tab** completes a name as a terminal does, and **Browse** starts
-    from your home folder; click a folder to go into it, or `..` to go up. Hidden folders are
-    suggested once you type the dot.
+    are suggested as you type. **Tab** completes a name as a terminal does; click a folder to go
+    into it, or `..` to go up. Hidden folders are suggested once you type the dot.
+  - **Browse…** opens Finder's own folder window instead, in front of the browser, with its **New
+    Folder** button. The folder you pick fills the field. The first time, macOS may ask to let the
+    tracker control System Events, which shows that window.
   - A folder that doesn't exist yet gets **Create it**, which makes it (and any missing folders
     above it) after asking.
   - Only folders in your home folder or on a mounted drive (`/Volumes/…`) can be used.
@@ -529,6 +531,7 @@ canvas, with its text drawn as HTML on top so it stays crisp.
 | No cost, plan usage or working line | These come from the mod (0.4.0 or newer; the working line from 0.5.0) in a running session |
 | No pull requests or deploy weather | `gh auth status`. Pull requests need a GitHub `origin`; Actions runs need the repo in `deployRepos` |
 | ＋ Session or End session does nothing | Allow the tracker to control Terminal or iTerm: System Settings → Privacy & Security → Automation |
+| **Browse…** opens no window | Allow the tracker to control System Events: System Settings → Privacy & Security → Automation. A window may also be open behind others: pick or cancel it there |
 | The bell is silent | Click the page once (browsers block sound until you do), and allow notifications |
 
 ## Known limits

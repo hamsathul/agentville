@@ -1855,9 +1855,8 @@ test('a new session in any folder: type or browse, and the subfolders are sugges
   await page.settle();
   assert.equal(page.el('sess-dir').value, '');
   assert.equal(page.el('sess-dir-new').disabled, true, 'nothing to start in yet');
-  await page.clickButton('sess-dir-browse', {});
+  page.edit('input', { id: 'sess-dir', value: '~/' });
   await page.settle();
-  assert.equal(page.el('sess-dir').value, '~/', 'browsing starts at your home folder');
   assert.ok(page.gets.find(g => g.path === dirsOf('~/'))?.token, 'listed with the token');
   assert.match(page.el('sess-dir-list').innerHTML, /data-dir-go="~\/code\/"[^>]*>[\s\S]*code[\s\S]*data-dir-go="~\/Docs\/"/);
   assert.equal(page.el('sess-dir-list').hidden, false);
@@ -1871,6 +1870,30 @@ test('a new session in any folder: type or browse, and the subfolders are sugges
   assert.match(page.el('sess-dir-list').innerHTML, /data-dir-go="~\/"[^>]*>[\s\S]*\.\.[\s\S]*data-dir-go="~\/code\/api\/"/, '.. goes up');
   assert.equal(page.el('sess-dir-new').disabled, false);
   assert.match(page.el('sess-dir-note').textContent, /＋ New starts Claude Code in ~\/code/);
+});
+
+test("Browse opens Finder's own folder window, and the folder picked fills the field; a cancel changes nothing", async () => {
+  const replies = {
+    '/api/actions/choose-folder': { ok: true, path: '/Users/me/code', home: '/Users/me' },
+    [dirsOf('~/code/')]: dirsReply({ path: '/Users/me/code', exists: true, dir: '/Users/me/code', up: '/Users/me', dirs: ['api'] }),
+    '/api/sessions': { terminal: 'Terminal', projects: [], sessions: [] },
+  };
+  const page = loadPage({ replies });
+  await page.ctx.openSessions();
+  await page.clickButton('sess-dir-browse', {});
+  await page.settle();
+  assert.deepEqual(page.posts.at(-1), { path: '/api/actions/choose-folder', body: { prompt: 'Start a new Claude Code session in:' } });
+  assert.equal(page.el('sess-dir').value, '~/code/');
+  assert.equal(page.el('sess-dir-new').disabled, false);
+  replies['/api/actions/choose-folder'] = { ok: false, cancelled: true };
+  await page.clickButton('sess-dir-browse', {});
+  await page.settle();
+  assert.deepEqual(page.posts.at(-1).body, { start: '/Users/me/code', prompt: 'Start a new Claude Code session in:' }, 'it opens where the field is');
+  assert.equal(page.el('sess-dir').value, '~/code/');
+  replies['/api/actions/choose-folder'] = { ok: false, error: 'macOS did not let the tracker open the folder window.' };
+  await page.clickButton('sess-dir-browse', {});
+  await page.settle();
+  assert.match(page.el('sess-dir-note').textContent, /did not let the tracker/);
 });
 
 test('Tab completes a folder name as a terminal does', async () => {

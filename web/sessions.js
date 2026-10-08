@@ -211,6 +211,20 @@ async function completeDir() {
   return true;
 }
 
+/** Browse: Finder's own folder window (it has New Folder), opened where the field is; the folder picked fills the field. */
+async function browseForFolder(button) {
+  const d = sessDir.data;
+  button.disabled = true;
+  $('sess-dir-note').className = 'faint dir-note';
+  $('sess-dir-note').textContent = 'Pick a folder in the Finder window…';
+  const r = await post('/api/actions/choose-folder', { start: d?.exists ? d.path : d?.dir, prompt: 'Start a new Claude Code session in:' });
+  button.disabled = false;
+  if (r.ok) return setDir(`${tildeOf(r.path, r.home).replace(/\/$/, '')}/`);
+  if (r.cancelled) return renderDirs();
+  $('sess-dir-note').className = 'msg-bad dir-note';
+  $('sess-dir-note').textContent = r.error ?? 'The folder window could not open.';
+}
+
 /** Makes the folder typed (and any missing above it), after asking. */
 async function makeDir() {
   const d = sessDir.data;
@@ -264,7 +278,7 @@ $('sess-dir').addEventListener('keydown', e => {
 document.addEventListener('click', e => {
   const b = e.target.closest('button');
   if (!b) return;
-  if (b.id === 'sess-dir-browse') void setDir(sessDir.typed.trim() || '~/');
+  if (b.id === 'sess-dir-browse') return browseForFolder(b);
   else if (b.dataset.dirGo !== undefined) void setDir(b.dataset.dirGo);
   else if (b.dataset.dirMake !== undefined) return makeDir();
   else if (b.id === 'sess-dir-new' && sessDir.data?.exists) return startSession({ cwd: sessDir.data.path }, b);

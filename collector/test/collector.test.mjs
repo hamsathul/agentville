@@ -590,6 +590,34 @@ test('a session starts or resumes in a terminal only in a listed folder, or from
   }
 });
 
+test("Finder's own folder window picks a folder: one at a time, starting where asked or at home, and a cancel says so", async () => {
+  const root = mkdtempSync(join(tmpdir(), 'tracker-root-'));
+  mkdirSync(join(root, 'web'));
+  writeFileSync(join(root, 'web', 'index.html'), '<html></html>');
+  writeFileSync(join(root, 'config.json'), JSON.stringify({ port: 0, deployRepos: {} }));
+  const home = realpathSync(mkdtempSync(join(tmpdir(), 'tracker-home-')));
+  mkdirSync(join(home, 'code'));
+  const asked = [];
+  let answer = { path: `${join(home, 'code')}/` }, release;
+  const chooseFolder = async opts => { asked.push(opts); if (answer === 'hold') await new Promise(r => { release = r; }); return answer === 'hold' ? { path: home } : answer; };
+  const handle = await startCollector({ root, claudeDir: mkdtempSync(join(tmpdir(), 'tracker-claude-')), home, chooseFolder, claudeBin: '/usr/bin/false', notify: () => {}, log: () => {} });
+  try {
+    assert.deepEqual(await handle.actions.chooseFolder({ start: join(home, 'code'), prompt: 'Start a new session in:' }), { ok: true, path: join(home, 'code'), home });
+    assert.deepEqual(asked.at(-1), { start: join(home, 'code'), prompt: 'Start a new session in:' });
+    await handle.actions.chooseFolder({ start: '/no/such/folder' });
+    assert.deepEqual(asked.at(-1), { start: home, prompt: 'Choose a folder' }, 'a start that is not a folder: your home folder');
+    answer = { cancelled: true };
+    assert.deepEqual(await handle.actions.chooseFolder({}), { ok: false, cancelled: true });
+    answer = 'hold';
+    const first = handle.actions.chooseFolder({});
+    assert.match((await handle.actions.chooseFolder({})).error, /already open/);
+    release();
+    assert.equal((await first).ok, true);
+  } finally {
+    await handle.stop();
+  }
+});
+
 test('a new session starts in any folder of yours, made first if it is new, and nowhere else', async () => {
   const root = mkdtempSync(join(tmpdir(), 'tracker-root-'));
   mkdirSync(join(root, 'web'));

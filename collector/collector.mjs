@@ -71,6 +71,22 @@ function loadToken(path) {
   return token;
 }
 
+// macOS's own "Choose a folder" window (it has New Folder), asked of System Events so it comes up in
+// front of the browser; the app that was in front gets the focus back after. 5 minutes to pick.
+const CHOOSE_FOLDER = ['on run argv', 'set prev to path to frontmost application as text', 'try', 'with timeout of 300 seconds',
+  'tell application "System Events"', 'activate', 'set f to choose folder with prompt (item 2 of argv) default location (POSIX file (item 1 of argv))', 'end tell',
+  'end timeout', 'on error number n', 'try', 'tell application prev to activate', 'end try', 'if n is -128 then return "cancelled"', 'error number n', 'end try',
+  'try', 'tell application prev to activate', 'end try', 'return POSIX path of f', 'end run'];
+
+/** Finder's folder window: { path } picked, { cancelled }, or { error }. */
+async function chooseFolderMac({ start, prompt }) {
+  const r = await run('osascript', [...CHOOSE_FOLDER.flatMap(line => ['-e', line]), start, prompt], { timeoutMs: 310_000 });
+  const out = r.stdout.trim();
+  if (r.code === 0 && out === 'cancelled') return { cancelled: true };
+  if (r.code === 0 && out.startsWith('/')) return { path: out };
+  return { error: /-1743|not allowed|Not authorized/i.test(r.stderr) ? 'macOS did not let the tracker open the folder window: allow it to control System Events under System Settings → Privacy & Security → Automation.' : `The folder window could not open (${r.stderr.trim().split('\n')[0] || `exit ${r.code}`}).` };
+}
+
 /** Quick Look's picture of a document's first page (qlmanage -t), as PNG bytes. */
 async function quickLookPicture(real) {
   const dir = mkdtempSync(join(tmpdir(), 'agentville-ql-'));
@@ -84,7 +100,7 @@ async function quickLookPicture(real) {
   }
 }
 
-export async function startCollector({ root, claudeDir = join(homedir(), '.claude'), claudeBin = 'claude', home = homedir(), scratchBase = `/private/tmp/claude-${process.getuid?.() ?? 0}`, port: portOverride, deliveryTimeoutMs = 5000, notify = notifyMac, launch = args => run('osascript', args, { timeoutMs: 15_000 }), sessionProcs = systemProcs, endWaitMs = 8000, readProcs = readPs, deployStatusOf = deployStatus, pullRequestsOf = pullRequests, githubSlugOf = githubSlug, ticketMs = 600_000, quickLook = quickLookPicture, folderRoots = [home, '/Volumes'], revealFile = real => run('open', ['-R', real], { timeoutMs: 10_000 }), log = makeLogger(join(root, 'logs')) }) {
+export async function startCollector({ root, claudeDir = join(homedir(), '.claude'), claudeBin = 'claude', home = homedir(), scratchBase = `/private/tmp/claude-${process.getuid?.() ?? 0}`, port: portOverride, deliveryTimeoutMs = 5000, notify = notifyMac, launch = args => run('osascript', args, { timeoutMs: 15_000 }), sessionProcs = systemProcs, endWaitMs = 8000, readProcs = readPs, deployStatusOf = deployStatus, pullRequestsOf = pullRequests, githubSlugOf = githubSlug, ticketMs = 600_000, quickLook = quickLookPicture, folderRoots = [home, '/Volumes'], chooseFolder = chooseFolderMac, revealFile = real => run('open', ['-R', real], { timeoutMs: 10_000 }), log = makeLogger(join(root, 'logs')) }) {
   // readProcs, deployStatusOf, pullRequestsOf and githubSlugOf read the machine and GitHub; a test or the demo video passes stand-ins.
   const stateDir = join(root, 'state');
   const pendingDir = join(stateDir, 'pending');
@@ -557,6 +573,7 @@ export async function startCollector({ root, claudeDir = join(homedir(), '.claud
   }
   /** Folders to start a session in, suggested as you type (only in your home folder or on a drive). */
   const dirsFor = typed => listDirs(typed, { home, roots: folderRoots });
+  let choosing = false; // Finder's folder window is open
 
   /** A document read for the reader: a sheet's tables, a Word document as a page and as text, or a first-page picture. */
   async function officeView(agentId, path) {
@@ -852,6 +869,20 @@ export async function startCollector({ root, claudeDir = join(homedir(), '.claud
       const agent = snapshot?.agents.find(a => a.id === body.agentId);
       if (body.decision === 'always' && !modAtLeast(agent?.mod?.version, '0.6.0')) return { ok: false, error: `That session runs an older tracker mod (${agent?.mod?.version}). Run /reload-plugins in it (or resume it) for Always allow.` };
       return deliver(ask.toolUseId, { decision: body.decision });
+    },
+    /** Opens Finder's folder window (one at a time), at `start` if that is a folder, else at home: { ok, path } or { ok: false, cancelled | error }. */
+    async chooseFolder(body) {
+      if (choosing) return { ok: false, error: 'A folder window is already open: pick a folder there first (it may be behind this one).' };
+      const start = typeof body?.start === 'string' && isAbsolute(body.start) && isDir(body.start) ? body.start : home;
+      const prompt = typeof body?.prompt === 'string' && body.prompt.trim() ? body.prompt.trim().slice(0, 120) : 'Choose a folder';
+      choosing = true;
+      try {
+        const got = await chooseFolder({ start, prompt });
+        if (got.path) return { ok: true, path: got.path.length > 1 ? got.path.replace(/\/+$/, '') : got.path, home }; // home: the page shows it as ~
+        return got.cancelled ? { ok: false, cancelled: true } : { ok: false, error: got.error ?? 'No folder was picked.' };
+      } finally {
+        choosing = false;
+      }
     },
     /** Makes a folder to start a session in (and any missing above it), only in your home folder or on a drive. */
     async mkdir(body) {

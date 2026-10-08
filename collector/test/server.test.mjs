@@ -43,6 +43,7 @@ async function start() {
       plugin: async body => { calls.push(['plugin', body]); return { ok: true }; },
       reveal: async body => { calls.push(['reveal', body]); return { ok: true }; },
       mkdir: async body => { calls.push(['mkdir', body]); return { ok: true, path: '/Users/me/new' }; },
+      chooseFolder: async body => { calls.push(['choose', body]); return { ok: true, path: '/Users/me/picked' }; },
       reload: async () => { calls.push(['reload']); return { ok: true, sessions: 2 }; },
       mcp: async body => { calls.push(['mcp', body]); return { ok: true }; },
       rule: async body => { calls.push(['rule', body]); return { ok: true }; },
@@ -343,6 +344,9 @@ test('folders to start in are listed only with the token, and made only from the
     assert.equal((await request(port, { method: 'POST', path: '/api/actions/mkdir', headers: { 'x-tracker-token': 'tok', origin: 'https://evil.example', 'content-type': 'application/json' }, body })).status, 403);
     assert.equal((await request(port, { method: 'POST', path: '/api/actions/mkdir', headers: { 'x-tracker-token': 'tok', origin: `http://127.0.0.1:${port}`, 'content-type': 'application/json' }, body })).status, 200);
     assert.deepEqual(calls.at(-1), ['mkdir', { path: '~/new' }]);
+    const pick = JSON.stringify({ start: '/Users/me' });
+    assert.equal((await request(port, { method: 'POST', path: '/api/actions/choose-folder', headers: { 'x-tracker-token': 'tok', origin: 'https://evil.example', 'content-type': 'application/json' }, body: pick })).status, 403, "only the dashboard opens Finder's window");
+    assert.equal(JSON.parse((await request(port, { method: 'POST', path: '/api/actions/choose-folder', headers: { 'x-tracker-token': 'tok', origin: `http://127.0.0.1:${port}`, 'content-type': 'application/json' }, body: pick })).body).path, '/Users/me/picked');
   } finally {
     await srv.close();
   }
