@@ -491,11 +491,14 @@
     // the bottom edge: a strip of meadow, then the forest
     for (let x = 4; x < W - 4; x += 9) { const n = noise(x, 999); if (n < 300) f(x, H - 6 + (n % 3), 1, 2, S.tuft); }
   }
-  /** A project's beds, row by row: [[row, [columns]]]. */
+  /** A project's beds in runs side by side, row by row: [[row, [columns]]]. Another repo's bed between them splits a run. */
   function rowsOfGroup(g) {
-    const rows = new Map();
-    for (const i of g.slots) rows.set(Math.floor(i / 3), [...(rows.get(Math.floor(i / 3)) ?? []), i % 3]);
-    return [...rows];
+    const runs = [];
+    for (const i of [...g.slots].sort((a, b) => a - b)) {
+      const last = runs.at(-1), r = Math.floor(i / 3), c = i % 3;
+      if (last && last[0] === r && last[1].at(-1) === c - 1) last[1].push(c); else runs.push([r, [c]]);
+    }
+    return runs;
   }
   /** The market stall by the lane: a striped awning over a counter; crates for open pull requests go on it each frame. */
   function stall(f, X, Y, S) {
@@ -725,12 +728,8 @@
     const parts = String(path).split('/').filter(Boolean).slice(0, -1);
     return parts.length >= 3 && !CATCH_ALL.has(parts.at(-1).toLowerCase()) ? `/${parts.join('/')}` : null;
   }
-  /**
-   * Which bed each field gets: the repos of one project side by side under its sign (a worktree
-   * right after its repo), kept to one row when they fit; beds left between groups lie empty.
-   * Returns { slotOf: key → bed number, groups: [{ name, keys }] }.
-   */
-  function arrange(fields) {
+  /** The fields as units to place: a project's repos together, else a repo alone; a worktree right after its repo. */
+  function unitsOf(fields) {
     const byKey = new Map(fields.map(f => [f.key, f]));
     const home = f => (f.worktree && f.main ? f.main : f.key);
     const units = new Map();
@@ -746,7 +745,17 @@
       u.keys = order;
       if (u.project && new Set(u.keys.map(k => home(byKey.get(k)))).size < 2) u.project = null; // one repo is no project
     }
-    const slotOf = new Map(), queue = [...units.values()];
+    return { byKey, units: [...units.values()] };
+  }
+  const groupsOf = units => units.filter(u => u.project).map(u => ({ name: u.project.split('/').pop(), keys: u.keys }));
+  /**
+   * Which bed each field gets, the first time: the repos of one project side by side under its sign
+   * (a worktree right after its repo), kept to one row when they fit; beds left between groups lie empty.
+   * Returns { slotOf: key → bed number, groups: [{ name, keys }] }.
+   */
+  function arrange(fields) {
+    const { units } = unitsOf(fields);
+    const slotOf = new Map(), queue = [...units];
     let row = 0, col = 0;
     const place = u => { for (const k of u.keys) { slotOf.set(k, row * 3 + col); if (++col === 3) { col = 0; row++; } } };
     while (queue.length) {
@@ -758,10 +767,52 @@
       }
       place(queue.shift());
     }
-    return { slotOf, groups: [...units.values()].filter(u => u.project).map(u => ({ name: u.project.split('/').pop(), keys: u.keys })) };
+    return { slotOf, groups: groupsOf(units) };
   }
-  function layoutFor(fields) {
-    const { slotOf, groups } = arrange(fields);
+  // A field keeps its bed; one that leaves keeps it held for a day, so it comes back to the same place.
+  const BED_HELD_MS = 86_400_000;
+  /**
+   * Beds that stay put, from `beds` (key → { i, left? }: the bed each field had, and when it left).
+   * A field keeps its bed; a new one takes the free bed nearest its own (a worktree right after its
+   * repo, a repo beside its project's), else the first free one. Nothing remembered: arrange() lays
+   * the farm out. Returns { slotOf, groups, beds } (beds: what to remember now).
+   */
+  function placeBeds(fields, beds, now) {
+    if (!Object.keys(beds).length) {
+      const { slotOf, groups } = arrange(fields);
+      return { slotOf, groups, beds: Object.fromEntries([...slotOf].map(([k, i]) => [k, { i }])) };
+    }
+    const { byKey, units } = unitsOf(fields);
+    const slotOf = new Map(), kept = {}, taken = new Set(), held = new Set();
+    for (const [k, b] of Object.entries(beds)) {
+      if (!Number.isInteger(b?.i)) continue;
+      if (byKey.has(k)) { if (!taken.has(b.i)) { slotOf.set(k, b.i); taken.add(b.i); kept[k] = { i: b.i }; } }
+      else if (now - (b.left ?? now) < BED_HELD_MS) { kept[k] = { i: b.i, left: b.left ?? now }; held.add(b.i); }
+    }
+    const dist = (i, j) => Math.abs(Math.floor(i / 3) - Math.floor(j / 3)) * 10 + Math.abs((i % 3) - (j % 3));
+    const free = () => Array.from({ length: MAX_FIELDS }, (_, i) => i).filter(i => !taken.has(i) && !held.has(i));
+    for (const u of units) {
+      for (const k of u.keys) {
+        if (slotOf.has(k)) continue;
+        const f = byKey.get(k), open = free();
+        const near = f.worktree && slotOf.has(f.main) ? [slotOf.get(f.main)] : u.project ? u.keys.filter(x => slotOf.has(x)).map(x => slotOf.get(x)) : [];
+        let i;
+        if (!open.length) i = MAX_FIELDS + slotOf.size; // the grid is full: "+N more"
+        else if (near.length) {
+          const next = near.map(n => n + 1).find(n => n % 3 !== 0 && open.includes(n)); // right after it, in the same row
+          i = next ?? open.reduce((best, b) => (Math.min(...near.map(n => dist(b, n))) < Math.min(...near.map(n => dist(best, n))) ? b : best));
+        } else i = open[0];
+        slotOf.set(k, i);
+        taken.add(i);
+        kept[k] = { i };
+      }
+    }
+    return { slotOf, groups: groupsOf(units), beds: kept };
+  }
+  /** The ground for these fields: the beds remembered in `beds` stay put (null: laid out afresh, as arrange() does). */
+  function layoutFor(fields, beds = null, now = Date.now()) {
+    const placed = beds ? placeBeds(fields, beds, now) : { ...arrange(fields), beds: null };
+    const { slotOf, groups } = placed;
     const shown = fields.filter(f => slotOf.get(f.key) < MAX_FIELDS);
     const last = Math.max(-1, ...shown.map(f => slotOf.get(f.key)));
     const rows = Math.min(MAX_ROWS, Math.max(MIN_ROWS, Math.floor(last / 3) + 1));
@@ -770,9 +821,11 @@
     const used = new Set(ST.map(s => s.i));
     const GRID = { x0: 128, x1: 396, y0: 96, y1: 104 + rows * ROWH }; // the fields' fence
     return {
-      key: ST.map(s => `${s.key}@${s.i}`).join('\n'), ST, slots, empty: slots.filter(s => !used.has(s.i)), rows, PORCH_Y, LANE, GRID, H: GRID.y1 + 28,
+      // the key goes by bed: the same ground, whatever order the repos are listed in
+      key: [...ST].sort((a, b) => a.i - b.i).map(s => `${s.key}@${s.i}`).join('\n'), ST, slots, empty: slots.filter(s => !used.has(s.i)), rows, PORCH_Y, LANE, GRID, H: GRID.y1 + 28,
       groups: groups.map(g => ({ name: g.name, slots: g.keys.filter(k => slotOf.get(k) < rows * 3).map(k => slotOf.get(k)) })).filter(g => g.slots.length),
       more: fields.length - shown.length,
+      beds: placed.beds,
     };
   }
 
@@ -1267,7 +1320,7 @@
         return events;
       },
       layout: () => L,
-      relayout(fields) { L = layoutFor(fields); return L; },
+      relayout(ground) { L = ground; return L; }, // a layoutFor() result
       // Where each farmer stands. Porch, scarecrows, the tree and the meadow hold a few each; the rest show as a "+N" sign.
       slots(f) {
         const s = f.state === 'working' ? stOf(f.field) : null;
@@ -1680,6 +1733,10 @@
     const ZOOMS = [0.5, 0.75, 1, 1.25, 1.5, 2, 2.5, 3];
     const stored = key => { try { return localStorage.getItem(key); } catch { return null; } };
     const keep = (key, value) => { try { localStorage.setItem(key, value); } catch { /* this page only */ } };
+    // The bed each field has had, kept across reloads, so fields stay put as repos and worktrees come and go.
+    let beds = (() => { try { const b = JSON.parse(stored('tracker-farm-beds') ?? '{}'); return b && typeof b === 'object' && !Array.isArray(b) ? b : {}; } catch { return {}; } })();
+    const groundFor = fields => layoutFor(fields, beds);
+    const settle = ground => { beds = ground.beds; keep('tracker-farm-beds', JSON.stringify(beds)); th.relayout(ground); layoutKey = ground.key; };
     let zoom = ZOOMS.includes(Number(stored('tracker-farm-zoom'))) ? Number(stored('tracker-farm-zoom')) : 1;
     let saysOn = stored('tracker-farm-bubbles') !== 'off';
     // The sky: live (your clock), or held at day or night.
@@ -2152,10 +2209,9 @@
       }
       scene = next;
       const news = th.setScene(next) ?? [];
-      const want = layoutFor(next.fields).key;
-      if (want !== layoutKey) { // fields came or went: new ground; farmers walk to their new spots
-        th.relayout(next.fields);
-        layoutKey = want;
+      const want = groundFor(next.fields);
+      if (want.key !== layoutKey) { // fields came or went: new ground; farmers walk to their new spots
+        settle(want);
         if (canvas) { bg = buildBg(); resize(); }
       }
       if (!canvas) return;
@@ -2356,8 +2412,7 @@
         for (const b of bots.values()) { b.tag = null; b.tagText = ''; }
         layoutKey = null;
         labelKey = '';
-        th.relayout(scene.fields);
-        layoutKey = layoutFor(scene.fields).key;
+        settle(groundFor(scene.fields));
         renderHud(); // before the first fit: the panel's and switches' size place the farm
         bg = buildBg();
         resize();
@@ -2637,6 +2692,6 @@
       view.unmount();
       mounted = false;
     },
-    toScene, fieldOf, weatherOf, contextPct, askText, helpHtml, layoutFor,
+    toScene, fieldOf, weatherOf, contextPct, askText, helpHtml, layoutFor, rowsOfGroup,
   };
 })();

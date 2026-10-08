@@ -189,6 +189,23 @@ try {
   })()`);
   const fits = sel => js(`(() => { const p = document.querySelector('${sel}'), pre = p.querySelector('.bub pre'); return !!pre && p.scrollWidth <= p.clientWidth + 1 && pre.scrollWidth > pre.clientWidth; })()`);
   check(await fits('#center-body'), `a reply with a wide code block scrolls inside its bubble; the agent panel doesn't scroll sideways (${await sideways('#center-body')})`);
+  // The conversation dialog: the whole conversation, oldest first, with search.
+  await js("document.querySelector('#center-body [data-convo]').click()");
+  check(await until("document.getElementById('convo').open && document.querySelectorAll('#convo-body .bub').length >= 3"), '⤢ Read all opens the whole conversation in a dialog');
+  check(await js("document.querySelector('#convo-body .bub').textContent.includes('Plan the next crop')"), 'oldest first');
+  const search = q => js(`(() => { const i = document.getElementById('convo-q'); i.value = ${JSON.stringify(q)}; i.dispatchEvent(new Event('input', { bubbles: true })); })()`);
+  const enter = (shift = false) => js(`document.getElementById('convo-q').dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', shiftKey: ${shift}, bubbles: true }))`);
+  await search('BARLEY');
+  check(await until("document.getElementById('convo-count').textContent === '1 of 6'"), `a search counts its matches, any case, starting at the newest (${await js("document.getElementById('convo-count').textContent")})`);
+  check(await js("CSS.highlights.get('convo-hit')?.size === 6 && CSS.highlights.get('convo-now')?.size === 1"), 'every match is highlighted in place, the current one apart');
+  await enter();
+  check(await until("document.getElementById('convo-count').textContent === '2 of 6'"), 'Enter goes to the next older match');
+  await enter(true);
+  check(await until("document.getElementById('convo-count').textContent === '1 of 6'"), 'Shift+Enter comes back');
+  await search('no such words');
+  check(await until("document.getElementById('convo-count').textContent === 'No matches'"), 'no match says so');
+  await js("document.getElementById('convo').close()");
+  check(await until("!document.getElementById('convo').open && !CSS.highlights.has('convo-hit')"), 'closing it clears the highlights');
   const key = (type, mods = 0) => send('Input.dispatchKeyEvent', { type, key: 'Enter', code: 'Enter', windowsVirtualKeyCode: 13, modifiers: mods, ...(type === 'keyDown' ? { text: '\r' } : {}) }); // a real key press carries its text
   await js("document.getElementById('msg-text').focus()");
   await send('Input.insertText', { text: 'First line' });
@@ -225,6 +242,7 @@ try {
   check(await js("getComputedStyle(document.querySelector('header.top')).display === 'none' && getComputedStyle(document.getElementById('kpis')).display === 'none'"), 'the farm fills the window: no top bar or count cards above it');
   check(/waiting on you[\s\S]*working[\s\S]*your turn[\s\S]*collisions/.test(await js("document.querySelector('.px-stats').textContent")) && /RAM[\s\S]*CPU/.test(await js("document.querySelector('.px-stats').textContent")), "the count cards and the top bar's meters are in the farm's panel");
   check(await until("[...document.querySelectorAll('.px-lab')].some(l => l.textContent.startsWith('farm-repo'))"), 'the repo is a field');
+  check(await js(`Number.isInteger(JSON.parse(localStorage.getItem('tracker-farm-beds') || '{}')[${JSON.stringify(repo)}]?.i)`), 'the farm remembers which bed the field has, so it stays put as repos come and go');
   await js("document.querySelector('[data-farm-help]').click()");
   check(await js("document.querySelector('.px-help').open"), 'the info button opens how to read the farm');
   await js("document.querySelector('[data-farm-help-close]').click()");

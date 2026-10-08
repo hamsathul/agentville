@@ -346,6 +346,50 @@ test('a farmer carries its task list, thinking, model, a plan to approve, its er
   assert.deepEqual(plain(toScene(snapOf(agents, [])).subagents).map(s => [s.parent, s.label, s.type]), [['a', 'Look around', 'Explore']]);
 });
 
+test('fields keep their beds: a new repo or worktree takes a free bed and moves no one', () => {
+  const { layoutFor } = load();
+  const f = (key, over = {}) => ({ key, ...over });
+  const bedsOf = L => Object.fromEntries(L.ST.map(s => [s.key, s.i]));
+  const A = '/Users/me/code/a', B = '/Users/me/code/b', C = '/Users/me/code/c', N = '/Users/me/code/new';
+  let L = plain(layoutFor([f(A), f(B), f(C)], {}, NOW));
+  assert.deepEqual(bedsOf(L), { [A]: 0, [B]: 1, [C]: 2 }, 'nothing remembered: laid out as before');
+  L = plain(layoutFor([f(N), f(C), f(A), f(B)], L.beds, NOW + 1)); // the new one comes first in the list (more agents)
+  assert.deepEqual(bedsOf(L), { [A]: 0, [B]: 1, [C]: 2, [N]: 3 }, 'it takes the first free bed; the order of the list moves no one');
+  assert.equal(plain(layoutFor([f(C), f(B), f(A), f(N)], L.beds, NOW + 2)).key, L.key, 'agents moving between repos move nothing');
+  // a worktree goes right after its repo when that bed is free, else to the free bed nearest it
+  const W = `${A}/.claude/worktrees/x`, wt = { worktree: true, main: A };
+  assert.equal(plain(layoutFor([f(A), f(C), f(W, wt)], { [A]: { i: 0 }, [C]: { i: 2 } }, NOW)).ST.find(s => s.key === W).i, 1);
+  assert.equal(plain(layoutFor([f(A), f(B), f(C), f(N), f(W, wt)], L.beds, NOW)).ST.find(s => s.key === W).i, 4, 'row 0 is full: the nearest free bed');
+  // a repo of a project goes beside its project's fields
+  const API = '/Users/me/work/shop/api', WEB = '/Users/me/work/shop/web';
+  const P = plain(layoutFor([f(A), f(API), f(WEB)], { [A]: { i: 0 }, [API]: { i: 3 } }, NOW));
+  assert.equal(P.ST.find(s => s.key === WEB).i, 4);
+  assert.deepEqual(P.groups, [{ name: 'shop', slots: [3, 4] }]);
+});
+
+test("a field that leaves leaves its bed empty and held for a day: it comes back to it; then the bed is free", () => {
+  const { layoutFor } = load();
+  const f = key => ({ key });
+  const bedsOf = L => Object.fromEntries(L.ST.map(s => [s.key, s.i]));
+  const A = '/Users/me/code/a', B = '/Users/me/code/b', C = '/Users/me/code/c', N = '/Users/me/code/new';
+  let L = plain(layoutFor([f(A), f(B), f(C)], {}, NOW));
+  L = plain(layoutFor([f(A), f(C)], L.beds, NOW + 1));
+  assert.deepEqual(bedsOf(L), { [A]: 0, [C]: 2 }, 'C stays put: nothing slides into the gap');
+  assert.ok(L.empty.some(s => s.i === 1));
+  L = plain(layoutFor([f(A), f(C), f(N)], L.beds, NOW + 2));
+  assert.equal(bedsOf(L)[N], 3, "a new field leaves B's bed alone while it is held");
+  const back = plain(layoutFor([f(A), f(B), f(C), f(N)], L.beds, NOW + 3));
+  assert.equal(bedsOf(back)[B], 1, 'B comes back to its bed');
+  const later = plain(layoutFor([f(A), f(C), f(N), f('/Users/me/code/next')], L.beds, NOW + 1 + 86_400_000 + 1));
+  assert.equal(bedsOf(later)['/Users/me/code/next'], 1, 'a day on, the bed is free for a new field');
+});
+
+test("a project's outline goes round each run of its beds side by side, never round another repo's bed", () => {
+  const { rowsOfGroup } = load();
+  assert.deepEqual(plain(rowsOfGroup({ slots: [3, 4] })), [[1, [0, 1]]]);
+  assert.deepEqual(plain(rowsOfGroup({ slots: [2, 0, 5] })), [[0, [0]], [0, [2]], [1, [2]]], 'beds 0 and 2 with another repo between them: two outlines');
+});
+
 test("a project's repos sit side by side under its sign, a worktree right after its repo; the grid grows with the repos", () => {
   const { layoutFor } = load();
   const f = (key, over = {}) => ({ key, ...over });

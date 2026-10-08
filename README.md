@@ -276,8 +276,10 @@ game's.
 
 **The layout.** Along the top are the barn, the silo and your farmhouse, with **your porch** in
 front of it. Below them are the fields, one raised bed per repo, in a fenced grid that grows to 18
-beds. The yard down the left holds the henhouse, the meadow, the pond and the shade tree, and a
-forest surrounds the farm.
+beds. A field keeps its bed: a new repo takes a free one (a worktree right after its repo, a
+project's repo beside the others), and nothing else moves. A repo that goes away leaves its bed
+empty, held for it for a day. The yard down the left holds the henhouse, the meadow, the pond and
+the shade tree, and a forest surrounds the farm.
 
 **Reading the farm.** The **i** button opens the full legend, including every tool a farmer
 can hold.
