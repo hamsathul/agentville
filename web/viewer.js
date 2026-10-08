@@ -56,7 +56,7 @@ function docsHtml(a) {
   if (!a.docs?.length) return '';
   return `<div class="sec">Documents</div><div class="docs">${a.docs.map(d => {
     const dir = docLabel(a, d.path).split('/').slice(0, -1).join('/');
-    return `<button class="doc" type="button" data-doc-agent="${esc(a.id)}" data-doc-path="${esc(d.path)}" data-tip="${esc(short(d.path))}"><span aria-hidden="true">📄</span><span class="doc-name">${esc(docName(d.path))}</span><span class="doc-dir faint">${esc(short(dir))}</span><span class="chip ${d.wrote ? 'c-warn' : 'c-plain'}">${d.wrote ? 'written' : 'read'}</span><span class="faint">${hhmm(d.at)}</span></button>`;
+    return `<button class="doc" type="button" data-doc-agent="${esc(a.id)}" data-doc-path="${esc(d.path)}" data-tip="${esc(short(d.path))}"><span aria-hidden="true">${fileIcon(d.path)}</span><span class="doc-name">${esc(docName(d.path))}</span><span class="doc-dir faint">${esc(short(dir))}</span><span class="chip ${d.wrote ? 'c-warn' : 'c-plain'}">${d.wrote ? 'written' : 'read'}</span><span class="faint">${hhmm(d.at)}</span></button>`;
   }).join('')}</div>`;
 }
 
@@ -335,6 +335,78 @@ async function sendReaderReply() {
     : `Not sent: ${r.error}`;
 }
 
+/* ---------- files an agent names in its replies ---------- */
+// A screenshot it took, a video it recorded, a plan it wrote: each path in a reply is checked once with
+// the collector (only what the dashboard may show: inside its folder, scratchpad or memory, never ignored
+// or secret files), then shows under the reply as a thumbnail or a chip that opens the file dialog.
+const NAMED_EXT = /\.(png|jpe?g|gif|webp|avif|svg|bmp|pdf|mp4|m4v|webm|mov|mp3|m4a|wav|ogg|flac|aac|html?|docx?|rtf|odt|xlsx|csv|pptx?|key|pages|numbers|md|markdown|mdx)$/i;
+const NAMED_FRESH_MS = 8 * 60_000; // a thumbnail's link lasts 10 minutes: asked again before then
+const namedChecks = new Map(); // agent id + path as written → { ok, kind, path, url, at }
+const namedWanted = new Map(); // agent id → paths to check
+const namedAsking = new Set(); // agent id + path, being checked now
+let namedTimer = 0;
+
+/** The file paths a reply names, in the order they come: in backticks (spaces allowed there) or bare. */
+function namedPaths(text) {
+  const s = String(text ?? ''), found = [];
+  for (const m of s.matchAll(/`([^`\n<>|]{1,300})`/g)) {
+    const p = m[1].trim();
+    if (NAMED_EXT.test(p) && (/^(?:~\/|\.{0,2}\/)/.test(p) || !/\s/.test(p))) found.push([m.index, p]);
+  }
+  for (const m of s.matchAll(/(?:^|[\s(\[<"'*])((?:~\/|\.{1,2}\/|\/)?[\w@%+~.-]+(?:\/[\w@%+~.-]+)*\.[A-Za-z0-9]{2,8})(?=$|[\s)\]>"'`*,;:!?]|\.(?:\s|$))/g)) {
+    if (NAMED_EXT.test(m[1])) found.push([m.index, m[1]]);
+  }
+  return [...new Set(found.sort((x, y) => x[0] - y[0]).map(([, p]) => p))].slice(0, 12);
+}
+
+/** Under a reply: the files it names that can be shown, as a slot filled in again once they are checked. */
+function namedSlotHtml(agentId, text) {
+  const paths = namedPaths(text);
+  if (!paths.length) return '';
+  return `<div class="named-slot" data-named-agent="${esc(agentId)}" data-named-paths="${esc(JSON.stringify(paths))}">${namedInner(agentId, paths)}</div>`;
+}
+function namedInner(agentId, paths) {
+  const now = Date.now(), shown = new Set(), out = [], ask = [];
+  for (const p of paths) {
+    const key = `${agentId}\n${p}`, k = namedChecks.get(key);
+    if ((!k || now - k.at > NAMED_FRESH_MS) && !namedAsking.has(key)) ask.push(p);
+    if (!k?.ok || shown.has(k.path)) continue;
+    shown.add(k.path);
+    const tip = esc(short(k.path));
+    out.push(k.kind === 'image' && k.url
+      ? `<button type="button" class="named-pic" data-open-named="${esc(k.path)}" data-agent="${esc(agentId)}" data-tip="${tip}"><img src="${esc(k.url)}" alt="${esc(docName(k.path))}" loading="lazy"></button>`
+      : `<button type="button" class="named-file" data-open-named="${esc(k.path)}" data-agent="${esc(agentId)}" data-tip="${tip}">${fileIcon(k.path)} ${esc(docName(k.path))}</button>`);
+  }
+  if (ask.length) wantNamed(agentId, ask);
+  return out.length ? `<div class="named">${out.join('')}</div>` : '';
+}
+function wantNamed(agentId, paths) {
+  if (!namedWanted.has(agentId)) namedWanted.set(agentId, new Set());
+  for (const p of paths) namedWanted.get(agentId).add(p);
+  if (namedTimer) return;
+  namedTimer = 1;
+  setTimeout(() => void checkNamed(), 50); // one request for all the replies drawn together
+}
+async function checkNamed() {
+  namedTimer = 0;
+  const batch = [...namedWanted];
+  namedWanted.clear();
+  for (const [agentId, set] of batch) {
+    const paths = [...set].slice(0, 20), keys = paths.map(p => `${agentId}\n${p}`);
+    keys.forEach(k => namedAsking.add(k));
+    let items = [];
+    try {
+      const r = await fetch(`/api/agent/${encodeURIComponent(agentId)}/named?${paths.map(p => `path=${encodeURIComponent(p)}`).join('&')}`, { headers: { 'x-tracker-token': TOKEN } });
+      items = r.ok ? (await r.json()).items ?? [] : [];
+    } catch { /* asked again later */ }
+    const at = Date.now();
+    keys.forEach(k => namedAsking.delete(k));
+    for (const p of paths) namedChecks.set(`${agentId}\n${p}`, { ...(items.find(i => i.asked === p) ?? { ok: false }), at });
+  }
+  requestRender(); // not while you select text or type
+  for (const el of document.querySelectorAll('#convo-body .named-slot')) el.innerHTML = namedInner(el.dataset.namedAgent, JSON.parse(el.dataset.namedPaths));
+}
+
 /* ---------- the centre: the agent you're looking at, and the files you opened from it ---------- */
 
 function centreAgent() {
@@ -355,7 +427,7 @@ function renderCentre() {
     body.className = 'center-body';
     body.innerHTML = '<div class="empty">No agents are running.</div>';
     shownKey = '';
-    reader = null;
+    if (!reader?.dialog) reader = null; // a file in the dialog stays open
     return;
   }
   const t = tabsOf(a.id);
@@ -363,7 +435,7 @@ function renderCentre() {
   $('center-tabs').innerHTML = tabsHtml(a, t);
   const key = `${a.id}\n${t.active}`;
   if (!t.active || t.active === '@subagents') {
-    reader = null;
+    if (!reader?.dialog) reader = null;
     shownKey = key;
     body.className = 'center-body';
     body.innerHTML = t.active ? subagentsHtml(a) : overviewHtml(a);

@@ -6,7 +6,7 @@ let convoTimer = 0; // a search waiting for typing to pause
 
 const convoWhen = ms => new Date(ms).toLocaleString([], { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
 
-/** One message as the dialog shows it: nothing to click, it is for reading. */
+/** One message as the dialog shows it, for reading: only the files a reply names open (in the file dialog). */
 function convoBubble(m) {
   const when = `<time>${esc(convoWhen(m.at))}</time>`;
   if (m.kind === 'prompt') return `<div class="bub you"><div class="cv-text">${esc(m.body || m.text)}</div>${when}</div>`;
@@ -14,7 +14,7 @@ function convoBubble(m) {
     const head = m.dir === 'in' ? `from ${esc(m.other)}` : m.helper ? 'to a helper agent' : `to ${esc(m.other)}`;
     return `<div class="bub peer ${m.dir === 'in' ? 'in' : 'out'}"><div class="peer-head">✉ ${head}${m.summary ? ` · ${esc(m.summary)}` : ''}</div><div class="bub-md cv-text">${renderMarkdown(m.body || m.text)}</div>${when}</div>`;
   }
-  return `<div class="bub agent"><div class="bub-md cv-text">${renderMarkdown(m.body || m.text)}</div>${when}</div>`;
+  return `<div class="bub agent"><div class="bub-md cv-text">${renderMarkdown(m.body || m.text)}</div>${namedSlotHtml(convo.id, m.body || m.text)}${when}</div>`;
 }
 
 async function fetchConversation(from) {

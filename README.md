@@ -86,6 +86,8 @@ It listens on `127.0.0.1` only and reads what Claude Code already writes to disk
 - Open specs and plans it wrote, quote a passage and reply about it.
 - See pictures, PDFs, video, audio, HTML pages (as the page itself), Word documents and
   spreadsheets as themselves, not as code.
+- Ask an agent for a screenshot or a screen recording: the file its reply names shows under the
+  reply, and one click opens it.
 
 **Get told when it matters**
 - macOS notifications when an agent needs you, finishes, collides with another or runs hot.
@@ -357,7 +359,18 @@ The **⚙ Claude Code** button in the top bar opens your Claude Code setup in th
   | Anything else (zip, fonts…) | a note saying it can't be shown |
 
 - **Show in Finder** reveals the file, to open it in its own app. It never opens or runs it.
-- **Documents** lists the specs, plans and other markdown files the agent wrote or read.
+- **Documents** lists the specs, plans and other markdown files the agent wrote or read, and the
+  pictures, videos and PDFs (a screenshot it checked, say).
+- **Files a reply names.** When an agent's reply names a picture, a video, a PDF or a document (a
+  screenshot it took, a recording it made, a plan it wrote), it shows under the reply: a thumbnail
+  for a picture, a chip for the rest. One click opens it in the file dialog, in the list view too.
+  This works in the conversation dialog as well.
+  - Only files the dashboard may show get one: inside the agent's folder, scratchpad or memory, and
+    neither git-ignored nor secret-looking. The rest stay plain text.
+  - So ask it to save them in its scratchpad: *"Take a screenshot of the login page and save it in
+    your scratchpad"*, or *"Record 10 seconds of the app with `screencapture -v` into your
+    scratchpad"*. Taking pictures of the screen needs Screen Recording permission for the terminal
+    app the session runs in. The Chrome tool saves its GIFs to Downloads, which can't be shown.
 - In a file with text (code, markdown, a page's Source, a document's Text, a sheet), select a
   passage and **Quote** it, then reply. Quotes from code keep their line numbers, and the agent
   gets your reply as a message about that file. The reply box is there for every kind.
@@ -521,6 +534,9 @@ canvas, with its text drawn as HTML on top so it stays crisp.
   servers or anything else: the collector checks again in `ps`, then sends SIGTERM to the command's
   own process group (SIGKILL 3 s later if anything is left). A background command's output is read
   only with the token, and only from the file Claude Code named for it in the scratch folder.
+- Files a reply names are checked with the collector before anything shows: token only, the same
+  rules as the explorer. A picture's thumbnail loads through a short-lived link, kept by your
+  browser only while the link lasts.
 - Folders to start a session in are listed only with the token, and only in your home folder or
   on a drive. Making one is an action (token and same origin). Each path is checked where it really
   is, so a `..` or a link can't lead out of those places.

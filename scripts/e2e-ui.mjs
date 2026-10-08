@@ -99,6 +99,7 @@ const sessions = {
     // a reply with a code block wider than any panel: it scrolls inside its bubble, the panel stays put
     line(now - 45_000, { model: 'claude-haiku', content: [{ type: 'text', text: `The rotation:\n\n\`\`\`\n${'wheat → barley → clover → pumpkins → '.repeat(6)}fallow\n\`\`\`` }] }),
     use(now - 40_000, 'toolu_E1', 'Edit', { file_path: join(repo, 'src', 'app.ts'), old_string: '1', new_string: '2' }),
+    line(now - 35_000, { model: 'claude-haiku', content: [{ type: 'text', text: 'Here is the field as it is now: `pic.svg`' }] }), // a picture named in a reply
     line(now - 30_000, { model: 'claude-haiku', content: [{ type: 'text', text: 'Plan written. One question before I go on.' }] }),
     use(now - 20_000, 'toolu_ASK1', 'AskUserQuestion', { questions: [QUESTION] }),
   ] },
@@ -239,6 +240,12 @@ try {
   check(/Which crop next\?/.test(await js("document.querySelector('.ask legend')?.textContent ?? ''")), 'the centre shows the question');
   check(await until("[...document.querySelectorAll('#tree .tn')].some(b => b.textContent.includes('README.md'))"), "the explorer lists the agent's folder");
   check(await js("[...document.querySelectorAll('#center-body .bub.you')].some(b => b.textContent.includes('Plan the next crop'))"), 'the conversation shows the prompt');
+  check(await until("document.querySelector('#center-body .named-pic img')?.naturalWidth === 30"), 'a picture a reply names shows under it, as a thumbnail');
+  await shot('named-thumb');
+  await js("document.querySelector('#center-body .named-pic').click()");
+  check(await until("document.getElementById('file-dlg').open && document.getElementById('reader-img')?.naturalWidth === 30 && document.getElementById('main').dataset.view === 'list'"), 'one click opens it in the file dialog, in the list view too');
+  await js("document.querySelector('#file-dlg [data-file-close]').click()");
+  check(await until("!document.getElementById('file-dlg').open && !!document.querySelector('#center-body .ov')"), 'closed, the agent is still there behind it');
   await js("document.querySelector('.row[data-id=\"ui-done-a\"]').click()");
   check(await until("[...document.querySelectorAll('#center-body .bub.peer.out')].some(b => /to ui-done-b · Docs are done/.test(b.textContent))"), "an agent's conversation shows the message it sent another agent");
   await js("document.querySelector('.row[data-id=\"ui-asker\"]').click()");
@@ -272,6 +279,7 @@ try {
   // The conversation dialog: the whole conversation, oldest first, with search.
   await js("document.querySelector('#center-body [data-convo=\"ui-asker\"]').click()");
   check(await until("document.getElementById('convo').open && document.querySelectorAll('#convo-body .bub').length >= 3"), '⤢ Read all opens the whole conversation in a dialog');
+  check(await until("document.querySelector('#convo-body .named-pic img')?.naturalWidth === 30"), 'the picture a reply names shows there too');
   check(await js("document.querySelector('#convo-body .bub').textContent.includes('Plan the next crop')"), 'oldest first');
   const search = q => js(`(() => { const i = document.getElementById('convo-q'); i.value = ${JSON.stringify(q)}; i.dispatchEvent(new Event('input', { bubbles: true })); })()`);
   const enter = (shift = false) => js(`document.getElementById('convo-q').dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', shiftKey: ${shift}, bubbles: true }))`);

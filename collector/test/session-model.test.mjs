@@ -95,6 +95,15 @@ test('markdown files written, edited or read are remembered as documents, newest
   ]);
 });
 
+test('pictures, videos and PDFs it wrote or read count as documents too (a screenshot it checked, say); code does not', () => {
+  const m = modelOf(prompt(0, 'go'),
+    toolUse(1, 'a', 'Read', { file_path: '/w/shots/login.png' }),
+    toolUse(2, 'b', 'Write', { file_path: '/w/report.pdf', content: 'x' }),
+    toolUse(3, 'c', 'Edit', { file_path: '/w/src/app.ts' }),
+    toolUse(4, 'd', 'Read', { file_path: '/w/demo.mov' }));
+  assert.deepEqual(m.documents().map(d => d.path), ['/w/demo.mov', '/w/report.pdf', '/w/shots/login.png']);
+});
+
 test('only the 40 most recent documents are kept', () => {
   const lines = [prompt(0, 'go')];
   for (let i = 1; i <= 45; i++) lines.push(toolUse(i, `t${i}`, 'Read', { file_path: `/w/d${i}.md` }));

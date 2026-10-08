@@ -4,7 +4,8 @@ import { firstLine, summarizeTool } from './summarize.mjs';
 import { stepOf } from '../derive/step.mjs';
 
 const CHILD_KIND = { Agent: 'subagent', Task: 'subagent', Workflow: 'workflow' };
-const DOC_FILE = /\.(md|markdown|mdx)$/i;
+// Documents: markdown, and the pictures, videos, PDFs and office files it wrote or read (a screenshot it checked).
+const DOC_FILE = /\.(md|markdown|mdx|png|jpe?g|gif|webp|avif|svg|bmp|pdf|mp4|m4v|webm|mov|mp3|m4a|wav|docx?|rtf|odt|xlsx|csv|pptx?|key|pages|numbers)$/i;
 const FILE_MODE = { Write: 'write', Edit: 'write', MultiEdit: 'write', NotebookEdit: 'write', Read: 'read' };
 const DOCS_KEPT = 40;
 const TASK_OPS_KEPT = 400;

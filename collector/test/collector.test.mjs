@@ -690,6 +690,44 @@ test('a session is ended (SIGTERM, then its window closed by its tty) or restart
   }
 });
 
+test('files an agent names in its replies: only those the dashboard may show, each with how it shows, a picture with a link for its thumbnail', async () => {
+  const root = mkdtempSync(join(tmpdir(), 'tracker-root-'));
+  mkdirSync(join(root, 'web'));
+  writeFileSync(join(root, 'web', 'index.html'), '<html></html>');
+  writeFileSync(join(root, 'config.json'), JSON.stringify({ port: 0, deployRepos: {} }));
+  const work = realpathSync(mkdtempSync(join(tmpdir(), 'tracker-named-')));
+  mkdirSync(join(work, 'docs'));
+  writeFileSync(join(work, 'shot.png'), Buffer.from('89504e470d0a1a0a0000000d49484452', 'hex'));
+  writeFileSync(join(work, 'demo.mov'), 'not really a video');
+  writeFileSync(join(work, 'docs', 'plan.md'), '# Plan');
+  writeFileSync(join(work, '.env.png'), 'x');
+  const claudeDir = mkdtempSync(join(tmpdir(), 'tracker-claude-'));
+  mkdirSync(join(claudeDir, 'sessions'));
+  mkdirSync(join(claudeDir, 'projects', '-w'), { recursive: true });
+  writeFileSync(join(claudeDir, 'sessions', `${process.pid}.json`), JSON.stringify({ pid: process.pid, sessionId: 'sess-named', cwd: work, name: 'named', status: 'idle' }));
+  writeFileSync(join(claudeDir, 'projects', '-w', 'sess-named.jsonl'), `${JSON.stringify({ type: 'user', timestamp: new Date().toISOString(), cwd: work, message: { content: 'hi' } })}\n`);
+  const handle = await startCollector({ root, claudeDir, home: dirname(work), claudeBin: '/usr/bin/false', notify: () => {}, log: () => {} });
+  try {
+    const asked = ['shot.png', `${work}/demo.mov`, `~/${basename(work)}/docs/plan.md`, '/etc/hosts.png', '.env.png', 'missing.png', '../outside.png'];
+    const { items } = await handle.namedFiles('sess-named', asked);
+    assert.deepEqual(items.map(i => [i.asked, i.ok, i.kind, i.path]), [
+      ['shot.png', true, 'image', join(work, 'shot.png')], // relative: to its folder
+      [`${work}/demo.mov`, true, 'video', join(work, 'demo.mov')],
+      [`~/${basename(work)}/docs/plan.md`, true, 'markdown', join(work, 'docs', 'plan.md')],
+      ['/etc/hosts.png', false, undefined, undefined], // outside its folder
+      ['.env.png', false, undefined, undefined], // looks like it holds secrets
+      ['missing.png', false, undefined, undefined],
+      ['../outside.png', false, undefined, undefined],
+    ]);
+    assert.match(items[0].url, /^\/raw\/[0-9a-f]{32}\/shot\.png$/, 'a picture comes with a link for its thumbnail');
+    assert.equal(items[1].url, undefined);
+    assert.equal((await handle.namedFiles('nope', ['x.png'])).status, 404);
+    assert.equal((await handle.namedFiles('sess-named', Array.from({ length: 30 }, (_, i) => `s${i}.png`))).items.length, 20, 'at most 20 at a time');
+  } finally {
+    await handle.stop();
+  }
+});
+
 test("a session's shell commands: one is stopped with everything it started (its process group), a background one's output read; nothing else", async () => {
   const root = mkdtempSync(join(tmpdir(), 'tracker-root-'));
   mkdirSync(join(root, 'web'));

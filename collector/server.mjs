@@ -33,7 +33,8 @@ function readBody(req, limit = BODY_LIMIT) {
 // origin of their own, never the dashboard's); ranges, so players can seek. The PDF viewer won't run in
 // a sandbox, and a PDF's scripts run in the viewer's own, so PDFs alone go without.
 function sendRaw(req, res, { real, type, size }) {
-  const headers = { 'content-type': type, 'x-content-type-options': 'nosniff', 'cache-control': 'no-store', 'accept-ranges': 'bytes' };
+  // Kept in this browser only, and only for as long as the link lasts (each link is new): a thumbnail drawn again is not fetched again.
+  const headers = { 'content-type': type, 'x-content-type-options': 'nosniff', 'cache-control': 'private, max-age=600', 'accept-ranges': 'bytes' };
   if (!type.startsWith('application/pdf')) headers['content-security-policy'] = type.startsWith('text/html') ? 'sandbox allow-scripts' : 'sandbox';
   // A sandboxed page's module scripts and fonts load only with CORS; nothing else gets it, so its
   // scripts can't fetch() the files beside it and read them.
@@ -58,7 +59,7 @@ function clampInt(value, min, max, fallback) {
   return Number.isFinite(n) ? Math.min(max, Math.max(min, n)) : fallback;
 }
 
-export function createTrackerServer({ port, token, webFile, getSnapshot, getFeed, getConversation, getSubagent, claudePlugins, claudeMcp, claudeRules, fileTicket, rawFile, officeView, listDirs, shellOutput, getTranscriptHtml, getDoc, listFiles, readFile, repoTouched, actions, pastSessions, log = () => {} }) {
+export function createTrackerServer({ port, token, webFile, getSnapshot, getFeed, getConversation, getSubagent, claudePlugins, claudeMcp, claudeRules, fileTicket, rawFile, officeView, listDirs, shellOutput, namedFiles, getTranscriptHtml, getDoc, listFiles, readFile, repoTouched, actions, pastSessions, log = () => {} }) {
   const clients = new Set();
   let server;
   const actualPort = () => server.address()?.port ?? port;
@@ -140,6 +141,11 @@ export function createTrackerServer({ port, token, webFile, getSnapshot, getFeed
         if (path === '/api/sessions') { // past sessions' titles and messages: token only, like files
           if (req.headers['x-tracker-token'] !== token) return sendJson(res, 403, { error: 'forbidden' });
           return sendJson(res, 200, await pastSessions({ all: url.searchParams.get('days') === 'all' }));
+        }
+        if ((m = path.match(/^\/api\/agent\/([\w:-]+)\/named$/))) { // files named in its replies, checked: token only, like files
+          if (req.headers['x-tracker-token'] !== token) return sendJson(res, 403, { error: 'forbidden' });
+          const got = await namedFiles(m[1], url.searchParams.getAll('path'));
+          return got.error ? sendJson(res, got.status ?? 404, { error: got.error }) : sendJson(res, 200, got);
         }
         if ((m = path.match(/^\/api\/agent\/([\w:-]+)\/shell-output$/))) { // the end of a background command's output: token only, like files
           if (req.headers['x-tracker-token'] !== token) return sendJson(res, 403, { error: 'forbidden' });

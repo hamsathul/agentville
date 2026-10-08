@@ -2012,3 +2012,51 @@ test("the farm's sidebar shows the commands running too", async () => {
   await page.settle();
   assert.match(page.el('farm-agent').innerHTML, /Commands running[\s\S]*data-shell-stop="5003"/);
 });
+
+/* ---------- files an agent names in its replies ---------- */
+
+test('a picture, a video or a document an agent names in its reply shows under it: a thumbnail or a chip, opening in the file dialog', async () => {
+  const text = 'Saved the screenshot to `/w/shots/login.png` and a video at /w/demo.mov. The plan is in docs/plan.md, the code in src/app.ts; I also looked at /etc/secret.png.';
+  const named = `/api/agent/r1/named?${['/w/shots/login.png', '/w/demo.mov', 'docs/plan.md', '/etc/secret.png'].map(p => `path=${encodeURIComponent(p)}`).join('&')}`;
+  const replies = {
+    [named]: { items: [
+      { asked: '/w/shots/login.png', ok: true, kind: 'image', path: '/w/shots/login.png', url: '/raw/t1/login.png' },
+      { asked: '/w/demo.mov', ok: true, kind: 'video', path: '/w/demo.mov' },
+      { asked: 'docs/plan.md', ok: true, kind: 'markdown', path: '/w/docs/plan.md' },
+      { asked: '/etc/secret.png', ok: false },
+    ] },
+    [linkOf('/w/shots/login.png')]: { url: '/raw/t2/login.png', type: 'image/png', size: 4096 },
+    '/api/actions/message': { ok: true },
+  };
+  const page = loadPage({ replies });
+  const snap = () => richSnapshot([richAgent({ state: 'yourTurn', mod: { version: '0.6.2', live: true }, feed: [{ at: Date.now() - 1000, kind: 'reply', text }] })]);
+  page.push(snap());
+  await page.settle();
+  assert.ok(page.gets.find(g => g.path === named)?.token, 'checked with the collector, with the token: only what it may show');
+  assert.doesNotMatch(page.gets.map(g => g.path).join(' '), /app\.ts/, 'code is not a file to show this way');
+  page.push(snap());
+  await page.settle();
+  const strip = page.side();
+  assert.match(strip, /<button type="button" class="named-pic" data-open-named="\/w\/shots\/login\.png" data-agent="r1"[^>]*><img src="\/raw\/t1\/login\.png" alt="login\.png" loading="lazy"><\/button>/);
+  assert.match(strip, /data-open-named="\/w\/demo\.mov"[^>]*>🎬 demo\.mov</);
+  assert.match(strip, /data-open-named="\/w\/docs\/plan\.md"[^>]*>📄 plan\.md</);
+  assert.doesNotMatch(strip, /data-open-named="\/etc/, 'one it may not show stays plain text');
+  assert.equal(page.gets.filter(g => g.path === named).length, 1, 'checked once');
+  await page.clickButton('named', { openNamed: '/w/shots/login.png', agent: 'r1' });
+  await page.settle();
+  assert.equal(page.el('main').dataset.view, 'list');
+  assert.equal(page.el('file-dlg').open, true, 'in a dialog, in the list view too');
+  assert.match(page.el('reader-body').innerHTML, /<img[^>]*src="\/raw\/t2\/login\.png"/);
+  page.push(snap()); // a snapshot while it is open keeps the dialog's reader
+  await page.settle();
+  page.edit('input', { id: 'reader-text', value: 'Crop the header off.' });
+  await page.clickButton('reader-send', {});
+  await page.settle();
+  assert.deepEqual(page.posts.at(-1), { path: '/api/actions/message', body: { agentId: 'r1', text: 'About shots/login.png:\n\nCrop the header off.' } });
+});
+
+test('Documents lists the pictures, videos and PDFs it wrote or read too, each with its own icon', () => {
+  const page = loadPage();
+  page.push(richSnapshot([richAgent({ docs: [{ path: '/w/shots/login.png', wrote: false, at: Date.now() }, { path: '/w/report.pdf', wrote: true, at: Date.now() }, { path: '/w/spec.md', wrote: true, at: Date.now() }] })]));
+  assert.match(page.side(), /🖼<\/span><span class="doc-name">login\.png[\s\S]*📕<\/span><span class="doc-name">report\.pdf[\s\S]*📄<\/span><span class="doc-name">spec\.md/);
+});

@@ -345,6 +345,12 @@ pre.code { margin: 0; padding: 8px 0 16px; font: 12.5px/1.55 ui-monospace, SFMon
 pre.code .l { display: block; min-height: 1.55em; padding-right: 16px; white-space: pre; }
 pre.code .l::before { content: attr(data-n); display: inline-block; width: 5ch; margin-right: 14px; padding-right: 8px; text-align: right; color: var(--faint); border-right: 1px solid var(--grid); user-select: none; }
 pre.code .l:hover { background: var(--panel-2); }
+/* files a reply names: thumbnails and chips under it */
+.named { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 6px; margin-top: 6px; }
+.named-pic { padding: 0; border: 1px solid var(--line); border-radius: 6px; overflow: hidden; cursor: zoom-in; background: repeating-conic-gradient(var(--grid) 0 25%, var(--panel) 0 50%) 0 0 / 12px 12px; }
+.named-pic img { display: block; max-width: 168px; max-height: 112px; }
+.named-file { border: 1px solid var(--line); border-radius: 12px; padding: 2px 9px; background: var(--panel-2); color: var(--text); font: inherit; font-size: 12px; cursor: pointer; }
+.named-file:hover, .named-pic:hover { border-color: var(--accent); }
 /* the commands an agent runs now, and a background one's output */
 .shell-row { display: flex; align-items: center; gap: 6px; padding: 5px 0; border-top: 1px solid var(--line); }
 .shell-row:first-of-type { border-top: 0; }

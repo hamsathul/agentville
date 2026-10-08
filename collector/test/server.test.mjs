@@ -50,6 +50,7 @@ async function start() {
       rule: async body => { calls.push(['rule', body]); return { ok: true }; },
     },
     getSubagent: id => (id === 's1:tA' ? { prompt: 'Find callers', result: null, feed: [] } : null),
+    namedFiles: async (id, paths) => { calls.push(['named', id, paths]); return { items: paths.map(p => ({ asked: p, ok: false })) }; },
     shellOutput: async (id, pid) => { calls.push(['output', id, pid]); return { text: 'ready', size: 5, truncated: false }; },
     listDirs: async typed => { calls.push(['dirs', typed]); return { dir: '/Users/me', dirs: ['code'], exists: true }; },
     fileTicket: async (id, path, opts) => { calls.push(['ticket', id, path, opts]); return { url: '/raw/abc/x.png', type: 'image/png', size: 10 }; },
@@ -312,7 +313,7 @@ test("a file's link and a document's reading need the token; its bytes need only
     assert.equal(clip.status, 200);
     assert.equal(clip.body, '0123456789');
     assert.deepEqual([clip.headers['content-type'], clip.headers['x-content-type-options'], clip.headers['content-security-policy'], clip.headers['accept-ranges'], clip.headers['cache-control']],
-      ['video/mp4', 'nosniff', 'sandbox', 'bytes', 'no-store']);
+      ['video/mp4', 'nosniff', 'sandbox', 'bytes', 'private, max-age=600'], 'kept by this browser for as long as its link lasts: a thumbnail drawn again is not fetched again');
     const part = await request(port, { path: '/raw/clip/clip.mp4', headers: { range: 'bytes=2-5' } });
     assert.deepEqual([part.status, part.body, part.headers['content-range']], [206, '2345', 'bytes 2-5/10'], 'a player seeks with ranges');
     assert.equal((await request(port, { path: '/raw/clip/clip.mp4', headers: { range: 'bytes=20-30' } })).status, 416);
@@ -349,6 +350,18 @@ test('folders to start in are listed only with the token, and made only from the
     const pick = JSON.stringify({ start: '/Users/me' });
     assert.equal((await request(port, { method: 'POST', path: '/api/actions/choose-folder', headers: { 'x-tracker-token': 'tok', origin: 'https://evil.example', 'content-type': 'application/json' }, body: pick })).status, 403, "only the dashboard opens Finder's window");
     assert.equal(JSON.parse((await request(port, { method: 'POST', path: '/api/actions/choose-folder', headers: { 'x-tracker-token': 'tok', origin: `http://127.0.0.1:${port}`, 'content-type': 'application/json' }, body: pick })).body).path, '/Users/me/picked');
+  } finally {
+    await srv.close();
+  }
+});
+
+test('files named in replies are checked only with the token', async () => {
+  const { srv, port, calls } = await start();
+  try {
+    assert.equal((await request(port, { path: '/api/agent/s1/named?path=a.png' })).status, 403);
+    const r = await request(port, { path: '/api/agent/s1/named?path=a.png&path=%2Fw%2Fb.mov', headers: { 'x-tracker-token': 'tok' } });
+    assert.equal(JSON.parse(r.body).items.length, 2);
+    assert.deepEqual(calls.at(-1), ['named', 's1', ['a.png', '/w/b.mov']]);
   } finally {
     await srv.close();
   }

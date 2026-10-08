@@ -364,6 +364,7 @@ document.addEventListener('click', async e => {
     return;
   }
   if (d.removeFile !== undefined) { removeFile(d.agent, Number(d.removeFile)); return; }
+  if (d.openNamed) { await openFileDialog(d.agent, d.openNamed); return; } // a file a reply names: in the dialog, in either view
   if (d.shellOutput) { await openShellOutput(d.agent, Number(d.shellOutput)); return; }
   if (d.shellStop) { void stopShellFlow(d.agent, Number(d.shellStop)); return; } // not awaited: the confirm box waits for you
   if (d.shellClose !== undefined) { closeShellOutput(); return; }

@@ -576,6 +576,29 @@ export async function startCollector({ root, claudeDir = join(homedir(), '.claud
     }
   }
   /**
+   * Files an agent names in its replies (a screenshot it took, a video it recorded, a plan it wrote), as
+   * written: relative to its folder, under ~, or absolute. Each says whether the dashboard may show it
+   * (the same rules as the explorer: inside its folder, scratchpad or memory; never ignored or secret
+   * files) and how; a picture comes with a link for its thumbnail. 20 at a time.
+   */
+  const NAMED_KINDS = new Set(['image', 'pdf', 'video', 'audio', 'html', 'word', 'sheet', 'office']);
+  async function namedFiles(agentId, asked) {
+    const agent = snapshot?.agents.find(a => a.id === agentId);
+    if (!agent) return { status: 404, error: 'That agent was not found.' };
+    const items = [];
+    for (const raw of asked.slice(0, 20).map(String)) {
+      const abs = raw.startsWith('~/') ? join(home, raw.slice(2)) : isAbsolute(raw) ? resolve(raw) : agent.cwd ? resolve(agent.cwd, raw) : null;
+      const kind = !abs ? null : /\.(md|markdown|mdx)$/i.test(abs) ? 'markdown' : NAMED_KINDS.has(viewOf(abs)) ? viewOf(abs) : null;
+      const root = kind ? fileRoot(agentId, abs) : null;
+      const ok = root ? await checkFolderFile(root, abs) : null;
+      if (!ok || ok.error) { items.push({ asked: raw, ok: false }); continue; }
+      const link = kind === 'image' ? await fileTicket(agentId, abs) : null;
+      items.push({ asked: raw, ok: true, kind, path: abs, ...(link?.url ? { url: link.url } : {}) });
+    }
+    return { items };
+  }
+
+  /**
    * The end of a background shell command's output: the file Claude Code writes it to, as its
    * transcript names it, and only inside the scratch folder ({ text, size, truncated } or { error }).
    */
@@ -1029,7 +1052,7 @@ export async function startCollector({ root, claudeDir = join(homedir(), '.claud
     port: portOverride ?? cfg.port, token, webFile: join(root, 'web', 'index.html'),
     getSnapshot: () => snapshot,
     getFeed: (id, limit) => modelFor(id)?.history(limit) ?? null,
-    getConversation, getSubagent, claudePlugins, claudeMcp, claudeRules, fileTicket, rawFile, officeView, shellOutput,
+    getConversation, getSubagent, claudePlugins, claudeMcp, claudeRules, fileTicket, rawFile, officeView, shellOutput, namedFiles,
     getTranscriptHtml, getDoc: readDoc, listFiles, readFile, repoTouched, actions, pastSessions, listDirs: dirsFor, log,
   });
   const port = await server.listen();
@@ -1067,5 +1090,5 @@ export async function startCollector({ root, claudeDir = join(homedir(), '.claud
     await server.close();
   }
 
-  return { port, getSnapshot: () => snapshot, reloadConfig, actions, pastSessions, listDirs: dirsFor, shellOutput, getConversation, claudePlugins, claudeMcp, claudeRules, fileTicket, rawFile, officeView, readDoc, listFiles, readFile, repoTouched, stop };
+  return { port, getSnapshot: () => snapshot, reloadConfig, actions, pastSessions, listDirs: dirsFor, shellOutput, namedFiles, getConversation, claudePlugins, claudeMcp, claudeRules, fileTicket, rawFile, officeView, readDoc, listFiles, readFile, repoTouched, stop };
 }
