@@ -30,6 +30,7 @@ export class SessionModel {
     this.said = []; // prompts, replies and messages between sessions, newest first: kept apart so a run of tool steps can't push them out
     this.peerIds = new Set(); // messages from other sessions already counted
     this.pending = new Map();
+    this.resulted = new Set(); // tool uses with a result, the latest 500: a question answered in the terminal
     this.openItems = new Map();
     this.calls = [];
     this.children = new Map();
@@ -132,6 +133,8 @@ export class SessionModel {
         break;
       }
       case 'tool_result': {
+        this.resulted.add(ev.toolUseId);
+        if (this.resulted.size > 500) this.resulted.delete(this.resulted.values().next().value);
         const call = this.pending.get(ev.toolUseId);
         this.pending.delete(ev.toolUseId);
         // How a call ended (a deploy command's outcome is the deploy's). A background command only
@@ -340,6 +343,11 @@ export class SessionModel {
       this.said.unshift(item);
       if (this.said.length > this.saidCap) this.said.length = this.saidCap;
     }
+  }
+
+  /** Whether the transcript has a result for this tool use (an answered question, a finished call). */
+  hasResult(toolUseId) {
+    return this.resulted.has(toolUseId);
   }
 
   latestPending() {

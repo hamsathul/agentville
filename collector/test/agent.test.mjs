@@ -111,6 +111,16 @@ test('an offered question that is still pending can be answered from the dashboa
   assert.deepEqual(a.ask, { kind: 'question', toolUseId: 'toolu_Q1', questions });
 });
 
+test("a question the mod offers counts before Claude Code writes it to the transcript (it now writes it once answered): the agent waits", () => {
+  const m = modelOf(prompt(0, 'go'), reply(3, 'A few points could go two ways; I will check them with you.'));
+  const questions = [{ question: 'Drop the quote?', header: 'About', multiSelect: false, options: [{ label: 'Yes' }, { label: 'No' }] }];
+  const a = buildAgent({ base: base(), model: m, offer: { kind: 'question', toolUseId: 'toolu_Q9', createdAt: at(5), heartbeatAt: at(6), questions }, repoOf, now: at(6), cfg, home: '/h' });
+  assert.deepEqual([a.state, a.stateReason, a.sinceHint], ['waiting', 'question pending', at(5)]);
+  assert.deepEqual(a.ask, { kind: 'question', toolUseId: 'toolu_Q9', questions });
+  const answered = modelOf(prompt(0, 'go'), toolUse(7, 'toolu_Q9', 'AskUserQuestion'), toolResult(7, 'toolu_Q9')); // written together, once answered
+  assert.equal(buildAgent({ base: base(), model: answered, offer: { kind: 'question', toolUseId: 'toolu_Q9', createdAt: at(5), heartbeatAt: at(7), questions }, repoOf, now: at(7), cfg, home: '/h' }).ask, undefined);
+});
+
 test('an offered question that was already answered in the terminal is not answerable', () => {
   const m = modelOf(prompt(0, 'go'), toolUse(5, 'toolu_Q1', 'AskUserQuestion'), toolResult(7, 'toolu_Q1'));
   const a = buildAgent({ base: base(), model: m, offer: { kind: 'question', toolUseId: 'toolu_Q1', createdAt: at(5), questions: [] }, repoOf, now: at(8), cfg, home: '/h' });

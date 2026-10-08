@@ -60,7 +60,9 @@ const HEARTBEAT_MS = 5_000;
 
 export function askOf(offer, model, now) {
   if (!offer || now - (offer.heartbeatAt ?? 0) > HEARTBEAT_MS) return undefined;
-  if (offer.kind === 'question' && model?.pending.has(offer.toolUseId)) {
+  // Claude Code writes a question to the transcript only once it is answered, so a live offer counts
+  // unless the transcript already has its answer (then the mod is about to withdraw the offer).
+  if (offer.kind === 'question' && (model?.pending.has(offer.toolUseId) || !model?.hasResult?.(offer.toolUseId))) {
     return { kind: 'question', toolUseId: offer.toolUseId, questions: offer.questions };
   }
   if (offer.kind === 'permission' && offer.expiresAt > now) {
@@ -163,6 +165,7 @@ export function buildAgent({ base, model, registry, proc, command, cpuHistory = 
     ? deriveCodexState(cpuHistory, now)
     : ask?.kind === 'permission' || ask?.kind === 'always'
       ? { state: 'waiting', reason: `permission needed: ${ask.tool}`, since: offer.createdAt }
+      : ask?.kind === 'question' ? { state: 'waiting', reason: 'question pending', since: offer.createdAt }
       : deriveState({ model, registry, cpuHistory, now, cfg, mode });
   const since = now - cfg.collisionWindowMin * 60_000;
   const calls = model ? model.callsSince(since) : [];
