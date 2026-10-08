@@ -2,7 +2,7 @@ import { basename } from 'node:path';
 import { firstLine, summarizeTool } from '../transcript/summarize.mjs';
 import { serviceOf, stepOf } from './step.mjs';
 import { collectTouches } from './touches.mjs';
-import { STATE_ORDER, deriveCodexState, deriveState } from './state.mjs';
+import { DECIDES_ALONE, STATE_ORDER, deriveCodexState, deriveState } from './state.mjs';
 import { trailingQuestion } from './question.mjs';
 
 const CHILD_KEEP_MS = 60 * 60_000;
@@ -127,12 +127,14 @@ export function turnOf(model, beacon) {
 }
 
 export function buildAgent({ base, model, registry, proc, command, cpuHistory = [], childModels = new Map(), offer, beacon, repoOf, now, cfg, home, asides, setting }) {
-  const ask = askOf(offer, model, now);
+  const mode = modeOf(model, command, registry?.startedAt);
+  // An older mod offers every call Claude Code's check hands on, even where the mode decides it without you.
+  const ask = offer?.kind === 'permission' && DECIDES_ALONE.has(mode) ? undefined : askOf(offer, model, now);
   const derived = base.kind === 'codex'
     ? deriveCodexState(cpuHistory, now)
     : ask?.kind === 'permission' || ask?.kind === 'always'
       ? { state: 'waiting', reason: `permission needed: ${ask.tool}`, since: offer.createdAt }
-      : deriveState({ model, registry, cpuHistory, now, cfg });
+      : deriveState({ model, registry, cpuHistory, now, cfg, mode });
   const since = now - cfg.collisionWindowMin * 60_000;
   const calls = model ? model.callsSince(since) : [];
   for (const cm of childModels.values()) calls.push(...cm.callsSince(since));
@@ -159,7 +161,7 @@ export function buildAgent({ base, model, registry, proc, command, cpuHistory = 
     sinceHint: derived.since,
     ask,
     mod: beacon ? { version: beacon.version, live: beacon.live } : undefined,
-    mode: modeOf(model, command, registry?.startedAt),
+    mode,
     effort: beacon?.effort ?? effortOf(model, command, registry?.startedAt),
     turn: derived.state === 'working' ? turnOf(model, beacon) : undefined,
     asides: asides?.length ? asides : undefined, // side questions (/btw) asked from the dashboard, newest first

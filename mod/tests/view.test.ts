@@ -104,6 +104,13 @@ test('the permission summary shows what the tool would do', () => {
   expect(permissionSummary('Bash', { command: 'x'.repeat(900) }).length).toBe(300)
 })
 
+test("a session in a mode that decides without you (bypass, don't ask, auto) gets no window: its calls aren't held up", () => {
+  const view = (mode?: string) => ({ snapshot: { ...snapshot([agent({ id: 's1', ...(mode ? { mode } : {}) })]), settings: { modToasts: true, permissionDashboardSec: 15 } }, readAt: 0 }) as any
+  for (const mode of ['bypassPermissions', 'dontAsk', 'auto']) expect(dashboardWindowSec(view(mode), 101_000, 's1')).toBe(0)
+  for (const mode of ['default', 'acceptEdits', 'plan', undefined]) expect(dashboardWindowSec(view(mode), 101_000, 's1')).toBe(15)
+  expect(dashboardWindowSec(view('bypassPermissions'), 101_000, 'another')).toBe(15) // another session's mode is not this one's
+})
+
 test('the dashboard gets the configured window only while the collector is running', () => {
   const view = (generatedAt: number, sec?: number) => ({ snapshot: snapshot([agent({})]) && { ...snapshot([agent({})]), generatedAt, settings: { modToasts: true, permissionDashboardSec: sec } }, readAt: 0 }) as any
   expect(dashboardWindowSec(view(100_000, 15), 101_000)).toBe(15)

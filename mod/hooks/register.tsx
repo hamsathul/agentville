@@ -26,7 +26,7 @@ const DASHBOARD_REASON = 'Answered from the Agentville dashboard'
 type Offer = { stateDir: string; sessionId: string; isLive: boolean; windowSec: number; now: number }
 type Waited = { kind: 'answer'; text: string } | { kind: 'withdrawn' } | { kind: 'timeout' }
 
-const MOD_VERSION = '0.6.1'
+const MOD_VERSION = '0.6.2'
 
 let latest: TrackerView = EMPTY
 // The terminal's working line (Slithering… while thinking), for the dashboard: when the turn began,
@@ -53,7 +53,7 @@ export async function offerContext($: any): Promise<Offer> {
       latest = { snapshot: null, readAt: now, error: String(err) }
     }
   }
-  return { stateDir: stateDirFor($.plugin.root), sessionId, isLive: Boolean(sessionId) && isFresh(latest, now), windowSec: dashboardWindowSec(latest, now), now }
+  return { stateDir: stateDirFor($.plugin.root), sessionId, isLive: Boolean(sessionId) && isFresh(latest, now), windowSec: dashboardWindowSec(latest, now, sessionId), now }
 }
 
 /**

@@ -2,6 +2,10 @@ export const STATE_ORDER = ['waiting', 'working', 'yourTurn', 'stale', 'idle'];
 
 const WAIT_TOOLS = { AskUserQuestion: 'question pending', ExitPlanMode: 'plan approval' };
 const RECENT_MS = 60_000;
+// Modes whose decider never puts a call to you: bypass allows it, don't-ask refuses it, auto's
+// classifier judges it (and may still hand one over, so auto keeps the guess below).
+export const DECIDES_ALONE = new Set(['bypassPermissions', 'dontAsk', 'auto']);
+const NEVER_PROMPTS = new Set(['bypassPermissions', 'dontAsk']);
 
 function isQuiet(history, from, to) {
   const inWindow = history.filter(s => s.at >= from && s.at <= to);
@@ -9,7 +13,7 @@ function isQuiet(history, from, to) {
 }
 
 /** Spec §6. First match wins. */
-export function deriveState({ model, registry, cpuHistory = [], now, cfg }) {
+export function deriveState({ model, registry, cpuHistory = [], now, cfg, mode }) {
   if (!model) return { state: 'idle', reason: 'no transcript' };
   const isBusy = registry?.status === 'busy';
 
@@ -23,7 +27,7 @@ export function deriveState({ model, registry, cpuHistory = [], now, cfg }) {
   }
 
   const guessMs = cfg.permissionGuessSec * 1000;
-  if (pending && now - pending.at >= guessMs && isQuiet(cpuHistory, now - guessMs, now)) {
+  if (pending && !NEVER_PROMPTS.has(mode) && now - pending.at >= guessMs && isQuiet(cpuHistory, now - guessMs, now)) {
     return { state: 'waiting', reason: 'probably a permission prompt', since: pending.at };
   }
 

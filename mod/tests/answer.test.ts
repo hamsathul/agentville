@@ -167,6 +167,17 @@ test('with no collector state at all, the mod stays out of the way', async () =>
   expect(offer.windowSec).toBe(0)
 })
 
+test("in bypass mode a call Claude Code's check hands on (\"ask\") goes straight on: nothing offered, nothing waited for", async () => {
+  const state = JSON.stringify({ generatedAt: 900_000, settings: { modToasts: true, permissionDashboardSec: 15 }, counts: {}, agents: [{ id: 's7', mode: 'bypassPermissions' }], collisions: [] })
+  const $ = { plugin: { root: '/repo/mod' }, clock: { now: async () => 901_000 }, session: { id: async () => 's7' }, fs: { read: async () => state } }
+  const offer = await offerContext($)
+  expect(offer.windowSec).toBe(0)
+  const f = fake$(() => never())
+  const out: any = await permitFromDashboard(f.$, { tool: 'mcp__claude-in-chrome__navigate', tool_use_id: 'toolu_M1', input: {} }, async () => ({ decision: 'ask' }), offer)
+  expect(out.decision).toBe('ask')
+  expect(f.writes).toEqual([])
+})
+
 // A small in-memory inbox: `mv` claims a file (failing if it is already gone), `rm` deletes.
 function inbox$(initial: Record<string, string>, submit?: (input: { text: string }) => Promise<unknown>) {
   const files = new Map(Object.entries(initial))

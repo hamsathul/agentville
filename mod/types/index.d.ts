@@ -15,6 +15,8 @@ export type TrackerAgent = {
   children: { id: string; kind: string; label: string; state: string; startedAt: number }[]
   touching: { path: string; repo?: string; mode: 'read' | 'write' | 'git'; lastAt: number }[]
   proc?: { cpu: number; rssMb: number; childCount: number; children: string[] }
+  /** Its permission mode, as the collector knows it (flags, then the transcript): bypassPermissions, auto… */
+  mode?: string
 }
 
 export type TrackerSnapshot = {

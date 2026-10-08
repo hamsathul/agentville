@@ -105,9 +105,19 @@ export function permissionSummary(_tool: string, input: unknown): string {
   return String(pick ?? JSON.stringify(i)).slice(0, 300)
 }
 
-/** Seconds a permission prompt is offered to the dashboard: 0 when the collector isn't running. */
-export function dashboardWindowSec(view: TrackerView, now: number): number {
+// Modes whose decider never puts a call to the person: bypass allows it, don't-ask refuses it, auto's
+// classifier judges it. A call Claude Code's check hands on ("ask") goes to that decider, so holding
+// it for the dashboard would only slow it down (and show a prompt nobody has to answer).
+const DECIDES_ALONE = new Set(['bypassPermissions', 'dontAsk', 'auto'])
+
+/**
+ * Seconds a permission prompt is offered to the dashboard: 0 when the collector isn't running, or
+ * when the collector knows this session is in a mode that decides without you.
+ */
+export function dashboardWindowSec(view: TrackerView, now: number, sessionId = ''): number {
   if (!view.snapshot || !isFresh(view, now)) return 0
+  const mode = view.snapshot.agents?.find(a => a.id === sessionId)?.mode
+  if (mode && DECIDES_ALONE.has(mode)) return 0
   const sec = Number(view.snapshot.settings?.permissionDashboardSec ?? 15)
   return Number.isFinite(sec) ? Math.min(120, Math.max(0, sec)) : 0
 }

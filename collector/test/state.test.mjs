@@ -32,6 +32,12 @@ test('a tool pending 20 s while the process is quiet is probably a permission pr
   assert.deepEqual(s, { state: 'waiting', reason: 'probably a permission prompt', since: at(10) });
 });
 
+test("in bypass or don't-ask mode a quiet tool call is never taken for a permission prompt: none can show there", () => {
+  const m = modelOf(prompt(0, 'go'), toolUse(10, 't1', 'mcp__claude-in-chrome__navigate', { url: 'http://localhost' }));
+  for (const mode of ['bypassPermissions', 'dontAsk']) assert.equal(deriveState({ model: m, registry: { status: 'busy' }, cpuHistory: samples(0, 40, 0.2), now: at(40), cfg, mode }).state, 'working', mode);
+  assert.equal(deriveState({ model: m, registry: { status: 'busy' }, cpuHistory: samples(0, 40, 0.2), now: at(40), cfg, mode: 'auto' }).state, 'waiting', "auto's classifier may still hand one to you");
+});
+
 test('the same pending tool with a busy process is working', () => {
   const m = modelOf(prompt(0, 'go'), toolUse(10, 't1', 'Bash', { command: 'npm run build' }));
   const s = deriveState({ model: m, registry: { status: 'busy' }, cpuHistory: samples(0, 40, 40), now: at(40), cfg });

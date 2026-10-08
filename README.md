@@ -225,6 +225,10 @@ These need the mod in that session.
   ones (always allow a rule in this project, access to a folder, accept edits for this session…),
   for 8 seconds: pick one and the call runs with it kept, exactly as Claude Code keeps it. Pick
   none and the terminal asks. It needs mod 0.6.0 or newer.
+  - Only sessions whose mode can ask you (Ask first, Accept edits, Plan) offer prompts here. In
+    bypass, don't-ask and auto mode the mode decides on its own, so a call goes straight on (mod
+    0.6.2; an older mod held such calls for the 15 seconds, and the farmer went to the porch).
+    In auto mode, a call its classifier hands to you is answered in the terminal.
 - **Questions in replies.** When an agent ends its turn by asking something ("Should I push?"),
   it gets an "asks you" chip and a card, with one-click **Yes** / **No…** for yes/no questions.
 - **Messages.** Type in the box under **Now** and press Enter (Shift+Enter for a new line). It
@@ -531,7 +535,8 @@ canvas, with its text drawn as HTML on top so it stays crisp.
 
 - Only sessions that load the mod can be answered, messaged or switched from the dashboard.
 - "Probably a permission prompt" is a guess: a tool call with no result for 20 s while the process
-  is idle. A long, quiet network wait can look the same.
+  is idle. A long, quiet network wait can look the same. It is never made in bypass or don't-ask
+  mode, where no prompt can show.
 - Switching a session's model or effort from the dashboard also changes your default for new
   sessions, as typing `/model` or `/effort` does.
 - "Thinking" on the farm comes from the mod's working line. Without the mod, it is a guess (working

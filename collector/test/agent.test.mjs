@@ -127,6 +127,17 @@ test('an offered permission prompt makes the agent certainly waiting, with Allow
   assert.deepEqual(a.ask, { kind: 'permission', toolUseId: 'toolu_P1', tool: 'Bash', summary: 'mkdir /tmp/x', expiresAt: at(20) });
 });
 
+test("a permission offer from a session whose mode decides without you (bypass, auto, don't ask) is not shown: nobody has to answer it", () => {
+  const m = modelOf(prompt(0, 'go'), toolUse(5, 'toolu_P1', 'mcp__claude-in-chrome__navigate', { url: 'http://localhost' }));
+  const offer = { kind: 'permission', toolUseId: 'toolu_P1', tool: 'mcp__claude-in-chrome__navigate', summary: 'http://localhost', createdAt: at(5), heartbeatAt: at(6), expiresAt: at(20) };
+  const agentIn = command => buildAgent({ base: base(), model: m, registry: { status: 'busy' }, command, cpuHistory: [{ at: at(5), cpu: 40 }], offer, repoOf, now: at(6), cfg, home: '/h' });
+  for (const command of ['claude --dangerously-skip-permissions', 'claude --permission-mode auto', 'claude --permission-mode dontAsk']) {
+    const a = agentIn(command);
+    assert.deepEqual([a.state, a.ask], ['working', undefined], command);
+  }
+  for (const command of ['claude', 'claude --permission-mode acceptEdits']) assert.equal(agentIn(command).stateReason, 'permission needed: mcp__claude-in-chrome__navigate', command);
+});
+
 test("Claude Code's options after Always allow… keep the agent waiting, each worded from its suggestion", () => {
   const m = modelOf(prompt(0, 'go'), toolUse(5, 'toolu_P1', 'Bash', { command: 'npm test' }));
   const suggestions = [
