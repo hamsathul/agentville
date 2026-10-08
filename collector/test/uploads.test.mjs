@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, utimesSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { checkFiles, pruneUploads, safeName, saveFiles, withAttachments } from '../sources/uploads.mjs';
+import { checkFiles, checkFolders, pruneUploads, safeName, saveFiles, withAttachments } from '../sources/uploads.mjs';
 
 const PNG = Buffer.from('89504e470d0a1a0a0000000d4948445200000001000000010806000000', 'hex');
 const JPEG = Buffer.from([0xff, 0xd8, 0xff, 0xe0, 0, 16]);
@@ -46,6 +46,18 @@ test('files are saved whole under the session, and the message tells the agent w
   assert.equal(withAttachments('Fix this', []), 'Fix this');
   assert.equal(withAttachments('Fix this', ['/u/1.png']), 'Fix this\n\nI attached a file. Open it with the Read tool:\n/u/1.png');
   assert.equal(withAttachments('', ['/u/1.png', '/u/2.pdf']), 'Please look at the files I attached. Open each with the Read tool:\n/u/1.png\n/u/2.pdf');
+});
+
+test('a folder is attached by its path: the agent looks in it with its own tools', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'tracker-folder-'));
+  writeFileSync(join(dir, 'a.txt'), 'x');
+  assert.deepEqual(checkFolders([`${dir}/`]), { folders: [dir] });
+  assert.deepEqual(checkFolders(undefined), { folders: [] });
+  for (const bad of [['relative/x'], [join(dir, 'a.txt')], [join(dir, 'gone')], 'x', [42], Array(7).fill(dir)]) assert.ok(checkFolders(bad).error, JSON.stringify(bad));
+  assert.equal(withAttachments('See this', [], ['/w/site']), 'See this\n\nI attached a folder. Look in it with your tools:\n/w/site');
+  assert.equal(withAttachments('', [], ['/w/a', '/w/b']), 'Please look at the folders I attached. Look in each with your tools:\n/w/a\n/w/b');
+  assert.equal(withAttachments('Both', ['/u/1.png'], ['/w/a']), 'Both\n\nI attached a file. Open it with the Read tool:\n/u/1.png\n\nI attached a folder. Look in it with your tools:\n/w/a');
+  assert.equal(withAttachments('', ['/u/1.png'], ['/w/a']), 'Please look at what I attached.\n\nI attached a file. Open it with the Read tool:\n/u/1.png\n\nI attached a folder. Look in it with your tools:\n/w/a');
 });
 
 test('attachments older than a week are cleared away', () => {

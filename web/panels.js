@@ -317,11 +317,11 @@ function composeHtml(a, ids = 'msg') {
     ? `<span id="${ids}-status" class="${sent.bad ? 'msg-bad' : 'msg-ok'}">${esc(sent.text)}</span>`
     : `<span id="${ids}-status" class="faint">${hint}</span>`;
   const files = msgFiles.get(a.id) ?? [];
-  const thumbs = files.length ? `<div class="thumbs">${files.map((f, i) => `<span class="${f.url ? 'thumb' : 'thumb thumb-file'}" data-tip="${esc(`${f.name} · ${sizeText(f.size)}`)}">${f.url
+  const thumbs = files.length ? `<div class="thumbs">${files.map((f, i) => `<span class="${f.url ? 'thumb' : f.folder ? 'thumb thumb-file thumb-folder' : 'thumb thumb-file'}" data-tip="${esc(f.folder ?? `${f.name} · ${sizeText(f.size)}`)}">${f.url
     ? `<img src="${esc(f.url)}" alt="${esc(f.name)}">`
-    : `<span class="thumb-ext">${esc(extOf(f.name))}</span><span class="thumb-name">${esc(f.name)}</span>`}<button type="button" class="thumb-x" data-remove-file="${i}" data-agent="${esc(a.id)}" aria-label="Remove ${esc(f.name)}">✕</button></span>`).join('')}</div>` : '';
+    : `<span class="thumb-ext">${f.folder ? 'folder' : esc(extOf(f.name))}</span><span class="thumb-name">${esc(f.name)}</span>`}<button type="button" class="thumb-x" data-remove-file="${i}" data-agent="${esc(a.id)}" aria-label="Remove ${esc(f.name)}">✕</button></span>`).join('')}</div>` : '';
   return `<div class="compose" data-agent="${esc(a.id)}" style="margin-top:10px"><textarea id="${ids}-text" data-msg-agent="${esc(a.id)}" rows="2" placeholder="Message ${esc(a.name)}…"${live ? '' : ' disabled'}>${esc(msgDrafts.get(a.id) ?? '')}</textarea>${thumbs}
-    <div class="compose-row">${status}<span class="grow"></span><button class="act" id="${ids}-attach" type="button" data-agent="${esc(a.id)}" data-tip="Attach files: screenshots, PDFs, Markdown, text… (you can also paste or drop them on the box)"${live ? '' : ' disabled'}>📎 Attach</button><button class="act primary" id="${ids}-send" data-agent="${esc(a.id)}"${live ? '' : ' disabled'}>Send</button></div></div>`;
+    <div class="compose-row">${status}<span class="grow"></span><button class="act" id="${ids}-attach" type="button" data-agent="${esc(a.id)}" data-tip="Attach files: screenshots, PDFs, Markdown, text… (you can also paste or drop them on the box)"${live ? '' : ' disabled'}>📎 Attach</button><button class="act" id="${ids}-folder" type="button" data-agent="${esc(a.id)}" data-tip="Attach a folder, picked in Finder: its path goes with the message, for the agent to look in"${live ? '' : ' disabled'}>📁 Folder</button><button class="act primary" id="${ids}-send" data-agent="${esc(a.id)}"${live ? '' : ' disabled'}>Send</button></div></div>`;
 }
 
 const subagentsOf = a => (a?.children ?? []).filter(c => c.kind === 'subagent');
@@ -423,6 +423,19 @@ function addFiles(agentId, files) {
   render();
 }
 
+/** 📁 Folder: Finder's folder window; the folder goes with the next message by its path (nothing is uploaded). */
+async function attachFolder(agentId, button) {
+  const agent = snap?.agents.find(a => a.id === agentId);
+  button.disabled = true;
+  const r = await post('/api/actions/choose-folder', { start: agent?.cwd || undefined, prompt: `Attach a folder to your message to ${agent?.name ?? 'the agent'}:` });
+  button.disabled = false;
+  const list = msgFiles.get(agentId) ?? [];
+  if (r.ok && list.length >= MAX_FILES) msgStatus.set(agentId, { at: Date.now(), bad: true, text: `At most ${MAX_FILES} attachments per message.` });
+  else if (r.ok && !list.some(f => f.folder === r.path)) msgFiles.set(agentId, [...list, { folder: r.path, name: r.path.split('/').pop() || r.path }]);
+  else if (!r.ok && !r.cancelled) msgStatus.set(agentId, { at: Date.now(), bad: true, text: r.error ?? 'The folder window could not open.' });
+  render();
+}
+
 function removeFile(agentId, index) {
   const list = msgFiles.get(agentId) ?? [];
   const [gone] = list.splice(index, 1);
@@ -445,20 +458,22 @@ async function sendMessage(agentId, button, quick = null) {
     button.textContent = 'Sending…';
   }
   let files = [];
+  const folders = attached.filter(f => f.folder).map(f => f.folder); // sent by their paths
   try {
-    files = await Promise.all(attached.map(async f => ({ name: f.name, data: toBase64(new Uint8Array(await f.file.arrayBuffer())) })));
+    files = await Promise.all(attached.filter(f => f.file).map(async f => ({ name: f.name, data: toBase64(new Uint8Array(await f.file.arrayBuffer())) })));
   } catch (err) {
     msgStatus.set(agentId, { at: Date.now(), bad: true, text: `Could not read a file: ${err?.message ?? err}` });
     render();
     return;
   }
-  const r = await post('/api/actions/message', files.length ? { agentId, text, files } : { agentId, text });
+  const r = await post('/api/actions/message', { agentId, text, ...(files.length ? { files } : {}), ...(folders.length ? { folders } : {}) });
   if (r.ok && quick === null) {
     msgDrafts.delete(agentId);
     for (const f of attached) if (f.url) URL.revokeObjectURL(f.url);
     msgFiles.delete(agentId);
   }
-  const extra = files.length ? ` with ${files.length} file${files.length > 1 ? 's' : ''}` : '';
+  const counted = [[files.length, 'file'], [folders.length, 'folder']].filter(([n]) => n).map(([n, what]) => `${n} ${what}${n > 1 ? 's' : ''}`);
+  const extra = counted.length ? ` with ${counted.join(' and ')}` : '';
   msgStatus.set(agentId, {
     at: Date.now(),
     bad: !r.ok,

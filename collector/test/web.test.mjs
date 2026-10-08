@@ -1957,3 +1957,20 @@ test('a folder outside your home folder and drives says so', async () => {
   assert.equal(page.el('sess-dir-list').hidden, true);
   assert.equal(page.el('sess-dir-new').disabled, true);
 });
+
+test('📁 Folder attaches a folder picked in Finder: its path goes with the message, nothing is uploaded', async () => {
+  const replies = { '/api/actions/choose-folder': { ok: true, path: '/w/site', home: '/Users/me' }, '/api/actions/message': { ok: true } };
+  const page = loadPage({ replies });
+  page.push(richSnapshot([richAgent({ mod: { version: '0.6.2', live: true }, state: 'yourTurn' })]));
+  assert.match(page.side(), /id="msg-folder"[^>]*>📁 Folder</);
+  await page.clickButton('msg-folder', { agent: 'r1' });
+  await page.settle();
+  assert.deepEqual(page.posts.at(-1), { path: '/api/actions/choose-folder', body: { start: '/w', prompt: 'Attach a folder to your message to busy-one:' } });
+  assert.match(page.side(), /class="thumb thumb-file thumb-folder" data-tip="\/w\/site"><span class="thumb-ext">folder<\/span><span class="thumb-name">site<\/span>/);
+  page.edit('input', { dataset: { msgAgent: 'r1' }, value: 'Look here' });
+  await page.clickButton('msg-send', { agent: 'r1' });
+  await page.settle();
+  assert.deepEqual(page.posts.at(-1), { path: '/api/actions/message', body: { agentId: 'r1', text: 'Look here', folders: ['/w/site'] } });
+  assert.match(page.side(), /Sent to busy-one with 1 folder/);
+  assert.doesNotMatch(page.side(), /thumb-folder/, 'sent: the box is empty again');
+});

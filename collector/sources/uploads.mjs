@@ -1,5 +1,5 @@
 import { mkdirSync, readdirSync, renameSync, rmdirSync, statSync, unlinkSync, writeFileSync } from 'node:fs';
-import { join } from 'node:path';
+import { isAbsolute, join, resolve } from 'node:path';
 
 // Files sent with a dashboard message: screenshots, PDFs, Markdown, text… A plugin's prompt can't
 // carry them, so they are saved under state/uploads/<sessionId>/ and the message names them for the
@@ -43,6 +43,22 @@ export function checkFiles(list) {
   return { files };
 }
 
+/** The folders attached to a message, by path (nothing is copied): { folders } or { error }. */
+export function checkFolders(list) {
+  if (list === undefined) return { folders: [] };
+  if (!Array.isArray(list) || list.length > MAX_FILES) return { error: `Attach at most ${MAX_FILES} folders at a time.` };
+  const folders = [];
+  for (const item of list) {
+    if (typeof item !== 'string' || !isAbsolute(item) || /[\0\r\n]/.test(item)) return { error: 'That folder could not be read.' };
+    const path = resolve(item);
+    let isDir = false;
+    try { isDir = statSync(path).isDirectory(); } catch { /* gone */ }
+    if (!isDir) return { error: `${path} is not a folder (any more).` };
+    folders.push(path);
+  }
+  return { folders };
+}
+
 /** Writes each file whole (temp file + rename), under its own name after a stamp, and returns their absolute paths. */
 export function saveFiles(dir, sessionId, files, now = Date.now()) {
   if (!SESSION_ID.test(sessionId)) throw new Error('not a session id');
@@ -57,14 +73,15 @@ export function saveFiles(dir, sessionId, files, now = Date.now()) {
   });
 }
 
-/** The message text with the attached files named, so the agent opens them. */
-export function withAttachments(text, paths) {
-  if (!paths.length) return text;
-  const many = paths.length > 1;
-  const list = paths.join('\n');
-  return text
-    ? `${text}\n\nI attached ${many ? `${paths.length} files. Open each` : 'a file. Open it'} with the Read tool:\n${list}`
-    : `Please look at the file${many ? 's' : ''} I attached. Open ${many ? 'each' : 'it'} with the Read tool:\n${list}`;
+/** The message text with the attached files and folders named, so the agent opens them (files with Read, folders with its own tools). */
+export function withAttachments(text, paths, folders = []) {
+  const files = paths.length ? `I attached ${paths.length > 1 ? `${paths.length} files. Open each` : 'a file. Open it'} with the Read tool:\n${paths.join('\n')}` : '';
+  const dirs = folders.length ? `I attached ${folders.length > 1 ? `${folders.length} folders. Look in each` : 'a folder. Look in it'} with your tools:\n${folders.join('\n')}` : '';
+  if (text) return [text, files, dirs].filter(Boolean).join('\n\n');
+  if (files && dirs) return `Please look at what I attached.\n\n${files}\n\n${dirs}`;
+  if (files) return `Please look at the file${paths.length > 1 ? 's' : ''} I attached. Open ${paths.length > 1 ? 'each' : 'it'} with the Read tool:\n${paths.join('\n')}`;
+  if (dirs) return `Please look at the folder${folders.length > 1 ? 's' : ''} I attached. Look in ${folders.length > 1 ? 'each' : 'it'} with your tools:\n${folders.join('\n')}`;
+  return text;
 }
 
 /** Removes attachments older than a week, and session folders left empty. */

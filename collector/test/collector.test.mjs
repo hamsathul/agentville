@@ -346,6 +346,9 @@ test('files sent with a message are saved for the agent, and the message tells i
     assert.equal(received.length, 1);
     assert.match(received[0], /^Please look at the files I attached\. Open each with the Read tool:\n/);
     for (const name of saved) assert.ok(received[0].includes(join(root, 'state', 'uploads', 'sess-shot', name)));
+    assert.deepEqual(await handle.actions.message({ agentId: 'sess-shot', text: '', folders: [root] }), { ok: true }, 'a folder alone is a message');
+    assert.equal(received[1], `Please look at the folder I attached. Look in it with your tools:\n${root}`);
+    assert.match((await handle.actions.message({ agentId: 'sess-shot', text: 'x', folders: [join(root, 'gone')] })).error, /not a folder/);
   } finally {
     clearInterval(fakeMod);
     await handle.stop();

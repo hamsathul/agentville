@@ -235,13 +235,15 @@ These need the mod in that session.
   arrives as your own prompt; a busy agent reads it when its current step ends.
 - **Attachments.** Paste (⌘V), drop on the box or use 📎 Attach: any file (screenshots, PDFs,
   Markdown, text…), up to 6 of 10 MB each. The agent opens them with its Read tool.
+- **📁 Folder** attaches a folder, picked in Finder's folder window. Nothing is uploaded: the
+  message carries the folder's path, and the agent looks in it with its own tools.
 - **Reply** on any of the agent's messages to quote it into yours. **Show all** loads the
   session's whole history, and **Full transcript** opens it in a new tab.
 - **⤢ Read all**, on the Conversation heading, opens the whole conversation in a dialog: every
   message from the first, oldest first, read from the transcript however long it is. **Search**
   highlights every match in place, with "1 of 12" and ↑ ↓ (Enter for older, Shift+Enter for
   newer); it starts at the newest. While the dialog is open, new messages appear at the bottom.
-  You can reply from it too: it has the same message box, with 📎 Attach, sharing the side
+  You can reply from it too: it has the same message box, with 📎 Attach and 📁 Folder, sharing the side
   panel's draft and files.
 
 ### Side questions (/btw)
@@ -516,7 +518,8 @@ canvas, with its text drawn as HTML on top so it stays crisp.
   something else, and in a sandbox. A previewed page's scripts run in an origin of their own,
   without the dashboard, its token or its data, and can load the files beside it but not read
   them. A Word document's page shows with no scripts at all.
-- Files you attach are kept under `state/uploads/` for 7 days.
+- Files you attach are kept under `state/uploads/` for 7 days. A folder you attach is sent as its
+  path only.
 - The ⚙ Claude Code dialog runs `claude plugin …` and `claude mcp …` for you, and removing a rule
   edits that one entry in its settings file. A server's full command line or URL is never shown,
   as either can carry a key: only its host or the command it runs.
@@ -531,7 +534,7 @@ canvas, with its text drawn as HTML on top so it stays crisp.
 | No cost, plan usage or working line | These come from the mod (0.4.0 or newer; the working line from 0.5.0) in a running session |
 | No pull requests or deploy weather | `gh auth status`. Pull requests need a GitHub `origin`; Actions runs need the repo in `deployRepos` |
 | ＋ Session or End session does nothing | Allow the tracker to control Terminal or iTerm: System Settings → Privacy & Security → Automation |
-| **Browse…** opens no window | Allow the tracker to control System Events: System Settings → Privacy & Security → Automation. A window may also be open behind others: pick or cancel it there |
+| **Browse…** or **📁 Folder** opens no window | Allow the tracker to control System Events: System Settings → Privacy & Security → Automation. A window may also be open behind others: pick or cancel it there |
 | The bell is silent | Click the page once (browsers block sound until you do), and allow notifications |
 
 ## Known limits

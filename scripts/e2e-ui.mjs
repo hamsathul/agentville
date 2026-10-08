@@ -297,6 +297,11 @@ try {
   for (let i = 0; i < 40 && received.length < 2; i++) await sleep(150);
   check(received[1] === 'Sent from the conversation dialog', `the conversation dialog has the message box too: Enter sends from it (got ${JSON.stringify(received)})`);
   await js("document.getElementById('convo').close()");
+  await js("document.getElementById('msg-folder').click()");
+  check(await until("/farm-repo/.test(document.querySelector('#center-body .thumb-folder')?.textContent ?? '')"), "📁 Folder attaches the folder picked in Finder's window");
+  await js("document.getElementById('msg-send').click()");
+  for (let i = 0; i < 40 && received.length < 3; i++) await sleep(150);
+  check(received[2] === `Please look at the folder I attached. Look in it with your tools:\n${repo}`, `sent, the message carries its path (got ${JSON.stringify(received[2])})`);
   const theme = await js('document.documentElement.dataset.theme ?? "auto"');
   await js("document.getElementById('theme-toggle').click()");
   check((await js('document.documentElement.dataset.theme ?? "auto"')) !== theme, 'the theme button switches the theme');

@@ -362,6 +362,7 @@ document.addEventListener('click', async e => {
     return;
   }
   if (d.removeFile !== undefined) { removeFile(d.agent, Number(d.removeFile)); return; }
+  if (el.id === 'msg-folder' || el.id === 'convo-msg-folder') { await attachFolder(d.agent, el); return; }
   if (el.id === 'msg-attach' || el.id === 'convo-msg-attach') {
     pickerFor = d.agent;
     const picker = $(el.id === 'msg-attach' ? 'file-picker' : 'convo-file-picker'); // the dialog's own: a modal dialog makes the page behind it inert

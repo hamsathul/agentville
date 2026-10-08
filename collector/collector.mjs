@@ -18,7 +18,7 @@ import { checkFolderFile, listFolder, parsePorcelain, readFolderFile } from './s
 import { listDirs, makeDir, startPlace } from './sources/folders.mjs';
 import { contentTypeOf, parseCsv, readXlsx, viewOf } from './sources/previews.mjs';
 import { repoFiles } from './derive/repo-files.mjs';
-import { checkFiles, pruneUploads, saveFiles, withAttachments } from './sources/uploads.mjs';
+import { checkFiles, checkFolders, pruneUploads, saveFiles, withAttachments } from './sources/uploads.mjs';
 import { compactSummary, memoryFiles, scratchpadOf } from './sources/memory.mjs';
 import { EFFORTS, MODELS, MODE_FLAGS, SESSION_ID, claudeCommand, closeTerminalScript, listSessions, projectsOf, shellQuote, terminalScript } from './sources/sessions.mjs';
 import { parseMcpList, parsePluginDetails, projectServersOf, readOwnSkills, readRules, removeRule } from './sources/claude-setup.mjs';
@@ -848,11 +848,13 @@ export async function startCollector({ root, claudeDir = join(homedir(), '.claud
       const text = typeof body.text === 'string' ? body.text.trim() : '';
       const checked = checkFiles(body.files);
       if (checked.error) return { ok: false, error: checked.error };
-      if (!text && !checked.files.length) return { ok: false, error: 'Type a message first.' };
+      const dirs = checkFolders(body.folders); // attached by their paths
+      if (dirs.error) return { ok: false, error: dirs.error };
+      if (!text && !checked.files.length && !dirs.folders.length) return { ok: false, error: 'Type a message first.' };
       if (text.length > 20_000) return { ok: false, error: 'That message is too long (20,000 characters at most).' };
       if (!agent.mod?.live) return { ok: false, error: "That session isn't listening for dashboard messages yet. Send it anything in its terminal once, or start a new session." };
       const saved = saveFiles(uploadsDir, agent.id, checked.files);
-      const file = writeMessageFile(messagesDir, agent.id, withAttachments(text, saved));
+      const file = writeMessageFile(messagesDir, agent.id, withAttachments(text, saved, dirs.folders));
       return confirmDelivery(file, { timeoutMs: deliveryTimeoutMs, failure: "The session didn't pick up the message. Please send it in its terminal." });
     },
     async answer(body) {
