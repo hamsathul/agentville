@@ -417,7 +417,7 @@ can hold.
 | A blue pennant / a greenhouse | A branch other than main / a worktree, beside its repo |
 | Stones round some beds, with a sign | One project's repos, side by side |
 | The market stall | Open pull requests as crates, tagged by their checks. **Sold!** means one was merged |
-| The silo's grain / the season | Your plan's weekly usage / its 5-hour limit (winter when nearly used up) |
+| The silo's grain / the season | Your plan's weekly usage / its 5-hour limit (winter when nearly used up). The tag at the silo's foot gives the week's figure, amber from 70% and red from 90% |
 | Eggs, hens in the run | Subagents that finished lately / more running than farmers can lead |
 
 **Controls.**

@@ -403,6 +403,10 @@ try {
   await shot('farm-mcp-cart');
   check(!(await js(`!!${moverOf('Gmail')}`)), "a server no one is calling now waits in its place: no name out on the farm");
   check(await until("[...document.querySelectorAll('.px-lab')].some(l => l.textContent.startsWith('farm-repo'))"), 'the repo is a field');
+  // The silo's tag near the plan's weekly limit: amber from 70%, red with white figures from 90%, never cream.
+  const siloTag = cls => js(`(() => { const l = document.createElement('div'); l.className = 'px-lab cnt ${cls}'; document.querySelector('#farm').appendChild(l); const c = getComputedStyle(l); const out = [c.backgroundColor, c.color]; l.remove(); return JSON.stringify(out); })()`);
+  const [red, amber] = [JSON.parse(await siloTag('silo-red')), JSON.parse(await siloTag('silo-amber'))];
+  check(red[0] === 'rgb(224, 74, 58)' && amber[0] === 'rgb(240, 180, 41)', `the silo's tag turns amber near the weekly limit and red at it, so its white figures show (red ${red}, amber ${amber})`);
   check(await js(`Number.isInteger(JSON.parse(localStorage.getItem('tracker-farm-beds') || '{}')[${JSON.stringify(repo)}]?.i)`), 'the farm remembers which bed the field has, so it stays put as repos come and go');
   await js("document.querySelector('[data-farm-help]').click()");
   check(await js("document.querySelector('.px-help').open"), 'the info button opens how to read the farm');
