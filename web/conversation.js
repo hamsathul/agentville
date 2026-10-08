@@ -41,6 +41,7 @@ async function openConversation(id) {
   $('convo-body').innerHTML = '<div class="loading"><span class="spinner"></span>Reading the whole conversation…</div>';
   if (!$('convo').open) $('convo').showModal();
   renderConvoCompose();
+  $('convo-q').focus?.(); // now, not once it has loaded: by then you may be typing a reply
   const r = await fetchConversation(0);
   if (convo !== mine) return; // closed, or another one opened meanwhile
   convo.loading = false;
@@ -50,7 +51,6 @@ async function openConversation(id) {
   $('convo-body').innerHTML = r.items.map(convoBubble).join('') || '<div class="empty">Nothing has been said yet.</div>';
   convoSub();
   $('convo-body').scrollTop = $('convo-body').scrollHeight; // the newest at hand
-  $('convo-q').focus?.();
 }
 
 /** While the dialog is open it follows the session: new messages are added at the bottom (called on each render). */

@@ -218,7 +218,9 @@ try {
   check(await until("document.getElementById('msg-text')?.value === ''"), 'the message box clears once it is sent');
   await js("document.querySelector('#center-body [data-convo]').click()");
   await until("!!document.getElementById('convo-msg-text')");
-  await js("document.getElementById('convo-msg-text').focus()");
+  await js("document.getElementById('convo-msg-text').focus()"); // before the conversation has loaded
+  await until("/messages since/.test(document.getElementById('convo-sub').textContent)");
+  check(await js("document.activeElement?.id === 'convo-msg-text'"), 'the reply box keeps the focus once the conversation has loaded');
   await send('Input.insertText', { text: 'Sent from the conversation dialog' });
   await key('keyDown'); await key('keyUp');
   for (let i = 0; i < 40 && received.length < 2; i++) await sleep(150);
