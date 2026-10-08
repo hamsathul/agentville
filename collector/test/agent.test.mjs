@@ -252,6 +252,14 @@ test("a session's effort: what /effort last set since it started, else its --eff
   assert.equal(effortOf(modelOf(prompt(0, 'go')), 'claude'), undefined, "the model's default");
 });
 
+test("a session's model as /model last named it goes out beside the model of its last reply", () => {
+  const set = JSON.stringify({ type: 'system', subtype: 'local_command', timestamp: new Date(at(5)).toISOString(), content: '<local-command-stdout>Set model to `Opus 5.5 (1M context)` and saved as your default for new sessions</local-command-stdout>' });
+  const a = buildAgent({ base: base(), model: modelOf(prompt(0, 'go'), reply(1, 'ok'), set), now: at(10), cfg, repoOf, home: '/h' });
+  assert.equal(a.model, 'claude-opus-5-5');
+  assert.equal(a.modelLabel, 'Opus 5.5 (1M context)');
+  assert.equal(buildAgent({ base: base(), model: modelOf(prompt(0, 'go'), reply(1, 'ok')), now: at(10), cfg, repoOf, home: '/h' }).modelLabel, undefined);
+});
+
 test("a working session's turn: since when and its tokens from the transcript, the working line's word and mode from its mod", () => {
   const m = modelOf(prompt(10, 'go'), reply(12, 'x'));
   assert.deepEqual(turnOf(m, undefined), { startedAt: at(10) });

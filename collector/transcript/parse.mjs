@@ -39,6 +39,9 @@ function createdTaskId(obj, block) {
 
 // What /effort printed when it set the level (typed, or run from the dashboard).
 const EFFORT_SET = /<local-command-stdout>Set effort level to ([a-z]+)/;
+// What /model printed: the model's name as its picker has it ("Opus 5.5 (1M context)"), bold or in backticks.
+const MODEL_SET = /<local-command-stdout>(?:Set model to|Kept model as) `?([^`<]+?)`?(?: and saved\b|<\/local-command-stdout>)/;
+const ANSI = /\u001b\[[0-9;]*m/g;
 
 /** Normalises one transcript JSON object into { at, events }. */
 export function parseEntry(obj) {
@@ -48,8 +51,11 @@ export function parseEntry(obj) {
   const events = [];
   const content = obj.message?.content;
   if (obj.type === 'user' || obj.type === 'system') {
-    const effort = (typeof obj.content === 'string' ? obj.content : typeof content === 'string' ? content : '').match(EFFORT_SET);
+    const said = typeof obj.content === 'string' ? obj.content : typeof content === 'string' ? content : '';
+    const effort = said.match(EFFORT_SET);
     if (effort) events.push({ kind: 'effort', level: effort[1] });
+    const model = said.includes('model ') ? said.replace(ANSI, '').match(MODEL_SET) : null;
+    if (model) events.push({ kind: 'model_set', name: model[1].replace(/ \(default\)$/, '').slice(0, 60) });
   }
 
   if (obj.type === 'user') {

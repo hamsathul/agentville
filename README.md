@@ -173,7 +173,7 @@ The page is laid out like an editor, in three columns:
   their current tool. Idle and stale agents fold away. Your repos sit below, each with its branch,
   last deploy, pull requests and the agents in it.
 - **Centre: the agent you picked** (the one at work until you pick another). It shows:
-  - its state, folder and model;
+  - its state, folder and model (a switch with `/model` shows at once, before its next reply);
   - its controls: permission mode, model, effort, Restart in…, End session;
   - CPU, memory, context left and cost;
   - **Now**: its working line and current tool;

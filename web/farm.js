@@ -178,7 +178,7 @@
           tasks: a.tasks ?? null, compactions: a.compactions ?? 0,
           thinking: a.kind !== 'codex' && a.state === 'working' && (a.turn?.mode ? a.turn.mode === 'thinking' : !a.now), // the working line says thinking (else: between tool calls)
           turn: a.state === 'working' ? a.turn ?? null : null, effort: a.effort ?? null,
-          model: a.model ?? null, family: familyOf(a.model), fast: a.fast === true,
+          model: a.modelLabel ?? a.model ?? null, family: familyOf(a.modelLabel ?? a.model), fast: a.fast === true,
           planAsk: a.state === 'waiting' && a.now?.tool === 'ExitPlanMode', // a plan waiting for your approval
           service: a.now?.service ?? null, // where a web or connector call goes
           jobs: (a.children ?? []).filter(c => c.kind === 'bgjob' && c.state === 'running').length, // background commands running

@@ -118,6 +118,8 @@ function modelName(id) {
   const m = String(id ?? '').match(/^claude-([a-z]+)-(\d+)(?:-(\d{1,2}))?(?:-|$)/);
   return m ? `${m[1][0].toUpperCase()}${m[1].slice(1)} ${m[2]}${m[3] ? `.${m[3]}` : ''}` : String(id ?? '');
 }
+/** The model a session is on: what /model last set (shown before a reply from it), else the model of its last reply. */
+const modelOf = a => a.modelLabel ?? a.model;
 
 /** A terminal session's bar: its permission mode, Restart in… another mode, and End session. */
 function sessionBarHtml(a) {
@@ -140,7 +142,7 @@ function sessionBarHtml(a) {
     ? `<span class="${a.setting.ok ? 'msg-ok' : 'msg-bad'} set-note" data-tip="${esc(a.setting.text)}">${a.setting.ok ? '✓' : '✗'} ${esc(a.setting.text ? a.setting.text.replace(/`/g, '').slice(0, 80) : `/${a.setting.command} ${a.setting.args}`)}</span>`
     : '';
   return `<div class="sessbar">${chip}
-    <select class="act mini" data-switch-model data-agent="${esc(a.id)}" aria-label="Switch this session's model" data-tip="${esc(why)}"${off}><option value="">${esc(a.model ? modelName(a.model) : 'Model…')}</option>${models}</select>
+    <select class="act mini" data-switch-model data-agent="${esc(a.id)}" aria-label="Switch this session's model" data-tip="${esc(why)}"${off}><option value="">${esc(modelOf(a) ? modelName(modelOf(a)) : 'Model…')}</option>${models}</select>
     <select class="act mini" data-switch-effort data-agent="${esc(a.id)}" aria-label="Set this session's effort" data-tip="${esc(live ? 'Runs /effort in the session after its current turn. Claude Code saves low to xhigh as your default for new sessions; max is for this session only.' : why)}"${off}><option value="">effort: ${esc(a.effort ?? 'default')}</option>${efforts}</select>
     <select class="act mini" data-restart-mode data-agent="${esc(a.id)}" aria-label="Restart this session in another permission mode"><option value="">Restart in…</option>${options}</select>
     <button type="button" class="act mini" data-end-session="${esc(a.id)}" data-tip="End this session and close its terminal window (resume it later from ＋ Session)">End session</button>${note}</div>`;

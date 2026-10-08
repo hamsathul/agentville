@@ -41,6 +41,14 @@ test('assistant entries give tool_use, reply and model events', () => {
   assert.deepEqual(r.events[0], { kind: 'tool_use', id: 't1', name: 'Bash', input: { command: 'ls' }, cwd: '/w' });
 });
 
+test('what /model printed names the model it set, however Claude Code worded it', () => {
+  const said = text => parseEntry({ type: 'user', origin: { kind: 'plugin' }, message: { content: `<local-command-stdout>${text}</local-command-stdout>` } }).events.filter(e => e.kind === 'model_set');
+  assert.deepEqual(said('Set model to `Opus 5.5 (1M context)` and saved as your default for new sessions'), [{ kind: 'model_set', name: 'Opus 5.5 (1M context)' }]);
+  assert.deepEqual(said('Set model to \u001b[1mFable 5\u001b[22m and saved as your default for new sessions'), [{ kind: 'model_set', name: 'Fable 5' }]);
+  assert.deepEqual(said('Kept model as `Opus 5.5 (1M context) (default)`'), [{ kind: 'model_set', name: 'Opus 5.5 (1M context)' }]);
+  assert.deepEqual(said("Model 'opus 4.8' not found"), []);
+});
+
 test('tool results carry the error flag', () => {
   const r = parseEntry({ type: 'user', message: { content: [{ type: 'tool_result', tool_use_id: 't1', is_error: true }] } });
   assert.deepEqual(r.events, [{ kind: 'tool_result', toolUseId: 't1', ok: false }]);

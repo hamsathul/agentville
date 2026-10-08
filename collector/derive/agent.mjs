@@ -121,6 +121,7 @@ export function buildAgent({ base, model, registry, proc, command, cpuHistory = 
     cwd: base.cwd,
     pid: base.pid,
     model: model?.model ?? undefined,
+    modelLabel: model?.modelSet ?? undefined, // what /model last set it to, shown before its next reply says
     fast: model?.fast || undefined,
     contextTokens: model?.contextTokens ?? undefined,
     tasks: tasksOf(model),

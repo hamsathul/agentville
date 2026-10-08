@@ -14,6 +14,8 @@ const bodyOf = text => {
   const t = String(text ?? '').trim();
   return t.length > BODY_MAX ? `${t.slice(0, BODY_MAX)}…` : t;
 };
+/** Whether a model id is the one a name says: claude-opus-5-5 is Opus 5.5 (1M context), claude-haiku-4-5-20251001 is Haiku 4.5. */
+const isModelNamed = (id, name) => id.replace(/\[.*$/, '').replace(/-\d{8}$/, '') === `claude-${name.replace(/\s*\(.*$/, '').toLowerCase().replace(/[^a-z0-9]+/g, '-')}`;
 
 /** Everything the tracker knows about one session, built incrementally from its transcript. */
 export class SessionModel {
@@ -39,6 +41,7 @@ export class SessionModel {
     this.turnOpen = false;
     this.title = null;
     this.model = null;
+    this.modelSet = null; // the model as /model last named it, until a reply from another model ("Opus 5.5 (1M context)")
     this.contextTokens = null;
     this.fast = false; // the latest reply came in fast mode
     this.taskOps = []; // the task list as it was made and changed (TaskCreate, TaskUpdate, TodoWrite), oldest first
@@ -173,8 +176,15 @@ export class SessionModel {
         this.compactions += 1;
         this.lastCompactAt = when;
         break;
+      case 'model_set':
+        this.modelSet = ev.name;
+        break;
       case 'model':
-        if (!ev.model.startsWith('<')) { this.model = ev.model; this.fast = ev.usage?.speed === 'fast'; }
+        if (!ev.model.startsWith('<')) {
+          this.model = ev.model;
+          this.fast = ev.usage?.speed === 'fast';
+          if (this.modelSet && !isModelNamed(ev.model, this.modelSet)) this.modelSet = null; // another model answered
+        }
         if (ev.id && Number.isFinite(ev.usage?.output_tokens)) this.turnOut.set(ev.id, Math.max(this.turnOut.get(ev.id) ?? 0, ev.usage.output_tokens));
         if (ev.usage) {
           const total = (ev.usage.input_tokens ?? 0) + (ev.usage.cache_read_input_tokens ?? 0) + (ev.usage.cache_creation_input_tokens ?? 0);

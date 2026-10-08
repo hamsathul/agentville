@@ -1192,6 +1192,15 @@ test("a session's bar switches its model and effort (in the session, after you c
   assert.doesNotMatch(page.el('confirm-text').textContent, /default for new sessions/, 'max is for this session only');
 });
 
+test('a model just set with /model shows at once, before a reply from it', () => {
+  const page = loadPage();
+  page.push(richSnapshot([richAgent({ pid: 4242, model: 'claude-opus-4-8', modelLabel: 'Opus 5.5 (1M context)', mod: { live: true, version: '0.5.0' } })]));
+  const side = page.side();
+  assert.match(side, /data-switch-model[^>]*><option value="">Opus 5\.5 \(1M context\)<\/option>/);
+  assert.match(side, /· Opus 5\.5 \(1M context\)/);
+  assert.doesNotMatch(side, /claude-opus-4-8|Opus 4\.8/, 'not the model of its last reply');
+});
+
 test('the side question section folds to its heading, with how many it holds, and stays folded after a reload', async () => {
   const live = () => richSnapshot([richAgent({ mod: { live: true, version: '0.5.0' }, asides: [{ id: '1', question: 'Where is the parser?', answer: 'In parse.mjs.', at: 1, answeredAt: 1 }] })]);
   const page = loadPage();

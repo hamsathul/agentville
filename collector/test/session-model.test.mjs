@@ -271,6 +271,19 @@ test('fast mode is read from the latest reply', () => {
   assert.equal(modelOf(prompt(0, 'go'), fast('fast'), fast('standard')).fast, false);
 });
 
+test('a model set with /model shows at once, and stays until a reply comes from another model', () => {
+  const set = name => JSON.stringify({ type: 'user', timestamp: new Date(at(2)).toISOString(), origin: { kind: 'plugin' }, message: { content: `<local-command-stdout>Set model to \`${name}\` and saved as your default for new sessions</local-command-stdout>` } });
+  const from = (sec, model) => JSON.stringify({ type: 'assistant', timestamp: new Date(at(sec)).toISOString(), message: { model, role: 'assistant', content: [{ type: 'text', text: 'hi' }] } });
+  const m = modelOf(prompt(0, 'go'), from(1, 'claude-opus-4-8'), set('Opus 5.5 (1M context)'));
+  assert.equal(m.model, 'claude-opus-4-8');
+  assert.equal(m.modelSet, 'Opus 5.5 (1M context)', 'before its next reply');
+  m.applyLine(from(3, 'claude-opus-5-5'));
+  assert.equal(m.modelSet, 'Opus 5.5 (1M context)', 'its reply came from that model: the 1M context is still worth saying');
+  m.applyLine(from(4, 'claude-sonnet-5-5-20260901'));
+  assert.equal(m.modelSet, null, 'another model answered');
+  assert.equal(modelOf(set('Haiku 4.5'), from(3, 'claude-haiku-4-5-20251001')).modelSet, 'Haiku 4.5');
+});
+
 test('a scheduled wake-up is remembered until the next turn begins', () => {
   const wake = toolUse(5, 'w1', 'ScheduleWakeup', { delaySeconds: 1200, reason: 'watching CI', prompt: '/loop check' });
   const waiting = modelOf(prompt(0, '/loop check'), wake, toolResult(6, 'w1'), turnEnd(7));

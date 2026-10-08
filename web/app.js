@@ -22,7 +22,7 @@ function overviewHtml(a) {
   const resume = a.kind === 'codex' ? '' : `cd ${shellQuote(a.cwd)} && claude --resume ${a.id}`;
   return `<div class="ov"><div class="head"><span class="swatch" style="background:${color}"></span><span class="name">${esc(a.name)}</span><span class="chip c-${a.state}">${STATE_CHIP[a.state] ?? esc(a.state)} · <span data-since="${a.stateSince}"></span></span></div>
     ${askHtml(a)}
-    <div class="muted" style="margin-top:6px">${esc(short(a.cwd))} · ${esc(a.kind)}${a.model ? ` · ${esc(a.model)}` : ''}
+    <div class="muted" style="margin-top:6px">${esc(short(a.cwd))} · ${esc(a.kind)}${modelOf(a) ? ` · ${esc(modelOf(a))}` : ''}
       ${a.kind === 'codex' ? '' : a.mod?.live
         ? ' <span class="chip c-good" data-tip="This session can be answered from the dashboard">📡 dashboard answers on</span>'
         : ' <span class="chip c-plain" data-tip="The Agentville mod in this session isn\'t listening. It starts with the next message you send the session, or with a new session.">dashboard answers off</span>'}</div>
@@ -183,7 +183,7 @@ function farmSideHtml(a) {
   const color = window.TrackerFarm?.colorOf?.(a.id) ?? colorOf(a.id);
   const now = a.now ? `<div class="now mono"><span class="pulse"></span> ${esc(a.now.tool)} ${esc(a.now.summary)} · <b data-since="${a.now.startedAt}"></b></div>` : `<div class="muted">${esc(a.stateReason)}</div>`;
   return `<div class="fs-head"><span class="swatch" style="background:${color}"></span><span class="name">${esc(a.name)}</span><span class="chip c-${a.state}">${STATE_CHIP[a.state] ?? esc(a.state)} · <span data-since="${a.stateSince}"></span></span><span class="grow"></span><button class="act mini" id="fs-list" type="button" data-tip="Show this agent in the list view">☰ List</button></div>
-    <div class="muted" style="margin-top:4px">${esc(short(a.cwd))}${a.model ? ` · ${esc(a.model)}` : ''}</div>
+    <div class="muted" style="margin-top:4px">${esc(short(a.cwd))}${modelOf(a) ? ` · ${esc(modelOf(a))}` : ''}</div>
     ${sessionBarHtml(a)}
     ${askHtml(a)}
     <div class="sec">Now</div>${workingLineHtml(a)}${a.turn && !a.now ? '' : now}
