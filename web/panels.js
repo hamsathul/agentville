@@ -259,7 +259,9 @@ function conversationHtml(a) {
   const bubble = f => (f.kind === 'peer' ? peer(f) : f.kind === 'prompt'
     ? `<div class="bub you">${esc(f.body || f.text)}${moreHtml(a, f)}<time>${hhmm(f.at)}</time></div>`
     : `<div class="bub agent"><div class="bub-md">${renderMarkdown(f.body || f.text)}</div>${moreHtml(a, f)}<time>${hhmm(f.at)}<button type="button" class="bub-reply" data-quote="${esc(f.body || f.text)}" data-agent="${esc(a.id)}" title="Quote this in your reply">↩ Reply</button></time></div>`);
-  return `<div class="sec">Conversation</div><div class="chat">${said.map(bubble).join('')}</div>`;
+  // The latest exchange is framed: your last message and everything after it (all of it, if that message is further back).
+  const cut = said.findIndex(f => f.kind === 'prompt') + 1 || said.length;
+  return `<div class="sec">Conversation</div><div class="chat"><div class="latest" role="group" aria-label="The latest exchange"><span class="latest-tag">Latest</span>${said.slice(0, cut).map(bubble).join('')}</div>${said.slice(cut).map(bubble).join('')}</div>`;
 }
 
 /** The tool steps, newest first (the conversation is shown on its own); Show all loads the whole history. */
