@@ -23,7 +23,7 @@ function overviewHtml(a) {
         : ' <span class="chip c-plain" data-tip="The Agentville mod in this session isn\'t listening. It starts with the next message you send the session, or with a new session.">dashboard answers off</span>'}</div>
     ${sessionBarHtml(a)}
     ${a.state === 'stale' ? '' : `<div style="margin-top:8px">${metricsHtml(a)}</div>`}
-    <div class="sec">Now</div>${workingLineHtml(a)}${a.now ? `<div class="now mono"><span class="pulse"></span> ${esc(a.now.tool)} ${esc(a.now.summary)} · <b data-since="${a.now.startedAt}"></b></div>` : a.turn ? '' : `<div class="muted">${esc(a.stateReason)}</div>`}
+    <div class="sec">Now</div>${workingLineHtml(a)}${a.now ? `<div class="now mono"><span class="pulse"></span> ${esc(a.now.tool)} ${esc(a.now.summary)} · <b data-since="${a.now.startedAt}"></b></div>` : a.turn ? '' : restHtml(a)}
     ${shellsHtml(a)}
     ${questionHtml(a)}
     ${composeHtml(a)}
@@ -205,7 +205,7 @@ function setFarmSide(open) {
 /** The farm sidebar for one agent: what it asks, a message box, what it is doing, what it did. */
 function farmSideHtml(a) {
   const color = window.TrackerFarm?.colorOf?.(a.id) ?? colorOf(a.id);
-  const now = a.now ? `<div class="now mono"><span class="pulse"></span> ${esc(a.now.tool)} ${esc(a.now.summary)} · <b data-since="${a.now.startedAt}"></b></div>` : `<div class="muted">${esc(a.stateReason)}</div>`;
+  const now = a.now ? `<div class="now mono"><span class="pulse"></span> ${esc(a.now.tool)} ${esc(a.now.summary)} · <b data-since="${a.now.startedAt}"></b></div>` : restHtml(a);
   return `<div class="fs-head"><span class="swatch" style="background:${color}"></span><span class="name">${esc(a.name)}</span><span class="chip c-${a.state}">${STATE_CHIP[a.state] ?? esc(a.state)} · <span data-since="${a.stateSince}"></span></span><span class="grow"></span><button class="act mini" id="fs-list" type="button" data-tip="Show this agent in the list view">☰ List</button></div>
     <div class="muted where" style="margin-top:4px">${esc(short(a.cwd))}${modelOf(a) ? ` · ${esc(modelOf(a))}` : ''}</div>
     ${sessionBarHtml(a)}

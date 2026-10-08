@@ -2060,3 +2060,28 @@ test('Documents lists the pictures, videos and PDFs it wrote or read too, each w
   page.push(richSnapshot([richAgent({ docs: [{ path: '/w/shots/login.png', wrote: false, at: Date.now() }, { path: '/w/report.pdf', wrote: true, at: Date.now() }, { path: '/w/spec.md', wrote: true, at: Date.now() }] })]));
   assert.match(page.side(), /🖼<\/span><span class="doc-name">login\.png[\s\S]*📕<\/span><span class="doc-name">report\.pdf[\s\S]*📄<\/span><span class="doc-name">spec\.md/);
 });
+
+/* ---------- the sidebar, easier to read ---------- */
+
+test("a command's details are rounded, on one line: its CPU without decimals, its memory in GB past a gigabyte", () => {
+  const page = loadPage();
+  page.push(richSnapshot([richAgent({ shells: [{ pid: 7, command: 'node scripts/demo-video.mjs /tmp/out.mp4', startedAt: Date.now() - 433_000, cpu: 146.3, rssMb: 1404, background: true, output: true, toolUseId: 'b1' }] })]));
+  assert.match(page.side(), /background · <span data-lasted="\d+">[^<]*<\/span> · 146% CPU · 1\.4 GB/);
+});
+
+test('the side questions heading is just "Side question"; what they are is in its tooltip', () => {
+  const page = loadPage();
+  page.push(richSnapshot([richAgent({ mod: { version: '0.6.2', live: true } })]));
+  assert.match(page.side(), /data-group="btw"[^>]*data-tip="[^"]*\/btw[^"]*"[^>]*><span class="tw">[▾▸]<\/span>Side question<\/button>/);
+});
+
+test('Now says since when it has been your turn, and what it last said; idle and quiet sessions say since when', () => {
+  const page = loadPage();
+  const since = Date.now() - 3 * 60_000;
+  page.push(richSnapshot([richAgent({ state: 'yourTurn', stateReason: 'turn finished', stateSince: since, now: undefined, turn: undefined, lastReply: 'Both changes are pushed to main and live.\nMore detail here.' })]));
+  assert.match(page.side(), /<div class="muted rest">Your turn since \d{1,2}:\d{2}[^·<]* · Both changes are pushed to main and live\.<\/div>/);
+  page.push(richSnapshot([richAgent({ state: 'idle', stateReason: 'no activity yet', stateSince: since, now: undefined, turn: undefined })]));
+  assert.match(page.side(), /<div class="muted rest">Idle since \d{1,2}:\d{2}/);
+  page.push(richSnapshot([richAgent({ state: 'stale', stateReason: 'no activity for 24h+', stateSince: since, lastActivityAt: Date.now() - 3 * 86_400_000, now: undefined, turn: undefined })]));
+  assert.match(page.side(), /<div class="muted rest">Quiet since /);
+});

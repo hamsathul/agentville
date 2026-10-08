@@ -193,7 +193,8 @@ The page is laid out like an editor, in three columns:
   - its state, folder and model (a switch with `/model` shows at once, before its next reply);
   - its controls: permission mode, model, effort, Restart in…, End session;
   - CPU, memory, context left and cost;
-  - **Now**: its working line and current tool;
+  - **Now**: its working line and current tool. When nothing is running it says since when it has
+    been your turn and the first line of its last reply, or since when it has been idle or quiet;
   - **Commands running**: each shell command it (or a subagent) runs now, foreground or background,
     with how long it has run and its CPU and memory, everything it started included. **Output**
     shows a background one's output, followed while the dialog is open (a foreground one hands its

@@ -361,13 +361,24 @@ function subDetailHtml(open) {
 }
 
 /** A session's background jobs and workflows, a line each. */
+/** Now, when nothing is running: since when it has been your turn and what it last said, or since when it has been idle or quiet. */
+function restHtml(a) {
+  const when = ms => (Date.now() - ms < 86_400_000 ? hhmm(ms) : new Date(ms).toLocaleString([], { weekday: 'short', hour: '2-digit', minute: '2-digit' }));
+  const said = String(a.lastReply ?? '').split('\n').find(l => l.trim())?.trim().slice(0, 160);
+  const text = a.state === 'yourTurn' ? `Your turn${a.stateSince ? ` since ${when(a.stateSince)}` : ''}${said ? ` · ${said}` : ''}`
+    : a.state === 'idle' ? `Idle${a.stateSince ? ` since ${when(a.stateSince)}` : ''}`
+    : a.state === 'stale' && a.lastActivityAt ? `Quiet since ${when(a.lastActivityAt)}`
+    : a.stateReason;
+  return `<div class="muted rest">${esc(text)}</div>`;
+}
+
 /** Its shell commands running now (from ps): how long, CPU and memory; Output for a background one; ■ Stop for any. */
 function shellsHtml(a) {
   const shells = a.shells ?? [];
   if (!shells.length) return '';
   return `<div class="sec">Commands running <span class="tab-n">${shells.length}</span></div>${shells.map(s => `<div class="shell-row">
     <div class="shell-main"><code class="shell-cmd"${s.about ? ` data-tip="${esc(s.about)}"` : ''}>$ ${esc(s.command)}</code>
-      <span class="faint">${s.background ? 'background · ' : ''}<span data-lasted="${s.startedAt}">${lasted(s.startedAt)}</span> · ${s.cpu}% CPU · ${s.rssMb} MB</span></div>
+      <span class="faint shell-meta">${s.background ? 'background · ' : ''}<span data-lasted="${s.startedAt}">${lasted(s.startedAt)}</span> · ${Math.round(s.cpu)}% CPU · ${gb(s.rssMb)}</span></div>
     ${s.output ? `<button type="button" class="act mini" data-shell-output="${s.pid}" data-agent="${esc(a.id)}" data-tip="Its output so far, followed as it grows">Output</button>` : ''}<button type="button" class="act mini" data-shell-stop="${s.pid}" data-agent="${esc(a.id)}" data-tip="Stop it, with everything it started">■ Stop</button></div>`).join('')}`;
 }
 
@@ -447,7 +458,7 @@ function asideHtml(a) {
     : x.answer ? `<div class="aside-a md">${renderMarkdown(x.answer)}</div>` : `<div class="aside-a msg-bad">No answer: ${esc(x.reason ?? 'unknown')}</div>`}</div>`).join('');
   // Its heading folds the whole section away (remembered, for every session); folded, it says how many it holds.
   const open = isOpen('btw'), count = (a.asides ?? []).length;
-  const head = `<button class="sec sec-fold" type="button" data-group="btw" aria-expanded="${open}" data-tip="${open ? 'Hide side questions' : 'Show side questions'}"><span class="tw">${open ? '▾' : '▸'}</span>Side question <span class="faint" style="text-transform:none;letter-spacing:0">(/btw: answered from its conversation, not added to it; works while it's busy)</span>${!open && count ? `<span class="grp-n">${count}</span>` : ''}</button>`;
+  const head = `<button class="sec sec-fold" type="button" data-group="btw" aria-expanded="${open}" data-tip="${open ? 'Hide' : 'Show'} side questions (/btw): answered from its conversation, not added to it; they work while it is busy"><span class="tw">${open ? '▾' : '▸'}</span>Side question${!open && count ? `<span class="grp-n">${count}</span>` : ''}</button>`;
   if (!open) return `<div class="asides-box">${head}</div>`;
   return `<div class="asides-box">${head}
     <div class="aside-row"><input type="text" id="aside-text" data-aside-agent="${esc(a.id)}" placeholder="${live ? `Ask ${esc(a.name)} something on the side…` : esc(modWhy(a))}" value="${esc(asideDrafts.get(a.id) ?? '')}"${live ? '' : ' disabled'}><button type="button" class="act" id="aside-send" data-agent="${esc(a.id)}"${live ? '' : ' disabled'}>Ask</button></div>${list}</div>`;
