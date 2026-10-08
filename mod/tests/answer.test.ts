@@ -1,6 +1,6 @@
 import { expect, test } from 'claude-code/testing'
 
-import { answerAsides, answerFromDashboard, deliverMessages, noteSpinner, offerContext, permitFromDashboard, runSettings, startTurn, turnForBeacon, usageNow } from '../hooks/register'
+import { answerAsides, answerFromDashboard, chooseAlways, deliverMessages, noteSpinner, offerContext, permitFromDashboard, runSettings, startTurn, turnForBeacon, usageNow } from '../hooks/register'
 
 // The hook bodies only call $.fs.write and $.process.run, so a small stand-in records them.
 type Run = { exitCode: number; stdout: string; stderr: string }
@@ -77,6 +77,39 @@ test('no dashboard decision within the window falls back to the terminal prompt'
   const out: any = await permitFromDashboard(f.$, { tool: 'Bash', tool_use_id: 'toolu_P2', input: { command: 'x' } }, async () => ({ decision: 'ask' }), OFFER)
   expect(out.decision).toBe('ask')
   expect(f.removed[0]).toEqual(['/repo/state/pending/toolu_P2.json', '/repo/state/answers/toolu_P2.json'])
+})
+
+const SUGGESTED = [{ type: 'addDirectories', directories: ['/Users/me'], destination: 'localSettings' }, { type: 'setMode', mode: 'auto', destination: 'session' }]
+
+test('"Always allow…" hands the call on to Claude Code, whose own options are then offered for 8 s: the one picked is kept', async () => {
+  let waits = 0
+  const f = fake$(() => ok(++waits === 1 ? '{"decision":"always"}' : '{"option":0}'))
+  const input = { command: 'mkdir /Users/me/x' }
+  const verdict: any = await permitFromDashboard(f.$, { tool: 'Bash', tool_use_id: 'toolu_P5', input }, async () => ({ decision: 'ask' }), OFFER)
+  expect(verdict.decision).toBe('ask')
+  const out = await chooseAlways(f.$, { tool_name: 'Bash', tool_input: input, permission_suggestions: SUGGESTED }, async () => ({ decision: 'terminal' }), { ...OFFER, now: 2_000 })
+  expect(out).toEqual({ decision: { behavior: 'allow', updatedPermissions: [SUGGESTED[0]] } })
+  expect(JSON.parse(f.writes[1]?.text ?? '{}')).toEqual({ kind: 'always', toolUseId: 'toolu_P5', sessionId: 's1', tool: 'Bash', summary: 'mkdir /Users/me/x', suggestions: SUGGESTED, createdAt: 2_000, expiresAt: 10_000 })
+  expect(f.removed[1]).toEqual(['/repo/state/pending/toolu_P5.json', '/repo/state/answers/toolu_P5.json'])
+})
+
+test("Claude Code's options cancelled or not picked in time go to the terminal; a call nobody chose always for is left alone", async () => {
+  const terminal = { decision: 'terminal' }
+  for (const second of [ok('{"option":null}'), ok('{"option":7}'), { exitCode: 1, stdout: '', stderr: '' }]) {
+    let waits = 0
+    const f = fake$(() => (++waits === 1 ? ok('{"decision":"always"}') : second))
+    await permitFromDashboard(f.$, { tool: 'Bash', tool_use_id: 'toolu_P6', input: { command: 'x' } }, async () => ({ decision: 'ask' }), OFFER)
+    expect(await chooseAlways(f.$, { tool_name: 'Bash', tool_input: { command: 'x' }, permission_suggestions: SUGGESTED }, async () => terminal, OFFER)).toEqual(terminal)
+  }
+  const g = fake$(() => never())
+  expect(await chooseAlways(g.$, { tool_name: 'Bash', tool_input: { command: 'y' }, permission_suggestions: SUGGESTED }, async () => terminal, OFFER)).toEqual(terminal)
+  expect(g.writes).toEqual([])
+})
+
+test('"Always allow…" with no option from Claude Code allows the call this once', async () => {
+  const f = fake$(() => ok('{"decision":"always"}'))
+  await permitFromDashboard(f.$, { tool: 'Read', tool_use_id: 'toolu_P7', input: { file_path: '/etc/hosts' } }, async () => ({ decision: 'ask' }), OFFER)
+  expect(await chooseAlways(f.$, { tool_name: 'Read', tool_input: { file_path: '/etc/hosts' } }, async () => ({}), OFFER)).toEqual({ decision: { behavior: 'allow' } })
 })
 
 test('calls that would not prompt, questions, a zero window or a stopped collector are left alone', async () => {

@@ -62,7 +62,29 @@ export function askOf(offer, model, now) {
   if (offer.kind === 'permission' && offer.expiresAt > now) {
     return { kind: 'permission', toolUseId: offer.toolUseId, tool: offer.tool, summary: offer.summary, expiresAt: offer.expiresAt };
   }
+  if (offer.kind === 'always' && offer.expiresAt > now) { // after Always allow…: Claude Code's options, each by its place
+    const options = offer.suggestions.flatMap((s, option) => (s ? [{ option, label: suggestionLabel(s) }] : []));
+    return { kind: 'always', toolUseId: offer.toolUseId, tool: offer.tool, summary: offer.summary, options, expiresAt: offer.expiresAt };
+  }
   return undefined;
+}
+
+const and = list => (list.length < 2 ? list.join('') : `${list.slice(0, -1).join(', ')} and ${list.at(-1)}`);
+const SCOPE = { session: 'for this session', cliArg: 'for this run', localSettings: 'in this project (just you)', projectSettings: 'in this project (shared)', userSettings: 'everywhere' };
+const MODE_WORDS = { acceptEdits: 'Accept edits', auto: 'Switch to auto mode', plan: 'Switch to plan mode', default: 'Ask first', dontAsk: "Switch to don't-ask mode", bypassPermissions: 'Bypass permissions' };
+/** One of Claude Code's permission suggestions in words, as its terminal offers them ("Yes, and always allow…"). */
+export function suggestionLabel(s) {
+  const kept = s.destination !== 'session' && s.destination !== 'cliArg';
+  if (s.type === 'addRules') {
+    const verb = { allow: 'allow', deny: 'deny', ask: 'ask for' }[s.behavior];
+    const rules = and(s.rules.map(r => (r.ruleContent ? `${r.toolName}(${r.ruleContent})` : r.toolName)));
+    return `${kept ? `Always ${verb}` : verb[0].toUpperCase() + verb.slice(1)} ${rules} ${SCOPE[s.destination]}`;
+  }
+  if (s.type === 'addDirectories') {
+    const where = kept ? SCOPE[s.destination].replace(/^in this/, 'from this') : SCOPE[s.destination];
+    return `${kept ? 'Always allow' : 'Allow'} access to ${and(s.directories)} ${where}`;
+  }
+  return `${MODE_WORDS[s.mode]} ${kept ? `by default, ${SCOPE[s.destination]}` : SCOPE[s.destination]}`;
 }
 
 /**
@@ -104,7 +126,7 @@ export function buildAgent({ base, model, registry, proc, command, cpuHistory = 
   const ask = askOf(offer, model, now);
   const derived = base.kind === 'codex'
     ? deriveCodexState(cpuHistory, now)
-    : ask?.kind === 'permission'
+    : ask?.kind === 'permission' || ask?.kind === 'always'
       ? { state: 'waiting', reason: `permission needed: ${ask.tool}`, since: offer.createdAt }
       : deriveState({ model, registry, cpuHistory, now, cfg });
   const since = now - cfg.collisionWindowMin * 60_000;

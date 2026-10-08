@@ -126,6 +126,22 @@ test('questions and permission prompts offered by the mod can be answered throug
     assert.equal((await handle.actions.permit({ agentId: 'sess-ask', toolUseId: 'toolu_P1', decision: 'maybe' })).ok, false);
     assert.deepEqual(await handle.actions.permit({ agentId: 'sess-ask', toolUseId: 'toolu_P1', decision: 'allow' }), { ok: true });
     assert.deepEqual(delivered.at(-1), ['toolu_P1.json', { decision: 'allow' }]);
+    writeFileSync(join(root, 'state', 'pending', 'toolu_P2.json'), JSON.stringify({ kind: 'permission', toolUseId: 'toolu_P2', sessionId: 'sess-ask', tool: 'Bash', summary: 'npm test', createdAt: Date.now(), expiresAt: Date.now() + 15_000 }));
+    await handle.reloadConfig();
+    assert.match((await handle.actions.permit({ agentId: 'sess-ask', toolUseId: 'toolu_P2', decision: 'always' })).error, /older tracker mod/, 'Always allow needs mod 0.6.0');
+    writeFileSync(join(root, 'state', 'mods', 'sess-ask.json'), JSON.stringify({ sessionId: 'sess-ask', version: '0.6.0', at: Date.now() }));
+    await handle.reloadConfig();
+    assert.deepEqual(await handle.actions.permit({ agentId: 'sess-ask', toolUseId: 'toolu_P2', decision: 'always' }), { ok: true });
+    assert.deepEqual(delivered.at(-1), ['toolu_P2.json', { decision: 'always' }]);
+    const suggestions = [{ type: 'addRules', rules: [{ toolName: 'Bash', ruleContent: 'npm test:*' }], behavior: 'allow', destination: 'localSettings' }, { type: 'setMode', mode: 'acceptEdits', destination: 'session' }];
+    writeFileSync(join(root, 'state', 'pending', 'toolu_P2.json'), JSON.stringify({ kind: 'always', toolUseId: 'toolu_P2', sessionId: 'sess-ask', tool: 'Bash', summary: 'npm test', suggestions, createdAt: Date.now(), expiresAt: Date.now() + 8_000 }));
+    await handle.reloadConfig();
+    assert.equal(handle.getSnapshot().agents.find(a => a.id === 'sess-ask').ask.kind, 'always');
+    for (const option of [2, -1, 'a', 0.5]) assert.equal((await handle.actions.always({ agentId: 'sess-ask', toolUseId: 'toolu_P2', option })).ok, false, String(option));
+    assert.deepEqual(await handle.actions.always({ agentId: 'sess-ask', toolUseId: 'toolu_P2', option: 1 }), { ok: true });
+    assert.deepEqual(delivered.at(-1), ['toolu_P2.json', { option: 1 }]);
+    assert.deepEqual(await handle.actions.always({ agentId: 'sess-ask', toolUseId: 'toolu_P2', option: null }), { ok: true }, 'cancel: the terminal asks');
+    assert.deepEqual(delivered.at(-1), ['toolu_P2.json', { option: null }]);
   } finally {
     clearInterval(fakeMod);
     await handle.stop();

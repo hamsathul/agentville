@@ -112,7 +112,7 @@
   /** What a waiting farmer is asking, for its bubble and tooltip. */
   function askText(a) {
     if (a.ask?.kind === 'question') return a.ask.questions?.[0]?.question ?? a.stateReason ?? '';
-    if (a.ask?.kind === 'permission') return `${a.ask.tool}: ${a.ask.summary}`;
+    if (a.ask?.kind === 'permission' || a.ask?.kind === 'always') return `${a.ask.tool}: ${a.ask.summary}`;
     if (a.now?.tool === 'AskUserQuestion' && a.now.summary) return a.now.summary; // no offer from the mod: the transcript's question
     return a.stateReason ?? '';
   }
@@ -1364,7 +1364,7 @@
       },
       speed: f => (f.fast ? 68 : 40), // fast mode walks faster
       zoneText(f, z) {
-        if (z === 'desk') return f.askKind === 'permission' ? 'comes up to your porch: needs a permission' : 'comes up to your porch with a question';
+        if (z === 'desk') return f.askKind === 'permission' || f.askKind === 'always' ? 'comes up to your porch: needs a permission' : 'comes up to your porch with a question';
         if (z === 'turn') return f.question ? 'comes to your porch with a question' : 'brings a basket of finished work to your porch';
         if (z === 'storage') return 'stands still as a scarecrow (stale)';
         if (z === 'charge') return 'rests under the shade tree (idle)';

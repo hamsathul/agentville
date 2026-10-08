@@ -49,7 +49,7 @@ function hstatsHtml() {
 
 function askLine(a) {
   if (a.ask?.kind === 'question') return `❓ ${esc(a.ask.questions[0]?.question ?? a.stateReason)}`;
-  if (a.ask?.kind === 'permission') return `🔐 <b>${esc(a.ask.tool)}</b> <span class="mono">${esc(a.ask.summary)}</span>`;
+  if (a.ask?.kind === 'permission' || a.ask?.kind === 'always') return `🔐 <b>${esc(a.ask.tool)}</b> <span class="mono">${esc(a.ask.summary)}</span>`;
   return `❓ ${esc(a.stateReason)}`;
 }
 
@@ -235,7 +235,14 @@ function askHtml(a) {
     return `<div class="ask"><div class="sec" style="margin-top:0">🔐 Permission needed</div>
       <div><b>${esc(ask.tool)}</b> wants to run:</div><div class="now mono" style="margin:5px 0 7px">${esc(ask.summary)}</div>
       <div class="muted" style="margin-bottom:8px">Moves to the terminal prompt in <b data-until="${ask.expiresAt}"></b></div>
-      <button class="act primary" id="ask-allow" ${ids}>Allow</button><button class="act" id="ask-deny" ${ids}>Deny</button></div>`;
+      <button class="act primary" id="ask-allow" ${ids}>Allow</button>${modCan(a, '0.6.0') ? `<button class="act" id="ask-always" ${ids} data-tip="Allow it, then pick one of Claude Code's own options to keep, as its terminal offers them: a rule, a folder, or a mode">Always allow…</button>` : ''}<button class="act" id="ask-deny" ${ids}>Deny</button></div>`;
+  }
+  if (ask.kind === 'always') { // after Always allow…: Claude Code's own options for the call, each by its place
+    return `<div class="ask"><div class="sec" style="margin-top:0">🔐 Always allow</div>
+      <div><b>${esc(ask.tool)}</b> <span class="mono">${esc(ask.summary)}</span></div>
+      <div class="muted" style="margin:6px 0 8px">Claude Code's options for it: pick one, and it runs with that kept. Moves to the terminal prompt in <b data-until="${ask.expiresAt}"></b></div>
+      <div class="always-opts">${ask.options.map(o => `<button type="button" class="act" data-always-pick="${o.option}" ${ids}>${esc(o.label)}</button>`).join('')}</div>
+      <button type="button" class="act" id="always-cancel" data-always-pick="cancel" ${ids}>Cancel</button></div>`;
   }
   const d = draftFor(ask.toolUseId);
   const questions = ask.questions.map((q, qi) => {

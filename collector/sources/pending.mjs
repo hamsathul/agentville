@@ -24,6 +24,22 @@ function cleanQuestions(list) {
   return out;
 }
 
+// The permission updates Claude Code suggests ("Yes, and always allow…"), as it hands them to a
+// PermissionRequest hook: only the kinds the dashboard can word, with their fields well formed. Each
+// keeps its place (null where one is dropped), as the mod applies the one picked by its place.
+const MODES = new Set(['default', 'acceptEdits', 'plan', 'auto', 'dontAsk', 'bypassPermissions']);
+const DESTINATIONS = new Set(['session', 'localSettings', 'projectSettings', 'userSettings', 'cliArg']);
+const isText = (v, max = 1000) => typeof v === 'string' && v.length > 0 && v.length <= max;
+function cleanSuggestion(s) {
+  if (!s || typeof s !== 'object' || !DESTINATIONS.has(s.destination)) return null;
+  if (s.type === 'addRules' && ['allow', 'deny', 'ask'].includes(s.behavior) && Array.isArray(s.rules) && s.rules.length && s.rules.length <= 20
+    && s.rules.every(r => r && isText(r.toolName, 200) && (r.ruleContent === undefined || isText(r.ruleContent)))) return s;
+  if (s.type === 'addDirectories' && Array.isArray(s.directories) && s.directories.length && s.directories.length <= 20 && s.directories.every(d => isText(d))) return s;
+  if (s.type === 'setMode' && MODES.has(s.mode)) return s;
+  return null;
+}
+const cleanSuggestions = list => (Array.isArray(list) ? list.slice(0, 10).map(cleanSuggestion) : []);
+
 /** Offers still open, newest per session, plus files old enough to delete. */
 export function readPending(dir, now) {
   let names;
@@ -66,6 +82,14 @@ export function readPending(dir, now) {
         continue;
       }
       item = { kind: 'permission', toolUseId: id, tool: text(entry.tool, 100), summary: text(entry.summary, 500), createdAt, heartbeatAt, expiresAt };
+    } else if (entry.kind === 'always') { // after Always allow…: Claude Code's own options for the call
+      const expiresAt = Number(entry.expiresAt) || 0;
+      const suggestions = cleanSuggestions(entry.suggestions);
+      if (expiresAt <= now || !suggestions.some(Boolean)) {
+        expired.push(path);
+        continue;
+      }
+      item = { kind: 'always', toolUseId: id, tool: text(entry.tool, 100), summary: text(entry.summary, 500), suggestions, createdAt, heartbeatAt, expiresAt };
     } else {
       continue;
     }

@@ -3,7 +3,7 @@ import type { Register } from 'claude-code'
 
 import type { TrackerSnapshot, TrackerView } from '../types'
 import {
-  DASHBOARD_URL, buildQuestionResult, dashboardWindowSec, decisionFrom, elapsed, groups, isFresh, newlyWaiting,
+  DASHBOARD_URL, buildQuestionResult, dashboardWindowSec, decisionFrom, elapsed, groups, isFresh, newlyWaiting, optionFrom,
   permissionSummary, rowText, stateDirFor, stateFileFor, statusText,
 } from './view'
 
@@ -304,7 +304,44 @@ export async function permitFromDashboard($: any, e: any, next: any, offer: Offe
     await removeFiles($, [pendingPath, answerPath])
   }
   const decision = got.kind === 'answer' ? decisionFrom(got.text) : null
+  if (decision === 'always') { // on to Claude Code's permission step, which brings its own "Yes, and…" options
+    alwaysFor = { key: callKey(e.tool, e.input), toolUseId: id, at: offer.now }
+    return verdict
+  }
   return decision ? { ...verdict, decision, reason: DASHBOARD_REASON } : verdict
+}
+
+// "Always allow…" picked on the dashboard: the call goes on to Claude Code's permission step (the
+// PermissionRequest event), which carries its own options: the terminal's "Yes, and…" ones, such as
+// a rule to keep or a folder to allow. They are offered on the dashboard for the 8 s that step allows
+// (a hook there gets 10), and the one picked is applied as Claude Code would; else the terminal asks.
+let alwaysFor: { key: string; toolUseId: string; at: number } | null = null
+const callKey = (tool: unknown, input: unknown) => JSON.stringify([String(tool ?? ''), input ?? null])
+const ALWAYS_SEC = 8
+
+export async function chooseAlways($: any, e: any, next: any, offer: Offer) {
+  const want = alwaysFor
+  if (!want || want.key !== callKey(e.tool_name, e.tool_input) || offer.now - want.at > 60_000) return next(e)
+  alwaysFor = null
+  const options: unknown[] = Array.isArray(e.permission_suggestions) ? e.permission_suggestions : []
+  if (!options.length) return { decision: { behavior: 'allow' } } // nothing to keep: allowed this once
+  if (!offer.isLive) return next(e)
+  const pendingPath = `${offer.stateDir}/pending/${want.toolUseId}.json`
+  const answerPath = `${offer.stateDir}/answers/${want.toolUseId}.json`
+  await $.fs.write(pendingPath, JSON.stringify({
+    kind: 'always', toolUseId: want.toolUseId, sessionId: offer.sessionId, tool: e.tool_name, summary: permissionSummary(e.tool_name, e.tool_input),
+    suggestions: options, createdAt: offer.now, expiresAt: offer.now + ALWAYS_SEC * 1000,
+  }))
+  let got: Waited = { kind: 'timeout' }
+  try {
+    got = await waitForAnswer($, answerPath, pendingPath, ALWAYS_SEC)
+  } catch (err) {
+    logFailure($, `waiting for a dashboard choice failed, the terminal will ask: ${String(err)}`)
+  } finally {
+    await removeFiles($, [pendingPath, answerPath])
+  }
+  const pick = got.kind === 'answer' ? optionFrom(got.text, options.length) : null
+  return pick === null ? next(e) : { decision: { behavior: 'allow', updatedPermissions: [options[pick]] } }
 }
 
 export const register: Register = on => {
@@ -353,6 +390,8 @@ export const register: Register = on => {
 
   // A failing permission hook is skipped, leaving the normal terminal prompt.
   on('tool.check', async ($, e, next) => permitFromDashboard($, e, next, await offerContext($)))
+  on('classic.PermissionRequest', async ($, e, next) => chooseAlways($, e, next, await offerContext($)))
+    .catch(($, e, next) => next(e)) // if choosing fails, the terminal asks as usual
 
   on('command.run', { command: 'tracker' }, async $ => {
     await $.ui.open({ id: PANE, title: 'Agents' })

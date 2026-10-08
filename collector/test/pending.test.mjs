@@ -23,6 +23,23 @@ test('reads offered questions and permission prompts, keyed by session', () => {
   assert.deepEqual(strip(bySession.get('s2')), { kind: 'permission', toolUseId: 'toolu_B2', tool: 'Bash', summary: 'mkdir /tmp/x', createdAt: NOW - 500, expiresAt: NOW + 14_000 });
 });
 
+test("Claude Code's own options, offered after Always allow…, are read with only the suggestions it knows how to apply", () => {
+  const dir = tmp();
+  const suggestions = [
+    { type: 'addRules', rules: [{ toolName: 'Bash', ruleContent: 'npm test:*' }], behavior: 'allow', destination: 'localSettings' },
+    { type: 'setMode', mode: 'evil', destination: 'session' },
+    { type: 'addDirectories', directories: ['/Users/me'], destination: 'session' },
+    { type: 'setMode', mode: 'acceptEdits', destination: 'session' },
+    { type: 'addRules', rules: 'nope', behavior: 'allow', destination: 'localSettings' },
+    { type: 'launchMissiles' },
+  ];
+  put(dir, 'toolu_C3.json', { kind: 'always', toolUseId: 'toolu_C3', sessionId: 's3', tool: 'Bash', summary: 'npm test', suggestions, createdAt: NOW - 100, expiresAt: NOW + 8_000 });
+  const item = readPending(dir, NOW).bySession.get('s3');
+  assert.equal(item.kind, 'always');
+  assert.deepEqual(item.suggestions, [suggestions[0], null, suggestions[2], suggestions[3], null, null], 'each where Claude Code put it: the mod applies a pick by its place');
+  assert.equal(item.expiresAt, NOW + 8_000);
+});
+
 test('the newest offer wins when a session has two', () => {
   const dir = tmp();
   put(dir, 'toolu_Old.json', question('toolu_Old', 's1', NOW - 9000));

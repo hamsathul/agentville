@@ -203,8 +203,12 @@ These need the mod in that session.
 
 - **Questions.** A waiting agent's question shows with its options, plus an "Other" box. Pick and
   send; the session carries on as if you had answered in its terminal.
-- **Permission prompts.** These show the command with **Allow** / **Deny**. The dashboard has the
-  first 15 seconds (`permissionDashboardSec`); then the terminal asks as usual.
+- **Permission prompts.** These show the command with **Allow** / **Always allow…** / **Deny**. The
+  dashboard has the first 15 seconds (`permissionDashboardSec`); then the terminal asks as usual.
+  **Always allow…** brings up Claude Code's own options for that call, the terminal's "Yes, and…"
+  ones (always allow a rule in this project, access to a folder, accept edits for this session…),
+  for 8 seconds: pick one and the call runs with it kept, exactly as Claude Code keeps it. Pick
+  none and the terminal asks. It needs mod 0.6.0 or newer.
 - **Questions in replies.** When an agent ends its turn by asking something ("Should I push?"),
   it gets an "asks you" chip and a card, with one-click **Yes** / **No…** for yes/no questions.
 - **Messages.** Type in the box under **Now** and press Enter (Shift+Enter for a new line). It

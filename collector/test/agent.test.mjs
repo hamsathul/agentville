@@ -112,6 +112,32 @@ test('an offered permission prompt makes the agent certainly waiting, with Allow
   assert.deepEqual(a.ask, { kind: 'permission', toolUseId: 'toolu_P1', tool: 'Bash', summary: 'mkdir /tmp/x', expiresAt: at(20) });
 });
 
+test("Claude Code's options after Always allow… keep the agent waiting, each worded from its suggestion", () => {
+  const m = modelOf(prompt(0, 'go'), toolUse(5, 'toolu_P1', 'Bash', { command: 'npm test' }));
+  const suggestions = [
+    { type: 'addRules', rules: [{ toolName: 'Bash', ruleContent: 'npm test:*' }], behavior: 'allow', destination: 'localSettings' },
+    { type: 'addDirectories', directories: ['/Users/me'], destination: 'localSettings' },
+    { type: 'addDirectories', directories: ['/Users/me/a', '/Users/me/b'], destination: 'session' },
+    { type: 'setMode', mode: 'acceptEdits', destination: 'session' },
+    null, // one the collector could not read
+    { type: 'setMode', mode: 'auto', destination: 'session' },
+    { type: 'addRules', rules: [{ toolName: 'WebFetch', ruleContent: 'domain:example.com' }, { toolName: 'Read' }], behavior: 'allow', destination: 'userSettings' },
+  ];
+  const offer = { kind: 'always', toolUseId: 'toolu_P1', tool: 'Bash', summary: 'npm test', suggestions, createdAt: at(5), heartbeatAt: at(6), expiresAt: at(14) };
+  const a = buildAgent({ base: base(), model: m, registry: { status: 'busy' }, offer, repoOf, now: at(6), cfg, home: '/h' });
+  assert.equal(a.state, 'waiting');
+  assert.deepEqual(a.ask.options.map(o => o.label), [
+    'Always allow Bash(npm test:*) in this project (just you)',
+    'Always allow access to /Users/me from this project (just you)',
+    'Allow access to /Users/me/a and /Users/me/b for this session',
+    'Accept edits for this session',
+    'Switch to auto mode for this session',
+    'Always allow WebFetch(domain:example.com) and Read everywhere',
+  ]);
+  assert.deepEqual(a.ask.options.map(o => o.option), [0, 1, 2, 3, 5, 6], 'each keeps its place in Claude Code\'s list');
+  assert.deepEqual({ ...a.ask, options: undefined }, { kind: 'always', toolUseId: 'toolu_P1', tool: 'Bash', summary: 'npm test', options: undefined, expiresAt: at(14) });
+});
+
 test('an expired permission offer is ignored', () => {
   const m = modelOf(prompt(0, 'go'), toolUse(5, 'toolu_P1', 'Bash'));
   const offer = { kind: 'permission', toolUseId: 'toolu_P1', tool: 'Bash', summary: 'x', createdAt: at(5), expiresAt: at(20) };

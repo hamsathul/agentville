@@ -685,8 +685,17 @@ export async function startCollector({ root, claudeDir = join(homedir(), '.claud
     async permit(body) {
       const ask = askFor(body?.agentId, body?.toolUseId, 'permission');
       if (!ask || ask.expiresAt <= Date.now()) return { ok: false, error: 'That permission prompt is no longer waiting.' };
-      if (body.decision !== 'allow' && body.decision !== 'deny') return { ok: false, error: 'Choose Allow or Deny.' };
+      if (!['allow', 'deny', 'always'].includes(body.decision)) return { ok: false, error: 'Choose Allow, Always allow or Deny.' };
+      const agent = snapshot?.agents.find(a => a.id === body.agentId);
+      if (body.decision === 'always' && !modAtLeast(agent?.mod?.version, '0.6.0')) return { ok: false, error: `That session runs an older tracker mod (${agent?.mod?.version}). Run /reload-plugins in it (or resume it) for Always allow.` };
       return deliver(ask.toolUseId, { decision: body.decision });
+    },
+    /** After Always allow…: one of Claude Code's own options for the call (by its place in its list), or null to leave it to the terminal. */
+    async always(body) {
+      const ask = askFor(body?.agentId, body?.toolUseId, 'always');
+      if (!ask || ask.expiresAt <= Date.now()) return { ok: false, error: "Claude Code's options for that call are no longer waiting." };
+      if (body.option !== null && !ask.options.some(o => o.option === body.option)) return { ok: false, error: 'Pick one of the options shown.' };
+      return deliver(ask.toolUseId, { option: body.option });
     },
     async open(id) {
       const agent = ID_RE.test(id) ? snapshot?.agents.find(a => a.id === id || a.cliId === id) : undefined;

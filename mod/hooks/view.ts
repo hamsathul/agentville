@@ -87,9 +87,15 @@ export function buildQuestionResult<Q extends Question>(questions: Q[], text: st
   return { questions, answers: out }
 }
 
-export function decisionFrom(text: string): 'allow' | 'deny' | null {
+export function decisionFrom(text: string): 'allow' | 'deny' | 'always' | null {
   const decision = parse(text)?.decision
-  return decision === 'allow' || decision === 'deny' ? decision : null
+  return decision === 'allow' || decision === 'deny' || decision === 'always' ? decision : null
+}
+
+/** Which of Claude Code's `count` options the dashboard picked (an index), or null: cancelled, or no such option. */
+export function optionFrom(text: string, count: number): number | null {
+  const option = parse(text)?.option
+  return Number.isInteger(option) && option >= 0 && option < count ? option : null
 }
 
 /** One line saying what a tool call would do, for the dashboard's Allow / Deny prompt. */

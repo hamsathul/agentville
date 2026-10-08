@@ -1473,3 +1473,26 @@ test('Compact… in the session bar asks what to keep, then has the session run 
   older.push(richSnapshot([richAgent({ pid: 4242, mod: { live: true, version: '0.5.1' } })]));
   assert.match(older.side(), /data-compact="r1"[^>]*disabled/, 'an older mod cannot');
 });
+
+test('Always allow… on a permission prompt, then a pick among Claude Code\'s own options', async () => {
+  const page = loadPage();
+  const prompt = { kind: 'permission', toolUseId: 'toolu_P1', tool: 'Bash', summary: 'npm test', expiresAt: Date.now() + 10_000 };
+  const snapWith = (ask, version = '0.6.0') => { const s = askSnapshot(ask); s.agents[0].mod = { live: true, version }; return s; };
+  page.push(snapWith(prompt, '0.5.1'));
+  await page.openAgent('w1');
+  assert.doesNotMatch(page.side(), /id="ask-always"/, 'an older mod: Allow and Deny only');
+  page.push(snapWith(prompt));
+  assert.match(page.side(), /id="ask-allow"[\s\S]*id="ask-always"[^>]*>Always allow…<\/button>[\s\S]*id="ask-deny"/);
+  await page.clickButton('ask-always', { agent: 'w1', tool: 'toolu_P1' });
+  assert.deepEqual(page.posts.at(-1), { path: '/api/actions/permit', body: { agentId: 'w1', toolUseId: 'toolu_P1', decision: 'always' } });
+  page.push(snapWith({ kind: 'always', toolUseId: 'toolu_P1', tool: 'Bash', summary: 'npm test', expiresAt: Date.now() + 8_000,
+    options: [{ option: 0, label: 'Always allow Bash(npm test:*) in this project (just you)' }, { option: 3, label: 'Accept edits for this session' }] }));
+  const card = page.side();
+  assert.match(card, /Always allow[\s\S]*npm test[\s\S]*Claude Code's options/);
+  assert.match(card, /data-always-pick="0"[^>]*>Always allow Bash\(npm test:\*\) in this project \(just you\)<\/button>[\s\S]*data-always-pick="3"[^>]*>Accept edits for this session<\/button>/);
+  assert.match(card, /data-until=/, 'with its countdown');
+  await page.clickButton('always-pick', { agent: 'w1', tool: 'toolu_P1', alwaysPick: '3' });
+  assert.deepEqual(page.posts.at(-1), { path: '/api/actions/always', body: { agentId: 'w1', toolUseId: 'toolu_P1', option: 3 } });
+  await page.clickButton('always-cancel', { agent: 'w1', tool: 'toolu_P1', alwaysPick: 'cancel' });
+  assert.deepEqual(page.posts.at(-1), { path: '/api/actions/always', body: { agentId: 'w1', toolUseId: 'toolu_P1', option: null } });
+});

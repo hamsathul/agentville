@@ -100,7 +100,7 @@ export function createTrackerServer({ port, token, webFile, getSnapshot, getFeed
         }
       }
 
-      const isBodyAction = ['/api/actions/rm', '/api/actions/answer', '/api/actions/permit', '/api/actions/message', '/api/actions/start', '/api/actions/end', '/api/actions/restart', '/api/actions/setting', '/api/actions/aside'].includes(path);
+      const isBodyAction = ['/api/actions/rm', '/api/actions/answer', '/api/actions/permit', '/api/actions/always', '/api/actions/message', '/api/actions/start', '/api/actions/end', '/api/actions/restart', '/api/actions/setting', '/api/actions/aside'].includes(path);
       if (req.method === 'POST' && (isBodyAction || /^\/api\/actions\/open\/[\w-]+$/.test(path))) {
         if (req.headers['x-tracker-token'] !== token || !isAllowedOrigin(req.headers.origin ?? '')) {
           return sendJson(res, 403, { error: 'forbidden' });
@@ -115,6 +115,7 @@ export function createTrackerServer({ port, token, webFile, getSnapshot, getFeed
         if (path === '/api/actions/rm') return sendJson(res, 200, await actions.rm(Array.isArray(body.ids) ? body.ids : []));
         if (path === '/api/actions/answer') return sendJson(res, 200, await actions.answer(body));
         if (path === '/api/actions/permit') return sendJson(res, 200, await actions.permit(body));
+        if (path === '/api/actions/always') return sendJson(res, 200, await actions.always(body));
         if (path === '/api/actions/message') return sendJson(res, 200, await actions.message(body));
         if (path === '/api/actions/start') return sendJson(res, 200, await actions.start(body));
         if (path === '/api/actions/setting') return sendJson(res, 200, await actions.setting(body));

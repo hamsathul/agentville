@@ -1,7 +1,8 @@
 #!/bin/bash
 # End-to-end check of answering from the dashboard, with real Claude Code sessions.
-# Starts short background Haiku sessions (one asks a question, one needs permission to run
-# mkdir), answers both through the dashboard's HTTP API, sends the first one a chat message,
+# Starts short background Haiku sessions (one asks a question, two need permission to run
+# mkdir), answers them through the dashboard's HTTP API (one with Always allow and one of Claude
+# Code's own options), compacts one, sends the first one a chat message,
 # has it read a markdown file and fetches that file for the document reader, sends it a
 # screenshot, messages a busy interactive session, then removes the sessions. Needs the
 # collector running.
@@ -13,6 +14,7 @@ TOKEN="$(cat "$ROOT/state/token")"
 WORK="$(mktemp -d)"
 # Claude Code runs mkdir in temp folders without asking, so the permission test uses a home folder.
 PERMIT_DIR="$HOME/.agent-tracker-e2e-$$"
+ALWAYS_DIR="$HOME/.agent-tracker-e2e-always-$$"
 IDS=()
 
 fail() { echo "FAIL: $*" >&2; exit 1; }
@@ -21,7 +23,7 @@ cleanup() {
   if [ -n "$TTY_PID" ]; then pkill -P "$TTY_PID" 2>/dev/null || true; kill "$TTY_PID" 2>/dev/null || true; fi
   for id in "${IDS[@]}"; do claude rm "$id" >/dev/null 2>&1 || true; done
   rm -rf "$WORK"
-  rmdir "$PERMIT_DIR" 2>/dev/null || true
+  rmdir "$PERMIT_DIR" "$ALWAYS_DIR" 2>/dev/null || true
 }
 trap cleanup EXIT
 
@@ -61,7 +63,7 @@ transcript_has() { # session id, text → exit 0 when the transcript contains it
   return 1
 }
 
-echo "1/6 question answered from the dashboard"
+echo "1/8 question answered from the dashboard"
 Q=$(start e2e-ask "Use the AskUserQuestion tool to ask me exactly one question: 'Pick a colour?' with the options Red and Blue (header: Colour). After I answer, reply with only the colour I chose and stop. Do not read or change any files.")
 [ -n "$Q" ] || fail "could not start the question session"
 IDS+=("$Q")
@@ -72,7 +74,7 @@ R="$(post /api/actions/answer "{\"agentId\":\"$QS\",\"toolUseId\":\"$QID\",\"ans
 transcript_has "$QS" '\"Pick a colour?\"=\"Blue\"' || fail "Claude never received the answer"
 echo "   ok: Claude received \"Blue\""
 
-echo "2/6 permission prompt allowed from the dashboard"
+echo "2/8 permission prompt allowed from the dashboard"
 P=$(start e2e-permit "Run exactly this one Bash command and nothing else: mkdir $PERMIT_DIR   Then reply DONE. Do not read or change any other files.")
 [ -n "$P" ] || fail "could not start the permission session"
 IDS+=("$P")
@@ -84,7 +86,35 @@ for _ in $(seq 1 60); do [ -d "$PERMIT_DIR" ] && break; sleep 1; done
 [ -d "$PERMIT_DIR" ] || fail "the allowed command never ran"
 echo "   ok: the command ran"
 
-echo "3/6 chat message sent from the dashboard"
+echo "3/8 Always allow: Claude Code's own options, one picked from the dashboard"
+A=$(start e2e-always "Run exactly this one Bash command and nothing else: mkdir $ALWAYS_DIR   Then reply DONE. Do not read or change any other files.")
+[ -n "$A" ] || fail "could not start the Always allow session"
+IDS+=("$A")
+AS="$(session_of "$A")"
+AID="$(wait_ask "$AS" permission)" || fail "its permission prompt never reached the dashboard"
+R="$(post /api/actions/permit "{\"agentId\":\"$AS\",\"toolUseId\":\"$AID\",\"decision\":\"always\"}")"
+[ "$R" = '{"ok":true}' ] || fail "Always allow refused: $R"
+wait_ask "$AS" always > /dev/null || fail "Claude Code's options never reached the dashboard"
+# The option for this session only, so nothing is written to a settings file.
+PICK="$(curl -s "$BASE/api/state" | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{const o=(JSON.parse(s).agents.find(x=>x.id===process.argv[1])?.ask?.options??[]).find(o=>/^Allow access .* for this session$/.test(o.label));process.stdout.write(o?`${o.option}\t${o.label}`:"")})' "$AS")"
+[ -n "$PICK" ] || fail "no option for this session only among Claude Code's options"
+R="$(post /api/actions/always "{\"agentId\":\"$AS\",\"toolUseId\":\"$AID\",\"option\":${PICK%%$'\t'*}}")"
+[ "$R" = '{"ok":true}' ] || fail "the pick was refused: $R"
+for _ in $(seq 1 60); do [ -d "$ALWAYS_DIR" ] && break; sleep 1; done
+[ -d "$ALWAYS_DIR" ] || fail "the command never ran after an option was picked"
+echo "   ok: the command ran, with \"${PICK#*$'\t'}\" kept"
+
+echo "4/8 a session compacted from the dashboard"
+for _ in $(seq 1 60); do
+  R="$(post /api/actions/setting "{\"agentId\":\"$PS\",\"compact\":\"keep the name of the folder made\"}")"
+  [ "$R" = '{"ok":true}' ] && break
+  sleep 1
+done
+[ "$R" = '{"ok":true}' ] || fail "compact refused: $R"
+transcript_has "$PS" '"isCompactSummary":true' || fail "the session never compacted"
+echo "   ok: the session ran /compact"
+
+echo "5/8 chat message sent from the dashboard"
 WORD="tracker-e2e-$$"
 for _ in $(seq 1 60); do
   R="$(post /api/actions/message "{\"agentId\":\"$QS\",\"text\":\"Reply with only the word $WORD and stop.\"}")"
@@ -95,7 +125,7 @@ done
 transcript_has "$QS" "Reply with only the word $WORD" || fail "the message never reached the session"
 echo "   ok: the session got the message"
 
-echo "4/6 the document reader and the explorer, and what they refuse"
+echo "6/8 the document reader and the explorer, and what they refuse"
 DOC="$ROOT/README.md"
 R="$(post /api/actions/message "{\"agentId\":\"$QS\",\"text\":\"Use the Read tool to read README.md (first 5 lines are enough), then reply with only DONE.\"}")"
 [ "$R" = '{"ok":true}' ] || fail "message refused: $R"
@@ -114,7 +144,7 @@ curl -s -H "x-tracker-token: $TOKEN" "$BASE/api/agent/$QS/file?path=$ROOT/packag
 [ "$(curl -s -o /dev/null -w '%{http_code}' -H "x-tracker-token: $TOKEN" "$BASE/api/agent/$QS/file?path=$ROOT/state/token")" = 403 ] || fail "the git-ignored token file was served"
 echo "   ok: the explorer lists and opens the folder, and never the git-ignored token"
 
-echo "5/6 a screenshot sent with a message is seen by the session"
+echo "7/8 a screenshot sent with a message is seen by the session"
 # A 64x64 solid red PNG, made here so the test needs no image files.
 SHOT="$(node -e '
 const zlib = require("zlib");
@@ -145,7 +175,7 @@ done
 [ "$SAW" = yes ] || fail "the session never opened the screenshot and named its colour"
 echo "   ok: the session opened the screenshot and said it is red"
 
-echo "6/6 a message to a busy interactive session is taken at once and queued once"
+echo "8/8 a message to a busy interactive session is taken at once and queued once"
 if ! command -v python3 >/dev/null; then
   echo "   skipped: needs python3 to run an interactive session"
   echo "PASS (step 6 skipped)"

@@ -375,12 +375,19 @@ document.addEventListener('click', async e => {
     await sendAnswer(d.agent, d.tool);
     return;
   }
-  if (el.id === 'ask-allow' || el.id === 'ask-deny') {
-    const decision = el.id === 'ask-allow' ? 'allow' : 'deny';
+  if (el.id === 'ask-allow' || el.id === 'ask-deny' || el.id === 'ask-always') {
+    const decision = { 'ask-allow': 'allow', 'ask-deny': 'deny', 'ask-always': 'always' }[el.id];
     el.disabled = true;
-    el.textContent = decision === 'allow' ? 'Allowing…' : 'Denying…';
+    el.textContent = { allow: 'Allowing…', deny: 'Denying…', always: 'Asking Claude Code…' }[decision];
     const r = await post('/api/actions/permit', { agentId: d.agent, toolUseId: d.tool, decision });
-    notice(r.ok ? (decision === 'allow' ? 'Allowed.' : 'Denied.') : `Could not send: ${r.error}`);
+    notice(r.ok ? { allow: 'Allowed.', deny: 'Denied.', always: "Claude Code's options come next." }[decision] : `Could not send: ${r.error}`);
+    return;
+  }
+  if (d.alwaysPick !== undefined) { // one of Claude Code's options after Always allow…, or Cancel (the terminal asks)
+    el.disabled = true;
+    const option = d.alwaysPick === 'cancel' ? null : Number(d.alwaysPick);
+    const r = await post('/api/actions/always', { agentId: d.agent, toolUseId: d.tool, option });
+    notice(r.ok ? (option === null ? 'Left to the terminal.' : 'Allowed, and kept as chosen.') : `Could not send: ${r.error}`);
     return;
   }
   if (el.id === 'theme-toggle') { theme = THEMES[(THEMES.indexOf(theme) + 1) % THEMES.length]; saveTheme(theme); applyTheme(theme); }
@@ -627,7 +634,7 @@ function ringBell() {
   chime();
   if (!('Notification' in window) || Notification.permission !== 'granted' || (!document.hidden && document.hasFocus())) return;
   for (const a of fresh.slice(0, 3)) {
-    const what = a.ask?.kind === 'permission' ? `${a.ask.tool}: ${a.ask.summary}` : a.ask?.questions?.[0]?.question ?? a.question ?? a.stateReason ?? '';
+    const what = a.ask?.kind === 'permission' || a.ask?.kind === 'always' ? `${a.ask.tool}: ${a.ask.summary}` : a.ask?.questions?.[0]?.question ?? a.question ?? a.stateReason ?? '';
     const n = new Notification(`${a.name} needs you`, { body: String(what).slice(0, 180), tag: `tracker-${a.id}` });
     n.onclick = () => { window.focus(); n.close(); };
   }
