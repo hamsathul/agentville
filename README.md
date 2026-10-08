@@ -613,7 +613,8 @@ npm run test:ui             # the dashboard and the farm in headless Chrome, on 
 claude plugin test mod      # the Claude Code mod
 scripts/e2e-answer.sh       # answering and messaging real sessions
 npm start                   # run the collector in the foreground (stop the service first)
-npm run demo [out.mp4]      # record the demo video, made-up sessions only (Chrome, ffmpeg; ~4 min)
+npm run demo [out.mp4]      # record the demo video, made-up sessions only (Chrome, ffmpeg; ~8 min)
+                            # it follows docs/demo-script.md; STILLS=docs STILLS_ONLY=1 remakes the farm pictures
 ```
 
 GitHub Actions runs `npm test` and `npm run test:ui` on every push to `main` and on pull requests.
