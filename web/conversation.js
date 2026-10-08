@@ -162,5 +162,6 @@ document.addEventListener('keydown', e => {
   if (convoTimer) { clearTimeout(convoTimer); convoTimer = 0; findInConversation(true); } // the words just typed first
   else stepMatch(e.shiftKey ? 1 : -1);
 });
-$('convo').addEventListener('close', () => { if (convo) closeConversation(); }); // Escape
+// Escape. The close event comes a moment after: by then the dialog may be open again, on another conversation.
+$('convo').addEventListener('close', () => { if (convo && !$('convo').open) closeConversation(); });
 $('convo').addEventListener('click', e => { if (e.target === $('convo')) closeConversation(); }); // the backdrop
