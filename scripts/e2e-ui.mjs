@@ -387,6 +387,16 @@ try {
   for (let i = 0; i < 3 && !/Sky: night/.test(await js("document.querySelector('[data-farm-sky]').textContent")); i++) await js("document.querySelector('[data-farm-sky]').click()");
   await sleep(600);
   check(/Sky: night/.test(await js("document.querySelector('[data-farm-sky]').textContent")) && errors.length === 0, 'the farm draws its night, lights and all, without errors');
+  if (!(await js("matchMedia('(prefers-reduced-motion: reduce)').matches"))) { // a zoom glides from the view as it was: no jump, no dark edges
+    const zoomStep = async (step, label, grows) => { // the farm's width on every frame of the glide: it only ever moves toward the new size
+      const g = JSON.parse(await js(`(async () => { const st = document.querySelector('#farm canvas').parentElement, a = st.getBoundingClientRect().width; document.querySelector('[data-farm-zoom="${step}"]').click(); const w = []; const end = performance.now() + 400; await new Promise(done => { const tick = () => { w.push(st.getBoundingClientRect().width); if (performance.now() < end) requestAnimationFrame(tick); else done(); }; requestAnimationFrame(tick); }); return JSON.stringify([a, Math.min(...w), Math.max(...w), w.length].map(Math.round)); })()`));
+      const [was, low, high] = g;
+      check(grows ? low >= was - 1 : high <= was + 1, `${label} glides from the farm as it was, never past it (${grows ? 'smallest' : 'largest'} ${grows ? low : high}px against ${was}px, over ${g[3]} frames)`);
+    };
+    await zoomStep('1', 'zooming in from the whole farm', true);
+    await zoomStep('1', 'zooming in further', true);
+    await zoomStep('0', 'zooming back out', false);
+  }
   for (let i = 0; i < 3 && !/Sky: live/.test(await js("document.querySelector('[data-farm-sky]').textContent")); i++) await js("document.querySelector('[data-farm-sky]').click()");
   check(!/energy/i.test(await js("document.querySelector('.px-hud')?.textContent ?? ''")) && /34%[\s\S]*5-hour limit/.test(await js("document.querySelector('.px-stats').textContent")), "the farm has no vague energy bar; the plan's usage is in its panel");
   check(await js("getComputedStyle(document.querySelector('header.top')).display === 'none' && getComputedStyle(document.getElementById('kpis')).display === 'none'"), 'the farm fills the window: no top bar or count cards above it');

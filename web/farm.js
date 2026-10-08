@@ -1984,7 +1984,9 @@
      */
     function applyGlide(now) {
       if (!glide || !canvas) return;
-      const stage = canvas.parentElement, t = Math.min(1, (now - glide.start) / 200);
+      // A frame's time is when it began, which can be before the zoom: never run backwards (the farm would
+      // shrink past where it was, then pop, a flicker on a slow frame).
+      const stage = canvas.parentElement, t = Math.min(1, Math.max(0, (now - glide.start) / 200));
       if (t >= 1) { stage.style.transform = ''; glide = null; return; }
       const e = 1 - (1 - t) ** 3;
       stage.style.transformOrigin = `${glide.ox}px ${glide.oy}px`;
