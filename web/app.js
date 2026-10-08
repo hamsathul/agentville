@@ -24,7 +24,6 @@ function overviewHtml(a) {
     ${sessionBarHtml(a)}
     ${a.state === 'stale' ? '' : `<div style="margin-top:8px">${metricsHtml(a)}</div>`}
     <div class="sec">Now</div>${workingLineHtml(a)}${a.now ? `<div class="now mono"><span class="pulse"></span> ${esc(a.now.tool)} ${esc(a.now.summary)} · <b data-since="${a.now.startedAt}"></b></div>` : a.turn ? '' : `<div class="muted">${esc(a.stateReason)}</div>`}
-    ${subagentsHtml(a)}
     ${questionHtml(a)}
     ${composeHtml(a)}
     ${asideHtml(a)}
@@ -64,6 +63,8 @@ function render() {
     window.TrackerFarm?.select?.(a?.id ?? null);
     if (farmSide && farmTab === 'agent') $('farm-agent').innerHTML = a ? farmSideHtml(a) : '<div class="empty">No agents are running.</div>';
     if (farmSide && farmTab === 'activity') $('farm-activity').innerHTML = a ? activityHtml(a) : '<div class="empty">No agents are running.</div>';
+    if (farmSide && farmTab === 'subagents') $('farm-subagents').innerHTML = a ? subagentsHtml(a) : '<div class="empty">No agents are running.</div>';
+    $('tab-subagents').innerHTML = subTabLabel(subagentsOf(a)); // how many, while you are on another tab
     if (farmSide && farmTab === 'files') syncExplorer();
     updateTimers();
     return;
@@ -132,7 +133,7 @@ function refreshFullFeeds() {
 
 let view = loadView();
 let farmSide = loadSaved('tracker-farm-side') === 'open'; // the farm's sidebar: answer, message, activity, files
-const FARM_TABS = ['agent', 'activity', 'files', 'diary'];
+const FARM_TABS = ['agent', 'activity', 'subagents', 'files', 'diary'];
 let farmTab = FARM_TABS.includes(loadSaved('tracker-farm-tab')) ? loadSaved('tracker-farm-tab') : 'agent';
 function loadSaved(key) {
   try {
@@ -209,7 +210,6 @@ function farmSideHtml(a) {
     ${sessionBarHtml(a)}
     ${askHtml(a)}
     <div class="sec">Now</div>${workingLineHtml(a)}${a.turn && !a.now ? '' : now}
-    ${subagentsHtml(a)}
     ${questionHtml(a)}
     ${composeHtml(a)}
     ${asideHtml(a)}

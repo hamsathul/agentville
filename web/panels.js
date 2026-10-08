@@ -324,10 +324,14 @@ function composeHtml(a, ids = 'msg') {
     <div class="compose-row">${status}<span class="grow"></span><button class="act" id="${ids}-attach" type="button" data-agent="${esc(a.id)}" data-tip="Attach files: screenshots, PDFs, Markdown, text… (you can also paste or drop them on the box)"${live ? '' : ' disabled'}>📎 Attach</button><button class="act primary" id="${ids}-send" data-agent="${esc(a.id)}"${live ? '' : ' disabled'}>Send</button></div></div>`;
 }
 
-/** A session's subagents, a card each: its task, how long and how many steps, its step now, what it last said or its result. */
+const subagentsOf = a => (a?.children ?? []).filter(c => c.kind === 'subagent');
+/** The Subagents tab's label: how many, and a pulse while one is at work. */
+const subTabLabel = subs => `Subagents${subs.length ? ` <span class="tab-n">${subs.length}</span>` : ''}${subs.some(c => c.state === 'running') ? '<span class="pulse"></span>' : ''}`;
+
+/** A session's subagents (their own tab), a card each: its task, how long and how many steps, its step now, what it last said or its result. */
 function subagentsHtml(a) {
-  const subs = (a.children ?? []).filter(c => c.kind === 'subagent');
-  if (!subs.length) return '';
+  const subs = subagentsOf(a);
+  if (!subs.length) return '<div class="empty">No subagents at work, or finished in the last hour.</div>';
   const running = subs.filter(c => c.state === 'running').length;
   const counts = [running && `${running} running`, subs.length - running && `${subs.length - running} finished lately`].filter(Boolean).join(' · ');
   return `<div class="sec">Subagents <span class="faint" style="text-transform:none;letter-spacing:0">${counts}</span></div>${subs.map(c => subCardHtml(a, c)).join('')}`;

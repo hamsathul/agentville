@@ -186,14 +186,15 @@ The page is laid out like an editor, in three columns:
   - its controls: permission mode, model, effort, Restart in…, End session;
   - CPU, memory, context left and cost;
   - **Now**: its working line and current tool;
-  - **Subagents**, a card each: its type and task, running for how long or done in how long, how
-    many steps, its step now (`🔧 Grep createOrder in src/`), and what it last said or its result.
-    **▸** opens it to what it was asked, its steps and words (followed while it works) and its
-    result; **⤢ Read** opens its whole transcript in the conversation dialog. A subagent that
-    runs in the background stays *running* until Claude Code's notice says it finished;
   - the message box, side questions and the conversation, newest first, with the newest message
     framed in teal under a **Latest** tag (with your message, when it is right below it);
   - its activity, background jobs and workflows, the repos it touched and its process tree.
+- **Its Subagents tab**, next to the agent's own while it has any, says how many, with a pulse
+  while one is at work. Each subagent is a card: its type and task, running for how long or done
+  in how long, how many steps, its step now (`🔧 Grep createOrder in src/`), and what it last said
+  or its result. **▸** opens it to what it was asked, its steps and words (followed while it
+  works) and its result; **⤢ Read** opens its whole transcript in the conversation dialog. A
+  subagent that runs in the background stays *running* until Claude Code's notice says it finished.
 - **Right: the explorer.** The agent's folder with git status letters (M, U, D) and a dot on files
   it edited or read, its **Scratchpad** and its **Memory**.
 
@@ -370,8 +371,8 @@ can hold.
 - **Mouse.** ⌘/Ctrl + scroll or a pinch zooms, drag moves around, and a minimap appears while you
   are zoomed in.
 
-**Click things.** Click a farmer to open its sidebar, with Agent, Activity, Files and Diary tabs
-(the Agent tab has its subagents' cards, as in the list), or a field for a close-up of the files
+**Click things.** Click a farmer to open its sidebar, with Agent, Activity, Subagents (its
+subagents' cards, as in the list), Files and Diary tabs, or a field for a close-up of the files
 agents touched there. Click a building for the rest:
 
 | Building | Opens |

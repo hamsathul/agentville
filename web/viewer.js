@@ -41,7 +41,9 @@ const tabsOf = id => {
 
 function tabsHtml(a, t) {
   const agentTab = `<div class="tab${t.active ? '' : ' on'}"><button type="button" data-tab=""><span class="swatch" style="background:${colorOf(a.id)}"></span>${esc(a.name)}</button></div>`;
-  return agentTab + t.files.map(f => `<div class="tab${t.active === f ? ' on' : ''}"><button type="button" data-tab="${esc(f)}" data-tip="${esc(f === '@summary' ? 'What this session remembers of its earlier conversation' : short(f))}">${f === '@summary' ? '🧠' : isMarkdown(f) ? '📄' : '⌗'} ${esc(fileLabel(f))}</button><button type="button" class="x" data-close-tab="${esc(f)}" aria-label="Close ${esc(fileLabel(f))}">✕</button></div>`).join('');
+  const subs = subagentsOf(a); // their own tab, while it has any: the agent's own view keeps to the conversation
+  const subTab = subs.length ? `<div class="tab${t.active === '@subagents' ? ' on' : ''}"><button type="button" data-tab="@subagents" data-tip="Its subagents: what each is doing, opened live">${subTabLabel(subs)}</button></div>` : '';
+  return agentTab + subTab + t.files.map(f => `<div class="tab${t.active === f ? ' on' : ''}"><button type="button" data-tab="${esc(f)}" data-tip="${esc(f === '@summary' ? 'What this session remembers of its earlier conversation' : short(f))}">${f === '@summary' ? '🧠' : isMarkdown(f) ? '📄' : '⌗'} ${esc(fileLabel(f))}</button><button type="button" class="x" data-close-tab="${esc(f)}" aria-label="Close ${esc(fileLabel(f))}">✕</button></div>`).join('');
 }
 
 function readerHtml() {
@@ -210,14 +212,14 @@ function renderCentre() {
     return;
   }
   const t = tabsOf(a.id);
-  if (t.active && !t.files.includes(t.active)) t.active = '';
+  if (t.active && !t.files.includes(t.active) && !(t.active === '@subagents' && subagentsOf(a).length)) t.active = '';
   $('center-tabs').innerHTML = tabsHtml(a, t);
   const key = `${a.id}\n${t.active}`;
-  if (!t.active) {
+  if (!t.active || t.active === '@subagents') {
     reader = null;
     shownKey = key;
     body.className = 'center-body';
-    body.innerHTML = overviewHtml(a);
+    body.innerHTML = t.active ? subagentsHtml(a) : overviewHtml(a);
   } else if (key !== shownKey) {
     shownKey = key;
     reader = { agentId: a.id, path: t.active, at: touchOf(a.id, t.active)?.at ?? 0 };

@@ -269,6 +269,8 @@ dialog.confirm-dlg { max-width: min(460px, calc(100vw - 32px)); }
 .bub.peer .peer-head { font-size: 11px; font-weight: 700; color: var(--muted); margin-bottom: 2px; }
 #sess-status { margin: 8px 0 6px; min-height: 1.2em; }
 /* a session's subagents, a card each */
+.tab-n { display: inline-block; min-width: 16px; margin-left: 4px; padding: 0 5px; border-radius: 8px; background: var(--panel-2); color: var(--muted); font-size: 11px; text-align: center; }
+.tab .pulse, #tab-subagents .pulse { margin-left: 5px; }
 .sub-card { margin: 6px 0; padding: 7px 9px; border: 1px solid var(--line); border-radius: 8px; background: var(--panel); }
 .sub-card.running { border-left: 3px solid var(--good); }
 .sub-card.failed { border-left: 3px solid var(--crit); }
@@ -362,7 +364,7 @@ pre.code .l:hover { background: var(--panel-2); }
 #farm { display: none; min-height: 0; overflow: auto; }
 #farm-side { display: none; min-height: 0; overflow: auto; background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 12px 14px; }
 /* The farm sidebar: tabs on top, then one of the agent panel, its files (the explorer) or the farm diary. */
-#farm-tabs, #farm-diary-pane, #farm-activity-pane { display: none; }
+#farm-tabs, #farm-diary-pane, #farm-activity-pane, #farm-subagents-pane { display: none; }
 .app[data-view="farm"][data-side="open"] { grid-template-columns: minmax(0, 1fr) 380px; grid-template-rows: auto minmax(0, 1fr); }
 .app[data-view="farm"][data-side="open"] > #farm { grid-row: 1 / span 2; grid-column: 1; }
 .app[data-view="farm"][data-side="open"] > #farm-tabs { display: flex; grid-row: 1; grid-column: 2; justify-self: start; }
@@ -370,7 +372,8 @@ pre.code .l:hover { background: var(--panel-2); }
 .app[data-view="farm"][data-side="open"][data-side-tab="files"] > .col.right { display: flex; grid-row: 2; grid-column: 2; }
 .app[data-view="farm"][data-side="open"][data-side-tab="diary"] > #farm-diary-pane { display: block; grid-row: 2; grid-column: 2; }
 .app[data-view="farm"][data-side="open"][data-side-tab="activity"] > #farm-activity-pane { display: block; grid-row: 2; grid-column: 2; }
-#farm-activity-pane, #farm-diary-pane { min-height: 0; overflow: auto; background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 12px 14px; }
+.app[data-view="farm"][data-side="open"][data-side-tab="subagents"] > #farm-subagents-pane { display: block; grid-row: 2; grid-column: 2; }
+#farm-activity-pane, #farm-diary-pane, #farm-subagents-pane { min-height: 0; overflow: auto; background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 12px 14px; }
 #farm-tabs button[aria-selected="true"] { background: var(--panel); color: var(--text); box-shadow: 0 1px 3px rgba(0, 0, 0, .18), 0 0 0 1px var(--line); }
 .qcard { border: 1px solid color-mix(in srgb, var(--warn) 65%, transparent); background: color-mix(in srgb, var(--warn) 10%, transparent); border-radius: 12px; padding: 10px 13px; margin: 12px 0; display: grid; gap: 8px; }
 .qtext { font-weight: 600; font-size: 14px; }
@@ -655,9 +658,10 @@ a.pile { text-decoration: none; color: inherit; }
     <div id="tree" class="tree"></div>
   </aside>
   <section id="farm" aria-label="Pixel farm"></section>
-  <div id="farm-tabs" class="seg" role="tablist" aria-label="Sidebar"><button type="button" id="tab-agent" role="tab" data-farm-tab="agent">Agent</button><button type="button" id="tab-activity" role="tab" data-farm-tab="activity">Activity</button><button type="button" id="tab-files" role="tab" data-farm-tab="files">Files</button><button type="button" id="tab-diary" role="tab" data-farm-tab="diary">Diary</button></div>
+  <div id="farm-tabs" class="seg" role="tablist" aria-label="Sidebar"><button type="button" id="tab-agent" role="tab" data-farm-tab="agent">Agent</button><button type="button" id="tab-activity" role="tab" data-farm-tab="activity">Activity</button><button type="button" id="tab-subagents" role="tab" data-farm-tab="subagents">Subagents</button><button type="button" id="tab-files" role="tab" data-farm-tab="files">Files</button><button type="button" id="tab-diary" role="tab" data-farm-tab="diary">Diary</button></div>
   <aside id="farm-side" aria-label="The selected farmer"><div id="farm-agent"></div></aside>
   <aside id="farm-activity-pane" aria-label="Activity"><div id="farm-activity"></div></aside>
+  <aside id="farm-subagents-pane" aria-label="Subagents"><div id="farm-subagents"></div></aside>
   <aside id="farm-diary-pane" aria-label="Farm diary"><div class="sec" style="margin-top:0">Farm diary</div><ol id="farm-diary" class="px-log"></ol></aside>
 </main>
 <div id="tip" class="tip" role="tooltip"></div>

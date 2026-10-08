@@ -215,7 +215,9 @@ try {
   })()`);
   const fits = sel => js(`(() => { const p = document.querySelector('${sel}'), pre = p.querySelector('.bub pre'); return !!pre && p.scrollWidth <= p.clientWidth + 1 && pre.scrollWidth > pre.clientWidth; })()`);
   check(await fits('#center-body'), `a reply with a wide code block scrolls inside its bubble; the agent panel doesn't scroll sideways (${await sideways('#center-body')})`);
-  // Its subagent: a card saying what it is doing, opened to its prompt; ⤢ Read for its own transcript.
+  // Its subagent, on a tab of its own: a card saying what it is doing, opened to its prompt; ⤢ Read for its own transcript.
+  check(await js("!document.querySelector('#center-body .sub-card') && /Subagents\\s*1/.test(document.querySelector('#center-tabs [data-tab=\"@subagents\"]')?.textContent ?? '')"), 'subagents are not in the main view: they have a tab, saying how many');
+  await js("document.querySelector('#center-tabs [data-tab=\"@subagents\"]').click()");
   check(await until("[...document.querySelectorAll('#center-body .sub-card.running')].some(c => /Explore/.test(c.textContent) && /Survey the fields/.test(c.textContent) && /Grep/.test(c.textContent) && /Wheat in the north field/.test(c.textContent))"), "a subagent's card says what it is doing: its task, its step now, what it last said");
   await js("document.querySelector('#center-body .sub-card [data-child]').click()");
   check(await until("/Survey every field and list what grows where/.test(document.querySelector('#center-body .sub-prompt')?.textContent ?? '')"), 'opened, it shows the prompt it was given and its steps');
@@ -223,6 +225,8 @@ try {
   check(await until("document.getElementById('convo').open && /^Explore · Survey the fields · ui-asker's subagent$/.test(document.getElementById('convo-title').textContent) && /Wheat in the north field/.test(document.getElementById('convo-body').textContent)"), "⤢ Read opens the subagent's own transcript");
   check(await js("document.getElementById('convo-compose').innerHTML === ''"), 'a subagent takes no messages: no box');
   await js("document.getElementById('convo').close()");
+  await js("document.querySelector('#center-tabs [data-tab=\"\"]').click()"); // back to the agent's own view
+  await until("!!document.querySelector('#center-body [data-convo=\"ui-asker\"]')");
   // The conversation dialog: the whole conversation, oldest first, with search.
   await js("document.querySelector('#center-body [data-convo=\"ui-asker\"]').click()");
   check(await until("document.getElementById('convo').open && document.querySelectorAll('#convo-body .bub').length >= 3"), '⤢ Read all opens the whole conversation in a dialog');
@@ -412,6 +416,11 @@ try {
   await js("document.querySelector('[data-farm-need]').click()");
   check(await until("document.getElementById('main').dataset.side === 'open' && /Which crop next/.test(document.getElementById('farm-agent').textContent)"), "the farm's “needs you” button opens the waiting farmer in the sidebar, with its question");
   check(await fits('#farm-side'), `in the narrower farm sidebar too, the wide code block scrolls inside its bubble (${await sideways('#farm-side')})`);
+  check(await js("/^Subagents\\s*1/.test(document.getElementById('tab-subagents').textContent) && !document.querySelector('#farm-agent .sub-card')"), "the farm sidebar's Subagents tab says how many; its Agent tab has no cards");
+  await js("document.getElementById('tab-subagents').click()");
+  check(await until("/Survey the fields/.test(document.querySelector('#farm-subagents .sub-card')?.textContent ?? '')"), 'the Subagents tab shows its card');
+  await js("document.getElementById('tab-agent').click()");
+  await until("/Which crop next/.test(document.getElementById('farm-agent').textContent)");
   check(await js("document.getElementById('center-body').innerHTML === ''"), 'the hidden centre holds no second answer form');
   await js("(() => { const r = document.querySelector('#farm-agent input[value=\"Pumpkins\"]'); r.checked = true; r.dispatchEvent(new Event('change', { bubbles: true })); document.getElementById('ask-send').click(); })()");
   check(await until("/Answer sent to ui-asker/.test(document.getElementById('notice').textContent)"), 'the answer is sent from the farm sidebar');

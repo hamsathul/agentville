@@ -1614,21 +1614,29 @@ const withHelpers = (over = {}) => richAgent({ mod: { version: '0.6.1', live: tr
   { id: 'toolu_J1', kind: 'bgjob', label: 'npm run dev', state: 'running', startedAt: Date.now() - 60_000 },
 ] });
 
-test('each subagent is a card: its task, how long and how many steps, its step now in words, what it last said or its result', () => {
+test('subagents have a tab of their own, saying how many and whether one is at work; the main view keeps to the conversation', async () => {
   const page = loadPage();
   page.push(richSnapshot([withHelpers()]));
-  const side = page.side();
-  assert.match(side, /class="sub-card running"[\s\S]*?<b>Explore<\/b>[\s\S]*?Find every caller[\s\S]*?running · <span data-lasted="\d+">[^<]*<\/span> · 14 steps[\s\S]*?🔧 <b>Grep<\/b> createOrder in src\/[\s\S]*?“Two callers so far\.”/);
-  assert.match(side, /class="sub-card done"[\s\S]*?<b>code-reviewer<\/b>[\s\S]*?Review the change[\s\S]*?done in 4m 2s · 31 steps[\s\S]*?Result: “No blocking issues\.”/);
-  assert.match(side, /data-convo="r1:toolu_S1"[^>]*>⤢ Read<\/button>/, 'its whole transcript, in the conversation dialog');
-  assert.match(side, /npm run dev/, 'a background job keeps its line');
-  assert.doesNotMatch(side, /data-convo="r1:toolu_J1"/);
+  assert.doesNotMatch(page.side(), /sub-card/, 'not in the main view');
+  assert.match(page.tabs(), /data-tab="@subagents"[^>]*>Subagents <span class="tab-n">2<\/span><span class="pulse"><\/span><\/button>/, 'how many, and a pulse while one runs');
+  await page.clickButton('subs-tab', { tab: '@subagents' });
+  const tab = page.side();
+  assert.match(page.tabs(), /class="tab on"><button type="button" data-tab="@subagents"/);
+  assert.match(tab, /class="sub-card running"[\s\S]*?<b>Explore<\/b>[\s\S]*?Find every caller[\s\S]*?running · <span data-lasted="\d+">[^<]*<\/span> · 14 steps[\s\S]*?🔧 <b>Grep<\/b> createOrder in src\/[\s\S]*?“Two callers so far\.”/);
+  assert.match(tab, /class="sub-card done"[\s\S]*?<b>code-reviewer<\/b>[\s\S]*?Review the change[\s\S]*?done in 4m 2s · 31 steps[\s\S]*?Result: “No blocking issues\.”/);
+  assert.match(tab, /data-convo="r1:toolu_S1"[^>]*>⤢ Read<\/button>/, 'its whole transcript, in the conversation dialog');
+  assert.doesNotMatch(tab, /npm run dev/, 'background jobs stay with the activity');
+  assert.doesNotMatch(tab, /id="msg-text"|>Conversation</, 'the tab is the subagents alone');
+  const none = loadPage();
+  none.push(richSnapshot([richAgent()]));
+  assert.doesNotMatch(none.tabs(), /@subagents/, 'no subagents, no tab');
 });
 
 test("a subagent's card opens to its prompt, its steps (followed while it works) and its result", async () => {
   const S1 = '/api/agent/r1%3Atoolu_S1/subagent';
   const page = loadPage({ replies: { [S1]: { prompt: 'Find every caller of createOrder.\nList them by file.', result: null, feed: [{ at: Date.now() - 3000, kind: 'tool', tool: 'Grep', text: 'createOrder', ok: true }] } } });
   page.push(richSnapshot([withHelpers()]));
+  await page.clickButton('subs-tab', { tab: '@subagents' });
   await page.clickButton('open-sub', { child: 'toolu_S1' });
   await page.settle();
   const get = page.gets.filter(g => g.path === S1);
@@ -1659,9 +1667,13 @@ test('⤢ Read on a subagent opens its own transcript in the conversation dialog
   assert.equal(page.el('convo-compose').innerHTML, '', 'a subagent takes no messages');
 });
 
-test('the farm sidebar shows the subagents too', async () => {
+test('the farm sidebar has a Subagents tab, with how many on it; its Agent tab keeps to the conversation', async () => {
   const f = fakeFarm();
   const page = loadPage({ farm: f.farm, stored: { 'tracker-view': 'farm', 'tracker-farm-side': 'open' } });
   page.push(richSnapshot([withHelpers()]));
-  assert.match(page.el('farm-agent').innerHTML, />Subagents[\s\S]*class="sub-card running"[\s\S]*Find every caller/);
+  assert.doesNotMatch(page.el('farm-agent').innerHTML, /sub-card/);
+  assert.match(page.el('tab-subagents').innerHTML, /^Subagents <span class="tab-n">2<\/span><span class="pulse"><\/span>$/);
+  await page.clickButton('tab-subagents', { farmTab: 'subagents' });
+  assert.equal(page.stored['tracker-farm-tab'], 'subagents');
+  assert.match(page.el('farm-subagents').innerHTML, /class="sub-card running"[\s\S]*Find every caller/);
 });
