@@ -397,18 +397,19 @@ document.addEventListener('click', async e => {
 // Snapshots arrive every few seconds. Re-rendering replaces the DOM, which would wipe a
 // text selection (copying a path or prompt), swallow a click that straddles it, or clobber
 // typing, so a snapshot waits while text is selected, the pointer is down, or a box is typed in.
+// It waits for an open dropdown too: replaced while its list is open, the pick would go to the old one.
 let isPointerDown = false;
 let isRenderPending = false;
-const isTyping = () => {
+const isInUse = () => {
   const el = document.activeElement;
-  return Boolean(el && (el.tagName === 'TEXTAREA' || (el.tagName === 'INPUT' && el.type === 'text')));
+  return Boolean(el && (el.tagName === 'TEXTAREA' || el.tagName === 'SELECT' || (el.tagName === 'INPUT' && el.type === 'text')));
 };
 const hasSelection = () => {
   const s = window.getSelection?.();
   return Boolean(s && !s.isCollapsed && s.toString() !== '');
 };
 function requestRender() {
-  if (isPointerDown || hasSelection() || isTyping()) {
+  if (isPointerDown || hasSelection() || isInUse()) {
     isRenderPending = true;
     if (view === 'farm' && snap) window.TrackerFarm?.update(snap); // the farm keeps moving; only the sidebar waits
     return;
@@ -475,10 +476,12 @@ async function askAside(agentId, button) {
 }
 document.addEventListener('change', e => {
   const t = e.target;
-  if (t?.dataset?.restartMode !== undefined) { const mode = t.value; t.value = ''; if (mode) void restartFlow(t.dataset.agent, mode); return; }
+  // A pick lets go of the dropdown, so refreshes go on while you confirm (and after you cancel).
+  if (t?.dataset?.restartMode !== undefined) { const mode = t.value; t.value = ''; t.blur?.(); if (mode) void restartFlow(t.dataset.agent, mode); return; }
   if (t?.dataset?.switchModel !== undefined || t?.dataset?.switchEffort !== undefined) {
     const value = t.value, what = t.dataset.switchModel !== undefined ? 'model' : 'effort';
     t.value = '';
+    t.blur?.();
     if (value) void switchFlow(t.dataset.agent, what, value);
     return;
   }

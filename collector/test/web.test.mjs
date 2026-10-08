@@ -239,6 +239,23 @@ test('typing under Other holds refreshes until the box loses focus', () => {
   assert.match(page.list(), /second/);
 });
 
+test('an open dropdown holds refreshes until it loses focus, and a pick lets go of it', async () => {
+  const page = loadPage();
+  page.push(snapshot('first'));
+  page.focus({ tagName: 'SELECT' }); // a dropdown keeps focus while its list is open
+  page.push(snapshot('second'));
+  assert.match(page.list(), /first/, 'a refresh would replace the dropdown and lose the pick');
+  page.focus(null);
+  page.fire('focusout');
+  assert.match(page.list(), /second/);
+  page.push(richSnapshot([richAgent({ pid: 4242, mod: { live: true, version: '0.5.0' } })]));
+  const blurred = [];
+  for (const dataset of [{ switchModel: '' }, { switchEffort: '' }, { restartMode: '' }]) {
+    await page.change({ dataset: { ...dataset, agent: 'r1' }, value: 'max', blur() { blurred.push(Object.keys(dataset)[0]); } });
+  }
+  assert.deepEqual(blurred, ['switchModel', 'switchEffort', 'restartMode'], 'so refreshes go on while you confirm, and after you cancel');
+});
+
 test('there are no Claude app links any more', async () => {
   const page = loadPage();
   const snap = askSnapshot(QUESTION);
