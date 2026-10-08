@@ -392,9 +392,13 @@ grass, so the fields in use stand out. When the page opens, the fields move up i
 the order they had, so empty rows close up. The yard down the left holds the henhouse, the meadow,
 the pond and the shade tree, and a forest surrounds the farm.
 
-**Names.** On the porch a farmer's tag is just its name, and neighbouring tags sit at two heights so
-none covers another. A name that is too long is shortened in the middle (`inventor…agement`);
-hover over it for the whole name.
+**Names and bubbles.** On the porch a farmer's tag is just its name, and neighbouring tags sit at
+two heights so none covers another. A name that is too long is shortened in the middle
+(`inventor…agement`); hover over it for the whole name. A farmer's speech bubble sits just over its
+name. When two bubbles would cover each other, one moves up with a line down to its farmer. If
+there is no room above, as on a busy porch at the top of a small window, it moves to the side
+instead and its line slants across to the name. Bubbles stay inside the farm, and at 100% they
+keep clear of the panel and the buttons too.
 
 **Reading the farm.** The **i** button opens the full legend, including every tool a farmer
 can hold.

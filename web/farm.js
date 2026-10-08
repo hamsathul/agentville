@@ -1901,6 +1901,7 @@
     let panelOpen = stored('tracker-farm-panel') !== 'folded'; // the farm's panel: counts and meters, or folded to its title // a chime and a desktop notice when an agent starts waiting (the page rings it)
     const moverEls = new Map(); // labels that move: key → element
     let dlg = null, mini = null; // the buildings' dialog; the minimap shown while zoomed in
+    let hudBoxes = []; // the panel and buttons lying over the farm, in the frame's coordinates: bubbles keep clear of them
     const resting = f => f.state === 'idle' || f.state === 'stale';
     let glide = null; // a zoom easing in: { from: scale, start, ox, oy }
     let pad = { l: 0, r: 0, t: 0, b: 0 }; // the frame's spare room, in world pixels: more forest all round
@@ -1959,6 +1960,10 @@
     function placeMini() {
       const tools = hudEl?.querySelector('.px-tools');
       if (mini && tools) mini.style.bottom = `${tools.offsetHeight + 16}px`;
+      if (!hudEl || !viewEl) return;
+      const v = viewEl.getBoundingClientRect(); // and where the panel and buttons lie, for the bubbles
+      hudBoxes = [...hudEl.children].map(el => el.getBoundingClientRect()).filter(r => r.width && r.height)
+        .map(r => ({ left: r.left - v.left, right: r.right - v.left, top: r.top - v.top, bottom: r.bottom - v.top }));
     }
     /**
      * Zoom changes the farm inside the frame, never the frame. The farm point under `at` (a point of
@@ -2105,12 +2110,16 @@
         s.w = null; // measured again
       }
       s.x = Math.round(b.x * cs);
-      s.bottom = Math.round((b.y - th.SH * SC - 3 - b.lift) * cs) - (b.shown ? 18 : 2); // just above its farmer's name tag, or its head
+      s.bottom = Math.round((b.y - th.SH * SC - 3 - b.lift) * cs) - (b.shown ? (b.tagH || 15) + 3 : 2); // just above its farmer's name tag, or its head
+      s.reach = b.shown ? Math.max(0, (b.tagW || 0) / 2 - 4) : 0; // how far along the tag a line from the side may end
+      s.foot = Math.round(b.y * cs);
       s.seen = true;
     }
     /**
      * Keeps speech bubbles off each other and off name tags: from left to right, a bubble that
-     * would land on one already placed is lifted above it, with a line down to its farmer.
+     * would land on one already placed is lifted above it, with a line down to its farmer. Where
+     * that would lift it past the farm's top edge, it moves sideways instead, to the nearest free
+     * spot at its own height, and its line slants across to its farmer.
      */
     function layoutBubbles() {
       const placed = [];
@@ -2123,18 +2132,54 @@
       const list = [...says.values()].filter(s => s.seen);
       for (const s of list) if (s.w == null) { s.w = s.el.offsetWidth; s.h = s.el.offsetHeight; }
       list.sort((p, q) => p.x - q.x || q.bottom - p.bottom);
+      // The farm's edges in the overlay's coordinates: the stage cuts off anything past them.
+      const edge = { top: -pad.t * cs + 2, left: -pad.l * cs + 2, right: (W + pad.r) * cs - 2 };
+      if (zoom <= 1 && viewEl) { // the whole farm in view: keep clear of the panel and the buttons lying over it
+        const stage = canvas.parentElement, dx = viewEl.scrollLeft - stage.offsetLeft - pad.l * cs, dy = viewEl.scrollTop - stage.offsetTop - pad.t * cs;
+        for (const r of hudBoxes) placed.push({ left: r.left + dx, right: r.right + dx, top: r.top + dy, bottom: r.bottom + dy });
+      }
+      const hitAt = (left, bottom, s) => placed.find(r => left < r.right + 3 && left + s.w > r.left - 3 && bottom - s.h < r.bottom + 3 && bottom > r.top - 3);
       list.forEach((s, i) => {
-        const left = s.x - s.w / 2;
-        let bottom = s.bottom;
+        const home = Math.max(edge.left, Math.min(s.x - s.w / 2, edge.right - s.w));
+        let left = home, bottom = s.bottom;
         for (let guard = 0; guard < 30; guard++) {
-          const hit = placed.find(r => left < r.right + 3 && left + s.w > r.left - 3 && bottom - s.h < r.bottom + 3 && bottom > r.top - 3);
+          const hit = hitAt(left, bottom, s);
           if (!hit) break;
           bottom = hit.top - 6;
         }
+        if (bottom - s.h < edge.top) { // no room above: the nearest free spot to one side, at its height or lower, down to its farmer's feet
+          const slide = (dir, row) => {
+            let l = home;
+            for (let guard = 0; guard < 30; guard++) {
+              const hit = hitAt(l, row, s);
+              if (!hit) return l;
+              l = dir > 0 ? hit.right + 4 : hit.left - 4 - s.w;
+              if (l < edge.left || l + s.w > edge.right) return null;
+            }
+            return null;
+          };
+          let best = null;
+          for (let row = Math.max(s.bottom, edge.top + s.h); row <= Math.max(s.bottom, s.foot); row += 6) {
+            for (const dir of [1, -1]) {
+              const l = slide(dir, row), cost = l == null ? Infinity : Math.abs(l - home) + 2 * (row - s.bottom);
+              if (cost < (best?.cost ?? Infinity)) best = { l, row, cost };
+            }
+          }
+          if (best) { left = best.l; bottom = best.row; } else bottom = edge.top + s.h; // nowhere free: kept in, over the others
+        }
         placed.push({ left, right: left + s.w, top: bottom - s.h, bottom });
-        s.el.style.setProperty('--lead', `${s.bottom - bottom}px`);
-        s.el.style.zIndex = String(40 - Math.min(i, 30) + (s.bottom - bottom > 0 ? 0 : 10)); // lifted ones sit behind
-        s.el.style.transform = `translate(${Math.round(left)}px, ${Math.round(bottom - s.h)}px)`;
+        // Its line leaves from its bottom edge when it is over its farmer, else from the side nearer it
+        // to the nearest end of the farmer's name, and the arrow's tip touches just over it.
+        const top = bottom - s.h, ty = s.bottom + 4, under = s.x >= left + 10 && s.x <= left + s.w - 10;
+        const px = under ? s.x : s.x < left ? left + 1 : left + s.w - 1, py = under ? bottom - 2 : Math.max(top + 8, Math.min(ty, bottom - 8));
+        const tx = under ? s.x : Math.max(s.x - s.reach, Math.min(px, s.x + s.reach));
+        const lead = Math.max(0, Math.hypot(tx - px, ty - py) - 6), turn = under ? 0 : Math.atan2(px - tx, ty - py);
+        s.el.style.setProperty('--lx', `${Math.round(px - left - 2)}px`);
+        s.el.style.setProperty('--ly', under ? '100%' : `${Math.round(py - top - 2)}px`);
+        s.el.style.setProperty('--lead', `${Math.round(lead)}px`);
+        s.el.style.setProperty('--turn', `${turn.toFixed(3)}rad`);
+        s.el.style.zIndex = String(40 - Math.min(i, 30) + (lead > 0 ? 0 : 10)); // moved ones sit behind
+        s.el.style.transform = `translate(${Math.round(left)}px, ${Math.round(top)}px)`;
       });
     }
     function addLog(f, text) {

@@ -440,7 +440,7 @@ try {
   check(await until("[...document.querySelectorAll('.px-say')].some(b => b.textContent.includes('Which crop next?'))"), "the waiting farmer's question is in a speech bubble over its head");
   check(await until("document.querySelectorAll('.px-say').length >= 3"), 'the two finished farmers have bubbles too');
   await sleep(4000); // let everyone reach the porch
-  const overlaps = await js(`(() => {
+  const overlapping = () => js(`(() => {
     const boxes = [...document.querySelectorAll('.px-say, .px-tag.st-waiting, .px-tag.st-turn, .px-tag.sel')].map(el => ({ el, r: el.getBoundingClientRect() }));
     const out = [];
     for (let i = 0; i < boxes.length; i++) for (let j = i + 1; j < boxes.length; j++) {
@@ -451,7 +451,20 @@ try {
     }
     return out.join(', ');
   })()`);
+  const overlaps = await overlapping();
   check(overlaps === '', `speech bubbles overlap neither each other nor the names shown${overlaps ? `: ${overlaps}` : ''}`);
+  // Every bubble lies inside the farm's frame, however many farmers stand on the porch, in a big window or a small one.
+  const outside = () => js(`(() => { const v = document.querySelector('#farm .px-view').getBoundingClientRect(); return [...document.querySelectorAll('.px-say')].filter(e => { const r = e.getBoundingClientRect(); return r.top < v.top - 1 || r.left < v.left - 1 || r.right > v.right + 1; }).map(e => e.dataset.say).join(', '); })()`);
+  check(await outside() === '', `every speech bubble lies inside the farm's frame (${await outside()})`);
+  await send('Emulation.setDeviceMetricsOverride', { width: 1100, height: 640, deviceScaleFactor: 1, mobile: false });
+  await sleep(1500);
+  check(await outside() === '', `and in a small window, where the porch's bubbles run out of room above (${await outside()})`);
+  check(await overlapping() === '', `there they move aside rather than onto each other (${await overlapping()})`);
+  const underHud = () => js(`(() => { const hud = [...document.querySelectorAll('#farm .px-hud > div')].map(e => e.getBoundingClientRect()).filter(r => r.width); return [...document.querySelectorAll('.px-say')].filter(e => { const r = e.getBoundingClientRect(); return hud.some(h => Math.min(r.right, h.right) - Math.max(r.left, h.left) > 1 && Math.min(r.bottom, h.bottom) - Math.max(r.top, h.top) > 1); }).map(e => e.dataset.say).join(', '); })()`);
+  check(await underHud() === '', `and clear of the panel and the buttons lying over the farm (${await underHud()})`);
+  await shot('farm-bubbles-small');
+  await send('Emulation.setDeviceMetricsOverride', { width: 1400, height: 950, deviceScaleFactor: 1, mobile: false });
+  await sleep(800);
   check(await js("getComputedStyle(document.querySelector('.px-tag[data-farmer=\"ui-worker\"]')).opacity === '0' && getComputedStyle(document.querySelector('.px-tag.st-waiting')).opacity === '1'"), "a working farmer's name waits for a hover; a waiting one's always shows");
   const hovered = await js(`(() => { const c = document.querySelector('#farm canvas'), t = document.querySelector('.px-tag[data-farmer="ui-worker"]').getBoundingClientRect(), cs = c.getBoundingClientRect().width / Number(c.dataset.ew);
     c.dispatchEvent(new PointerEvent('pointermove', { bubbles: true, pointerId: 1, clientX: t.left + t.width / 2, clientY: t.bottom + 10 * cs })); // on its sprite, just under its hidden name
