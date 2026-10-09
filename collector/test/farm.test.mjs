@@ -488,3 +488,17 @@ test('when the page opens, fields move up into free beds in the order they had: 
   assert.equal(ground.rows, 3, 'the fewest rows the farm has');
   assert.deepEqual(plain(ground.beds), { '/c/api': { i: 0 }, '/c/web': { i: 1 }, '/c/ctd': { i: 2 } }, 'remembered from now on');
 });
+
+// The scripts a world's frame runs, and the styles it loads (it can't see the page's own).
+const FRAME_CODE = ['farm.js'].map(f => readFileSync(fileURLToPath(new URL(`../../web/${f}`, import.meta.url)), 'utf8')).join('\n');
+const FRAME_CSS = ['base.css', 'worlds/sdk/engine.css'].map(f => readFileSync(fileURLToPath(new URL(`../../web/${f}`, import.meta.url)), 'utf8')).join('\n');
+// Styled by the page, not the frame: the diary list the farm draws under itself when the page gives it none (gone in Task 6).
+const PAGE_STYLED = new Set(['px-log']);
+// Hooks the farm's own code finds its elements by (querySelector, data attributes); they carry no style, and never did.
+const HOOKS = new Set(['px-kpi-n', 'px-motion', 'px-info', 'px-dlg-title']);
+
+test('every class the farm writes is styled by the stylesheets its frame loads', () => {
+  const used = new Set([...FRAME_CODE.matchAll(/class="([^"$]*)"/g)].flatMap(m => m[1].split(/\s+/)).filter(c => c && !c.endsWith('-')));
+  const unstyled = [...used].filter(c => !PAGE_STYLED.has(c) && !HOOKS.has(c) && !new RegExp(`\\.${c.replace(/-/g, '\\-')}(?![\\w-])`).test(FRAME_CSS));
+  assert.deepEqual(unstyled, []);
+});

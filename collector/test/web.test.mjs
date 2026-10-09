@@ -158,8 +158,8 @@ test('blocked browser storage keeps the dark default and the button still switch
 });
 
 test('the page CSS gives both an explicit dark theme and a system-dark theme that Light overrides', () => {
-  assert.match(html, /:root\[data-theme="dark"\]\s*\{/);
-  assert.match(html, /@media \(prefers-color-scheme: dark\)\s*\{\s*:root:not\(\[data-theme="light"\]\)\s*\{/);
+  assert.match(web("base.css"), /:root\[data-theme="dark"\]\s*\{/);
+  assert.match(web("base.css"), /@media \(prefers-color-scheme: dark\)\s*\{\s*:root:not\(\[data-theme="light"\]\)\s*\{/);
 });
 
 const askSnapshot = ask => {
@@ -1122,7 +1122,7 @@ test('Show all says it is loading while it fetches', async () => {
 });
 
 test('hidden controls stay hidden even when their own style sets a display', () => {
-  assert.match(html, /\[hidden\]\s*\{\s*display:\s*none\s*!important;\s*\}/);
+  assert.match(web("base.css"), /\[hidden\]\s*\{\s*display:\s*none\s*!important;\s*\}/);
 });
 
 test("Activity is its own tab in the farm sidebar, and the Agent tab no longer repeats it", async () => {
