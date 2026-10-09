@@ -810,12 +810,54 @@ test('the list: the switch is only for your worlds, and it ignores a change in t
   p.dlg.listeners.change({ target: box });
   assert.ok(!('tracker-world-cansee:u/space' in p.stored), 'a change at once does nothing');
   assert.equal(box.checked, false, 'and is undone');
+  const live = [{ disabled: true }, { disabled: true }];
+  p.els['worlds-list'].querySelectorAll = () => live;
   p.wait(1000);
-  assert.ok(!/data-see="u\/space"[^>]* disabled/.test(html()), 'enabled after a second');
+  assert.ok(live.every(b => !b.disabled), 'enabled after a second, the boxes themselves (no new list)');
   box.checked = true;
   p.dlg.listeners.change({ target: box });
   assert.equal(p.stored['tracker-world-cansee:u/space'], 'on');
   assert.ok(/data-see="u\/space"[^>]* checked/.test(html()));
+});
+
+test('the switch unlocks by state, not by measuring: a timer a little early still unlocks, an old one cannot unlock a new opening', async () => {
+  const p = await page({ dialog: true });
+  const live = [{ disabled: true }];
+  p.els['worlds-list'].querySelectorAll = () => live;
+  await p.farm.openList();
+  p.wait(999.5); // the clock reads a hair short of a second
+  const old = p.timeouts.at(-1).fn;
+  old();
+  assert.ok(!live[0].disabled, 'unlocked all the same');
+  const box = { checked: true, dataset: { see: 'u/space' }, closest: s => (s === '[data-see]' ? box : null) };
+  p.dlg.listeners.change({ target: box });
+  assert.equal(p.stored['tracker-world-cansee:u/space'], 'on');
+  p.dlg.close();
+  await p.farm.openList();
+  live[0].disabled = true;
+  box.checked = false;
+  old();
+  assert.ok(live[0].disabled, 'an older timer does not unlock the new opening');
+  p.dlg.listeners.change({ target: box });
+  assert.equal(p.stored['tracker-world-cansee:u/space'], 'on', 'a change is ignored while locked');
+});
+
+test('input in the list during the lock keeps it locked until a second without any', async () => {
+  const p = await page({ dialog: true });
+  const live = [{ disabled: true }];
+  p.els['worlds-list'].querySelectorAll = () => live;
+  await p.farm.openList();
+  p.wait(600);
+  p.dlg.listeners.pointerdown({});
+  p.wait(600); // 1.2 s after opening, 0.6 s after the tap
+  assert.ok(live[0].disabled, 'still locked');
+  p.dlg.listeners.keydown({});
+  p.wait(999);
+  assert.ok(live[0].disabled, 'a key re-armed it too');
+  p.wait(1);
+  assert.ok(!live[0].disabled, 'a second without input: unlocked');
+  p.dlg.listeners.pointerdown({});
+  assert.ok(!live[0].disabled, 'input after the unlock does not lock it again');
 });
 
 test('the farm always sees everything', async () => {

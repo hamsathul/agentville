@@ -233,8 +233,8 @@ types, colours, counts, percentages, costs, the plan's windows and the repos' nu
 `pick` still works. Because the repo keys are stand-ins, `repoTouched` could not name a real repo
 anyway. Ticking the box starts the world again with the full scene; unticking starts it again
 private, but doesn't clear what the world saved while it could see (it gets its own saved settings
-back on start). The box is off for the first second the list is open, and a change in that second is
-undone: a world can open the list (`nav: 'worlds'`) but not tick the box for you.
+back on start). The box is off when the list opens, until a second passes with no tap or key in it, and a change
+before then is undone: a world can open the list (`nav: 'worlds'`) but not tick the box for you.
 
 ## Messages
 
