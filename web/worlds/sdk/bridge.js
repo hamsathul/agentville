@@ -5,7 +5,17 @@
 (() => {
   'use strict';
 
-  const send = message => parent.postMessage(message, '*');
+  // The page, captured before the world's script runs: a world can replace window.parent, but not this.
+  const toPage = window.parent;
+  const send = message => toPage.postMessage(message, '*');
+  // The moment this document starts to go away (the world set location, say), the page is told, before
+  // any page it goes to can run: the page then stops hearing from this frame. Capture and registered
+  // first, so a world's own listener can't get in ahead of it. beforeunload fires as the navigation
+  // starts, even when the new page never answers; pagehide when this document is let go.
+  let leaving = false;
+  const leave = () => { if (!leaving) { leaving = true; send({ type: 'leaving' }); } };
+  addEventListener('beforeunload', leave, true);
+  addEventListener('pagehide', leave, true);
   const reported = new Set();
   function report(message, where = '') {
     const key = `${message}@${where}`;
@@ -13,8 +23,11 @@
     reported.add(key);
     send({ type: 'error', message: String(message).slice(0, 300), where: String(where).slice(0, 120) });
   }
-  // Script errors, and scripts that fail to load (capture: those don't bubble).
-  addEventListener('error', e => report(e.message || 'A script did not load', e.filename ? `${e.filename.split('/').pop()}:${e.lineno}` : e.target?.src?.split('/').pop() ?? ''), true);
+  // Script errors, and files that fail to load (capture: those don't bubble).
+  addEventListener('error', e => {
+    const file = String(e.target?.src ?? e.target?.href ?? '').split('/').pop();
+    report(e.message || `A file did not load (${file})`, e.filename ? `${e.filename.split('/').pop()}:${e.lineno}` : file);
+  }, true);
   addEventListener('unhandledrejection', e => report(e.reason?.message ?? String(e.reason)));
   // A link opens through the page, which allows only GitHub's (pull requests, Actions runs); others do nothing.
   document.addEventListener('click', e => {
@@ -92,7 +105,7 @@
     setTimeout(go, 500);
   }
   addEventListener('message', e => {
-    if (e.source !== parent) return;
+    if (e.source !== toPage) return;
     const m = e.data;
     if (!m || typeof m !== 'object') return;
     if (m.type === 'start' && !started && world) {

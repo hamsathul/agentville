@@ -17,9 +17,9 @@ const WORLDS = [
 ];
 
 async function page({ stored = {}, hold = false, worlds = WORLDS, dialog = false, listFails = false, reveal = { ok: true, path: '/w' } } = {}) {
-  const posted = [], calls = [], listeners = {}, fetches = [], held = [], warnings = [], made = [], frames = [], timers = [];
+  const posted = [], calls = [], listeners = {}, fetches = [], held = [], warnings = [], made = [], frames = [], timers = [], signals = [];
   const clock = { now: NOW, perf: 1000 }; // now: the wall clock (it can jump); perf: the page's steady clock
-  const element = tag => ({ tag, innerHTML: '', textContent: '', className: '', listeners: {}, addEventListener(t, fn) { this.listeners[t] = fn; }, setAttribute() {}, remove() {} });
+  const element = tag => ({ tag, innerHTML: '', textContent: '', className: '', listeners: {}, addEventListener(t, fn) { this.listeners[t] = fn; }, setAttribute() {}, remove() { this.removed = true; } });
   const host = { held: [], replaceChildren(...els) { this.held = els; }, append(el) { this.held.push(el); } };
   const diary = { innerHTML: '' };
   const dlg = { ...element('dialog'), open: false, showModal() { this.open = true; }, close() { this.open = false; } };
@@ -45,6 +45,7 @@ async function page({ stored = {}, hold = false, worlds = WORLDS, dialog = false
     setInterval: () => 1, clearInterval() {},
     setTimeout: (fn, ms = 0) => timers.push({ fn, at: clock.perf + ms }), clearTimeout: id => { if (timers[id - 1]) timers[id - 1].fn = null; },
     performance: { now: () => clock.perf },
+    AbortSignal: { timeout: ms => ({ timeoutMs: ms }) },
     Date: class extends Date { constructor(...a) { super(...(a.length ? a : [clock.now])); } static now() { return clock.now; } },
     localStorage: {
       getItem: k => stored[k] ?? null, setItem: (k, v) => { stored[k] = String(v); }, removeItem: k => { delete stored[k]; },
@@ -59,6 +60,7 @@ async function page({ stored = {}, hold = false, worlds = WORLDS, dialog = false
       }
       if (url === '/api/worlds') return Promise.resolve({ ok: true, status: 200, json: async () => ({ worlds, folder: '/Users/sam/.agentville/worlds' }) });
       fetches.push([url, init?.headers?.['x-tracker-token']]);
+      signals.push(init?.signal);
       const reply = { ok: true, status: 200, json: async () => ({ memory: [{ path: '/Users/sam/.claude/projects/x/memory/a.md' }], files: [] }) };
       return hold ? new Promise(resolve => held.push(() => resolve(reply))) : Promise.resolve(reply);
     },
@@ -85,8 +87,7 @@ async function page({ stored = {}, hold = false, worlds = WORLDS, dialog = false
     get frame() { return frames.at(-1); },
     // a message from the newest frame (one the page has let go of is still "the newest" here, and must be ignored)
     from: data => listeners.message?.({ source: frames.at(-1)?.contentWindow, data }),
-    /** The newest frame loads again (a reload, or it navigated); its bridge then says `loaded`. */
-    reload: () => frames.at(-1)?.listeners.load?.(),
+    signals,
   };
 }
 const snap = { generatedAt: NOW, collisions: [], agents: [{ id: 'a1', name: 'cart-ui', kind: 'interactive', cwd: '/code/shop/web', state: 'working', feed: [], children: [], touching: [] }], repos: [{ path: '/code/shop/web', name: 'web', branch: 'main' }] };
@@ -653,4 +654,98 @@ test('an error after a world started shows in a strip over it; the world keeps g
   const strip = p.host.held.find(el => el.className === 'world-strip');
   assert.match(strip.innerHTML, /<b>Farm:<\/b> drawChar failed \(world\.js:120\)/);
   assert.equal(p.host.held[0], p.frame, 'the frame stays');
+});
+
+test('`leaving` from the frame stops the world at once: a panel, the frame gone, nothing it sends heard', async () => {
+  const p = await page({ stored: { 'tracker-world': 'u/space' } });
+  p.farm.update(snap);
+  const frame = p.frame;
+  p.from({ type: 'loaded' });
+  p.from({ type: 'leaving' });
+  assert.match(p.host.held[0].innerHTML, /Space tried to leave the page and was stopped/);
+  assert.ok(!p.host.held.includes(frame), 'the frame is removed');
+  p.posted.length = 0;
+  p.farm.update({ ...snap, generatedAt: 9 });
+  p.farm.select('a1');
+  assert.deepEqual(p.posted, [], 'nothing is posted to it any more');
+  p.from({ type: 'pick', agentId: 'a1' });
+  p.from({ type: 'loaded' });
+  assert.deepEqual(p.calls.filter(c => c[0] === 'pick'), [], 'and nothing it says is heard');
+  assert.deepEqual(p.posted, []);
+});
+
+test("the 'left' panel: Back to the farm, the list; no Try again; the farm's own gets List", async () => {
+  const p = await page({ stored: { 'tracker-world': 'u/space' }, dialog: true });
+  p.from({ type: 'leaving' });
+  const html = p.host.held[0].innerHTML;
+  assert.match(html, /data-world-back/);
+  assert.match(html, /data-world-list/);
+  assert.doesNotMatch(html, /data-world-retry/);
+  const click = attr => p.host.held[0].listeners.click({ target: { closest: s => (s === `[${attr}]` ? {} : null) } });
+  click('data-world-list');
+  await p.settle();
+  assert.ok(p.dlg.open, 'Show the list opens the list');
+  const q = await page({ dialog: true });
+  q.from({ type: 'leaving' });
+  assert.doesNotMatch(q.host.held[0].innerHTML, /data-world-back/);
+  q.host.held[0].listeners.click({ target: { closest: s => (s === '[data-world-tolist]' ? {} : null) } });
+  assert.deepEqual(q.calls.filter(c => c[0] === 'nav'), [['nav', 'list']], 'List goes to the list view');
+});
+
+test('saving a world whose panel is showing reloads it; another world, nothing', async () => {
+  const p = await page({ stored: { 'tracker-world': 'u/space' } });
+  p.wait(5000);
+  assert.equal(p.host.held[0].className, 'world-panel');
+  await p.farm.worldsChanged({ key: 'farm' });
+  assert.equal(p.frames.length, 1, "another world's files: nothing to reload");
+  await p.farm.worldsChanged({ key: 'u/space' });
+  assert.equal(p.frames.length, 2);
+  assert.equal(p.host.held[0], p.frame, 'the panel gives way to a new frame');
+  p.wait(5000);
+  await p.farm.worldsChanged({ key: '*' });
+  assert.equal(p.frames.length, 3, 'the SDK changed: reloaded too');
+});
+
+test('an error a world threw in its start (before it said ready) still shows, in a strip', async () => {
+  const p = await page();
+  p.from({ type: 'loaded' });
+  p.from({ type: 'error', message: 'no barn', where: 'start' });
+  p.from({ type: 'ready' });
+  const strip = p.host.held.find(el => el.className === 'world-strip');
+  assert.match(strip.innerHTML, /no barn \(start\)/);
+});
+
+test('the strip redraws only when its text changes, a quarter second apart, and does not come back right after ×', async () => {
+  const p = await page();
+  p.from({ type: 'loaded' });
+  p.from({ type: 'ready' });
+  const live = () => p.host.held.filter(el => el.className === 'world-strip' && !el.removed);
+  const err = message => p.from({ type: 'error', message, where: 'w.js:1' });
+  err('one');
+  const strip = live()[0];
+  let writes = 0, html = strip.innerHTML;
+  Object.defineProperty(strip, 'innerHTML', { get: () => html, set: v => { writes++; html = v; } });
+  err('one');
+  err('two');
+  assert.equal(writes, 0, 'the same text: nothing; a new one waits its turn');
+  p.wait(250);
+  assert.equal(writes, 1);
+  assert.match(strip.innerHTML, /two/);
+  strip.listeners.click({ target: { closest: s => (s === '[data-strip-close]' ? {} : null) } });
+  assert.deepEqual(live(), []);
+  err('two');
+  err('three');
+  p.wait(1000);
+  assert.deepEqual(live(), [], 'not back right after ×');
+  p.wait(5000);
+  err('four');
+  assert.equal(live().length, 1, 'a fresh error much later shows again');
+});
+
+test('a fetch for a world is cut off after 30 s, so it cannot hold a place for good', async () => {
+  const p = await page();
+  p.farm.update(snap);
+  p.from({ type: 'loaded' });
+  p.from({ type: 'request', id: 1, kind: 'agentFiles', agentId: 'a1' });
+  assert.equal(p.signals.at(-1)?.timeoutMs, 30000);
 });

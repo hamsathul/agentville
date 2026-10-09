@@ -12,7 +12,7 @@ function frame() {
   const sent = [], listeners = {}, docListeners = {}, frames = [], timers = [];
   const parent = { postMessage: m => sent.push(JSON.parse(JSON.stringify(m))) };
   const root = { dataset: {} }, farmEl = { id: 'farm' };
-  const window = {};
+  const window = { parent };
   const ctx = {
     window, parent, console,
     addEventListener: (t, fn) => { (listeners[t] ??= []).push(fn); },
@@ -27,7 +27,7 @@ function frame() {
   const draw = () => frames.splice(0).forEach(fn => fn());
   /** The timers waiting now run (the tab is hidden: no frames). */
   const tick = () => timers.splice(0).forEach(fn => fn());
-  return { A: window.Agentville, sent, fire, fromPage, root, farmEl, docListeners, draw, tick };
+  return { A: window.Agentville, window, sent, fire, fromPage, root, farmEl, docListeners, draw, tick };
 }
 
 test('a world that registers is announced; one that never does is reported', () => {
@@ -115,6 +115,24 @@ test('a link in a world goes through the page, and only to GitHub', () => {
   assert.equal(click('https://github.com/sam/web/pull/41'), true);
   assert.equal(click('https://evil.example/?data=1'), true);
   assert.deepEqual(f.sent, [{ type: 'openLink', url: 'https://github.com/sam/web/pull/41' }]);
+});
+
+test('the page is told the moment the document starts to go away, through the parent captured at load', () => {
+  const f = frame(), evil = [];
+  f.window.parent = { postMessage: m => evil.push(m) }; // a world can replace window.parent
+  f.fire('beforeunload', {});
+  f.fire('pagehide', {});
+  assert.deepEqual(f.sent, [{ type: 'leaving' }], 'once, to the page');
+  assert.deepEqual(evil, []);
+  const g = frame();
+  g.fire('pagehide', {});
+  assert.deepEqual(g.sent, [{ type: 'leaving' }], 'pagehide alone does it too');
+});
+
+test('a file that fails to load is named', () => {
+  const f = frame();
+  f.fire('error', { message: '', target: { src: 'http://127.0.0.1:7777/world/u/x/art.js' } });
+  assert.deepEqual(f.sent, [{ type: 'error', message: 'A file did not load (art.js)', where: 'art.js' }]);
 });
 
 test('messages from anything but the page are ignored', () => {

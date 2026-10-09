@@ -7,6 +7,7 @@
 // its path if it isn't in the usual place). Exits 1 if a check fails.
 import { execFileSync, spawn } from 'node:child_process';
 import { appendFileSync, cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, realpathSync, rmSync, unlinkSync, utimesSync, writeFileSync } from 'node:fs';
+import { createServer } from 'node:http';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -68,7 +69,14 @@ mkdirSync(join(worldsDir, 'throws'));
 writeFileSync(join(worldsDir, 'throws', 'world.json'), JSON.stringify({ name: 'Throws', api: 1 }));
 writeFileSync(join(worldsDir, 'throws', 'world.js'), "throw new Error('no barn here');");
 
-const repo =join(realpathSync(temp), 'farm-repo');
+// One that sends its frame to an address that accepts and never answers: the navigation never finishes.
+const hang = createServer(() => {}); // takes the request, never responds
+await new Promise(resolve => hang.listen(0, '127.0.0.1', resolve));
+mkdirSync(join(worldsDir, 'leaves-slow'));
+writeFileSync(join(worldsDir, 'leaves-slow', 'world.json'), JSON.stringify({ name: 'Leaves slow', api: 1 }));
+writeFileSync(join(worldsDir, 'leaves-slow', 'world.js'), `Agentville.raw({ start() { location.href = 'http://127.0.0.1:${hang.address().port}/'; }, scene() {} });`);
+
+const repo = join(realpathSync(temp), 'farm-repo');
 mkdirSync(join(repo, 'src'), { recursive: true });
 const git = (...args) => execFileSync('git', ['-C', repo, '-c', 'user.email=t@t', '-c', 'user.name=t', ...args]);
 git('init', '-q', '-b', 'main');
@@ -662,6 +670,13 @@ try {
   await js("document.querySelector('[data-world-back]').click()");
   check(await until("document.querySelector('#farm .world-frame')?.src.endsWith('/world/farm/')") && await funtil("document.querySelectorAll('.px-tag').length >= 2"), 'Back to the farm brings the farm back');
   check(await js("!document.querySelector('#farm .world-strip') && !document.querySelector('#farm .world-panel')"), 'with no strip or panel left over');
+  await js("document.getElementById('view-farm').click()");
+  await until("document.getElementById('worlds-dlg').open");
+  await js("document.querySelector('[data-world=\"u/leaves-slow\"]').click()");
+  check(await until("/Leaves slow tried to leave the page and was stopped/.test(document.querySelector('#farm .world-panel')?.textContent ?? '')", 2500), "a world that sends its frame to a page that never answers is stopped as it leaves, before that page can speak");
+  check(await js("!document.querySelector('#farm .world-frame') && !document.querySelector('[data-world-retry]')"), 'its frame is gone from the page');
+  await js("document.querySelector('[data-world-back]').click()");
+  check(await until("document.querySelector('#farm .world-frame')?.src.endsWith('/world/farm/')") && await funtil("document.querySelectorAll('.px-tag').length >= 2"), 'and Back to the farm brings the farm back');
   for (let i = errors.length - 1; i >= 0; i--) if (/no barn here/.test(errors[i])) errors.splice(i, 1); // the throw was the test's own
 
   console.log('Claude Code setup');
@@ -735,6 +750,8 @@ try {
   resting.kill();
   clearInterval(fakeMod);
   await handle.stop();
+  hang.closeAllConnections?.();
+  hang.close();
   rmSync(temp, { recursive: true, force: true, maxRetries: 5, retryDelay: 200 });
 }
 

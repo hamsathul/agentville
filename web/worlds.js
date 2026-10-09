@@ -28,6 +28,7 @@
     keys: () => { try { return Array.from({ length: localStorage.length }, (_, i) => localStorage.key(i)); } catch { return []; } },
   };
   const tick = () => (typeof performance !== 'undefined' ? performance.now() : Date.now()); // a steady clock: a wall-clock jump can't block actions
+  const FETCH_MS = 30_000, STRIP_QUIET_MS = 5000; // a world's file request is cut off then; a closed strip stays closed this long
   const START_MS = 5000; // a world that has not said `ready` by then is replaced by a panel
   const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
   const ago = ms => {
@@ -72,7 +73,7 @@
     const agents = ctx.scene?.agents ?? [], repos = ctx.scene?.repos ?? [];
     const agent = id => (short(id, ID_MAX) ? agents.find(a => a.id === id) ?? null : null);
     switch (m.type) {
-      case 'loaded': case 'ready': case 'startSession': case 'showRepos': return { kind: m.type };
+      case 'loaded': case 'ready': case 'leaving': case 'startSession': case 'showRepos': return { kind: m.type };
       case 'error': return { kind: 'error', message: String(m.message ?? '').slice(0, 300), where: String(m.where ?? '').slice(0, 120) };
       case 'pick': return agent(m.agentId) ? { kind: 'pick', agentId: m.agentId, from: m.from === 'say' ? 'say' : null } : null;
       case 'openDoc': {
@@ -117,7 +118,8 @@
   async function fetchFor(token, act) {
     const url = act.what === 'agentFiles' ? `/api/agent/${encodeURIComponent(act.agentId)}/files` : `/api/repo/touched?path=${encodeURIComponent(act.repo)}`;
     try {
-      const r = await fetch(url, { headers: { 'x-tracker-token': token } });
+      // cut off after 30 s: a fetch that never settles would hold one of the four places for the page's life
+      const r = await fetch(url, { headers: { 'x-tracker-token': token }, ...(typeof AbortSignal !== 'undefined' && AbortSignal.timeout ? { signal: AbortSignal.timeout(FETCH_MS) } : {}) });
       const body = await r.json();
       return r.ok ? { ok: true, status: r.status, data: body } : { ok: false, status: r.status, error: body?.error }; // no words of its own: the world says it (status 0 = the request itself failed)
     } catch (err) {
@@ -130,7 +132,8 @@
   let host = null, frame = null, opts = {}, world = 'farm', scene = null, selectedId = null, loaded = false;
   let diary = [], timer = 0, lastSettings = '', inFlight = 0, generation = 0;
   let heardLoaded = false; // the frame's `loaded`, heard: once per frame (every load builds a new one)
-  let ready = false, loadsLeft = 0, startTimer = 0, lastError = null, strip = null;
+  let ready = false, loadsLeft = 0, startTimer = 0, lastError = null, strip = null, failed = false;
+  let stripHtml = '', stripPending = null, stripAt = -Infinity, stripClosedAt = -Infinity, stripTimer = 0;
   let diaryAt = -Infinity, diaryTimer = 0; // when the diary was last drawn from the world's entries; the next drawing
   let savedTotal = 0; // the world's saved settings, in characters (names and values)
   const sentPaths = new Map(); // agent id → the paths its replies named, which may then be opened for it
@@ -212,7 +215,12 @@
         if (scene) post({ type: 'scene', scene });
         post({ type: 'select', id: selectedId });
         break;
-      case 'ready': ready = true; clearTimeout(startTimer); break;
+      case 'leaving': fail('left'); break; // its document is going away: stopped before any page it goes to can speak
+      case 'ready':
+        ready = true;
+        clearTimeout(startTimer);
+        if (lastError) showStrip(lastError); // an error it threw while starting
+        break;
       case 'error': {
         if (ready) showStrip(act); else lastError ??= act; // before it started: the first error is the cause (the bridge's own "did not register" follows it)
         const key = `${act.message}@${act.where}`;
@@ -311,7 +319,8 @@
     frame.setAttribute('sandbox', 'allow-scripts');
     frame.title = info.name;
     frame.src = `/world/${key}/`;
-    ready = false; lastError = null; loadsLeft = 1; strip = null;
+    ready = false; lastError = null; loadsLeft = 1; failed = false;
+    resetStrip();
     clearTimeout(startTimer);
     startTimer = setTimeout(() => { if (!ready) fail('start'); }, START_MS);
     frame.addEventListener('load', onFrameLoad);
@@ -326,9 +335,11 @@
   /** The world is gone: a panel in its place says why, with ways back. */
   function fail(why) {
     clearTimeout(startTimer);
+    resetStrip();
     generation++; // its replies and messages are not heard any more
     loaded = false;
     frame = null;
+    failed = true; // the panel is showing for this world: saving its files rebuilds it
     const name = words(info.name);
     const what = why === 'left'
       ? `<b>${name} tried to leave the page and was stopped.</b> A world may only draw here; this one loaded another page in its place.`
@@ -349,16 +360,35 @@
     host?.replaceChildren(panel);
   }
   /** An error after the world started: a strip over it (the latest one), which it keeps drawing under. */
+  function resetStrip() {
+    strip = null; stripHtml = ''; stripPending = null; stripAt = stripClosedAt = -Infinity;
+    clearTimeout(stripTimer);
+    stripTimer = 0;
+  }
+  /** Written again only when its text changes, a quarter second apart, and not for a few seconds after ×: a world can't flood the live region. */
   function showStrip(act) {
-    if (!host) return;
+    if (!host || !frame) return;
+    const html = `<span><b>${words(info.name)}:</b> ${words(act.message)}${act.where ? ` (${words(act.where)})` : ''}</span><button type="button" class="x" data-strip-close aria-label="Hide">×</button>`;
+    if (html === stripHtml) return;
+    stripPending = html;
+    const wait = Math.max(stripAt + GAP_MS, stripClosedAt + STRIP_QUIET_MS) - tick();
+    if (wait <= 0) drawStrip();
+    else stripTimer ||= setTimeout(() => { stripTimer = 0; drawStrip(); }, wait);
+  }
+  function drawStrip() {
+    const html = stripPending;
+    stripPending = null;
+    if (!host || !frame || html === null || html === stripHtml) return;
+    stripHtml = html;
+    stripAt = tick();
     if (!strip) {
       strip = document.createElement('div');
       strip.className = 'world-strip';
       strip.setAttribute('role', 'status');
-      strip.addEventListener('click', e => { if (e.target.closest?.('[data-strip-close]')) { strip.remove?.(); strip = null; } });
+      strip.addEventListener('click', e => { if (e.target.closest?.('[data-strip-close]')) { strip?.remove?.(); strip = null; stripClosedAt = tick(); } });
       host.append(strip);
     }
-    strip.innerHTML = `<span><b>${words(info.name)}:</b> ${words(act.message)}${act.where ? ` (${words(act.where)})` : ''}</span><button type="button" class="x" data-strip-close aria-label="Hide">×</button>`;
+    strip.innerHTML = html;
   }
 
   /**
@@ -453,6 +483,8 @@
     loaded = false;
     heardLoaded = false;
     clearTimeout(startTimer);
+    resetStrip();
+    failed = false;
     sentPaths.clear();
     generation++;
   }
@@ -461,7 +493,7 @@
   async function worldsChanged({ key } = {}) {
     await resolveWorld();
     if ($('worlds-dlg')?.open) renderList();
-    if (!frame || (key !== world && key !== '*')) return;
+    if (!host || !(frame || failed) || (key !== world && key !== '*')) return; // a panel showing for this world is rebuilt too
     const w = worldsInfo.find(x => x.key === world);
     info = w && !w.error ? w : info;
     createFrame(world);

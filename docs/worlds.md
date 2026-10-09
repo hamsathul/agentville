@@ -230,6 +230,7 @@ from the page only, and the page from its current frame only.
 |---|---|
 | `loaded` | The world has registered: the page sends `start`, then the newest scene and the selection. The page builds a new frame for every load, and takes `loaded` once from each: an extra one is dropped. Replies to an earlier frame's requests are not posted to the new one, and the paths they named are forgotten |
 | `ready` | The world has started: the page stops waiting for it (see "When a world breaks") |
+| `leaving` | Sent by the bridge itself (`beforeunload` / `pagehide`, captured at load through the page it first saw): the document is going away. The page stops the world at once, with a panel |
 | `error { message, where }` | Shows it (300 and 120 characters at most): before `ready`, in the panel that replaces a world that doesn't start; after it, in a strip over the world. Also written to the page's console, each once (50 at most) |
 | `pick { agentId, from? }` | Opens that agent in the sidebar. The id must be one of the scene's; `from: 'say'` when it was picked by its speech bubble |
 | `openDoc { agentId, path }` | Opens the file in a reader over the world. Only a path in that agent's folder, in a repo of the scene, or one a reply to `agentFiles` named for that same agent; never one with `..`; 4096 characters at most |
@@ -261,17 +262,25 @@ A world never traps the person using it: the page puts a panel in its place, or 
   `Agentville.world(...)` or `Agentville.raw(...)` as `world.js` loads. A `world.js` that throws first,
   a missing file, a `world.json` that is briefly invalid mid-save (the frame loads a 404), or one that
   never registers: after 5 s the frame is replaced by a panel (`role="alert"`) saying
-  "<name> didn't start" and the last error the bridge caught, if any. Its buttons: **Back to the
+  "<name> didn't start" and the first error the bridge caught, if any (the first is the cause; what
+  follows is usually fallout). Its buttons: **Back to the
   farm** (for the farm itself, **List**), **Show the list**, and **Try again**. Save the file and the
   world reloads on its own.
-- **It must stay in its frame.** The page builds a new frame for each load, so a second `load` of the
-  same frame means the world navigated itself somewhere else (a link, `location`, a form). The page
-  stops it at once, hears nothing more from it, and shows a panel: "<name> tried to leave the page and
-  was stopped."
+- **It must stay in its frame.** The moment its page starts to go away (you set `location`, follow a
+  link, anything that navigates the frame), the bridge tells the page (`leaving`), before any page it
+  goes to can run. The page removes the frame, hears nothing more from it, and shows a panel: "<name>
+  tried to leave the page and was stopped." As a second layer, a second `load` of the same frame
+  (the page builds a new frame for each load) stops it too. What is still possible: the request that
+  leaves is itself sent, once, with whatever the world put in its address.
 - **Errors show with their message and line** (`world.js:12`), in the panel or the strip: the frame
-  loads the SDK's and your world's scripts in CORS mode, so the browser doesn't hide them as "Script error."
-- **An error after it started** (one the bridge caught in your `start`, `scene` or `select`) shows in a
-  strip (`role="status"`, with a close button) over the world, which keeps running under it.
+  loads the SDK's and your world's scripts in CORS mode, so the browser doesn't hide them as "Script
+  error." Scripts you add yourself (from your own `world.js`, by creating a `<script>` element) need
+  `crossorigin="anonymous"` too, or their errors stay hidden.
+- **An error after it started** (one the bridge caught in your `start`, `scene` or `select`, or one
+  thrown in `start` itself) shows in a strip (`role="status"`, with a close button) over the world,
+  which keeps running under it. The strip is redrawn only when its text changes, at most four times a
+  second, and stays closed for a few seconds after ×.
+- **Saving a world's files while its panel shows** reloads it, as it does for a world that runs.
 
 The farm's settings from before worlds (`tracker-farm-zoom`, `tracker-farm-beds`, …) are copied
 once into `tracker-world:farm:…`, the first time the farm starts, and never again.
@@ -451,7 +460,9 @@ The field close-up (a field's files) is still drawn as the farm draws it.
 - It can't see the dashboard: the page and its API refuse to be shown in a frame
   (`frame-ancestors 'none'`), so a world can't load them with the token inside itself.
 - It can't make the page do anything but the messages above, each checked against the scene.
-- The one gap: a frame can still navigate itself away (`location = …`), carrying what it saw in the
-  address. No browser rule stops a frame from doing that. Until the page catches it, a frame that
-  navigated away also keeps receiving the scene. Only the built-in farm runs today; before your own
-  worlds can, the page will watch for a frame that leaves its address and stop that world.
+- The one gap: a frame can still navigate itself away (`location = …`), and no browser rule stops
+  that. The page stops it as soon as it starts: the bridge tells the page the moment the document
+  starts to go away, and the page removes the frame and hears nothing more from it (see "When a world
+  breaks"). What remains possible is the leaving request itself, which carries whatever the world put
+  in its address, once. A world that gets a scene can put what it saw there, so treat what a world is
+  shown (agents' names, paths, what they say) as visible to its author.

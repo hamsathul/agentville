@@ -122,7 +122,9 @@ export function createTrackerServer({ port, token, webFile, getSnapshot, getFeed
           const headers = { 'content-type': found.type, 'content-length': found.size, 'cache-control': 'no-store', 'x-content-type-options': 'nosniff', 'content-security-policy': 'sandbox' };
           // The frame's origin is opaque: fonts load only with CORS, and scripts are loaded with it so their errors are reported in full.
           // Nothing else gets it, so a world can't read files with fetch().
-          if (req.headers.origin === 'null' && ['script', 'font'].includes(req.headers['sec-fetch-dest'])) headers['access-control-allow-origin'] = 'null';
+          // A browser without Sec-Fetch-Dest (Safari before 16.4) sends none: then a script or font is known by its name.
+          const dest = req.headers['sec-fetch-dest'];
+          if (req.headers.origin === 'null' && (['script', 'font'].includes(dest) || (dest === undefined && /\.(js|woff2?|ttf|otf)$/i.test(rel)))) headers['access-control-allow-origin'] = 'null';
           res.writeHead(200, headers);
           return createReadStream(found.real).on('error', () => res.destroy()).pipe(res);
         }
