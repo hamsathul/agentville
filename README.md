@@ -610,11 +610,12 @@ on the farm just for fun. They never stand for anything.
 - Now and then one says something in a small cream bubble with a dotted edge. It never covers a
   farmer's bubble or name: it moves aside or waits.
 - Click one (or the pond, for the ducks) for its menu: Pet, Feed, Ride, Throw a stick, Give a fish,
-  Feed bread… The menu says who will go, the nearest farmer that isn't waiting on you; click a
-  colour dot to send another. That farmer walks over, does it, and walks back. One at work goes for a
-  few seconds at most, and one that starts waiting on you drops it at once. With no one free, or
-  Motion off, you do it yourself, in place.
-- Feeding the ducks brings the whole family paddling over, the ducklings last.
+  Feed bread… The menu says who will go: the nearest farmer that isn't waiting on you (a farmer whose
+  turn has ended stays on your porch too); click a colour dot to send another. That farmer walks over,
+  does it, and walks back. One at work goes only if it can be there and back in a few seconds, and one
+  that starts waiting on you drops it at once. With no one free, or Motion off, you do it yourself, at
+  once, in place.
+- Feeding the ducks brings the whole family paddling over.
 - The **Animals** switch hides them all (and brings back the pond's white duck); it is remembered.
 
 **Reading the farm.** The **i** button opens the full legend, including every tool a farmer

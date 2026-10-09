@@ -255,18 +255,23 @@ function makePixelView(th, prefs) {
   const kit = cast.length && typeof makeAnimals === 'function' ? makeAnimals(cast, { random: seededRandom(cast.length * 7919) }) : null;
   let animalsOn = prefs.get('animals') !== 'off';
   const animalsShown = () => Boolean(kit && animalsOn);
-  const placeAnimals = () => kit?.place({ roam: th.roam?.() ?? [], avoid: th.avoid?.() ?? [] });
+  const placeAnimals = () => kit?.place({ roam: th.roam?.() ?? [], avoid: th.avoid?.() ?? [], blocked: (x, y) => Boolean(th.fieldAt(x, y) || th.buildingAt?.(x, y)) }); // never on a field or a building, whatever roam says
   const animalSays = new Map(); // creature id → its bubble element
+  let stillAt = 0; // when the animals were last drawn still: their lines keep time with motion off
   if (typeof window !== 'undefined' && window.Agentville) window.Agentville.animalsNow = () => (kit ? kit.list() : []); // read-only: where they are (the browser test)
   const errands = typeof makeErrands === 'function' ? makeErrands() : null; // farmers borrowed by animals (sdk/animals.js)
   let menuEl = null, menuFor = null; // the open animal menu: its element and { id, doer }
   const awayIds = () => new Set(scene.farmers.filter(f => errands?.has(f.id)).map(f => f.id));
-  function freeFarmers() { return scene.farmers.filter(f => bots.has(f.id) && f.state !== 'waiting' && !errands?.has(f.id)); }
+  const forYou = f => f.state === 'waiting' || f.state === 'turn'; // waiting on you, or its turn ended: it stays where you can see it
+  /** How long a farmer takes to an animal's spot and back, with its moment there (s): a busy one goes only if it fits its few seconds. */
+  function tripS(f, to) { const b = bots.get(f.id); if (!b) return Infinity; let d = 0, at = [b.x, b.y]; for (const q of plan(b, to[0], to[1])) { d += Math.hypot(q[0] - at[0], q[1] - at[1]); at = q; } return (2 * d) / (th.speed?.(f) ?? 40) + 1.5; }
+  const canGo = to => f => f.state !== 'working' || tripS(f, to) <= 5;
+  function freeFarmers(to) { return scene.farmers.filter(f => bots.has(f.id) && !forYou(f) && !errands?.has(f.id) && canGo(to)(f)); }
   function closeMenu() { menuFor = null; menuEl?.remove(); menuEl = null; }
   function openMenu(id) {
     const o = kit.where(id);
     if (!o) return;
-    const doer = chooseDoer(scene.farmers, fid => bots.get(fid) ?? null, o.x, o.y, awayIds());
+    const doer = still ? null : chooseDoer(scene.farmers, fid => bots.get(fid) ?? null, o.x, o.y, awayIds(), canGo(o.stand)); // motion off: no one walks, you do it
     menuFor = { id, doer: doer?.id ?? null };
     renderMenu();
   }
@@ -274,7 +279,7 @@ function makePixelView(th, prefs) {
     const m = menuFor && kit.menu(menuFor.id), o = menuFor && kit.where(menuFor.id);
     if (!m || !o || !ov) { closeMenu(); return; }
     if (!menuEl) { menuEl = document.createElement('div'); menuEl.className = 'px-animal-menu'; menuEl.setAttribute('role', 'menu'); ov.appendChild(menuEl); }
-    const free = freeFarmers(), doer = scene.farmers.find(f => f.id === menuFor.doer);
+    const free = freeFarmers(o.stand), doer = scene.farmers.find(f => f.id === menuFor.doer);
     menuEl.innerHTML = `<b>${esc(m.title)}</b>${m.actions.map((a, i) => `<button type="button" role="menuitem" data-animal-act="${i}">${esc(a)}</button>`).join('')}
       <span class="px-animal-who">${doer ? `${esc(doer.name)} will go` : 'You do it'}${still ? '' : free.filter(f => f.id !== menuFor.doer).map(f => `<button type="button" data-animal-who="${esc(f.id)}" title="Send ${esc(f.name)} instead" aria-label="Send ${esc(f.name)} instead" style="background:${esc(f.shirt ?? '#9aa0a6')}"></button>`).join('')}</span>`;
     menuEl.style.transform = `translate(${Math.round(o.x * cs)}px, ${Math.round((o.y - o.h - 4) * cs)}px) translate(-50%, -100%)`;
@@ -284,7 +289,7 @@ function makePixelView(th, prefs) {
     const { id, doer } = menuFor;
     closeMenu();
     const o = kit.where(id), f = doer && scene.farmers.find(x => x.id === doer);
-    const done = by => { const r = kit.perform(id, i, by); if (r) showFx(r); };
+    const done = by => { const r = kit.perform(id, i, by); if (r) showFx(r); if (still) redrawStill(); }; // still: shown at once (no frame loop to draw it)
     if (!o || !f || !bots.has(f.id) || still || !errands) { done(null); return; }
     errands.start(f.id, { x: o.stand[0], y: o.stand[1], now: T, busy: f.state === 'working', then: () => done(f.name), missed: () => done(null) });
     sync(false);
@@ -641,6 +646,12 @@ function makePixelView(th, prefs) {
   function placeAnimalSays(placed) {
     const want = animalsShown() ? kit.bubbles() : [];
     for (const [id, el] of animalSays) if (!want.some(s => s.id === id)) { el.remove(); animalSays.delete(id); }
+    if (want.length) { // also clear of the signs and counters, the moving labels, the HUD (at any zoom) and every farmer that needs you
+      const o = ov.getBoundingClientRect(), box = r => ({ left: r.left - o.left, right: r.right - o.left, top: r.top - o.top, bottom: r.bottom - o.top });
+      for (const el of ov.querySelectorAll('.px-lab, .px-mover')) placed.push(box(el.getBoundingClientRect()));
+      for (const el of hudEl ? [...hudEl.children] : []) { const r = el.getBoundingClientRect(); if (r.width && r.height) placed.push(box(r)); }
+      for (const f of scene.farmers) { const b = bots.get(f.id); if (b && forYou(f)) placed.push({ left: (b.x - 8) * cs, right: (b.x + 8) * cs, top: (b.y - th.SH * SC - 2) * cs, bottom: (b.y + 2) * cs }); }
+    }
     for (const s of want) {
       let el = animalSays.get(s.id);
       if (!el) { el = document.createElement('div'); el.className = 'px-animal-say'; el.dataset.animalSay = s.id; ov.appendChild(el); animalSays.set(s.id, el); }
@@ -755,7 +766,7 @@ function makePixelView(th, prefs) {
     sync(true);
     for (const f of scene.farmers) { const b = bots.get(f.id); if (b) step(0, f, b); }
     th.tick?.(0, id => bots.get(id), true); // the MCP carts too: each where it is going
-    if (animalsShown()) kit.tick(0, { night: false, still: true });
+    if (animalsShown()) { const now = Date.now(); kit.tick(stillAt ? (now - stillAt) / 1000 : 0, { night: false, still: true }); stillAt = now; } // the lines still go after their few seconds
     draw();
   }
   function layoutLabels() {
@@ -917,6 +928,7 @@ function makePixelView(th, prefs) {
       animalsOn = !animalsOn;
       prefs.set('animals', animalsOn ? 'on' : 'off');
       closeMenu();
+      if (!animalsOn && errands) { errands.clear(); sync(false); } // hidden: no farmer walks to an animal you can't see
       renderHud();
       draw();
       return;
@@ -1019,6 +1031,8 @@ function makePixelView(th, prefs) {
   function onVisibility() { if (document.hidden) stopLoop(); else startLoop(); }
   function setStill(next) {
     still = next;
+    if (still && errands) { errands.finish(); closeMenu(); } // no one walks now: what was on its way is done where it is
+    stillAt = 0;
     stopLoop();
     renderHud();
     if (still) redrawStill(); else startLoop();
@@ -1073,7 +1087,7 @@ function makePixelView(th, prefs) {
       document.addEventListener('keydown', onMenuKey);
       renderLog();
       renderHud();
-      timer = setInterval(() => { if (!document.hidden) { renderLog(); renderHud(); } }, 1000);
+      timer = setInterval(() => { if (!document.hidden) { renderLog(); renderHud(); if (still && animalsShown() && kit.bubbles().length) redrawStill(); } }, 1000); // still: an animal's line goes after its few seconds
       startLoop();
     },
     update(next) { apply(next); },

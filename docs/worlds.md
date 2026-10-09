@@ -540,15 +540,18 @@ in their own bubbles, and do what you click. They never stand for data. A world 
 `animals()` hook and says where they may walk with `roam()` and `avoid()`; the engine (with the kit,
 `sdk/animals.js`, and the creature library, `sdk/creatures.js`) does the rest:
 
-- They wander inside `roam`, never into `avoid`, and never across it on the way. A creature with a
-  `home` keeps to it (the farm's ducks keep to the pond).
+- They wander inside `roam`, never into `avoid` (no part of them: a tall one doesn't reach over
+  it), never onto what your `fieldAt` and `buildingAt` report, and never across any of it on the way.
+  A creature with a `home` keeps to it (the farm's ducks keep to the pond). With no `roam`, the rest
+  aren't shown.
 - At night most sleep (the lion and the cat wander); with motion off they all doze where they are.
 - Now and then one says a line from `lines.idle`: at most two bubbles at once, 4 s each, 40 characters
   at most, shown as text (never HTML). A bubble moves out of the way of an agent's bubble or name,
   or waits.
-- Clicking one (or its `home`) opens its menu. The nearest agent that isn't waiting on you, and isn't
-  already away, walks over (one at work goes for 5 s at most) and does it; the menu says who, and a
-  colour dot sends another. With no one free, or motion off, it happens at once, in place.
+- Clicking one (or its `home`) opens its menu. The nearest agent that isn't waiting on you (or on its
+  turn: that is waiting for you too), and isn't already away, walks over and does it; one at work goes
+  only if it can be there and back in 5 s. The menu says who, and a colour dot sends another. With no
+  one free, or motion off, it happens at once, in place.
 - The Animals switch (in the default HUD, or your own `hud` with `animals`) hides them all, and is
   saved as the world's `animals` preference.
 - The engine sets `PXG.animals` before `ground()`: true while they are shown, so a world can leave
