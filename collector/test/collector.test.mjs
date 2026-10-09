@@ -1,5 +1,5 @@
 import { test } from 'node:test';
-import { execFileSync } from 'node:child_process';
+import { execFileSync, spawn } from 'node:child_process';
 import assert from 'node:assert/strict';
 import { appendFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, realpathSync, renameSync, statSync, symlinkSync, unlinkSync, utimesSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -1162,6 +1162,155 @@ test('files that are not text: a short-lived link to the bytes, for one file or 
     assert.deepEqual(await handle.actions.reveal({ agentId: 'sess-view', path: join(work, 'deck.pptx') }), { ok: true });
     assert.deepEqual(revealed, [join(work, 'deck.pptx')]);
     assert.equal((await handle.actions.reveal({ agentId: 'sess-view', path: join(work, '.env') })).ok, false);
+  } finally {
+    await handle.stop();
+  }
+});
+
+test('the helper: off by default; on, it asks a new default-named session’s mod for a name once, offers it, renames or dismisses; never a burst, never after switching off', async () => {
+  const root = mkdtempSync(join(tmpdir(), 'tracker-root-helper-'));
+  mkdirSync(join(root, 'web'));
+  writeFileSync(join(root, 'web', 'index.html'), '<html></html>');
+  writeFileSync(join(root, 'config.json'), JSON.stringify({ port: 0, deployRepos: {} }));
+  const claudeDir = mkdtempSync(join(tmpdir(), 'tracker-claude-helper-'));
+  mkdirSync(join(claudeDir, 'sessions'));
+  mkdirSync(join(claudeDir, 'projects', '-w'), { recursive: true });
+  const t = new Date().toISOString();
+  const transcript = id => writeFileSync(join(claudeDir, 'projects', '-w', `${id}.jsonl`), [
+    JSON.stringify({ type: 'user', timestamp: t, message: { content: 'Fix the login bug' } }),
+    JSON.stringify({ type: 'assistant', timestamp: t, message: { model: 'claude-haiku', content: [{ type: 'text', text: 'The cookie expired too early.' }] } }),
+    JSON.stringify({ type: 'system', subtype: 'turn_duration', timestamp: t, durationMs: 1000 }),
+  ].join('\n') + '\n');
+  // Two sessions with default names: one started long ago (before consent), one started after.
+  const reg = (pid, id, startedAt, nameSource = 'derived', name = `w-${id}`) => writeFileSync(join(claudeDir, 'sessions', `${pid}.json`), JSON.stringify({ pid, sessionId: id, cwd: '/w', name, nameSource, status: 'idle', startedAt }));
+  const old = spawn('sleep', ['60']);
+  reg(old.pid, 'old-one', Date.now() - 3_600_000);
+  transcript('old-one');
+  mkdirSync(join(root, 'state', 'mods'), { recursive: true });
+  const beacon = id => writeFileSync(join(root, 'state', 'mods', `${id}.json`), JSON.stringify({ sessionId: id, version: '0.8.0', at: Date.now() }));
+  beacon('old-one');
+  const taken = [];
+  let answer = { ok: true, text: '"Name: Fix-Login Bug."' };
+  const fakeMod = setInterval(() => {
+    for (const id of ['old-one', 'new-one', 'third-one']) {
+      beacon(id);
+      for (const [kind, out] of [['helper', 'helper-replies'], ['commands', 'command-results']]) {
+        const inbox = join(root, 'state', kind, id);
+        if (!existsSync(inbox)) continue;
+        for (const name of readdirSync(inbox).filter(n => n.endsWith('.json'))) {
+          const req = JSON.parse(readFileSync(join(inbox, name), 'utf8'));
+          unlinkSync(join(inbox, name));
+          taken.push([kind, id, req.kind ?? req.command, req.args]);
+          const reply = kind === 'helper' ? { id: req.id, sessionId: id, kind: 'name', ...answer, at: Date.now() } : { id: req.id, sessionId: id, command: req.command, args: req.args, ok: true, text: `Session renamed to: ${req.args}`, at: Date.now() };
+          if (answer !== 'silent' || kind !== 'helper') setTimeout(() => writeFileSync(join(root, 'state', out, `${id}.${req.id}.json`), JSON.stringify(reply)), 100);
+        }
+      }
+    }
+  }, 40);
+  const handle = await startCollector({ root, claudeDir, claudeBin: '/usr/bin/false', notify: () => {}, log: () => {}, deliveryTimeoutMs: 800 });
+  const agent = id => handle.getSnapshot().agents.find(a => a.id === id);
+  const until = async (ok, ms = 4000) => { for (let i = 0; i < ms / 50; i++) { await handle.reloadConfig(); if (ok()) return true; await new Promise(r => setTimeout(r, 50)); } return false; };
+  let fresh, third;
+  try {
+    assert.deepEqual(handle.getSnapshot().helper, { on: false, uses: { names: false }, dailyLimit: 200, today: 0 });
+    assert.equal(agent('old-one').defaultName, true);
+    assert.match((await handle.actions.name({ agentId: 'old-one', op: 'suggest' })).error, /off/);
+    assert.deepEqual(await handle.actions.helper({ on: true, uses: { names: true }, dailyLimit: 5 }), { ok: true, helper: { on: true, uses: { names: true }, dailyLimit: 5, today: 0 } });
+    await new Promise(r => setTimeout(r, 400));
+    await handle.reloadConfig();
+    assert.deepEqual(taken, [], 'no burst: a session started before you switched on is not asked by itself');
+    // A new session, started after: asked once, by itself.
+    fresh = spawn('sleep', ['60']);
+    reg(fresh.pid, 'new-one', Date.now() + 1000);
+    transcript('new-one');
+    beacon('new-one');
+    assert.ok(await until(() => agent('new-one')?.naming?.offer?.name === 'fix-login-bug'), 'the offer, cleaned');
+    assert.deepEqual(taken, [['helper', 'new-one', 'name', undefined]]);
+    assert.equal(handle.getSnapshot().helper.today, 1);
+    assert.equal(JSON.stringify(handle.getSnapshot()).includes('Fix the login bug'), true, 'the transcript itself is in the feed as always…');
+    assert.equal(JSON.stringify(handle.getSnapshot().helper).includes('login'), false, '…but the helper carries no text');
+    await handle.reloadConfig();
+    assert.equal(taken.length, 1, 'once only');
+    // ✓ Rename: /rename through the commands inbox; recorded, the offer gone.
+    for (const name of ['', 'x'.repeat(61), 'a;rm -rf ~']) assert.equal((await handle.actions.name({ agentId: 'new-one', op: 'rename', name })).ok, false, name);
+    assert.deepEqual(await handle.actions.name({ agentId: 'new-one', op: 'rename', name: 'fix-login-bug' }), { ok: true });
+    assert.deepEqual(taken.at(-1), ['commands', 'new-one', 'rename', 'fix-login-bug']);
+    assert.equal(agent('new-one').naming?.offer, undefined);
+    assert.equal(JSON.parse(readFileSync(join(root, 'state', 'names.json'), 'utf8'))['new-one'].outcome, 'renamed');
+    // ✨ on the old one: asked though it started before; then ✕.
+    assert.deepEqual(await handle.actions.name({ agentId: 'old-one', op: 'suggest' }), { ok: true });
+    assert.equal(agent('old-one').naming?.asking, true);
+    assert.ok(await until(() => agent('old-one')?.naming?.offer));
+    assert.deepEqual(await handle.actions.name({ agentId: 'old-one', op: 'dismiss' }), { ok: true });
+    assert.equal(agent('old-one').naming, undefined);
+    // An answer that cleans to nothing: no offer, says why.
+    answer = { ok: true, text: '🚀🚀' };
+    await handle.actions.name({ agentId: 'old-one', op: 'suggest' });
+    assert.ok(await until(() => agent('old-one')?.naming?.error));
+    assert.match(agent('old-one').naming.error, /no usable name/);
+    // A refused model: the error, and the dialog's last error.
+    answer = { ok: false, error: 'model_not_found' };
+    await handle.actions.name({ agentId: 'old-one', op: 'suggest' });
+    assert.ok(await until(() => /model_not_found/.test(agent('old-one')?.naming?.error ?? '')));
+    assert.equal(handle.getSnapshot().helper.lastError, 'model_not_found');
+    // Switched off mid-request: withdrawn, a late answer dropped.
+    answer = 'silent';
+    await handle.actions.name({ agentId: 'old-one', op: 'suggest' });
+    assert.equal(agent('old-one').naming?.asking, true);
+    assert.equal((await handle.actions.helper({ on: false })).ok, true);
+    assert.equal(agent('old-one').naming?.asking, undefined, 'withdrawn');
+    writeFileSync(join(root, 'state', 'helper-replies', 'old-one.late.json'), JSON.stringify({ id: 'late', sessionId: 'old-one', kind: 'name', ok: true, text: 'too-late', at: Date.now() }));
+    await handle.reloadConfig();
+    assert.equal(agent('old-one').naming?.offer, undefined, 'a late answer is dropped');
+    // The daily limit holds.
+    await handle.actions.helper({ on: true, uses: { names: true }, dailyLimit: 5 });
+    answer = { ok: true, text: 'again' };
+    let r;
+    for (let i = 0; i < 6; i++) { r = await handle.actions.name({ agentId: 'old-one', op: 'suggest' }); await until(() => !agent('old-one')?.naming?.asking); }
+    assert.match(r.error, /daily limit of 5/);
+    // Renamed in its own terminal while an automatic offer showed: the offer goes. (A third session,
+    // started well after consent: switching off and on again counts as agreeing anew.)
+    await handle.actions.helper({ dailyLimit: 50 });
+    answer = { ok: true, text: 'third-name' };
+    third = spawn('sleep', ['60']);
+    reg(third.pid, 'third-one', Date.now() + 60_000);
+    transcript('third-one');
+    beacon('third-one');
+    assert.ok(await until(() => agent('third-one')?.naming?.offer?.name === 'third-name'), 'asked by itself, once');
+    reg(third.pid, 'third-one', Date.now() + 60_000, 'user', 'my-name');
+    assert.ok(await until(() => agent('third-one')?.naming?.offer === undefined), 'renamed elsewhere: the stale offer goes');
+    // Codex and unknown sessions; a bad op.
+    for (const body of [{ agentId: 'nope', op: 'suggest' }, { agentId: 'old-one', op: 'shout' }, null]) assert.equal((await handle.actions.name(body)).ok, false, JSON.stringify(body));
+  } finally {
+    clearInterval(fakeMod);
+    old.kill();
+    fresh?.kill();
+    third?.kill();
+    await handle.stop();
+  }
+});
+
+test('a request with no answer in 30 seconds is withdrawn, and says so', async () => {
+  // Uses the helperTimeoutMs injection, so the test needs no 30-second wait.
+  const root = mkdtempSync(join(tmpdir(), 'tracker-root-helper-to-'));
+  mkdirSync(join(root, 'web'));
+  writeFileSync(join(root, 'web', 'index.html'), '<html></html>');
+  writeFileSync(join(root, 'config.json'), JSON.stringify({ port: 0, deployRepos: {} }));
+  const claudeDir = mkdtempSync(join(tmpdir(), 'tracker-claude-helper-to-'));
+  mkdirSync(join(claudeDir, 'sessions'));
+  writeFileSync(join(claudeDir, 'sessions', `${process.pid}.json`), JSON.stringify({ pid: process.pid, sessionId: 'quiet', cwd: '/w', name: 'w-q', nameSource: 'derived', status: 'idle', startedAt: 1 }));
+  mkdirSync(join(root, 'state', 'mods'), { recursive: true });
+  writeFileSync(join(root, 'state', 'mods', 'quiet.json'), JSON.stringify({ sessionId: 'quiet', version: '0.8.0', at: Date.now() }));
+  const handle = await startCollector({ root, claudeDir, claudeBin: '/usr/bin/false', notify: () => {}, log: () => {}, helperTimeoutMs: 300 });
+  const agent = () => handle.getSnapshot().agents.find(a => a.id === 'quiet');
+  try {
+    await handle.actions.helper({ on: true, uses: { names: true } });
+    assert.deepEqual(await handle.actions.name({ agentId: 'quiet', op: 'suggest' }), { ok: true });
+    const file = readdirSync(join(root, 'state', 'helper', 'quiet'))[0];
+    await new Promise(r => setTimeout(r, 400));
+    await handle.reloadConfig();
+    assert.match(agent().naming.error, /no answer in 30 seconds/);
+    assert.equal(existsSync(join(root, 'state', 'helper', 'quiet', file)), false, 'the request is withdrawn');
   } finally {
     await handle.stop();
   }
