@@ -116,7 +116,8 @@ It listens on `127.0.0.1` only and reads what Claude Code already writes to disk
   cart drives to the farmer calling it, and you click
   the barn to start a session.
 - The farm is a world: it runs in a sandboxed frame of its own, with no access to the token, and
-  asks the page for the little it needs ([docs/worlds.md](docs/worlds.md)).
+  asks the page for the little it needs ([docs/worlds.md](docs/worlds.md)). A world from your own
+  folder sees no words or paths until you tick **Can see what agents say** for it.
 
 ## Requirements
 
@@ -465,6 +466,12 @@ kept in this browser. If the world you chose has gone, or has something wrong wi
 opens on the farm instead and forgets the choice. **Open the worlds folder** in the list makes your
 folder if it is not there yet and shows it in Finder.
 
+**Privacy mode.** A world from your folder gets a scene without words or paths: agents' names,
+states, tools and numbers, but no summaries, questions, replies, task, message or subagent text,
+branch names, deploy or pull request words, or folder paths (repos get stand-in names), and it
+can't ask for files. Each of your worlds in the list has a **Can see what agents say** box; ticking
+it (per browser) restarts that world with the full scene. Built-in worlds always see everything.
+
 ![The list of worlds](docs/worlds.png)
 
 A world is a folder holding `world.json` and `world.js`. Yours go in `~/.agentville/worlds/<name>/`
@@ -682,8 +689,13 @@ and can do is in [docs/worlds.md](docs/worlds.md).
   choice of world in this browser (`tracker-world`), and nothing else about it leaves the page.
 - A world can't send anything out: no network, and its frame can't be navigated without the page
   stopping it the moment it starts to leave and hearing nothing more from it. What remains possible is
-  that leaving request itself, which carries whatever the world put in its address, once. A world is
-  shown your agents' names, paths and what they say, so only use worlds you trust.
+  that leaving request itself, which carries whatever the world put in its address, once.
+- Your worlds see no conversation text or paths until you tick **Can see what agents say** for one
+  (kept per browser, as `tracker-world-cansee:<world>`); then they see what the dashboard shows. A
+  world can never act for you. And plainly: a world that can see could still leak what it sees once,
+  by loading another page in its frame (browsers can't block that); the dashboard stops it at once
+  and says so. Only give a world you didn't write that permission if you trust it. The farm and other
+  built-in worlds always see everything.
 - File contents, folder listings, past sessions, whole conversations (and your messages in them,
   for ↑) and field close-ups are served only with a per-install token that the page carries. Every action (answer, message,
   start, end, switch…) also needs a same-origin request.

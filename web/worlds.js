@@ -127,10 +127,14 @@
     }
   }
 
+  // A world from your folder sees no words or paths until you allow it, per browser (a setting no world can reach: its names can't hold ':').
+  const CAN_SEE = key => `tracker-world-cansee:${key}`;
+  const isPrivate = key => key.startsWith('u/') && browserStore.get(CAN_SEE(key)) !== 'on';
   const SESSION_PREFS = new Set(['view']);
   const sessionPrefs = new Map(); // world → { name: value }: kept for this page's life only, never in the browser
   let host = null, frame = null, opts = {}, world = 'farm', scene = null, selectedId = null, loaded = false;
   let diary = [], timer = 0, lastSettings = '', inFlight = 0, generation = 0;
+  let sent = null; // the scene the world was last given (private, or not)
   let heardLoaded = false; // the frame's `loaded`, heard: once per frame (every load builds a new one)
   let ready = false, loadsLeft = 0, startTimer = 0, lastError = null, strip = null, failed = false;
   let stripHtml = '', stripPending = null, stripAt = -Infinity, stripClosedAt = -Infinity, stripTimer = 0;
@@ -190,7 +194,7 @@
   }
   function onMessage(e) {
     if (!frame || e.source !== frame.contentWindow) return;
-    const act = checkMessage(e.data, { scene, private: false, sentPaths, inFlight });
+    const act = checkMessage(e.data, { scene: sent, private: isPrivate(world), sentPaths, inFlight });
     if (!act) {
       const type = String(e.data?.type ?? typeof e.data).slice(0, 40);
       if (!dropped.has(type) && dropped.size < DROPPED_MAX) { dropped.add(type); console.warn(`The ${world} world sent a message the page does not accept (${type}); it was dropped.`); }
@@ -212,7 +216,7 @@
         lastSettings = JSON.stringify(settingsNow());
         post({ type: 'start', world, prefs: { ...loadPrefs(world), ...sessionPrefs.get(world) }, settings: settingsNow() });
         measureSaved();
-        if (scene) post({ type: 'scene', scene });
+        sendScene();
         post({ type: 'select', id: selectedId });
         break;
       case 'leaving': fail('left'); break; // its document is going away: stopped before any page it goes to can speak
@@ -307,6 +311,7 @@
     loaded = false;
     heardLoaded = false;
     generation++;
+    sent = null; // nothing is given to the new frame until it says `loaded`
     sentPaths.clear();
     for (const { timer: t } of waitingAct.values()) clearTimeout(t);
     waitingAct.clear();
@@ -430,7 +435,11 @@
   async function openList() {
     const dlg = $('worlds-dlg');
     if (!dlg) return;
-    if (!listWired) { dlg.addEventListener('click', onListClick); listWired = true; }
+    if (!listWired) {
+      dlg.addEventListener('click', onListClick);
+      dlg.addEventListener('change', e => { const box = e.target.closest?.('[data-see]'); if (box) setCanSee(box.dataset.see, box.checked); });
+      listWired = true;
+    }
     await resolveWorld(); // a fresh list: worlds come and go in your folder
     renderList();
     if (!dlg.open) dlg.showModal();
@@ -441,7 +450,7 @@
     list.innerHTML = worldsInfo.map(w => `<li><button type="button" class="world-pick" ${w.key && !w.error ? `data-world="${esc(w.key)}"` : 'disabled'} aria-pressed="${w.key === world}">
         ${typeof w.preview === 'string' && w.preview.startsWith('/world/') ? `<img class="world-preview" src="${esc(w.preview)}" alt="">` : `<span class="world-icon">${words(w.icon)}</span>`}
         <span class="world-text"><span><b>${words(w.name)}</b> <span class="chip">${w.builtIn ? 'Built in' : 'Your folder'}</span></span>${w.description ? `<span class="muted">${words(w.description)}</span>` : ''}${w.error ? `<span class="warnline">${words(w.error)}</span>` : ''}</span>
-      </button></li>`).join('');
+      </button>${!w.builtIn && w.key ? `<label class="world-see"><input type="checkbox" data-see="${esc(w.key)}"${isPrivate(w.key) ? '' : ' checked'}> Can see what agents say</label>` : ''}</li>`).join('');
     const where = $('worlds-where');
     if (where) where.textContent = folder ? `Your worlds go in ${noBidi(folder)}` : '';
   }
@@ -464,7 +473,19 @@
   }
   function update(snap) {
     scene = window.AgentvilleScene.toScene(snap);
-    if (loaded) post({ type: 'scene', scene });
+    if (loaded) sendScene();
+  }
+  /** The newest scene to the world: the whole of it, or (one of your worlds, not allowed) without words and paths. */
+  function sendScene() {
+    if (!scene) return;
+    sent = isPrivate(world) ? window.AgentvilleScene.privateScene(scene) : scene;
+    post({ type: 'scene', scene: sent });
+  }
+  /** Whether one of your worlds may see what agents say; the world starts again with the scene it may now see. */
+  function setCanSee(key, on) {
+    if (on) browserStore.set(CAN_SEE(key), 'on'); else browserStore.remove(CAN_SEE(key));
+    if (host && key === world) createFrame(world);
+    if ($('worlds-dlg')?.open) renderList();
   }
   function select(id) {
     selectedId = id ?? null;
@@ -500,5 +521,5 @@
   }
 
   window.TrackerFarm = { mount, update, select, unmount, hide, current, openList, worldsChanged, colorOf: id => window.AgentvilleScene.colorOf(id), toScene: snap => window.AgentvilleScene.toScene(snap) };
-  window.AgentvilleWorlds = { checkMessage, loadPrefs, renderDiary, prefKey, choose };
+  window.AgentvilleWorlds = { checkMessage, loadPrefs, renderDiary, prefKey, choose, setCanSee };
 })();

@@ -209,6 +209,26 @@ Times are milliseconds since 1970, as `Date.now()` gives them.
 - `wakeAt`: when it wakes up by itself, or `null`; `nap`: it is a session that will wake up by
   itself (`/loop`), resting until then.
 
+## Privacy mode
+
+A world from your folder (`u/<name>`) gets a private scene (`scene.private` is `true`) until you tick
+**Can see what agents say** for it in the list of worlds (kept per browser). Built-in worlds always
+get the whole scene (`private: false`). What a private scene removes or replaces:
+
+- Agents: `summary`, `ask`, `reply` and `said` are `''`; `question`, `cwd` and `service` are `null`;
+  `tasks` is `{ done, total }`; `turn` is `{ word, startedAt, outTokens, mode }`; `repo` is a stand-in.
+- Repos: `key` and `main` are stand-ins (`r1`, `r2`, … the same for the same repo while the page is
+  open); `project` is a stand-in (`p1`, …; `projectName` stays); `branch` is `null` (`onMain` stays);
+  `deploy` is `{ state, label: null, detail: null, url: null, source: null }` (and `run`, if there);
+  `prs` is `{ open: [{ number, checks, draft }], merged: [{ number, at }] }`.
+- `subagents[].label` and `mail[].text` are `''`; `chrome.errors` is `[]`.
+
+What stays: names, states, tools, steps, colours, counts, percentages, costs, the plan's windows and
+the repos' numbers. Requests (`agentFiles`, `repoTouched`) are refused: the reply has `ok: false`,
+`status: 403` and an `error` that says to switch on "Can see what agents say". `openDoc` is dropped;
+`pick` still works. Because the repo keys are stand-ins, `repoTouched` could not name a real repo
+anyway. Ticking the box starts the world again with the full scene.
+
 ## Messages
 
 Every message is an object with a `type`. Each side checks the other's: the frame takes messages

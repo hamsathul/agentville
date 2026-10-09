@@ -74,3 +74,27 @@ test("an agent's colour follows its id, and the page gets the same one", () => {
   assert.equal(a.color, colorOf('abc'));
   assert.equal(colorOf('abc'), colorOf('abc'));
 });
+
+test('a private scene: no words and no paths; names, states, tools and numbers stay; stand-ins are stable', () => {
+  const { toScene, privateScene } = load();
+  const s = toScene(snapOf([agent('a', { cwd: '/Users/sam/code/shop/api', now: { tool: 'Bash', summary: 'deploy --prod secret', step: 'deploy', service: 'internal.example' }, lastReply: 'Shipped the key rotation', question: 'Rotate the prod key?', state: 'waiting', ask: { kind: 'question', questions: [{ question: 'Rotate the prod key?' }] }, tasks: { done: 1, total: 3, current: 'Rotate', items: [{ text: 'secret' }] }, touching: [{ path: '/Users/sam/code/shop/api/x', mode: 'write', lastAt: 1, repo: '/Users/sam/code/shop/api' }], children: [{ id: 's', kind: 'subagent', state: 'running', label: 'read the secrets' }], feed: [{ at: NOW, kind: 'peer', dir: 'out', other: 'b', text: 'the password is x' }] }), agent('b')],
+    [repo('/Users/sam/code/shop/api', { branch: 'fix/client-acme', lastDeploy: { state: 'failed', label: '✗', detail: 'acme-prod', url: 'https://github.com/x', source: 'actions' }, prs: { open: [{ number: 4, title: 'Acme hotfix', url: 'https://github.com/x/4', checks: 'ok', draft: false }], merged: [] } }), repo('/Users/sam/code/shop/web'), repo('/Users/sam/code/shop/api-wt', { worktree: true, main: '/Users/sam/code/shop/api' })]));
+  const p = JSON.parse(JSON.stringify(privateScene(s)));
+  assert.equal(p.private, true);
+  const text = JSON.stringify(p);
+  for (const secret of ['deploy --prod', 'internal.example', 'Shipped', 'Rotate', 'secret', 'password', 'acme', 'Acme', '/Users/sam']) assert.ok(!text.includes(secret), secret);
+  const [a] = p.agents, [api, web, wt] = p.repos;
+  assert.deepEqual([a.name, a.state, a.tool, a.step, a.tasks], ['a', 'waiting', 'Bash', 'deploy', { done: 1, total: 3 }]);
+  assert.equal(a.repo, api.key);
+  assert.match(api.key, /^r\d+$/);
+  assert.notEqual(api.key, web.key);
+  assert.equal(wt.main, api.key);
+  assert.equal(api.name, 'api');
+  assert.equal(api.projectName, 'shop');
+  assert.match(api.project, /^p\d+$/);
+  assert.equal(api.project, web.project);
+  assert.deepEqual(api.deploy, { state: 'failed', label: null, detail: null, url: null, source: null });
+  assert.deepEqual(api.prs, { open: [{ number: 4, checks: 'ok', draft: false }], merged: [] });
+  assert.equal(api.onMain, false);
+  assert.equal(JSON.parse(JSON.stringify(privateScene(s))).repos[0].key, api.key, 'the same stand-in next time');
+});

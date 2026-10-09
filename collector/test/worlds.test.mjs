@@ -749,3 +749,29 @@ test('a fetch for a world is cut off after 30 s, so it cannot hold a place for g
   p.from({ type: 'request', id: 1, kind: 'agentFiles', agentId: 'a1' });
   assert.equal(p.signals.at(-1)?.timeoutMs, 30000);
 });
+
+test("one of your worlds sees no words or paths, and can't ask for files, until you let it", async () => {
+  const p = await page({ stored: { 'tracker-world': 'u/space' } });
+  p.farm.update(snap);
+  p.from({ type: 'loaded' });
+  const first = p.posted.find(m => m.type === 'scene').scene;
+  assert.equal(first.private, true);
+  assert.match(first.repos[0].key, /^r\d+$/);
+  p.from({ type: 'request', id: 1, kind: 'agentFiles', agentId: 'a1' });
+  assert.match(p.posted.find(m => m.type === 'reply').error, /Can see what agents say/);
+  p.from({ type: 'pick', agentId: 'a1' });
+  assert.deepEqual(p.calls.filter(c => c[0] === 'pick'), [['pick', 'a1', null]], 'it can still open an agent');
+  p.worlds.setCanSee('u/space', true);
+  assert.equal(p.stored['tracker-world-cansee:u/space'], 'on');
+  assert.equal(p.frames.length, 2, 'it starts again, with the full scene');
+  p.posted.length = 0;
+  p.from({ type: 'loaded' });
+  assert.equal(p.posted.find(m => m.type === 'scene').scene.private, false);
+});
+
+test('the farm always sees everything', async () => {
+  const p = await page();
+  p.farm.update(snap);
+  p.from({ type: 'loaded' });
+  assert.equal(p.posted.find(m => m.type === 'scene').scene.private, false);
+});

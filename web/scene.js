@@ -180,5 +180,37 @@
     };
   }
 
-  window.AgentvilleScene = { VERSION, toScene, colorOf, fieldOf, contextPct, askText, mailOf, cartsOf, deployOf, projectOf };
+  // Stand-ins for paths in a private scene: the same repo (or project) gets the same one while the page is open.
+  const standIns = new Map(), counts = { r: 0, p: 0 };
+  const standIn = (value, prefix) => {
+    if (value == null) return null;
+    const k = `${prefix}:${value}`;
+    if (!standIns.has(k)) standIns.set(k, `${prefix}${++counts[prefix]}`);
+    return standIns.get(k);
+  };
+  /**
+   * The scene for a world that may not see what agents say: no words (questions, replies, summaries,
+   * task, message and subagent text, pull requests' titles, deploys' words, branches, where calls go)
+   * and no paths (repos and projects get stand-in ids). Names, states, tools, steps, numbers and colours stay.
+   */
+  function privateScene(s) {
+    return {
+      ...s, private: true,
+      chrome: { ...s.chrome, errors: [] },
+      subagents: s.subagents.map(x => ({ ...x, label: '' })),
+      mail: s.mail.map(m => ({ ...m, text: '' })),
+      repos: s.repos.map(r => ({
+        ...r, key: standIn(r.key, 'r'), main: standIn(r.main, 'r'), branch: null, project: standIn(r.project, 'p'),
+        deploy: r.deploy ? { state: r.deploy.state, label: null, detail: null, url: null, source: null, ...(r.deploy.run ? { run: true } : {}) } : null,
+        prs: r.prs ? { open: (r.prs.open ?? []).map(p => ({ number: p.number, checks: p.checks, draft: p.draft })), merged: (r.prs.merged ?? []).map(p => ({ number: p.number, at: p.at })) } : null,
+      })),
+      agents: s.agents.map(a => ({
+        ...a, cwd: null, repo: standIn(a.repo, 'r'), summary: '', ask: '', question: null, reply: '', said: '', service: null,
+        tasks: a.tasks ? { done: a.tasks.done, total: a.tasks.total } : null,
+        turn: a.turn ? { word: a.turn.word ?? null, startedAt: a.turn.startedAt ?? null, outTokens: a.turn.outTokens ?? null, mode: a.turn.mode ?? null } : null,
+      })),
+    };
+  }
+
+  window.AgentvilleScene = { VERSION, toScene, privateScene, colorOf, fieldOf, contextPct, askText, mailOf, cartsOf, deployOf, projectOf };
 })();
