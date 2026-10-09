@@ -7,7 +7,8 @@
   "scripts": {
     "test": "node --test \"collector/test/*.test.mjs\"",
     "test:ui": "node scripts/e2e-ui.mjs",
-    "demo": "node scripts/demo-video.mjs",
+    "golden": "node scripts/world-golden.mjs",
+    "demo":"node scripts/demo-video.mjs",
     "demo:many": "node scripts/demo-many.mjs",
     "start": "node collector/index.mjs"
   },
