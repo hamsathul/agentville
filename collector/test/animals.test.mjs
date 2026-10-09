@@ -532,3 +532,110 @@ test('the guide’s cat with a gag runs as written (docs/worlds.md, "Gags and pl
   for (let i = 0; i < 100; i++) a.tick(0.1, { crew: fakeCrew([]) });
   assert.deepEqual(warns, [], 'nothing dropped');
 });
+
+test('gags written wrong in any way are dropped once each, and the rest still run (no needs, steps not a list, a step not an object, a role not cast, a chase not by the farmer, a spot not there)', () => {
+  const k = load();
+  const bad = [
+    { id: 'noNeeds', steps: [{ wait: 100 }] },
+    { id: 'stringSteps', needs: { goat: 1 }, steps: 'wait' },
+    { id: 'stringStep', needs: { goat: 1 }, steps: ['wait'] },
+    { id: 'strayRole', needs: { goat: 1 }, steps: [{ go: 'goat', to: 'cow' }] },
+    { id: 'goatChases', needs: { goat: 1, farmer: 'idle' }, steps: [{ chase: 'goat', after: 'farmer', ms: 100 }] },
+    { id: 'noSpot', needs: { goat: 1 }, steps: [{ go: 'goat', to: 'spot:nowhere' }] },
+    null,
+  ];
+  const warns = [];
+  const a = k.makeAnimals({ cast: [{ kind: 'goat', lines: { idle: ['baa'] } }], gags: [...bad, { id: 'ok', needs: { goat: 1 }, steps: [{ say: 'goat', line: 'idle' }, { wait: 200 }] }] }, { random: k.seededRandom(1), warn: m => warns.push(m) });
+  a.place({ roam: [YARD], avoid: [] });
+  let ok = 0, was = null;
+  for (let i = 0; i < 12000; i++) { a.tick(0.1, { crew: fakeCrew([{ id: 'p', state: 'idle', x: 50, y: 150 }]) }); const g = a.gagNow()?.id ?? null; if (g === 'ok' && was !== 'ok') ok++; was = g; }
+  for (const id of ['noNeeds', 'stringSteps', 'stringStep', 'strayRole', 'goatChases', 'noSpot']) assert.equal(warns.filter(w => w.includes(`gag ${id} was dropped`)).length, 1, `${id}: ${JSON.stringify(warns)}`);
+  assert.ok(ok >= 2, `the good gag still runs (${ok})`);
+});
+
+test('an idle farmer that gets work mid-gag goes back to it at once: the gag ends, its hat back, no more sends', () => {
+  const k = load();
+  const a = k.makeAnimals({ cast: [{ kind: 'goat', lines: { hat: ['x'] } }], gags: [HAT_GAG] }, { random: k.seededRandom(1) });
+  a.place({ roam: [YARD], avoid: [] });
+  const crew = fakeCrew([{ id: 'pip', state: 'idle', x: 50, y: 150 }]);
+  for (let i = 0; i < 1300 && crew.flags['pip.hatless'] !== true; i++) a.tick(0.1, { crew });
+  assert.equal(crew.flags['pip.hatless'], true);
+  crew.farmers[0].state = 'working';
+  a.tick(0.1, { crew });
+  assert.equal(a.gagNow(), null);
+  assert.equal(crew.flags['pip.hatless'], false);
+  const sends = crew.log.filter(l => l[0] === 'send').length;
+  for (let i = 0; i < 60; i++) a.tick(0.1, { crew });
+  assert.equal(crew.log.filter(l => l[0] === 'send').length, sends, 'a working farmer is not sent');
+});
+
+test('a gag whose farmer can’t be lent (crew.send says no: you sent it somewhere) ends at once', () => {
+  const k = load();
+  const a = k.makeAnimals({ cast: [{ kind: 'goat' }], gags: [{ id: 'visit', needs: { goat: 1, farmer: 'idle' }, steps: [{ go: 'farmer', to: 'goat' }, { wait: 60000 }] }] }, { random: k.seededRandom(1) });
+  a.place({ roam: [YARD], avoid: [] });
+  const crew = fakeCrew([{ id: 'pip', state: 'idle', x: 50, y: 150 }]);
+  crew.send = () => false;
+  for (let i = 0; i < 1300 && !a.gagNow(); i++) a.tick(0.1, { crew });
+  assert.equal(a.gagNow()?.id, 'visit');
+  a.tick(0.1, { crew }); a.tick(0.1, { crew });
+  assert.equal(a.gagNow(), null);
+});
+
+test('the yard changing while the cow naps in the hammock: the same yard keeps her there; a new one ends the gag and puts her inside it', () => {
+  const k = load();
+  const HAMMOCK = { x: 84, y: 196, w: 24, h: 34 }, YARD2 = { x: 4, y: 100, w: 104, h: 140 };
+  const make = () => {
+    const a = k.makeAnimals({ cast: [{ kind: 'cow' }], gags: [{ id: 'hammock', needs: { cow: 1, spot: 'hammock' }, steps: [{ go: 'cow', to: 'spot:hammock' }, { stay: 'cow', is: 'sleep', ms: 60000, while: 'spot:hammock' }, { go: 'cow', to: 'back' }] }] }, { random: k.seededRandom(2) });
+    a.place({ roam: [YARD2], avoid: [HAMMOCK], spots: { hammock: [97, 224] } });
+    const crew = fakeCrew([]);
+    for (let i = 0; i < 3000 && !(a.list()[0].x === 97 && a.list()[0].y === 224); i++) a.tick(0.1, { crew });
+    assert.deepEqual([a.list()[0].x, a.list()[0].y], [97, 224]);
+    return { a, crew };
+  };
+  const same = make();
+  same.a.place({ roam: [YARD2], avoid: [HAMMOCK], spots: { hammock: [97, 224] } });
+  same.a.tick(0.1, { crew: same.crew });
+  assert.deepEqual([same.a.list()[0].x, same.a.list()[0].y], [97, 224], 'the same yard: still napping');
+  assert.equal(same.a.gagNow()?.id, 'hammock');
+  const moved = make(), SMALL = { x: 4, y: 100, w: 70, h: 80 };
+  moved.a.place({ roam: [SMALL], avoid: [], spots: {} });
+  moved.a.tick(0.1, { crew: moved.crew });
+  const c = moved.a.list()[0];
+  assert.equal(moved.a.gagNow(), null, 'the gag is over');
+  assert.ok(c.x >= SMALL.x && c.x <= SMALL.x + SMALL.w && c.y >= SMALL.y && c.y <= SMALL.y + SMALL.h, `inside the new yard (${c.x},${c.y})`);
+});
+
+test('a goat on its perch that runs off comes down first', () => {
+  const k = load();
+  const a = k.makeAnimals([{ kind: 'goat', habits: ['climb'] }], { random: k.seededRandom(3) });
+  a.place({ roam: [YARD], avoid: [], perches: [[50, 150, 6]] });
+  for (let i = 0; i < 6000 && !a.list()[0].lift; i++) a.tick(0.1);
+  assert.ok(a.list()[0].lift > 0, 'up on the perch');
+  a.react('deployFailed', [50, 150]);
+  a.tick(0.1);
+  assert.equal(a.list()[0].lift, 0);
+});
+
+test('reacts: null switches a reaction off, as the guide says', () => {
+  const k = load();
+  const a = k.makeAnimals([{ kind: 'sheepdog', reacts: { deployFailed: null } }], { random: k.seededRandom(3) });
+  a.place({ roam: [YARD], avoid: [] });
+  a.tick(0.1);
+  const before = plain(a.list())[0];
+  a.react('deployFailed', [before.x, before.y]);
+  for (let i = 0; i < 10; i++) a.tick(0.1);
+  assert.notEqual(plain(a.list())[0].pose, 'run');
+});
+
+test('errands: a gag’s errand is let go by release; one you asked for is not, and says so', () => {
+  const k = load();
+  const e = k.makeErrands();
+  e.start('a', { x: 1, y: 1, now: 0, busy: false, idleOnly: true });
+  e.start('b', { x: 1, y: 1, now: 0, busy: false });
+  assert.equal(e.kindOf('a'), 'lent');
+  assert.equal(e.kindOf('b'), 'asked');
+  assert.equal(e.kindOf('c'), null);
+  e.release('a'); e.release('b');
+  assert.equal(e.has('a'), false);
+  assert.equal(e.has('b'), true, 'your errand stays');
+});

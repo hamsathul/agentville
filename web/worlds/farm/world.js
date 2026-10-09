@@ -889,7 +889,7 @@
         px(TROUGH.x - 6, TROUGH.y - 3, 12, 3, '#8b5a2b'); px(TROUGH.x - 5, TROUGH.y - 3, 10, 1, season === 'winter' ? '#d8eef8' : '#5ab4ff');
         if (!PXG.taken?.has('bucket')) { px(TROUGH.x + 8, TROUGH.y - 4, 3, 4, '#8a93a0'); px(TROUGH.x + 8, TROUGH.y - 4, 3, 1, '#c3cbd2'); } // unless the ostrich is wearing it
         for (let i = 0; i < 3; i++) px(WOODPILE.x - 6 + i * 1, WOODPILE.y - 2 - i * 2, 12 - i * 3, 2, i % 2 ? '#a8703c' : '#8b5a2b');
-        px(ROCK.x - 4, ROCK.y - 3, 8, 3, '#8c96a0'); px(ROCK.x - 3, ROCK.y - 4, 6, 1, '#aab3bb');
+        const rock = rockAt(); px(rock.x - 4, rock.y - 3, 8, 3, '#8c96a0'); px(rock.x - 3, rock.y - 4, 6, 1, '#aab3bb');
       }
       const eggs = scene.henhouse?.eggs ?? 0, roost = Math.min(3, scene.henhouse?.roosting ?? 0);
       px(4, 132, 12, 3, '#c9a24a'); px(4, 132, 12, 1, '#e9c46a'); // the nest
@@ -958,7 +958,8 @@
     // the hammocks or the henhouse. No chickens (subagents), and the dog is a sheepdog (the Explore dog is
     // data). The ducks keep to the pond and its bank.
     const POND = { x: 12, y: 199, w: 60, h: 22 }; // the water (the pond's oval, a little inside its bank)
-    const TROUGH = { x: 92, y: 158 }, WOODPILE = { x: 18, y: 150 }, ROCK = { x: 56, y: 248 }; // the yard's things to drink at and climb on (animals on only)
+    const TROUGH = { x: 92, y: 158 }, WOODPILE = { x: 14, y: 186 }; // the yard's things to drink at and climb on (animals on only)
+    const rockAt = () => ({ x: 94, y: L.GRID.y1 - 42 }); // by the shade tree, clear of its crown (it moves down with more rows)
     const FARM_ANIMALS = [
       { kind: 'cow', count: 2, name: 'Cow', actions: [{ label: 'Pet', fx: 'hearts', line: 'petted' }, { label: 'Feed', fx: 'crumbs', pose: 'eat', line: 'fed' }, { label: 'Ride', pose: 'run', run: true, line: 'ride' }, { label: 'Moo back', line: 'moo' }],
         lines: { idle: ['MOO.', 'moo?', 'grass again. good.', 'I am a cow.'], petted: ['moo ♥'], fed: ['MOO! thank you'], ride: ['this was not in my contract'], moo: ['MOO!!'],
@@ -1136,7 +1137,7 @@
       season: () => season,
       animals: () => ({ cast: FARM_ANIMALS, gags: FARM_GAGS, play: FARM_PLAY }),
       /** What a goat climbs ([x, y, lift]) and where gags go: the second hammock, the trough's bucket, a huddle in winter. */
-      perches: () => [[WOODPILE.x, WOODPILE.y - 6, 6], [ROCK.x, ROCK.y - 3, 4]],
+      perches: () => [[WOODPILE.x, WOODPILE.y - 6, 6], [rockAt().x, rockAt().y - 3, 4]],
       spots: () => ({ hammock: NAPS[1], bucket: [TROUGH.x + 9, TROUGH.y], huddle: [56, 200 - 30], stall: [104, 102], barn: [62, 140] }),
       /** Is a gag's spot free now: a hammock is taken while anyone naps (the nappers have the hammocks). */
       spotFree: name => (name === 'hammock' ? !scene.farmers.some(f => f.nap) : true),

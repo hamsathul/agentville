@@ -625,8 +625,9 @@ on the farm just for fun. They never stand for anything.
   is chased for it; one nibbles the hat of a farmer working in the meadow, who keeps working. The ostrich
   runs off wearing the trough's bucket. The lion is startled by a chicken, a cow naps in the empty
   hammock (and gets out when a farmer needs it), and the tiger plays tag with the sheepdog. Only idle
-  farmers are ever borrowed, never one waiting on you; one that starts waiting, or gets work, drops it
-  at once and gets its hat back.
+  farmers are ever borrowed, never one waiting on you or napping in a hammock; one that starts waiting,
+  or gets work, drops it at once and gets its hat back, and one you send to an animal yourself leaves
+  the gag for you.
 - They react: a failed deploy (rain on a field) scatters them and the ostrich hides, a good one (a
   rainbow) makes them hop, a harvest draws a few over, and the sheepdog runs to the stall when a pull
   request is merged and to meet a new farmer.

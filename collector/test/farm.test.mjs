@@ -626,3 +626,19 @@ test('a farmer whose hat a goat has is drawn without it (and without its model p
   assert.ok(!off.sprite.has(off.hat), 'no hat');
   assert.ok(on.main.has('#8a5fc0') && !off.main.has('#8a5fc0'), 'the pin goes with the hat');
 });
+
+test('the goats get up on both the woodpile and the rock, and neither is on the shade tree', () => {
+  const window = { Agentville: { raw: () => {} } };
+  vm.runInNewContext(`${code}\n;window.__kit = { makeAnimals, seededRandom };`, { window, console, Math, Date, JSON, Map, Set });
+  const farm = window.AgentvilleFarm, th = farm.makeFarm(), L = th.relayout(farm.layoutFor([{ key: '/a', name: 'a' }, { key: '/b', name: 'b' }]));
+  th.setScene({ plan: null, chrome: {}, fields: [], farmers: [], carts: [], mail: [], henhouse: { eggs: 0, roosting: 0 } });
+  const perches = plain(th.perches()), crown = [66, L.GRID.y1 - 38]; // the shade tree's crown, r 21
+  for (const [x, y] of perches) assert.ok(Math.hypot(x - crown[0], y - crown[1]) > 27, `a perch on the shade tree (${x},${y})`);
+  const used = new Set();
+  for (const seed of [1, 2]) {
+    const a = window.__kit.makeAnimals(th.animals(), { random: window.__kit.seededRandom(seed) });
+    a.place({ roam: th.roam(), avoid: th.avoid(), perches: th.perches(), spots: th.spots(), blocked: (x, y) => Boolean(th.fieldAt(x, y) || th.buildingAt?.(x, y)) });
+    for (let i = 0; i < 24000 && used.size < perches.length; i++) { a.tick(0.1); for (const o of a.list()) if (o.kind === 'goat' && o.lift) used.add(`${o.x},${o.y}`); }
+  }
+  assert.equal(used.size, perches.length, `goats stood on ${[...used].join(' ')} of ${perches.map(p => `${p[0]},${p[1]}`).join(' ')}`);
+});

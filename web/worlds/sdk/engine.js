@@ -266,13 +266,13 @@ function makePixelView(th, prefs) {
   const xy = id => { const b = bots.get(id); return { x: b.x, y: b.y }; };
   /** The farmers the animals' gags and play may borrow (sdk/animals.js): an errand each, given up when work comes. */
   const crew = {
-    idle: () => scene.farmers.filter(f => f.state === 'idle' && bots.has(f.id) && !errands?.has(f.id)).map(f => ({ id: f.id, ...xy(f.id) })),
+    idle: () => scene.farmers.filter(f => f.state === 'idle' && !f.nap && bots.has(f.id) && !errands?.has(f.id)).map(f => ({ id: f.id, ...xy(f.id) })), // never one napping: it wakes by itself
     busy: () => scene.farmers.filter(f => f.state === 'working' && bots.has(f.id) && !errands?.has(f.id)).map(f => ({ id: f.id, ...xy(f.id) })),
     longIdle: () => crew.idle().filter(f => T - (idleSince.get(f.id) ?? T) >= 180),
     at: id => (bots.has(id) ? xy(id) : null),
-    state: id => scene.farmers.find(f => f.id === id)?.state,
-    send: (id, to, { stay = 1.5 } = {}) => { errands?.start(id, { x: Math.round(to[0]), y: Math.round(to[1]), now: T, busy: false, stay, idleOnly: true }); sync(false); },
-    release: id => { if (errands?.has(id)) { errands.end(id); sync(false); } const b = bots.get(id); if (b) b.hatless = false; },
+    state: id => (errands?.kindOf(id) === 'asked' ? 'errand' : scene.farmers.find(f => f.id === id)?.state), // one you sent to an animal is yours, not the gag's
+    send: (id, to, { stay = 1.5 } = {}) => { if (!errands || crew.state(id) !== 'idle') return false; errands.start(id, { x: Math.round(to[0]), y: Math.round(to[1]), now: T, busy: false, stay, idleOnly: true }); sync(false); return true; },
+    release: id => { if (errands?.release(id)) sync(false); const b = bots.get(id); if (b) b.hatless = false; },
     flag: (id, name, on) => { const b = bots.get(id); if (b) b[name] = on; },
     chickens: () => [...bots.values()].flatMap(b => b.kids.map(d => ({ x: d.x, y: d.y }))),
     spotFree: name => th.spotFree?.(name) ?? true,

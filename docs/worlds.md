@@ -633,19 +633,23 @@ nearest it) and `'chicken'`. The steps run one at a time:
 
 The rules the engine keeps for the agents a gag borrows:
 
-- Only idle agents walk: never one waiting on you or on its turn. One that starts waiting, or gets
-  work, ends the gag at once, and everything is put back (the hat on its head, the bucket by the
-  trough, the agent let go).
+- Only idle agents walk: never one waiting on you or on its turn, and never one napping (it wakes by
+  itself). One that starts waiting, or gets work, ends the gag at once, and everything is put back
+  (the hat on its head, the bucket by the trough, the agent let go).
+- Your click comes first: an agent you send to an animal from its menu leaves the gag it was in.
 - A busy agent (`farmer: 'busy'`) is never moved: the creature comes to it, and its hat is off 3 s at
   most. A gag that would take longer, or move it, is dropped.
-- Motion off, the animals hidden or the page reloaded: every gag ends where it is.
+- Motion off, the animals hidden or the page reloaded: every gag ends where it is. The yard changing
+  (`roam`, `avoid` or a spot moving) ends a gag it no longer fits, and puts its creatures back inside.
 
 `play` is the same shape, for an agent idle three minutes or more (checked every 45 s, two at most):
 the agent walks to a creature and plays (a stick for the dog, a goat to pet). Work, or you, call it
 back.
 
-A gag written wrong (a step it doesn't know, a role it wasn't given) is dropped the first time it
-runs, with one warning in the console: "Animals: the gag <id> was dropped: <why>". The world goes on.
+A gag written wrong (no `needs`, `steps` that aren't a list of steps, a step it doesn't know, a role
+it wasn't given, a chase by anyone but the farmer) is dropped when the world is read, and one going to
+a spot your `spots()` doesn't have is dropped the first time it runs. Either way there is one warning
+in the console, "Animals: the gag <id> was dropped: <why>", and the world goes on.
 
 A body the kit has borrowed carries flags for your `drawChar`: `b.hatless` while a creature has its
 hat (the farm draws that farmer with `hat: 'none'`, and leaves out the pin on its hat).
