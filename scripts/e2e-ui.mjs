@@ -654,13 +654,22 @@ try {
   await fjs("document.querySelector('[data-farm-animals]').click(); true"); // back on, for the rest
   // Motion off: an action happens at once, in place, and its line still goes after a few seconds.
   await fjs("document.querySelector('[data-farm-motion]').click(); true");
-  const still = JSON.parse(await fjs("JSON.stringify(window.Agentville.animalsNow().find(a => a.kind === 'goat'))"));
-  await fjs(clickFarm(still.x, still.y - 4));
-  check(await funtil("!!document.querySelector('.px-animal-menu') && /You do it/.test(document.querySelector('.px-animal-menu').textContent)"), 'with motion off, the menu says you do it (no one walks)');
+  let goatMenu = false; // a goat a click there opens: one may stand behind the ostrich (a click picks the one in front)
+  for (const g of JSON.parse(await fjs("JSON.stringify(window.Agentville.animalsNow().filter(a => a.kind === 'goat'))"))) {
+    for (const dy of [4, 2, 6]) {
+      await fjs(clickFarm(g.x, g.y - dy));
+      if ((goatMenu = await funtil("/^Goat/.test(document.querySelector('.px-animal-menu b')?.textContent ?? '')", 1500))) break;
+      await fjs("document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' })); true");
+    }
+    if (goatMenu) break;
+  }
+  check(goatMenu && await funtil("/You do it/.test(document.querySelector('.px-animal-menu')?.textContent ?? '')"), 'with motion off, the menu says you do it (no one walks)');
   check(await fjs(realClick('[data-animal-act="0"]')), 'and its buttons take a real click');
   check(await funtil("[...document.querySelectorAll('.px-animal-say')].some(b => !b.hidden && /baa/i.test(b.textContent))", 2000), 'with motion off, the goat says so at once');
   check(await funtil("![...document.querySelectorAll('.px-animal-say')].some(b => !b.hidden)", 8000), 'and the line goes after a few seconds, though nothing moves');
   await fjs("document.querySelector('[data-farm-motion]').click(); true");
+  // Part B: habits in a real browser (a goat on the woodpile, the lion yawning, the dog rolling over). Gags take a minute or two: the kit's tests cover them.
+  check(await funtil('window.Agentville.animalsNow().some(a => a.lift > 0 || a.pose === "hide" || a.pose === "roll" || a.pose === "yawn" || a.pose === "stretch")', 150_000), 'within a couple of minutes an animal is up to one of its habits');
 
   check(await funtil("[...document.querySelectorAll('.px-say')].some(b => b.textContent.includes('Which crop next?'))"), "the waiting farmer's question is in a speech bubble over its head");
   check(await funtil("document.querySelectorAll('.px-say').length >= 3"), 'the two finished farmers have bubbles too');

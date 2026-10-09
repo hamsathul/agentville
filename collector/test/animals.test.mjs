@@ -517,3 +517,18 @@ test('a gag whose creature can’t get to its farmer (in a field) ends: no hat t
   assert.equal(near.flags['m.hatless'], true, 'a farmer in reach loses its hat a moment');
   assert.ok(!near.log.some(l => l[0] === 'send'), 'a busy farmer is never sent');
 });
+
+test('the guide’s cat with a gag runs as written (docs/worlds.md, "Gags and play")', () => {
+  const k = load();
+  const guide = readFileSync(fileURLToPath(new URL('../../docs/worlds.md', import.meta.url)), 'utf8');
+  const block = guide.split('The same cat with habits')[1].match(/```js\n([\s\S]*?)```/)[1];
+  const hooks = vm.runInNewContext(`({ ${block} })`, {});
+  const warns = [];
+  const a = k.makeAnimals(hooks.animals(), { random: k.seededRandom(5), warn: m => warns.push(m) });
+  a.place({ roam: hooks.roam(), avoid: hooks.avoid() });
+  let ran = false;
+  for (let i = 0; i < 3000 && !ran; i++) { a.tick(0.1, { crew: fakeCrew([]) }); ran = a.gagNow()?.id === 'pounce'; }
+  assert.ok(ran, 'its gag runs within five minutes');
+  for (let i = 0; i < 100; i++) a.tick(0.1, { crew: fakeCrew([]) });
+  assert.deepEqual(warns, [], 'nothing dropped');
+});
