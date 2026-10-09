@@ -776,10 +776,13 @@ and can do is in [docs/worlds.md](docs/worlds.md).
     off in the world's own page, which stops the straightforward use; a determined world can still
     get round it, so this is narrowed, not closed.
   - **Leaving its frame.** A frame can always load another page in its own place (setting its
-    `location`). The page catches that as it starts: the frame says it is leaving (the browser's
-    `beforeunload` and `pagehide`), and the page removes it, hears nothing more from it and says so;
-    should the browser not say, the frame loading a second time is caught too. What can't be stopped
-    is that one leaving request, whose address can carry whatever the world put in it, once.
+    `location`). What can't be stopped is that one leaving request, whose address can carry whatever
+    the world put in it, once. After that there is nothing: page-to-frame traffic rides a private
+    channel (a `MessageChannel`) whose end lives in the frame's own page, so when a world navigates
+    away that page — and the channel — is gone, and the page it lands on gets no scene and is not
+    heard. The dashboard usually catches the leave and says so (the frame's `beforeunload` /
+    `pagehide`, or its loading a second time); a world that erases those and keeps the new page from
+    finishing its load can avoid the notice, but not the cut-off.
 
   So a world from your folder could get out what a private scene holds (its states, tools and
   numbers), and a world you let see what agents say could get out the words too. A test world in

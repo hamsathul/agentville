@@ -17,7 +17,19 @@ const WORLDS = [
 ];
 
 async function page({ stored = {}, hold = false, worlds = WORLDS, dialog = false, listFails = false, reveal = { ok: true, path: '/w' } } = {}) {
-  const posted = [], calls = [], listeners = {}, fetches = [], held = [], warnings = [], made = [], frames = [], timers = [], signals = [];
+  const posted = [], calls = [], listeners = {}, fetches = [], held = [], warnings = [], made = [], frames = [], timers = [], signals = [], windowPosts = [];
+  // The page carries all traffic over a MessageChannel once the frame has loaded. The stub records what
+  // the page posts over its port into `posted` (as frame.contentWindow.postMessage already does for the
+  // one `start` message), and `from` (below) delivers the frame's messages back over that port.
+  let pagePort = null;
+  class FakeMessageChannel {
+    constructor() {
+      const record = m => posted.push(JSON.parse(JSON.stringify(m)));
+      this.port1 = { onmessage: null, postMessage: record, start() {}, close() { this.onmessage = null; } }; // closed: it delivers nothing more
+      this.port2 = { onmessage: null, postMessage() {}, start() {}, close() {} };
+      pagePort = this.port1;
+    }
+  }
   const clock = { now: NOW, perf: 1000 }; // now: the wall clock (it can jump); perf: the page's steady clock
   const element = tag => ({ tag, innerHTML: '', textContent: '', className: '', listeners: {}, addEventListener(t, fn) { this.listeners[t] = fn; }, setAttribute() {}, remove() { this.removed = true; } });
   const host = { held: [], replaceChildren(...els) { this.held = els; }, append(el) { this.held.push(el); } };
@@ -36,7 +48,7 @@ async function page({ stored = {}, hold = false, worlds = WORLDS, dialog = false
       createElement: tag => {
         made.push(tag);
         if (tag !== 'iframe') return element(tag);
-        const f = { ...element('iframe'), title: '', src: '', contentWindow: { postMessage: m => posted.push(JSON.parse(JSON.stringify(m))) } };
+        const f = { ...element('iframe'), title: '', src: '', contentWindow: { postMessage: (m, _origin, transfer) => { posted.push(JSON.parse(JSON.stringify(m))); windowPosts.push({ type: m?.type, ports: transfer?.length ?? 0 }); } } };
         frames.push(f);
         return f;
       },
@@ -45,6 +57,7 @@ async function page({ stored = {}, hold = false, worlds = WORLDS, dialog = false
     setInterval: () => 1, clearInterval() {},
     setTimeout: (fn, ms = 0) => timers.push({ fn, at: clock.perf + ms }), clearTimeout: id => { if (timers[id - 1]) timers[id - 1].fn = null; },
     performance: { now: () => clock.perf },
+    MessageChannel: FakeMessageChannel,
     AbortSignal: { timeout: ms => ({ timeoutMs: ms }) },
     Date: class extends Date { constructor(...a) { super(...(a.length ? a : [clock.now])); } static now() { return clock.now; } },
     localStorage: {
@@ -86,8 +99,16 @@ async function page({ stored = {}, hold = false, worlds = WORLDS, dialog = false
     ctx, jump: ms => { clock.now += ms; }, farm, posted, calls, diary, stored, fetches, settle, wait, answer, timeouts: timers, warnings, made, host, options, worlds: window.AgentvilleWorlds, listeners, frames, dlg, els,
     get frame() { return frames.at(-1); },
     // a message from the newest frame (one the page has let go of is still "the newest" here, and must be ignored)
-    from: data => listeners.message?.({ source: frames.at(-1)?.contentWindow, data }),
+    // `loaded` (and anything before it, like an early error) arrives over the window, as the real bridge
+    // sends it before the port is handed over; every message after `loaded` rides the port.
+    from: data => {
+      if (data && data.type !== 'loaded' && pagePort?.onmessage) pagePort.onmessage({ data: JSON.parse(JSON.stringify(data)) });
+      else listeners.message?.({ source: frames.at(-1)?.contentWindow, data });
+    },
+    // A window message straight from the newest frame (what a navigated-to page would try): the page must ignore it once loaded.
+    fromWindow: data => listeners.message?.({ source: frames.at(-1)?.contentWindow, data }),
     signals,
+    windowPosts, // what the page posted straight to frame.contentWindow (over the window), with any ports transferred
   };
 }
 const snap = { generatedAt: NOW, collisions: [], agents: [{ id: 'a1', name: 'cart-ui', kind: 'interactive', cwd: '/code/shop/web', state: 'working', feed: [], children: [], touching: [] }], repos: [{ path: '/code/shop/web', name: 'web', branch: 'main' }] };
@@ -206,6 +227,32 @@ test('a message from anything but the current frame is ignored', async () => {
   p.farm.update(snap);
   p.listeners.message({ source: {}, data: { type: 'loaded' } });
   assert.deepEqual(p.posted, []);
+});
+
+test('the frame gets a MessageChannel on `loaded`: `start` carries the port over the window, and nothing else goes over the window', async () => {
+  const p = await page();
+  p.farm.update(snap);
+  p.from({ type: 'loaded' });
+  assert.deepEqual(p.windowPosts, [{ type: 'start', ports: 1 }], 'only start goes to the window, and it carries one port');
+  p.farm.update({ ...snap, generatedAt: 5 });
+  p.farm.select('a1');
+  assert.deepEqual(p.windowPosts, [{ type: 'start', ports: 1 }], 'later scenes and selections ride the port, not the window');
+  assert.equal(p.posted.at(-1).type, 'select', 'but they are still sent');
+});
+
+test('after `loaded`, the page hears the frame only over the port: a window message from it is ignored', async () => {
+  const p = await page();
+  p.farm.update(snap);
+  p.from({ type: 'loaded' }); // the handshake done, a port now carries everything
+  p.calls.length = 0;
+  // What a page the world navigated to would post to window.parent: the page must not act on it.
+  p.fromWindow({ type: 'pick', agentId: 'a1' });
+  p.fromWindow({ type: 'nav', what: 'list' });
+  p.fromWindow({ type: 'request', id: 1, kind: 'agentFiles', agentId: 'a1' });
+  assert.deepEqual(p.calls, [], 'nothing a window message asks for is done');
+  assert.equal(p.posted.find(m => m.type === 'reply'), undefined, 'and a request over the window is not even answered');
+  p.from({ type: 'pick', agentId: 'a1' }); // the same message over the port is heard
+  assert.deepEqual(p.calls.filter(c => c[0] === 'pick'), [['pick', 'a1', null]], 'over the port it is');
 });
 
 const two = { ...snap, agents: [...snap.agents, { id: 'a2', name: 'blog', kind: 'interactive', cwd: '/code/blog', state: 'idle', feed: [], children: [], touching: [] }], repos: [...snap.repos, { path: '/code/blog', name: 'blog', branch: 'main' }] };

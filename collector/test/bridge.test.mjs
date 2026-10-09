@@ -8,6 +8,19 @@ import vm from 'node:vm';
 
 const code = readFileSync(fileURLToPath(new URL('../../web/worlds/sdk/bridge.js', import.meta.url)), 'utf8');
 
+// A pair of linked ports, as a MessageChannel makes: posting on one reaches the other's `onmessage`
+// (buffered until it has one, as a real MessagePort is until it is started). The page makes the channel
+// and hands one port to the bridge in `start`; everything after that rides it, both ways.
+function portPair() {
+  const make = () => ({ _fn: null, peer: null, _buf: [], start() {}, close() {},
+    set onmessage(fn) { this._fn = fn; if (fn) for (const m of this._buf.splice(0)) fn({ data: m }); },
+    get onmessage() { return this._fn; },
+    postMessage(data) { const d = JSON.parse(JSON.stringify(data)); if (this.peer._fn) this.peer._fn({ data: d }); else this.peer._buf.push(d); } });
+  const a = make(), b = make();
+  a.peer = b; b.peer = a;
+  return [a, b];
+}
+
 /** A frame running the bridge; `globals` are the browser's own, on its window, as it loads. */
 function frame(globals = {}) {
   const sent = [], listeners = {}, docListeners = {}, frames = [], timers = [];
@@ -23,7 +36,22 @@ function frame(globals = {}) {
   vm.createContext(ctx);
   vm.runInContext(code, ctx);
   const fire = (t, e) => (listeners[t] ?? []).forEach(fn => fn(e));
-  const fromPage = data => fire('message', { source: parent, data });
+  // `start` goes over the window carrying a port; the bridge keeps the port and talks over it from then
+  // on, so a later page→frame message (scene, select, reply) is delivered over the port, and what the
+  // bridge sends after `start` (ready, errors, pick…) comes back over the port into `sent`.
+  let pageToFrame = null;
+  const fromPage = data => {
+    if (data && data.type === 'start') {
+      const [p1, p2] = portPair();
+      pageToFrame = p1;
+      p1.onmessage = e => sent.push(JSON.parse(JSON.stringify(e.data))); // bridge → page, over the port
+      fire('message', { source: parent, data, ports: [p2] });
+    } else if (pageToFrame) {
+      pageToFrame.postMessage(data); // page → frame, over the port
+    } else {
+      fire('message', { source: parent, data });
+    }
+  };
   /** The frame draws once: the animation frames waiting now run. */
   const draw = () => frames.splice(0).forEach(fn => fn());
   /** The timers waiting now run (the tab is hidden: no frames). */
@@ -72,12 +100,13 @@ test('a world that registers is announced; one that never does is reported', () 
 test('start runs the world in #farm with its prefs and settings, then ready; once it has drawn, the newest scene', () => {
   const f = frame(), got = [];
   f.A.raw({ start: ({ el, opts, prefs }) => got.push(['start', el.id, prefs.get('zoom'), prefs.get('bell'), opts.still, opts.navState()]), scene: s => got.push(['scene', s.n]), select: id => got.push(['select', id]) });
+  // start carries the port; the page then sends the scene and the selection over it, as worlds.js does.
+  f.fromPage({ type: 'start', world: 'farm', prefs: { zoom: '2' }, settings: { still: true, theme: 'light', nav: { theme: 'light' }, bell: true } });
   f.fromPage({ type: 'scene', scene: { n: 1 } });
   f.fromPage({ type: 'select', id: 'a1' });
-  f.fromPage({ type: 'start', world: 'farm', prefs: { zoom: '2' }, settings: { still: true, theme: 'light', nav: { theme: 'light' }, bell: true } });
   assert.deepEqual(got, [['start', 'farm', '2', 'on', true, { theme: 'light' }]], 'it draws once before its first scene, as the farm did on the page');
   assert.equal(f.root.dataset.theme, 'light');
-  assert.deepEqual(f.sent.at(-1), { type: 'ready' });
+  assert.deepEqual(f.sent.at(-1), { type: 'ready' }, 'ready comes back over the port');
   f.fromPage({ type: 'scene', scene: { n: 2 } });
   f.draw();
   assert.equal(got.length, 1, 'one frame is not enough: it must have been drawn');
@@ -93,8 +122,8 @@ test('start runs the world in #farm with its prefs and settings, then ready; onc
 test('in a hidden tab (no frames drawn), the scene comes half a second after start', () => {
   const f = frame(), got = [];
   f.A.raw({ start: () => got.push('start'), scene: s => got.push(s.n) });
-  f.fromPage({ type: 'scene', scene: { n: 1 } });
   f.fromPage({ type: 'start', prefs: {}, settings: {} });
+  f.fromPage({ type: 'scene', scene: { n: 1 } });
   f.tick();
   f.draw();
   f.draw();
@@ -169,6 +198,20 @@ test('messages from anything but the page are ignored', () => {
   f.A.raw({ start: () => got.push('start'), scene() {} });
   f.fire('message', { source: {}, data: { type: 'start', prefs: {}, settings: {} } });
   assert.deepEqual(got, []);
+});
+
+test('`loaded` goes over the window; once `start` brings the port, the bridge listens only on it', () => {
+  const f = frame(), got = [];
+  f.A.raw({ start: () => got.push('start'), scene: s => got.push(['scene', s.n]) });
+  f.fire('DOMContentLoaded', {});
+  assert.deepEqual(f.sent, [{ type: 'loaded', raw: true }], 'loaded is sent over the window, before any port');
+  f.fromPage({ type: 'start', prefs: {}, settings: {} }); // carries the port; the bridge keeps it
+  // A `start` over the window now (what a page the world navigated to might post to window.parent) is not taken.
+  f.fire('message', { source: f.window.parent, data: { type: 'scene', scene: { n: 9 } } });
+  assert.deepEqual(got, ['start'], 'a window message after the port is live is ignored');
+  f.fromPage({ type: 'scene', scene: { n: 1 } });
+  f.draw(); f.draw();
+  assert.deepEqual(got, ['start', ['scene', 1]], 'the scene over the port is run');
 });
 
 test('a world asks at most four things at once; the rest wait their turn, and every one is answered', async () => {

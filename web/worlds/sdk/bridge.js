@@ -18,8 +18,15 @@
   }
 
   // The page, captured before the world's script runs: a world can replace window.parent, but not this.
+  // Only the handshake goes this way: the page's `start` brings a MessagePort, and from then on every
+  // message both ways rides that port. The port lives only here, in this realm's closure: when the world
+  // navigates its frame away, this realm dies and the port with it, so a page the world goes to gets no
+  // scenes and nothing it posts is heard. `port.onmessage` also survives `document.open()`, which erases
+  // every listener on this window and document (so the window `message` listener below is for the
+  // handshake alone, until the port is live).
   const toPage = window.parent;
-  const send = message => toPage.postMessage(message, '*');
+  let port = null;
+  let send = message => toPage.postMessage(message, '*');
   // The moment this document starts to go away (the world set location, say), the page is told, before
   // any page it goes to can run: the page then stops hearing from this frame. Capture and registered
   // first, so a world's own listener can't get in ahead of it. beforeunload fires as the navigation
@@ -116,9 +123,8 @@
     requestAnimationFrame(() => requestAnimationFrame(go));
     setTimeout(go, 500);
   }
-  addEventListener('message', e => {
-    if (e.source !== toPage) return;
-    const m = e.data;
+  // A message from the page: `start` over the window (it carries the port), then everything over the port.
+  function onPageMessage(m) {
     if (!m || typeof m !== 'object') return;
     if (m.type === 'start' && !started && world) {
       prefs = m.prefs && typeof m.prefs === 'object' ? { ...m.prefs } : {};
@@ -143,6 +149,16 @@
       sendQueued(); // the next one in line
       resolve({ ok: m.ok === true, status: m.status ?? 0, ...(m.data !== undefined ? { data: m.data } : {}), ...(m.error !== undefined ? { error: m.error } : {}) });
     }
+  }
+  addEventListener('message', e => {
+    if (e.source !== toPage || port) return; // once the port is live, the page talks only over it
+    const m = e.data;
+    if (m && typeof m === 'object' && m.type === 'start' && e.ports && e.ports[0]) {
+      port = e.ports[0]; // kept in this realm's closure; gone when the frame navigates
+      port.onmessage = ev => onPageMessage(ev.data); // a listener on the port, so document.open() can't erase it
+      send = message => port.postMessage(message); // ready, errors, leaving and every other message now ride the port
+    }
+    onPageMessage(m);
   });
 
   const A = (window.Agentville = window.Agentville ?? {});
@@ -157,7 +173,7 @@
     raw = how?.engine !== true;
   };
   /** Sends the page one of the messages it accepts (docs/worlds.md, "Messages"); it checks each one. */
-  A.send = send;
+  A.send = message => send(message); // the live `send`: over the port once the handshake is done, not the window send captured here
   addEventListener('DOMContentLoaded', () => {
     if (world) send({ type: 'loaded', ...(raw ? { raw: true } : {}) });
     else report('world.js did not register a world (Agentville.world or Agentville.raw).', 'world.js');

@@ -251,6 +251,14 @@ is undone: a world can open the list (`nav: 'worlds'`) but not catch a click on 
 Every message is an object with a `type`. Each side checks the other's: the frame takes messages
 from the page only, and the page from its current frame only.
 
+All of it rides a private channel. When the frame says `loaded`, the page makes a `MessageChannel` and
+hands one end to the bridge, inside `start`; from then on every message both ways — `scene`,
+`settings`, `select`, `reply`, and every frame-to-page message, `leaving` included — goes over that
+port, and the page ignores any window message from the frame. The port lives only in the frame's realm,
+so when a world navigates its frame away that realm dies with it: the page's scenes go into a dead port,
+and a page the world lands on gets none of them and is not heard (see "When a world breaks" and "The
+gaps").
+
 **From the page to the frame**
 
 | Message | What it is |
@@ -308,8 +316,12 @@ over it. A world that runs has a way back too: see "Give a way back", below.
   link, anything that navigates the frame), the bridge tells the page (`leaving`), before any page it
   goes to can run. The page removes the frame, hears nothing more from it, and shows a panel: "<name>
   tried to leave the page and was stopped." As a second layer, a second `load` of the same frame
-  (the page builds a new frame for each load) stops it too. What is still possible: the request that
-  leaves is itself sent, once, with whatever the world put in its address.
+  (the page builds a new frame for each load) stops it too. A world that erases its own listeners
+  (`document.open()` wipes the ones the bridge set) and holds the page it goes to from finishing its
+  load can slip past both, so the panel may not show; it is still cut off all the same — the channel's
+  realm went with the old document, so the page it landed on gets no scene and nothing it posts is
+  heard. What is still possible either way: the request that leaves is itself sent, once, with whatever
+  the world put in its address.
 - **Errors show with their message and line** (`world.js:12`), in the panel or the strip: the frame
   loads the SDK's and your world's scripts in CORS mode, so the browser doesn't hide them as "Script
   error." Scripts you add yourself (from your own `world.js`, by creating a `<script>` element) need
@@ -524,8 +536,9 @@ as visible to its author.
 `scripts/e2e-ui.mjs` (`npm run test:ui`) runs a probe world in a real browser that tries each way
 out (`fetch`, `EventSource`, the parent page, the top page, storage, cookies, the token, a frame of
 the dashboard, a picture from another server, a popup, WebRTC, a preconnect), sends the page
-messages it must drop, and checks that every one is blocked but the gaps below, and that a world
-that loads another page in its frame is stopped.
+messages it must drop, and checks that every one is blocked but the gaps below, that a world
+that loads another page in its frame is stopped, and that a world that erases its listeners and
+navigates away gets no scene after and has nothing it posts acted on.
 
 ## The gaps
 
@@ -543,12 +556,14 @@ post or upload, but it can get out what it sees:
 - So a world from your folder could get out what a private scene holds (states, tools and numbers;
   see "Privacy mode" for exactly what that is), and a world you let see what agents say could get
   out the words too.
-- **Leaving its frame.** A frame can always navigate itself away (`location = …`). The page stops it
-  as soon as it starts: the bridge tells the page the moment the document starts to go away (the
-  browser's `beforeunload` and `pagehide`), and the page removes the frame and hears nothing more
-  from it; should the browser not fire those, the frame's second `load` stops it (see "When a world
-  breaks"). What can't be stopped is the leaving request itself, which carries whatever the world
-  put in its address, once.
+- **Leaving its frame.** A frame can always navigate itself away (`location = …`). What can't be
+  stopped is the one request that starts the navigation, which carries whatever the world put in its
+  address. After that there is nothing more: page-to-frame traffic rides a `MessageChannel` port that
+  lives in the frame's realm, so once the world navigates, the realm and the port die together — the
+  page it lands on gets no scene, and anything it posts is ignored. The page usually catches the leave
+  and shows a panel (the bridge's `leaving`, from `beforeunload` / `pagehide`, or the frame's second
+  `load`); a world that erases those listeners and keeps the new page's load from finishing can avoid
+  the panel, but not the cut-off.
 
 The threat model, plainly: the sandbox protects your token and every action — a world can't act for
 you — but not the secrecy of what a world is shown. So treat the scene a world is handed as visible

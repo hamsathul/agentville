@@ -79,9 +79,24 @@ mkdirSync(join(worldsDir, 'leaves-slow'));
 writeFileSync(join(worldsDir, 'leaves-slow', 'world.json'), JSON.stringify({ name: 'Leaves slow', api: 1 }));
 writeFileSync(join(worldsDir, 'leaves-slow', 'world.js'), `Agentville.raw({ start() { location.href = 'http://127.0.0.1:${hang.address().port}/'; }, scene() {} });`);
 // A server elsewhere (another origin) that answers everything with a picture and notes what reached it:
-// a request that reaches it got out of a world, whatever the world was told.
+// a request that reaches it got out of a world, whatever the world was told. `/stay` serves a page a
+// world can navigate to: it reports any postMessage it hears (so we can see a scene reaching it) and
+// tries to act for the user through window.parent, then holds its load open with a subresource that
+// never finishes (so the frame's second `load` never fires — containment, not detection, must hold).
 const elsewhereHeard = [];
-const elsewhere = createServer((req, res) => { elsewhereHeard.push(req.url); res.writeHead(200, { 'content-type': 'image/svg+xml' }); res.end('<svg xmlns="http://www.w3.org/2000/svg" width="1" height="1"/>'); });
+const elsewhere = createServer((req, res) => {
+  if (req.url.startsWith('/never')) return; // never answers: keeps the navigated page's load open for good
+  elsewhereHeard.push(req.url);
+  if (req.url.startsWith('/stay')) {
+    res.writeHead(200, { 'content-type': 'text/html' });
+    res.end(`<!doctype html><meta charset=utf-8><title>elsewhere</title><script>
+      addEventListener('message', e => { new Image().src = '/heard?msg=' + encodeURIComponent(String(e && e.data && e.data.type)); });
+      for (const m of [{ type: 'nav', what: 'list' }, { type: 'pick', agentId: 'ui-asker' }, { type: 'request', id: 7, kind: 'agentFiles', agentId: 'ui-asker' }]) { try { parent.postMessage(m, '*'); } catch (e) {} }
+      </script><img src="/never">`);
+    return;
+  }
+  res.writeHead(200, { 'content-type': 'image/svg+xml' }); res.end('<svg xmlns="http://www.w3.org/2000/svg" width="1" height="1"/>');
+});
 await new Promise(resolve => elsewhere.listen(0, '127.0.0.1', resolve));
 const ELSEWHERE = `http://127.0.0.1:${elsewhere.address().port}`;
 // And elsewhere for what isn't a request: a UDP listener (a STUN server, for WebRTC) and a TCP one (for
@@ -130,6 +145,20 @@ writeFileSync(join(worldsDir, 'probe', 'world.js'), `(() => {
     },
   });
 })();`);
+
+// One that wipes its own document (as document.open() does, erasing every window/document listener) and
+// then navigates to the page elsewhere: the leaving request goes out, but after it the navigated page
+// must get no scene and the dashboard must act on nothing it posts. Containment rides the MessageChannel,
+// whose realm dies with the old document, not the beforeunload listeners document.open() just erased.
+mkdirSync(join(worldsDir, 'leaves-open'));
+writeFileSync(join(worldsDir, 'leaves-open', 'world.json'), JSON.stringify({ name: 'Leaves open', api: 1 }));
+writeFileSync(join(worldsDir, 'leaves-open', 'world.js'), `Agentville.raw({
+  start() {
+    try { document.open(); } catch (e) {} // erases this document's and window's listeners, the bridge's leaving ones among them
+    location.href = '${ELSEWHERE}/stay?from=leaves-open'; // then away, with no beforeunload to catch it
+  },
+  scene() {},
+});`);
 
 const repo = join(realpathSync(temp), 'farm-repo');
 mkdirSync(join(repo, 'src'), { recursive: true });
@@ -861,6 +890,28 @@ try {
   check(await until("document.getElementById('worlds-dlg').open"), 'its World ▾ opens the list of worlds');
   await js("document.querySelector('[data-world=\"farm\"]').click()");
   check(await until("document.querySelector('#farm .world-frame')?.src.endsWith('/world/farm/')") && await funtil("document.querySelectorAll('.px-tag').length >= 2") && await js("!document.querySelector('#farm .world-corner')"), 'and the farm comes back, without the corner');
+
+  console.log('A world that wipes its listeners and leaves is contained, not just caught');
+  const viewAt = () => js("document.getElementById('main').dataset.view");
+  const stayBefore = elsewhereHeard.filter(u => u.startsWith('/stay')).length;
+  await fjs("document.querySelector('[data-farm-nav=\"worlds\"]').click()");
+  const dlgOpen = await until("document.getElementById('worlds-dlg').open");
+  const hasLeaves = await js("!!document.querySelector('[data-world=\"u/leaves-open\"]')");
+  check(dlgOpen && hasLeaves, `the worlds list offers leaves-open (dlg ${dlgOpen}, has ${hasLeaves})`);
+  await js("document.querySelector('[data-world=\"u/leaves-open\"]')?.click()");
+  // It calls document.open() and navigates at once; the elsewhere page then holds its load open.
+  for (let i = 0; i < 40 && elsewhereHeard.filter(u => u.startsWith('/stay')).length === stayBefore; i++) await sleep(150);
+  await sleep(1000); // let the elsewhere page load and register its message listener, then post its messages
+  // Drive the dashboard to send the world scenes now, so "heard no scene" is a real test: each one goes
+  // over the dead port, reaching the navigated page only if the transport leaked back to the window.
+  for (let i = 0; i < 6; i++) { await js('try { window.TrackerFarm.update(snap); } catch (e) {}'); await sleep(150); }
+  check(elsewhereHeard.some(u => u.startsWith('/stay?from=leaves-open')), `the one leaving request reached the page elsewhere (${JSON.stringify(elsewhereHeard.filter(u => u.startsWith('/stay')))})`);
+  check(!elsewhereHeard.some(u => u.includes('/heard?msg=scene')), `but that page heard no scene from the dashboard (${JSON.stringify(elsewhereHeard.filter(u => u.startsWith('/heard')))})`);
+  check((await viewAt()) === 'farm', 'and the dashboard acted on nothing it posted: its nav to the list view was ignored');
+  check(answered === null || JSON.stringify(answered) === answeredBefore, 'nor was anything it tried to do for a session done');
+  await js("document.getElementById('view-list').click()"); // leave the navigated frame behind for the rest of the run
+  await until("document.getElementById('main').dataset.view === 'list'");
+
   for (let i = errors.length - 1; i >= 0; i--) if (/no barn here/.test(errors[i])) errors.splice(i, 1); // the throw was the test's own
 
   console.log('Claude Code setup');

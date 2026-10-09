@@ -136,6 +136,7 @@
   let host = null, frame = null, opts = {}, world = 'farm', scene = null, selectedId = null, loaded = false;
   let diary = [], timer = 0, lastSettings = '', inFlight = 0, generation = 0;
   let sent = null; // the scene the world was last given (private, or not)
+  let port = null; // the MessageChannel port to this frame: made on `loaded`, one end handed to the bridge in `start`
   let heardLoaded = false; // the frame's `loaded`, heard: once per frame (every load builds a new one)
   let ready = false, loadsLeft = 0, startTimer = 0, lastError = null, strip = null, failed = false;
   let stripHtml = '', stripPending = null, stripAt = -Infinity, stripClosedAt = -Infinity, stripTimer = 0;
@@ -151,7 +152,13 @@
     const nav = opts.navState?.() ?? {};
     return { still: Boolean(opts.still), theme: nav.theme ?? 'auto', nav, bell: browserStore.get('tracker-bell') === 'on' };
   };
-  const post = message => frame?.contentWindow?.postMessage(message, '*');
+  // Every message after `start` goes over the port (scene, settings, select, reply). `start` itself is
+  // posted to the frame with the port transferred alongside it (see handle('loaded')); nothing else uses
+  // the window. A world that navigates its frame away takes the port's realm with it, so the page posts
+  // scenes into a dead port and the page they went to hears nothing.
+  const post = message => { if (port) port.postMessage(message); };
+  /** Lets go of the port to a frame that is going away, so the next frame gets a fresh one. */
+  function closePort() { if (port) { try { port.close(); } catch { /* already gone */ } port = null; } }
   function pushSettings() {
     const s = settingsNow(), key = JSON.stringify(s);
     if (key === lastSettings) return;
@@ -193,11 +200,18 @@
     if (wait <= 0) { diaryAt = tick(); renderDiary(opts.diary, diary); return; }
     diaryTimer ||= setTimeout(() => { diaryTimer = 0; diaryAt = tick(); renderDiary(opts.diary, diary); }, wait);
   }
+  // A window `message` from the frame: only the handshake up to `loaded`. After that the frame talks only
+  // over the port (set up in handle('loaded')); a window message from it — the world's own, or one from a
+  // page it navigated to — is ignored.
   function onMessage(e) {
-    if (!frame || e.source !== frame.contentWindow) return;
-    const act = checkMessage(e.data, { scene: sent, private: isPrivate(world), sentPaths, inFlight });
+    if (!frame || e.source !== frame.contentWindow || loaded) return;
+    receive(e.data);
+  }
+  // A message from the frame, over the window before `loaded` or the port after it.
+  function receive(data) {
+    const act = checkMessage(data, { scene: sent, private: isPrivate(world), sentPaths, inFlight });
     if (!act) {
-      const type = String(e.data?.type ?? typeof e.data).slice(0, 40);
+      const type = String(data?.type ?? typeof data).slice(0, 40);
       if (!dropped.has(type) && dropped.size < DROPPED_MAX) { dropped.add(type); console.warn(`The ${world} world sent a message the page does not accept (${type}); it was dropped.`); }
       return;
     }
@@ -210,12 +224,16 @@
   }
   function handle(act) {
     switch (act.kind) {
-      case 'loaded':
+      case 'loaded': {
         loaded = true;
         generation++; // replies to an earlier frame's requests are not posted to this one
         sentPaths.clear();
         lastSettings = JSON.stringify(settingsNow());
-        post({ type: 'start', world, prefs: { ...loadPrefs(world), ...sessionPrefs.get(world) }, settings: settingsNow() });
+        const channel = new MessageChannel();
+        port = channel.port1;
+        port.onmessage = ev => receive(ev.data); // a listener on the port: it, not the window, carries the frame's messages from here
+        // `start` is the one message sent over the window, to hand the frame the other end of the port.
+        frame?.contentWindow?.postMessage({ type: 'start', world, prefs: { ...loadPrefs(world), ...sessionPrefs.get(world) }, settings: settingsNow() }, '*', [channel.port2]);
         measureSaved();
         sendScene();
         post({ type: 'select', id: selectedId });
@@ -223,6 +241,7 @@
         // its own doing), and a built-in one only when it draws itself (the farm's buttons are already there).
         if (world.startsWith('u/') || act.raw) showCorner();
         break;
+      }
       case 'leaving': fail('left'); break; // its document is going away: stopped before any page it goes to can speak
       case 'ready':
         ready = true;
@@ -315,6 +334,7 @@
     loaded = false;
     heardLoaded = false;
     generation++;
+    closePort();
     sent = null; // nothing is given to the new frame until it says `loaded`
     sentPaths.clear();
     for (const { timer: t } of waitingAct.values()) clearTimeout(t);
@@ -347,6 +367,7 @@
     resetStrip();
     generation++; // its replies and messages are not heard any more
     loaded = false;
+    closePort();
     frame = null;
     failed = true; // the panel is showing for this world: saving its files rebuilds it
     const name = words(info.name);
@@ -548,6 +569,7 @@
     waitingAct.clear();
     host?.replaceChildren();
     host = frame = null;
+    closePort();
     loaded = false;
     heardLoaded = false;
     clearTimeout(startTimer);
