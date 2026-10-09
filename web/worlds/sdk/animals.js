@@ -70,6 +70,13 @@
       for (const [bx, by] of points) { if (!okSeg(o, ax, ay, bx, by)) return null; [ax, ay] = [bx, by]; }
       return points.map(([x, y]) => [Math.round(x), Math.round(y)]);
     }
+    /** A route to (x, y): straight, or with one bend where the straight way crosses what it keeps off; null when neither. */
+    function routeTo(o, pt) {
+      const straight = routeOf(o, [pt]);
+      if (straight) return straight;
+      for (let k = 0; k < 16; k++) { const w = somewhere(o, { reach: true }); if (w && okSeg(o, w[0], w[1], pt[0], pt[1])) return [w, pt].map(([x, y]) => [Math.round(x), Math.round(y)]); }
+      return null;
+    }
     /** A spot it may be (near a point, for a gathering), reachable from where it is when `reach`; null when there is none. */
     function somewhere(o, { near = null, reach = false, spread = 1 } = {}) {
       const areas = o.def.home ? [o.def.home] : roam;
@@ -230,7 +237,7 @@
         const o = byId(id);
         if (!o) continue;
         o.inGag = false;
-        if (o.gagSpot) doing(o, { pose: movingPose(o), route: [g.home[k]], s: 10 }); // out of the spot it was let into
+        if (o.gagSpot) doing(o, { pose: movingPose(o), route: [...(g.way ?? []).slice().reverse(), g.home[k]], s: 10 }); // out of the spot it was let into, the way it came
       }
     }
     /** Where a role is: a creature, the farmer (from the crew), the chicken; null for a role the gag doesn't have. */
@@ -264,7 +271,7 @@
       const role = step[key] === undefined ? null : key === 'wait' ? null : key === 'fx' ? step.at : step[key];
       if (role && typeof role === 'string' && key !== 'wait' && !(role in g.roles)) { fail(g, `it has a role it wasn't cast (${role})`, crew); return; }
       const o = role && role !== 'farmer' && role !== 'chicken' ? byId(g.roles[role]) : null;
-      const ms = Number(step.ms ?? (key === 'wait' ? step.wait : 8000)) || 0, over = () => T - g.at >= ms / 1000;
+      const ms = g.ms ?? (Number(step.ms ?? (key === 'wait' ? step.wait : 8000)) || 0), over = () => T - g.at >= (g.ms ?? ms) / 1000;
       try {
         if (!g.started) {
           g.started = true;
@@ -272,12 +279,20 @@
           if (key === 'go') {
             const t = targetOf(g, step, crew, o);
             if (!t?.pt) { next(g); return; }
-            if (role === 'farmer') { crew.send(f, t.pt, { stay: ms / 1000 }); g.borrowed.add(f); g.target = t.pt; }
+            if (role === 'farmer') { g.ms = step.ms ?? 20000; crew.send(f, t.pt, { stay: g.ms / 1000 }); g.borrowed.add(f); g.target = t.pt; } // a go with no ms lasts until it gets there
             else {
-              const pts = [t.pt], allowedInto = t.spot ? avoid.find(r => inRect(r, t.pt[0], t.pt[1])) : null;
-              const ok = allowedInto || o.gagSpot ? true : routeOf(o, pts);
-              doing(o, { pose: step.run ? 'run' : movingPose(o), route: ok ? pts : [], s: ms / 1000, fast: Boolean(step.run) });
-              if (allowedInto) o.gagSpot = true;
+              const into = t.spot ? avoid.find(r => inRect(r, t.pt[0], t.pt[1])) : null;
+              // let into a spot it may not be otherwise (a hammock): the way to its door is checked, only the last step isn't
+              const door = into ? nearestAllowed(o, [t.pt[0], into.y - 1]) : null;
+              const way = into && door ? routeTo(o, door) : null;
+              if (into && !way) { endGag(g, crew); return; } // no way to its door from here: another time
+              const toRole = !into && !o.gagSpot && step.to in g.roles, near = toRole ? nearestAllowed(o, t.pt) : null; // beside a role: as near as it may go
+              const reach = near && Math.hypot(near[0] - t.pt[0], near[1] - t.pt[1]) <= 24 ? routeTo(o, near) : null;
+              if (toRole && !reach) { endGag(g, crew); return; } // out of its reach (a farmer in a field): another time
+              const route = into ? [...way, t.pt] : o.gagSpot ? [...(g.way ?? []).slice().reverse(), t.pt] : toRole ? reach : routeTo(o, t.pt);
+              if (step.ms == null && route?.length) { let d = 0, [ax, ay] = [o.x, o.y]; for (const [bx, by] of route) { d += Math.hypot(bx - ax, by - ay); [ax, ay] = [bx, by]; } g.ms = Math.max(8000, (1000 * d) / (lib[o.kind].speed * (step.run ? 2.5 : 1)) + 2000); }
+              doing(o, { pose: step.run ? 'run' : movingPose(o), route: route ?? [], s: (g.ms ?? ms) / 1000, fast: Boolean(step.run) });
+              if (into) { o.gagSpot = true; g.way = way; }
             }
           } else if (key === 'say') {
             const by = o ?? byId(Object.entries(g.roles).find(([k]) => k !== 'farmer' && k !== 'chicken')?.[1]);
@@ -309,7 +324,7 @@
         fail(g, String(err?.message ?? err), crew);
       }
     }
-    function next(g) { g.i++; g.started = false; g.at = T; }
+    function next(g) { g.i++; g.started = false; g.at = T; g.ms = null; }
 
     return {
       /** Where creatures may be (and the perches and spots there): anything now outside is moved somewhere it may be, and walks toward nothing it may no longer reach. */
@@ -445,16 +460,23 @@
         const o = byId(id), a = o?.def.actions?.[i];
         if (!a || o.away) return null;
         const at = a.gather ? this.where(id).stand : [Math.round(o.x), Math.round(o.y)];
+        let thief = null;
         if (a.gather) {
-          for (const d of shown().filter(x => x.kind === o.kind)) {
-            const to = somewhere(d, { near: at, reach: true });
-            doing(d, { pose: movingPose(d), route: to ? [to] : [], s: 6 + (d.look === 'duckling' ? 1 : 0) });
+          const family = shown().filter(x => x.kind === o.kind);
+          if (a.steal) thief = family.filter(d => d.look === 'duckling').at(-1) ?? null; // the littlest one gets there first
+          const grab = thief && nearestAllowed(thief, at), dist = p => Math.hypot(p[0] - at[0], p[1] - at[1]); // the crumbs, or as near as it may go (a duck keeps to the water)
+          const won = grab && routeOf(thief, [grab]) ? grab : null;
+          for (const d of family) {
+            let to = d === thief && won ? won : somewhere(d, { near: at, reach: true });
+            for (let k = 0; won && d !== thief && to && k < 8 && dist(to) < dist(won) + 4; k++) to = somewhere(d, { near: at, reach: true }) ?? to; // the others a little behind it
+            doing(d, { pose: movingPose(d), route: to ? [to] : [], s: 6 + (d.look === 'duckling' ? 1 : 0), fast: d === thief });
           }
         } else {
           const to = a.run ? somewhere(o, { reach: true }) : null; // a run goes only where it may, the whole way
           doing(o, { pose: a.run && !to ? 'happy' : a.pose ?? 'happy', route: to ? [to] : [], s: (a.ms ?? 2500) / 1000, fast: Boolean(to) });
         }
         if (a.line) say(o, a.line);
+        if (thief) say(thief, 'bread'); // "mine!"
         return { at, fx: a.fx ?? null, by: by ?? null };
       },
       /** The lines being said now, above their creatures. */

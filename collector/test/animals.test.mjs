@@ -466,3 +466,54 @@ test('stopGags ends every gag and play at once (motion off, animals hidden): hat
   assert.equal(a.list()[0].wear?.hat, undefined, 'the goat has no hat');
   assert.ok(crew.log.some(l => l[0] === 'release' && l[1] === 'pip'));
 });
+
+test('Feed bread with steal: the last duckling gets there first and says so', () => {
+  const k = load();
+  for (const seed of [1, 2, 3, 4, 5, 6]) {
+    const a = k.makeAnimals([{ kind: 'duck', count: 4, looks: ['drake', 'hen', 'duckling', 'duckling'], home: POND, bank: [[30, 158]], name: 'Ducks',
+      actions: [{ label: 'Feed bread', fx: 'crumbs', gather: true, steal: true, line: 'fed' }], lines: { idle: ['quack.'], fed: ['BREAD!'], bread: ['mine!'] } }], { random: k.seededRandom(seed) });
+    a.place({ roam: [YARD], avoid: [] });
+    const r = a.perform('duck-0', 0, null);
+    for (let i = 0; i < 20; i++) a.tick(0.1);
+    const near = a.list().map(o => ({ id: o.id, d: Math.hypot(o.x - r.at[0], o.y - r.at[1]) })).sort((x, y) => x.d - y.d);
+    assert.equal(near[0].id, 'duck-3', `the last duckling is nearest the crumbs (seed ${seed})`);
+    assert.ok(near[0].d <= 6, `right by the crumbs, as near as the water lets it (${near[0].d})`);
+    assert.ok(plain(a.bubbles()).some(b => b.id === 'duck-3' && b.text === 'mine!'));
+  }
+});
+
+test('a gag lets a creature into its spot, but the way there and back keeps off the rest (the pond)', () => {
+  const k = load();
+  const PONDR = { x: 8, y: 194, w: 70, h: 32 }, HAMMOCK = { x: 84, y: 196, w: 24, h: 34 }, YARD2 = { x: 4, y: 100, w: 104, h: 140 };
+  for (const seed of [1, 2, 3, 4]) {
+    const a = k.makeAnimals({ cast: [{ kind: 'cow' }], gags: [{ id: 'hammock', needs: { cow: 1, spot: 'hammock' }, steps: [{ go: 'cow', to: 'spot:hammock' }, { stay: 'cow', is: 'sleep', ms: 3000, while: 'spot:hammock' }, { go: 'cow', to: 'back' }] }] }, { random: k.seededRandom(seed) });
+    a.place({ roam: [YARD2], avoid: [PONDR, HAMMOCK], spots: { hammock: [97, 224] } });
+    const crew = fakeCrew([]);
+    let napped = false;
+    for (let i = 0; i < 3000; i++) {
+      a.tick(0.1, { crew });
+      const c = plain(a.list())[0];
+      if (c.x === 97 && c.y === 224) napped = true;
+      assert.ok(!(c.x > PONDR.x && c.x < PONDR.x + PONDR.w && c.y > PONDR.y && c.y < PONDR.y + PONDR.h), `seed ${seed}: in the pond at (${c.x},${c.y})`);
+    }
+    assert.ok(napped, `seed ${seed}: it got to the hammock`);
+  }
+});
+
+test('a gag whose creature can’t get to its farmer (in a field) ends: no hat taken from across the fence', () => {
+  const k = load();
+  const NIBBLE = { id: 'nibble', needs: { goat: 1, farmer: 'busy' }, steps: [{ go: 'goat', to: 'farmer', ms: 6000 }, { wear: 'goat', what: 'hat', on: true }, { say: 'goat', line: 'nibble' }, { wait: 3000 }, { wear: 'goat', what: 'hat', on: false }, { go: 'goat', to: 'away' }] };
+  const a = k.makeAnimals({ cast: [{ kind: 'goat' }], gags: [NIBBLE] }, { random: k.seededRandom(1) });
+  a.place({ roam: [YARD], avoid: [], blocked: x => x >= 120 });
+  const crew = fakeCrew([{ id: 'w', state: 'working', x: 170, y: 140 }]);
+  let started = false;
+  for (let i = 0; i < 3000; i++) { a.tick(0.1, { crew }); if (a.gagNow()) started = true; }
+  assert.ok(started, 'it was tried');
+  assert.equal(crew.flags['w.hatless'], undefined, 'never hatless');
+  const b = k.makeAnimals({ cast: [{ kind: 'goat' }], gags: [NIBBLE] }, { random: k.seededRandom(1) });
+  b.place({ roam: [YARD], avoid: [], blocked: x => x >= 120 });
+  const near = fakeCrew([{ id: 'm', state: 'working', x: 40, y: 160 }]); // in the meadow: in reach
+  for (let i = 0; i < 3000 && near.flags['m.hatless'] !== true; i++) b.tick(0.1, { crew: near });
+  assert.equal(near.flags['m.hatless'], true, 'a farmer in reach loses its hat a moment');
+  assert.ok(!near.log.some(l => l[0] === 'send'), 'a busy farmer is never sent');
+});

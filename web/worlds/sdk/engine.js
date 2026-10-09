@@ -256,7 +256,7 @@ function makePixelView(th, prefs) {
   const kit = cast.length && typeof makeAnimals === 'function' ? makeAnimals(animalWorld, { random: seededRandom(cast.length * 7919) }) : null;
   let animalsOn = prefs.get('animals') !== 'off';
   const animalsShown = () => Boolean(kit && animalsOn);
-  const placeAnimals = () => kit?.place({ roam: th.roam?.() ?? [], avoid: th.avoid?.() ?? [], blocked: (x, y) => Boolean(th.fieldAt(x, y) || th.buildingAt?.(x, y)) }); // never on a field or a building, whatever roam says
+  const placeAnimals = () => kit?.place({ roam: th.roam?.() ?? [], avoid: th.avoid?.() ?? [], perches: th.perches?.() ?? [], spots: th.spots?.() ?? {}, blocked: (x, y) => Boolean(th.fieldAt(x, y) || th.buildingAt?.(x, y)) }); // never on a field or a building, whatever roam says
   const animalSays = new Map(); // creature id → its bubble element
   let stillAt = 0; // when the animals were last drawn still: their lines keep time with motion off
   if (typeof window !== 'undefined' && window.Agentville) window.Agentville.animalsNow = () => (kit ? kit.list() : []); // read-only: where they are (the browser test)
