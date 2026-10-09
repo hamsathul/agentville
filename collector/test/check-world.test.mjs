@@ -230,8 +230,9 @@ test('creature rules: an fx is one the engine draws (a pointer: an unknown one d
 
 test('creature rules: a pose is one the creature has (a pointer: an unknown one stands)', () => {
   const r = rules(cat({ actions: [{ label: 'Bath', pose: 'swim' }, { label: 'Feed', pose: 'eat' }] }));
-  assert.deepEqual(r, { problems: [], pointers: ['cat: action "Bath": pose "swim" isn\'t one the cat has (stand, walk, run, eat, sleep, happy): it stands'] });
+  assert.deepEqual(r, { problems: [], pointers: ['cat: action "Bath": pose "swim" isn\'t one the cat has (stand, walk, run, eat, sleep, happy, yawn, startled, stretch, roll): it stands'] });
   assert.deepEqual(rules({ kind: 'duck', actions: [{ label: 'Bath', pose: 'swim' }, { label: 'Dive', pose: 'dabble' }] }), { problems: [], pointers: [] }, 'the duck swims');
+  assert.deepEqual(rules(cat({ actions: [{ label: 'Wake', pose: 'yawn' }, { label: 'Tickle', pose: 'roll' }] })), { problems: [], pointers: [] }, 'every creature yawns and rolls');
 });
 
 test("creature rules: an action's line is a key of lines", () => {
@@ -267,14 +268,21 @@ test("creature rules: the copied lists match what creatures.js, animals.js and e
   const src = f => readFileSync(builtIn(`sdk/${f}`), 'utf8'), lits = (s, re) => new Set([...s.matchAll(re)].map(m => m[1]));
   // fx: the engine's showFx
   assert.deepEqual(lits(src('engine.js'), /r\.fx === '(\w+)'/g), new Set(RULES.FX));
-  // poses: every pose creatures.js and the kit name, and each creature's own beyond the common ones
-  const named = new Set([...lits(src('creatures.js'), /pose === '(\w+)'/g), ...lits(src('animals.js'), /pose(?: ===|:) '(\w+)'/g)]);
+  // poses: every pose creatures.js and the kit name (POSE_AS: the ones every creature is drawn in as
+  // another), and each creature's own beyond the common ones
+  const creatures = src('creatures.js'), poseAs = Object.keys(vm.runInContext(`(${creatures.match(/const POSE_AS = (\{[^}]*\})/)[1]})`, vm.createContext({})));
+  assert.ok(poseAs.length, 'creatures.js has its POSE_AS');
+  const named = new Set([...lits(creatures, /pose === '(\w+)'/g), ...poseAs, ...lits(src('animals.js'), /pose(?: ===|:) '(\w+)'/g)]);
   assert.deepEqual(named, new Set([...RULES.POSES, ...Object.values(RULES.POSES_OF).flat()]));
-  const lib = vm.runInContext(`${src('creatures.js')}; CREATURES`, vm.createContext({ px() {} }));
-  for (const [kind, c] of Object.entries(lib)) {
-    const draw = c.draw.toString();
+  // Each creature's own draw, from the source: creatures.js wraps every draw (POSE_AS, what it wears), so
+  // the draw it exports no longer reads as the creature's own.
+  const lib = vm.runInContext(`${creatures}; CREATURES`, vm.createContext({ px() {} }));
+  const body = creatures.slice(creatures.indexOf('const CREATURES = {'), creatures.indexOf('const POSE_AS'));
+  const drawOf = Object.fromEntries(body.split(/^ {4}(?=\w+: \{ w: )/m).slice(1).map(s => [s.match(/^(\w+):/)[1], s]));
+  assert.deepEqual(Object.keys(drawOf), Object.keys(lib), 'each creature found in the source');
+  for (const [kind, draw] of Object.entries(drawOf)) {
     const own = [...lits(draw, /pose === '(\w+)'/g)].filter(p => !RULES.POSES.includes(p));
-    assert.deepEqual(new Set(own), new Set((RULES.POSES_OF[kind] ?? RULES.POSES).filter(p => !RULES.POSES.includes(p))), `${kind}'s own poses`);
+    assert.deepEqual(new Set(own), new Set((RULES.POSES_OF[kind] ?? RULES.POSES).filter(p => !RULES.POSES.includes(p) && !poseAs.includes(p))), `${kind}'s own poses`);
     assert.deepEqual(lits(draw, /look (?:===|!==|=) '(\w+)'/g), new Set(RULES.LOOKS_OF[kind] ?? []), `${kind}'s looks`);
   }
   assert.match(src('animals.js'), new RegExp(`LINE_MAX = ${RULES.LINE_MAX}\\b`));

@@ -519,7 +519,7 @@ test('the farm’s animals: seven kinds, thirteen animals; never a chicken, the 
   const window = { Agentville: { raw: () => {} } };
   vm.runInNewContext(`${code}\n;window.CREATURES = CREATURES;`, { window, console, Math, Date, JSON, Map, Set });
   const th = window.AgentvilleFarm.makeFarm();
-  const cast = plain(th.animals());
+  const cast = plain(th.animals().cast); // animals() is { cast, gags, play }
   assert.deepEqual(cast.map(c => [c.kind, c.count ?? 1]), [['cow', 2], ['goat', 2], ['sheepdog', 1], ['ostrich', 1], ['lion', 1], ['tiger', 1], ['duck', 5]]);
   for (const c of cast) {
     assert.ok(window.CREATURES[c.kind], c.kind);
@@ -567,4 +567,78 @@ test('with animals on, the scenery duck is gone (the ducks are the animals’ no
   window.__PXG.animals = true;
   th.ground();
   assert.ok(off > 0 && whiteOnPond() === 0, `white fills on the pond: ${off} off, ${whiteOnPond()} on`);
+});
+
+test('the farm’s gags, play and habits are written right: known steps, roles in its cast, lines of 40 at most', () => {
+  const window = { Agentville: { raw: () => {} } };
+  vm.runInNewContext(`${code}\n;window.CREATURES = CREATURES;`, { window, console, Math, Date, JSON, Map, Set });
+  const th = window.AgentvilleFarm.makeFarm();
+  const { cast, gags, play } = plain(th.animals());
+  const kinds = new Set(cast.map(c => c.kind));
+  const STEPS = new Set(['go', 'chase', 'say', 'pose', 'wear', 'wait', 'fx', 'stay']);
+  assert.deepEqual(gags.map(g => g.id).sort(), ['bucket', 'hammock', 'hat', 'nibble', 'startled', 'tag'].sort());
+  for (const g of [...gags, ...play]) {
+    for (const k of Object.keys(g.needs)) assert.ok(kinds.has(k) || ['farmer', 'chicken', 'spot'].includes(k), `${g.id}: ${k}`);
+    for (const s of g.steps) assert.ok(Object.keys(s).some(k => STEPS.has(k)), `${g.id}: ${JSON.stringify(s)}`);
+  }
+  for (const c of cast) for (const lines of Object.values(c.lines)) for (const l of lines) assert.ok(l.length <= 40, l);
+  for (const g of [...gags, ...play]) for (const lines of Object.values(g.lines ?? {})) for (const l of lines) assert.ok(l.length <= 40, l);
+  assert.ok(cast.find(c => c.kind === 'goat').habits.includes('climb'));
+  assert.ok(play.length >= 3, 'play: a stick for the dog, a goat to pet, a nap by the lion');
+});
+
+test('the farm says when the hammock is free, and turns a field’s weather into events for the animals', () => {
+  const window = { Agentville: { raw: () => {} } };
+  vm.runInNewContext(code, { window, console, Math, Date, JSON, Map, Set });
+  const farm = window.AgentvilleFarm, th = farm.makeFarm();
+  const sceneOf = (weather, nap) => ({ plan: null, chrome: {}, fields: [{ key: '/r', name: 'r', weather, prs: { open: [], merged: [] } }], farmers: nap ? [{ id: 'n', nap: true, state: 'idle', field: null }] : [], carts: [], mail: [], henhouse: { eggs: 0, roosting: 0 } });
+  th.relayout(farm.layoutFor([{ key: '/r', name: 'r' }]));
+  th.setScene(sceneOf(null, false));
+  assert.equal(th.spotFree('hammock'), true);
+  const ev = plain(th.setScene(sceneOf('rain', true)));
+  assert.equal(th.spotFree('hammock'), false, 'a farmer napping: taken');
+  assert.deepEqual(ev.filter(e => e.kind === 'deployFailed').length, 1);
+  assert.equal(ev.find(e => e.kind === 'deployFailed').text, '');
+  assert.equal(plain(th.setScene(sceneOf('rain', true))).filter(e => e.kind).length, 0, 'not again while it rains');
+  assert.equal(plain(th.setScene(sceneOf('rainbow', true))).filter(e => e.kind === 'deployOk').length, 1);
+});
+
+test('a farmer whose hat a goat has is drawn without it (and without its model pin)', () => {
+  const draw = hatless => {
+    const sprite = new Set(), main = new Set();
+    const g = { set fillStyle(c) { g._c = c; }, get fillStyle() { return g._c; }, fillRect() { sprite.add(g._c); }, clearRect() {}, _c: '' };
+    const document = { createElement: () => ({ getContext: () => g }) };
+    const window = { Agentville: { raw: () => {} } };
+    vm.runInNewContext(`${code}\n;window.__PXG = PXG;`, { window, document, console, Math, Date, JSON, Map, Set });
+    const farm = window.AgentvilleFarm, scene = window.AgentvilleScene;
+    let f = null;
+    for (let i = 0; !f; i++) { // a farmer with a hat whose colour it wears nowhere else
+      const c = farm.farmScene(scene.toScene(snapOf([agent(`a${i}`, { state: 'idle', model: 'claude-opus-4-1' })], [repo('/x')]))).farmers[0], l = c.look;
+      if (l.hat !== 'none' && ![l.hair, l.skin, l.overalls, l.band].map(farm.ink).includes(farm.ink(l.hatColor))) f = c;
+    }
+    const ctx = { set fillStyle(c) { ctx._c = c; }, get fillStyle() { return ctx._c; }, fillRect() { main.add(ctx._c); }, drawImage() {}, save() {}, restore() {}, translate() {}, rotate() {}, globalAlpha: 1, _c: '' };
+    window.__PXG.ctx = ctx; window.__PXG.T = 0;
+    farm.makeFarm().drawChar({ ...f, family: 'opus' }, { x: 100, y: 100, walk: false, zone: 'charge', hatless });
+    return { sprite, main, hat: farm.ink(f.look.hatColor) };
+  };
+  const on = draw(false), off = draw(true);
+  assert.ok(on.sprite.has(on.hat), 'its hat');
+  assert.ok(!off.sprite.has(off.hat), 'no hat');
+  assert.ok(on.main.has('#8a5fc0') && !off.main.has('#8a5fc0'), 'the pin goes with the hat');
+});
+
+test('the goats get up on both the woodpile and the rock, and neither is on the shade tree', () => {
+  const window = { Agentville: { raw: () => {} } };
+  vm.runInNewContext(`${code}\n;window.__kit = { makeAnimals, seededRandom };`, { window, console, Math, Date, JSON, Map, Set });
+  const farm = window.AgentvilleFarm, th = farm.makeFarm(), L = th.relayout(farm.layoutFor([{ key: '/a', name: 'a' }, { key: '/b', name: 'b' }]));
+  th.setScene({ plan: null, chrome: {}, fields: [], farmers: [], carts: [], mail: [], henhouse: { eggs: 0, roosting: 0 } });
+  const perches = plain(th.perches()), crown = [66, L.GRID.y1 - 38]; // the shade tree's crown, r 21
+  for (const [x, y] of perches) assert.ok(Math.hypot(x - crown[0], y - crown[1]) > 27, `a perch on the shade tree (${x},${y})`);
+  const used = new Set();
+  for (const seed of [1, 2]) {
+    const a = window.__kit.makeAnimals(th.animals(), { random: window.__kit.seededRandom(seed) });
+    a.place({ roam: th.roam(), avoid: th.avoid(), perches: th.perches(), spots: th.spots(), blocked: (x, y) => Boolean(th.fieldAt(x, y) || th.buildingAt?.(x, y)) });
+    for (let i = 0; i < 24000 && used.size < perches.length; i++) { a.tick(0.1); for (const o of a.list()) if (o.kind === 'goat' && o.lift) used.add(`${o.x},${o.y}`); }
+  }
+  assert.equal(used.size, perches.length, `goats stood on ${[...used].join(' ')} of ${perches.map(p => `${p[0]},${p[1]}`).join(' ')}`);
 });

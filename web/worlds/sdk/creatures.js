@@ -38,7 +38,7 @@
     } },
     ostrich: { w: 9, h: 15, speed: 20, night: 'sleep', draw(p, pose, T) {
       const N = '#e8b8a0', L = '#d99a7a';
-      if (pose === 'sleep' || pose === 'hide') { p(-4, -5, 7, 4, INK); p(-4, -4, 1, 1, '#f4f1ea'); if (pose === 'hide') p(3, -1, 1, 1, N); else p(3, -3, 2, 1, N); return; }
+      if (pose === 'sleep' || pose === 'hide') { p(-4, -5, 7, 4, INK); p(-4, -4, 1, 1, '#f4f1ea'); if (pose === 'hide') p(3, -1, 1, 1, N); else { p(3, -3, 2, 1, N); p(2, -4, 1, 1, '#ffffff'); } return; } // asleep, one eye open
       const s = legStep(pose, T);
       p(-1, -5, 1, 5 - s, L); p(1, -5, 1, 4 + s, L);
       p(-3, -9, 6, 4, INK); p(-4, -9, 1, 2, '#f4f1ea');
@@ -60,8 +60,8 @@
       p(-6, -7, 10, 4, O); for (const sx of [-4, -1, 2]) p(sx, -7, 1, 3, INK); p(-7, -8 + (Math.floor(T * 3) % 2), 1, 2, O);
       p(3, -9, 4, 4, O); p(5, -7, 2, 1, Wt); p(5, -8, 1, 1, INK); p(4, -10, 1, 1, O);
     } },
-    duck: { w: 9, h: 8, speed: 7, night: 'sleep', water: true, draw(p, pose, T, look = 'drake') {
-      if (pose === 'swim' || pose === 'dabble' || pose === 'sleep') p(-4, -1, 8, 1, '#2c4a85'); // the water round it
+    duck: { w: 9, h: 8, speed: 7, night: 'sleep', water: true, draw(p, pose, T, look = 'drake', wear = {}) {
+      if ((pose === 'swim' || pose === 'dabble' || pose === 'sleep') && !wear.ice) p(-4, -1, 8, 1, '#2c4a85'); // the water round it (none on ice)
       if (look === 'duckling') { const Y = '#ffd43b'; p(-2, -3, 3, 2, Y); p(0, -4, 2, 2, Y); p(2, -3, 1, 1, '#f08a24'); p(1, -4, 1, 1, INK); return; }
       const body = look === 'hen' ? '#a8805a' : '#b9a68a', head = look === 'hen' ? '#8c6a46' : '#2f8a4a';
       if (pose === 'dabble') { p(-3, -3, 5, 2, body); p(-4, -5, 2, 2, body); return; } // bottom up, head under water
@@ -98,6 +98,33 @@
       p(-2, -3, 4, 2, O); p(-3, -4, 1, 1, O); p(-3, -2, 1, 1, O); p(1, -3, 1, 1, INK);
     } },
   };
+
+  // The poses every creature knows beyond its own: a yawn and a start stand (a start one pixel up), a
+  // stretch and a roll lie down; the duck slides on ice as it stands. Then each creature's touches for
+  // them, and what it wears (a scarf, a hat in its mouth, a bucket).
+  const POSE_AS = { yawn: 'stand', startled: 'stand', stretch: 'sleep', roll: 'sleep', slide: 'stand' };
+  const LEGS = { cow: INK, goat: '#8c7b62', sheepdog: '#8a93a0', lion: '#8a5a2b', tiger: '#e8792b', cat: '#5f6b7a', dog: '#6b4320' };
+  const belly = (colour, legs) => p => { p(-4, -4, 8, 2, colour); for (const x of [-4, -2, 1, 3]) p(x, -6, 1, 2, legs); }; // on its back, legs in the air
+  const TOUCH = {
+    lion: { yawn: p => p(6, -7, 1, 2, '#5a1f19') },
+    tiger: { yawn: p => p(6, -6, 1, 1, '#5a1f19') },
+    cat: { yawn: p => p(4, -5, 1, 1, '#5a1f19') },
+    sheepdog: { roll: belly('#e6eef5', '#8a93a0') },
+    dog: { roll: belly('#c98d4f', '#6b4320') },
+  };
+  for (const [kind, c] of Object.entries(CREATURES)) {
+    const own = c.draw, touch = TOUCH[kind] ?? {};
+    c.draw = (p0, pose0, T, look, wear = {}) => {
+      if (touch[pose0] && pose0 === 'roll') { touch.roll(p0); return; }
+      const p = pose0 === 'startled' ? (dx, dy, w, h, colour) => p0(dx, dy - 1, w, h, colour) : p0;
+      own(p, POSE_AS[pose0] ?? pose0, T, look, wear);
+      if (pose0 !== 'roll') touch[pose0]?.(p);
+      if (pose0 === 'stretch' && LEGS[kind]) p(Math.floor(c.w / 2) - 3, -2, 2, 1, LEGS[kind]); // front legs forward
+      if (kind === 'goat' && wear.scarf) { p(2, -7, 3, 1, '#e04a3a'); p(1, -6, 1, 2, '#e04a3a'); }
+      if (kind === 'goat' && wear.hat) p(5, -9, 2, 2, wear.hat);
+      if (kind === 'ostrich' && wear.bucket) { p(4, -13, 2, 3, '#8a93a0'); p(4, -13, 2, 1, '#c3cbd2'); }
+    };
+  }
 
   Object.assign(globalThis, { CREATURES, creaturePainter });
 })();

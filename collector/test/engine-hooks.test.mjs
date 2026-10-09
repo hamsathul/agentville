@@ -147,3 +147,88 @@ test('a world with animals draws them, and draws nothing more with them switched
   };
   assert.ok(run(null) > run('off'), 'on by default: more drawn');
 });
+
+test('a world event with a kind reaches the animals; one without text pops nothing', () => {
+  const { window, dom, sdk } = load();
+  const reacted = [];
+  const world = fourHooks({ animals: () => [{ kind: 'cow' }], roam: () => [{ x: 10, y: 50, w: 150, h: 40 }], setScene: () => [{ kind: 'deployFailed', at: [60, 60], text: '' }] });
+  const view = sdk.makePixelView(sdk.withDefaults(world), prefs);
+  view.mount(dom.make(), { still: true });
+  view.animalsKit().react = (kind, at) => { reacted.push([kind, at]); return true; };
+  view.update(sdk.engineScene(twoAgents(window)));
+  assert.deepEqual(plain(reacted), [['deployFailed', [60, 60]]]);
+});
+
+test('a world event with no text pops nothing; one with text still pops', () => {
+  const { window, dom, sdk } = load();
+  const made = [];
+  dom.document.createElement = () => { const el = dom.make(); made.push(el); return el; };
+  const world = fourHooks({ setScene: () => [{ kind: 'deployFailed', at: [60, 60], text: '' }, { at: [70, 70], text: 'sold!' }] });
+  const view = sdk.makePixelView(sdk.withDefaults(world), prefs);
+  view.mount(dom.make(), { still: false });
+  view.update(sdk.engineScene(twoAgents(window)));
+  assert.equal(made.filter(el => String(el.className).startsWith('px-pop')).length, 1);
+});
+
+test('a world whose animals() gives { cast, gags, play } gets its creatures and its gags', () => {
+  const { dom, sdk } = load();
+  const gag = { id: 'baa', needs: { cow: 1 }, steps: [{ wait: 100 }] };
+  const view = sdk.makePixelView(sdk.withDefaults(fourHooks({ animals: () => ({ cast: [{ kind: 'cow', count: 2 }], gags: [gag], play: [] }), roam: () => [{ x: 10, y: 50, w: 150, h: 40 }] })), prefs);
+  view.mount(dom.make(), { still: true });
+  assert.equal(view.animalsKit().list().length, 2);
+});
+
+// The engine running frame by frame, with its real crew lending farmers to the animals.
+function live(world, agents, { warn = () => {} } = {}) {
+  const dom = stubDom();
+  let pending = null;
+  dom.globals.requestAnimationFrame = cb => { pending = cb; return 1; };
+  const window = { Agentville: { raw: h => { window.registered = h; } } };
+  const ctx = vm.createContext({ window, document: dom.document, console: { ...console, warn }, Math, Date, JSON, Map, Set, Intl, ...dom.globals });
+  vm.runInContext(`${code}\n;window.sdk = { withDefaults, engineScene, makePixelView };`, ctx);
+  const sdk = window.sdk, view = sdk.makePixelView(sdk.withDefaults(world), { get: k => (k === 'sky' ? 'day' : null), set() {} }); // day: the animals awake whatever the clock says
+  view.mount(dom.make(), { still: false });
+  const sceneOf = list => sdk.engineScene(window.AgentvilleScene.toScene({ generatedAt: Date.now(), collisions: [], agents: list, repos: [{ path: '/c/x', name: 'x' }] }));
+  view.update(sceneOf(agents));
+  let now = 1000, errors = 0;
+  const run = n => { for (let i = 0; i < n && pending; i++) { const cb = pending; pending = null; try { cb(now += 100); } catch { errors++; } } };
+  return { view, dom, run, errors: () => errors, update: list => view.update(sceneOf(list)) };
+}
+const someone = (id, over = {}) => ({ id, name: id, kind: 'interactive', cwd: '/c/x', state: 'idle', feed: [], children: [], touching: [], ...over });
+const PEN = () => [{ x: 10, y: 20, w: 180, h: 80 }];
+
+test('a world with a gag written wrong keeps running, frame after frame', () => {
+  const warns = [];
+  const w = live(fourHooks({ animals: () => ({ cast: [{ kind: 'goat' }], gags: [{ id: 'bad', steps: [{ wait: 1 }] }] }), roam: PEN, avoid: () => [] }), [someone('p')], { warn: m => warns.push(m) });
+  w.run(1500);
+  const drawn = w.dom.calls.fillRect;
+  w.run(100);
+  assert.equal(w.errors(), 0);
+  assert.ok(w.dom.calls.fillRect > drawn, 'still drawing');
+  assert.equal(warns.filter(m => /gag bad was dropped/.test(m)).length, 1);
+});
+
+test('the real crew: a goat takes an idle farmer’s hat; the farmer gets work and has it back at once', () => {
+  const seen = [];
+  const hat = { id: 'hat', needs: { goat: 1, farmer: 'idle' }, steps: [{ go: 'goat', to: 'farmer' }, { wear: 'goat', what: 'hat', on: true }, { go: 'goat', to: 'away', run: true, ms: 3000 }, { chase: 'farmer', after: 'goat', ms: 3000 }, { wear: 'goat', what: 'hat', on: false }] };
+  const w = live(fourHooks({ animals: () => ({ cast: [{ kind: 'goat' }], gags: [hat] }), roam: PEN, avoid: () => [], drawChar: (f, b) => { if (f.id === 'p') seen.push(Boolean(b.hatless)); } }), [someone('p')]);
+  for (let i = 0; i < 1500 && !seen.at(-1); i++) w.run(1);
+  assert.equal(seen.at(-1), true, 'the goat has its hat');
+  w.update([someone('p', { state: 'working' })]);
+  w.run(2);
+  assert.equal(seen.at(-1), false, 'work came: its hat back');
+  assert.equal(w.view.animalsKit().gagNow(), null);
+});
+
+test('the real crew: play borrows a farmer idle three minutes, but never one napping in its hammock', () => {
+  const run = nap => {
+    const at = [];
+    const pet = { id: 'pet', needs: { farmer: 'idle', goat: 1 }, steps: [{ go: 'farmer', to: 'goat' }, { wait: 5000 }] };
+    const w = live(fourHooks({ animals: () => ({ cast: [{ kind: 'goat' }], play: [pet] }), roam: PEN, avoid: () => [], drawChar: (f, b) => { if (f.id === 'p') at.push(`${Math.round(b.x)},${Math.round(b.y)}`); } }),
+      [someone('p', nap ? { wakeAt: Date.now() + 3600_000 } : {})]);
+    w.run(3000);
+    return new Set(at);
+  };
+  assert.ok(run(false).size > 1, 'an idle farmer goes to play');
+  assert.deepEqual([...run(true)], ['100,40'], 'a napping one stays put');
+});

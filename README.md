@@ -122,7 +122,8 @@ It listens on `127.0.0.1` only and reads what Claude Code already writes to disk
   cart drives to the farmer calling it, and you click
   the barn to start a session.
 - Animals on the farm, just for fun: cows, goats, a sheepdog, an ostrich, a lion, a tiger and a duck
-  family on the pond. Click one to pet or feed it, and a farmer walks over to do it.
+  family on the pond. Click one to pet or feed it, and a farmer walks over to do it. Now and then they
+  get up to something (a goat steals a hat), react to deploys and merges, and huddle in winter.
 - The farm is a world: it runs in a sandboxed frame of its own, with no access to the token, and
   asks the page for the little it needs ([docs/worlds.md](docs/worlds.md)). A world from your own
   folder sees no words or paths until you tick **Can see what agents say** for it.
@@ -648,8 +649,26 @@ on the farm just for fun. They never stand for anything.
   does it, and walks back. One at work goes only if it can be there and back in a few seconds, and one
   that starts waiting on you drops it at once. With no one free, or Motion off, you do it yourself, at
   once, in place.
-- Feeding the ducks brings the whole family paddling over.
+- Feeding the ducks brings the whole family paddling over, and the littlest duckling gets there first.
+- Each has its habits: the goats climb the woodpile and the rock, the ostrich runs in circles and
+  hides its head, the lion yawns and stretches, the tiger chases its tail and pounces, the sheepdog
+  fetches, rolls over and runs laps. A trough with a bucket, a woodpile and a rock appear in the yard
+  with them.
+- Now and then (every minute or two) they get up to something. A goat steals an idle farmer's hat and
+  is chased for it; one nibbles the hat of a farmer working in the meadow, who keeps working. The ostrich
+  runs off wearing the trough's bucket. The lion is startled by a chicken, a cow naps in the empty
+  hammock (and gets out when a farmer needs it), and the tiger plays tag with the sheepdog. Only idle
+  farmers are ever borrowed, never one waiting on you or napping in a hammock; one that starts waiting,
+  or gets work, drops it at once and gets its hat back, and one you send to an animal yourself leaves
+  the gag for you.
+- They react: a failed deploy (rain on a field) scatters them and the ostrich hides, a good one (a
+  rainbow) makes them hop, a harvest draws a few over, and the sheepdog runs to the stall when a pull
+  request is merged and to meet a new farmer.
+- A farmer idle for three minutes or more sometimes plays with one: throws the sheepdog a stick, pets a
+  goat, naps by the lion. Two at most.
+- In winter they huddle together, the goats wear scarves and the ducks slide on the frozen pond.
 - The **Animals** switch hides them all (and brings back the pond's white duck); it is remembered.
+  With it off, or **Motion** off, whatever they were up to stops where it is.
 
 **Reading the farm.** The **i** button opens the full legend, including every tool a farmer
 can hold.
@@ -928,6 +947,7 @@ and can do is in [docs/worlds.md](docs/worlds.md).
 | The dashboard doesn't load | `agent-tracker status`, then `agent-tracker logs`. Check that nothing else uses the port |
 | A session shows "dashboard answers off" | Its mod isn't loaded. Check `CLAUDE_CODE_PLUGIN_DIRS` in `~/.claude/settings.json`, then type anything in the session or `/reload-plugins` |
 | "runs an older tracker mod" | `/reload-plugins` in that session, or resume it |
+| An idle farmer walks off to the animals, or has no hat | It is playing (idle three minutes or more) or a goat has its hat; it is the farm's fun, not the session. It comes back the moment it gets work or needs you. Switch **Animals** off to stop it all |
 | **■ Stop** on the working line, or **✕ Cancel** on a question, is greyed out | Both need mod 0.7.0: `/reload-plugins` in that session. Until then, press Esc in its terminal |
 | No cost, plan usage or working line | These come from the mod (0.4.0 or newer; the working line from 0.5.0) in a running session |
 | My world shows no bubbles and calls repos r1, r2… | It is in privacy mode: tick **Can see what agents say** for it in the list of worlds. Unticking later doesn't clear what the world saved while it could see; it gets its own saved settings back on start |

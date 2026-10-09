@@ -158,11 +158,16 @@ The creature rules (see "Creatures"). A cross for each one broken:
 A dot for each of these (a pointer, never a cross):
 
 - an action's `fx` is `hearts`, `crumbs` or `dust` (another draws nothing);
-- its `pose` is one the creature has: `stand`, `walk`, `run`, `eat`, `sleep`, `happy`, the duck's
-  `swim` and `dabble`, the ostrich's `hide` (another: it stands);
+- its `pose` is one the creature has: `stand`, `walk`, `run`, `eat`, `sleep`, `happy`, `yawn`,
+  `startled`, `stretch`, `roll`, the duck's `swim`, `dabble` and `slide`, the ostrich's `hide`
+  (another: it stands);
 - `looks` (or `look`), if given, are the kind's own: the duck's `drake`, `hen`, `duckling` (another
   is drawn as the first);
 - with no `roam()`, only creatures with a `home` are shown.
+
+When `animals()` returns `{ cast, gags, play }`, these rules are for its `cast`. Gags and play are the
+kit's to check: one written wrong is dropped as the world is read, with a warning in the console
+("Gags and play", in "Creatures").
 
 The starter leaves out a compaction, subagents, the limits, a collision and a merged pull request,
 to stay short: those are check-world's five "may draw the same" dots for it, beside its hooks left
@@ -638,9 +643,12 @@ A hook you give always wins over its default.
 | `tick` | `(dt, posOf, snap)` | nothing: called each frame, and `snap` is true when the world is drawn still |
 | `ambient` | `(dt, addParticle)` | nothing: called each frame |
 | `weather` | `(sky)` | nothing: drawn over the sky |
-| `animals` | `()` | `[]`: the world's creatures (see "Creatures"). With any, the engine draws them and adds an Animals switch |
+| `animals` | `()` | `[]`: the world's creatures (see "Creatures"): a list, or `{ cast, gags, play }`. With any, the engine draws them and adds an Animals switch |
 | `roam` | `()` | `[]`: rectangles `{ x, y, w, h }` where they may walk. Keep them off anything that shows data |
 | `avoid` | `()` | `[]`: rectangles inside those that they keep off (a pond, a henhouse) |
+| `perches` | `()` | `[]`: `[x, y, lift]` points a climber stands on, `lift` pixels up (a woodpile, a rock). One it can't reach is skipped |
+| `spots` | `()` | `{}`: named points gags go to (`{ hammock: [x, y] }`), and `huddle`, where they gather in winter. A spot may be inside an `avoid` rectangle: only a gag goes in |
+| `spotFree` | `(name)` | `true`: may a gag use that spot now (the farm's hammock is taken while an agent naps) |
 
 Buildings: `buildingAt` returns a key when the point is on a building. The key `'barn'` calls the
 page's ＋ Session (starting a session) and `'board'` opens the notice board, built from
@@ -864,7 +872,16 @@ props kit and before the engine) does the rest:
 - The Animals switch (in the default HUD, or your own `hud` with `animals`) hides them all, and is
   saved as the world's `animals` preference.
 - The engine sets `PXG.animals` before `ground()`: true while they are shown, so a world can leave
-  out what they replace (the farm's scenery duck).
+  out what they replace (the farm's scenery duck). It sets `PXG.taken` too: a `Set` of what they have
+  just now (`'bucket'` while the ostrich wears it), so the world doesn't also draw it in its place.
+- Now and then (one rest in three) one keeps a habit of its own (`habits`, below). Not at night (bar
+  the night owls), not in winter.
+- They react to what happens: a world event from `setScene` with a `kind` (below), and `arrive`,
+  from the engine, when a new agent walks in.
+- In winter (`season()` returns `'winter'`) the goats wear scarves, the pond freezes (the ducks slide
+  on it), they rest twice as long and huddle at `spots().huddle`.
+- Now and then (every one to two minutes, one at a time) they get up to something: a gag, a short
+  script of steps. An agent idle three minutes or more sometimes plays with one (play, two at most).
 
 A creature in `animals()`:
 
@@ -876,13 +893,80 @@ A creature in `animals()`:
 | `name` | The menu's title (the kind) |
 | `home` | `{ x, y, w, h }`: it keeps to this area, and clicking it opens its menu |
 | `bank` | `[[x, y], …]`: where an agent stands to do something with one that has a `home` (the nearest is used); else beside it |
-| `actions` | Its menu, 2 to 4: `{ label, fx?, pose?, line?, run?, gather?, ms? }`. `fx` is `'hearts'`, `'crumbs'` or `'dust'`; `pose` what it does meanwhile (`happy` by default); `line` a key of `lines` it says; `run` makes it run off; `gather` brings every one of its kind to it (feeding the ducks); `ms` how long (2500) |
-| `lines` | `{ idle: […], <key>: […] }`: what it says, now and then (`idle`) and after an action (`line`). 40 characters at most each |
+| `actions` | Its menu, 2 to 4: `{ label, fx?, pose?, line?, run?, gather?, steal?, ms? }`. `fx` is `'hearts'`, `'crumbs'` or `'dust'`; `pose` what it does meanwhile (`happy` by default); `line` a key of `lines` it says; `run` makes it run off; `gather` brings every one of its kind to it (feeding the ducks); `steal`, with `gather`, sends its last `duckling` look first, fast, to say `lines.bread`; `ms` how long (2500) |
+| `lines` | `{ idle: […], <key>: […] }`: what it says, now and then (`idle`), after an action (`line`), in a gag (`say`) and when it reacts (the event's kind). 40 characters at most each |
+| `habits` | What it does now and then, of: `climb` (onto a `perch`), `circles`, `hide` (the ostrich's head in the ground; it hides from a failed deploy too), `yawn`, `stretch`, `roll` (onto its back), `chaseTail`, `pounce`, `fetch` (runs off and back), `laps` |
+| `reacts` | `{ <event kind>: what }`, over the defaults: `'scatter'`, `'hop'`, `'gather'`, `'hide'` or `'run'` (to where it happened); `null` for nothing |
 
 The library's creatures, each drawn on its feet, facing either way: `cow`, `goat`, `sheepdog` (with a
 red bandana), `ostrich`, `lion`, `tiger`, `duck` (looks `drake`, `hen`, `duckling`), `cat`, `dog`,
-`pigeon`, `mouse` and `fish`. Their poses: `stand`, `walk`, `run`, `eat`, `sleep`, `happy`; the duck's
-`swim` and `dabble`; the ostrich's `hide`.
+`pigeon`, `mouse` and `fish`. Their poses: `stand`, `walk`, `run`, `eat`, `sleep`, `happy`, `yawn`,
+`startled`, `stretch`, `roll`; the duck's `swim`, `dabble` and `slide` (on ice); the ostrich's `hide`.
+What they can wear (the kit puts it on): a goat's scarf and a hat (a farmer's, in a gag), the
+ostrich's bucket.
+
+### Reactions
+
+Return events from `setScene` with a `kind` and the kit reacts where it happened (`at`, or beside the
+event's agent). An event with an empty `text` pops nothing: it is for the animals only.
+
+| Kind | By default | The farm sends it |
+|---|---|---|
+| `deployFailed` | They scatter (the ostrich hides) | A field's weather turns to rain |
+| `deployOk` | They hop | A field's weather turns to a rainbow |
+| `harvest` | Up to four gather there | An agent's conversation is compacted |
+| `merged` | Nothing (the farm's sheepdog runs to the stall) | A pull request is merged |
+| `arrive` | Nothing (the farm's sheepdog runs to meet it) | From the engine: a new agent walks in |
+
+Each kind at most once in 30 s. Those near it react (within 120 px, or the three nearest), and the
+first says `lines[<kind>]` if it has one.
+
+### Gags and play
+
+`animals()` may return `{ cast, gags, play }`: the creatures, then short scripts they play out.
+
+```
+{ id, needs: { <kind>: n, farmer?: 'idle' | 'busy', chicken?: true, spot?: '<name>' }, lines?: { <key>: […] }, steps: [ … ] }
+```
+
+`needs` says who it takes: creatures of a kind (awake, not busy with something else), an agent
+(`farmer`), a subagent's chicken within 40 px of the first creature, a free spot. A gag starts only
+when all are there. Its roles are the kinds it needs (the first of each picked), `'farmer'` (the agent
+nearest it) and `'chicken'`. The steps run one at a time:
+
+| Step | What it does |
+|---|---|
+| `{ go: role, to, run?, ms? }` | Walks there (runs with `run`): `to` is a role (beside it), `'spot:<name>'`, `'away'` (somewhere far) or `'back'` (where it started). Done on arrival, or after `ms` (as long as the walk takes by default). A creature that can't get within 24 px of a role ends the gag; the way into a spot inside `avoid` is checked up to its edge |
+| `{ chase: 'farmer', after: role, ms }` | The agent follows the role for `ms` |
+| `{ say: role, line }` | The role says `lines[line]` (its own, or the gag's) |
+| `{ pose: role, is, ms }` | A pose for `ms` |
+| `{ wear: role, what: 'hat' \| 'bucket', on }` | A hat is the agent's own (the agent is drawn `hatless` meanwhile); the bucket is in `PXG.taken` |
+| `{ wait: ms }` | A pause |
+| `{ fx: 'hearts' \| 'crumbs' \| 'dust', at: role }` | An effect |
+| `{ stay: role, is?, ms, while: 'spot:<name>' }` | Stays (asleep by default) while `spotFree(name)` says the spot is free |
+
+The rules the engine keeps for the agents a gag borrows:
+
+- Only idle agents walk: never one waiting on you or on its turn, and never one napping (it wakes by
+  itself). One that starts waiting, or gets work, ends the gag at once, and everything is put back
+  (the hat on its head, the bucket by the trough, the agent let go).
+- Your click comes first: an agent you send to an animal from its menu leaves the gag it was in.
+- A busy agent (`farmer: 'busy'`) is never moved: the creature comes to it, and its hat is off 3 s at
+  most. A gag that would take longer, or move it, is dropped.
+- Motion off, the animals hidden or the page reloaded: every gag ends where it is. The yard changing
+  (`roam`, `avoid` or a spot moving) ends a gag it no longer fits, and puts its creatures back inside.
+
+`play` is the same shape, for an agent idle three minutes or more (checked every 45 s, two at most):
+the agent walks to a creature and plays (a stick for the dog, a goat to pet). Work, or you, call it
+back.
+
+A gag written wrong (no `needs`, `steps` that aren't a list of steps, a step it doesn't know, a role
+it wasn't given, a chase by anyone but the farmer) is dropped when the world is read, and one going to
+a spot your `spots()` doesn't have is dropped the first time it runs. Either way there is one warning
+in the console, "Animals: the gag <id> was dropped: <why>", and the world goes on.
+
+A body the kit has borrowed carries flags for your `drawChar`: `b.hatless` while a creature has its
+hat (the farm draws that farmer with `hat: 'none'`, and leaves out the pin on its hat).
 
 A cat for a world 200 wide, in `world.js`'s hooks:
 
@@ -896,11 +980,25 @@ The starter world has the same cat on its 400-wide ground: `roam` is the grass b
 to the fence's foot, and `avoid` the fence with its plots, so the cat walks beside the fence and
 never at the door or on the bench (both above the path).
 
-The rules for your creatures: none in a `taken` shape; lines of 40 characters at most; `roam` areas
-clear of anything that shows data (the farm keeps them out of its fields, off the hay, crates and
-mailbox, and off the carts' rank). `npm run check-world` checks a world's creatures against these
-and the table above (the checklist's "Creatures" row, in "Making a world"); keeping `roam` clear of
-data is yours to see on the test page.
+The same cat with habits, a reaction and a gag (it jumps at nothing, then says so):
+
+```js
+animals: () => ({
+  cast: [{ kind: 'cat', name: 'Cat', habits: ['yawn', 'pounce', 'chaseTail'], actions: [{ label: 'Pet', fx: 'hearts', line: 'petted' }, { label: 'Feed', fx: 'crumbs', pose: 'eat', line: 'fed' }],
+    lines: { idle: ['mrrp.'], petted: ['purr ♥'], fed: ['MEOW'], deployFailed: ['not me'] } }],
+  gags: [{ id: 'pounce', needs: { cat: 1 }, steps: [{ pose: 'cat', is: 'startled', ms: 600 }, { say: 'cat', line: 'idle' }] }],
+  play: [],
+}),
+roam: () => [{ x: 4, y: 60, w: 90, h: 40 }],
+avoid: () => [],
+```
+
+The rules for your creatures: none in a `taken` shape; lines of 40 characters at most (a gag's own
+too); `roam` areas, `perches` and `spots` clear of anything that shows data (the farm keeps them out
+of its fields, off the hay, crates and mailbox, and off the carts' rank). `npm run check-world`
+checks a world's creatures (its `cast`) against these and the table above (the checklist's
+"Creatures" row, in "Making a world"); its gags are checked by the kit as the world is read (above),
+and keeping `roam`, `perches` and `spots` clear of data is yours to see on the test page.
 
 ## The starter world
 

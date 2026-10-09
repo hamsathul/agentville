@@ -727,7 +727,7 @@
 
   function makeFarm() {
     let L = layoutFor([]);
-    let seenCompactions = null, seenMerged = null; // what the last scene had, so news can be told
+    let seenCompactions = null, seenMerged = null, seenWeather = null; // what the last scene had, so news can be told
     let scene = { fields: [], farmers: [] };
     let season = 'summer';
     const stOf = k => L.ST.find(s => s.key === k);
@@ -805,6 +805,12 @@
           px(dx - 1, dy + 3, 7, 1, '#2c4a85'); px(dx, dy, 5, 3, '#ffffff'); px(dx + (face > 0 ? 3 : -1), dy - 2, 3, 3, '#ffffff'); px(dx + (face > 0 ? 6 : -2), dy - 1, 2, 1, '#f08a24'); px(dx + (face > 0 ? 4 : 0), dy - 1, 1, 1, '#1b1420');
         }
       } else if (blink(1.5)) px(36, 206, 2, 1, '#ffffff'); // ice glints
+      if (PXG.animals) { // the animals' things in the yard: a trough and its bucket, a woodpile and a rock to climb
+        px(TROUGH.x - 6, TROUGH.y - 3, 12, 3, '#8b5a2b'); px(TROUGH.x - 5, TROUGH.y - 3, 10, 1, season === 'winter' ? '#d8eef8' : '#5ab4ff');
+        if (!PXG.taken?.has('bucket')) { px(TROUGH.x + 8, TROUGH.y - 4, 3, 4, '#8a93a0'); px(TROUGH.x + 8, TROUGH.y - 4, 3, 1, '#c3cbd2'); } // unless the ostrich is wearing it
+        for (let i = 0; i < 3; i++) px(WOODPILE.x - 6 + i * 1, WOODPILE.y - 2 - i * 2, 12 - i * 3, 2, i % 2 ? '#a8703c' : '#8b5a2b');
+        const rock = rockAt(); px(rock.x - 4, rock.y - 3, 8, 3, '#8c96a0'); px(rock.x - 3, rock.y - 4, 6, 1, '#aab3bb');
+      }
       const eggs = scene.henhouse?.eggs ?? 0, roost = Math.min(3, scene.henhouse?.roosting ?? 0);
       px(4, 132, 12, 3, '#c9a24a'); px(4, 132, 12, 1, '#e9c46a'); // the nest
       for (let i = 0; i < eggs; i++) px(5 + i * 2, 131 - (i % 2), 2, 2, i % 3 ? '#f4ecd8' : '#ffffff');
@@ -872,22 +878,46 @@
     // the hammocks or the henhouse. No chickens (subagents), and the dog is a sheepdog (the Explore dog is
     // data). The ducks keep to the pond and its bank.
     const POND = { x: 12, y: 199, w: 60, h: 22 }; // the water (the pond's oval, a little inside its bank)
+    const TROUGH = { x: 92, y: 158 }, WOODPILE = { x: 14, y: 186 }; // the yard's things to drink at and climb on (animals on only)
+    const rockAt = () => ({ x: 94, y: L.GRID.y1 - 42 }); // by the shade tree, clear of its crown (it moves down with more rows)
     const FARM_ANIMALS = [
       { kind: 'cow', count: 2, name: 'Cow', actions: [{ label: 'Pet', fx: 'hearts', line: 'petted' }, { label: 'Feed', fx: 'crumbs', pose: 'eat', line: 'fed' }, { label: 'Ride', pose: 'run', run: true, line: 'ride' }, { label: 'Moo back', line: 'moo' }],
-        lines: { idle: ['MOO.', 'moo?', 'grass again. good.', 'I am a cow.'], petted: ['moo ♥'], fed: ['MOO! thank you'], ride: ['this was not in my contract'], moo: ['MOO!!'] } },
-      { kind: 'goat', count: 2, name: 'Goat', actions: [{ label: 'Pet', fx: 'hearts', line: 'petted' }, { label: 'Feed', fx: 'crumbs', pose: 'eat', line: 'fed' }, { label: 'Get my hat back', pose: 'run', run: true, line: 'hat' }],
-        lines: { idle: ['baa.', 'this hat tastes of deadlines', 'I ate a sock once', 'baa?'], petted: ['baa ♥'], fed: ['BAA! more'], hat: ['what hat?'] } },
-      { kind: 'sheepdog', name: 'Sheepdog', actions: [{ label: 'Pet', fx: 'hearts', line: 'petted' }, { label: 'Throw a stick', pose: 'run', run: true, fx: 'dust', line: 'stick' }, { label: 'Belly rub', pose: 'sleep', fx: 'hearts', line: 'rub' }],
-        lines: { idle: ['woof.', 'I herd things', 'is that a squirrel', 'woof?'], petted: ['woof ♥'], stick: ['STICK!'], rub: ['best day ever'] } },
-      { kind: 'ostrich', name: 'Ostrich', actions: [{ label: 'Pet', fx: 'hearts', line: 'petted' }, { label: 'Race it', pose: 'run', run: true, fx: 'dust', line: 'race' }, { label: 'Ride', pose: 'run', run: true, line: 'ride' }],
-        lines: { idle: ['not my fault', 'I run, therefore I am', 'honk?'], petted: ['…fine.'], race: ['too slow!'], ride: ['hold on to your hat'] } },
-      { kind: 'lion', name: 'Lion', actions: [{ label: 'Pet', fx: 'hearts', line: 'petted' }, { label: 'Give a fish', pose: 'eat', fx: 'crumbs', line: 'fish' }, { label: 'Boop the nose', pose: 'happy', line: 'boop' }],
-        lines: { idle: ['*yawn*', 'I am the king of this yard', 'nap time'], petted: ['purr…'], fish: ['FISH. yes.'], boop: ['…boop.'] } },
-      { kind: 'tiger', name: 'Tiger', actions: [{ label: 'Pet', fx: 'hearts', line: 'petted' }, { label: 'Give a fish', pose: 'eat', fx: 'crumbs', line: 'fish' }, { label: 'Boop the nose', pose: 'happy', line: 'boop' }],
-        lines: { idle: ['where is my tail', 'butterfly!', 'rawr (friendly)'], petted: ['purr ♥'], fish: ['mine now'], boop: ['boop back'] } },
+        lines: { idle: ['MOO.', 'moo?', 'grass again. good.', 'I am a cow.'], petted: ['moo ♥'], fed: ['MOO! thank you'], ride: ['this was not in my contract'], moo: ['MOO!!'],
+          deployFailed: ['moo?! (it broke)'], deployOk: ['moo 🌈'], harvest: ['harvest! 🎉'], hammock: ['zzz… moo', 'my hammock now'] } },
+      { kind: 'goat', count: 2, name: 'Goat', habits: ['climb'], actions: [{ label: 'Pet', fx: 'hearts', line: 'petted' }, { label: 'Feed', fx: 'crumbs', pose: 'eat', line: 'fed' }, { label: 'Get my hat back', pose: 'run', run: true, line: 'hat' }],
+        lines: { idle: ['baa.', 'this hat tastes of deadlines', 'I ate a sock once', 'baa?'], petted: ['baa ♥'], fed: ['BAA! more'], hat: ['what hat?'],
+          nibble: ['nom', 'just a taste'], deployFailed: ['BAA!'], deployOk: ['baa! 🌈'], harvest: ['snacks?'] } },
+      { kind: 'sheepdog', name: 'Sheepdog', habits: ['fetch', 'roll', 'laps'], reacts: { merged: 'run', arrive: 'run' }, actions: [{ label: 'Pet', fx: 'hearts', line: 'petted' }, { label: 'Throw a stick', pose: 'run', run: true, fx: 'dust', line: 'stick' }, { label: 'Belly rub', pose: 'sleep', fx: 'hearts', line: 'rub' }],
+        lines: { idle: ['woof.', 'I herd things', 'is that a squirrel', 'woof?'], petted: ['woof ♥'], stick: ['STICK!'], rub: ['best day ever'],
+          merged: ['WOOF! shipped!'], arrive: ['woof! hi!', 'a new friend!'], deployFailed: ['woof woof!'], deployOk: ['good deploy! good!'], harvest: ['herding the harvest'] } },
+      { kind: 'ostrich', name: 'Ostrich', habits: ['circles', 'hide'], actions: [{ label: 'Pet', fx: 'hearts', line: 'petted' }, { label: 'Race it', pose: 'run', run: true, fx: 'dust', line: 'race' }, { label: 'Ride', pose: 'run', run: true, line: 'ride' }],
+        lines: { idle: ['not my fault', 'I run, therefore I am', 'honk?'], petted: ['…fine.'], race: ['too slow!'], ride: ['hold on to your hat'],
+          deployFailed: ['not my fault'], deployOk: ['I knew it'], bucket: ['new hat. thoughts?', 'it suits me'] } },
+      { kind: 'lion', name: 'Lion', habits: ['yawn', 'stretch'], actions: [{ label: 'Pet', fx: 'hearts', line: 'petted' }, { label: 'Give a fish', pose: 'eat', fx: 'crumbs', line: 'fish' }, { label: 'Boop the nose', pose: 'happy', line: 'boop' }],
+        lines: { idle: ['*yawn*', 'I am the king of this yard', 'nap time'], petted: ['purr…'], fish: ['FISH. yes.'], boop: ['…boop.'],
+          startled: ['EEK! a chicken!', 'I was not scared'], nap: ['zzz… purr', 'five more minutes'], deployFailed: ['*roar* (worried)'], harvest: ['…food?'] } },
+      { kind: 'tiger', name: 'Tiger', habits: ['chaseTail', 'pounce'], actions: [{ label: 'Pet', fx: 'hearts', line: 'petted' }, { label: 'Give a fish', pose: 'eat', fx: 'crumbs', line: 'fish' }, { label: 'Boop the nose', pose: 'happy', line: 'boop' }],
+        lines: { idle: ['where is my tail', 'butterfly!', 'rawr (friendly)'], petted: ['purr ♥'], fish: ['mine now'], boop: ['boop back'],
+          tag: ['tag! you’re it', 'gotcha'], deployFailed: ['rawr?!'], deployOk: ['rawr 🌈'] } },
       { kind: 'duck', count: 5, looks: ['drake', 'hen', 'duckling', 'duckling', 'duckling'], name: 'Ducks', home: POND, bank: [[42, 194], [42, 226], [78, 210]],
-        actions: [{ label: 'Feed bread', fx: 'crumbs', gather: true, line: 'fed' }, { label: 'Quack back', line: 'quack' }],
-        lines: { idle: ['quack.', 'QUACK', 'any bread?', 'peep'], fed: ['BREAD!', 'bread bread bread'], quack: ['quack quack!'] } },
+        actions: [{ label: 'Feed bread', fx: 'crumbs', gather: true, steal: true, line: 'fed' }, { label: 'Quack back', line: 'quack' }],
+        lines: { idle: ['quack.', 'QUACK', 'any bread?', 'peep'], fed: ['BREAD!', 'bread bread bread'], quack: ['quack quack!'], bread: ['mine!', 'MINE'],
+          deployFailed: ['QUACK!'], deployOk: ['quack 🌈'], harvest: ['peep peep!'] } },
+    ];
+    // Now and then they get up to something (sdk/animals.js, gags): the steps play out with farmers the engine lends.
+    const FARM_GAGS = [
+      { id: 'hat', needs: { goat: 1, farmer: 'idle' }, steps: [{ go: 'goat', to: 'farmer' }, { wear: 'goat', what: 'hat', on: true }, { say: 'goat', line: 'hat' }, { go: 'goat', to: 'away', run: true, ms: 3000 }, { chase: 'farmer', after: 'goat', ms: 3000 }, { wear: 'goat', what: 'hat', on: false }] },
+      { id: 'nibble', needs: { goat: 1, farmer: 'busy' }, steps: [{ go: 'goat', to: 'farmer', ms: 6000 }, { wear: 'goat', what: 'hat', on: true }, { say: 'goat', line: 'nibble' }, { wait: 3000 }, { wear: 'goat', what: 'hat', on: false }, { go: 'goat', to: 'away' }] }, // it keeps working, hatless 3 s
+      { id: 'bucket', needs: { ostrich: 1, farmer: 'idle', spot: 'bucket' }, steps: [{ go: 'ostrich', to: 'spot:bucket' }, { wear: 'ostrich', what: 'bucket', on: true }, { go: 'ostrich', to: 'away', run: true, ms: 3000 }, { chase: 'farmer', after: 'ostrich', ms: 3000 }, { say: 'ostrich', line: 'bucket' }, { wear: 'ostrich', what: 'bucket', on: false }] },
+      { id: 'startled', needs: { lion: 1, chicken: true }, steps: [{ pose: 'lion', is: 'startled', ms: 800 }, { say: 'lion', line: 'startled' }] },
+      { id: 'hammock', needs: { cow: 1, spot: 'hammock' }, steps: [{ go: 'cow', to: 'spot:hammock' }, { say: 'cow', line: 'hammock' }, { stay: 'cow', is: 'sleep', ms: 20000, while: 'spot:hammock' }, { go: 'cow', to: 'back' }] },
+      { id: 'tag', needs: { tiger: 1, sheepdog: 1 }, steps: [{ go: 'tiger', to: 'sheepdog', run: true }, { say: 'tiger', line: 'tag' }, { go: 'sheepdog', to: 'away', run: true, ms: 2500 }, { go: 'tiger', to: 'sheepdog', run: true, ms: 2500 }] },
+    ];
+    // A farmer idle three minutes or more sometimes plays with one (two at most); work, or you, call it back.
+    const FARM_PLAY = [
+      { id: 'stick', needs: { farmer: 'idle', sheepdog: 1 }, steps: [{ go: 'farmer', to: 'sheepdog' }, { go: 'sheepdog', to: 'away', run: true, ms: 3000 }, { go: 'sheepdog', to: 'farmer', run: true }, { say: 'sheepdog', line: 'stick' }] },
+      { id: 'pet', needs: { farmer: 'idle', goat: 1 }, steps: [{ go: 'farmer', to: 'goat' }, { fx: 'hearts', at: 'goat' }, { say: 'goat', line: 'petted' }, { wait: 2000 }] },
+      { id: 'nap', needs: { farmer: 'idle', lion: 1 }, steps: [{ go: 'farmer', to: 'lion' }, { pose: 'lion', is: 'sleep', ms: 8000 }, { say: 'lion', line: 'nap' }] },
     ];
 
     return {
@@ -901,6 +931,12 @@
         const merged = next.fields.flatMap(fl => (fl.prs?.merged ?? []).map(m => ({ ...m, repo: fl.name, key: `${fl.key}#${m.number}` })));
         if (seenMerged) for (const m of merged) if (!seenMerged.has(m.key) && (m.at ?? 0) > Date.now() - 30 * 60_000) events.push({ at: [STALL.x + 14, STALL.y + 8], kind: 'merged', text: `Sold! #${m.number}`, cls: 'good', log: `${m.repo}: pull request #${m.number} merged (${clip(m.title ?? '', 50)})` });
         seenMerged = new Set(merged.map(m => m.key));
+        const weather = new Map(next.fields.map(fl => [fl.key, fl.weather ?? null]));
+        if (seenWeather) for (const [key, w] of weather) { // a deploy just failed (rain) or went through (a rainbow): for the animals, no words
+          const s = stOf(key), kind = w === 'rain' ? 'deployFailed' : w === 'rainbow' ? 'deployOk' : null;
+          if (kind && s && seenWeather.get(key) !== w) events.push({ kind, at: [s.cx, s.rowTop + 30], text: '' });
+        }
+        seenWeather = weather;
         scene = next;
         season = seasonOf(next.plan);
         return events;
@@ -1020,7 +1056,12 @@
       bg(f, season, ext) { drawLand(f, L, season, ext); },
       ground() { drawScenery(); L.ST.forEach(drawPlot); L.ST.forEach(drawPiles); },
       season: () => season,
-      animals: () => FARM_ANIMALS,
+      animals: () => ({ cast: FARM_ANIMALS, gags: FARM_GAGS, play: FARM_PLAY }),
+      /** What a goat climbs ([x, y, lift]) and where gags go: the second hammock, the trough's bucket, a huddle in winter. */
+      perches: () => [[WOODPILE.x, WOODPILE.y - 6, 6], [rockAt().x, rockAt().y - 3, 4]],
+      spots: () => ({ hammock: NAPS[1], bucket: [TROUGH.x + 9, TROUGH.y], huddle: [56, 200 - 30], stall: [104, 102], barn: [62, 140] }),
+      /** Is a gag's spot free now: a hammock is taken while anyone naps (the nappers have the hammocks). */
+      spotFree: name => (name === 'hammock' ? !scene.farmers.some(f => f.nap) : true),
       /** Where the animals may walk: the yard, down to the fence's foot (not the lane, along the porch where farmers wait on you). */
       roam: () => [{ x: 4, y: 100, w: 100, h: Math.max(20, L.GRID.y1 - 104) }],
       /** What they keep off in there: the pond (the ducks' own), the hammocks, the henhouse and its run, the shade tree's trunk. */
@@ -1158,10 +1199,11 @@
         }
       },
       drawChar(f, b) {
+        const look = b.hatless ? { ...f.look, hat: 'none' } : f.look; // a goat has its hat
         if (b.zone === 'nap' && !b.walk) { // lying in its hammock, head to the left, the cloth round it
           const ctx = PXG.ctx, cx = Math.round(b.x), y = Math.round(b.y);
           ctx.save(); ctx.translate(cx, y - 10); ctx.rotate(-Math.PI / 2);
-          ctx.drawImage(farmerSprite(f.look, SHIRT[f.color], false, 's', false, 'down'), -8, -7, 14 * SC, 16 * SC);
+          ctx.drawImage(farmerSprite(look, SHIRT[f.color], false, 's', false, 'down'), -8, -7, 14 * SC, 16 * SC);
           ctx.restore();
           for (let i = 3; i <= 21; i++) { const sag = Math.round(Math.sin((i / 24) * Math.PI) * 4); px(cx - 12 + i, y - 9 + sag, 1, 2, '#d55181'); px(cx - 12 + i, y - 7 + sag, 1, 1, '#8a5fc0'); }
           return;
@@ -1169,9 +1211,9 @@
         const scare = f.state === 'stale', [ox, oy] = pixelOrigin(b, 16), rp = rpAt(ox, oy);
         if (scare) { rp(0, 10, 14, 1, '#6b4320'); rp(-1, 9, 2, 3, '#d8c48a'); rp(13, 9, 2, 3, '#d8c48a'); }
         const view = b.walk ? b.face ?? 'down' : 'down';
-        PXG.ctx.drawImage(farmerSprite(f.look, SHIRT[f.color], scare, scare ? 'p' : legFrame(b), f.state === 'waiting', view), ox, oy, 14 * SC, 16 * SC);
+        PXG.ctx.drawImage(farmerSprite(look, SHIRT[f.color], scare, scare ? 'p' : legFrame(b), f.state === 'waiting', view), ox, oy, 14 * SC, 16 * SC);
         if (scare) { rp(5, 6, 1, 1, '#3a2a1a'); rp(8, 6, 1, 1, '#3a2a1a'); rp(5, 7, 4, 1, '#7a5230'); rp(6, 11, 2, 2, '#c97b4a'); return; }
-        if (f.family) { rp(9, 2, 2, 2, FAMILY_PIN[f.family]); rp(9, 2, 1, 1, '#ffffff'); } // its model's pin on the hat
+        if (f.family && !b.hatless) { rp(9, 2, 2, 2, FAMILY_PIN[f.family]); rp(9, 2, 1, 1, '#ffffff'); } // its model's pin on the hat
         if (f.mode === 'bypassPermissions') { for (let i = 0; i < 6; i++) rp(4 + i, 9, 1, 1, i % 2 ? '#ffffff' : '#e04a3a'); rp(9, 10, 1, 2, '#e04a3a'); } // no permission checks: a hazard scarf
         if (view === 'up') return; // from behind: no face
         if (f.cost >= 1) { const big = f.cost >= 10, gold = f.cost >= 50; rp(1, big ? 11 : 12, big ? 3 : 2, big ? 3 : 2, gold ? '#c9a24a' : '#8b5a2b'); rp(2, big ? 11 : 12, 1, 1, '#ffd43b'); } // its purse: what it has cost
@@ -1343,7 +1385,7 @@
       <b>Above a field</b><span>hay = uncommitted files, crates = unpushed commits, mailbox = behind the remote</span>
       <b>Weather</b><span>the repo's last deploy, from GitHub Actions or a deploy an agent ran itself (a deploy script over ssh, rsync, vercel…), whichever is newer: rainbow = deployed, rain = deploy failed (hover its sign for why; the close-up links to the run), windmill = deploying. A run GitHub never started (billing, spending limit) brings no weather: ⏸ Actions didn't run. Rope = two agents writing one repo</span>
       <b>Hearts, crops</b><span>hearts = context left. Crops grow as the context fills: seeds, sprouts, young plants, in flower, ripening, then ripe with a sparkle (golden wheat, red tomatoes, sunflowers in bloom…) when it is nearly full. When the conversation is compacted, that's the harvest: the field starts again from seed. Chickens = subagents, the dog = an Explore subagent</span>
-      <b>Animals</b><span>cows, goats, a sheepdog (with a red bandana), an ostrich, a lion, a tiger and the ducks on the pond live here just for fun: they never stand for anything. Click one, or the pond, to pet or feed it: the nearest farmer that isn't waiting on you walks over and does it. The Animals switch hides them</span>
+      <b>Animals</b><span>cows, goats, a sheepdog (with a red bandana), an ostrich, a lion, a tiger and the ducks on the pond live here just for fun: they never stand for anything. Click one, or the pond, to pet or feed it: the nearest farmer that isn't waiting on you walks over and does it. Now and then they get up to something: a goat steals a hat, the ostrich runs off with the bucket, the cow naps in an empty hammock. They react to deploys, harvests and merges. Farmers idle for a while sometimes play with them. In winter they huddle, and the goats wear scarves. The Animals switch hides them</span>
       <b>Shade tree, scarecrows</b><span>idle agents nap under the tree (bottom left); stale ones stand as scarecrows (top right); the meadow by the henhouse is for agents outside any repo</span>
       <b>Silo</b><span>its grain is your plan's weekly limit used (the % under it; when it resets on hover); its lamp turns amber from 70% and blinks red from 90%</span>
       <b>Seasons</b><span>follow your plan's 5-hour limit: spring while it is fresh (blossom), then summer, autumn (falling leaves), and winter (snow) when it is nearly used up; a new window brings spring back</span>

@@ -251,15 +251,33 @@ function makePixelView(th, prefs) {
   const flights = [], seenMail = new Set(); // carrier pigeons between farmers: { from, to, start }
   const addPart = p => { if (parts.length < 400) parts.push(p); };
   // The world's animals (sdk/animals.js), when it has any: on unless switched off (docs/worlds.md, "Creatures").
-  const cast = typeof th.animals === 'function' ? th.animals() ?? [] : [];
-  const kit = cast.length && typeof makeAnimals === 'function' ? makeAnimals(cast, { random: seededRandom(cast.length * 7919) }) : null;
+  const animalWorld = typeof th.animals === 'function' ? th.animals() ?? [] : []; // the cast, or { cast, gags, play }
+  const cast = Array.isArray(animalWorld) ? animalWorld : animalWorld.cast ?? [];
+  const kit = cast.length && typeof makeAnimals === 'function' ? makeAnimals(animalWorld, { random: seededRandom(cast.length * 7919) }) : null;
   let animalsOn = prefs.get('animals') !== 'off';
   const animalsShown = () => Boolean(kit && animalsOn);
-  const placeAnimals = () => kit?.place({ roam: th.roam?.() ?? [], avoid: th.avoid?.() ?? [], blocked: (x, y) => Boolean(th.fieldAt(x, y) || th.buildingAt?.(x, y)) }); // never on a field or a building, whatever roam says
+  const placeAnimals = () => kit?.place({ roam: th.roam?.() ?? [], avoid: th.avoid?.() ?? [], perches: th.perches?.() ?? [], spots: th.spots?.() ?? {}, blocked: (x, y) => Boolean(th.fieldAt(x, y) || th.buildingAt?.(x, y)) }); // never on a field or a building, whatever roam says
   const animalSays = new Map(); // creature id → its bubble element
   let stillAt = 0; // when the animals were last drawn still: their lines keep time with motion off
   if (typeof window !== 'undefined' && window.Agentville) window.Agentville.animalsNow = () => (kit ? kit.list() : []); // read-only: where they are (the browser test)
   const errands = typeof makeErrands === 'function' ? makeErrands() : null; // farmers borrowed by animals (sdk/animals.js)
+  const idleSince = new Map(); // farmer id → when it was first seen idle (frame time): play waits for 3 minutes
+  let nextPlay = 45;
+  const xy = id => { const b = bots.get(id); return { x: b.x, y: b.y }; };
+  /** The farmers the animals' gags and play may borrow (sdk/animals.js): an errand each, given up when work comes. */
+  const crew = {
+    idle: () => scene.farmers.filter(f => f.state === 'idle' && !f.nap && bots.has(f.id) && !errands?.has(f.id)).map(f => ({ id: f.id, ...xy(f.id) })), // never one napping: it wakes by itself
+    busy: () => scene.farmers.filter(f => f.state === 'working' && bots.has(f.id) && !errands?.has(f.id)).map(f => ({ id: f.id, ...xy(f.id) })),
+    longIdle: () => crew.idle().filter(f => T - (idleSince.get(f.id) ?? T) >= 180),
+    at: id => (bots.has(id) ? xy(id) : null),
+    state: id => (errands?.kindOf(id) === 'asked' ? 'errand' : scene.farmers.find(f => f.id === id)?.state), // one you sent to an animal is yours, not the gag's
+    send: (id, to, { stay = 1.5 } = {}) => { if (!errands || crew.state(id) !== 'idle') return false; errands.start(id, { x: Math.round(to[0]), y: Math.round(to[1]), now: T, busy: false, stay, idleOnly: true }); sync(false); return true; },
+    release: id => { if (errands?.release(id)) sync(false); const b = bots.get(id); if (b) b.hatless = false; },
+    flag: (id, name, on) => { const b = bots.get(id); if (b) b[name] = on; },
+    chickens: () => [...bots.values()].flatMap(b => b.kids.map(d => ({ x: d.x, y: d.y }))),
+    spotFree: name => th.spotFree?.(name) ?? true,
+    fx: (kind, at) => showFx({ fx: kind, at }),
+  };
   let menuEl = null, menuFor = null; // the open animal menu: its element and { id, doer }
   const awayIds = () => new Set(scene.farmers.filter(f => errands?.has(f.id)).map(f => f.id));
   const forYou = f => f.state === 'waiting' || f.state === 'turn'; // waiting on you, or its turn ended: it stays where you can see it
@@ -593,6 +611,7 @@ function makePixelView(th, prefs) {
         b = { id, x: sx, y: sy, path: [], tx: NaN, ty: NaN, zone: first ? t.zone : '', kids: [], dir: 0, walk: false, tag: null, tagText: '', lift: 0 };
         bots.set(id, b);
         if (!first) addLog(f, th.arriveText);
+        if (!first && animalsShown()) kit.react('arrive', [sx, sy]); // someone new: the dog runs to meet them
       }
       if (t.x !== b.tx || t.y !== b.ty) { b.tx = t.x; b.ty = t.y; b.path = plan(b, t.x, t.y); }
       if (snapTo) { b.x = b.tx; b.y = b.ty; b.path = []; }
@@ -679,6 +698,7 @@ function makePixelView(th, prefs) {
     for (const f of scene.farmers) if (f.state === 'waiting' || f.state === 'turn') { const b = bots.get(f.id); if (b) PXG.lights.push([b.x, b.y - 8, 14, null]); } // lit at night: they need you
     ctx.drawImage(bg, -pad.l, -pad.t);
     PXG.animals = animalsShown(); // a world hides what its animals replace (the farm's pond duck)
+    PXG.taken = animalsShown() ? kit.taken() : new Set(); // what the animals have just now (the bucket): the world doesn't draw it in its place
     th.ground();
     for (const f of scene.farmers) { const b = bots.get(f.id); if (b) th.shadows(b); }
     const items = th.items();
@@ -755,7 +775,11 @@ function makePixelView(th, prefs) {
     if (errands?.tick(T, id => bots.get(id) ?? null, id => scene.farmers.find(f => f.id === id)?.state)) sync(false);
     th.tick?.(dt, id => bots.get(id)); // what else moves, where the farmers are: the MCP carts
     th.ambient?.(dt, addPart);
-    if (animalsShown()) kit.tick(dt, { night: skyNow().phase === 'night', still: false });
+    if (animalsShown()) {
+      for (const f of scene.farmers) if (f.state !== 'idle') idleSince.delete(f.id); else if (!idleSince.has(f.id)) idleSince.set(f.id, T);
+      kit.tick(dt, { night: skyNow().phase === 'night', still: false, winter: th.season() === 'winter', crew });
+      if ((nextPlay -= dt) <= 0) { nextPlay = 45; kit.play(crew); } // a farmer idle three minutes plays with one
+    }
     stepParticles(parts, dt);
     followTick(dt);
     draw();
@@ -766,7 +790,7 @@ function makePixelView(th, prefs) {
     sync(true);
     for (const f of scene.farmers) { const b = bots.get(f.id); if (b) step(0, f, b); }
     th.tick?.(0, id => bots.get(id), true); // the MCP carts too: each where it is going
-    if (animalsShown()) { const now = Date.now(); kit.tick(stillAt ? (now - stillAt) / 1000 : 0, { night: false, still: true }); stillAt = now; } // the lines still go after their few seconds
+    if (animalsShown()) { const now = Date.now(); kit.tick(stillAt ? (now - stillAt) / 1000 : 0, { night: false, still: true, winter: th.season() === 'winter' }); stillAt = now; } // the lines still go after their few seconds
     draw();
   }
   function layoutLabels() {
@@ -854,9 +878,10 @@ function makePixelView(th, prefs) {
     if (still) redrawStill(); else sync(false);
     for (const ev of news) { // a harvest over its farmer, a sale at the stall
       const b = ev.id ? bots.get(ev.id) : null, at = ev.at ?? (b ? [b.x, b.y - th.SH * SC - 14] : null);
-      if (at) pop(at[0], at[1], ev.text, ev.cls);
+      if (at && ev.text) pop(at[0], at[1], ev.text, ev.cls);
       if (ev.log) addLog(next.farmers.find(f => f.id === ev.id) ?? { name: 'The market', state: 'turn' }, ev.log);
     }
+    for (const ev of news) if (ev.kind && animalsShown()) { const b = ev.id ? bots.get(ev.id) : null; kit.react(ev.kind, ev.at ?? (b ? [b.x, b.y] : null) ?? [th.W / 2, 100]); } // the animals' reactions: a failed deploy scatters them
     layoutLabels();
     renderHud();
     startLoop();
@@ -928,6 +953,7 @@ function makePixelView(th, prefs) {
       animalsOn = !animalsOn;
       prefs.set('animals', animalsOn ? 'on' : 'off');
       closeMenu();
+      if (!animalsOn) kit?.stopGags(crew); // hidden: the hats back, the farmers let go
       if (!animalsOn && errands) { errands.clear(); sync(false); } // hidden: no farmer walks to an animal you can't see
       renderHud();
       draw();
@@ -1031,6 +1057,7 @@ function makePixelView(th, prefs) {
   function onVisibility() { if (document.hidden) stopLoop(); else startLoop(); }
   function setStill(next) {
     still = next;
+    if (still) kit?.stopGags(crew); // no one walks now: a gag ends where it is
     if (still && errands) { errands.finish(); closeMenu(); } // no one walks now: what was on its way is done where it is
     stillAt = 0;
     stopLoop();
@@ -1109,6 +1136,7 @@ function makePixelView(th, prefs) {
       document.removeEventListener('keydown', onMenuKey);
       closeMenu();
       errands?.clear();
+      kit?.stopGags(crew); // a gag from before ends: the hats back
       if (host) host.innerHTML = '';
       for (const b of bots.values()) { b.tag = null; b.tagText = ''; }
       says.clear();
@@ -1120,6 +1148,7 @@ function makePixelView(th, prefs) {
     },
     resume: () => { if (still) redrawStill(); else startLoop(); },
     isStill: () => still,
+    animalsKit: () => kit, // tests
     farmerName: id => scene.farmers.find(f => f.id === id)?.name,
     farmerColor: id => { const f = scene.farmers.find(x => x.id === id); return f ? f.shirt : '#9aa0a6'; },
     field: key => scene.fields.find(f => f.key === key),

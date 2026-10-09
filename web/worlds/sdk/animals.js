@@ -20,15 +20,73 @@
   const inRect = (r, x, y) => x >= r.x && x <= r.x + r.w && y >= r.y && y <= r.y + r.h;
   const overlaps = (r, x0, y0, x1, y1) => x1 > r.x && x0 < r.x + r.w && y1 > r.y && y0 < r.y + r.h;
 
-  function makeAnimals(cast, { random = seededRandom(7) } = {}) {
+  // What a creature does when something happens, unless its cast entry says otherwise (reacts).
+  const REACTS = { deployFailed: 'scatter', deployOk: 'hop', harvest: 'gather', merged: null, arrive: null };
+  const HABITS = new Set(['climb', 'circles', 'hide', 'yawn', 'stretch', 'chaseTail', 'pounce', 'fetch', 'roll', 'laps']);
+
+  const STEPS = ['go', 'chase', 'say', 'pose', 'wear', 'wait', 'fx', 'stay'];
+  const plainObject = v => Boolean(v) && typeof v === 'object' && !Array.isArray(v);
+  /** What is wrong with a gag as written, or '' (docs/worlds.md, "Gags and play"). */
+  function gagProblem(g) {
+    if (!plainObject(g.needs)) return 'its needs is not an object';
+    if (g.needs.farmer !== undefined && g.needs.farmer !== 'idle' && g.needs.farmer !== 'busy') return `its farmer is ${g.needs.farmer} (idle or busy)`;
+    if (!Array.isArray(g.steps) || !g.steps.length) return 'its steps are not a list';
+    const roles = new Set(Object.keys(g.needs).filter(k => k !== 'spot' && k !== 'farmer' && k !== 'chicken'));
+    if (g.needs.farmer) roles.add('farmer');
+    if (g.needs.chicken) roles.add('chicken');
+    for (const st of g.steps) {
+      if (!plainObject(st)) return `a step is not an object (${JSON.stringify(st)})`;
+      const key = STEPS.find(k => k in st);
+      if (!key) return `it has a step it doesn't know (${Object.keys(st).join(', ') || 'empty'})`;
+      const named = key === 'wait' ? [] : key === 'fx' ? [st.at] : key === 'chase' ? [st.chase, st.after] : [st[key]];
+      if (key === 'go' && typeof st.to === 'string' && !st.to.startsWith('spot:') && st.to !== 'away' && st.to !== 'back') named.push(st.to);
+      for (const r of named) if (!roles.has(r)) return `it has a role it wasn't cast (${r})`;
+      if (key === 'chase' && st.chase !== 'farmer') return 'only the farmer chases';
+      if (key === 'wear' && st.what !== 'hat' && st.what !== 'bucket') return `it wears something it can't (${st.what})`;
+    }
+    if (g.needs.farmer === 'busy' && !busyOk(g)) return 'a busy farmer is only nibbled where it stands, 3 s at most';
+    return '';
+  }
+  /** A busy farmer is only nibbled where it stands: never moved, its hat off 3 s at most. */
+  function busyOk(g) {
+    let off = null, held = 0;
+    for (const st of g.steps ?? []) {
+      if ((st.go === 'farmer') || st.chase) return false;
+      if (st.wear && st.what === 'hat') { if (st.on) { off = 0; held = 0; } else off = null; }
+      if (off !== null) held += Number(st.wait ?? st.ms ?? 0) || 0;
+    }
+    return held <= 3000;
+  }
+  const HAT = '#e9c46a'; // a farmer's hat, as a goat holds it
+
+  /**
+   * The kit. `world` is the cast (a list), or { cast, gags, play }: gags are short scripts of steps the
+   * creatures (and farmers lent by the engine's crew) play out now and then; play is a farmer idle a while
+   * playing with one (docs/worlds.md, "Creatures").
+   */
+  function makeAnimals(world, { random = seededRandom(7), warn = m => console.warn(m) } = {}) {
+    const cast = Array.isArray(world) ? world : world?.cast ?? [];
+    const dropped = new Set(), warned = new Set();
+    const drop = (id, why) => { dropped.add(id); if (!warned.has(id)) { warned.add(id); warn(`Animals: the gag ${id} was dropped: ${why}`); } };
+    /** The gags as read: one written wrong is dropped now, with one warning, and the rest go on. */
+    const readGags = list => (Array.isArray(list) ? list : []).filter(g => {
+      const why = g && typeof g === 'object' && typeof g.id === 'string' ? gagProblem(g) : 'it has no id';
+      if (why) drop(typeof g?.id === 'string' ? g.id : '(no id)', why);
+      return !why;
+    });
+    const gags = Array.isArray(world) ? [] : readGags(world?.gags);
+    const plays = Array.isArray(world) ? [] : readGags(world?.play);
     const lib = typeof CREATURES === 'object' ? CREATURES : {};
     const ones = [];
     for (const def of cast ?? []) {
       if (!lib[def.kind]) throw new Error(`Animals: no creature called ${def.kind}.`);
-      for (let i = 0; i < (def.count ?? 1); i++) ones.push({ id: `${def.kind}-${i}`, kind: def.kind, def, look: def.looks?.[i] ?? def.look, x: 0, y: 0, face: 1, pose: 'stand', to: null, wait: random() * 3, act: null, fast: false, away: true });
+      for (let i = 0; i < (def.count ?? 1); i++) ones.push({ id: `${def.kind}-${i}`, kind: def.kind, def, look: def.looks?.[i] ?? def.look, x: 0, y: 0, face: 1, pose: 'stand', to: null, wait: random() * 3, act: null, fast: false, away: true, lift: 0, wear: {} });
     }
     const byId = id => ones.find(o => o.id === id);
-    let roam = [], avoid = [], blocked = () => false, T = 0, says = [], quiet = 8; // the first idle line after 8 s
+    let roam = [], avoid = [], blocked = () => false, perches = [], spots = {}, T = 0, says = [], quiet = 8, winter = false; // the first idle line after 8 s
+    const reactedAt = new Map();
+    let running = [], nextGag = 60 + random() * 60, lastCrew = null; // the gags (and play) under way; when the next gag may start; the crew last lent
+    const taken = new Set();
     /**
      * May it stand at (x, y)? One with a home: inside it. The rest: feet in a roam area, and its whole body
      * clear of what it keeps off (a tall one doesn't reach over the eggs), and of the world's own fields and
@@ -42,22 +100,49 @@
       for (const [px, py] of [[x0, y0], [x1, y0], [x0, y], [x1, y], [x, y - c.h / 2]]) if (blocked(px, py)) return false;
       return true;
     }
-    /** The whole way from where it is to (x, y) is somewhere it may be: walking never cuts across what it must keep off. */
-    const okPath = (o, x, y) => { const n = Math.max(1, Math.ceil(Math.hypot(x - o.x, y - o.y) / 2)); for (let i = 1; i <= n; i++) if (!okAt(o, o.x + ((x - o.x) * i) / n, o.y + ((y - o.y) * i) / n)) return false; return true; };
+    /** The whole way from (ax, ay) to (bx, by) is somewhere it may be: walking never cuts across what it must keep off. */
+    const okSeg = (o, ax, ay, bx, by) => { const n = Math.max(1, Math.ceil(Math.hypot(bx - ax, by - ay) / 2)); for (let i = 1; i <= n; i++) if (!okAt(o, ax + ((bx - ax) * i) / n, ay + ((by - ay) * i) / n)) return false; return true; };
+    const okPath = (o, x, y) => okSeg(o, o.x, o.y, x, y);
+    /** A route through these points from where it is, every leg allowed; null when any isn't. */
+    function routeOf(o, points) {
+      let [ax, ay] = [o.x, o.y];
+      for (const [bx, by] of points) { if (!okSeg(o, ax, ay, bx, by)) return null; [ax, ay] = [bx, by]; }
+      return points.map(([x, y]) => [Math.round(x), Math.round(y)]);
+    }
+    /** A route to (x, y): straight, or with one bend where the straight way crosses what it keeps off; null when neither. */
+    function routeTo(o, pt) {
+      const straight = routeOf(o, [pt]);
+      if (straight) return straight;
+      for (let k = 0; k < 16; k++) { const w = somewhere(o, { reach: true }); if (w && okSeg(o, w[0], w[1], pt[0], pt[1])) return [w, pt].map(([x, y]) => [Math.round(x), Math.round(y)]); }
+      return null;
+    }
     /** A spot it may be (near a point, for a gathering), reachable from where it is when `reach`; null when there is none. */
-    function somewhere(o, { near = null, reach = false } = {}) {
+    function somewhere(o, { near = null, reach = false, spread = 1 } = {}) {
       const areas = o.def.home ? [o.def.home] : roam;
       for (let k = 0; k < 60 && areas.length; k++) {
         const r = areas[Math.floor(random() * areas.length)];
-        const x = Math.round(near ? near[0] + (random() - 0.5) * 24 : r.x + random() * r.w), y = Math.round(near ? near[1] + (random() - 0.5) * 12 : r.y + random() * r.h);
+        const x = Math.round(near ? near[0] + (random() - 0.5) * 24 * spread : r.x + random() * r.w), y = Math.round(near ? near[1] + (random() - 0.5) * 12 * spread : r.y + random() * r.h);
         if (okAt(o, x, y) && (!reach || okPath(o, x, y))) return [x, y];
+      }
+      return null;
+    }
+    /** The allowed point nearest (x, y) for this creature: the event's place, as near as it may go. */
+    function nearestAllowed(o, [x, y]) {
+      const clamp = (v, lo, hi) => Math.max(lo, Math.min(hi, v));
+      const areas = o.def.home ? [o.def.home] : roam;
+      for (const [cx, cy] of areas.map(r => [clamp(x, r.x + 2, r.x + r.w - 2), clamp(y, r.y + 2, r.y + r.h - 2)]).sort((a, b) => Math.hypot(a[0] - x, a[1] - y) - Math.hypot(b[0] - x, b[1] - y))) {
+        for (let d = 0; d <= 120; d += 4) for (let k = 0; k < (d ? 12 : 1); k++) { // outward from there, ring by ring, until it may stand
+          const px = Math.round(cx + Math.cos((k / 12) * 2 * Math.PI) * d), py = Math.round(cy + Math.sin((k / 12) * 2 * Math.PI) * d);
+          if (okAt(o, px, py)) return [px, py];
+        }
       }
       return null;
     }
     function say(o, key) {
       const list = o.def.lines?.[key];
-      if (!list?.length || says.length >= LINES_AT_ONCE || says.some(s => s.id === o.id)) return;
+      if (!list?.length || says.length >= LINES_AT_ONCE || says.some(s => s.id === o.id)) return false;
       says.push({ id: o.id, text: String(list[Math.floor(random() * list.length)]).slice(0, LINE_MAX), until: T + LINE_S });
+      return true;
     }
     /** One step toward (x, y); true once there. */
     function walk(o, [x, y], dt) {
@@ -68,51 +153,293 @@
       o.y += ((y - o.y) / d) * sp;
       return false;
     }
+    /** Something it does for a while: a pose, a route to follow (checked), fast or not; then back to its own life. */
+    function doing(o, { pose, route = [], s, fast = false, perch = null, spin = false, then = null }) {
+      if (!perch) o.lift = 0; // off its perch first
+      o.act = { pose, route: route ?? [], until: T + s, perch, spin, then };
+      o.fast = fast;
+      o.to = null;
+    }
+    function endAct(o) { o.act = null; o.fast = false; o.lift = 0; }
     /** Put somewhere it may be (it finds itself where it may not: the yard shrank), or away when there is nowhere. */
     function rehome(o) {
       const at = somewhere(o);
       o.to = null;
-      if (o.act) o.act.to = null;
+      endAct(o);
       if (at) { [o.x, o.y] = at; o.away = false; } else o.away = true;
     }
-    const restPose = o => (lib[o.kind].water ? (random() < 0.3 ? 'dabble' : 'swim') : random() < 0.5 ? 'eat' : 'stand');
+    const water = o => Boolean(lib[o.kind].water);
+    const movingPose = o => (water(o) ? (winter ? 'slide' : 'swim') : 'walk');
+    const restPose = o => (water(o) ? (winter ? 'stand' : random() < 0.3 ? 'dabble' : 'swim') : random() < 0.5 ? 'eat' : 'stand');
     const shown = () => ones.filter(o => !o.away);
+    /** A habit, now and then, when it rests: what its kind is known for (docs/worlds.md, "Creatures"). */
+    function habit(o) {
+      const list = (o.def.habits ?? []).filter(h => HABITS.has(h));
+      if (!list.length || random() >= 0.35) return false;
+      const h = list[Math.floor(random() * list.length)], { x, y } = o;
+      switch (h) {
+        case 'climb': {
+          const p = perches.filter(q => okAt(o, q[0], q[1]) && okPath(o, q[0], q[1])).sort((a, b) => Math.hypot(a[0] - x, a[1] - y) - Math.hypot(b[0] - x, b[1] - y))[0];
+          if (!p) return false;
+          doing(o, { pose: 'walk', route: [[p[0], p[1]]], s: 30, perch: p });
+          return true;
+        }
+        case 'circles': { const r = routeOf(o, [[x + 10, y], [x, y + 5], [x - 10, y], [x, y - 5], [x, y]]); if (!r) return false; doing(o, { pose: 'run', route: r, s: 5, fast: true }); return true; }
+        case 'hide': doing(o, { pose: 'hide', s: 4 }); return true;
+        case 'yawn': case 'stretch': doing(o, { pose: h, s: 2 }); return true;
+        case 'roll': doing(o, { pose: 'roll', s: 3 }); return true;
+        case 'chaseTail': doing(o, { pose: 'run', s: 3, spin: true }); return true;
+        case 'pounce': { const to = somewhere(o, { near: [x, y], reach: true, spread: 0.8 }); if (!to) return false; doing(o, { pose: 'run', route: [to], s: 3, fast: true, then: 'happy' }); return true; }
+        case 'fetch': { const to = somewhere(o, { near: [x, y], reach: true, spread: 2.5 }), r = to && routeOf(o, [to, [x, y]]); if (!r) return false; doing(o, { pose: 'run', route: r, s: 8, fast: true }); return true; }
+        case 'laps': { const r = routeOf(o, [[x + 20, y], [x - 20, y], [x + 20, y], [x - 20, y], [x, y]]); if (!r) return false; doing(o, { pose: 'run', route: r, s: 10, fast: true }); return true; }
+        default: return false;
+      }
+    }
+    /** A duckling follows the one ahead of it (the hen, then each duckling the one before): 8 px behind, in its home. */
+    function leaderOf(o) {
+      if (o.look !== 'duckling') return null;
+      const family = ones.filter(d => d.kind === o.kind && !d.away && (d.look === 'hen' || d.look === 'duckling'));
+      const i = family.indexOf(o);
+      return i > 0 ? family[i - 1] : null;
+    }
+
+    /* ---------- the gag runner ---------- */
+
+    const kindsOf = g => Object.keys(g.needs ?? {}).filter(k => !['farmer', 'chicken', 'spot'].includes(k));
+    const free = o => !o.away && !o.act && !o.inGag && o.pose !== 'sleep';
+    /** Can this gag start now, and with whom? Its roles bound ({ <kind>: creature id, farmer, chicken }), or null. */
+    function cast4(g, crew, { longIdle = false } = {}) {
+      const roles = {}, used = new Set();
+      const kinds = kindsOf(g);
+      for (const k of kinds) if (ones.filter(o => o.kind === k && free(o)).length < (Number(g.needs[k]) || 1)) return null;
+      const first = kinds[0] && ones.filter(o => o.kind === kinds[0] && free(o));
+      const lead = first?.length ? first[Math.floor(random() * first.length)] : null;
+      if (lead) { roles[lead.kind] = lead.id; used.add(lead.id); }
+      if (g.needs.spot && !(Array.isArray(spots[g.needs.spot]) && crew.spotFree(g.needs.spot))) return null;
+      if (g.needs.farmer) {
+        const pool = g.needs.farmer === 'busy' ? crew.busy() : longIdle ? crew.longIdle() : crew.idle();
+        const near = f => (lead ? Math.hypot(f.x - lead.x, f.y - lead.y) : 0);
+        const f = [...pool].filter(z => !running.some(r => r.roles.farmer === z.id)).sort((a, b) => near(a) - near(b))[0];
+        if (!f) return null;
+        roles.farmer = f.id;
+      }
+      if (g.needs.chicken) {
+        const c = lead && crew.chickens().find(ch => Math.hypot(ch.x - lead.x, ch.y - lead.y) < 40);
+        if (!c) return null;
+        roles.chicken = c;
+      }
+      for (const k of kinds.slice(1)) { // the rest of its creatures: the nearest to the first
+        const o = ones.filter(z => z.kind === k && free(z) && !used.has(z.id)).sort((a, b) => (lead ? Math.hypot(a.x - lead.x, a.y - lead.y) - Math.hypot(b.x - lead.x, b.y - lead.y) : 0))[0];
+        if (!o) return null;
+        roles[k] = o.id;
+        used.add(o.id);
+      }
+      return roles;
+    }
+    function fail(g, why, crew) { drop(g.def.id, why); endGag(g, crew); }
+    /** Starts one of these gags whose roles can be found now; true when one did. */
+    function startGag(list, crew, opts = {}) {
+      const order = list.filter(g => !dropped.has(g.id)).map(g => [random(), g]).sort((a, b) => a[0] - b[0]).map(([, g]) => g);
+      for (const def of order) {
+        let roles = null;
+        try { roles = cast4(def, crew, opts); } catch (err) { drop(def.id, String(err?.message ?? err)); continue; }
+        if (!roles) continue;
+        const g = { def, roles, i: 0, started: false, at: T, borrowed: new Set(), home: {}, wore: [], play: Boolean(opts.longIdle) };
+        for (const [k, id] of Object.entries(roles)) if (k !== 'farmer' && k !== 'chicken') { const o = byId(id); o.inGag = true; endAct(o); o.to = null; g.home[k] = [Math.round(o.x), Math.round(o.y)]; }
+        running.push(g);
+        return true;
+      }
+      return false;
+    }
+    /** Ends a gag, done or not: what was worn comes back (the hat, the bucket), its farmers are let go, its creatures go back to their own lives. */
+    function endGag(g, crew, { snap = false } = {}) {
+      running = running.filter(r => r !== g);
+      for (const w of g.wore) {
+        const o = byId(w.id);
+        if (w.what === 'hat') { if (o) o.wear.hat = undefined; if (g.roles.farmer) crew?.flag(g.roles.farmer, 'hatless', false); }
+        if (w.what === 'bucket') { if (o) o.wear.bucket = undefined; taken.delete('bucket'); }
+      }
+      for (const id of new Set([...g.borrowed, g.roles.farmer].filter(Boolean))) crew?.release(id); // its farmer is let go, sent or not (the crew lets go only what it lent)
+      for (const [k, id] of Object.entries(g.roles)) {
+        if (k === 'farmer' || k === 'chicken') continue;
+        const o = byId(id);
+        if (!o) continue;
+        o.inGag = false;
+        if (o.gagSpot && snap) { o.gagSpot = false; endAct(o); } // the yard changed: put back where it may be (place)
+        else if (o.gagSpot) doing(o, { pose: movingPose(o), route: [...(g.way ?? []).slice().reverse(), g.home[k]], s: 10 }); // out of the spot it was let into, the way it came
+      }
+    }
+    /** Does a gag still fit the yard (after place): its creatures where they may be, or in its spot, still there, with the way in and home still allowed. */
+    function gagFits(g) {
+      for (const [k, id] of Object.entries(g.roles)) {
+        if (k === 'farmer' || k === 'chicken') continue;
+        const o = byId(id);
+        if (!o || o.away) return false;
+        if (g.home[k] && !okAt(o, g.home[k][0], g.home[k][1])) return false;
+        if (!o.gagSpot) { if (!okAt(o, o.x, o.y)) return false; continue; }
+        const at = spots[o.gagSpot];
+        if (!Array.isArray(at) || at[0] !== g.spotAt?.[0] || at[1] !== g.spotAt?.[1] || !(g.way ?? []).every(p => okAt(o, p[0], p[1]))) return false;
+      }
+      return true;
+    }
+    /** Where a role is: a creature, the farmer (from the crew), the chicken; null for a role the gag doesn't have. */
+    function whereOf(g, role, crew) {
+      if (role === 'farmer') return g.roles.farmer ? crew.at(g.roles.farmer) : null;
+      if (role === 'chicken') return g.roles.chicken ?? null;
+      const o = byId(g.roles[role]);
+      return o ? { x: o.x, y: o.y } : null;
+    }
+    /** A step's target as a point: a role (beside it), spot:<name>, away (far from where it is), back (where it started). */
+    function targetOf(g, step, crew, o) {
+      const to = step.to;
+      if (typeof to === 'string' && to.startsWith('spot:')) return Array.isArray(spots[to.slice(5)]) ? { pt: spots[to.slice(5)], spot: to.slice(5) } : null;
+      if (to === 'back') return { pt: g.home[step.go] ?? (o ? [o.x, o.y] : null) };
+      if (to === 'away') {
+        const from = whereOf(g, step.go, crew), cand = o ? [0, 1, 2, 3, 4, 5].map(() => somewhere(o, { reach: true })).filter(Boolean) : [];
+        const best = cand.sort((a, b) => Math.hypot(b[0] - from.x, b[1] - from.y) - Math.hypot(a[0] - from.x, a[1] - from.y))[0];
+        return best ? { pt: best } : null;
+      }
+      const w = whereOf(g, to, crew);
+      return w ? { pt: [Math.round(w.x + 10), Math.round(w.y)] } : null;
+    }
+    /** One gag, one tick: the current step starts, or is checked; done, the next; past the last, it ends. */
+    function runGag(g, crew) {
+      try { stepGag(g, crew); } catch (err) { try { fail(g, String(err?.message ?? err), crew); } catch { running = running.filter(r => r !== g); } } // a gag that throws is dropped; the world goes on
+    }
+    function stepGag(g, crew) {
+      const f = g.roles.farmer, want = g.def.needs?.farmer === 'busy' ? 'working' : 'idle';
+      if (f && (!crew.at(f) || crew.state(f) !== want)) { endGag(g, crew); return; } // it needs you, work came (or went), you sent it somewhere: it all stops
+      const step = g.def.steps?.[g.i];
+      if (!step) { endGag(g, crew); return; }
+      const key = STEPS.find(k => k in step);
+      const role = key === 'wait' ? null : key === 'fx' ? step.at : step[key];
+      const o = role && role !== 'farmer' && role !== 'chicken' ? byId(g.roles[role]) : null;
+      const ms = g.ms ?? (Number(step.ms ?? (key === 'wait' ? step.wait : 8000)) || 0), over = () => T - g.at >= (g.ms ?? ms) / 1000;
+      {
+        if (!g.started) {
+          g.started = true;
+          g.at = T;
+          if (key === 'go') {
+            const t = targetOf(g, step, crew, o);
+            if (typeof step.to === 'string' && step.to.startsWith('spot:') && !t) { fail(g, `its spot isn't there (${step.to.slice(5)})`, crew); return; }
+            if (!t?.pt) { next(g); return; }
+            if (role === 'farmer') { // a go with no ms lasts until it gets there
+              g.ms = step.ms ?? 20000;
+              if (crew.send(f, t.pt, { stay: g.ms / 1000 }) === false) { endGag(g, crew); return; } // it can't be lent now
+              g.borrowed.add(f); g.target = t.pt;
+            }
+            else {
+              const into = t.spot ? avoid.find(r => inRect(r, t.pt[0], t.pt[1])) : null;
+              // let into a spot it may not be otherwise (a hammock): the way to its door is checked, only the last step isn't
+              const door = into ? nearestAllowed(o, [t.pt[0], into.y - 1]) : null;
+              const way = into && door ? routeTo(o, door) : null;
+              if (into && !way) { endGag(g, crew); return; } // no way to its door from here: another time
+              const toRole = !into && !o.gagSpot && step.to in g.roles, near = toRole ? nearestAllowed(o, t.pt) : null; // beside a role: as near as it may go
+              const reach = near && Math.hypot(near[0] - t.pt[0], near[1] - t.pt[1]) <= 24 ? routeTo(o, near) : null;
+              if (toRole && !reach) { endGag(g, crew); return; } // out of its reach (a farmer in a field): another time
+              const route = into ? [...way, t.pt] : o.gagSpot ? [...(g.way ?? []).slice().reverse(), t.pt] : toRole ? reach : routeTo(o, t.pt);
+              if (step.ms == null && route?.length) { let d = 0, [ax, ay] = [o.x, o.y]; for (const [bx, by] of route) { d += Math.hypot(bx - ax, by - ay); [ax, ay] = [bx, by]; } g.ms = Math.max(8000, (1000 * d) / (lib[o.kind].speed * (step.run ? 2.5 : 1)) + 2000); }
+              doing(o, { pose: step.run ? 'run' : movingPose(o), route: route ?? [], s: (g.ms ?? ms) / 1000, fast: Boolean(step.run) });
+              if (into) { o.gagSpot = t.spot; g.spotAt = [...t.pt]; g.way = way; }
+            }
+          } else if (key === 'say') {
+            const by = o ?? byId(Object.entries(g.roles).find(([k]) => k !== 'farmer' && k !== 'chicken')?.[1]);
+            if (by && (role === 'farmer' || !say(by, step.line)) && g.def.lines?.[step.line]) { const save = by.def.lines; by.def = { ...by.def, lines: { ...save, [step.line]: g.def.lines[step.line] } }; say(by, step.line); by.def = { ...by.def, lines: save }; }
+            next(g); return;
+          } else if (key === 'pose') doing(o, { pose: step.is, s: ms / 1000 });
+          else if (key === 'stay') { doing(o, { pose: step.is ?? 'sleep', s: ms / 1000 }); }
+          else if (key === 'wear') {
+            if (step.what === 'hat') { o.wear.hat = step.on ? HAT : undefined; if (f) crew.flag(f, 'hatless', Boolean(step.on)); }
+            else if (step.what === 'bucket') { o.wear.bucket = step.on || undefined; if (step.on) taken.add('bucket'); else taken.delete('bucket'); }
+            else throw new Error(`it wears something it can't (${step.what})`);
+            if (step.on) g.wore.push({ id: o.id, what: step.what }); else g.wore = g.wore.filter(w => !(w.id === o.id && w.what === step.what));
+            next(g); return;
+          } else if (key === 'fx') { const w = whereOf(g, step.at, crew); if (w) crew.fx(step.fx, [w.x, w.y]); next(g); return; }
+        }
+        // checked each tick until done
+        if (key === 'go') {
+          if (role === 'farmer') { const at = crew.at(f); if (over() || (at && g.target && Math.hypot(at.x - g.target[0], at.y - g.target[1]) < 2)) next(g); }
+          else if (over() || !o.act || !o.act.route.length) next(g);
+        } else if (key === 'chase') {
+          const w = whereOf(g, step.after, crew);
+          if (w) { if (crew.send(f, [Math.round(w.x - 8), Math.round(w.y)], { stay: 0 }) === false) { endGag(g, crew); return; } g.borrowed.add(f); }
+          if (over()) next(g);
+        } else if (key === 'stay') {
+          const spot = typeof step.while === 'string' && step.while.startsWith('spot:') ? step.while.slice(5) : null;
+          if (over() || (spot && !crew.spotFree(spot))) { if (o) endAct(o); next(g); }
+        } else if (over()) next(g); // pose, wait
+      }
+    }
+    function next(g) { g.i++; g.started = false; g.at = T; g.ms = null; }
 
     return {
-      /** Where creatures may be: anything now outside is moved somewhere it may be, and walks toward nothing it may no longer reach. */
+      /** Where creatures may be (and the perches and spots there): anything now outside is moved somewhere it may be, and walks toward nothing it may no longer reach. */
       place(world) {
         roam = world?.roam ?? [];
         avoid = world?.avoid ?? [];
         blocked = typeof world?.blocked === 'function' ? world.blocked : () => false;
+        perches = Array.isArray(world?.perches) ? world.perches : [];
+        spots = world?.spots && typeof world.spots === 'object' ? world.spots : {};
+        for (const g of [...running]) if (!gagFits(g)) endGag(g, lastCrew, { snap: true }); // the yard changed under a gag: it ends, everyone back where they may be
         for (const o of ones) {
-          if (o.away || !okAt(o, o.x, o.y)) { rehome(o); continue; }
+          if (o.gagSpot && !o.inGag && !(o.act?.route ?? []).every(p => okAt(o, p[0], p[1]))) { o.gagSpot = false; endAct(o); } // on its way out of a spot that no longer leads anywhere
+          if (o.act?.perch && !perches.some(q => q[0] === o.act.perch[0] && q[1] === o.act.perch[1])) endAct(o); // its perch is gone
+          if (o.away || (!o.gagSpot && !okAt(o, o.x, o.y))) { rehome(o); continue; }
+          if (o.gagSpot) continue; // let into its gag's spot: the way was checked (gagFits)
           if (o.to && !okPath(o, o.to[0], o.to[1])) o.to = null;
-          if (o.act?.to && !okPath(o, o.act.to[0], o.act.to[1])) o.act.to = null;
+          if (o.act?.route?.length && !routeOf(o, o.act.route)) o.act.route = [];
         }
       },
-      /** Time passes: they wander, rest, nap, sleep at night (bar the night owls), doze with motion off; now and then one says something. */
-      tick(dt, { night = false, still = false } = {}) {
+      /** Time passes: they wander, keep their habits, rest, sleep at night (bar the night owls), huddle in winter, doze with motion off; now and then one says something. */
+      tick(dt, { night = false, still = false, winter: cold = false, crew = null } = {}) {
         T += dt;
+        winter = cold;
         says = says.filter(s => s.until > T);
+        for (const o of ones) {
+          if (o.kind === 'goat') o.wear.scarf = winter || undefined;
+          if (water(o)) o.wear.ice = winter || undefined;
+        }
         if (still) { for (const o of ones) o.pose = 'sleep'; return; }
         for (const o of shown()) {
-          if (!okAt(o, o.x, o.y)) { rehome(o); continue; } // somewhere it may not be (the yard changed under it): moved back in
-          if (o.act && T >= o.act.until) { o.act = null; o.fast = false; }
+          if (!o.gagSpot && !okAt(o, o.x, o.y)) { rehome(o); continue; } // somewhere it may not be (the yard changed under it): moved back in
+          if (o.act && T >= o.act.until) endAct(o);
           if (o.act) {
-            o.pose = o.act.pose;
-            if (o.act.to && walk(o, o.act.to, dt)) o.act.to = null;
+            const a = o.act;
+            if (a.route.length) {
+              o.pose = a.pose;
+              if (walk(o, a.route[0], dt)) a.route.shift();
+              if (!a.route.length && a.perch) { o.lift = a.perch[2]; a.until = T + 5 + random() * 3; o.pose = 'stand'; } // up on its perch
+              if (!a.route.length && a.then) o.pose = a.then;
+            } else if (!a.perch || o.lift) o.pose = a.then && !a.route.length && a.pose === 'run' && a.then ? a.then : a.pose;
+            if (a.perch && o.lift) o.pose = 'stand';
+            if (a.spin) o.face = Math.floor(T * 4) % 2 ? 1 : -1;
             continue;
           }
+          if (o.inGag) { o.pose = o.pose === 'sleep' ? 'stand' : o.pose; continue; } // in a gag, between its steps: it waits for its cue
+          if (o.gagSpot) o.gagSpot = false; // back out of the gag's spot
           if (night && lib[o.kind].night === 'sleep') { o.pose = 'sleep'; o.to = null; continue; }
+          const lead = leaderOf(o);
+          if (lead) { // in line behind its mother
+            const tx = lead.x - 8 * lead.face, ty = lead.y;
+            if (Math.hypot(tx - o.x, ty - o.y) > 3 && okAt(o, tx, ty)) { o.pose = movingPose(o); walk(o, [tx, ty], dt); } else o.pose = restPose(o) === 'dabble' ? 'swim' : restPose(o);
+            continue;
+          }
           if (o.to) {
-            o.pose = lib[o.kind].water ? 'swim' : 'walk';
-            if (walk(o, o.to, dt)) { o.to = null; o.wait = 2 + random() * 5; o.pose = restPose(o); }
+            o.pose = movingPose(o);
+            if (walk(o, o.to, dt)) { o.to = null; o.wait = (2 + random() * 5) * (winter ? 2 : 1); o.pose = restPose(o); }
             continue;
           }
           if ((o.wait -= dt) > 0) continue;
+          if (!winter && (!night || lib[o.kind].night === 'awake') && habit(o)) continue;
           if (random() < 0.12) { o.pose = 'sleep'; o.wait = 6 + random() * 10; continue; }
-          const to = somewhere(o, { reach: true });
+          const huddle = winter && !water(o) && Array.isArray(spots.huddle) ? spots.huddle : null; // winter: they huddle together
+          const to = somewhere(o, huddle ? { near: huddle, reach: true } : { reach: true });
           if (to) o.to = to; else o.wait = 1;
+        }
+        if (crew) {
+          lastCrew = crew;
+          for (const g of [...running]) runGag(g, crew);
+          if (!running.some(g => !g.play) && (nextGag -= dt) <= 0) nextGag = startGag(gags, crew) ? 60 + random() * 60 : 5; // none could start: look again soon
         }
         if ((quiet -= dt) <= 0) {
           quiet = 20 + random() * 20;
@@ -120,16 +447,49 @@
           if (awake.length) say(awake[Math.floor(random() * awake.length)], 'idle');
         }
       },
+      /**
+       * Something happened (a deploy failed or went out, a harvest, a merge, a new farmer): those it concerns
+       * react, and one says so. One reaction per kind every 30 s.
+       */
+      react(kind, at) {
+        if (!(kind in REACTS) || !Array.isArray(at) || T - (reactedAt.get(kind) ?? -Infinity) < 30) return false;
+        const what = o => (o.def.reacts && kind in o.def.reacts ? o.def.reacts[kind] : kind === 'deployFailed' && o.def.habits?.includes('hide') ? 'hide' : REACTS[kind]); // null: nothing
+        const live = shown().filter(o => what(o));
+        if (!live.length) return false;
+        const far = o => Math.hypot(o.x - at[0], o.y - at[1]);
+        const near = (list, n = 3) => { const close = list.filter(o => far(o) < 120); return close.length ? close : [...list].sort((a, b) => far(a) - far(b)).slice(0, n); };
+        const acted = [];
+        const byWhat = w => live.filter(o => what(o) === w);
+        for (const o of byWhat('hide')) { doing(o, { pose: 'hide', s: 3 }); acted.push(o); }
+        for (const o of near(byWhat('hop'))) { doing(o, { pose: 'happy', s: 1.5 }); acted.push(o); }
+        for (const o of near(byWhat('scatter'))) { // run from it: of a few places it may reach, the farthest
+          const best = [0, 1, 2, 3, 4, 5].map(() => somewhere(o, { reach: true })).filter(Boolean).sort((a, b) => Math.hypot(b[0] - at[0], b[1] - at[1]) - Math.hypot(a[0] - at[0], a[1] - at[1]))[0];
+          doing(o, { pose: best ? 'run' : 'startled', route: best ? [best] : [], s: 3, fast: Boolean(best) });
+          acted.push(o);
+        }
+        for (const o of [...byWhat('gather')].sort((a, b) => far(a) - far(b)).slice(0, 4)) { // to the yard's edge nearest it
+          const edge = nearestAllowed(o, at), to = edge && somewhere(o, { near: edge, reach: true });
+          if (to) { doing(o, { pose: movingPose(o), route: [to], s: 8, then: 'stand' }); acted.push(o); }
+        }
+        for (const o of byWhat('run')) { // the sheepdog: as near as it may go, fast
+          const edge = nearestAllowed(o, at), to = edge && (okPath(o, edge[0], edge[1]) ? edge : somewhere(o, { near: edge, reach: true }));
+          if (to) { doing(o, { pose: 'run', route: [to], s: 6, fast: true, then: 'happy' }); acted.push(o); }
+        }
+        if (!acted.length) return false;
+        reactedAt.set(kind, T);
+        acted.some(o => say(o, kind));
+        return true;
+      },
       /** Each creature as [y, draw], to sort in with the world's farmers and things. */
       items() {
         return shown().map(o => [o.y, () => {
           const hop = o.pose === 'happy' && Math.floor(T * 6) % 2 ? 1 : 0;
-          lib[o.kind].draw(creaturePainter(o.x, o.y - hop, o.face), o.pose, T, o.look);
+          lib[o.kind].draw(creaturePainter(o.x, o.y - hop - (o.lift || 0), o.face), o.pose, T, o.look, o.wear);
         }]);
       },
       /** The creature drawn at (x, y), the front one first. */
       at(x, y) {
-        const hit = shown().sort((p, q) => q.y - p.y).find(o => { const c = lib[o.kind]; return Math.abs(x - o.x) <= c.w / 2 + 1 && y >= o.y - c.h - 1 && y <= o.y + 1; });
+        const hit = shown().sort((p, q) => q.y - p.y).find(o => { const c = lib[o.kind], top = o.y - (o.lift || 0); return Math.abs(x - o.x) <= c.w / 2 + 1 && y >= top - c.h - 1 && y <= top + 1; });
         return hit?.id ?? null;
       },
       /** A creature's home at (x, y), as its first creature (the pond: the ducks). */
@@ -139,7 +499,7 @@
         const o = byId(id);
         if (!o || o.away) return null;
         const stand = o.def.bank?.length ? o.def.bank.reduce((best, b) => (Math.hypot(b[0] - o.x, b[1] - o.y) < Math.hypot(best[0] - o.x, best[1] - o.y) ? b : best)) : [Math.round(o.x - 10 * o.face), Math.round(o.y)];
-        return { x: o.x, y: o.y, h: lib[o.kind].h, stand };
+        return { x: o.x, y: o.y - (o.lift || 0), h: lib[o.kind].h, stand };
       },
       menu(id) {
         const o = byId(id);
@@ -149,24 +509,37 @@
       perform(id, i, by) {
         const o = byId(id), a = o?.def.actions?.[i];
         if (!a || o.away) return null;
-        const until = T + (a.ms ?? 2500) / 1000, at = a.gather ? this.where(id).stand : [Math.round(o.x), Math.round(o.y)];
+        const at = a.gather ? this.where(id).stand : [Math.round(o.x), Math.round(o.y)];
+        let thief = null;
         if (a.gather) {
-          for (const d of shown().filter(x => x.kind === o.kind)) {
-            const to = somewhere(d, { near: at, reach: true });
-            d.act = { pose: lib[d.kind].water ? 'swim' : 'walk', to, until: T + 6 + (d.look === 'duckling' ? 1 : 0) };
+          const family = shown().filter(x => x.kind === o.kind);
+          if (a.steal) thief = family.filter(d => d.look === 'duckling').at(-1) ?? null; // the littlest one gets there first
+          const grab = thief && nearestAllowed(thief, at), dist = p => Math.hypot(p[0] - at[0], p[1] - at[1]); // the crumbs, or as near as it may go (a duck keeps to the water)
+          const won = grab && routeOf(thief, [grab]) ? grab : null;
+          for (const d of family) {
+            let to = d === thief && won ? won : somewhere(d, { near: at, reach: true });
+            for (let k = 0; won && d !== thief && to && k < 8 && dist(to) < dist(won) + 4; k++) to = somewhere(d, { near: at, reach: true }) ?? to; // the others a little behind it
+            doing(d, { pose: movingPose(d), route: to ? [to] : [], s: 6 + (d.look === 'duckling' ? 1 : 0), fast: d === thief });
           }
         } else {
           const to = a.run ? somewhere(o, { reach: true }) : null; // a run goes only where it may, the whole way
-          o.act = { pose: a.run && !to ? 'happy' : a.pose ?? 'happy', to, until };
-          o.fast = Boolean(to);
+          doing(o, { pose: a.run && !to ? 'happy' : a.pose ?? 'happy', route: to ? [to] : [], s: (a.ms ?? 2500) / 1000, fast: Boolean(to) });
         }
-        o.to = null;
         if (a.line) say(o, a.line);
+        if (thief) say(thief, 'bread'); // "mine!"
         return { at, fx: a.fx ?? null, by: by ?? null };
       },
       /** The lines being said now, above their creatures. */
-      bubbles() { return says.map(s => { const o = byId(s.id); return o && !o.away ? { id: s.id, x: o.x, y: o.y - lib[o.kind].h - 2, text: s.text } : null; }).filter(Boolean); },
-      list() { return ones.map(o => ({ id: o.id, kind: o.kind, x: Math.round(o.x), y: Math.round(o.y), pose: o.pose, ...(o.away ? { away: true } : {}) })); },
+      bubbles() { return says.map(s => { const o = byId(s.id); return o && !o.away ? { id: s.id, x: o.x, y: o.y - (o.lift || 0) - lib[o.kind].h - 2, text: s.text } : null; }).filter(Boolean); },
+      /** A farmer idle a long while plays with a creature (a play gag), when fewer than two are playing. */
+      play(crew) { if (crew && running.filter(g => g.play).length < 2) startGag(plays, crew, { longIdle: true }); },
+      /** Every gag and play ends now (motion off, the animals hidden, a new mount): hats back, farmers let go. */
+      stopGags(crew) { for (const g of [...running]) endGag(g, crew); },
+      /** The gag under way (not play), for tests and the browser check. */
+      gagNow() { const g = running.find(r => !r.play); return g ? { id: g.def.id } : null; },
+      /** What the animals have taken just now ('bucket'): the world doesn't draw it where it was. */
+      taken() { return new Set(taken); },
+      list() { return ones.map(o => ({ id: o.id, kind: o.kind, x: Math.round(o.x), y: Math.round(o.y), pose: o.pose, lift: o.lift || 0, wear: { ...o.wear }, ...(o.away ? { away: true } : {}) })); },
     };
   }
 
@@ -192,7 +565,7 @@
     const drop = (id, e) => { list.delete(id); if (!e.arrived) e.missed?.(); };
     return {
       has: id => list.has(id),
-      start(id, { x, y, now, busy, stay = 1.5, then, missed }) { list.set(id, { x, y, until: now + (busy ? 5 : 30), busy: Boolean(busy), stay, arrived: 0, then, missed }); },
+      start(id, { x, y, now, busy, stay = 1.5, then, missed, idleOnly = false }) { list.set(id, { x, y, until: now + (busy ? 5 : 30), busy: Boolean(busy), stay, arrived: 0, then, missed, idleOnly }); },
       /** Where a farmer goes instead of its place, or null; one that waits on you (or is on its turn) is let go. */
       target(f) {
         const e = list.get(f.id);
@@ -206,6 +579,7 @@
         for (const [id, e] of list) {
           const at = posOf(id), state = stateOf(id);
           if (!at || !state || forYou(state)) { drop(id, e); changed = true; continue; }
+          if (e.idleOnly && state !== 'idle') { list.delete(id); changed = true; continue; } // a gag or play: work came, it goes back to it (nothing was asked of it)
           if (state === 'working' && !e.busy) { e.busy = true; e.until = Math.min(e.until, now + 5); } // it got busy: its few seconds start now
           if (!e.arrived && Math.hypot(at.x - e.x, at.y - e.y) < 1) { e.arrived = now; e.then?.(); }
           if (e.arrived ? now - e.arrived >= e.stay || now > e.until + e.stay : now > e.until) { drop(id, e); changed = true; }
@@ -214,6 +588,12 @@
       },
       /** Every errand ends where it is (motion switched off, or the animals hidden): one not there yet is done by you. */
       finish() { for (const [id, e] of [...list]) drop(id, e); },
+      /** Let go, nothing done (a gag over). */
+      end(id) { list.delete(id); },
+      /** Whose errand: 'lent' (a gag's or play's), 'asked' (yours, from a menu), or null. */
+      kindOf: id => (list.has(id) ? (list.get(id).idleOnly ? 'lent' : 'asked') : null),
+      /** A gag lets its farmer go: only an errand it lent; yours stays. True when one ended. */
+      release(id) { return list.get(id)?.idleOnly ? list.delete(id) : false; },
       clear() { list.clear(); },
     };
   }
