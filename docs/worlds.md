@@ -60,23 +60,26 @@ npm run check-world -- <world> [--worlds <dir>]
 it in that folder instead of your worlds folder. It needs no browser, server or token: it reads the
 world's folder, the SDK and the tour (and `config.json`, only for where your worlds are).
 
-**Only on worlds you trust.** check-world runs the world's code in Node, in a `node:vm` context, not
-in the sandboxed frame, and a `vm` context is not a sandbox: code run there can reach what Node can,
-your files included. Run it on your own worlds and on ones you would run as a script; look at any
-other world on the test page, in its frame.
+**Contained, not sealed.** check-world runs a world's code on your Mac, outside the dashboard's
+sandboxed frame, so it runs it contained: in a Node of its own that can read only the SDK and the
+world's folder, can't write or start programs, and is given none of your environment. It can still
+reach the network, so check only worlds you'd trust; look at any other world on the test page, in its
+frame. The command says so in a line of its own. It needs a Node that can contain it (22.13 or later);
+with an older one it says so and checks nothing.
 
 It plays **the same tour as the test page** ("The test page and the tour"), headless: each stop in a
 fresh `node:vm` holding `scene.js` and the frame's scripts in the frame's order, a stand-in page,
 and canvases that record what is drawn. Each of the stop's snapshots goes through `toScene` (and
 `privateScene` at the `private` stop), the stop's sky is the world's `sky` setting, and the world
-draws 8 frames after each snapshot, then one more, whose drawing is what two stops are compared by.
-The clock and the random numbers are fixed, and a request (`agentFiles`, `repoTouched`) never gets
-an answer here.
+draws 8 frames after each of its snapshots (8 more when it has only one), then one last frame, whose
+drawing is what two stops are compared by. The clock and the random numbers are fixed, and a request
+(`agentFiles`, `repoTouched`) never gets an answer here.
 
 It reports, a line each:
 
-- **✗ An exception**, with its stop, and the file and line: `world.js:68`, or the SDK's own file when
-  the world handed it something it can't use. A promise the world left failing counts too (once a
+- **✗ An exception**, with its stop, and the file and line: the line of `world.js` it came from
+  (`world.js:68`), even when the SDK threw it for something the world handed it; the SDK's own file
+  only when no line of `world.js` led there. A promise the world left failing counts too (once a
   stop), as do a `world.js` that doesn't parse (its line) and one that never registers.
 - **✗ A hook that doesn't return** within 2 seconds (a loop, or promise callbacks that never end),
   with what the world was doing: starting, taking a scene or drawing a frame. It is cut off and the
@@ -91,12 +94,15 @@ It reports, a line each:
 - **· Outfit parts the people kit doesn't have** (`hat:hardhatt`): drawn as the default part.
 - **· "no roam(): its creatures aren't shown"**: `animals()` without `roam()`, so only creatures with a
   `home` appear.
+- **· A creature's fx, pose or look the kit doesn't have**: drawn its own way (no fx, standing, the
+  kind's first look), so a pointer, never a cross.
 
 It exits with 1 when there is any line with a cross, else 0. A world copied from the starter, with
 a mistake of each kind put in (its path shortened):
 
 ```
 check-world: u/my-bakery (/Users/you/.agentville/worlds/my-bakery)
+  · contained: it can read only the SDK and this world's folder, and can't write or start programs (it can still reach the network)
   ✗ 33 stops of the tour, a few frames each: 7 problems
   ✗ everyone: Error: no door here (world.js:68)
   ✗ waiting: Error: no door here (world.js:68)
@@ -137,17 +143,22 @@ show you each stop.
 | night | `day`, `night` | lit windows, lanterns and fireflies | the engine's night |
 | **Creatures (optional)** | none: check-world reads `animals()` once | thirteen animals, all within the rules | one cat, within the rules |
 
-The creature rules (a cross for each one broken; see "Creatures"):
+The creature rules (see "Creatures"). A cross for each one broken:
 
 - `kind` is one of the library's creatures, and not in `world.json`'s `taken`;
-- `count`, if given, is a whole number from 1 to 12; `looks`, if given, are the kind's own (the
-  duck's `drake`, `hen`, `duckling`);
-- `actions` number 2 to 4, each with a `label`; its `fx` is `hearts`, `crumbs` or `dust`, its `pose`
-  one the creature has (`stand`, `walk`, `run`, `eat`, `sleep`, `happy`; the duck's `swim` and
-  `dabble`; the ostrich's `hide`), and its `line` a key of `lines`;
+- `count`, if given, is a whole number from 1 to 12;
+- `actions` number 2 to 4, each with a `label`, and its `line` (if given) a key of `lines`;
 - every line in `lines` is 40 characters or fewer;
-- `home` is `{ x, y, w, h }` in numbers, and `bank` a list of `[x, y]`;
-- with no `roam()`, only creatures with a `home` are shown (a dot, not a cross).
+- `home` is `{ x, y, w, h }` in numbers, and `bank` a list of `[x, y]`.
+
+A dot for each of these (a pointer, never a cross):
+
+- an action's `fx` is `hearts`, `crumbs` or `dust` (another draws nothing);
+- its `pose` is one the creature has: `stand`, `walk`, `run`, `eat`, `sleep`, `happy`, the duck's
+  `swim` and `dabble`, the ostrich's `hide` (another: it stands);
+- `looks` (or `look`), if given, are the kind's own: the duck's `drake`, `hen`, `duckling` (another
+  is drawn as the first);
+- with no `roam()`, only creatures with a `home` are shown.
 
 The starter leaves out a compaction, subagents, the limits, a collision and a merged pull request,
 to stay short: those are check-world's five "may draw the same" dots for it, beside its hooks left

@@ -4,8 +4,13 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
+import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { checkWorld } from '../../scripts/lib/world-vm.mjs';
+import vm from 'node:vm';
+import { RUNNER, runContained } from '../../scripts/lib/contained.mjs';
+import { RULES, checkWorld, creatureProblems } from '../../scripts/lib/world-vm.mjs';
 
 const fixture = n => fileURLToPath(new URL(`./fixtures/worlds/${n}`, import.meta.url));
 const builtIn = n => fileURLToPath(new URL(`../../web/worlds/${n}`, import.meta.url));
@@ -36,7 +41,13 @@ test('an exception is reported with its stop, and world.js with the line', async
   assert.match(e.where, /world\.js:\d+/);
 });
 
-test('a hook that never returns is cut off and reported; the run finishes', async () => {
+test('an error the SDK throws for the world is reported at the world.js line that called it', async () => {
+  const r = await checkWorld({ dir: fixture('sdk-misuse') });
+  assert.ok(r.errors.length > 0, 'drawChar hands pixelOrigin a null');
+  for (const e of r.errors) assert.match(e.where, /^world\.js:5(:\d+)?$/, JSON.stringify(e));
+});
+
+test('a hook that never returns is cut off and reported; the run finishes', { timeout: 30_000 }, async () => {
   const t0 = Date.now(), r = await checkWorld({ dir: fixture('loops'), timeoutMs: 300 });
   assert.ok(r.errors.some(e => /didn't return within 0.3 s \(a loop\?\), while \w+/.test(e.message)), JSON.stringify(r.errors));
   assert.ok(r.errors.every(e => !/world-vm|scripts/.test(e.where)), 'never a line of check-world\'s own');
@@ -90,11 +101,125 @@ test('animals() may return { cast }: its creatures are checked as the plain list
   assert.deepEqual(cast.creatures, list.creatures);
 });
 
-test('the command: exit 0 for a clean world, 1 with a ✗ line for a creature problem', () => {
+test('the command: exit 0 for a clean world, 1 with a ✗ line for a creature problem; it says it runs contained', () => {
   const clean = run('starter');
   assert.equal(clean.status, 0, clean.stdout + clean.stderr);
   assert.match(clean.stdout, /✓ \d+ stops of the tour/);
+  assert.match(clean.stdout, /· contained: it can read only the SDK and this world's folder, and can't write or start programs \(it can still reach the network\)/);
   const bad = run('one-action', '--worlds', fixture(''));
   assert.equal(bad.status, 1, bad.stdout + bad.stderr);
   assert.match(bad.stdout, /✗ creatures: cat: 1 action in its menu/);
+});
+
+/* ---------- containment: the command's world code runs in a Node that may read only the check's files ---------- */
+
+test('contained as the command runs a world: it reads the SDK and its folder, but not outside, and writes and starts nothing', () => {
+  const tmp = mkdtempSync(join(tmpdir(), 'check-world-')), outside = join(tmp, 'outside.txt'), target = join(tmp, 'written.txt');
+  try {
+    writeFileSync(outside, 'not for worlds');
+    // Plain Node, with exactly the flags and the empty environment the command gives its contained check.
+    const code = `const fs = require('node:fs'), cp = require('node:child_process');
+      const t = f => { try { f(); return 'allowed'; } catch (e) { return e.code ?? e.message; } };
+      console.log(JSON.stringify({ sdk: t(() => fs.readFileSync(${JSON.stringify(builtIn('sdk/engine.js'))})), world: t(() => fs.readFileSync(${JSON.stringify(join(fixture('throws'), 'world.js'))})),
+        outside: t(() => fs.readFileSync(${JSON.stringify(outside)})), write: t(() => fs.writeFileSync(${JSON.stringify(target)}, 'x')), program: t(() => cp.spawnSync('ls')),
+        env: Object.keys(process.env) }));`;
+    const r = runContained(fixture('throws'), ['-e', code], { stdio: 'pipe' });
+    assert.equal(r.status, 0, r.stderr);
+    const got = JSON.parse(r.stdout);
+    assert.equal(got.sdk, 'allowed');
+    assert.equal(got.world, 'allowed');
+    assert.equal(got.outside, 'ERR_ACCESS_DENIED');
+    assert.equal(got.write, 'ERR_ACCESS_DENIED');
+    assert.equal(got.program, 'ERR_ACCESS_DENIED');
+    assert.ok(!got.env.includes('HOME') && !got.env.includes('PATH'), `no environment of yours: ${got.env}`);
+    assert.equal(existsSync(target), false, 'nothing written');
+  } finally { rmSync(tmp, { recursive: true, force: true }); }
+});
+
+test('the contained half refuses to run unless it is contained', () => {
+  const r = spawnSync(process.execPath, [RUNNER, 'starter', builtIn('starter')], { encoding: 'utf8', timeout: 60_000 });
+  assert.equal(r.status, 1);
+  assert.match(r.stderr, /runs a world only contained/);
+  assert.equal(r.stdout, '', 'no check ran');
+});
+
+/* ---------- the creature rules, one by one (creatureProblems is pure: a world's animals() as plain data) ---------- */
+
+const KINDS = ['cow', 'goat', 'sheepdog', 'ostrich', 'lion', 'tiger', 'duck', 'cat', 'dog', 'pigeon', 'mouse', 'fish'];
+const cat = over => ({ kind: 'cat', actions: [{ label: 'Pet', fx: 'hearts', line: 'petted' }, { label: 'Feed', pose: 'eat' }], lines: { idle: ['mrrp.'], petted: ['purr'] }, ...over });
+const rules = (creature, taken = []) => creatureProblems([creature], { kinds: KINDS, taken });
+
+test('creature rules: a good cat has neither problems nor pointers', () => {
+  assert.deepEqual(rules(cat()), { problems: [], pointers: [] });
+});
+
+test('creature rules: count is a whole number from 1 to 12', () => {
+  for (const count of [0, 13, '3', 1.5]) assert.deepEqual(rules(cat({ count })).problems, [`cat: count is ${JSON.stringify(count)}: a whole number from 1 to 12`], String(count));
+  for (const count of [1, 12]) assert.deepEqual(rules(cat({ count })).problems, []);
+});
+
+test("creature rules: looks are the kind's own (a pointer: an unknown one is drawn as the first)", () => {
+  const duck = looks => ({ kind: 'duck', count: 2, looks, actions: [{ label: 'Feed bread', gather: true }, { label: 'Quack back' }] });
+  assert.deepEqual(rules(duck(['drake', 'hen'])), { problems: [], pointers: [] });
+  assert.deepEqual(rules(duck(['drake', 'hne'])), { problems: [], pointers: ['duck: look "hne" isn\'t one of the duck\'s (drake, hen, duckling): drawn as the drake'] });
+  assert.deepEqual(rules(cat({ looks: ['tabby'] })).pointers, ['cat: look "tabby": the cat has no looks']);
+  assert.deepEqual(rules(cat({ look: 'tabby' })).pointers, ['cat: look "tabby": the cat has no looks'], 'a single look too');
+  assert.deepEqual(rules(cat({ looks: 'tabby' })).problems, ['cat: looks is a list, one look per creature']);
+});
+
+test('creature rules: an fx is one the engine draws (a pointer: an unknown one draws nothing)', () => {
+  const r = rules(cat({ actions: [{ label: 'Pet', fx: 'sparkles' }, { label: 'Feed', fx: 'dust' }] }));
+  assert.deepEqual(r, { problems: [], pointers: ['cat: action "Pet": fx "sparkles" isn\'t one of hearts, crumbs, dust: nothing is drawn'] });
+});
+
+test('creature rules: a pose is one the creature has (a pointer: an unknown one stands)', () => {
+  const r = rules(cat({ actions: [{ label: 'Bath', pose: 'swim' }, { label: 'Feed', pose: 'eat' }] }));
+  assert.deepEqual(r, { problems: [], pointers: ['cat: action "Bath": pose "swim" isn\'t one the cat has (stand, walk, run, eat, sleep, happy): it stands'] });
+  assert.deepEqual(rules({ kind: 'duck', actions: [{ label: 'Bath', pose: 'swim' }, { label: 'Dive', pose: 'dabble' }] }), { problems: [], pointers: [] }, 'the duck swims');
+});
+
+test("creature rules: an action's line is a key of lines", () => {
+  assert.deepEqual(rules(cat({ actions: [{ label: 'Pet', line: 'purred' }, { label: 'Feed' }] })).problems, ['cat: action "Pet": line "purred" isn\'t a key of lines']);
+});
+
+test('creature rules: home is { x, y, w, h } and bank a list of [x, y], in numbers', () => {
+  assert.deepEqual(rules(cat({ home: { x: 1, y: 2, w: 3, h: 4 }, bank: [[1, 2], [3, 4]] })).problems, []);
+  for (const home of [{ x: 1, y: 2, w: 3 }, [1, 2, 3, 4], { x: 1, y: 2, w: 3, h: '4' }]) assert.deepEqual(rules(cat({ home })).problems, ['cat: home is { x, y, w, h }, in numbers'], JSON.stringify(home));
+  for (const bank of [[1, 2], [[1]], [[1, '2']], { x: 1 }]) assert.deepEqual(rules(cat({ bank })).problems, ['cat: bank is a list of [x, y]'], JSON.stringify(bank));
+});
+
+test('creature rules: the kind, the labels and the shapes', () => {
+  assert.match(rules(cat({ kind: 'kat' })).problems[0], /^kat: no creature called "kat": the library has cow, /);
+  assert.match(rules(cat({ kind: undefined })).problems[0], /^creature 1: no kind: the library has /);
+  assert.deepEqual(rules(cat(), ['cat']).problems, ['cat: world.json\'s "taken" lists it: this world draws data in that shape, so its animals can\'t be one']);
+  assert.deepEqual(rules(cat({ actions: [{ label: ' ' }, { label: 'Feed' }] })).problems, ['cat: action 1 has no label']);
+  assert.deepEqual(rules(cat({ actions: Array.from({ length: 5 }, (_, i) => ({ label: `A${i}` })) })).problems, ['cat: 5 actions in its menu; a creature has 2 to 4']);
+  assert.deepEqual(rules(cat({ lines: ['mrrp'] })).problems, ['cat: lines is { idle: [...], <key>: [...] }', 'cat: action "Pet": line "petted" isn\'t a key of lines']);
+  assert.deepEqual(rules(null).problems, ['creature 1: not an object { kind, actions, lines, … }']);
+  assert.deepEqual(creatureProblems({ cats: [] }, { kinds: KINDS }).problems, ['animals(): it returns a list of creatures, or { cast: [...] }']);
+  assert.deepEqual(creatureProblems(null, { kinds: KINDS }), { problems: [], pointers: [] }, 'no animals: nothing to check');
+});
+
+test('creature rules: animals() without roam() is a pointer, not a problem', async () => {
+  const r = await checkWorld({ dir: fixture('no-roam') });
+  assert.deepEqual(r.creatures, []);
+  assert.deepEqual(r.notes, ["no roam(): its creatures aren't shown"]);
+  assert.deepEqual(r.errors, []);
+});
+
+test("creature rules: the copied lists match what creatures.js, animals.js and engine.js define (drift fails here, not a user's world)", () => {
+  const src = f => readFileSync(builtIn(`sdk/${f}`), 'utf8'), lits = (s, re) => new Set([...s.matchAll(re)].map(m => m[1]));
+  // fx: the engine's showFx
+  assert.deepEqual(lits(src('engine.js'), /r\.fx === '(\w+)'/g), new Set(RULES.FX));
+  // poses: every pose creatures.js and the kit name, and each creature's own beyond the common ones
+  const named = new Set([...lits(src('creatures.js'), /pose === '(\w+)'/g), ...lits(src('animals.js'), /pose(?: ===|:) '(\w+)'/g)]);
+  assert.deepEqual(named, new Set([...RULES.POSES, ...Object.values(RULES.POSES_OF).flat()]));
+  const lib = vm.runInContext(`${src('creatures.js')}; CREATURES`, vm.createContext({ px() {} }));
+  for (const [kind, c] of Object.entries(lib)) {
+    const draw = c.draw.toString();
+    const own = [...lits(draw, /pose === '(\w+)'/g)].filter(p => !RULES.POSES.includes(p));
+    assert.deepEqual(new Set(own), new Set((RULES.POSES_OF[kind] ?? RULES.POSES).filter(p => !RULES.POSES.includes(p))), `${kind}'s own poses`);
+    assert.deepEqual(lits(draw, /look (?:===|!==|=) '(\w+)'/g), new Set(RULES.LOOKS_OF[kind] ?? []), `${kind}'s looks`);
+  }
+  assert.match(src('animals.js'), new RegExp(`LINE_MAX = ${RULES.LINE_MAX}\\b`));
 });

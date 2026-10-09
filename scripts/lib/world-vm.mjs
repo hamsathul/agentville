@@ -2,52 +2,61 @@
 // with a stand-in DOM and canvases that record what they draw. Each stop of the tour (web/worlds/test/tour.js)
 // is given to the world as the page would give it, frames are stepped by hand, and every exception is caught
 // with its file and line; a hook that never returns is cut off. The world's creatures (its animals() hook)
-// are checked against the animals kit's rules. No dependencies. Not a sandbox: a vm context keeps the world's
-// names apart from ours, not its reach (docs/worlds.md, "check-world").
+// are checked against the animals kit's rules. No dependencies. A vm context keeps the world's names apart
+// from ours, not its reach: the command runs this contained (scripts/lib/contained.mjs).
 import { existsSync, readFileSync } from 'node:fs';
-import { join, relative, sep } from 'node:path';
+import { dirname, join, relative, sep } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import vm from 'node:vm';
 import { checkWorldJson } from '../../collector/worlds.mjs';
-import { ROOT } from './worlds-dir.mjs';
 
+const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..', '..');
 const WEB = join(ROOT, 'web');
 // The frame's scripts before world.js, in frame.html's order (the animals kit's when it is there); scene.js
 // too, for toScene and privateScene, as the page has them.
 const SDK = ['scene.js', 'brand.js', 'worlds/sdk/pixel.js', 'worlds/sdk/people.js', 'worlds/sdk/props.js', 'worlds/sdk/creatures.js', 'worlds/sdk/animals.js', 'worlds/sdk/engine.js'].filter(f => existsSync(join(WEB, f)));
+const TOUR = join(WEB, 'worlds', 'test', 'tour.js');
+/** Every file a check reads besides the world's own folder: this module, what it imports, the SDK and the tour. */
+export const FILES = [fileURLToPath(import.meta.url), join(ROOT, 'collector', 'worlds.mjs'), ...SDK.map(f => join(WEB, f)), TOUR];
 const REQUIRED = ['W', 'slots', 'drawChar', 'bg', 'grid'];
 const hash = s => { let h = 0; for (let i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) >>> 0; return h.toString(36); };
 const NUMBERS = new Set(['offsetWidth', 'offsetHeight', 'clientWidth', 'clientHeight', 'scrollLeft', 'scrollTop', 'scrollWidth', 'scrollHeight', 'width', 'height', 'length', 'size']);
 
 // The animals kit's rules (docs/worlds.md, "Creatures"). The effects the engine draws for an action
 // (engine.js, showFx); the poses every creature is drawn in, and the duck's and the ostrich's own
-// (creatures.js); the looks a kind has (the duck's, creatures.js); 40 characters a line (animals.js, LINE_MAX).
+// (creatures.js, and animals.js's stand and happy); the looks a kind has (the duck's, creatures.js);
+// 40 characters a line (animals.js, LINE_MAX). Copies: check-world.test.mjs fails when they drift.
 const FX = ['hearts', 'crumbs', 'dust'];
 const POSES = ['stand', 'walk', 'run', 'eat', 'sleep', 'happy'];
 const POSES_OF = { duck: [...POSES, 'swim', 'dabble'], ostrich: [...POSES, 'hide'] };
 const LOOKS_OF = { duck: ['drake', 'hen', 'duckling'] };
 const LINE_MAX = 40, COUNT_MAX = 12, ACTIONS = [2, 4];
+export const RULES = { FX, POSES, POSES_OF, LOOKS_OF, LINE_MAX };
 
 /**
- * What breaks the animals kit's rules in what a world's animals() returns (a list of creatures, or
- * `{ cast }` with the list in it), one problem a line, each starting with the creature's kind. `kinds`:
- * the library's (CREATURES); `taken`: world.json's. Plain data in (functions and undefined are gone).
+ * What a world's animals() returns (a list of creatures, or `{ cast }` with the list in it), held to the
+ * animals kit's rules. `problems` break them (the kit throws, or the rules say no); `pointers` are what it
+ * draws its own way (an fx, pose or look it doesn't have: nothing, or the plain one), so they never fail a
+ * world. A line each, starting with the creature's kind. `kinds`: the library's (CREATURES); `taken`:
+ * world.json's. Plain data in (functions and undefined are gone).
  */
 export function creatureProblems(value, { kinds, taken = [] }) {
-  if (value == null) return [];
+  const problems = [], pointers = [];
+  if (value == null) return { problems, pointers };
   const cast = Array.isArray(value) ? value : Array.isArray(value?.cast) ? value.cast : null;
-  if (!cast) return ['animals(): it returns a list of creatures, or { cast: [...] }'];
-  const out = [], num = v => typeof v === 'number' && Number.isFinite(v), isObj = v => Boolean(v) && typeof v === 'object' && !Array.isArray(v);
+  if (!cast) return { problems: ['animals(): it returns a list of creatures, or { cast: [...] }'], pointers };
+  const num = v => typeof v === 'number' && Number.isFinite(v), isObj = v => Boolean(v) && typeof v === 'object' && !Array.isArray(v);
   cast.forEach((c, i) => {
-    if (!isObj(c)) { out.push(`creature ${i + 1}: not an object { kind, actions, lines, … }`); return; }
+    if (!isObj(c)) { problems.push(`creature ${i + 1}: not an object { kind, actions, lines, … }`); return; }
     const known = kinds.includes(c.kind), who = typeof c.kind === 'string' && c.kind ? c.kind : `creature ${i + 1}`;
-    const say = m => out.push(`${who}: ${m}`);
+    const say = m => problems.push(`${who}: ${m}`), point = m => pointers.push(`${who}: ${m}`);
     if (!known) say(`${c.kind === undefined ? 'no kind' : `no creature called ${JSON.stringify(c.kind)}`}: the library has ${kinds.join(', ')}`);
     else if (taken.includes(c.kind)) say(`world.json's "taken" lists it: this world draws data in that shape, so its animals can't be one`);
     if (c.count != null && !(Number.isInteger(c.count) && c.count >= 1 && c.count <= COUNT_MAX)) say(`count is ${JSON.stringify(c.count)}: a whole number from 1 to ${COUNT_MAX}`);
-    if (c.looks != null && known) {
+    if ((c.looks != null || c.look != null) && known) {
       const own = LOOKS_OF[c.kind] ?? [];
-      if (!Array.isArray(c.looks)) say('looks is a list, one look per creature');
-      else for (const l of new Set(c.looks)) if (!own.includes(l)) say(own.length ? `look ${JSON.stringify(l)} isn't one of the ${c.kind}'s (${own.join(', ')})` : `look ${JSON.stringify(l)}: the ${c.kind} has no looks`);
+      if (c.looks != null && !Array.isArray(c.looks)) say('looks is a list, one look per creature');
+      else for (const l of new Set([...(c.looks ?? []), ...(c.look != null ? [c.look] : [])])) if (!own.includes(l)) point(own.length ? `look ${JSON.stringify(l)} isn't one of the ${c.kind}'s (${own.join(', ')}): drawn as the ${own[0]}` : `look ${JSON.stringify(l)}: the ${c.kind} has no looks`);
     }
     const lines = isObj(c.lines) ? c.lines : {};
     if (c.lines != null && !isObj(c.lines)) say('lines is { idle: [...], <key>: [...] }');
@@ -58,8 +67,8 @@ export function creatureProblems(value, { kinds, taken = [] }) {
       if (!isObj(a)) { say(`action ${k + 1}: not an object { label, fx?, pose?, line? }`); return; }
       const labelled = typeof a.label === 'string' && a.label.trim() !== '', name = labelled ? `action ${JSON.stringify(a.label)}` : `action ${k + 1}`;
       if (!labelled) say(`${name} has no label`);
-      if (a.fx != null && !FX.includes(a.fx)) say(`${name}: fx ${JSON.stringify(a.fx)} isn't one of ${FX.join(', ')}`);
-      if (a.pose != null && known && !poses.includes(a.pose)) say(`${name}: pose ${JSON.stringify(a.pose)} isn't one the ${c.kind} has (${poses.join(', ')})`);
+      if (a.fx != null && !FX.includes(a.fx)) point(`${name}: fx ${JSON.stringify(a.fx)} isn't one of ${FX.join(', ')}: nothing is drawn`);
+      if (a.pose != null && known && !poses.includes(a.pose)) point(`${name}: pose ${JSON.stringify(a.pose)} isn't one the ${c.kind} has (${poses.join(', ')}): it stands`);
       if (a.line != null && !Object.hasOwn(lines, a.line)) say(`${name}: line ${JSON.stringify(a.line)} isn't a key of lines`);
     });
     for (const [key, list] of Object.entries(lines)) {
@@ -69,14 +78,14 @@ export function creatureProblems(value, { kinds, taken = [] }) {
     if (c.home != null && !(isObj(c.home) && ['x', 'y', 'w', 'h'].every(k => num(c.home[k])))) say('home is { x, y, w, h }, in numbers');
     if (c.bank != null && !(Array.isArray(c.bank) && c.bank.every(b => Array.isArray(b) && b.length === 2 && b.every(num)))) say('bank is a list of [x, y]');
   });
-  return out;
+  return { problems, pointers };
 }
 
 /** A stand-in DOM: every element a Proxy that takes any call; a canvas's 2D context records its fills and images. */
 function stubDom(log) {
   // A canvas's own ops identify it when drawn onto another (a sprite, the ground): hashed once per change, and
   // kept only up to a cap (the main canvas, drawn every frame, would grow without end; nothing draws it elsewhere).
-  const OPS_MAX = 50_000;
+  const OPS_MAX = 50_000, LOG_MAX = 500_000;
   const sigOf = img => {
     if (!img?.__ops) return '?';
     if (img.__hashedLen !== img.__ops.length) { img.__hash = hash(JSON.stringify(img.__ops)); img.__hashedLen = img.__ops.length; }
@@ -84,7 +93,7 @@ function stubDom(log) {
   };
   const context = owner => new Proxy({ fillStyle: '#000000', globalAlpha: 1 }, {
     get: (t, k) => {
-      const put = op => { if (owner.__ops.length < OPS_MAX) owner.__ops.push(op); log.push(op); };
+      const put = op => { if (owner.__ops.length < OPS_MAX) owner.__ops.push(op); if (log.length < LOG_MAX) log.push(op); else if (log.length === LOG_MAX) log.push(['…']); }; // a drawing loop can't fill the memory
       if (k === 'fillRect') return (x, y, w, h) => put(['r', String(t.fillStyle), t.globalAlpha, x, y, w, h]);
       if (k === 'clearRect') return (x, y, w, h) => put(['c', x, y, w, h]);
       if (k === 'drawImage') return (img, ...a) => put(['i', sigOf(img), ...a.map(Number)]);
@@ -121,7 +130,7 @@ function stubDom(log) {
 function tour() {
   const g = {};
   g.window = g;
-  vm.runInContext(readFileSync(join(WEB, 'worlds', 'test', 'tour.js'), 'utf8'), vm.createContext(g));
+  vm.runInContext(readFileSync(TOUR, 'utf8'), vm.createContext(g));
   return JSON.parse(JSON.stringify({ NOW: g.AgentvilleTour.NOW, stops: g.AgentvilleTour.stops, checks: g.AgentvilleTour.checks }));
 }
 
@@ -138,8 +147,10 @@ export async function checkWorld({ dir, file = 'world.js', frames = 8, timeoutMs
   // Where an exception came from: world.js's line if it is in the stack, else the SDK's (never this harness's own).
   const whereOf = err => {
     const stack = String(err?.stack ?? '');
-    const top = stack.match(/^(\/[^\n]*?):(\d+)\n/); // a script that doesn't parse: its file and line come first
-    if (top) return at(top[1], top[2]);
+    // Node puts the throw site first ("<file>:<line>\n<source>"): a world.js that doesn't parse, or a throw in
+    // world.js itself. When the throw site is the SDK's, the world.js line that called it wins, from the stack.
+    const top = stack.match(/^(\/[^\n]*?):(\d+)\n/);
+    if (top?.[1] === worldPath) return at(top[1], top[2]);
     const found = [...stack.matchAll(/\(?(\/[^\s()]+):(\d+):(\d+)\)?/g)].filter(m => m[1] === worldPath || m[1].startsWith(WEB + sep));
     const f = found.find(m => m[1] === worldPath) ?? found[0];
     return f ? at(f[1], f[2], f[3]) : '';
@@ -193,7 +204,9 @@ export async function checkWorld({ dir, file = 'world.js', frames = 8, timeoutMs
     creaturesChecked = true;
     let value;
     try { value = JSON.parse(call(() => JSON.stringify(hooks.animals() ?? null), 'giving its animals') ?? 'null'); } catch { return; }
-    out.creatures = creatureProblems(value, { kinds: Object.keys(g.CREATURES ?? {}), taken });
+    const { problems, pointers } = creatureProblems(value, { kinds: Object.keys(g.CREATURES ?? {}), taken });
+    out.creatures = problems;
+    out.notes.push(...pointers.map(p => `creatures: ${p}`));
     const cast = Array.isArray(value) ? value : Array.isArray(value?.cast) ? value.cast : [];
     if (typeof hooks.roam !== 'function' && cast.some(c => !c?.home)) out.notes.push("no roam(): its creatures aren't shown");
   }

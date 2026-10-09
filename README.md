@@ -595,7 +595,9 @@ checklist items it draws the same in two states ("deploy failed" draws the same 
 outfit parts the people kit doesn't have. It exits 1 on a problem. It needs no server or token and
 reads none of your sessions: only the world's folder, the SDK and the tour (and `config.json`, for
 where your worlds are). What it reports, and the checklist, are in
-[docs/worlds.md](docs/worlds.md#check-world).
+[docs/worlds.md](docs/worlds.md#check-world). It runs the world's code on your Mac, contained (it can
+read only the SDK and the world's folder, and can't write or start programs), but the world can
+still reach the network: check only worlds you'd trust ([Privacy and security](#privacy-and-security)).
 
 **Your own worlds, open while you write them.** Saving a file in a world's folder (or in a built-in
 world's) reloads that world on screen, keeping its zoom and where you were looking, so you can
@@ -764,7 +766,7 @@ The mod also does the dashboard's work inside the session:
 | `agent-tracker open` | Opens the dashboard |
 | `agent-tracker logs` | The last lines of its logs |
 | `npm run new-world -- <name>` | Makes a world of your own from the starter, in your worlds folder |
-| `npm run check-world -- <world>` | Runs the test tour headless against a world (`farm`, `starter` or one of yours): its exceptions with file and line, a hook that never returns, creatures that break the animals kit's rules, and pointers to what it may draw the same ([docs/worlds.md](docs/worlds.md#check-world)). Exits 1 on a problem |
+| `npm run check-world -- <world>` | Runs the test tour headless against a world (`farm`, `starter` or one of yours): its exceptions with file and line, a hook that never returns, creatures that break the animals kit's rules, and pointers to what it may draw the same ([docs/worlds.md](docs/worlds.md#check-world)). Exits 1 on a problem. It runs the world's code contained, but the world can still reach the network: check only worlds you'd trust ([Privacy and security](#privacy-and-security)) |
 
 ## How it works
 
@@ -823,10 +825,12 @@ and can do is in [docs/worlds.md](docs/worlds.md).
   and answers are made up in the page, it never asks the collector for your sessions or files, and
   it keeps a world's settings in memory, never in the browser. Like the dashboard, it refuses to be
   shown in a frame.
-- `npm run check-world` runs a world's code in Node (in a `node:vm` context, on made-up snapshots),
-  **not** in the sandboxed frame. A `vm` context is not a sandbox: code run there can reach what
-  Node can, your files included. Run it only on worlds you trust as you would any script, such as
-  your own; the frame, in the dashboard and on the test page, is where an untrusted world belongs.
+- `npm run check-world` runs a world's code on your Mac, on made-up snapshots, outside the sandboxed
+  frame. It runs it contained, in a Node of its own (Node's permission model): it can read only the
+  SDK and the world's folder, can't write or start programs, and gets none of your environment. It
+  can still reach the network, and Node's containment is a seat belt rather than a sandbox, so check
+  only worlds you'd trust; look at any other world on the test page, in its frame. A Node too old to
+  contain it (before 22.13) gets a one-line refusal, never an unconfined run.
 - **Open the worlds folder** (an action: token and same origin) makes your worlds folder and shows
   it in Finder (`open -a Finder <folder>`); it only shows it, and runs nothing in it. The page keeps your
   choice of world in this browser (`tracker-world`), and nothing else about it leaves the page.
@@ -927,7 +931,7 @@ and can do is in [docs/worlds.md](docs/worlds.md).
 | **Browse…** or **📁 Folder** opens no window | Allow the tracker to control System Events: System Settings → Privacy & Security → Automation. A window may also be open behind others: pick or cancel it there |
 | ↺ Restore says its files could not be restored | Claude Code's file snapshots may be off (`/config` → file checkpointing, or `CLAUDE_CODE_DISABLE_FILE_CHECKPOINTING`). The session was resumed as it was; restore the conversation only |
 | The bell is silent | Click the page once (browsers block sound until you do), and allow notifications |
-| A world says it "didn't start" | A world has 5 seconds to start. Past that, a panel replaces the (empty) world and gives the first error it reported, if any. Run `npm run check-world -- <name>`: it names the file and line. Fix its `world.js` (or `world.json`) and save: it reloads by itself. Or press **Back to the farm**, **Show the list**, or **Try again** |
+| A world says it "didn't start" | A world has 5 seconds to start. Past that, a panel replaces the (empty) world and gives the first error it reported, if any. For a world you'd trust, run `npm run check-world -- <name>`: it names the file and line (it runs the world contained, but the world can still reach the network; see [Privacy and security](#privacy-and-security)). Fix its `world.js` (or `world.json`) and save: it reloads by itself. Or press **Back to the farm**, **Show the list**, or **Try again** |
 | A world "tried to leave the page and was stopped" | A world may only draw in its own frame; this one tried to go to another page (a link, `location`). The page stops it the moment it starts to leave. Fix the world and save: it reloads by itself. Or press **Back to the farm** or **Show the list** |
 | My world looks wrong in one situation | Open the test page at that stop: `http://localhost:7777/worlds/test?world=u/<folder>&stop=…` (the stops are listed in [docs/worlds.md](docs/worlds.md#the-test-page-and-the-tour)). It has no live reload: reload the page after saving |
 | A red strip over a world | The world reported an error after it started. It keeps drawing; **×** hides the strip. The page's console has the same message |
