@@ -8,11 +8,12 @@ import vm from 'node:vm';
 
 const code = readFileSync(fileURLToPath(new URL('../../web/worlds/sdk/bridge.js', import.meta.url)), 'utf8');
 
-function frame() {
+/** A frame running the bridge; `globals` are the browser's own, on its window, as it loads. */
+function frame(globals = {}) {
   const sent = [], listeners = {}, docListeners = {}, frames = [], timers = [];
   const parent = { postMessage: m => sent.push(JSON.parse(JSON.stringify(m))) };
   const root = { dataset: {} }, farmEl = { id: 'farm' };
-  const window = { parent };
+  const window = { parent, ...globals };
   const ctx = {
     window, parent, console,
     addEventListener: (t, fn) => { (listeners[t] ??= []).push(fn); },
@@ -27,8 +28,28 @@ function frame() {
   const draw = () => frames.splice(0).forEach(fn => fn());
   /** The timers waiting now run (the tab is hidden: no frames). */
   const tick = () => timers.splice(0).forEach(fn => fn());
-  return { A: window.Agentville, window, sent, fire, fromPage, root, farmEl, docListeners, draw, tick };
+  return { A: window.Agentville, window, ctx, sent, fire, fromPage, root, farmEl, docListeners, draw, tick };
 }
+
+test('a world has no WebRTC: gone before it runs, and it cannot put it back', () => {
+  function RTCPeerConnection() {}
+  const f = frame({ RTCPeerConnection, RTCIceTransport: function RTCIceTransport() {} });
+  for (const name of ['RTCPeerConnection', 'RTCIceTransport']) {
+    assert.ok(name in f.window, `${name} is still a name, so nothing can define it afresh`);
+    assert.equal(f.window[name], undefined, `${name} is undefined`);
+    assert.throws(() => { f.window[name] = RTCPeerConnection; }, TypeError, `${name} can't be reassigned`);
+    assert.throws(() => Object.defineProperty(f.window, name, { value: RTCPeerConnection }), TypeError, `${name} can't be redefined`);
+    assert.throws(() => delete f.window[name], TypeError, `${name} can't be deleted (to define it again)`);
+    assert.equal(f.window[name], undefined);
+  }
+  vm.runInContext('window.RTCPeerConnection = function () {};', f.ctx); // a world's own script (not strict): quietly, nothing
+  assert.equal(f.window.RTCPeerConnection, undefined);
+  assert.ok(!('webkitRTCPeerConnection' in f.window), "a name the browser doesn't have is left alone");
+  const g = frame();
+  g.A.raw({ start() {}, scene() {} });
+  g.fire('DOMContentLoaded', {});
+  assert.equal(g.sent[0].type, 'loaded', 'and a world still registers as before');
+});
 
 test('a world that registers is announced; one that never does is reported', () => {
   const f = frame();

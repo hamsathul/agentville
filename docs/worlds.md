@@ -480,7 +480,10 @@ The field close-up (a field's files) is still drawn as the farm draws it.
 
 - It has no token, no cookies and no storage: reading them throws a `SecurityError`. It can't reach
   the network: no `fetch`, no requests of any kind (`connect-src 'none'`), no frames, workers, forms,
-  popups or dialogs like `alert`. Its scripts come from the dashboard's server only: no inline
+  popups or dialogs like `alert`. No WebRTC either: setting up a connection sends packets to any host
+  a page names, which no CSP stops, so the bridge takes `RTCPeerConnection` (and
+  `webkitRTCPeerConnection`, `RTCIceTransport`) away before your script runs: each is `undefined`,
+  for good. Its scripts come from the dashboard's server only: no inline
   scripts and no `eval`. It can use pictures, fonts, sounds and stylesheets from the dashboard's
   server (its own folder's, through `/world/<key>/…`), inline styles, and `data:` pictures, fonts and
   sounds (`blob:` pictures and sounds too).

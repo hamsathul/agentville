@@ -702,7 +702,7 @@ and can do is in [docs/worlds.md](docs/worlds.md).
 - The dashboard's own page and its API tell the browser never to show them inside a frame
   (`frame-ancestors 'none'`), so no other page, and no world, can load the dashboard with its token
   inside itself.
-- The farm (like any world) runs in a sandboxed frame with no cookies, storage, network
+- The farm (like any world) runs in a sandboxed frame with no cookies, storage, network, WebRTC
   or token. It sees the scene, which is what the dashboard shows, and can only ask the page for the
   few things listed in [docs/worlds.md](docs/worlds.md), each checked against the scene: open an
   agent or one of its files, read an agent's or a repo's files (the page fetches them with the

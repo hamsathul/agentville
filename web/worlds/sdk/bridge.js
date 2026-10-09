@@ -5,6 +5,13 @@
 (() => {
   'use strict';
 
+  // No WebRTC: setting up a connection sends packets to any host a world names, and no CSP stops that
+  // (Chrome). Taken away before the world's script runs, for good: undefined, and it can't be put back.
+  // (A frame the world makes is another origin, so it can't hand the world a fresh one either.)
+  for (const name of ['RTCPeerConnection', 'webkitRTCPeerConnection', 'RTCIceTransport']) {
+    if (name in window) Object.defineProperty(window, name, { value: undefined, writable: false, configurable: false });
+  }
+
   // The page, captured before the world's script runs: a world can replace window.parent, but not this.
   const toPage = window.parent;
   const send = message => toPage.postMessage(message, '*');
