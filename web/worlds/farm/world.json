@@ -3,5 +3,6 @@
   "icon": "🌾",
   "description": "Every agent a farmer, every repo a field",
   "api": 1,
-  "nouns": { "agent": "farmer", "agents": "farmers", "repo": "field", "repos": "fields", "start": "barn", "diary": "Farm diary" }
+  "nouns": { "agent": "farmer", "agents": "farmers", "repo": "field", "repos": "fields", "start": "barn", "diary": "Farm diary" },
+  "taken": ["chicken", "dog", "pigeon"]
 }

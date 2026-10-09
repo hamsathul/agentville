@@ -34,6 +34,7 @@ export function checkWorldJson(j) {
   if (!Number.isInteger(j.api) || j.api < 1) return 'world.json needs "api": 1.';
   if (j.api > API_VERSION) return `This world needs a newer Agentville (it was made for api ${j.api}; this one has ${API_VERSION}).`;
   if (j.nouns !== undefined && (!j.nouns || typeof j.nouns !== 'object' || Array.isArray(j.nouns) || NOUN_KEYS.some(k => j.nouns[k] !== undefined && (typeof j.nouns[k] !== 'string' || j.nouns[k].length > 30)))) return 'world.json: "nouns" are short words.';
+  if (j.taken !== undefined && (!Array.isArray(j.taken) || j.taken.length > 16 || j.taken.some(k => typeof k !== 'string' || !/^[a-z][a-z0-9-]{0,23}$/.test(k)))) return 'world.json: "taken" is a list of up to 16 short kind names (the shapes this world already uses for data).';
   return null;
 }
 
@@ -122,6 +123,7 @@ export function makeWorlds({ builtinDir, userDir = null, home = null }) {
       icon: typeof j?.icon === 'string' && j.icon.trim() &&[...j.icon].length <= 8 ? j.icon : '🧩',
       description: typeof j?.description === 'string' ? j.description.slice(0, 140) : '',
       nouns: !error && j.nouns ? Object.fromEntries(NOUN_KEYS.filter(k => typeof j.nouns[k] === 'string').map(k => [k, j.nouns[k]])) : {},
+      taken: !error && Array.isArray(j?.taken) ? [...j.taken] : [], // the shapes it uses for data: its creatures can't (docs/worlds.md, "Creatures")
       preview: file(key, 'preview.png').real ? `/world/${key}/preview.png` : null,
     };
   }
@@ -141,7 +143,7 @@ export function makeWorlds({ builtinDir, userDir = null, home = null }) {
     const built = folders(builtinDir).map(f => f.name).filter(n => WORLD_NAME.test(n) && !RESERVED.has(n)).sort((a, b) => (a === 'farm' ? -1 : b === 'farm' ? 1 : a.localeCompare(b)));
     const out = built.map(n => describe(n, true));
     for (const f of userDir ? folders(userDir) : []) {
-      const bad = error => ({ key: null, builtIn: false, name: f.name.slice(0, 40), icon: '🧩', description: '', nouns: {}, preview: null, error });
+      const bad = error => ({ key: null, builtIn: false, name: f.name.slice(0, 40), icon: '🧩', description: '', nouns: {}, taken: [], preview: null, error });
       out.push(f.dead ? bad(DEAD_ERR) : WORLD_NAME.test(f.name) ? describe(`u/${f.name}`, false) : bad(NAME_ERR));
     }
     return out;

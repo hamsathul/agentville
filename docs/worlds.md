@@ -19,9 +19,10 @@ those files from inside the folder only, and only these kinds: `.js`, `.json`, `
 (`web/worlds/sdk/frame.html`) loads, in order: `/base.css` (the dashboard's colours), the world
 engine's styles (`/world/sdk/engine.css`), the bridge (`/world/sdk/bridge.js`), the brand mark
 (`/brand.js`), the pixel kit (`/world/sdk/pixel.js`), the people and props kits (`/world/sdk/people.js`,
-`/world/sdk/props.js`), the engine (`/world/sdk/engine.js`), then the
-world's `world.js`. A world doesn't choose these: the frame always loads all of them. The world draws
-into `<div id="farm">`, which fills the frame.
+`/world/sdk/props.js`), the creature library and the animals kit (`/world/sdk/creatures.js`,
+`/world/sdk/animals.js`), the engine (`/world/sdk/engine.js`), then the world's `world.js`. A world
+doesn't choose these: the frame always loads all of them. The world draws into `<div id="farm">`,
+which fills the frame.
 
 Keys: a built-in world is named by its folder in `web/worlds/` (the farm is `farm`). Names match
 `^[a-z0-9][a-z0-9-]{0,39}$`, and `sdk`, `starter`, `test` and `u` are reserved. Your own worlds are
@@ -70,7 +71,8 @@ The farm's:
   "icon": "🌾",
   "description": "Every agent a farmer, every repo a field",
   "api": 1,
-  "nouns": { "agent": "farmer", "agents": "farmers", "repo": "field", "repos": "fields", "start": "barn", "diary": "Farm diary" }
+  "nouns": { "agent": "farmer", "agents": "farmers", "repo": "field", "repos": "fields", "start": "barn", "diary": "Farm diary" },
+  "taken": ["chicken", "dog", "pigeon"]
 }
 ```
 
@@ -81,6 +83,7 @@ The farm's:
 | `description` | One line saying what the world shows, in the list |
 | `api` | The version of this page the world was written for: `1` |
 | `nouns` | What the world calls things: an agent and agents, a repo and repos, where a new session starts (`start`), and its diary (`diary`). The page uses `diary` as the title of the world's diary in its sidebar ("Diary" without one); the others are kept for the page's words to match, and an engine world gives its own to the engine (the `nouns` hook) |
+| `taken` | The shapes this world already uses for data, as creature kinds: its animals may not take them (see "Creatures"). The farm's chickens are subagents, its dog is an Explore subagent and its pigeons carry mail, so its fun animals are never a chicken, a dog or a pigeon |
 
 The page reads `world.json` through the same checks as any other file of the world: a link pointing
 out of the folder is never followed (it counts as missing).
@@ -95,6 +98,8 @@ The rules, as checked (the first that fails is the error the list shows):
 - `api`: a whole number, 1 or more, and no more than the version this Agentville has (1).
 - `nouns` (optional): an object; only `agent`, `agents`, `repo`, `repos`, `start` and `diary` are
   kept, each a string of at most 30 characters. Other keys are dropped.
+- `taken` (optional): a list of at most 16 kind names, each lowercase letters, digits and dashes,
+  starting with a letter (up to 24 characters).
 
 What a world can show in the list instead of running:
 
@@ -109,6 +114,7 @@ What a world can show in the list instead of running:
 | `world.json needs "api": 1.` | `api` is missing or not a whole number of 1 or more |
 | `This world needs a newer Agentville (…)` | `api` is higher than this Agentville knows |
 | `world.json: "nouns" are short words.` | `nouns` isn't an object of strings up to 30 characters |
+| `world.json: "taken" is a list of up to 16 short kind names (…)` | `taken` isn't a list of up to 16 kind names |
 | `world.json is too large (over 64 KB).` | The file is bigger than 64 KB |
 | `world.js is missing (or is a link out of the folder).` | No `world.js`, or it points outside the folder |
 | `This folder is a link to something that isn't there.` | A broken link or a link loop |
@@ -421,8 +427,8 @@ nothing.
 
 A world drawn by the engine (`web/worlds/sdk/engine.js`, over the pixel kit in `pixel.js`) gives its
 hooks to `Agentville.world(hooks)`, which fills in a default for each one it leaves out and runs the
-world through the bridge. The frame has already loaded `bridge.js`, `brand.js`, `pixel.js` and
-`engine.js` when your `world.js` runs.
+world through the bridge. The frame has already loaded `bridge.js`, `brand.js`, `pixel.js`, the kits
+(`people.js`, `props.js`, `creatures.js`, `animals.js`) and `engine.js` when your `world.js` runs.
 
 ```js
 (() => {
@@ -476,7 +482,7 @@ A hook you give always wins over its default.
 | `onMove` | `(agent, zone, prevZone, pop)` | nothing; `pop(text, cls)` shows a pop-up over the agent |
 | `speed` | `(agent)` | `40`: walking speed |
 | `zoneText` | `(agent, zone)` | `'moves'`: the log line when an agent changes zone |
-| `hud` | `(state)` | the dashboard's buttons: list, world, sidebar, sky, motion, help, zoom. `state` is `{ still, zoom, saysOn, skyMode, follow, canFollow, restingHidden, bell, nav, panelOpen }`. Your own should keep List and World: an engine world gets no corner control from the page |
+| `hud` | `(state)` | the dashboard's buttons: list, world, sidebar, sky, motion, help, zoom. `state` is `{ still, zoom, saysOn, skyMode, follow, canFollow, restingHidden, bell, nav, panelOpen, animals }` (`animals`: `true` or `false` for a world with animals, its Animals switch with `data-farm-animals`; `null` for one without). Your own should keep List and World: an engine world gets no corner control from the page |
 | `ground`, `shadows(body)`, `top`, `drawFx(agent, body)` | | nothing: drawn under the agents, under each agent, over everything, and over each agent |
 | `season` | `()` | `'summer'` |
 | `lights` | `()` | `[]`; each `[x, y, r, colour]` glows at night |
@@ -492,6 +498,9 @@ A hook you give always wins over its default.
 | `tick` | `(dt, posOf, snap)` | nothing: called each frame, and `snap` is true when the world is drawn still |
 | `ambient` | `(dt, addParticle)` | nothing: called each frame |
 | `weather` | `(sky)` | nothing: drawn over the sky |
+| `animals` | `()` | `[]`: the world's creatures (see "Creatures"). With any, the engine draws them and adds an Animals switch |
+| `roam` | `()` | `[]`: rectangles `{ x, y, w, h }` where they may walk. Keep them off anything that shows data |
+| `avoid` | `()` | `[]`: rectangles inside those that they keep off (a pond, a henhouse) |
 
 Buildings: `buildingAt` returns a key when the point is on a building. The key `'barn'` calls the
 page's ＋ Session (starting a session) and `'board'` opens the notice board, built from
@@ -691,6 +700,61 @@ flag)`. `flag` is passed on to the prop, for your own props to use; the kit's ig
 ### The farm
 The farm draws its own props and keeps them; only its plan-mode `blueprint` is the kit's, which is the
 farm's own drawing, so the farm looks the same.
+
+## Creatures
+
+Animals that live in a world just for fun: they wander, graze, nap, sleep at night, say short lines
+in their own bubbles, and do what you click. They never stand for data. A world opts in with the
+`animals()` hook and says where they may walk with `roam()` and `avoid()`; the engine (with the kit,
+`sdk/animals.js`, and the creature library, `sdk/creatures.js`, both loaded in every frame after the
+props kit and before the engine) does the rest:
+
+- They wander inside `roam`, never into `avoid` (no part of them: a tall one doesn't reach over
+  it), never onto what your `fieldAt` and `buildingAt` report, and never across any of it on the way.
+  A creature with a `home` keeps to it (the farm's ducks keep to the pond). With no `roam`, the rest
+  aren't shown.
+- At night most sleep (the lion and the cat wander); with motion off they all doze where they are.
+- Now and then one says a line from `lines.idle`: at most two bubbles at once, 4 s each, 40 characters
+  at most, shown as text (never HTML). A bubble moves out of the way of an agent's bubble or name,
+  or waits.
+- Clicking one (or its `home`) opens its menu. The nearest agent that isn't waiting on you (or on its
+  turn: that is waiting for you too), and isn't already away, walks over and does it; one at work goes
+  only if it can be there and back in 5 s. The menu says who, and a colour dot sends another. With no
+  one free, or motion off, it happens at once, in place.
+- The Animals switch (in the default HUD, or your own `hud` with `animals`) hides them all, and is
+  saved as the world's `animals` preference.
+- The engine sets `PXG.animals` before `ground()`: true while they are shown, so a world can leave
+  out what they replace (the farm's scenery duck).
+
+A creature in `animals()`:
+
+| Field | Meaning |
+|---|---|
+| `kind` | One of the library's creatures (below). Never one of your `taken` shapes |
+| `count` | How many (1) |
+| `looks` | One look per creature, in order (the duck's `drake`, `hen`, `duckling`) |
+| `name` | The menu's title (the kind) |
+| `home` | `{ x, y, w, h }`: it keeps to this area, and clicking it opens its menu |
+| `bank` | `[[x, y], …]`: where an agent stands to do something with one that has a `home` (the nearest is used); else beside it |
+| `actions` | Its menu, 2 to 4: `{ label, fx?, pose?, line?, run?, gather?, ms? }`. `fx` is `'hearts'`, `'crumbs'` or `'dust'`; `pose` what it does meanwhile (`happy` by default); `line` a key of `lines` it says; `run` makes it run off; `gather` brings every one of its kind to it (feeding the ducks); `ms` how long (2500) |
+| `lines` | `{ idle: […], <key>: […] }`: what it says, now and then (`idle`) and after an action (`line`). 40 characters at most each |
+
+The library's creatures, each drawn on its feet, facing either way: `cow`, `goat`, `sheepdog` (with a
+red bandana), `ostrich`, `lion`, `tiger`, `duck` (looks `drake`, `hen`, `duckling`), `cat`, `dog`,
+`pigeon`, `mouse` and `fish`. Their poses: `stand`, `walk`, `run`, `eat`, `sleep`, `happy`; the duck's
+`swim` and `dabble`; the ostrich's `hide`.
+
+A cat for a world 200 wide, in `world.js`'s hooks:
+
+```js
+animals: () => [{ kind: 'cat', name: 'Cat', actions: [{ label: 'Pet', fx: 'hearts', line: 'petted' }, { label: 'Feed', fx: 'crumbs', pose: 'eat', line: 'fed' }], lines: { idle: ['mrrp.'], petted: ['purr ♥'], fed: ['MEOW'] } }],
+roam: () => [{ x: 4, y: 60, w: 90, h: 40 }],
+avoid: () => [],
+```
+
+The rules for your creatures: none in a `taken` shape; lines of 40 characters at most; `roam` areas
+clear of anything that shows data (the farm keeps them out of its fields, off the hay, crates and
+mailbox, and off the carts' rank).
 
 ## The starter world
 

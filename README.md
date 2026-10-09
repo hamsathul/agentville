@@ -121,6 +121,8 @@ It listens on `127.0.0.1` only and reads what Claude Code already writes to disk
   fills, weather shows the last deploy, a cart runs to town for each web call, each MCP server's
   cart drives to the farmer calling it, and you click
   the barn to start a session.
+- Animals on the farm, just for fun: cows, goats, a sheepdog, an ostrich, a lion, a tiger and a duck
+  family on the pond. Click one to pet or feed it, and a farmer walks over to do it.
 - The farm is a world: it runs in a sandboxed frame of its own, with no access to the token, and
   asks the page for the little it needs ([docs/worlds.md](docs/worlds.md)). A world from your own
   folder sees no words or paths until you tick **Can see what agents say** for it.
@@ -565,7 +567,9 @@ spelled. A folder with no `world.json` of its own serves nothing, and a broken l
 an error. `worldsDir` is read at startup (a change needs a restart); one that is your home folder or
 above it is ignored and the default is used. A world's names are shown as plain text, whatever they
 hold. How to write one is in [docs/worlds.md](docs/worlds.md). A plain starter world
-(`web/worlds/starter/`) is the template for your own; it isn't in the list.
+(`web/worlds/starter/`) is the template for your own; it isn't in the list. A world can have animals
+of its own (the `animals()` hook, from a library of twelve creatures), and lists in its `world.json`
+the shapes it already uses for data (`taken`), so its animals never look like them.
 
 **Try a world on the test page:** `http://localhost:7777/worlds/test?world=farm` (or `?world=starter`,
 or `?world=u/<folder>` for one of yours). It shows the world playing a tour of made-up snapshots,
@@ -609,6 +613,24 @@ name. When two bubbles would cover each other, one moves up with a line down to 
 there is no room above, as on a busy porch at the top of a small window, it moves to the side
 instead and its line slants across to the name. Bubbles stay inside the farm, and at 100% they
 keep clear of the panel and the buttons too.
+
+**Animals.** Two cows, two goats, a sheepdog (with a red bandana, so it is never taken for the
+Explore dog), an ostrich, a lion, a tiger and a duck family (a mallard pair and three ducklings) live
+on the farm just for fun. They never stand for anything.
+- They wander the yard, graze and nap. They keep off the lane by the porch (where farmers waiting
+  on you stand), out of the fields, the hay, crates and mailbox, the hammocks, and the henhouse and its run
+  (its hens are subagents). The ducks keep to the pond.
+- At night most sleep; the lion wanders. With **Motion** off they doze where they are.
+- Now and then one says something in a small cream bubble with a dotted edge. It never covers a
+  farmer's bubble or name: it moves aside or waits.
+- Click one (or the pond, for the ducks) for its menu: Pet, Feed, Ride, Throw a stick, Give a fish,
+  Feed bread… The menu says who will go: the nearest farmer that isn't waiting on you (a farmer whose
+  turn has ended stays on your porch too); click a colour dot to send another. That farmer walks over,
+  does it, and walks back. One at work goes only if it can be there and back in a few seconds, and one
+  that starts waiting on you drops it at once. With no one free, or Motion off, you do it yourself, at
+  once, in place.
+- Feeding the ducks brings the whole family paddling over.
+- The **Animals** switch hides them all (and brings back the pond's white duck); it is remembered.
 
 **Reading the farm.** The **i** button opens the full legend, including every tool a farmer
 can hold.

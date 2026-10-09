@@ -74,7 +74,9 @@ try {
   };
   mkdirSync(DIR, { recursive: true });
   for (const v of VIEWS.filter(x => !only || x.name === only)) {
-    const stored = { 'tracker-view': 'farm', 'tracker-theme': 'dark', ...v.stored };
+    const farmPref = k => k.replace(/^tracker-farm-(beds|zoom|bubbles|sky|resting|panel)$/, 'tracker-world:farm:$1');
+    const stored = Object.fromEntries(Object.entries({ 'tracker-view': 'farm', 'tracker-theme': 'dark', ...v.stored }).map(([k, x]) => [farmPref(k), x]));
+    Object.assign(stored, { 'tracker-world:farm:animals': 'off', 'tracker-world:farm:migrated': '1' }); // the farm as it was: animals off (only their switch is new)
     await chrome.js(`localStorage.clear(); ${JSON.stringify(Object.entries(stored))}.forEach(([k, x]) => localStorage.setItem(k, x)); true`);
     await chrome.send('Page.reload', { ignoreCache: true });
     await sleep(400);

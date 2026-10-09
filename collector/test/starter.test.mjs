@@ -41,7 +41,7 @@ function load() {
   const dom = stubDom();
   const window = { Agentville: { raw: h => { window.registered = h; } } };
   const ctx = vm.createContext({ window, document: dom.document, console, Math, Date, JSON, Map, Set, Intl, ResizeObserver: class { observe() {} disconnect() {} }, requestAnimationFrame: () => 0, cancelAnimationFrame() {}, setInterval: () => 0, clearInterval() {}, setTimeout: () => 0, clearTimeout() {}, Image: class {}, Path2D: class {} });
-  for (const f of ['scene.js', 'worlds/sdk/pixel.js', 'worlds/sdk/people.js', 'worlds/sdk/props.js', 'worlds/sdk/engine.js', 'worlds/starter/world.js']) vm.runInContext(web(f), ctx, { filename: f });
+  for (const f of ['scene.js', 'worlds/sdk/pixel.js', 'worlds/sdk/people.js', 'worlds/sdk/props.js', 'worlds/sdk/creatures.js', 'worlds/sdk/animals.js', 'worlds/sdk/engine.js', 'worlds/starter/world.js']) vm.runInContext(web(f), ctx, { filename: f });
   return { window, dom };
 }
 
@@ -53,6 +53,7 @@ test('the starter registers, places every agent, and draws them with the kits', 
   window.registered.scene(window.AgentvilleScene.toScene(goldenSnapshot()));
   assert.ok(dom.calls.fillRect > 0, 'it drew its ground');
   assert.ok(dom.calls.drawImage > 0, 'it drew people');
+  assert.equal(window.Agentville.animalsNow().length, 0, 'no animals() hook: no animals, and the animals kit loaded beside it throws nothing');
 });
 
 test('its world.json is valid, and its world.js short enough to read at once', () => {

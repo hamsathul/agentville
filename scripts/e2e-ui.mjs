@@ -625,6 +625,42 @@ try {
   await fjs("document.querySelector('[data-farm-bell]').click()");
   check(/Bell: on/.test(await fjs("document.querySelector('[data-farm-bell]').textContent")) && await until("localStorage.getItem('tracker-bell') === 'on'"), 'the Bell switch turns on the chime for agents that start waiting');
   await fjs("document.querySelector('[data-farm-bell]').click()");
+  // Animals: on by default; a click opens one's menu; a farmer walks over (or you do it); the pond opens the ducks; the switch hides them.
+  check(await funtil("window.Agentville.animalsNow().length === 13"), 'thirteen animals live on the farm');
+  const cow = JSON.parse(await fjs("JSON.stringify(window.Agentville.animalsNow().find(a => a.kind === 'cow'))"));
+  await fjs(clickFarm(cow.x, cow.y - 4));
+  check(await funtil("/Pet/.test(document.querySelector('.px-animal-menu')?.textContent ?? '')"), `clicking a cow opens its menu (the cow at ${cow.x},${cow.y})`);
+  check(await fjs("/will go|You do it/.test(document.querySelector('.px-animal-menu').textContent)"), 'it says who will go');
+  // a click as a mouse makes it: at the button's place on screen, to whatever is there
+  const realClick = sel => `(() => { const b = document.querySelector(${JSON.stringify(sel)}), r = b.getBoundingClientRect(), x = r.left + r.width / 2, y = r.top + r.height / 2, t = document.elementFromPoint(x, y); (t ?? document.body).dispatchEvent(new MouseEvent('click', { bubbles: true, clientX: x, clientY: y })); return t === b || b.contains(t); })()`;
+  check(await fjs(realClick('[data-animal-act="0"]')), "the menu's buttons take a real click: nothing lies over them");
+  check(await funtil("!document.querySelector('.px-animal-menu')"), 'picking Pet closes the menu');
+  check(await funtil("[...document.querySelectorAll('.px-animal-say')].some(b => !b.hidden && /moo/i.test(b.textContent))", 15_000), 'the cow says so in its own bubble (when the farmer gets there, or at once)');
+  check(await fjs("[...document.querySelectorAll('.px-animal-say')].every(b => !/<[a-z]/i.test(b.innerHTML))"), "an animal's bubble holds text only");
+  let clashes = '';
+  for (let i = 0; i < 12 && !clashes; i++) { // over a few seconds: an animal's bubble never lies on a sign, a moving label or the HUD
+    clashes = await fjs(`(() => { const rs = s => [...document.querySelectorAll(s)].map(e => e.getBoundingClientRect()).filter(r => r.width && r.height), hit = (a, b) => Math.min(a.right, b.right) - Math.max(a.left, b.left) > 1 && Math.min(a.bottom, b.bottom) - Math.max(a.top, b.top) > 1;
+      const others = rs('.px-lab, .px-mover, .px-hud > div, .px-say');
+      return [...document.querySelectorAll('.px-animal-say')].filter(b => !b.hidden).map(b => b.getBoundingClientRect()).filter(r => others.some(o => hit(r, o))).length ? 'yes' : ''; })()`);
+    await sleep(250);
+  }
+  check(clashes === '', "an animal's bubble never lies on a sign, a moving label, the HUD or a farmer's bubble");
+  await fjs(clickFarm(42, 210));
+  check(await funtil("/Feed bread/.test(document.querySelector('.px-animal-menu')?.textContent ?? '')"), 'clicking the pond opens the ducks');
+  await fjs("document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' })); true");
+  check(await funtil("!document.querySelector('.px-animal-menu')"), 'Esc closes it');
+  await fjs("document.querySelector('[data-farm-animals]').click(); true");
+  check(await funtil("/Animals: off|Animals.*off/.test(document.querySelector('[data-farm-animals]').textContent) && document.querySelectorAll('.px-animal-say:not([hidden])').length === 0") && await until("localStorage.getItem('tracker-world:farm:animals') === 'off'"), 'the Animals switch hides them and their bubbles, and is remembered');
+  await fjs("document.querySelector('[data-farm-animals]').click(); true"); // back on, for the rest
+  // Motion off: an action happens at once, in place, and its line still goes after a few seconds.
+  await fjs("document.querySelector('[data-farm-motion]').click(); true");
+  const still = JSON.parse(await fjs("JSON.stringify(window.Agentville.animalsNow().find(a => a.kind === 'goat'))"));
+  await fjs(clickFarm(still.x, still.y - 4));
+  check(await funtil("!!document.querySelector('.px-animal-menu') && /You do it/.test(document.querySelector('.px-animal-menu').textContent)"), 'with motion off, the menu says you do it (no one walks)');
+  check(await fjs(realClick('[data-animal-act="0"]')), 'and its buttons take a real click');
+  check(await funtil("[...document.querySelectorAll('.px-animal-say')].some(b => !b.hidden && /baa/i.test(b.textContent))", 2000), 'with motion off, the goat says so at once');
+  check(await funtil("![...document.querySelectorAll('.px-animal-say')].some(b => !b.hidden)", 8000), 'and the line goes after a few seconds, though nothing moves');
+  await fjs("document.querySelector('[data-farm-motion]').click(); true");
 
   check(await funtil("[...document.querySelectorAll('.px-say')].some(b => b.textContent.includes('Which crop next?'))"), "the waiting farmer's question is in a speech bubble over its head");
   check(await funtil("document.querySelectorAll('.px-say').length >= 3"), 'the two finished farmers have bubbles too');
@@ -780,6 +816,11 @@ try {
   await fjs("document.querySelector('[data-fv-close]')?.click()");
   check(await fjs("!document.querySelector('.fv-back')"), 'the close-up closes');
 
+  // Farmers come first: a click on a farmer's sprite opens that farmer, never an animal's menu (the next step opens the sidebar anyway).
+  await fjs(`(() => { const c = document.querySelector('#farm canvas'), t = document.querySelector('.px-tag[data-farmer="ui-worker"]').getBoundingClientRect(), cs = c.getBoundingClientRect().width / Number(c.dataset.ew);
+    c.dispatchEvent(new MouseEvent('click', { bubbles: true, clientX: t.left + t.width / 2, clientY: t.bottom + 10 * cs })); })()`);
+  check(await until("/ui-worker/.test(document.getElementById('farm-agent')?.textContent ?? '')") && !(await fjs("!!document.querySelector('.px-animal-menu')")), 'a click on a farmer picks the farmer, not an animal');
+  await sleep(400); // the page takes a world's picks at most every 250 ms: the next one must not come sooner
   await fjs("document.querySelector('[data-farm-need]').click()");
   check(await until("document.getElementById('main').dataset.side === 'open' && /Which crop next/.test(document.getElementById('farm-agent').textContent)"), "the farm's “needs you” button opens the waiting farmer in the sidebar, with its question");
   check(await fits('#farm-side'), `in the narrower farm sidebar too, the wide code block scrolls inside its bubble (${await sideways('#farm-side')})`);

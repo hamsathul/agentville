@@ -8,7 +8,7 @@ import vm from 'node:vm';
 
 const web = f => readFileSync(fileURLToPath(new URL(`../../web/${f}`, import.meta.url)), 'utf8');
 // The scripts a world's frame runs (the bridge aside), and the styles it loads (it can't see the page's own).
-const FRAME_SCRIPTS = ['worlds/sdk/pixel.js', 'worlds/sdk/people.js', 'worlds/sdk/props.js', 'worlds/sdk/engine.js', 'worlds/farm/world.js'];
+const FRAME_SCRIPTS = ['worlds/sdk/pixel.js', 'worlds/sdk/people.js', 'worlds/sdk/props.js', 'worlds/sdk/creatures.js', 'worlds/sdk/animals.js', 'worlds/sdk/engine.js', 'worlds/farm/world.js'];
 const FRAME_CODE = FRAME_SCRIPTS.map(web).join('\n');
 const FRAME_CSS = ['base.css', 'worlds/sdk/engine.css'].map(web).join('\n');
 // The page's scene and host, and the farm's frame, loaded together.
@@ -513,4 +513,58 @@ test('the farm reaches the page only through what it is handed: no storage, netw
   for (const [file, code] of [['world.js', FRAME_CODE], ['bridge.js', web('worlds/sdk/bridge.js')], ['brand.js', web('brand.js')]]) {
     for (const banned of ['localStorage', 'sessionStorage', 'fetch(', 'XMLHttpRequest', 'document.cookie', 'x-tracker-token', 'opts.token', 'TOKEN', 'opts.diary', 'window.TrackerFarm']) assert.ok(!code.includes(banned), `${file}: ${banned}`);
   }
+});
+
+test('the farm’s animals: seven kinds, thirteen animals; never a chicken, the Explore dog or a pigeon; lines of 40 at most; 2 to 4 actions each', () => {
+  const window = { Agentville: { raw: () => {} } };
+  vm.runInNewContext(`${code}\n;window.CREATURES = CREATURES;`, { window, console, Math, Date, JSON, Map, Set });
+  const th = window.AgentvilleFarm.makeFarm();
+  const cast = plain(th.animals());
+  assert.deepEqual(cast.map(c => [c.kind, c.count ?? 1]), [['cow', 2], ['goat', 2], ['sheepdog', 1], ['ostrich', 1], ['lion', 1], ['tiger', 1], ['duck', 5]]);
+  for (const c of cast) {
+    assert.ok(window.CREATURES[c.kind], c.kind);
+    assert.ok(!['chicken', 'dog', 'pigeon'].includes(c.kind), `${c.kind} is taken on the farm`);
+    assert.ok(c.actions.length >= 2 && c.actions.length <= 4, `${c.kind} actions`);
+    for (const lines of Object.values(c.lines)) for (const l of lines) assert.ok(l.length <= 40, `${c.kind}: ${l}`);
+  }
+  const ducks = cast.find(c => c.kind === 'duck');
+  assert.deepEqual(ducks.looks, ['drake', 'hen', 'duckling', 'duckling', 'duckling']);
+  assert.deepEqual(ducks.actions.map(a => a.label), ['Feed bread', 'Quack back']);
+});
+
+test('where the farm’s animals may walk: the yard, never the lane by the porch, the fields, the pond, the hammocks or the henhouse', () => {
+  const window = { Agentville: { raw: () => {} } };
+  vm.runInNewContext(code, { window, console, Math, Date, JSON, Map, Set });
+  const th = window.AgentvilleFarm.makeFarm();
+  th.relayout(window.AgentvilleFarm.layoutFor([]));
+  const { GRID } = th.layout();
+  const roam = plain(th.roam()), avoid = plain(th.avoid());
+  for (const r of roam) {
+    assert.ok(r.x + r.w <= GRID.x0 || r.y + r.h <= GRID.y0, `roam ${JSON.stringify(r)} stays out of the fields (fence ${JSON.stringify(GRID)})`);
+    assert.ok(r.y >= 96, 'and off the lane along the porch, where farmers waiting on you stand');
+  }
+  const covers = (x, y) => avoid.some(r => x >= r.x && x <= r.x + r.w && y >= r.y && y <= r.y + r.h);
+  assert.ok(covers(42, 210), 'the pond');
+  assert.ok(covers(97, 204) && covers(97, 224), 'the hammocks');
+  assert.ok(covers(20, 115), 'the henhouse');
+  assert.ok(covers(70, 120), 'and its run, where the hens are subagents');
+});
+
+test('with animals on, the scenery duck is gone (the ducks are the animals’ now); off, it is back as it was', () => {
+  // The scenery duck is drawn in white at (dx, 206): count white fills around the pond with PXG.animals on and off.
+  const window = { Agentville: { raw: () => {} } };
+  const fills = [];
+  const ctx = { fillRect: (x, y, w, h) => fills.push({ x, y, w, h, c: ctx._c }), set fillStyle(c) { ctx._c = c; }, _c: null, globalAlpha: 1 };
+  vm.runInNewContext(`${code}\n;window.__PXG = PXG;`, { window, console, Math, Date, JSON, Map, Set });
+  const th = window.AgentvilleFarm.makeFarm();
+  th.relayout(window.AgentvilleFarm.layoutFor([]));
+  window.__PXG.ctx = ctx;
+  const whiteOnPond = () => fills.filter(f => f.y >= 203 && f.y <= 210 && f.x >= 20 && f.x <= 64 && /#fff(fff)?$/i.test(String(f.c))).length;
+  window.__PXG.animals = false;
+  th.ground();
+  const off = whiteOnPond();
+  fills.length = 0;
+  window.__PXG.animals = true;
+  th.ground();
+  assert.ok(off > 0 && whiteOnPond() === 0, `white fills on the pond: ${off} off, ${whiteOnPond()} on`);
 });
