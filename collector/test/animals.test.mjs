@@ -327,3 +327,95 @@ test('habits and spots respect a new yard: after the yard shrinks, no one stays 
   a.place({ roam: [{ x: 4, y: 100, w: 100, h: 100 }], avoid: [], perches: [] });
   for (let i = 0; i < 600; i++) { a.tick(0.1, {}); for (const c of plain(a.list())) assert.ok(c.y <= 200 && !(c.lift > 0), `${c.id} at ${c.x},${c.y} lift ${c.lift}`); }
 });
+
+// A fake crew: farmers on a line, moved at once when sent (the engine walks them for real).
+function fakeCrew(farmers) {
+  const log = [], flags = {}, free = { hammock: true };
+  return {
+    log, flags, free, farmers,
+    idle: () => farmers.filter(f => f.state === 'idle' && !f.sent),
+    busy: () => farmers.filter(f => f.state === 'working'),
+    longIdle: () => farmers.filter(f => f.state === 'idle' && !f.sent && f.long),
+    at: id => farmers.find(f => f.id === id) ?? null,
+    state: id => farmers.find(f => f.id === id)?.state,
+    send: (id, [x, y]) => { const f = farmers.find(z => z.id === id); f.sent = true; f.x = x; f.y = y; log.push(['send', id]); },
+    release: id => { const f = farmers.find(z => z.id === id); if (f) f.sent = false; log.push(['release', id]); },
+    flag: (id, name, on) => { flags[`${id}.${name}`] = on; log.push(['flag', id, name, on]); },
+    chickens: () => [],
+    spotFree: name => free[name] ?? true,
+    fx: (kind) => log.push(['fx', kind]),
+  };
+}
+const HAT_GAG = { id: 'hat', needs: { goat: 1, farmer: 'idle' }, steps: [
+  { go: 'goat', to: 'farmer' }, { wear: 'goat', what: 'hat', on: true }, { say: 'goat', line: 'hat' },
+  { go: 'goat', to: 'away', run: true, ms: 3000 }, { chase: 'farmer', after: 'goat', ms: 3000 },
+  { wear: 'goat', what: 'hat', on: false },
+] };
+
+test('a gag runs its steps: the goat takes the farmer’s hat, runs, is chased, gives it back; the farmer is let go', () => {
+  const k = load();
+  const a = k.makeAnimals({ cast: [{ kind: 'goat', lines: { hat: ['tastes of deadlines'] } }], gags: [HAT_GAG] }, { random: k.seededRandom(1) });
+  a.place({ roam: [YARD], avoid: [] });
+  const crew = fakeCrew([{ id: 'pip', state: 'idle', x: 50, y: 150 }]);
+  for (let i = 0; i < 1300 && !a.gagNow(); i++) a.tick(0.1, { crew });
+  assert.equal(a.gagNow()?.id, 'hat', 'a gag starts within two minutes');
+  let hatless = false;
+  for (let i = 0; i < 400 && a.gagNow(); i++) { a.tick(0.1, { crew }); hatless ||= crew.flags['pip.hatless'] === true; }
+  assert.equal(a.gagNow(), null, 'it ends');
+  assert.ok(hatless, 'the farmer was hatless for a while');
+  assert.equal(crew.flags['pip.hatless'], false, 'and has its hat back');
+  assert.ok(crew.log.some(l => l[0] === 'release' && l[1] === 'pip'), 'and is let go');
+  assert.ok(plain(a.bubbles()).length > 0 || crew.log.length > 0);
+});
+
+test('a farmer that starts waiting ends the gag at once: hat back, let go', () => {
+  const k = load();
+  const a = k.makeAnimals({ cast: [{ kind: 'goat', lines: { hat: ['x'] } }], gags: [HAT_GAG] }, { random: k.seededRandom(1) });
+  a.place({ roam: [YARD], avoid: [] });
+  const crew = fakeCrew([{ id: 'pip', state: 'idle', x: 50, y: 150 }]);
+  for (let i = 0; i < 1300 && crew.flags['pip.hatless'] !== true; i++) a.tick(0.1, { crew });
+  assert.equal(crew.flags['pip.hatless'], true);
+  crew.farmers[0].state = 'waiting';
+  a.tick(0.1, { crew });
+  assert.equal(a.gagNow(), null);
+  assert.equal(crew.flags['pip.hatless'], false);
+  assert.ok(crew.log.some(l => l[0] === 'release'));
+});
+
+test('no gag without its roles; never two at once; one every one to two minutes', () => {
+  const k = load();
+  const a = k.makeAnimals({ cast: [{ kind: 'goat' }], gags: [HAT_GAG] }, { random: k.seededRandom(3) });
+  a.place({ roam: [YARD], avoid: [] });
+  const crew = fakeCrew([{ id: 'x', state: 'waiting', x: 50, y: 150 }, { id: 'y', state: 'turn', x: 60, y: 150 }]);
+  for (let i = 0; i < 3000; i++) { a.tick(0.1, { crew }); assert.equal(a.gagNow(), null, 'no idle farmer: no hat gag'); }
+  const b = k.makeAnimals({ cast: [{ kind: 'goat' }], gags: [{ id: 'baa', needs: { goat: 1 }, steps: [{ say: 'goat', line: 'idle' }, { wait: 500 }] }] }, { random: k.seededRandom(3) });
+  b.place({ roam: [YARD], avoid: [] });
+  const starts = [];
+  let was = null;
+  for (let i = 0; i < 6000; i++) { b.tick(0.1, { crew: fakeCrew([]) }); const now = b.gagNow()?.id ?? null; if (now && !was) starts.push(i / 10); was = now; }
+  assert.ok(starts.length >= 4 && starts.length <= 11, `${starts.length} gags in ten minutes`);
+  for (let j = 1; j < starts.length; j++) assert.ok(starts[j] - starts[j - 1] >= 59.5, `gaps of a minute or more (${starts[j] - starts[j - 1]})`);
+});
+
+test('a gag written wrong is dropped, once, and the world goes on', () => {
+  const k = load();
+  const warn = [];
+  const a = k.makeAnimals({ cast: [{ kind: 'goat' }], gags: [{ id: 'bad', needs: { goat: 1 }, steps: [{ teleport: 'goat' }] }, { id: 'baa', needs: { goat: 1 }, steps: [{ wait: 100 }] }] }, { random: k.seededRandom(5), warn: m => warn.push(m) });
+  a.place({ roam: [YARD], avoid: [] });
+  for (let i = 0; i < 6000; i++) a.tick(0.1, { crew: fakeCrew([]) });
+  assert.equal(warn.filter(m => /bad/.test(m)).length, 1, 'logged once');
+  assert.ok(plain(a.list()).length === 1);
+});
+
+test('the cow naps in the empty hammock and leaves the moment a farmer needs it', () => {
+  const k = load();
+  const a = k.makeAnimals({ cast: [{ kind: 'cow' }], gags: [{ id: 'hammock', needs: { cow: 1, spot: 'hammock' }, steps: [{ go: 'cow', to: 'spot:hammock' }, { stay: 'cow', is: 'sleep', ms: 20000, while: 'spot:hammock' }, { go: 'cow', to: 'back' }] }] }, { random: k.seededRandom(2) });
+  a.place({ roam: [YARD], avoid: [{ x: 84, y: 196, w: 24, h: 34 }], spots: { hammock: [97, 204] } });
+  const crew = fakeCrew([]);
+  for (let i = 0; i < 2000 && !(plain(a.list())[0].x === 97 && plain(a.list())[0].y === 204); i++) a.tick(0.1, { crew });
+  assert.deepEqual([plain(a.list())[0].x, plain(a.list())[0].y], [97, 204], 'in the hammock');
+  crew.free.hammock = false;
+  for (let i = 0; i < 100; i++) a.tick(0.1, { crew });
+  const c = plain(a.list())[0];
+  assert.ok(!(c.x >= 84 && c.x <= 108 && c.y >= 196 && c.y <= 230), `out of the hammock (${c.x},${c.y})`);
+});
