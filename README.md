@@ -341,8 +341,10 @@ the session until you use it.
 ### ✨ Helper and suggested names
 
 The **✨ Helper** does small writing jobs for the dashboard with Haiku, a small, fast Claude
-model. It is **off until you switch it on**, in **✨ Helper** in the header (or with ✨ beside a
-session's name), and does only what you tick there.
+model. It is **off until you switch it on**, in **✨ Helper** in the list view's header (or with ✨
+beside a session's name while it is off, in the list or the farm's sidebar), and does only what you
+tick there. The farm's own buttons have no ✨ Helper yet: to change it from the farm, go to the list
+view.
 
 - **How it calls Haiku:** through the Agentville mod inside one of your open Claude Code
   sessions, with your sign-in, on your Claude plan. There is no API key, nothing is added to any
@@ -360,7 +362,8 @@ session's name), and does only what you tick there.
   first reply (about 2,000 characters) and sends them to Haiku itself, as it sends its whole
   conversation to its own model. The dashboard only ever sees the name.
 - **A daily limit** (200 to start, 1 to 2,000) caps the calls. The dialog shows today's count and
-  the last error. **Switch off** stops everything at once.
+  the last error, and says when today's limit is reached (it resets at midnight). **Switch off**
+  asks for nothing more at once; a call already under way finishes, and its answer is dropped.
 - It needs mod 0.8.0 in the session. For a session started before you updated, run
   `/reload-plugins` in it.
 
@@ -712,8 +715,9 @@ canvas, with its text drawn as HTML on top so it stays crisp.
 - The ✨ Helper is off by default. Switched on, it calls Haiku only through `$.model.complete` in
   your own sessions' Claude Code, never with a key of its own. A request file carries no
   prompt (the mod's instruction for each job is fixed), and for a name the session sends its own
-  first messages itself: the collector and the page see only the name. Its setting and each
-  session's answer are kept in `state/helper.json` and `state/names.json`, readable only by you.
+  first messages itself: the collector and the page see only the name. Its setting (with today's
+  count) and what you chose for each session's name (renamed, edited, dismissed) are kept in
+  `state/helper.json` and `state/names.json`, readable only by you.
 - **↺ Restore** is the one thing that writes to Claude Code's own files. Once the session has ended,
   it adds one line to the end of its transcript (the line `/rewind` writes; nothing is removed), and
   with code, Claude Code itself puts files back from its snapshots. Your message for the prompt box
