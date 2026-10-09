@@ -7,7 +7,7 @@ import { fileURLToPath } from 'node:url';
 import vm from 'node:vm';
 
 const web = f => readFileSync(fileURLToPath(new URL(`../../web/${f}`, import.meta.url)), 'utf8');
-const code = ['scene.js', 'worlds/sdk/pixel.js', 'worlds/sdk/engine.js'].map(web).join('\n;\n');
+const code = ['scene.js', 'worlds/sdk/pixel.js', 'worlds/sdk/creatures.js', 'worlds/sdk/animals.js', 'worlds/sdk/engine.js'].map(web).join('\n;\n');
 const plain = v => JSON.parse(JSON.stringify(v));
 const NOW = Date.now();
 const tiny = { W: 200, slots: () => ({ group: 'all', cap: 9, at: i => [20 + i * 10, 40], zone: 'all' }), drawChar() {}, bg() {} };
@@ -44,7 +44,7 @@ function load() {
   const dom = stubDom();
   const window = { Agentville: { raw: h => { window.registered = h; } } };
   const ctx = vm.createContext({ window, document: dom.document, console, Math, Date, JSON, Map, Set, Intl, ...dom.globals });
-  vm.runInContext(`${code}\n;window.sdk = { makeGrid, withDefaults, engineScene, makePixelView, ACTIVE };`, ctx);
+  vm.runInContext(`${code}\n;window.sdk = { makeGrid, withDefaults, engineScene, makePixelView, ACTIVE, defaultHud };`, ctx);
   return { window, dom, sdk: window.sdk };
 }
 const twoAgents = window => window.AgentvilleScene.toScene({ generatedAt: NOW, collisions: [], agents: [
@@ -117,4 +117,26 @@ test('a saved view is restored once the first scene is in, not at mount (the can
   v.scrollTop = 5;
   view.update(sdk.engineScene(twoAgents(window)));
   assert.equal(v.scrollTop, 5, 'only once');
+});
+
+test('a world with animals gets the Animals switch in its HUD; one without gets none', () => {
+  const { sdk } = load();
+  assert.match(sdk.defaultHud({ animals: true }), /data-farm-animals[^>]*>[\s\S]*Animals: on/);
+  assert.match(sdk.defaultHud({ animals: false }), /Animals: off/);
+  assert.doesNotMatch(sdk.defaultHud({}), /data-farm-animals/);
+  assert.doesNotMatch(sdk.defaultHud({ animals: null }), /data-farm-animals/);
+});
+
+test('a world with animals draws them, and draws nothing more with them switched off', () => {
+  const cast = [{ kind: 'cow', count: 3 }];
+  const roam = () => [{ x: 10, y: 50, w: 150, h: 40 }];
+  const run = animalsPref => {
+    const { window, dom, sdk } = load();
+    const view = sdk.makePixelView(sdk.withDefaults(fourHooks({ animals: () => cast, roam, avoid: () => [] })), { get: k => (k === 'animals' ? animalsPref : null), set() {} });
+    view.mount(dom.make(), { still: true });
+    dom.calls.fillRect = 0;
+    view.update(sdk.engineScene(twoAgents(window)));
+    return dom.calls.fillRect;
+  };
+  assert.ok(run(null) > run('off'), 'on by default: more drawn');
 });

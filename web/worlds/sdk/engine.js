@@ -143,10 +143,10 @@ function engineScene(s) {
 }
 
 /** The HUD a world gets unless it draws its own: the dashboard's buttons, the sky, help and zoom. */
-function defaultHud({ zoom = 1, skyMode = 'live', still = false, nav = {} }) {
+function defaultHud({ zoom = 1, skyMode = 'live', still = false, nav = {}, animals = null }) {
   const btn = (attr, label, title, pressed) => `<button type="button" ${attr} title="${esc(title)}"${pressed === undefined ? '' : ` aria-pressed="${pressed}"`}>${pxImg(label, '#4e3626', null)}<span class="px-sr">${esc(label)}</span></button>`;
   return `<div class="px-nav">${btn('data-farm-nav="list"', 'List', 'The list of agents')}${btn('data-farm-nav="worlds"', 'World', 'Choose a world')}${btn('data-farm-nav="side"', 'Sidebar', 'The selected agent beside the map', Boolean(nav.side))}</div>
-    <div class="px-tools">${btn('data-farm-sky', `Sky: ${skyMode}`, 'Live follows your clock; or day, or night')}${btn('data-farm-motion', `Motion: ${still ? 'off' : 'on'}`, 'Walking and animation')}${btn('data-farm-help', 'Help', 'How to read this world')}
+    <div class="px-tools">${btn('data-farm-sky', `Sky: ${skyMode}`, 'Live follows your clock; or day, or night')}${btn('data-farm-motion', `Motion: ${still ? 'off' : 'on'}`, 'Walking and animation')}${animals === null ? '' : btn('data-farm-animals', `Animals: ${animals ? 'on' : 'off'}`, 'Animals that live here, just for fun: click one to pet or feed it', animals)}${btn('data-farm-help', 'Help', 'How to read this world')}
       <span class="px-zoombar">${btn('data-farm-zoom="-1"', '-', 'Zoom out')}${btn('data-farm-zoom="0"', `${Math.round(zoom * 100)}%`, 'The whole world')}${btn('data-farm-zoom="1"', '+', 'Zoom in')}</span></div>`;
 }
 
@@ -224,7 +224,7 @@ function makePixelView(th, prefs) {
     packed = true;
     return th.grid.packedLayout(fields, beds);
   };
-  const settle = ground => { beds = ground.beds; prefs.set('beds', JSON.stringify(beds)); th.relayout(ground); layoutKey = ground.key; };
+  const settle = ground => { beds = ground.beds; prefs.set('beds', JSON.stringify(beds)); th.relayout(ground); layoutKey = ground.key; placeAnimals(); };
   let zoom = ZOOMS.includes(Number(prefs.get('zoom'))) ? Number(prefs.get('zoom')) : 1;
   let saysOn = prefs.get('bubbles') !== 'off';
   // The sky: live (your clock), or held at day or night.
@@ -250,6 +250,14 @@ function makePixelView(th, prefs) {
   const parts = []; // particles on the farm now
   const flights = [], seenMail = new Set(); // carrier pigeons between farmers: { from, to, start }
   const addPart = p => { if (parts.length < 400) parts.push(p); };
+  // The world's animals (sdk/animals.js), when it has any: on unless switched off (docs/worlds.md, "Creatures").
+  const cast = typeof th.animals === 'function' ? th.animals() ?? [] : [];
+  const kit = cast.length && typeof makeAnimals === 'function' ? makeAnimals(cast, { random: seededRandom(cast.length * 7919) }) : null;
+  let animalsOn = prefs.get('animals') !== 'off';
+  const animalsShown = () => Boolean(kit && animalsOn);
+  const placeAnimals = () => kit?.place({ roam: th.roam?.() ?? [], avoid: th.avoid?.() ?? [] });
+  const animalSays = new Map(); // creature id → its bubble element
+  if (typeof window !== 'undefined' && window.Agentville) window.Agentville.animalsNow = () => (kit ? kit.list() : []); // read-only: where they are (the browser test)
 
   function targets() {
     const out = new Map(), count = {}, used = new Map(), over = { desk: 0, turn: 0, storage: 0, charge: 0, meadow: 0 };
@@ -289,7 +297,7 @@ function makePixelView(th, prefs) {
     setTimeout(() => el.remove(), 1700);
   }
   function renderHud() {
-    if (hudEl) hudEl.innerHTML = th.hud({ still, zoom, saysOn, skyMode, follow, canFollow: Boolean(selectedId && bots.has(selectedId)), restingHidden: restingShown ? null : scene.farmers.filter(resting).length, bell: bellOn, nav: opts.navState?.() ?? {}, panelOpen });
+    if (hudEl) hudEl.innerHTML = th.hud({ still, zoom, saysOn, skyMode, follow, canFollow: Boolean(selectedId && bots.has(selectedId)), restingHidden: restingShown ? null : scene.farmers.filter(resting).length, bell: bellOn, nav: opts.navState?.() ?? {}, panelOpen, animals: kit ? animalsOn : null });
     placeMini();
   }
   /** The minimap sits just above the switches, which take more rows in a narrow frame (the sidebar open). */
@@ -520,7 +528,9 @@ function makePixelView(th, prefs) {
       s.el.style.zIndex = String(40 - Math.min(i, 30) + (lead > 0 ? 0 : 10)); // moved ones sit behind
       s.el.style.transform = `translate(${Math.round(left)}px, ${Math.round(top)}px)`;
     });
+    return placed;
   }
+
   function addLog(f, text) {
     log.unshift({ at: Date.now(), state: f.state, who: f.name, text });
     log.length = Math.min(log.length, 8);
@@ -585,6 +595,27 @@ function makePixelView(th, prefs) {
       d.y += (ty - d.y) * e;
     });
   }
+  /**
+   * The animals' bubbles, after the farmers': each over its creature, lifted off a farmer's bubble or
+   * name; still in the way after that, it waits (hidden). Text only.
+   */
+  function placeAnimalSays(placed) {
+    const want = animalsShown() ? kit.bubbles() : [];
+    for (const [id, el] of animalSays) if (!want.some(s => s.id === id)) { el.remove(); animalSays.delete(id); }
+    for (const s of want) {
+      let el = animalSays.get(s.id);
+      if (!el) { el = document.createElement('div'); el.className = 'px-animal-say'; el.dataset.animalSay = s.id; ov.appendChild(el); animalSays.set(s.id, el); }
+      if (el.textContent !== s.text) el.textContent = s.text;
+      const w = el.offsetWidth || 60, h = el.offsetHeight || 14;
+      const left = Math.round(s.x * cs - w / 2);
+      let bottom = Math.round(s.y * cs);
+      const hitAt = b => placed.find(r => left < r.right + 3 && left + w > r.left - 3 && b - h < r.bottom + 3 && b > r.top - 3);
+      for (let k = 0; k < 4; k++) { const hit = hitAt(bottom); if (!hit) break; bottom = hit.top - 4; }
+      el.hidden = Boolean(hitAt(bottom));
+      el.style.transform = `translate(${left}px, ${bottom - h}px)`;
+      if (!el.hidden) placed.push({ left, right: left + w, top: bottom - h, bottom });
+    }
+  }
   function draw() {
     if (!ctx) return;
     PXG.ctx = ctx;
@@ -597,9 +628,11 @@ function makePixelView(th, prefs) {
     PXG.lights = [...th.lights()];
     for (const f of scene.farmers) if (f.state === 'waiting' || f.state === 'turn') { const b = bots.get(f.id); if (b) PXG.lights.push([b.x, b.y - 8, 14, null]); } // lit at night: they need you
     ctx.drawImage(bg, -pad.l, -pad.t);
+    PXG.animals = animalsShown(); // a world hides what its animals replace (the farm's pond duck)
     th.ground();
     for (const f of scene.farmers) { const b = bots.get(f.id); if (b) th.shadows(b); }
     const items = th.items();
+    if (animalsShown()) items.push(...kit.items());
     for (const f of scene.farmers) { const b = bots.get(f.id); if (b) items.push([b.y, () => th.drawChar(f, b)]); }
     items.sort((p, q) => p[0] - q[0]).forEach(it => it[1]());
     for (const f of scene.farmers) { const b = bots.get(f.id); if (b) th.drawFx(f, b); }
@@ -645,7 +678,7 @@ function makePixelView(th, prefs) {
       placeBubble(f, b);
     }
     for (const [id, s] of says) if (!bots.has(id)) { s.el.remove(); says.delete(id); }
-    layoutBubbles();
+    placeAnimalSays(layoutBubbles());
     const keepMovers = new Set();
     for (const m of th.movers?.(id => bots.get(id)) ?? []) {
       keepMovers.add(m.key);
@@ -671,6 +704,7 @@ function makePixelView(th, prefs) {
     for (const f of scene.farmers) { const b = bots.get(f.id); if (b) { step(dt, f, b); th.emit?.(f, b, dt, addPart); } }
     th.tick?.(dt, id => bots.get(id)); // what else moves, where the farmers are: the MCP carts
     th.ambient?.(dt, addPart);
+    if (animalsShown()) kit.tick(dt, { night: skyNow().phase === 'night', still: false });
     stepParticles(parts, dt);
     followTick(dt);
     draw();
@@ -681,6 +715,7 @@ function makePixelView(th, prefs) {
     sync(true);
     for (const f of scene.farmers) { const b = bots.get(f.id); if (b) step(0, f, b); }
     th.tick?.(0, id => bots.get(id), true); // the MCP carts too: each where it is going
+    if (animalsShown()) kit.tick(0, { night: false, still: true });
     draw();
   }
   function layoutLabels() {
@@ -832,6 +867,14 @@ function makePixelView(th, prefs) {
     }
     const zoomBtn = e.target.closest?.('[data-farm-zoom]');
     if (zoomBtn) { e.stopPropagation(); setZoom(Number(zoomBtn.dataset.farmZoom)); return; }
+    if (e.target.closest?.('[data-farm-animals]')) {
+      e.stopPropagation();
+      animalsOn = !animalsOn;
+      prefs.set('animals', animalsOn ? 'on' : 'off');
+      renderHud();
+      draw();
+      return;
+    }
     if (e.target.closest?.('[data-farm-bubbles]')) {
       e.stopPropagation();
       saysOn = !saysOn;
@@ -1003,6 +1046,7 @@ function makePixelView(th, prefs) {
       if (host) host.innerHTML = '';
       for (const b of bots.values()) { b.tag = null; b.tagText = ''; }
       says.clear();
+      animalSays.clear();
       host = canvas = ctx = ov = hudEl = viewEl = dlg = mini = null;
       moverEls.clear();
       drag = null;
