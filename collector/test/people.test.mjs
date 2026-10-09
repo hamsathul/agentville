@@ -89,3 +89,23 @@ test('a sprite is made once per look, colour and pose, and waves from the front'
   people.sprite(farmLook(), '#4a7bd0', { wave: true });
   assert.ok(drawn.slice(before).some(([c, x, y, w, h]) => c === '#4a7bd0' && x === 12 && y === 5 && w === 1 && h === 6), 'the arm up, in the shirt colour');
 });
+
+test("the other worlds' clothes: every spec part exists, and each draws differently from the default", () => {
+  const { people } = load();
+  const want = { HATS: ['straw', 'cap', 'beanie', 'bandana', 'none', 'hardhat', 'helmet', 'beret', 'surgical', 'spacehelmet'], TOPS: ['shirt', 'labcoat', 'scrubs', 'hivis', 'uniform', 'spacesuit', 'suit'], BOTTOMS: ['overalls', 'trousers', 'skirt'], EXTRAS: ['none', 'beard', 'glasses', 'cheeks', 'stethoscope', 'tie', 'radio'] };
+  for (const [k, names] of Object.entries(want)) assert.deepEqual(plain(people[k]), names, k);
+  const base = farmLook({ hat: 'none', top: 'shirt', bottom: 'overalls', extra: 'none' }), plainRows = JSON.stringify(plain(people.rows(base)));
+  for (const [field, names] of [['hat', want.HATS], ['top', want.TOPS], ['bottom', want.BOTTOMS], ['extra', want.EXTRAS]])
+    for (const name of names.filter(n => n !== base[field] && !['beard', 'glasses', 'cheeks'].includes(n)))
+      assert.notEqual(JSON.stringify(plain(people.rows({ ...base, [field]: name }))), plainRows, `${field} ${name} draws something of its own`);
+  const pal = plain(people.palette(base, '#4a7bd0'));
+  for (const letter of 'LlVvUuXxJjNeE') assert.ok(pal[letter], `the palette has ${letter}`);
+});
+
+test('an empty list of hat colours falls back to the kit\'s hat colours, without throwing', () => {
+  const { people } = load();
+  const a = people.lookFor({ id: 'x' }, { hatColors: [] });
+  assert.ok(a.hatColor, 'a hat colour');
+  const b = people.lookFor({ id: 'x' }, { hat: 'cap', hatColors: { cap: [] } });
+  assert.ok(b.hatColor, 'a hat colour');
+});

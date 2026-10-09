@@ -570,12 +570,48 @@ PXG.ctx.drawImage(sprite(lookFor(f, OUTFIT), f.shirt, { view: b.walk ? b.face ??
 
 ### The parts that exist now
 
-- Hats: `straw`, `cap`, `beanie`, `bandana`, `none`.
-- Tops: `shirt`.
-- Bottoms: `overalls`.
-- Extras: `none`, `beard`, `glasses`, `cheeks`.
+"Fixed" colours come from the kit, not the look. "Hat" and "band" are the look's `hatColor` and `band`.
 
-The other worlds' clothes come in the next change.
+| Part | What it looks like | Colours |
+| --- | --- | --- |
+| `straw` | a wide straw hat with a band | hat, band |
+| `cap` | a peaked cap | hat, band |
+| `beanie` | a knitted hat with a band | hat, band |
+| `bandana` | a tied bandana | hat, band |
+| `hardhat` | a hard hat with a brim | hat, band (the brim) |
+| `helmet` | a rounded helmet over the ears | hat, band |
+| `beret` | a flat beret | hat |
+| `surgical` | a surgical cap | hat, band |
+| `spacehelmet` | a glass bubble round the face, on a collar | fixed (glass, metal) |
+| `none` | the bare head and hair | hair |
+| `shirt` | a shirt | the agent's colour |
+| `labcoat` | a white coat open over the shirt | fixed (cream); the shirt shows at the neck |
+| `scrubs` | a V-neck top | the agent's colour |
+| `hivis` | an orange vest with a yellow stripe over the shirt | fixed (orange, yellow) |
+| `uniform` | an olive uniform with a shoulder patch | fixed (olive); the collar is the agent's colour |
+| `spacesuit` | a white suit with a chest panel and gloves | fixed (white); the panel is the agent's colour |
+| `suit` | a dark jacket with the shirt down the front | fixed (dark) |
+| `overalls` | a bib over the top, and the hips and legs | the bottom colour (the bib too) |
+| `trousers` | trousers | the bottom colour |
+| `skirt` | a skirt | the bottom colour |
+| `none` | nothing extra | |
+| `beard` | a beard on the face | hair |
+| `glasses` | glasses on the face | fixed (glass) |
+| `cheeks` | pink cheeks | fixed (pink) |
+| `stethoscope` | tubes round the neck down to the chest | fixed (metal) |
+| `tie` | a tie down the shirt | fixed (red) |
+| `radio` | a radio clipped at the chest | fixed (metal, face) |
+
+A bottom colour of `'shirt'` in `bottomColors` takes the agent's colour, so `bottomColors: ['shirt']` makes
+trousers or a skirt in the same colour as the shirt (scrubs, a suit). An empty `hatColors` list falls back to
+the kit's hat colours.
+
+A hospital outfit (a doctor in a white coat or scrubs, a surgical cap, a stethoscope):
+
+```js
+const DOCTOR = { hat: ['surgical', 'none'], hatColors: [['#3d7be0', '#2c4a85']], top: ['labcoat', 'scrubs'], bottom: 'trousers', bottomColors: ['shirt'], extra: ['stethoscope', 'glasses', 'none'] };
+const look = window.Agentville.people.lookFor(f, DOCTOR); // f: an agent, its id picks the look
+```
 
 ### Defaults
 

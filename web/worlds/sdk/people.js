@@ -20,13 +20,22 @@
 
   // One letter per pixel, '.' clear: k outline · h hat · w its light · b its band (or brim) · r hair · s skin ·
   // g glass · p cheeks · C shirt (the agent's colour) · c its shade · o the bottom's colour · O its shade · P a pole.
-  // Headwear: five rows above the face. `frame`, when given, is laid over the four face rows (a helmet's sides).
+  // The clothes' own letters are next to FIXED. Headwear: five rows above the face. `frame`, when given, is
+  // laid over the four face rows (a helmet's sides).
   const HEADS = {
     straw: { rows: ['.....kkkk.....', '....kwwhhk....', '...khhhhhhk...', '..kbbbbbbbbk..', '.khhhhhhhhhhk.'] },
     cap: { rows: ['..............', '.....kkkk.....', '....kwwhhk....', '...khhhhhhk...', '...kbbbbbbbbk.'] },
     beanie: { rows: ['......kk......', '.....kbbk.....', '....kwwhhk....', '...khhhhhhk...', '...kbbbbbbk...'] },
     bandana: { rows: ['..............', '....kkkkkk....', '...kwwhhhhk...', '...khbhhbhkhk.', '...khhhhhhk.h.'] },
     none: { rows: ['..............', '....kkkkkk....', '...krrrrrrk...', '...krrrrrrk...', '...krrrrrrk...'] },
+    hardhat: { rows: ['......kk......', '....kkwwkk....', '...kwhhhhhk...', '...khhhhhhk...', '.kbbbbbbbbbbk.'] },
+    helmet: { rows: ['..............', '....kkkkkk....', '...kwhhhhhk...', '..khhhhhhhhk..', '..kbhhhhhhbk..'] },
+    beret: { rows: ['..............', '..............', '...kkkkkkk....', '..khhhhhhhhk..', '...kbbbbbbk...'] },
+    surgical: { rows: ['..............', '..............', '....kkkkkk....', '...kwhhhhhk...', '...khhhhhhkb..'] },
+    spacehelmet: {
+      rows: ['....kkkkkk....', '..kkggggggkk..', '.kggwgggggggk.', '.kggggggggggk.', '.kgkkkkkkkkgk.'],
+      frame: ['.kg........gk.', '.kg........gk.', '.kg........gk.', '..kkkkkkkkkk..'], // the bubble round the face, and its collar
+    },
   };
   // The face from the front, the back of the head, and the face from the side (facing right: hair at the
   // back, a nose). The world draws the eyes on top (row 6, or 7 looking down at its work).
@@ -51,6 +60,36 @@
       up: ['..kCCCCCCCck..', '.kCCCCCCCCcck.', '.kCCCCCCCCCck.', '.ks.CCCCCC.sk.'],
       right: ['...kCCCCCck...', '...kCCCCCck...', '...kCCCCCck...', '...kCCCCCck...'],
     },
+    labcoat: { // a white coat, open over the shirt
+      down: ['..kLLCCCLLlk..', '.kLLLCCCLLllk.', '.kLLLLCLLLLlk.', '.ksLLLLLLLLsk.'],
+      up: ['..kLLLLLLLlk..', '.kLLLLLLLLllk.', '.kLLLLLLLLLlk.', '.ksLLLLLLLLsk.'],
+      right: ['...kLLLLLlk...', '...kLLCLLlk...', '...kLLLLLlk...', '...kLLLLLLk...'],
+    },
+    scrubs: { // the agent's colour, a V neck
+      down: ['..kCCCssCCck..', '.kCCCCssCCcck.', '.kCCCCCCCCCck.', '.ks.CCCCCC.sk.'],
+      up: ['..kCCCCCCCck..', '.kCCCCCCCCcck.', '.kCCCCCCCCCck.', '.ks.CCCCCC.sk.'],
+      right: ['...kCsCCCck...', '...kCCCCCck...', '...kCCCCCck...', '...kCCCCCck...'],
+    },
+    hivis: { // a hi-vis vest with its stripe, the shirt at the shoulders
+      down: ['..kCVVCCVVck..', '.kCVVVCCVVVck.', '.kCvvvvvvvvck.', '.ks.VVVVVV.sk.'],
+      up: ['..kCVVVVVVck..', '.kCVVVVVVVVck.', '.kCvvvvvvvvck.', '.ks.VVVVVV.sk.'],
+      right: ['...kCVVVVck...', '...kVVVVVVk...', '...kvvvvvvk...', '...kVVVVVVk...'],
+    },
+    uniform: { // a field uniform; the agent's colour on the collar and a shoulder patch
+      down: ['..kUUCCCUUuk..', '.kCUUUUUUUuuk.', '.kUuuUUUUuuUk.', '.ks.UUUUUU.sk.'],
+      up: ['..kUUUUUUUuk..', '.kCUUUUUUUuuk.', '.kUUUUUUUUUuk.', '.ks.UUUUUU.sk.'],
+      right: ['...kUUCUUuk...', '...kCUUUUuk...', '...kUuuUUuk...', '...kUUUUUUk...'],
+    },
+    spacesuit: { // a white suit, a chest panel in the agent's colour, gloves
+      down: ['..kXXXXXXXxk..', '.kXXXCCCCXxxk.', '.kXXXCvCCXXxk.', '.kx.XXXXXX.xk.'],
+      up: ['..kXXXXXXXxk..', '.kXxxxxxxXxxk.', '.kXxxxxxxXXxk.', '.kx.XXXXXX.xk.'],
+      right: ['...kXXXXXxk...', '...kXXCCXxk...', '...kXXXXXxk...', '...kXXXXXXk...'],
+    },
+    suit: { // a dark jacket, the shirt down the front
+      down: ['..kJJCCCJJjk..', '.kJJJJCJJJjjk.', '.kJJJJCJJJJjk.', '.ks.JJJJJJ.sk.'],
+      up: ['..kJJJJJJJjk..', '.kJJJJJJJJjjk.', '.kJJJJJJJJJjk.', '.ks.JJJJJJ.sk.'],
+      right: ['...kJCJJJjk...', '...kJJJJJjk...', '...kJJJJJjk...', '...kJJJJJJk...'],
+    },
   };
   // Bottoms: a bib laid over the top (overalls), the hips, and the legs in each walking frame: s standing,
   // a and b a step with each foot, p a pole (a scarecrow's); from the front, and from the side.
@@ -65,10 +104,21 @@
       },
       hips: '...koooooOk...', legs: LEGS, sideLegs: SIDE_LEGS,
     },
+    trousers: { hips: '...koooooOk...', legs: LEGS, sideLegs: SIDE_LEGS },
+    skirt: {
+      hips: '..koooooooOk..',
+      legs: { s: ['....ks..sk....', '...kkk..kkk...'], a: ['....ks..sk....', '...kkk........'], b: ['....ks..sk....', '........kkk...'], p: LEGS.p },
+      sideLegs: { s: ['.....kssk.....', '.....kkkk.....'], a: ['....ks..sk....', '...kk....kk...'], b: ['.....ksks.....', '....kk..kk....'] },
+    },
   };
   // Extras: beard, glasses and cheeks are drawn into the face (FRONT_FACE, SIDE_FACE); `torso`, when
   // given, is laid over the torso rows in the views it names.
-  const EXTRAS = { none: {}, beard: {}, glasses: {}, cheeks: {} };
+  const EXTRAS = {
+    none: {}, beard: {}, glasses: {}, cheeks: {},
+    stethoscope: { torso: { down: ['...k......k...', '....k....k....', '.....k..k.....', '......ee......'], right: ['.....k........', '......k.......', '......e.......', '..............'] } },
+    tie: { torso: { down: ['......NN......', '......NN......', '......NN......', '.......N......'] } },
+    radio: { torso: { down: ['..........e...', '.........kkk..', '.........kEk..', '..............'], right: ['........e.....', '.......kkk....', '.......kEk....', '..............'] } },
+  };
   // What a look without a part, or with one the kit lacks, wears.
   const DEFAULT = { hat: 'none', top: 'shirt', bottom: 'overalls', extra: 'none' };
 
@@ -94,7 +144,9 @@
 
   const K = '#2a1d14';
   // The colours that come with the clothes; the rest come from the look and the agent's colour.
-  const FIXED = { k: K, g: '#e6eef5', p: '#e58a8a', P: '#6b4320' };
+  // L l a coat and its shade · V v a hi-vis vest and its stripe · U u a uniform and its shade · X x a
+  // spacesuit and its shade · J j a jacket and its shade · N a tie · e metal · E a radio's face.
+  const FIXED = { k: K, g: '#e6eef5', p: '#e58a8a', P: '#6b4320', L: '#f4ecd8', l: '#c3cbd2', V: '#ff5a1f', v: '#ffd43b', U: '#6b7a35', u: '#2f5a2a', X: '#e6eef5', x: '#9aa4ad', J: '#3a3a40', j: '#1b1420', N: '#b23a2e', e: '#9aa4ad', E: '#5f6b7a' };
   const HAIR = ['#2b1d14', '#5a3a22', '#a0522d', '#d9b26a', '#9a9a9a'];
   const SKIN = ['#f1c7a1', '#e0a878', '#c68a5a', '#9c6644', '#7d5236'];
   const BOTTOM_COLORS = ['#3c5a99', '#6b4f2a', '#4a4a52', '#2f6b4f', '#7a3b5a'];
@@ -134,7 +186,8 @@
     const id = agent?.id ?? '';
     const choose = (v, salt) => (Array.isArray(v) ? v[pick(id, salt, v.length)] : v);
     const hat = choose(outfit.hat ?? DEFAULT.hat, 1);
-    const hc = outfit.hatColors, pairs = Array.isArray(hc) ? hc : hc?.[hat] ?? hc?.['*'] ?? HAT_COLORS;
+    const hc = outfit.hatColors, given = Array.isArray(hc) ? hc : hc?.[hat] ?? hc?.['*'];
+    const pairs = given?.length ? given : HAT_COLORS; // an empty list takes the kit's colours
     const [hatColor, band] = pairs[pick(id, 2, pairs.length)];
     return {
       hat, hatColor, band, hair: choose(outfit.hair ?? HAIR, 3), skin: choose(outfit.skin ?? SKIN, 4),
