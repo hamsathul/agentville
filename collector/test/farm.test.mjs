@@ -293,6 +293,13 @@ test('the season follows the 5-hour limit: spring when it is fresh, winter when 
   assert.equal(seasonOf(planWith(null, 50)), 'summer', 'no 5-hour window: summer');
 });
 
+test("the farm's scene keeps a plan window's reset flag, so a window that has just reset still says so", () => {
+  const { toScene } = load();
+  const w = toScene({ ...snapOf([], []), plan: planWith('reset', 50) }).plan.windows;
+  assert.equal(w[0].reset, true);
+  assert.equal(w[1].reset, false);
+});
+
 test("the silo's grain is the week's usage, with a lamp that warns near the limit", () => {
   const { siloOf } = load();
   assert.equal(siloOf(null), null);

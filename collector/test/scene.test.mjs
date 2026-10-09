@@ -56,7 +56,7 @@ test("the plan's limits as windows, each with the share used (0 once it has rese
   const { toScene } = load();
   const plan = { windows: [{ kind: 'five_hour', percentUsed: 80, resetsAt: NOW + 1, reset: true }, { kind: 'seven_day', percentUsed: 47, resetsAt: NOW + 2 }, { kind: 'seven_day_opus', percentUsed: 5, resetsAt: null }] };
   const s = plain(toScene(snapOf([], [], { plan })));
-  assert.deepEqual(s.plan.windows, [{ kind: 'five_hour', pct: 0, resetsAt: NOW + 1 }, { kind: 'seven_day', pct: 47, resetsAt: NOW + 2 }, { kind: 'seven_day_opus', pct: 5, resetsAt: null }]);
+  assert.deepEqual(s.plan.windows, [{ kind: 'five_hour', pct: 0, resetsAt: NOW + 1, reset: true }, { kind: 'seven_day', pct: 47, resetsAt: NOW + 2, reset: false }, { kind: 'seven_day_opus', pct: 5, resetsAt: null, reset: false }]);
   assert.deepEqual(s.plan.fiveHour, s.plan.windows[0]);
   assert.deepEqual(s.plan.weekly, s.plan.windows[1]);
   assert.equal(toScene(snapOf([], [])).plan, null);

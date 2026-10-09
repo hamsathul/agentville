@@ -79,7 +79,7 @@
    */
   function farmScene(s) {
     return {
-      plan: s.plan ? { windows: s.plan.windows.map(w => ({ kind: w.kind, percentUsed: w.pct, resetsAt: w.resetsAt })) } : null,
+      plan: s.plan ? { windows: s.plan.windows.map(w => ({ kind: w.kind, percentUsed: w.pct, resetsAt: w.resetsAt, reset: w.reset })) } : null,
       chrome: s.chrome,
       subagents: s.subagents,
       mail: s.mail,

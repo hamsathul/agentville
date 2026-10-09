@@ -124,7 +124,7 @@
     const kids = agents.map(a => a.children ?? []);
     const now = snap?.generatedAt ?? Date.now();
     const waiting = agents.filter(a => a.state === 'waiting'), cpuUsed = agents.reduce((t, a) => t + (a.proc?.cpu ?? 0), 0);
-    const windows = (snap?.plan?.windows ?? []).map(w => ({ kind: w.kind, pct: w.reset ? 0 : w.percentUsed, resetsAt: w.resetsAt ?? null }));
+    const windows = (snap?.plan?.windows ?? []).map(w => ({ kind: w.kind, pct: w.reset ? 0 : w.percentUsed, resetsAt: w.resetsAt ?? null, reset: w.reset === true }));
     return {
       version: VERSION,
       generatedAt: now,
