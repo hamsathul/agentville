@@ -73,7 +73,8 @@
     const agents = ctx.scene?.agents ?? [], repos = ctx.scene?.repos ?? [];
     const agent = id => (short(id, ID_MAX) ? agents.find(a => a.id === id) ?? null : null);
     switch (m.type) {
-      case 'loaded': case 'ready': case 'leaving': case 'startSession': case 'showRepos': return { kind: m.type };
+      case 'loaded': return { kind: 'loaded', raw: m.raw === true }; // raw: the world draws itself, and gets the page's corner control
+      case 'ready': case 'leaving': case 'startSession': case 'showRepos': return { kind: m.type };
       case 'error': return { kind: 'error', message: String(m.message ?? '').slice(0, 300), where: String(m.where ?? '').slice(0, 120) };
       case 'pick': return agent(m.agentId) ? { kind: 'pick', agentId: m.agentId, from: m.from === 'say' ? 'say' : null } : null;
       case 'openDoc': {
@@ -218,6 +219,7 @@
         measureSaved();
         sendScene();
         post({ type: 'select', id: selectedId });
+        if (act.raw) showCorner();
         break;
       case 'leaving': fail('left'); break; // its document is going away: stopped before any page it goes to can speak
       case 'ready':
@@ -363,6 +365,22 @@
       else if (e.target.closest?.('[data-world-retry]')) createFrame(world);
     });
     host?.replaceChildren(panel);
+  }
+  /**
+   * A world that draws itself (Agentville.raw) may draw no buttons, and the page's top bar is hidden while
+   * a world shows: the page gives it a way back, in a corner over its frame. The page's, so no world can
+   * cover it; it goes with the frame (another world, a reload, a panel).
+   */
+  function showCorner() {
+    if (!host || !frame) return;
+    const corner = document.createElement('div');
+    corner.className = 'world-corner';
+    corner.innerHTML = '<button type="button" class="act mini" data-corner-worlds title="Choose another world">World ▾</button><button type="button" class="act mini" data-corner-list title="The list of agents">☰ List</button>';
+    corner.addEventListener('click', e => {
+      if (e.target.closest?.('[data-corner-worlds]')) opts.onNav?.('worlds');
+      else if (e.target.closest?.('[data-corner-list]')) opts.onNav?.('list');
+    });
+    host.append(corner);
   }
   /** An error after the world started: a strip over it (the latest one), which it keeps drawing under. */
   function resetStrip() {

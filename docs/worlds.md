@@ -261,7 +261,7 @@ from the page only, and the page from its current frame only.
 
 | Message | What the page does |
 |---|---|
-| `loaded` | The world has registered: the page sends `start`, then the newest scene and the selection. The page builds a new frame for every load, and takes `loaded` once from each: an extra one is dropped. Replies to an earlier frame's requests are not posted to the new one, and the paths they named are forgotten |
+| `loaded { raw? }` | The world has registered: the page sends `start`, then the newest scene and the selection. `raw: true` (the bridge adds it for a world registered with `Agentville.raw`) gets the world the page's corner control (see "Give a way back"). The page builds a new frame for every load, and takes `loaded` once from each: an extra one is dropped, `raw` and all. Replies to an earlier frame's requests are not posted to the new one, and the paths they named are forgotten |
 | `ready` | The world has started: the page stops waiting for it (see "When a world breaks") |
 | `leaving` | Sent by the bridge itself (`beforeunload` / `pagehide`, captured at load through the page it first saw): the document is going away. The page stops the world at once, with a panel |
 | `error { message, where }` | Shows it (300 and 120 characters at most): before `ready`, in the panel that replaces a world that doesn't start; after it, in a strip over the world. Also written to the page's console, each once (50 at most) |
@@ -290,7 +290,7 @@ it shows again.
 ### When a world breaks
 
 A world that breaks never traps the person using it: the page puts a panel in its place, or a strip
-over it. (A world that runs gives its own way back: see "Give a way back", below.)
+over it. A world that runs has a way back too: see "Give a way back", below.
 
 - **It must start within 5 seconds of its frame being built.** Starting means `ready`: call
   `Agentville.world(...)` or `Agentville.raw(...)` as `world.js` loads. A `world.js` that throws first,
@@ -343,10 +343,15 @@ errors thrown by `start`, `scene` or `select` reach the page as `error`, each on
 `world.js` that registers nothing is reported too.
 
 **Give a way back.** While a world shows, the page hides its own top bar: the world fills the
-window. An engine world has the dashboard's buttons (the `hud` hook's default has List, World and
-Sidebar). A world that draws itself must draw its own, at least a **List** button (`nav { what:
-'list' }`) and a **World** button (`nav { what: 'worlds' }`), or whoever uses it has no way back to
-the list or to another world.
+window. So the page gives a world registered with `Agentville.raw` a small control of its own, in
+the top right corner over the frame: **World ▾** opens the list of worlds (as `nav { what: 'worlds'
+}` does) and **☰ List** goes to the list view (as `nav { what: 'list' }`). It is the page's, not the
+frame's, so nothing the world draws can cover it, and it goes with the frame. Drawing your own List
+and World buttons as well is optional. An engine world (`Agentville.world`) gets no corner: its HUD
+has the dashboard's buttons (the `hud` hook's default has List, World and Sidebar), so a world that
+gives its own `hud` should keep a List and a World button (`data-farm-nav="list"` and
+`data-farm-nav="worlds"`, as the farm's do). The engine registers through the bridge as
+`Agentville.raw(handlers, { engine: true })`, which is what tells the page apart.
 
 `opts` holds the page's settings and the world's way out. Each function sends one message:
 
@@ -438,7 +443,7 @@ A hook you give always wins over its default.
 | `onMove` | `(agent, zone, prevZone, pop)` | nothing; `pop(text, cls)` shows a pop-up over the agent |
 | `speed` | `(agent)` | `40`: walking speed |
 | `zoneText` | `(agent, zone)` | `'moves'`: the log line when an agent changes zone |
-| `hud` | `(state)` | the dashboard's buttons: list, world, sidebar, sky, motion, help, zoom. `state` is `{ still, zoom, saysOn, skyMode, follow, canFollow, restingHidden, bell, nav, panelOpen }` |
+| `hud` | `(state)` | the dashboard's buttons: list, world, sidebar, sky, motion, help, zoom. `state` is `{ still, zoom, saysOn, skyMode, follow, canFollow, restingHidden, bell, nav, panelOpen }`. Your own should keep List and World: an engine world gets no corner control from the page |
 | `ground`, `shadows(body)`, `top`, `drawFx(agent, body)` | | nothing: drawn under the agents, under each agent, over everything, and over each agent |
 | `season` | `()` | `'summer'` |
 | `lights` | `()` | `[]`; each `[x, y, r, colour]` glows at night |
@@ -520,11 +525,11 @@ Two things no browser rule stops, in any page:
 - **A connection to a host it names.** A world can make the browser open a connection to a host and
   port of its choosing, with `<link rel="preconnect" href="https://host:port/">`, as often as it
   likes, and the page doesn't notice. No request goes over that connection, but the host name
-  (looked up in DNS) and the port can carry what the world sees.
-  `<link rel="dns-prefetch">` presumably works the same way (untested). It can't be closed from the
-  page. So a world from your folder could send out what a private scene holds (agents' states, tool
-  and MCP server names, folder labels, repo and project names, costs), and a world allowed to see
-  what agents say could send out the words too.
+  (looked up in DNS) and the port can carry what the world sees. `<link rel="dns-prefetch">`
+  presumably works the same way (untested). It can't be closed from the page. So a world from your
+  folder could send out what a private scene holds (agents' states, tool and MCP server names,
+  folder labels, repo and project names, costs), and a world allowed to see what agents say could
+  send out the words too.
 - **Leaving its frame.** A frame can always navigate itself away (`location = …`). The page stops it
   as soon as it starts: the bridge tells the page the moment the document starts to go away (the
   browser's `beforeunload` and `pagehide`), and the page removes the frame and hears nothing more

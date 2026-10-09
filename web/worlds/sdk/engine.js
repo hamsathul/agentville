@@ -202,7 +202,7 @@ window.Agentville.world = hooks => {
     },
     scene(s) { view.update(th.fromScene(s)); field.refresh(); },
     select(id) { view.select(id ?? null); },
-  });
+  }, { engine: true }); // its HUD has the dashboard's buttons: the page adds no corner control
 };
 
 /* ---------- the engine: positions, walking, tags, pop-ups, diary, the loop ---------- */

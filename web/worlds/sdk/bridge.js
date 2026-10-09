@@ -141,15 +141,20 @@
   });
 
   const A = (window.Agentville = window.Agentville ?? {});
-  /** A world that draws itself: { start({ el, opts, prefs }), scene(scene), select?(id) }. */
-  A.raw = handlers => {
+  let raw = false; // the world draws itself: the page then gives it a way back (World ▾, List) in a corner
+  /**
+   * A world that draws itself: { start({ el, opts, prefs }), scene(scene), select?(id) }. The engine
+   * registers through here too, with { engine: true }: its buttons have List and World already.
+   */
+  A.raw = (handlers, how) => {
     if (world) { report('A world registered twice.', 'world.js'); return; }
     world = handlers;
+    raw = how?.engine !== true;
   };
   /** Sends the page one of the messages it accepts (docs/worlds.md, "Messages"); it checks each one. */
   A.send = send;
   addEventListener('DOMContentLoaded', () => {
-    if (world) send({ type: 'loaded' });
+    if (world) send({ type: 'loaded', ...(raw ? { raw: true } : {}) });
     else report('world.js did not register a world (Agentville.world or Agentville.raw).', 'world.js');
   });
 })();

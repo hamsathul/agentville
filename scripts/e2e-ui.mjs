@@ -738,6 +738,7 @@ try {
   check(answered?.answers?.['Which crop next?'] === 'Pumpkins', 'the session received the answer');
 
   check(await js("!document.querySelector('#farm .world-strip') && !document.querySelector('#farm .world-panel')"), "the farm broke nothing: no error strip or panel (an error its bridge caught would show here)");
+  check(await js("!document.querySelector('#farm .world-corner')"), "the farm has its own buttons: the page adds no corner control");
 
   console.log('Worlds');
   check(await funtil("!!document.querySelector('[data-farm-nav=\"worlds\"]')"), "the farm's buttons include World");
@@ -746,6 +747,7 @@ try {
   await js("document.querySelector('[data-world=\"u/sample\"]').click()");
   check(await until("document.querySelector('#farm .world-frame')?.src.endsWith('/world/u/sample/')"), 'picking one shows it');
   check(await funtil("!!document.querySelector('#farm canvas') && document.querySelectorAll('.px-tag').length > 0"), 'a world made of three hooks draws, with the engine doing the rest');
+  check(await js("!document.querySelector('#farm .world-corner')"), "an engine world has the dashboard's buttons: no corner control");
   check(await until("/Sample/.test(document.getElementById('view-farm').textContent) && localStorage.getItem('tracker-world') === 'u/sample'"), 'the toggle says its name, and the choice is kept');
   check(await js("document.querySelector('#farm-diary-pane .sec').textContent === 'Lab book'"), "the diary takes the world's own word for it");
   await js("window.__sampleFrame = document.querySelector('#farm .world-frame'); true");
@@ -794,10 +796,18 @@ try {
   check(JSON.stringify(answered ?? null) === answeredBefore, 'a message the page does not accept (an answer) reached no session');
   check(await js("!/nobody-here/.test(document.getElementById('farm-agent').textContent)"), 'a pick for an agent not on the dashboard was dropped');
   check(await js("document.querySelector('#farm .world-frame')?.src.endsWith('/world/u/probe/') && !document.querySelector('#farm .world-panel') && document.getElementById('main').dataset.view === 'farm'"), 'and the page is still itself, the probe still in its frame');
-  await js("document.getElementById('view-farm').click()"); // the probe draws no buttons: the view toggle opens the list
-  await until("document.getElementById('worlds-dlg').open");
+  // The probe draws no buttons: the page gives it a way back, in a corner over its frame.
+  check(await until("!!document.querySelector('#farm .world-corner')"), "a world that draws itself gets the page's corner control");
+  await shot('world-corner');
+  check(await js("(b => { const r = b.getBoundingClientRect(); return document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2) === b; })(document.querySelector('#farm .world-corner [data-corner-list]'))"), 'over the frame, where nothing the world draws can cover it');
+  await js("document.querySelector('#farm .world-corner [data-corner-list]').click()");
+  check(await until("document.getElementById('main').dataset.view === 'list'"), 'its ☰ List goes to the list view');
+  await js("document.getElementById('view-farm').click()"); // the list view's toggle: back to the world
+  check(await until("document.getElementById('main').dataset.view === 'farm' && document.querySelector('#farm .world-frame')?.src.endsWith('/world/u/probe/') && !!document.querySelector('#farm .world-corner')"), 'back in the world: the same frame, its corner still there');
+  await js("document.querySelector('#farm .world-corner [data-corner-worlds]').click()");
+  check(await until("document.getElementById('worlds-dlg').open"), 'its World ▾ opens the list of worlds');
   await js("document.querySelector('[data-world=\"farm\"]').click()");
-  check(await until("document.querySelector('#farm .world-frame')?.src.endsWith('/world/farm/')") && await funtil("document.querySelectorAll('.px-tag').length >= 2"), 'and the farm comes back');
+  check(await until("document.querySelector('#farm .world-frame')?.src.endsWith('/world/farm/')") && await funtil("document.querySelectorAll('.px-tag').length >= 2") && await js("!document.querySelector('#farm .world-corner')"), 'and the farm comes back, without the corner');
   for (let i = errors.length - 1; i >= 0; i--) if (/no barn here/.test(errors[i])) errors.splice(i, 1); // the throw was the test's own
 
   console.log('Claude Code setup');

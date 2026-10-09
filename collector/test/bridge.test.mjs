@@ -58,7 +58,15 @@ test('a world that registers is announced; one that never does is reported', () 
   const g = frame();
   g.A.raw({ start() {}, scene() {} });
   g.fire('DOMContentLoaded', {});
-  assert.deepEqual(g.sent, [{ type: 'loaded' }]);
+  assert.deepEqual(g.sent, [{ type: 'loaded', raw: true }], 'a world that draws itself says so: the page gives it a way back');
+  const e = frame();
+  e.A.raw({ start() {}, scene() {} }, { engine: true });
+  e.fire('DOMContentLoaded', {});
+  assert.deepEqual(e.sent, [{ type: 'loaded' }], 'the engine has the buttons already');
+  const n = frame();
+  n.A.raw({ start() {}, scene() {} }, null);
+  n.fire('DOMContentLoaded', {});
+  assert.deepEqual(n.sent, [{ type: 'loaded', raw: true }], 'anything but { engine: true } is a world that draws itself');
 });
 
 test('start runs the world in #farm with its prefs and settings, then ready; once it has drawn, the newest scene', () => {

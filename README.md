@@ -204,7 +204,8 @@ To remove it completely, also delete the `CLAUDE_CODE_PLUGIN_DIRS` entry from
 Open <http://localhost:7777>. **☰ List** at the top and the button beside it switch between the
 two views: the list, and the world you chose (**🌾 Farm** until you choose another). Both show the
 same live data, updated every few seconds. A world fills the window, so it has its own **List**
-button to come back.
+button to come back (a world that draws no buttons of its own gets the page's **World ▾** and **☰
+List** in its top right corner).
 
 ### The list view
 
@@ -488,9 +489,11 @@ The **⚙ Claude Code** button in the top bar opens your Claude Code setup in th
 ### Worlds
 
 A world is a way to draw what the dashboard knows; the farm is the built-in one. **World**, among
-the farm's buttons at the top, opens the list of worlds: pick one. In the list view, the button
-beside **☰ List** carries the name of the world you will see. Each world keeps its own zoom and
-settings, and the choice is kept in this browser. If the world you chose has gone, or has something
+the farm's buttons at the top, opens the list of worlds: pick one. A world that draws itself, with
+no such buttons, gets a small control from the page in its top right corner instead: **World ▾**
+for the list of worlds and **☰ List** for the list view, so it can't leave you stuck in it. In
+the list view, the button beside **☰ List** carries the name of the world you will see. Each world
+keeps its own zoom and settings, and the choice is kept in this browser. If the world you chose has gone, or has something
 wrong with it, the dashboard opens on the farm instead and forgets the choice. **Open the worlds
 folder** in the list makes your folder if it is not there yet and shows it in Finder.
 
@@ -710,8 +713,8 @@ and can do is in [docs/worlds.md](docs/worlds.md).
 - The dashboard's own page and its API tell the browser never to show them inside a frame
   (`frame-ancestors 'none'`), so no other page, and no world, can load the dashboard with its token
   inside itself.
-- The farm (like any world) runs in a sandboxed frame with no cookies, storage, network, WebRTC
-  or token. It sees the scene, which is what the dashboard shows, and can only ask the page for the
+- The farm (like any world) runs in a sandboxed frame with no cookies, storage, requests of its
+  own, WebRTC or token. It sees the scene, which is what the dashboard shows, and can only ask the page for the
   few things listed in [docs/worlds.md](docs/worlds.md), each checked against the scene: open an
   agent or one of its files, read an agent's or a repo's files (the page fetches them with the
   token), keep its own settings, press the top bar's buttons. Links from it open only to GitHub.
@@ -807,7 +810,6 @@ and can do is in [docs/worlds.md](docs/worlds.md).
 | The bell is silent | Click the page once (browsers block sound until you do), and allow notifications |
 | A world says it "didn't start" | A world has 5 seconds to start. Past that, a panel replaces the (empty) world and gives the first error it reported, if any. Fix its `world.js` (or `world.json`) and save: it reloads by itself. Or press **Back to the farm**, **Show the list**, or **Try again** |
 | A world "tried to leave the page and was stopped" | A world may only draw in its own frame; this one tried to go to another page (a link, `location`). The page stops it the moment it starts to leave. Fix the world and save: it reloads by itself. Or press **Back to the farm** or **Show the list** |
-| A world of yours shows no buttons, and there is no way back to the list | The dashboard's top bar is hidden while a world shows, so a world brings its own **List** and **World** buttons (an engine world has them; a world that draws itself must make its own: [docs/worlds.md](docs/worlds.md)). Until it does, move the world's folder out of your worlds folder and reload the page: the dashboard opens on the farm. (With the sidebar open, its **☰ List** works too) |
 | A red strip over a world | The world reported an error after it started. It keeps drawing; **×** hides the strip. The page's console has the same message |
 | The farm stays empty, or says "not found" | The farm loads in a frame of its own from the collector (`/world/farm/`). After an update, restart the service (`agent-tracker restart`) and reload the page. The page's console says what a world reported, if anything |
 

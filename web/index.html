@@ -372,6 +372,8 @@ table.sheet thead th:first-child { left: 0; z-index: 2; }
 .world-panel p { margin: 0 0 10px; } .world-panel p:last-child { display: flex; gap: 8px; flex-wrap: wrap; margin: 0; }
 .world-strip { position: absolute; top: 10px; left: 50%; transform: translateX(-50%); z-index: 5; display: flex; gap: 10px; align-items: center; max-width: min(640px, calc(100% - 32px)); padding: 6px 10px; border: 1px solid color-mix(in srgb, var(--crit) 50%, var(--line)); border-radius: 10px; background: var(--panel); color: var(--text); font-size: 12px; }
 .world-strip .x { border: 0; background: none; color: var(--muted); font-size: 16px; cursor: pointer; }
+/* A world that draws itself gets the page's way back, in its top right corner. */
+.world-corner { position: absolute; top: 10px; right: 10px; z-index: 5; display: flex; gap: 6px; padding: 4px; border: 1px solid var(--line); border-radius: 10px; background: color-mix(in srgb, var(--panel) 92%, transparent); }
 #farm-side { display: none; min-height: 0; overflow: auto; background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 12px 14px; }
 /* The farm sidebar: tabs on top, then one of the agent panel, its files (the explorer) or the farm diary. */
 #farm-tabs, #farm-diary-pane, #farm-activity-pane, #farm-subagents-pane { display: none; }

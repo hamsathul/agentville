@@ -634,6 +634,36 @@ test('the panel buttons: try again, back to the farm', async () => {
   assert.equal(p.host.held[0], p.frame);
 });
 
+test("a world that draws itself gets the page's way back in a corner; an engine world none; it goes with its frame", async () => {
+  const p = await page({ stored: { 'tracker-world': 'u/space' } });
+  const corners = () => p.host.held.filter(el => el.className === 'world-corner');
+  p.from({ type: 'loaded', raw: true });
+  assert.equal(corners().length, 1, 'shown for a world that registered with Agentville.raw');
+  assert.equal(p.host.held[0], p.frame, 'over the frame, which stays');
+  const [corner] = corners();
+  assert.match(corner.innerHTML, /data-corner-worlds[^>]*>World ▾</);
+  assert.match(corner.innerHTML, /data-corner-list[^>]*>☰ List</);
+  const click = attr => corner.listeners.click({ target: { closest: s => (s === `[${attr}]` ? {} : null) } });
+  p.calls.length = 0;
+  click('data-corner-worlds');
+  click('data-corner-list');
+  click('data-corner-list');
+  assert.deepEqual(p.calls, [['nav', 'worlds'], ['nav', 'list'], ['nav', 'list']], "as nav 'worlds' and nav 'list', and never paced: they are your clicks");
+  p.from({ type: 'loaded', raw: true });
+  assert.equal(corners().length, 1, 'once per frame: an extra loaded adds none');
+  p.worlds.choose('farm');
+  assert.equal(corners().length, 0, 'gone with the frame when another world shows');
+  p.from({ type: 'loaded' });
+  assert.equal(corners().length, 0, 'an engine world (the farm) gets none');
+  p.from({ type: 'loaded', raw: true });
+  assert.equal(corners().length, 0, "the frame's first loaded stands: a later raw isn't heard");
+  assert.equal(p.worlds.checkMessage({ type: 'loaded', raw: 'yes' }, { sentPaths: new Map() }).raw, false, 'raw is true or nothing');
+  const q = await page({ stored: { 'tracker-world': 'u/space' } });
+  q.from({ type: 'loaded', raw: true });
+  q.from({ type: 'leaving' });
+  assert.deepEqual(q.host.held.map(el => el.className), ['world-panel'], 'a panel in its place takes the corner away too (the panel has its own ways back)');
+});
+
 test('a world that loads another page in its frame is stopped at once', async () => {
   const p = await page({ stored: { 'tracker-world': 'u/space' } });
   p.frame.listeners.load(); // its own page

@@ -34,6 +34,15 @@ test('a world needs only its width and three hooks; everything else has a defaul
   assert.equal(sdk.withDefaults({ ...tiny, SH: 20 }).SH, 20, "a world's own hook wins");
 });
 
+test('Agentville.world registers through the bridge as the engine: its buttons are the way back, so the page adds none', () => {
+  const window = load();
+  let how;
+  window.Agentville.raw = (h, o) => { window.registered = h; how = o; };
+  window.Agentville.world({ ...tiny });
+  assert.deepEqual(plain(how), { engine: true });
+  assert.equal(typeof window.registered.start, 'function');
+});
+
 test("the engine's scene: the plain facts, under the names the engine draws from", () => {
   const { sdk, AgentvilleScene } = load();
   const s = AgentvilleScene.toScene({ generatedAt: NOW, collisions: [], plan: { windows: [{ kind: 'five_hour', percentUsed: 40, resetsAt: 1 }] },
