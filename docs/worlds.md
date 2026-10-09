@@ -54,7 +54,8 @@ world-shots pictures.
    allowed, each with one sentence and exit code 1, and leaves nothing half-made. `--worlds <dir>`
    uses another folder, to try things out (give it to `check-world` and `world-shots` too; the
    dashboard and its test page show only your worlds folder). A `config.json` that can't be read
-   gives one warning and the default folder, as the collector does. It prints the next steps.
+   gives one warning and the default folder, as the collector does. It prints the next steps (with the commands as if for your own worlds folder: add `--worlds <dir>` to
+them when you gave it one).
 2. Edit the world. In `world.json`, give it its own `icon`, `description` and `nouns` (only its
    `name` is new; the rest are the starter's): see "world.json". Give the engine the same words in
    `world.js`'s `nouns` hook, with `place` ("Hooks"). In `world.js`, start from the
@@ -406,7 +407,11 @@ project's repos sit together, and a repo that leaves keeps its bed for a day. `c
 - `height(fence)` → the world's height.
 
 It returns `{ layoutFor(fields, beds?, now?), packedLayout(fields, beds, now?), slotAt(i), cols }`.
-`layoutFor` returns `{ key, ST, slots, empty, rows, GRID, H, groups, more, beds }`.
+`layoutFor` returns `{ key, ST, slots, empty, rows, GRID, H, groups, more, beds }`. `ST` is the list of
+beds in use, one for each repo: each has the repo's `key`, `cx` (the bed's centre x), `rowTop` (the top of
+its row) and whatever `slot(cx, rowTop)` added (the starter's `lane`, the y its people stand at). That is
+what a world draws its repos on and finds a repo's bed by: `L.ST.find(s => s.key === f.field)`, as the
+starter's `slots` does, with `L` the layout the `layout` hook gives. `GRID` is the fence, `{ x0, x1, y0, y1 }`.
 
 If a world's `grid` is a config (not a `makeGrid` result), the engine fills in what is missing:
 `cols` 3, `colW` 88, `rowH` 62, the first column so the columns are centred on `W`, and a fence half a
@@ -524,6 +529,11 @@ every hat but `none` also has a highlight in a lighter shade of the hat colour.
 | extra | `tie` | a tie down the shirt | fixed (red) |
 | extra | `radio` | a radio clipped at the chest | fixed (a metal aerial, a slate face) |
 
+There is no apron. For a baker's or cook's whites, the closest tops are `labcoat` (a white coat, worn
+with a white `beret` or `surgical` cap in `hatColors`) and the `overalls` bottom, whose bib reads as an
+apron over the shirt. A world that wants a real apron draws one over the person in `drawFx`, with
+`rpAt(ox, oy)` as props do.
+
 A bottom colour of `'shirt'` in `bottomColors` takes the agent's colour, so `bottomColors: ['shirt']` makes
 trousers or a skirt in the same colour as the shirt (scrubs, a suit). An empty `hatColors` list falls back to
 the kit's hat colours.
@@ -604,6 +614,10 @@ props.actionOf('edit').prop;   // 'pencil': the kit's
 props.actionOf(undefined, 'Grep').prop; // 'magnifier': an older snapshot with a tool and no step
 props.actionOf('nonsense').prop; // 'wrench'
 ```
+
+A prop may reach past the person's own 14 pixels (the beaker above is drawn at x 13–16). A step you add
+or change keeps `spot: 0` (the middle) unless you give one, and the starter's `slots` stands people by
+`props.doing(f).spot`, so a world made from the starter needs nothing more.
 
 `doing(f)` says what an agent's person holds now: its step's action, the blueprint while it is working in
 plan mode, and `null` between steps (nothing in its hands). Draw it with `props.draw(action.prop, rp, T,
@@ -799,6 +813,12 @@ on the test page.
 - the context filling each plot with green, and the last deploy as a flag on it (green ok, red failed,
   blinking amber running, grey for any other state);
 - a cat from the creature library (`animals()`, `roam()`, `avoid()`; see "Creatures"), just for fun.
+
+The starter you edit is the copy `new-world` made, `<worlds folder>/<name>/world.js`; the changes a
+different world needs are mostly in its outfit, its `props.kit()`, `bg` (the ground and what stands for a
+repo, drawn at `L.ST`'s `cx` and `rowTop`: "`makeGrid(config)`") and `ground` (what changes while it runs,
+such as a repo's last deploy from `scene.fields[].lastDeploy.state` and its context from the `pct` of the
+`scene.farmers` whose `field` is its `key`: "`engineScene(scene)`").
 
 Its `world.js` reads top to bottom: its sizes (`W`, where the door and the bench are), the kits
 (`lookFor` and `sprite`, the props set), the outfit, the grid (`makeGrid`) and the deploy colours; then
