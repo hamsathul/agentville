@@ -9,7 +9,7 @@
   const props = window.Agentville.props.kit(); // every step's prop; pass { steps, props } to draw your own
 
   // Each agent dresses from this outfit, by its id: the same agent always looks the same.
-  const OUTFIT = { hat: ['cap', 'beanie', 'none'], top: 'shirt', bottom: 'trousers', extra: ['none', 'glasses'] };
+  const OUTFIT = { hat: ['hardhatt'], top: 'shirt', bottom: 'trousers', extra: ['none', 'glasses'] };
   const looks = new Map();
   const lookOf = f => { if (!looks.has(f.id)) looks.set(f.id, lookFor(f, OUTFIT)); return looks.get(f.id); };
 

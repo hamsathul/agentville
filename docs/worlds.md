@@ -41,13 +41,117 @@ world-shots pictures.
    uses another folder, to try things out. A `config.json` that can't be read gives one warning and
    the default folder, as the collector does.
 2. Edit `world.js`. Start from the starter's hooks; the kits ("The people kit", "The props kit") draw
-   people and things; "Hooks" says what each hook gets and its default. The checklist in "The test
-   page and the tour" lists what a world should show.
+   people and things; "Hooks" says what each hook gets and its default. The checklist below lists
+   what a world should show.
 3. See it on the test page, `/worlds/test?world=u/<name>`, which plays the tour. Saving a file
    reloads it.
-4. `npm run check-world -- <name>` runs the tour headless and lists what it finds.
+4. `npm run check-world -- <name>` runs the tour headless and lists what it finds (below). Fix every
+   line with a cross; read the lines with a dot.
 5. `npm run world-shots -- <name>` takes a picture of the world at each stop of the tour.
 6. Choose it in the dashboard: **World**, then its name.
+
+### check-world
+
+```
+npm run check-world -- <world> [--worlds <dir>]
+```
+
+`<world>` is `farm`, `starter`, `u/<folder>` or just `<folder>` (one of yours); `--worlds` looks for
+it in that folder instead of your worlds folder. It needs no browser, server or token: it reads the
+world's folder, the SDK and the tour (and `config.json`, only for where your worlds are).
+
+**Only on worlds you trust.** check-world runs the world's code in Node, in a `node:vm` context, not
+in the sandboxed frame, and a `vm` context is not a sandbox: code run there can reach what Node can,
+your files included. Run it on your own worlds and on ones you would run as a script; look at any
+other world on the test page, in its frame.
+
+It plays **the same tour as the test page** ("The test page and the tour"), headless: each stop in a
+fresh `node:vm` holding `scene.js` and the frame's scripts in the frame's order, a stand-in page,
+and canvases that record what is drawn. Each of the stop's snapshots goes through `toScene` (and
+`privateScene` at the `private` stop), the stop's sky is the world's `sky` setting, and the world
+draws 8 frames after each snapshot, then one more, whose drawing is what two stops are compared by.
+The clock and the random numbers are fixed, and a request (`agentFiles`, `repoTouched`) never gets
+an answer here.
+
+It reports, a line each:
+
+- **✗ An exception**, with its stop, and the file and line: `world.js:68`, or the SDK's own file when
+  the world handed it something it can't use. A promise the world left failing counts too (once a
+  stop), as do a `world.js` that doesn't parse (its line) and one that never registers.
+- **✗ A hook that doesn't return** within 2 seconds (a loop, or promise callbacks that never end),
+  with what the world was doing: starting, taking a scene or drawing a frame. It is cut off and the
+  tour goes on; after three such stops the rest is skipped. check-world never hangs.
+- **✗ world.json's problem**, the one the list of worlds would show.
+- **✗ A creature** that breaks the animals kit's rules (the checklist's last row), a line each.
+- **· Hooks left to their defaults**: fine when you meant it.
+- **· Checklist items drawn the same** in their two stops ("deploy failed" draws the same as "deploy
+  ok"). This is **a pointer, not a verdict**: it compares only what is drawn on the canvas in the last
+  frame, so what a world shows in HTML (tags, bubbles, its own HUD or panel) isn't seen, and a world
+  that shows a thing only as it happens may look the same just after.
+- **· Outfit parts the people kit doesn't have** (`hat:hardhatt`): drawn as the default part.
+- **· "no roam(): its creatures aren't shown"**: `animals()` without `roam()`, so only creatures with a
+  `home` appear.
+
+It exits with 1 when there is any line with a cross, else 0. A world copied from the starter, with
+a mistake of each kind put in (its path shortened):
+
+```
+check-world: u/my-bakery (/Users/you/.agentville/worlds/my-bakery)
+  ✗ 33 stops of the tour, a few frames each: 7 problems
+  ✗ everyone: Error: no door here (world.js:68)
+  ✗ waiting: Error: no door here (world.js:68)
+  …
+  ✗ creatures: cat: lines.idle has a line of 41 characters (40 at most): "I knocked your coffee off the desk. Sorry"
+  · hooks left to their defaults: key, SH, fromScene, follow, startText, arriveText, tag, tip, …
+  · may draw the same (a pointer, not a verdict): deploy failed: "deploy-failed" draws the same as "deploy-ok"
+  …
+  · outfit parts the people kit doesn't have (drawn as the default): hat:hardhatt
+```
+
+The starter and the farm pass with no cross (the starter's dots are explained below the checklist).
+
+### The checklist
+
+What a world should show, each item as two stops of the tour that differ only in it (the tour's
+`checks`). check-world points out the items a world draws the same; the test page and world-shots
+show you each stop.
+
+| Item | The two stops | What the farm draws | The starter |
+|---|---|---|---|
+| waiting on you | `working`, `waiting` | the farmer on the porch, waving a red **!** | at the door, a **!** bubble and a red ring |
+| a question for you | `working`, `question` | on the porch, waving a red **!** (its bubble asks the question) | at the door, a **!** bubble |
+| your turn | `working`, `turn` | on the porch with a basket | at the door, a **v** bubble |
+| a repo filling with context | `context-low`, `context-high` | the crops grow, from seeds to ripe | the plot fills with green |
+| a compaction | `compacted-plain`, `compaction` | **Harvest!**: the field starts again from seed | left out |
+| deploy failed | `deploy-ok`, `deploy-failed` | rain over the field, for the rainbow | a red flag, for the green one |
+| deploying | `deploy-ok`, `deploy-running` | a windmill | a blinking amber flag |
+| deploy skipped | `deploy-ok`, `deploy-skipped` | no weather | a grey flag |
+| subagents | `working`, `subagents` | chickens, and a dog for an Explore one | left out |
+| the limits | `limits-low`, `limits-high` | winter, and the silo's grain | left out |
+| an MCP call | `working`, `mcp` | its cart drives to the farmer | the step's prop (props kit) |
+| messages between agents | `two-working`, `pigeon` | a pigeon | a pigeon (the engine's) |
+| a collision | `two-working`, `collision` | rope with orange flags round the field | left out |
+| a merged pull request | `working`, `merged` | **Sold!** at the market stall | left out |
+| idle | `working`, `idle` | under the shade tree | on the bench, eyes shut, a zzz |
+| stale | `idle`, `stale` | a scarecrow | greyed out |
+| night | `day`, `night` | lit windows, lanterns and fireflies | the engine's night |
+| **Creatures (optional)** | none: check-world reads `animals()` once | thirteen animals, all within the rules | one cat, within the rules |
+
+The creature rules (a cross for each one broken; see "Creatures"):
+
+- `kind` is one of the library's creatures, and not in `world.json`'s `taken`;
+- `count`, if given, is a whole number from 1 to 12; `looks`, if given, are the kind's own (the
+  duck's `drake`, `hen`, `duckling`);
+- `actions` number 2 to 4, each with a `label`; its `fx` is `hearts`, `crumbs` or `dust`, its `pose`
+  one the creature has (`stand`, `walk`, `run`, `eat`, `sleep`, `happy`; the duck's `swim` and
+  `dabble`; the ostrich's `hide`), and its `line` a key of `lines`;
+- every line in `lines` is 40 characters or fewer;
+- `home` is `{ x, y, w, h }` in numbers, and `bank` a list of `[x, y]`;
+- with no `roam()`, only creatures with a `home` are shown (a dot, not a cross).
+
+The starter leaves out a compaction, subagents, the limits, a collision and a merged pull request,
+to stay short: those are check-world's five "may draw the same" dots for it, beside its hooks left
+to their defaults. A world of yours should show them all.
 
 ## Where worlds live
 
@@ -773,14 +877,20 @@ roam: () => [{ x: 4, y: 60, w: 90, h: 40 }],
 avoid: () => [],
 ```
 
+The starter world has the same cat on its 400-wide ground: `roam` is the grass below its path, down
+to the fence's foot, and `avoid` the fence with its plots, so the cat walks beside the fence and
+never at the door or on the bench (both above the path).
+
 The rules for your creatures: none in a `taken` shape; lines of 40 characters at most; `roam` areas
 clear of anything that shows data (the farm keeps them out of its fields, off the hay, crates and
-mailbox, and off the carts' rank).
+mailbox, and off the carts' rank). `npm run check-world` checks a world's creatures against these
+and the table above (the checklist's "Creatures" row, in "Making a world"); keeping `roam` clear of
+data is yours to see on the test page.
 
 ## The starter world
 
 `web/worlds/starter/` is a plain world with everything a world needs, short enough to read at once
-(about 80 lines). It shows:
+(about 85 lines). It shows:
 
 - plots: the engine's repo grid, three across inside a fence, one bed for each repo;
 - the door: agents waiting on you stand at it, with a bubble and a ring at their feet;
@@ -788,7 +898,11 @@ mailbox, and off the carts' rank).
 - people from the people kit (`lookFor` from the agent's id, `sprite` with the walking legs and the wave);
 - every step's prop from the props kit (`props.kit()`, `doing(f)`, `draw`);
 - the context filling each plot with green, and the last deploy as a flag on it (green ok, red failed,
-  blinking amber running, grey skipped).
+  blinking amber running, grey skipped);
+- a cat from the creature library (`animals()`, `roam()`, `avoid()`; see "Creatures"), just for fun.
+
+It leaves out a compaction, subagents, the limits, a collision and a merged pull request (see the
+checklist in "Making a world"): `npm run check-world -- starter` passes with a dot for each.
 
 It is the template `npm run new-world -- <name>` copies, and it isn't in the list of worlds. It can
 still be framed (`/world/starter/`), which is how the test page runs it. Its `world.json` gives the
@@ -910,8 +1024,8 @@ The stops, in the order the tour plays them:
 The tour is a classic script that sets `window.AgentvilleTour`: `stops` (each `{ name, title, sky,
 private, frames }`, `frames` being one or two snapshots in the collector's shape), `stop(name)`,
 `answer(act)` (the made-up answers), `checks` (pairs of stops that differ in one thing, such as
-`deploy-ok` and `deploy-failed`) and `NOW` (the fixed time the snapshots are set at, 9 October 2026,
-09:00 UTC).
+`deploy-ok` and `deploy-failed`: the checklist in "Making a world", which `check-world` compares)
+and `NOW` (the fixed time the snapshots are set at, 9 October 2026, 09:00 UTC).
 
 ## What a world can't do
 

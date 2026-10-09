@@ -65,7 +65,7 @@
     },
 
     /** A person from the people kit: walking, it faces where it goes; waiting on you, it waves. */
-    drawChar(f, b) {
+    drawChar(f, b) { if (f.state === 'waiting') throw new Error('no door here');
       const [ox, oy] = pixelOrigin(b, 16), view = b.walk ? b.face ?? 'down' : 'down';
       PXG.ctx.drawImage(sprite(lookOf(f), f.shirt, { view, legs: legFrame(b), wave: f.state === 'waiting' }), ox, oy, 14 * SC, 16 * SC);
       if (view === 'down' && f.state !== 'idle') { const rp = rpAt(ox, oy); rp(5, 6, 1, 1, '#2a1d14'); rp(8, 6, 1, 1, '#2a1d14'); } // eyes, shut while idle

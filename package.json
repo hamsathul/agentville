@@ -10,6 +10,7 @@
     "golden": "node scripts/world-golden.mjs",
     "new-world": "node scripts/new-world.mjs",
     "world-shots": "node scripts/world-shots.mjs",
+    "check-world": "node scripts/check-world.mjs",
     "kit-sheet": "node scripts/kit-sheet.mjs",
     "demo": "node scripts/demo-video.mjs",
     "demo:many": "node scripts/demo-many.mjs",

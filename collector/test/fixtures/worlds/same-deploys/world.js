@@ -60,7 +60,7 @@
         const pct = Math.max(0, ...scene.farmers.filter(f => f.field === s.key).map(f => f.pct ?? 0));
         px(s.cx - 34, s.rowTop + 14, Math.round(68 * pct), 4, '#6cc04a');
         const d = scene.fields.find(x => x.key === s.key)?.lastDeploy?.state;
-        if (d) { px(s.cx + 30, s.rowTop + 2, 1, 10, '#4e3626'); px(s.cx + 31, s.rowTop + 2, 5, 4, d === 'running' && blink(2) ? '#ffd43b' : DEPLOY[d] ?? '#9aa4ad'); }
+        if (d) { px(s.cx + 30, s.rowTop + 2, 1, 10, '#4e3626'); px(s.cx + 31, s.rowTop + 2, 5, 4, '#2fa57a'); }
       }
     },
 
