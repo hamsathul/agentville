@@ -44,15 +44,6 @@ import { checkCast, chooseSession, createLinesWatch, dueLines, factsOf, lineWorl
 
 const DOC_FILE = /\.(md|markdown|mdx)$/i;
 
-// A session's process, for ending it: its command line, its terminal, a signal, whether it still runs.
-const systemProcs = {
-  commandOf: async pid => { const r = await run('ps', ['-o', 'command=', '-p', String(pid)], { timeoutMs: 5000 }); return r.code === 0 ? r.stdout.trim() : null; },
-  ttyOf: async pid => { const r = await run('ps', ['-o', 'tty=', '-p', String(pid)], { timeoutMs: 5000 }); const t = r.code === 0 ? r.stdout.trim() : ''; return /^ttys\d+$/.test(t) ? t : null; },
-  kill: (pid, sig) => process.kill(pid, sig),
-  alive: pid => { try { process.kill(pid, 0); return true; } catch { return false; } },
-  killGroup: (pgid, sig) => process.kill(-pgid, sig), // a shell command and everything it started
-  groupAlive: pgid => { try { process.kill(-pgid, 0); return true; } catch { return false; } },
-};
 const DOC_MAX_BYTES = 2 * 1024 * 1024;
 
 const ID_RE = /^[A-Za-z0-9-]{1,64}$/;
@@ -114,7 +105,7 @@ async function quickLookPicture(real) {
   }
 }
 
-export async function startCollector({ root, claudeDir = join(homedir(), '.claude'), claudeBin = 'claude', home = homedir(), signedInMs = 60_000, heldGoneMs = 120_000, scratchBase = `/private/tmp/claude-${process.getuid?.() ?? 0}`, port: portOverride, deliveryTimeoutMs = 5000, helperTimeoutMs = 30_000, linesGapMs = 300_000, linesIdleMs = 1_800_000, castKeepMs = 600_000, notify = notifyMac, launch = args => run('osascript', args, { timeoutMs: 15_000 }), sessionProcs = systemProcs, endWaitMs = 8000, readProcs = readPs, deployStatusOf = deployStatus, pullRequestsOf = pullRequests, githubSlugOf = githubSlug, ticketMs = 600_000, quickLook = platform.quickLookPicture ?? quickLookPicture, folderRoots = [home, '/Volumes'], chooseFolder = chooseFolderMac, stopWaitMs = 3000, revealFile = real => run('open', ['-R', real], { timeoutMs: 10_000 }), openFolder = dir => run('open', ['-a', 'Finder', dir], { timeoutMs: 10_000 }), log = makeLogger(join(root, 'logs')) }) {
+export async function startCollector({ root, claudeDir = join(homedir(), '.claude'), claudeBin = 'claude', home = homedir(), signedInMs = 60_000, heldGoneMs = 120_000, scratchBase = platform.scratchBase(), port: portOverride, deliveryTimeoutMs = 5000, helperTimeoutMs = 30_000, linesGapMs = 300_000, linesIdleMs = 1_800_000, castKeepMs = 600_000, notify = platform.notify, launch = args => run('osascript', args, { timeoutMs: 15_000 }), sessionProcs = platform.sessionProcs, endWaitMs = 8000, readProcs = platform.readProcs, deployStatusOf = deployStatus, pullRequestsOf = pullRequests, githubSlugOf = githubSlug, ticketMs = 600_000, quickLook = platform.quickLookPicture ?? quickLookPicture, folderRoots = platform.folderRoots(home), chooseFolder = chooseFolderMac, stopWaitMs = 3000, revealFile = real => platform.revealFile(real), openFolder = dir => platform.openFolder(dir), log = makeLogger(join(root, 'logs')) }) {
   // readProcs, deployStatusOf, pullRequestsOf and githubSlugOf read the machine and GitHub; a test or the demo video passes stand-ins.
   const stateDir = join(root, 'state');
   const pendingDir = join(stateDir, 'pending');
