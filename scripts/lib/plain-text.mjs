@@ -10,9 +10,9 @@
 const STRINGS = /\x1b\][^\x07\x1b]*(?:\x07|\x1b\\)|\x1b[PX^_][^\x1b]*\x1b\\/g;
 const CSI = /\x1b\[[\x30-\x3f]*[\x20-\x2f]*[\x40-\x7e]/g;
 const ESCAPES = /\x1b[\x20-\x2f]*[\x30-\x7e]/g;
-// Every C0 control but tab and newline, DEL, the C1 controls, and the bidi controls (which can make text
-// read in another order than it is).
-const CONTROLS = /[\x00-\x08\x0b-\x1f\x7f-\x9f‪-‮⁦-⁩]/g;
+// Every C0 control but tab and newline, DEL, the C1 controls, and the bidi controls (Unicode's Bidi_Control:
+// the embeddings, overrides and isolates, which can make text read in another order than it is, and the marks).
+const CONTROLS = /[\x00-\x08\x0b-\x1f\x7f-\x9f\p{Bidi_Control}]/gu;
 
 /** `text` (made a string) without escape sequences or control characters but newline and tab, cut to `max` characters with an ellipsis. */
 export function plain(text, max = 300) {

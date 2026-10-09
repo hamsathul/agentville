@@ -31,7 +31,9 @@ test('C0 controls (but newline and tab), DEL, C1 controls and bidi controls are 
   const c1 = Array.from({ length: 32 }, (_, i) => String.fromCharCode(0x80 + i)).join('');
   assert.equal(plain(`[${c1}]`), '[]');
   assert.equal(plain('\x9b2Jx\x9d0;t\x9c'), '2Jx0;t', 'the one-byte CSI, OSC and ST');
-  assert.equal(plain('a‪b‫c‬d‭e‮f⁦g⁧h⁨i⁩j'), 'abcdefghij');
+  // Made from their code points, so this file holds none itself: the embeddings, overrides and isolates, and the marks.
+  const bidi = [0x202a, 0x202b, 0x202c, 0x202d, 0x202e, 0x2066, 0x2067, 0x2068, 0x2069, 0x200e, 0x200f, 0x061c].map(c => String.fromCharCode(c));
+  assert.equal(plain(bidi.map((b, i) => `${String.fromCharCode(97 + i)}${b}`).join('')), 'abcdefghijkl');
 });
 
 test('newlines, tabs and ordinary text stay as they are', () => {
