@@ -102,3 +102,18 @@ test('the folder dialog script is valid PowerShell (parsed by the real parser, n
   assert.equal(r.code, 0, r.stdout + r.stderr);
   assert.match(r.stdout, /parsed ok/);
 });
+
+test('an app-execution alias (wt.exe) counts as present when lstat sees it, even though existsSync and stat cannot', async () => {
+  const { existsApp } = await import('../platform/alias.mjs');
+  const seen = () => ({ isFile: () => false });
+  const gone = () => { throw Object.assign(new Error('nope'), { code: 'ENOENT' }); };
+  assert.equal(existsApp('C:/x/wt.exe', seen), true);
+  assert.equal(existsApp('C:/x/wt.exe', gone), false);
+  assert.equal(existsApp(undefined, seen), false);
+  assert.equal(existsApp('', seen), false);
+  // and on this machine, for real: the Windows Terminal alias is found if it is installed (PowerShell says it is, 2026-10-10)
+  if (process.platform === 'win32') {
+    const { join: j } = await import('node:path');
+    assert.equal(existsApp(j(process.env.LOCALAPPDATA ?? '', 'Microsoft', 'WindowsApps', 'wt.exe')), true);
+  }
+});

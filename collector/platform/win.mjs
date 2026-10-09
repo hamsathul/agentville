@@ -5,6 +5,7 @@ import { fileURLToPath } from 'node:url';
 import { run } from '../lib/exec.mjs';
 import { readWord } from '../sources/word.mjs';
 import { randomBytes } from 'node:crypto';
+import { existsApp } from './alias.mjs';
 import { makePrivate } from './private.mjs';
 import { WinProcReader, winSessionProcs } from './win-procs.mjs';
 // A toast through the WinRT API Windows PowerShell 5.1 ships with: nothing to install. The text goes in with
@@ -79,7 +80,7 @@ const SPEC_DIR_BAD = /[;&|<>^%!"\u0000-\u001f]/;
 const openingRun = (...a) => (process.env.AGENTVILLE_NO_TERMINAL === '1' || process.env.NODE_TEST_CONTEXT
   ? Promise.resolve({ code: 1, stdout: '', stderr: 'refused: opening a terminal is switched off (AGENTVILLE_NO_TERMINAL=1)' }) : run(...a));
 
-export async function openTerminal(job, { claude = 'claude', specDir, wt = existsSync(WT) ? WT : null, runner = openingRun } = {}) {
+export async function openTerminal(job, { claude = 'claude', specDir, wt = existsApp(WT) ? WT : null, runner = openingRun } = {}) {
   if (!job?.spec || typeof job.spec !== 'object') return { ok: false, error: 'refused: nothing to open' };
   if (typeof specDir !== 'string' || SPEC_DIR_BAD.test(specDir)) return { ok: false, error: 'refused: the folder for the launch file holds a character a terminal reads as syntax' };
   mkdirSync(specDir, { recursive: true });
