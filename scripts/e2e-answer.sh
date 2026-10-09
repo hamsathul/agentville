@@ -5,7 +5,8 @@
 # Code's own options), compacts one, sends the first one a chat message,
 # has it read a markdown file and fetches that file for the document reader, sends it a
 # screenshot, cancels a question (as Esc does), messages a busy interactive session and stops it
-# mid-turn, then removes the sessions. Needs the collector running.
+# mid-turn, has the helper name a new session with Haiku and renames it, then removes the
+# sessions. Needs the collector running.
 set -eo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 PORT="$(/usr/bin/plutil -extract port raw "$ROOT/config.json" 2>/dev/null || echo 7777)"
@@ -19,8 +20,14 @@ IDS=()
 
 fail() { echo "FAIL: $*" >&2; exit 1; }
 TTY_PID=""
+NAME_PID=""; NS=""; HELPER_BEFORE=""
 cleanup() {
   if [ -n "$TTY_PID" ]; then pkill -P "$TTY_PID" 2>/dev/null || true; kill "$TTY_PID" 2>/dev/null || true; fi
+  if [ -n "$NAME_PID" ]; then pkill -P "$NAME_PID" 2>/dev/null || true; kill "$NAME_PID" 2>/dev/null || true; fi
+  [ -n "$NS" ] && rm -f "$HOME"/.claude/projects/*/"$NS".jsonl
+  if [ -n "$HELPER_BEFORE" ]; then # the helper as you had it
+    curl -s -X POST "$BASE/api/actions/helper" -H "x-tracker-token: $TOKEN" -H "origin: $BASE" -H 'content-type: application/json' -d "$HELPER_BEFORE" > /dev/null || true
+  fi
   for id in "${IDS[@]}"; do claude rm "$id" >/dev/null 2>&1 || true; done
   rm -rf "$WORK"
   rmdir "$PERMIT_DIR" "$ALWAYS_DIR" 2>/dev/null || true
@@ -63,7 +70,7 @@ transcript_has() { # session id, text → exit 0 when the transcript contains it
   return 1
 }
 
-echo "1/10 question answered from the dashboard"
+echo "1/11 question answered from the dashboard"
 Q=$(start e2e-ask "Use the AskUserQuestion tool to ask me exactly one question: 'Pick a colour?' with the options Red and Blue (header: Colour). After I answer, reply with only the colour I chose and stop. Do not read or change any files.")
 [ -n "$Q" ] || fail "could not start the question session"
 IDS+=("$Q")
@@ -74,7 +81,7 @@ R="$(post /api/actions/answer "{\"agentId\":\"$QS\",\"toolUseId\":\"$QID\",\"ans
 transcript_has "$QS" '\"Pick a colour?\"=\"Blue\"' || fail "Claude never received the answer"
 echo "   ok: Claude received \"Blue\""
 
-echo "2/10 permission prompt allowed from the dashboard"
+echo "2/11 permission prompt allowed from the dashboard"
 P=$(start e2e-permit "Run exactly this one Bash command and nothing else: mkdir $PERMIT_DIR   Then reply DONE. Do not read or change any other files.")
 [ -n "$P" ] || fail "could not start the permission session"
 IDS+=("$P")
@@ -86,7 +93,7 @@ for _ in $(seq 1 60); do [ -d "$PERMIT_DIR" ] && break; sleep 1; done
 [ -d "$PERMIT_DIR" ] || fail "the allowed command never ran"
 echo "   ok: the command ran"
 
-echo "3/10 Always allow: Claude Code's own options, one picked from the dashboard"
+echo "3/11 Always allow: Claude Code's own options, one picked from the dashboard"
 A=$(start e2e-always "Run exactly this one Bash command and nothing else: mkdir $ALWAYS_DIR   Then reply DONE. Do not read or change any other files.")
 [ -n "$A" ] || fail "could not start the Always allow session"
 IDS+=("$A")
@@ -104,7 +111,7 @@ for _ in $(seq 1 60); do [ -d "$ALWAYS_DIR" ] && break; sleep 1; done
 [ -d "$ALWAYS_DIR" ] || fail "the command never ran after an option was picked"
 echo "   ok: the command ran, with \"${PICK#*$'\t'}\" kept"
 
-echo "4/10 a session compacted from the dashboard"
+echo "4/11 a session compacted from the dashboard"
 for _ in $(seq 1 60); do
   R="$(post /api/actions/setting "{\"agentId\":\"$PS\",\"compact\":\"keep the name of the folder made\"}")"
   [ "$R" = '{"ok":true}' ] && break
@@ -114,7 +121,7 @@ done
 transcript_has "$PS" '"isCompactSummary":true' || fail "the session never compacted"
 echo "   ok: the session ran /compact"
 
-echo "5/10 chat message sent from the dashboard"
+echo "5/11 chat message sent from the dashboard"
 WORD="tracker-e2e-$$"
 for _ in $(seq 1 60); do
   R="$(post /api/actions/message "{\"agentId\":\"$QS\",\"text\":\"Reply with only the word $WORD and stop.\"}")"
@@ -125,7 +132,7 @@ done
 transcript_has "$QS" "Reply with only the word $WORD" || fail "the message never reached the session"
 echo "   ok: the session got the message"
 
-echo "6/10 the document reader and the explorer, and what they refuse"
+echo "6/11 the document reader and the explorer, and what they refuse"
 DOC="$ROOT/README.md"
 R="$(post /api/actions/message "{\"agentId\":\"$QS\",\"text\":\"Use the Read tool to read README.md (first 5 lines are enough), then reply with only DONE.\"}")"
 [ "$R" = '{"ok":true}' ] || fail "message refused: $R"
@@ -144,7 +151,7 @@ curl -s -H "x-tracker-token: $TOKEN" "$BASE/api/agent/$QS/file?path=$ROOT/packag
 [ "$(curl -s -o /dev/null -w '%{http_code}' -H "x-tracker-token: $TOKEN" "$BASE/api/agent/$QS/file?path=$ROOT/state/token")" = 403 ] || fail "the git-ignored token file was served"
 echo "   ok: the explorer lists and opens the folder, and never the git-ignored token"
 
-echo "7/10 a screenshot sent with a message is seen by the session"
+echo "7/11 a screenshot sent with a message is seen by the session"
 # A 64x64 solid red PNG, made here so the test needs no image files.
 SHOT="$(node -e '
 const zlib = require("zlib");
@@ -175,7 +182,7 @@ done
 [ "$SAW" = yes ] || fail "the session never opened the screenshot and named its colour"
 echo "   ok: the session opened the screenshot and said it is red"
 
-echo "8/10 ✕ Cancel on a question dismisses it and stops the turn, as Esc does"
+echo "8/11 ✕ Cancel on a question dismisses it and stops the turn, as Esc does"
 C=$(start e2e-cancel "Use the AskUserQuestion tool to ask me exactly one question: 'Pick a size?' with the options Small and Large (header: Size). After I answer, reply with only the size. Do not read or change any files.")
 [ -n "$C" ] || fail "could not start the cancel session"
 IDS+=("$C")
@@ -193,10 +200,10 @@ done
 [ "$GONE" = yes ] || fail "the question still shows on the dashboard after Cancel"
 echo "   ok: the question is gone and the session waits for you"
 
-echo "9/10 a message to a busy interactive session is taken at once and queued once"
+echo "9/11 a message to a busy interactive session is taken at once and queued once"
 if ! command -v python3 >/dev/null; then
   echo "   skipped: needs python3 to run an interactive session"
-  echo "PASS (steps 9 and 10 skipped)"
+  echo "PASS (steps 9 to 11 skipped)"
   exit 0
 fi
 # An interactive session in a pseudo-terminal, busy writing a long answer. Variables that would
@@ -224,7 +231,7 @@ N="$(grep -c "\"operation\":\"enqueue\".*reply with only the word $BUSY_WORD" "$
 [ "$N" = 1 ] || fail "the message was queued $N times, not once"
 echo "   ok: taken at once, queued once"
 
-echo "10/10 ■ Stop ends the busy session's turn at once, as Esc does"
+echo "10/11 ■ Stop ends the busy session's turn at once, as Esc does"
 if [ "$(curl -s "$BASE/api/state" | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{const a=JSON.parse(s).agents.find(x=>x.id===process.argv[1]);process.stdout.write(a?.state??"")})' "$BS")" != working ]; then
   echo "   skipped: the session had already finished its story"
 else
@@ -240,6 +247,34 @@ else
   [ "$SAID" = Stopped. ] || fail "the mod said \"$SAID\", not Stopped."
   echo "   ok: stopped, and the marker Esc leaves is in its conversation"
 fi
+
+echo "11/11 the helper names a new session with Haiku, through its own Claude Code, and /rename renames it"
+HELPER_BEFORE="$(curl -s "$BASE/api/state" | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{const h=JSON.parse(s).helper??{};process.stdout.write(JSON.stringify({on:Boolean(h.on),uses:{names:Boolean(h.uses?.names)},dailyLimit:h.dailyLimit??200}))})')"
+R="$(post /api/actions/helper '{"on":true,"uses":{"names":true},"dailyLimit":20}')"
+case "$R" in *'"ok":true'*) ;; *) fail "the helper could not be switched on: $R" ;; esac
+(cd "$ROOT" && exec env "${UNSET[@]}" TERM=xterm-256color python3 "$ROOT/scripts/pty-run.py" claude "${PLUGIN_ARGS[@]}" --model haiku \
+  "Plan a vegetable garden in one sentence. Do not use any tools.") > /dev/null 2>&1 &
+NAME_PID=$!
+GOT=""
+for _ in $(seq 1 120); do
+  GOT="$(curl -s "$BASE/api/state" | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{const a=JSON.parse(s).agents.find(x=>x.defaultName&&x.naming?.offer&&String(x.lastPrompt??"").startsWith("Plan a vegetable garden"));process.stdout.write(a?`${a.id} ${a.naming.offer.name}`:"")})')"
+  [ -n "$GOT" ] && break
+  sleep 1
+done
+[ -n "$GOT" ] || fail "no name was offered for the new session"
+NS="${GOT%% *}"; OFFER="${GOT#* }"
+echo "   offered: $OFFER"
+R="$(post /api/actions/name "{\"agentId\":\"$NS\",\"op\":\"rename\",\"name\":\"$OFFER\"}")"
+[ "$R" = '{"ok":true}' ] || fail "the rename was refused: $R"
+REGF="$(grep -l "$NS" "$HOME"/.claude/sessions/*.json | head -1)"
+RENAMED=""
+for _ in $(seq 1 20); do
+  RENAMED="$(node -e 'const d=JSON.parse(require("fs").readFileSync(process.argv[1],"utf8"));process.stdout.write(d.nameSource==="user"?d.name:"")' "$REGF" 2>/dev/null || true)"
+  [ -n "$RENAMED" ] && break
+  sleep 0.5
+done
+[ "$RENAMED" = "$OFFER" ] || fail "Claude Code did not rename the session (registry says \"$RENAMED\")"
+echo "   ok: named $OFFER by Haiku, renamed with /rename"
 
 for id in "${IDS[@]}"; do
   if claude logs "$id" 2>&1 | grep -q "agent-tracker.*skipped"; then fail "a mod hook was skipped in session $id"; fi
