@@ -113,9 +113,6 @@ html[data-view="farm"] .px-host { border: 0; border-radius: 0; }
 .px-tag.st-waiting, .px-tag.st-turn, .px-tag.sel, .px-tag.hover, .px-tag:hover { opacity: 1; }
 .px-tag.hover, .px-tag:hover { z-index: 70; }
 .px-tag.nap:not(.sel):not(.hover):not(:hover) { opacity: 0; } /* napping till its wake-up: not waiting on you */
-.px-under { flex: none; max-height: 30%; overflow: auto; display: grid; gap: 12px; }
-.px-under > div { background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 10px 14px; min-width: 0; }
-.px-under h4 { margin: 0 0 6px; font-size: 11px; text-transform: uppercase; letter-spacing: .08em; color: var(--muted); }
 .px-key { display: grid; grid-template-columns: auto 1fr; gap: 6px 14px; font-size: 13px; color: var(--muted); }
 /* the pixel font: text as a crisp image, its words kept for screen readers */
 .pxt { display: inline-block; vertical-align: middle; flex: none; background: no-repeat 0 0 / 100% 100%; image-rendering: pixelated; }

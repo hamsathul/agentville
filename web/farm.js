@@ -1759,17 +1759,15 @@
 
   /* ---------- the engine: positions, walking, tags, pop-ups, diary, the loop ---------- */
 
-  function makePixelView(th) {
-    let host = null, canvas = null, ctx = null, ov = null, logEl = null, hudEl = null, bg = null, ro = null;
+  function makePixelView(th, prefs) {
+    let host = null, canvas = null, ctx = null, ov = null, hudEl = null, bg = null, ro = null;
     let raf = 0, last = 0, T = 0, cs = 1, first = true, timer = 0, layoutKey = null, labelKey = '';
     let viewEl = null, drag = null, dragged = false, backing = 1, hoverId = null; // the frame the farm is seen through; a drag that pans it; the farmer under the pointer
     let scene = { fields: [], farmers: [] }, overflow = {}, still = false, opts = {}, selectedId = null, got = false; // got: a scene has arrived
     // Zoom on top of "the whole farm in the frame", and speech bubbles (each can be closed until its farmer says something new).
     const ZOOMS = [0.5, 0.75, 1, 1.25, 1.5, 2, 2.5, 3];
-    const stored = key => { try { return localStorage.getItem(key); } catch { return null; } };
-    const keep = (key, value) => { try { localStorage.setItem(key, value); } catch { /* this page only */ } };
     // The bed each field has had, kept across reloads, so fields stay put as repos and worktrees come and go.
-    let beds = (() => { try { const b = JSON.parse(stored('tracker-farm-beds') ?? '{}'); return b && typeof b === 'object' && !Array.isArray(b) ? b : {}; } catch { return {}; } })();
+    let beds = (() => { try { const b = JSON.parse(prefs.get('beds') ?? '{}'); return b && typeof b === 'object' && !Array.isArray(b) ? b : {}; } catch { return {}; } })();
     // While you look, a field keeps its bed; when the page opens, fields move up into free beds, so empty rows close up.
     let packed = false;
     const groundFor = fields => {
@@ -1777,17 +1775,17 @@
       packed = true;
       return packedLayout(fields, beds);
     };
-    const settle = ground => { beds = ground.beds; keep('tracker-farm-beds', JSON.stringify(beds)); th.relayout(ground); layoutKey = ground.key; };
-    let zoom = ZOOMS.includes(Number(stored('tracker-farm-zoom'))) ? Number(stored('tracker-farm-zoom')) : 1;
-    let saysOn = stored('tracker-farm-bubbles') !== 'off';
+    const settle = ground => { beds = ground.beds; prefs.set('beds', JSON.stringify(beds)); th.relayout(ground); layoutKey = ground.key; };
+    let zoom = ZOOMS.includes(Number(prefs.get('zoom'))) ? Number(prefs.get('zoom')) : 1;
+    let saysOn = prefs.get('bubbles') !== 'off';
     // The sky: live (your clock), or held at day or night.
     const SKIES = ['live', 'day', 'night'];
-    let skyMode = SKIES.includes(stored('tracker-farm-sky')) ? stored('tracker-farm-sky') : 'live';
+    let skyMode = SKIES.includes(prefs.get('sky')) ? prefs.get('sky') : 'live';
     let bgSeason = null;
     let follow = false; // keep the picked farmer in the middle of the view
-    let restingShown = stored('tracker-farm-resting') !== 'hidden'; // idle and stale farmers on the farm, or not
-    let bellOn = stored('tracker-bell') === 'on';
-    let panelOpen = stored('tracker-farm-panel') !== 'folded'; // the farm's panel: counts and meters, or folded to its title // a chime and a desktop notice when an agent starts waiting (the page rings it)
+    let restingShown = prefs.get('resting') !== 'hidden'; // idle and stale farmers on the farm, or not
+    let bellOn = prefs.get('bell') === 'on';
+    let panelOpen = prefs.get('panel') !== 'folded'; // the farm's panel: counts and meters, or folded to its title // a chime and a desktop notice when an agent starts waiting (the page rings it)
     const moverEls = new Map(); // labels that move: key → element
     let dlg = null, mini = null; // the buildings' dialog; the minimap shown while zoomed in
     let hudBoxes = []; // the panel and buttons lying over the farm, in the frame's coordinates: bubbles keep clear of them
@@ -1864,7 +1862,7 @@
       const ax = at?.[0] ?? (viewEl?.clientWidth ?? 0) / 2, ay = at?.[1] ?? (viewEl?.clientHeight ?? 0) / 2;
       const wx = viewEl ? (viewEl.scrollLeft + ax - stage.offsetLeft) / cs : 0, wy = viewEl ? (viewEl.scrollTop + ay - stage.offsetTop) / cs : 0;
       zoom = next;
-      keep('tracker-farm-zoom', String(zoom));
+      prefs.set('zoom', String(zoom));
       resize();
       renderHud();
       if (!viewEl) return;
@@ -2072,17 +2070,15 @@
       });
     }
     function addLog(f, text) {
-      log.unshift({ at: Date.now(), state: f.state, html: `<b>${esc(f.name)}</b> ${esc(text)}` });
+      log.unshift({ at: Date.now(), state: f.state, who: f.name, text });
       log.length = Math.min(log.length, 8);
       renderLog();
     }
-    function renderLog() {
-      if (!logEl) return;
-      logEl.innerHTML = log.map(l => `<li class="st-${l.state}"><i></i><span>${l.html}</span><time>${ago(l.at)}</time></li>`).join('') || '<li class="faint">Quiet so far.</li>';
-    }
+    /** The diary goes to the page (its sidebar), as entries: text only, never HTML. */
+    function renderLog() { opts.onDiary?.(log.map(l => ({ ...l }))); }
     function sync(snapTo) {
       const tg = targets();
-      if (first && tg.size) log.unshift({ at: Date.now(), state: 'working', html: th.startText(tg.size) });
+      if (first && tg.size) log.unshift({ at: Date.now(), state: 'working', who: '', text: th.startText(tg.size).replace(/<[^>]*>/g, '') });
       for (const [id, t] of tg) {
         const f = scene.farmers.find(x => x.id === id);
         let b = bots.get(id);
@@ -2328,7 +2324,7 @@
       if (e.target.closest?.('[data-farm-bell]')) {
         e.stopPropagation();
         bellOn = !bellOn;
-        keep('tracker-bell', bellOn ? 'on' : 'off');
+        prefs.set('bell', bellOn ? 'on' : 'off');
         opts.onBell?.(bellOn);
         renderHud();
         return;
@@ -2339,7 +2335,7 @@
       if (mem) { e.stopPropagation(); dlg?.close(); opts.onOpenDoc?.(mem.dataset.farmMem, mem.dataset.path); return; }
       if (e.target.closest?.('[data-farm-dlg-close]') || (dlg && e.target === dlg)) { e.stopPropagation(); dlg.close(); return; }
       if (dlg?.contains(e.target)) return;
-      if (e.target.closest?.('[data-farm-panel]')) { e.stopPropagation(); panelOpen = !panelOpen; keep('tracker-farm-panel', panelOpen ? 'open' : 'folded'); renderHud(); resize(); return; }
+      if (e.target.closest?.('[data-farm-panel]')) { e.stopPropagation(); panelOpen = !panelOpen; prefs.set('panel', panelOpen ? 'open' : 'folded'); renderHud(); resize(); return; }
       const navBtn = e.target.closest?.('[data-farm-nav]');
       if (navBtn) { e.stopPropagation(); opts.onNav?.(navBtn.dataset.farmNav); renderHud(); return; } // the dashboard's own buttons
       const stateBtn = e.target.closest?.('[data-farm-state]');
@@ -2359,7 +2355,7 @@
       if (e.target.closest?.('[data-farm-resting]')) {
         e.stopPropagation();
         restingShown = !restingShown;
-        keep('tracker-farm-resting', restingShown ? 'shown' : 'hidden');
+        prefs.set('resting', restingShown ? 'shown' : 'hidden');
         if (still) redrawStill(); else { sync(false); draw(); }
         renderHud();
         return;
@@ -2367,7 +2363,7 @@
       if (e.target.closest?.('[data-farm-sky]')) {
         e.stopPropagation();
         skyMode = SKIES[(SKIES.indexOf(skyMode) + 1) % SKIES.length];
-        keep('tracker-farm-sky', skyMode);
+        prefs.set('sky', skyMode);
         renderHud();
         draw();
         return;
@@ -2378,7 +2374,7 @@
         e.stopPropagation();
         saysOn = !saysOn;
         if (saysOn) closedSays.clear(); // on again: every bubble, hidden ones too
-        keep('tracker-farm-bubbles', saysOn ? 'on' : 'off');
+        prefs.set('bubbles', saysOn ? 'on' : 'off');
         renderHud();
         draw();
         return;
@@ -2434,9 +2430,8 @@
       const sessions = th.boardSessions();
       const parts = await Promise.all(sessions.map(async f => {
         try {
-          const r = await fetch(`/api/agent/${encodeURIComponent(f.id)}/files`, { headers: { 'x-tracker-token': opts.token } });
-          const d = r.ok ? await r.json() : null;
-          const files = d?.memory ?? [];
+          const r = await opts.request('agentFiles', { agentId: f.id });
+          const files = (r.ok ? r.data : null)?.memory ?? [];
           return `<h4>${esc(f.cwd.split('/').pop() || f.cwd)}</h4>${files.length ? `<ul class="px-dl">${files.map(m => `<li><button type="button" class="act" data-farm-mem="${esc(f.id)}" data-path="${esc(m.path)}">${esc(m.label)}</button><span class="muted">${esc(m.where)}</span></li>`).join('')}</ul>` : '<p class="muted">Nothing remembered here yet.</p>'}`;
         } catch {
           return `<h4>${esc(f.cwd)}</h4><p class="muted">Could not read it.</p>`;
@@ -2481,17 +2476,13 @@
         opts = options ?? {};
         host = el;
         still = opts.still ?? false;
-        // The diary goes where the page asks (its sidebar), else under the farm.
-        const under = opts.diary ? '' : '<div class="px-under"><div><h4>Farm diary</h4><ol class="px-log"></ol></div></div>';
-        host.innerHTML = `<div class="px"><div class="px-host"><div class="px-view"><div class="px-stage"><canvas aria-label="Pixel farm: every farmer is an agent, every field a repo"></canvas><div class="px-ov"></div>${got ? '' : '<div class="px-loading"><span class="spinner"></span>Loading the farm…</div>'}</div></div><div class="px-hud"></div></div>
-          ${under}</div>
+        host.innerHTML = `<div class="px"><div class="px-host"><div class="px-view"><div class="px-stage"><canvas aria-label="Pixel farm: every farmer is an agent, every field a repo"></canvas><div class="px-ov"></div>${got ? '' : '<div class="px-loading"><span class="spinner"></span>Loading the farm…</div>'}</div></div><div class="px-hud"></div></div></div>
           <dialog class="px-help" aria-label="How to read the farm"><header><b>How to read the farm</b><button type="button" class="x" data-farm-help-close aria-label="Close">×</button></header>${helpHtml()}</dialog>
           <dialog class="px-help px-dlg" aria-label="The farm"><header><b class="px-dlg-title"></b><button type="button" class="x" data-farm-dlg-close aria-label="Close">×</button></header><div class="px-dlg-body"></div></dialog>`;
         canvas = host.querySelector('canvas');
         ctx = canvas.getContext('2d');
         viewEl = host.querySelector('.px-view');
         ov = host.querySelector('.px-ov');
-        logEl = opts.diary ?? host.querySelector('.px-log');
         hudEl = host.querySelector('.px-hud');
         dlg = host.querySelector('.px-dlg');
         mini = document.createElement('canvas');
@@ -2542,7 +2533,7 @@
         if (host) host.innerHTML = '';
         for (const b of bots.values()) { b.tag = null; b.tagText = ''; }
         says.clear();
-        host = canvas = ctx = ov = logEl = hudEl = viewEl = dlg = mini = null;
+        host = canvas = ctx = ov = hudEl = viewEl = dlg = mini = null;
         moverEls.clear();
         drag = null;
         hoverId = null;
@@ -2678,10 +2669,9 @@
       loading = true;
       fetchedAt = Date.now();
       try {
-        const r = await fetch(`/api/repo/touched?path=${encodeURIComponent(asked)}`, { headers: { 'x-tracker-token': opts.token } });
-        const body = await r.json();
+        const r = await opts.request('repoTouched', { repo: asked });
         if (asked !== key) return;
-        if (r.ok) { data = body; error = ''; } else error = body.error ?? `Could not load the field (HTTP ${r.status}).`;
+        if (r.ok) { data = r.data; error = ''; } else error = r.error ?? `Could not load the field (HTTP ${r.status}).`;
       } catch (err) {
         if (asked === key) error = `Could not load the field: ${err?.message ?? err}`;
       } finally {
@@ -2746,11 +2736,35 @@
 
   /* ---------- public API ---------- */
 
+  // What the farm is handed, from the page. (Task 7 moves this to web/worlds.js, the page's side of a world.)
+  const OLD_KEYS = { beds: 'tracker-farm-beds', zoom: 'tracker-farm-zoom', bubbles: 'tracker-farm-bubbles', sky: 'tracker-farm-sky', resting: 'tracker-farm-resting', panel: 'tracker-farm-panel', bell: 'tracker-bell' };
+  const prefs = {
+    get: name => { try { return localStorage.getItem(OLD_KEYS[name]); } catch { return null; } },
+    set: (name, value) => { try { localStorage.setItem(OLD_KEYS[name], value); } catch { /* a private window: this page only */ } },
+  };
+  /** One of the two things the farm may ask the page for, fetched with the token. */
+  async function request(token, kind, args) {
+    const url = kind === 'agentFiles' ? `/api/agent/${encodeURIComponent(args.agentId)}/files` : kind === 'repoTouched' ? `/api/repo/touched?path=${encodeURIComponent(args.repo)}` : null;
+    if (!url) return { ok: false, status: 0, error: 'Not something a world can ask for.' };
+    try {
+      const r = await fetch(url, { headers: { 'x-tracker-token': token } });
+      const body = await r.json();
+      return r.ok ? { ok: true, status: r.status, data: body } : { ok: false, status: r.status, error: body?.error ?? `HTTP ${r.status}` };
+    } catch (err) {
+      return { ok: false, status: 0, error: String(err?.message ?? err) };
+    }
+  }
+  /** The diary in the page's sidebar: newest first, as text. */
+  function renderDiary(el, entries) {
+    if (!el) return;
+    el.innerHTML = entries.map(l => `<li class="st-${esc(l.state)}"><i></i><span>${l.who ? `<b>${esc(l.who)}</b> ` : ''}${esc(l.text)}</span><time>${ago(l.at)}</time></li>`).join('') || '<li class="faint">Quiet so far.</li>';
+  }
+
   let theme = null, view = null, field = null, lastSnap = null, mounted = false;
   function ensure() {
     if (view) return;
     theme = makeFarm();
-    view = makePixelView(theme);
+    view = makePixelView(theme, prefs);
     field = makeField(view);
   }
   window.TrackerFarm = {
@@ -2758,8 +2772,9 @@
     mount(hostEl, options = {}) {
       ensure();
       const still = options.still ?? Boolean(window.matchMedia?.('(prefers-reduced-motion: reduce)').matches);
-      field.setOptions(options);
-      view.mount(hostEl, { ...options, still, onOpenField: key => field.open(key) });
+      const handed = { ...options, still, request: (kind, args) => request(options.token, kind, args), onDiary: entries => renderDiary(options.diary, entries) };
+      field.setOptions(handed);
+      view.mount(hostEl, { ...handed, onOpenField: key => field.open(key) });
       mounted = true;
       if (lastSnap) view.update(farmScene(window.AgentvilleScene.toScene(lastSnap)));
     },
