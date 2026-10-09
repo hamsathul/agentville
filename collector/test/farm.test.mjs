@@ -6,11 +6,14 @@ import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import vm from 'node:vm';
 
-const code = readFileSync(fileURLToPath(new URL('../../web/farm.js', import.meta.url)), 'utf8');
+// The page's scene (web/scene.js) and the farm (web/farm.js), loaded together as the page loads them.
+const code = ['scene.js', 'farm.js'].map(f => readFileSync(fileURLToPath(new URL(`../../web/${f}`, import.meta.url)), 'utf8')).join('\n;\n');
 function load() {
   const window = {};
   vm.runInNewContext(code, { window, console, Math, Date, JSON, Map, Set });
-  return window.TrackerFarm;
+  const farm = window.TrackerFarm, scene = window.AgentvilleScene;
+  // toScene, as the farm sees it: the page's plain-facts scene, turned into the farm's own.
+  return { ...scene, ...farm, toScene: (snap, o) => farm.farmScene(scene.toScene(snap, o)) };
 }
 const plain = v => JSON.parse(JSON.stringify(v)); // objects made inside the vm have another realm's prototypes
 
