@@ -172,11 +172,13 @@ function setView(next, { remember = true } = {}) {
     $('center-body').innerHTML = '';
     reader = null;
     window.TrackerFarm.mount($('farm'), {
-      token: TOKEN, diary: $('farm-diary'), onPickAgent: pickFromFarm, onOpenDoc: openDocFromFarm, onShowRepos: showReposFromFarm, onStartSession: () => { window.TrackerFarm?.armClickGuard?.(); $('sessions-open').click(); }, onBell: bellSwitched,
+      token: TOKEN, diary: $('farm-diary'), onPickAgent: pickFromFarm, onOpenDoc: openDocFromFarm, onShowRepos: showReposFromFarm, onStartSession: () => { window.TrackerFarm?.armClickGuard?.(); void openSessions(); }, onBell: bellSwitched,
       // the top bar's buttons, on the farm
       onWorld: showWorld, onNotice: notice,
-      // a world pressing a button that raises a view or dialog arms the click guard, so it can't steer a click onto what it raised
-      onNav: what => { window.TrackerFarm?.armClickGuard?.(); return ({ list: () => setView('list'), worlds: () => window.TrackerFarm.openList?.(), session: () => $('sessions-open').click(), setup: () => openSetup(), side: () => setFarmSide(!farmSide), theme: () => $('theme-toggle').click() })[what]?.(); },
+      // A world pressing a button that raises a view or dialog arms the click guard, so it can't steer a
+      // click onto what it raised. Each press calls what the button does, not a synthetic click: a click
+      // would go through the guard it has just armed.
+      onNav: what => { window.TrackerFarm?.armClickGuard?.(); return ({ list: () => setView('list'), worlds: () => window.TrackerFarm.openList?.(), session: () => void openSessions(), setup: () => openSetup(), side: () => setFarmSide(!farmSide), theme: () => cycleTheme() })[what]?.(); },
       navState: () => ({ theme, side: farmSide, live: !$('live').classList.contains('off') }),
     });
   } else {
@@ -349,6 +351,22 @@ $('cleanup').addEventListener('close', async () => {
   notice(failed.length ? `Could not remove ${failed.length}: ${failed.map(f => f.error).join('; ')}` : `Removed ${ids.length} stale session${ids.length > 1 ? 's' : ''}.`);
 });
 
+// The click guard against world redress (its state is in web/worlds.js). An action control — anything
+// with class `act` — ignores a click while the guard is up, or a click whose pointerdown came before a
+// world moved the UI. It runs in the capture phase and stops the click there, so it holds every handler
+// alike: this file's, the session and setup dialogs' (sessions.js, setup.js), the conversation's. A way
+// out is never held: a close or cancel button, the page's corner over a world, its failure panel, the
+// sidebar's ☰ List; nor is anything that isn't an `act` (a row, the view toggle and its ▾, a tab). The
+// guard is only ever armed by a world's own message, never by your clicks.
+const WAY_OUT = /(?:Close|Cancel)$|^corner(?:List|Worlds)$|^world(?:Back|List|Tolist|Retry)$/;
+function heldByGuard(e) {
+  const el = e.target?.closest?.('button');
+  if (!el || !/(?:^|\s)act(?:\s|$)/.test(el.className || '') || el.id === 'fs-list') return false;
+  if (Object.keys(el.dataset ?? {}).some(k => WAY_OUT.test(k))) return false;
+  return Boolean(window.TrackerFarm?.clickGuardBlocks?.(e.detail));
+}
+document.addEventListener('click', e => { if (heldByGuard(e)) { e.stopImmediatePropagation(); e.preventDefault(); } }, true);
+
 document.addEventListener('click', async e => {
   const row = e.target.closest('.row[data-id]');
   if (row) {
@@ -361,10 +379,6 @@ document.addEventListener('click', async e => {
   }
   const el = e.target.closest('button');
   if (!el) return;
-  // An action control (anything with class `act`) ignores a click while the world-redress guard is up, or
-  // a click whose pointerdown came before a world moved the UI. A row or a view toggle is not an `act`, so
-  // it still works — a way out stays open. The guard is only ever armed by a world's own message.
-  if (/(?:^|\s)act(?:\s|$)/.test(el.className || '') && window.TrackerFarm?.clickGuardBlocks?.(e.detail)) return;
   const d = el.dataset;
   if (d.confirm) { settleConfirm(d.confirm === 'yes'); return; }
   if (d.endSession) { void endSessionFlow(d.endSession); return; } // not awaited: the confirm box waits for you
@@ -378,6 +392,7 @@ document.addEventListener('click', async e => {
   if (d.restoreCancel !== undefined) { $('restore-dlg').close(); return; }
   if (d.removeSession) { void removeFlow(d.removeSession); return; }
   if (el.id === 'view-farm' && view === 'farm') { window.TrackerFarm?.openList?.(); return; } // already there: the list of worlds
+  if (el.id === 'view-worlds') { window.TrackerFarm?.openList?.(); return; } // the list of worlds from either view: a world can't keep you from it
   if (el.id === 'view-list' || el.id === 'view-farm') { setView(el.id === 'view-farm' ? 'farm' : 'list'); return; }
   if (el.id === 'side-toggle') { setFarmSide(!farmSide); return; }
   if (d.farmTab) { setFarmTab(d.farmTab); return; }
@@ -490,7 +505,7 @@ document.addEventListener('click', async e => {
     notice(r.ok ? (option === null ? 'Left to the terminal.' : 'Allowed, and kept as chosen.') : `Could not send: ${r.error}`);
     return;
   }
-  if (el.id === 'theme-toggle') { theme = THEMES[(THEMES.indexOf(theme) + 1) % THEMES.length]; saveTheme(theme); applyTheme(theme); }
+  if (el.id === 'theme-toggle') cycleTheme();
   else if (el.id === 'open-cleanup') openCleanup();
   else if (el.id === 'act-copy') { await navigator.clipboard.writeText(d.text); notice('Resume command copied.'); }
   else if (el.id === 'act-open') { const r = await post(`/api/actions/open/${encodeURIComponent(selected)}`, {}); notice(r.ok ? 'Opened in Terminal.' : `Could not open: ${r.error}`); }
@@ -1007,10 +1022,16 @@ function applyTheme(t) {
 }
 let theme = loadTheme();
 applyTheme(theme);
+/** The theme button: the next of Auto, Light and Dark. */
+function cycleTheme() {
+  theme = THEMES[(THEMES.indexOf(theme) + 1) % THEMES.length];
+  saveTheme(theme);
+  applyTheme(theme);
+}
 
 setInterval(updateTimers, 1000);
 // worlds.js (the farm's host) loads deferred (after this script), so the remembered view is applied once the page has loaded.
-const startView = () => { setView(view, { remember: false }); window.TrackerFarm?.current?.({ token: TOKEN }).then(showWorld).catch(() => {}); };
+const startView = () => { setView(view, { remember: false }); window.TrackerFarm?.current?.({ token: TOKEN, onWorld: showWorld }).then(showWorld).catch(() => {}); };
 if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', startView);
 else startView();
 connect();

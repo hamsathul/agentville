@@ -205,7 +205,8 @@ To remove it completely, also delete the `CLAUDE_CODE_PLUGIN_DIRS` entry from
 ## Using it
 
 Open <http://localhost:7777>. **☰ List** at the top and the button beside it switch between the
-two views: the list, and the world you chose (**🌾 Farm** until you choose another). Both show the
+two views: the list, and the world you chose (**🌾 Farm** until you choose another); the small **▾**
+after them opens the list of worlds from either view. Both show the
 same live data, updated every few seconds. A world fills the window, so it has its own **List**
 button to come back; where one might not (any world of yours, and a built-in one that draws itself),
 the page adds **World ▾** and **☰ List** in a corner.
@@ -525,7 +526,9 @@ the farm's buttons at the top, opens the list of worlds: pick one. A world that 
 buttons of its own — any world of yours, and a built-in one that draws itself — gets a small
 control from the page in a corner instead: **World ▾** for the list of worlds and **☰ List** for
 the list view, so it can't leave you with no way back. In the list view, the button beside **☰
-List** carries the name of the world you will see. Each world
+List** carries the name of the world you will see, and the **▾** after it opens the list of worlds
+there too, so a world that keeps sending you back to the list view can't keep you from choosing
+another. Each world
 keeps its own zoom and settings, and the choice is kept in this browser. If the world you chose has
 gone, or has something wrong with it, when you open the dashboard, it opens on the farm instead and
 forgets the choice. A world you are looking at that a save breaks (an invalid `world.json`, say)
@@ -799,6 +802,8 @@ and can do is in [docs/worlds.md](docs/worlds.md).
   changes or raises part of the page (swaps the sidebar's agent, opens a dialog or the reader), that
   area's action buttons ignore clicks for about a second — re-armed while you keep moving — so a world
   can't swap another agent's Allow (or a dialog) under a click you meant for what you were reading.
+  They look quietly dimmed meanwhile. A way out is never held: closing or cancelling a dialog, the
+  page's corner over a world, **☰ List**, the view toggle and its **▾**.
   The farm and other built-in worlds always see everything.
 - File contents, folder listings, past sessions, whole conversations (and your messages in them,
   for ↑) and field close-ups are served only with a per-install token that the page carries. Every action (answer, message,

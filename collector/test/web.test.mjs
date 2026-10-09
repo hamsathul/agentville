@@ -29,7 +29,8 @@ function loadPage({ stored = {}, storageThrows = false, files = {}, replies = {}
       documentElement: { dataset: {} },
       get activeElement() { return active; },
       querySelectorAll: () => [],
-      addEventListener: (type, fn) => { (docListeners[type] ??= []).push(fn); },
+      // capture listeners run before the others, as in a browser (the click guard is one)
+      addEventListener: (type, fn, opt) => { const list = (docListeners[type] ??= []); if (opt === true || opt?.capture) list.unshift(fn); else list.push(fn); },
     },
     window: { getSelection: () => ({ isCollapsed: selectedText === '', toString: () => selectedText }), ...(farm ? { TrackerFarm: farm } : {}) },
     EventSource: class { addEventListener(_type, fn) { sourceListener = fn; } },
@@ -62,6 +63,11 @@ function loadPage({ stored = {}, storageThrows = false, files = {}, replies = {}
   };
   vm.createContext(ctx);
   vm.runInContext(script, ctx);
+  /** A click on `target`: each listener in turn, until one stops it (as the click guard does). */
+  const clickWith = target => {
+    const e = { target, stopped: false, stopImmediatePropagation() { this.stopped = true; }, stopPropagation() { this.stopped = true; }, preventDefault() {} };
+    return Promise.all((docListeners.click ?? []).map(fn => (e.stopped ? undefined : fn(e))));
+  };
   return {
     ctx,
     list: () => els.get('list').innerHTML,
@@ -69,7 +75,7 @@ function loadPage({ stored = {}, storageThrows = false, files = {}, replies = {}
     select: text => { selectedText = text; },
     fire: type => (docListeners[type] ?? []).forEach(fn => fn({ target: { closest: () => null } })),
     change: target => Promise.all((docListeners.change ?? []).map(fn => fn({ target: { closest: () => null, ...target } }))),
-    click: id => Promise.all((docListeners.click ?? []).map(fn => fn({ target: { closest: sel => (sel === 'button' ? ctx.document.getElementById(id) : null) } }))),
+    click: id => clickWith({ closest: sel => (sel === 'button' ? ctx.document.getElementById(id) : null) }),
     el: id => ctx.document.getElementById(id),
     side: () => ctx.document.getElementById('center-body').innerHTML,
     tabs: () => ctx.document.getElementById('center-tabs').innerHTML,
@@ -80,8 +86,8 @@ function loadPage({ stored = {}, storageThrows = false, files = {}, replies = {}
     revoked,
     paste: (target, files) => (docListeners.paste ?? []).forEach(fn => fn({ target: { closest: () => null, ...target }, clipboardData: { files }, preventDefault() {} })),
     focus: element => { active = element; },
-    openAgent: id => Promise.all((docListeners.click ?? []).map(fn => fn({ target: { closest: sel => (sel === '.row[data-id]' ? { dataset: { id } } : null) } }))),
-    clickButton: (id, dataset) => { Object.assign(ctx.document.getElementById(id).dataset, dataset); return Promise.all((docListeners.click ?? []).map(fn => fn({ target: { closest: sel => (sel === 'button' ? ctx.document.getElementById(id) : null) } }))); },
+    openAgent: id => clickWith({ closest: sel => (sel === '.row[data-id]' ? { dataset: { id } } : null) }),
+    clickButton: (id, dataset) => { Object.assign(ctx.document.getElementById(id).dataset, dataset); return clickWith({ closest: sel => (sel === 'button' ? ctx.document.getElementById(id) : null) }); },
     edit: (type, target) => (docListeners[type] ?? []).forEach(fn => fn({ target: { closest: () => null, ...target } })),
     // a key pressed in an element (the element itself is the target): whether the page took it
     key: (key, target, mods = {}) => { let taken = false; (docListeners.keydown ?? []).forEach(fn => fn({ key, ...mods, target, preventDefault() { taken = true; } })); return taken; },
@@ -757,6 +763,7 @@ function fakeFarm() {
       colorOf: () => '#d9673a',
       update(snap) { calls.push(['update', snap.agents.length]); },
       unmount() { calls.push(['unmount']); },
+      openList() { calls.push(['openList']); },
       armClickGuard() { calls.push(['arm']); },
       clickGuardBlocks() { return blocks; },
       clickGuardPointerDown() {},
@@ -788,6 +795,16 @@ test('the view toggle switches to the farm and remembers it', async () => {
   assert.deepEqual(again.calls.slice(seen).filter(c => c[0] === 'update'), [], 'no snapshots while it is hidden');
   await reload.click('view-farm');
   assert.deepEqual(again.calls.slice(seen).filter(c => c[0] !== 'select').slice(0, 2), [['mount', 'farm', '__TRACKER_TOKEN__'], ['update', 1]], 'back: mounted again (the same frame) and brought up to date');
+});
+
+test('the ▾ beside the view toggle opens the list of worlds from the list view, which stays', async () => {
+  assert.match(html, /<span class="seg" role="group" aria-label="View"><button type="button" id="view-list"[^>]*>☰ List<\/button><button type="button" id="view-farm"[^>]*>🌾 Farm<\/button><button type="button" id="view-worlds"[^>]*aria-label="Choose a world"[^>]*>▾<\/button><\/span>/, 'a small ▾ in the toggle, not an action button');
+  const f = fakeFarm();
+  const page = loadPage({ farm: f.farm });
+  page.push(richSnapshot([richAgent()]));
+  await page.click('view-worlds');
+  assert.deepEqual(f.calls.filter(c => c[0] === 'openList'), [['openList']]);
+  assert.equal(page.el('main').dataset.view, 'list', 'the list view stays');
 });
 
 test('in farm mode a snapshot goes to the farm; the list and the centre are not drawn', async () => {
@@ -2461,9 +2478,11 @@ test('Now says since when it has been your turn, and what it last said; idle and
   assert.match(page.side(), /<div class="muted rest">Quiet since /);
 });
 
+const NO_SESSIONS = { '/api/sessions': { projects: [], sessions: [] } }; // what the sessions dialog reads when a world opens it
+
 test('the click guard: a world message arms it, a user selection does not, and a guarded click on an action control is ignored', async () => {
   const f = fakeFarm();
-  const page = loadPage({ farm: f.farm, stored: { 'tracker-view': 'farm' } });
+  const page = loadPage({ farm: f.farm, stored: { 'tracker-view': 'farm' }, replies: NO_SESSIONS });
   page.push(askSnapshot(QUESTION));
   f.calls.length = 0;
   // A world swapping the sidebar's agent, or raising a dialog, arms the guard.
@@ -2483,4 +2502,44 @@ test('the click guard: a world message arms it, a user selection does not, and a
   f.setBlocks(false);
   await page.clickButton('ask-allow', { agent: 'w1', tool: 'toolu_Q1' });
   assert.equal(page.posts.filter(x => x.path === '/api/actions/permit').length, 1, 'and works once it lifts');
+  await page.settle();
+});
+
+test("the click guard never holds the world's own press: its nav and startSession still open the dialog or switch the theme", async () => {
+  const f = fakeFarm();
+  const page = loadPage({ farm: f.farm, stored: { 'tracker-view': 'farm' }, replies: NO_SESSIONS });
+  page.push(askSnapshot(QUESTION));
+  f.setBlocks(true); // the guard is up, as it is the moment a world raises something
+  f.startSession();
+  assert.equal(page.el('sessions').open, true, 'startSession opens Start or resume a session');
+  page.el('sessions').open = false;
+  f.nav('session');
+  assert.equal(page.el('sessions').open, true, "nav 'session' does too");
+  const before = page.theme() ?? 'auto';
+  f.nav('theme');
+  assert.notEqual(page.theme() ?? 'auto', before, "nav 'theme' switches the theme");
+  await page.settle();
+});
+
+test("the click guard holds a dialog a world raised, whoever handles its buttons, and never a way out", async () => {
+  const f = fakeFarm();
+  const page = loadPage({ farm: f.farm, stored: { 'tracker-view': 'farm' } });
+  page.push(askSnapshot(QUESTION));
+  f.nav('setup'); // a world opens ⚙ Claude Code
+  f.setBlocks(true);
+  page.el('turn-off').className = 'act mini';
+  await page.clickButton('turn-off', { pluginOp: 'disable', plugin: 'crops@farm-market' }); // setup.js's own handler
+  page.el('update').className = 'act mini';
+  await page.clickButton('update', { pluginOp: 'update', plugin: 'crops@farm-market' });
+  assert.equal(page.posts.filter(x => x.path === '/api/actions/plugin').length, 0, 'Turn off and Update in a world-raised dialog do nothing while the guard is up');
+  page.el('close-x').className = 'act mini';
+  page.el('setup').open = true;
+  await page.clickButton('close-x', { setupClose: '' });
+  assert.equal(page.el('setup').open, false, 'its × still closes it: a way out is never held');
+  page.el('fs-list').className = 'act mini';
+  await page.clickButton('fs-list', {});
+  assert.equal(page.el('main').dataset.view, 'list', "the sidebar's ☰ List still goes to the list view");
+  f.setBlocks(false);
+  await page.clickButton('turn-off', { pluginOp: 'disable', plugin: 'crops@farm-market' });
+  assert.deepEqual(page.posts.filter(x => x.path === '/api/actions/plugin').map(x => x.body), [{ id: 'crops@farm-market', op: 'disable' }], 'once the guard lifts, Turn off works');
 });

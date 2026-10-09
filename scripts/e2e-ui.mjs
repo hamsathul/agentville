@@ -789,7 +789,16 @@ try {
   await js("document.getElementById('tab-agent').click()");
   await until("/Which crop next/.test(document.getElementById('farm-agent').textContent)");
   check(await js("document.getElementById('center-body').innerHTML === ''"), 'the hidden centre holds no second answer form');
-  await js("(() => { const r = document.querySelector('#farm-agent input[value=\"Pumpkins\"]'); r.checked = true; r.dispatchEvent(new Event('change', { bubbles: true })); document.getElementById('ask-send').click(); })()");
+  await js("(() => { const r = document.querySelector('#farm-agent input[value=\"Pumpkins\"]'); r.checked = true; r.dispatchEvent(new Event('change', { bubbles: true })); })()");
+  // The click guard: a world raising the sidebar holds its action controls for about a second.
+  await until("!document.documentElement.dataset.guard", 3000);
+  await fjs("document.querySelector('[data-farm-need]').click()"); // the world raises it again
+  check(await until("document.documentElement.dataset.guard === 'on'", 3000), 'a world raising the sidebar holds its action controls a moment, quietly');
+  await js("document.getElementById('ask-send').click()");
+  await sleep(400);
+  check(answered === null && !/Answer sent/.test(await js("document.getElementById('notice').textContent")), "Send answer clicked right then does nothing: a world can't steer a click onto it");
+  check(await until("!document.documentElement.dataset.guard", 3000), 'about a second on, the hold lifts');
+  await js("document.getElementById('ask-send').click()");
   check(await until("/Answer sent to ui-asker/.test(document.getElementById('notice').textContent)"), 'the answer is sent from the farm sidebar');
   check(answered?.answers?.['Which crop next?'] === 'Pumpkins', 'the session received the answer');
 
@@ -884,6 +893,10 @@ try {
   check(await js("(b => { const r = b.getBoundingClientRect(); return document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2) === b; })(document.querySelector('#farm .world-corner [data-corner-list]'))"), 'over the frame, where nothing the world draws can cover it');
   await js("document.querySelector('#farm .world-corner [data-corner-list]').click()");
   check(await until("document.getElementById('main').dataset.view === 'list'"), 'its ☰ List goes to the list view');
+  await js("document.getElementById('view-worlds').click()"); // the ▾ beside the toggle
+  check(await until("document.getElementById('worlds-dlg').open && document.querySelectorAll('.world-pick').length > 0") && (await js("document.getElementById('main').dataset.view")) === 'list', 'the ▾ beside the view toggle opens the list of worlds from the list view, which stays');
+  await js("document.querySelector('#worlds-dlg [data-worlds-close]').click()");
+  await until("!document.getElementById('worlds-dlg').open");
   await js("document.getElementById('view-farm').click()"); // the list view's toggle: back to the world
   check(await until("document.getElementById('main').dataset.view === 'farm' && document.querySelector('#farm .world-frame')?.src.endsWith('/world/u/probe/') && !!document.querySelector('#farm .world-corner')"), 'back in the world: the same frame, its corner still there');
   await js("document.querySelector('#farm .world-corner [data-corner-worlds]').click()");

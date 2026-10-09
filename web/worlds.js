@@ -299,7 +299,7 @@
   // The world you chose, per browser; the farm when that one has gone or has something wrong.
   const CHOICE = 'tracker-world';
   const FARM = { key: 'farm', builtIn: true, name: 'Farm', icon: '🌾', description: '', nouns: { diary: 'Farm diary' }, preview: null, error: null };
-  let token = null, worldsInfo = [FARM], folder = null, info = FARM, resolvedOnce = false;
+  let token = null, worldsInfo = [FARM], folder = null, info = FARM, resolvedOnce = false, worldShown = null;
   /** The worlds there are (the collector's list), and the one to show. */
   async function resolveWorld() {
     let listed = false;
@@ -320,6 +320,7 @@
   /** The world to show, for the view toggle before the world is ever opened. */
   async function current(o = {}) {
     token = o.token ?? token;
+    worldShown = o.onWorld ?? worldShown; // so a pick from the list view tells the toggle before any world was shown
     info = await resolveWorld();
     return info;
   }
@@ -329,7 +330,7 @@
     if (!w) return;
     browserStore.set(CHOICE, key);
     info = w;
-    opts.onWorld?.(w);
+    (opts.onWorld ?? worldShown)?.(w);
     if (key === world && frame) return; // the one already showing: its frame, and all it remembers, stay
     if (host) createFrame(w.key);
   }

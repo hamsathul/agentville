@@ -16,7 +16,7 @@ const WORLDS = [
   { key: 'u/broken', builtIn: false, name: 'broken', icon: '🧩', description: '', nouns: {}, preview: null, error: 'world.json is missing.' },
 ];
 
-async function page({ stored = {}, hold = false, worlds = WORLDS, dialog = false, listFails = false, reveal = { ok: true, path: '/w' } } = {}) {
+async function page({ stored = {}, hold = false, worlds = WORLDS, dialog = false, listFails = false, reveal = { ok: true, path: '/w' }, mounted = true } = {}) {
   const posted = [], calls = [], listeners = {}, fetches = [], held = [], warnings = [], made = [], frames = [], timers = [], signals = [], windowPosts = [];
   // The page carries all traffic over a MessageChannel once the frame has loaded. The stub records what
   // the page posts over its port into `posted` (as frame.contentWindow.postMessage already does for the
@@ -90,7 +90,7 @@ async function page({ stored = {}, hold = false, worlds = WORLDS, dialog = false
     onNotice: t => calls.push(['notice', t]),
   };
   const settle = async () => { for (let i = 0; i < 20; i++) await Promise.resolve(); };
-  farm.mount(host, options);
+  if (mounted) farm.mount(host, options); // mounted: false is a page that has only shown its list view
   await settle();
   /** Time passes: the clock moves on, and the timers that are due run. */
   const wait = ms => { clock.now += ms; clock.perf += ms; for (const t of timers) if (t.fn && t.at <= clock.perf) { const fn = t.fn; t.fn = null; fn(); } };
@@ -550,6 +550,18 @@ test('the list: clicking a world shows it and closes the list; Open the worlds f
   await p.settle();
   assert.deepEqual(p.fetches.at(-1), ['/api/actions/reveal-worlds', 'tok']);
   assert.equal(p.calls.filter(c => c[0] === 'notice').length, 0, 'nothing to say when it worked');
+});
+
+test('the list of worlds from the list view, before any world was shown: a pick is kept and the toggle told, no frame built', async () => {
+  const p = await page({ dialog: true, mounted: false });
+  const told = [];
+  await p.farm.current({ token: 'tok', onWorld: w => told.push(w.key) });
+  await p.farm.openList();
+  assert.ok(p.dlg.open);
+  p.dlg.listeners.click({ target: { closest: s => (s === '[data-world]' ? { dataset: { world: 'u/space' } } : null) } });
+  assert.equal(p.stored['tracker-world'], 'u/space', 'the choice is kept');
+  assert.deepEqual(told, ['u/space'], 'the toggle is told, so it names the world you will see');
+  assert.deepEqual(p.frames, [], 'no frame until the world view shows');
 });
 
 test('Open the worlds folder: when the collector says it could not, the page says so', async () => {

@@ -374,7 +374,10 @@ own List and World buttons is optional for a raw world; a world that gives its o
 a List and a World button (`data-farm-nav="list"` and `data-farm-nav="worlds"`, as the farm's do),
 since the page adds no corner to a built-in engine world. (The engine registers through the bridge as
 `Agentville.raw(handlers, { engine: true })`, so the bridge marks only a plain `Agentville.raw` world
-as `raw` in `loaded`; the page uses that only to decide a built-in world's corner.)
+as `raw` in `loaded`; the page uses that only to decide a built-in world's corner.) The list view
+has a way to the list of worlds of its own too: the **▾** beside its view toggle. A world that sends
+you to the list view (`nav { what: 'list' }`, `showRepos`) can't act once it is out of sight, so it
+can't keep you from choosing another world there.
 
 `opts` holds the page's settings and the world's way out. Each function sends one message:
 
@@ -541,7 +544,10 @@ The field close-up (a field's files) is still drawn as the farm draws it.
   the page (the sidebar's agent, a dialog, the reader), the action buttons in that area ignore clicks
   for about a second, re-armed while you keep moving the pointer or typing; a click whose press began
   before the change is ignored too. So a world can't swap another agent (or a dialog) under a click
-  you meant for the one you were reading. Your own clicks — a row, a sidebar tab — lock nothing.
+  you meant for the one you were reading. Your own clicks — a row, a sidebar tab — lock nothing, and a
+  way out is never held (closing or cancelling a dialog, the page's corner, ☰ List, the view toggle).
+  Your world's own `nav` and `startSession` still work while it is up: they are presses the page does
+  for you, not clicks.
 
 The sandbox protects the token and every action, not the secrecy of what a world is shown: a world
 can get what it sees out to another machine (see "The gaps"), so treat the scene a world is handed
