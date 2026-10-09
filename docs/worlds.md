@@ -54,8 +54,8 @@ world-shots pictures.
    allowed, each with one sentence and exit code 1, and leaves nothing half-made. `--worlds <dir>`
    uses another folder, to try things out (give it to `check-world` and `world-shots` too; the
    dashboard and its test page show only your worlds folder). A `config.json` that can't be read
-   gives one warning and the default folder, as the collector does. It prints the next steps (with the commands as if for your own worlds folder: add `--worlds <dir>` to
-them when you gave it one).
+   gives one warning and the default folder, as the collector does. It prints the next steps, with commands as if for your own worlds folder: add `--worlds <dir>`
+   to them when you gave it one.
 2. Edit the world. In `world.json`, give it its own `icon`, `description` and `nouns` (only its
    `name` is new; the rest are the starter's): see "world.json". Give the engine the same words in
    `world.js`'s `nouns` hook, with `place` ("Hooks"). In `world.js`, start from the
@@ -408,7 +408,7 @@ project's repos sit together, and a repo that leaves keeps its bed for a day. `c
 
 It returns `{ layoutFor(fields, beds?, now?), packedLayout(fields, beds, now?), slotAt(i), cols }`.
 `layoutFor` returns `{ key, ST, slots, empty, rows, GRID, H, groups, more, beds }`. `ST` is the list of
-beds in use, one for each repo: each has the repo's `key`, `cx` (the bed's centre x), `rowTop` (the top of
+beds in use, one for each repo: each has the repo's `key`, `i` (its index), `cx` (the bed's centre x), `rowTop` (the top of
 its row) and whatever `slot(cx, rowTop)` added (the starter's `lane`, the y its people stand at). That is
 what a world draws its repos on and finds a repo's bed by: `L.ST.find(s => s.key === f.field)`, as the
 starter's `slots` does, with `L` the layout the `layout` hook gives. `GRID` is the fence, `{ x0, x1, y0, y1 }`.
@@ -615,9 +615,10 @@ props.actionOf(undefined, 'Grep').prop; // 'magnifier': an older snapshot with a
 props.actionOf('nonsense').prop; // 'wrench'
 ```
 
-A prop may reach past the person's own 14 pixels (the beaker above is drawn at x 13–16). A step you add
-or change keeps `spot: 0` (the middle) unless you give one, and the starter's `slots` stands people by
-`props.doing(f).spot`, so a world made from the starter needs nothing more.
+A prop may reach past the person's own 14-pixel width (the beaker above is drawn at x 13–16). A step you
+change keeps the kit's `spot` (±26 for edit, write, read, search, web, mcp, lint and delete, 0 for the
+rest) unless you give `spot`; a step you add has none, so give it one (the starter's `slots` takes a
+missing one as 0, the middle). The starter's `slots` stands people by `props.doing(f).spot`.
 
 `doing(f)` says what an agent's person holds now: its step's action, the blueprint while it is working in
 plan mode, and `null` between steps (nothing in its hands). Draw it with `props.draw(action.prop, rp, T,
