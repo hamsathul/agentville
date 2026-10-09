@@ -323,3 +323,58 @@ test("creature rules: the copied lists match what creatures.js, animals.js and e
   }
   assert.match(src('animals.js'), new RegExp(`LINE_MAX = ${RULES.LINE_MAX}\\b`));
 });
+
+/* ---------- gags and play: the kit's own gagProblem says what's written wrong, so check-world says it before the browser's console does ---------- */
+
+const kitCtx = (() => { const ctx = vm.createContext({ console }); vm.runInContext(readFileSync(builtIn('sdk/animals.js'), 'utf8'), ctx); return ctx; })();
+const POUNCE = { id: 'pounce', needs: { cat: 1 }, steps: [{ pose: 'cat', is: 'startled', ms: 600 }, { say: 'cat', line: 'idle' }] };
+const gagRules = (world, spots = {}) => creatureProblems({ cast: [cat()], ...world }, { kinds: KINDS, gagProblem: kitCtx.gagProblem, spots });
+
+test("gag rules: the guide's pounce gag, and a play with a farmer, are fine", () => {
+  assert.deepEqual(gagRules({ gags: [POUNCE], play: [{ id: 'pet', needs: { farmer: 'idle', cat: 1 }, steps: [{ go: 'farmer', to: 'cat' }, { fx: 'hearts', at: 'cat' }] }] }), { problems: [], pointers: [] });
+});
+
+test("gag rules: one written wrong is a cross, with the kit's own reason", () => {
+  const one = gag => gagRules({ gags: [gag] }).problems;
+  assert.deepEqual(one({ id: 'a', steps: [{ wait: 1 }] }), ['gag a: its needs is not an object']);
+  assert.deepEqual(one({ id: 'b', needs: { cat: 1 }, steps: 'wait' }), ['gag b: its steps are not a list']);
+  assert.deepEqual(one({ id: 'c', needs: { cat: 1 }, steps: [{ dance: 'cat' }] }), ["gag c: it has a step it doesn't know (dance)"]);
+  assert.deepEqual(one({ id: 'd', needs: { cat: 1 }, steps: [{ go: 'cat', to: 'dog' }] }), ["gag d: it has a role it wasn't cast (dog)"]);
+  assert.deepEqual(one({ id: 'e', needs: { cat: 1, farmer: 'idle' }, steps: [{ chase: 'cat', after: 'farmer', ms: 100 }] }), ['gag e: only the farmer chases']);
+  assert.deepEqual(one({ needs: { cat: 1 }, steps: [{ wait: 1 }] }), ['gag 1: it has no id']);
+  assert.deepEqual(gagRules({ gags: [POUNCE, POUNCE] }).problems, ['gag pounce: another gag has the same id (a gag dropped drops both)']);
+  assert.deepEqual(gagRules({ gags: { pounce: POUNCE } }).problems, ['animals(): gags is a list of gags']);
+  assert.deepEqual(one({ ...POUNCE, lines: { idle: ['x'.repeat(41)] } }), [`gag pounce: lines.idle has a line of 41 characters (40 at most): "${'x'.repeat(41)}"`]);
+});
+
+test("gag rules: a spot the world's spots() doesn't have is a cross (the kit drops the gag, or it never starts)", () => {
+  const nap = { id: 'nap', needs: { cat: 1, spot: 'basket' }, steps: [{ go: 'cat', to: 'spot:basket' }, { stay: 'cat', ms: 1000, while: 'spot:basket' }] };
+  assert.deepEqual(gagRules({ gags: [nap] }).problems, ['gag nap: its spot "basket" isn\'t in spots()']);
+  assert.deepEqual(gagRules({ gags: [nap] }, { basket: [10, 10] }).problems, []);
+});
+
+test('gag rules: pointers for what never happens: a kind the cast lacks, a play without a farmer, an unknown habit or reaction', () => {
+  assert.deepEqual(gagRules({ gags: [{ id: 'moo', needs: { cow: 1 }, steps: [{ say: 'cow', line: 'idle' }] }] }).pointers, ['gag moo: it needs a cow, and the cast has none: it never starts']);
+  assert.deepEqual(gagRules({ play: [{ ...POUNCE, id: 'solo' }] }).pointers, ['play solo: no farmer in its needs: it plays out like a gag']);
+  const r = creatureProblems([cat({ habits: ['climb', 'juggle'], reacts: { deployFailed: 'faint', merged: null, harvest: 'hop' } })], { kinds: KINDS });
+  assert.deepEqual(r, { problems: [], pointers: [`cat: habit "juggle" isn't one of ${RULES.HABITS.join(', ')}: it never does it`, `cat: reacts.deployFailed is "faint", not one of ${RULES.REACTS.join(', ')} (or null): it does nothing`] });
+  assert.deepEqual(creatureProblems([cat({ habits: 'climb', reacts: ['hop'] })], { kinds: KINDS }).problems, ['cat: habits is a list', 'cat: reacts is { <event kind>: what }']);
+});
+
+test("check-world runs a world's gags through the kit: the fixture's spot that isn't there and its stray role are crosses", async () => {
+  const r = await checkWorld({ dir: fixture('bad-gag') });
+  assert.deepEqual(r.creatures, ['gag nap: its spot "basket" isn\'t in spots()', "gag stray: it has a role it wasn't cast (dog)"]);
+  assert.deepEqual(r.errors, []);
+});
+
+test('the starter has a gag, and it passes', async () => {
+  const src = readFileSync(builtIn('starter/world.js'), 'utf8');
+  assert.match(src, /gags: \[\{ id: 'pounce'/);
+  assert.deepEqual((await checkWorld({ dir: builtIn('starter') })).creatures, []);
+});
+
+test("gag rules: the copied habits and reactions match animals.js (drift fails here, not a user's world)", () => {
+  const src = readFileSync(builtIn('sdk/animals.js'), 'utf8');
+  assert.deepEqual(new Set(JSON.parse(src.match(/const HABITS = new Set\((\[[^\]]*\])\)/)[1].replaceAll("'", '"'))), new Set(RULES.HABITS));
+  assert.deepEqual(new Set([...src.matchAll(/byWhat\('(\w+)'\)/g)].map(m => m[1])), new Set(RULES.REACTS));
+});

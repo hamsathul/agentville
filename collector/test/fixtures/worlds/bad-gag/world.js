@@ -33,11 +33,8 @@
 
     // A cat, just for fun: it never stands for data (docs/worlds.md, "Creatures"). It walks the grass below the
     // path (the door and the bench are above it) down to the fence's foot, beside the fence: never on the plots.
-    // Now and then it yawns or chases its tail, and once in a while it jumps at nothing (a gag).
-    animals: () => ({
-      cast: [{ kind: 'cat', name: 'Cat', habits: ['yawn', 'pounce', 'chaseTail'], actions: [{ label: 'Pet', fx: 'hearts', line: 'petted' }, { label: 'Feed', fx: 'crumbs', pose: 'eat', line: 'fed' }], lines: { idle: ['mrrp.'], petted: ['purr ♥'], fed: ['MEOW'] } }],
-      gags: [{ id: 'pounce', needs: { cat: 1 }, steps: [{ pose: 'cat', is: 'startled', ms: 600 }, { say: 'cat', line: 'idle' }] }],
-    }),
+    animals: () => ({ cast: [{ kind: 'cat', name: 'Cat', actions: [{ label: 'Pet', fx: 'hearts', line: 'petted' }, { label: 'Feed', fx: 'crumbs', pose: 'eat', line: 'fed' }], lines: { idle: ['mrrp.'], petted: ['purr ♥'], fed: ['MEOW'] } }],
+      gags: [{ id: 'nap', needs: { cat: 1, spot: 'basket' }, steps: [{ go: 'cat', to: 'spot:basket' }] }, { id: 'stray', needs: { cat: 1 }, steps: [{ go: 'cat', to: 'dog' }] }] }),
     roam: () => [{ x: 8, y: DOOR_Y + 22, w: W - 16, h: L.GRID.y1 - DOOR_Y - 22 }],
     avoid: () => [{ x: L.GRID.x0 - 4, y: L.GRID.y0 - 4, w: L.GRID.x1 - L.GRID.x0 + 8, h: L.GRID.y1 - L.GRID.y0 + 8 }],
 

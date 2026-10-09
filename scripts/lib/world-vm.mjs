@@ -32,16 +32,21 @@ const POSES = ['stand', 'walk', 'run', 'eat', 'sleep', 'happy', 'yawn', 'startle
 const POSES_OF = { duck: [...POSES, 'swim', 'dabble', 'slide'], ostrich: [...POSES, 'hide'] };
 const LOOKS_OF = { duck: ['drake', 'hen', 'duckling'] };
 const LINE_MAX = 40, COUNT_MAX = 12, ACTIONS = [2, 4];
-export const RULES = { FX, POSES, POSES_OF, LOOKS_OF, LINE_MAX };
+// The habits a creature may have, and what it may do when something happens (animals.js, HABITS and react).
+const HABITS = ['climb', 'circles', 'hide', 'yawn', 'stretch', 'chaseTail', 'pounce', 'fetch', 'roll', 'laps'];
+const REACTS = ['scatter', 'hop', 'gather', 'hide', 'run'];
+export const RULES = { FX, POSES, POSES_OF, LOOKS_OF, LINE_MAX, HABITS, REACTS };
 
 /**
- * What a world's animals() returns (a list of creatures, or `{ cast }` with the list in it), held to the
- * animals kit's rules. `problems` break them (the kit throws, or the rules say no); `pointers` are what it
- * draws its own way (an fx, pose or look it doesn't have: nothing, or the plain one), so they never fail a
- * world. A line each, starting with the creature's kind. `kinds`: the library's (CREATURES); `taken`:
- * world.json's. Plain data in (functions and undefined are gone).
+ * What a world's animals() returns (a list of creatures, or `{ cast, gags, play }`), held to the animals
+ * kit's rules. `problems` break them (the kit throws, drops a gag, or the rules say no); `pointers` are
+ * what it does its own way (an fx, pose or look it doesn't have: nothing, or the plain one; a gag that can
+ * never start), so they never fail a world. A line each, starting with the creature's kind (or the gag's
+ * id). `kinds`: the library's (CREATURES); `taken`: world.json's; `gagProblem`: the kit's own check of a
+ * gag (animals.js), none to skip gags; `spots`: what the world's spots() gives. Plain data in (functions
+ * and undefined are gone).
  */
-export function creatureProblems(value, { kinds, taken = [] }) {
+export function creatureProblems(value, { kinds, taken = [], gagProblem = null, spots = {} }) {
   const problems = [], pointers = [];
   if (value == null) return { problems, pointers };
   const cast = Array.isArray(value) ? value : Array.isArray(value?.cast) ? value.cast : null;
@@ -78,8 +83,35 @@ export function creatureProblems(value, { kinds, taken = [] }) {
     }
     if (c.home != null && !(isObj(c.home) && ['x', 'y', 'w', 'h'].every(k => num(c.home[k])))) say('home is { x, y, w, h }, in numbers');
     if (c.bank != null && !(Array.isArray(c.bank) && c.bank.every(b => Array.isArray(b) && b.length === 2 && b.every(num)))) say('bank is a list of [x, y]');
+    if (c.habits != null && !Array.isArray(c.habits)) say('habits is a list');
+    else for (const h of c.habits ?? []) if (!HABITS.includes(h)) point(`habit ${JSON.stringify(h)} isn't one of ${HABITS.join(', ')}: it never does it`);
+    if (c.reacts != null && !isObj(c.reacts)) say('reacts is { <event kind>: what }');
+    else for (const [k, v] of Object.entries(c.reacts ?? {})) if (v !== null && !REACTS.includes(v)) point(`reacts.${k} is ${JSON.stringify(v)}, not one of ${REACTS.join(', ')} (or null): it does nothing`);
   });
+  if (gagProblem && !Array.isArray(value)) gagRules(value, { cast, gagProblem, spots, problems, pointers });
   return { problems, pointers };
+}
+
+/** The gags and play in `{ cast, gags, play }`: written as the kit reads them (its own gagProblem), their lines, their spots. */
+function gagRules(value, { cast, gagProblem, spots, problems, pointers }) {
+  const kindsInCast = new Set(cast.map(c => c?.kind)), seen = new Set();
+  for (const field of ['gags', 'play']) {
+    if (value[field] == null) continue;
+    if (!Array.isArray(value[field])) { problems.push(`animals(): ${field} is a list of ${field === 'gags' ? 'gags' : 'play gags'}`); continue; }
+    const noun = field === 'gags' ? 'gag' : 'play';
+    value[field].forEach((g, i) => {
+      const id = typeof g?.id === 'string' ? g.id : null, who = `${noun} ${id ?? i + 1}`;
+      const why = id ? gagProblem(g) : 'it has no id';
+      if (why) { problems.push(`${who}: ${why}`); return; }
+      if (seen.has(id)) problems.push(`${who}: another gag has the same id (a gag dropped drops both)`);
+      seen.add(id);
+      for (const [key, list] of Object.entries(g.lines ?? {})) for (const t of Array.isArray(list) ? list : []) if (String(t).length > LINE_MAX) problems.push(`${who}: lines.${key} has a line of ${String(t).length} characters (${LINE_MAX} at most): ${JSON.stringify(String(t))}`);
+      const used = new Set([g.needs.spot, ...g.steps.flatMap(st => [st.to, st.while]).filter(t => typeof t === 'string' && t.startsWith('spot:')).map(t => t.slice(5))].filter(Boolean));
+      for (const name of used) if (!Array.isArray(spots?.[name])) problems.push(`${who}: its spot ${JSON.stringify(name)} isn't in spots()`);
+      for (const k of Object.keys(g.needs)) if (!['farmer', 'chicken', 'spot'].includes(k) && !kindsInCast.has(k)) pointers.push(`${who}: it needs a ${k}, and the cast has none: it never starts`);
+      if (field === 'play' && g.needs.farmer !== 'idle') pointers.push(`${who}: no farmer in its needs: it plays out like a gag`);
+    });
+  }
 }
 
 /** A stand-in DOM: every element a Proxy that takes any call; a canvas's 2D context records its fills and images. */
@@ -206,7 +238,10 @@ export async function checkWorld({ dir, file = 'world.js', json = 'world.json', 
     creaturesChecked = true;
     let value;
     try { value = JSON.parse(call(() => JSON.stringify(hooks.animals() ?? null), 'giving its animals') ?? 'null'); } catch { return; }
-    const { problems, pointers } = creatureProblems(value, { kinds: Object.keys(g.CREATURES ?? {}), taken });
+    let spots = {};
+    try { spots = typeof hooks.spots === 'function' ? JSON.parse(call(() => JSON.stringify(hooks.spots() ?? {}), 'giving its spots') ?? '{}') : {}; } catch { spots = {}; }
+    const gagProblem = typeof g.gagProblem === 'function' ? gag => g.gagProblem(gag) : null;
+    const { problems, pointers } = creatureProblems(value, { kinds: Object.keys(g.CREATURES ?? {}), taken, gagProblem, spots });
     out.creatures = problems;
     out.notes.push(...pointers.map(p => `creatures: ${p}`));
     const cast = Array.isArray(value) ? value : Array.isArray(value?.cast) ? value.cast : [];

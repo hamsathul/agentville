@@ -598,5 +598,5 @@
     };
   }
 
-  Object.assign(globalThis, { seededRandom, makeAnimals, chooseDoer, makeErrands });
+  Object.assign(globalThis, { seededRandom, makeAnimals, chooseDoer, makeErrands, gagProblem }); // gagProblem: check-world asks it too
 })();

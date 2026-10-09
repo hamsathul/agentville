@@ -560,6 +560,17 @@ The farm's farmers are this kit in farm clothes: its `FARMER` outfit (a straw ha
 or bandana, or none; overalls over the shirt; a beard, glasses or cheeks), the slate caps of codex
 agents, and a scarecrow, which is the same person in sacking colours on a pole.
 
+A world's `drawChar` decides which look it draws. The farm draws a farmer whose hat a goat has
+(`b.hatless`, from the animals kit: "Gags and play") with its look's `hat: 'none'`, and leaves out the
+model's pin that sits on the hat:
+
+```js
+drawChar(f, b) {
+  const look = b.hatless ? { ...f.look, hat: 'none' } : f.look; // a goat has its hat
+  // …then sprite(look, shirt, { view, legs, wave }) as usual
+}
+```
+
 ## The props kit
 
 `window.Agentville.props` is what a person holds for each kind of step Claude Code takes. It is loaded in
@@ -797,16 +808,15 @@ avoid: () => [],
 The rules for your creatures: none in a `taken` shape; lines of 40 characters at most (a gag's own
 too); `roam` areas, `perches` and `spots` clear of anything that shows data (the farm keeps them out
 of its fields, off the hay, crates and mailbox, and off the carts' rank). `npm run check-world`
-checks a world's creatures (its `cast`) against these and the table above (the checklist's
-"Creatures" row, in "check-world and the checklist"). It doesn't check gags or play yet: the kit
-checks them as the world is read (above), and its warning shows only in the browser's console (on
-the test page or the dashboard). Keeping `roam`, `perches` and `spots` clear of data is yours to see
-on the test page.
+checks a world's creatures (its `cast`) against these and the table above, and its gags and play
+the way the kit reads them: what the kit would drop is a cross (with the kit's own reason), so you see
+it there before the browser's console (the checklist's "Creatures" row, in "check-world and the
+checklist"). Keeping `roam`, `perches` and `spots` clear of data is yours to see on the test page.
 
 ## The starter world
 
 `web/worlds/starter/` is a plain world with everything a world needs, short enough to read at once
-(about 85 lines). It shows:
+(about 90 lines). It shows:
 
 - plots: the engine's repo grid, three across inside a fence, one bed for each repo;
 - the door: agents waiting on you, or on their turn, stand at it with a bubble (a waiting one has a
@@ -816,7 +826,9 @@ on the test page.
 - every step's prop from the props kit (`props.kit()`, `doing(f)`, `draw`);
 - the context filling each plot with green, and the last deploy as a flag on it (green ok, red failed,
   blinking amber running, grey for any other state);
-- a cat from the creature library (`animals()`, `roam()`, `avoid()`; see "Creatures"), just for fun.
+- a cat from the creature library (`animals()`, `roam()`, `avoid()`; see "Creatures"), just for fun: it
+  yawns, chases its tail and pounces now and then (`habits`), and once in a while jumps at nothing (a
+  gag, `pounce`: "Gags and play").
 
 At the tour's `everyone` stop (`npm run world-shots -- starter --stop everyone`, cut to the world's
 frame), two people wait at the door (one on a permission, one on its turn), three work in their
@@ -1012,7 +1024,8 @@ It reports, a line each:
   with what the world was doing: starting, taking a scene or drawing a frame. It is cut off and the
   tour goes on; after three such stops the rest is skipped. check-world never hangs.
 - **✗ world.json's problem**, the one the list of worlds would show.
-- **✗ A creature** that breaks the animals kit's rules (the checklist's last row), a line each.
+- **✗ A creature, or a gag or play,** that breaks the animals kit's rules (the checklist's last row), a
+  line each.
 - **· Hooks left to their defaults**: fine when you meant it.
 - **· Checklist items drawn the same** in their two stops ("deploy failed" draws the same as "deploy
   ok"). This is **a pointer, not a verdict**: it compares only what is drawn on the canvas in the last
@@ -1070,7 +1083,7 @@ show you each stop.
 | idle | `working`, `idle` | under the shade tree | on the bench, eyes shut, a zzz |
 | stale | `idle`, `stale` | a scarecrow | greyed out |
 | night | `day`, `night` | lit windows, lanterns and fireflies | the engine's night |
-| **Creatures (optional)** | none: check-world reads `animals()` once | thirteen animals, all within the rules | one cat, within the rules |
+| **Creatures (optional)** | none: check-world reads `animals()` once | thirteen animals, six gags and three plays, all within the rules | one cat and its gag, within the rules |
 
 The creature rules (see "Creatures"). A cross for each one broken:
 
@@ -1090,9 +1103,26 @@ A dot for each of these (a pointer, never a cross):
   is drawn as the first);
 - with no `roam()`, only creatures with a `home` are shown.
 
-When `animals()` returns `{ cast, gags, play }`, these rules are for its `cast`. check-world doesn't
-check gags or play yet: the kit drops one written wrong as the world is read, with a warning in the
-browser's console ("Gags and play", in "Creatures"), which check-world doesn't show.
+When `animals()` returns `{ cast, gags, play }`, the rules above are for its `cast`, and these for its
+gags and play ("Gags and play", in "Creatures"). A cross for each that the kit would drop:
+
+- each has an `id` (a string, one per gag), `needs` (an object, its `farmer` `idle` or `busy`) and
+  `steps` (a list of step objects);
+- every step is one the kit knows (`go`, `chase`, `say`, `pose`, `wear`, `wait`, `fx`, `stay`), and
+  every role it names is one it needs (a kind, `farmer`, `chicken`); only the farmer chases; what is
+  worn is `hat` or `bucket`;
+- a busy farmer is never moved, and its hat is off 3 s at most;
+- every spot it uses (`needs.spot`, `spot:<name>`) is in the world's `spots()`;
+- its own `lines` are 40 characters or fewer.
+
+A dot for each of these:
+
+- a gag needs a kind the `cast` doesn't have (it never starts);
+- a play has no `farmer: 'idle'` in its needs (it plays out like a gag);
+- a creature's `habits` include one the kit doesn't have (it never does it), or its `reacts` gives a
+  reaction other than `scatter`, `hop`, `gather`, `hide`, `run` or `null` (it does nothing).
+
+`habits` that isn't a list, or `reacts` that isn't an object, is a cross.
 
 The starter leaves out a compaction, subagents, the limits, a collision and a merged pull request,
 to stay short: those are check-world's five "may draw the same" dots for it, beside its hooks left

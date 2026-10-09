@@ -607,7 +607,8 @@ your worlds folder.
 same tour headless, a few frames a stop, and lists each exception with its stop, file and line, a
 hook that never returns (cut off after 2 seconds; it never hangs), a `world.json` problem, creatures
 that break the animals kit's rules (a kind in `taken`, a line over 40 characters, fewer than 2 or more
-than 4 actions…; not yet their gags or play), and, as pointers rather than verdicts, the hooks left
+than 4 actions…, and gags or play the kit would drop: a step or role it doesn't know, a spot the
+world's `spots()` doesn't have), and, as pointers rather than verdicts, the hooks left
 to their defaults, the checklist items it draws the same in two states ("deploy failed" draws the
 same as "deploy ok"), and outfit parts the people kit doesn't have. It exits 1 on a problem. It needs no server or token and
 reads none of your sessions: only the world's `world.js` and `world.json`, the SDK and the tour (and
@@ -804,7 +805,7 @@ The mod also does the dashboard's work inside the session:
 | `agent-tracker logs` | The last lines of its logs |
 | `npm run new-world -- <name>` | Makes a world of your own from the starter, in your worlds folder, and says what to do next ([docs/worlds.md](docs/worlds.md#making-a-world)) |
 | `npm run world-shots -- <world>` | A picture of a world (`farm`, `starter` or one of yours) at every stop of the test tour, in headless Chrome on made-up data, in `.private/shots/` (`--stop <name>` for one stop). Exits 1 if a stop didn't show |
-| `npm run check-world -- <world>` | Runs the test tour headless against a world (`farm`, `starter` or one of yours): its exceptions with file and line, a hook that never returns, creatures that break the animals kit's rules, and pointers to what it may draw the same ([docs/worlds.md](docs/worlds.md#check-world-and-the-checklist)). Exits 1 on a problem. It runs the world's code contained (it can read only the SDK and the world's `world.js` and `world.json`), but the world can still reach the network: check only worlds you'd trust ([Privacy and security](#privacy-and-security)) |
+| `npm run check-world -- <world>` | Runs the test tour headless against a world (`farm`, `starter` or one of yours): its exceptions with file and line, a hook that never returns, creatures (and their gags) that break the animals kit's rules, and pointers to what it may draw the same ([docs/worlds.md](docs/worlds.md#check-world-and-the-checklist)). Exits 1 on a problem. It runs the world's code contained (it can read only the SDK and the world's `world.js` and `world.json`), but the world can still reach the network: check only worlds you'd trust ([Privacy and security](#privacy-and-security)) |
 
 ## How it works
 
