@@ -55,3 +55,27 @@ test('facing left mirrors a creature about its feet', () => {
   const left = lib.rects.splice(0).map(r => r.x + r.w / 2 - 100);
   assert.deepEqual(left, right.map(x => -x));
 });
+
+test('the new poses draw inside the box too; wear (scarf, a hat in the mouth, a bucket, ice) as well', () => {
+  const lib = load();
+  const POSES2 = ['yawn', 'stretch', 'roll', 'startled', 'slide'];
+  for (const k of KINDS) for (const pose of POSES2) for (const wear of [{}, { scarf: true }, { hat: '#e9c46a' }, { bucket: true }, { ice: true }]) {
+    lib.rects.length = 0;
+    lib.CREATURES[k].draw(lib.creaturePainter(100, 100, 1), pose, 0.3, undefined, wear);
+    const c = lib.CREATURES[k];
+    for (const r of lib.rects) {
+      assert.ok(r.x >= 100 - Math.ceil(c.w / 2) - 1 && r.x + r.w <= 100 + Math.ceil(c.w / 2) + 1, `${k} ${pose} ${JSON.stringify(wear)} x`);
+      assert.ok(r.y >= 100 - c.h - 1 && r.y + r.h <= 101, `${k} ${pose} ${JSON.stringify(wear)} y`);
+    }
+  }
+});
+
+test('a goat in a scarf draws more than without; one with a hat in its mouth too; a duck on ice draws no water', () => {
+  const lib = load();
+  const count = (k, pose, wear, look) => { lib.rects.length = 0; lib.CREATURES[k].draw(lib.creaturePainter(100, 100, 1), pose, 0, look, wear); return lib.rects.length; };
+  assert.ok(count('goat', 'stand', { scarf: true }) > count('goat', 'stand', {}));
+  assert.ok(count('goat', 'stand', { hat: '#e9c46a' }) > count('goat', 'stand', {}));
+  assert.ok(count('ostrich', 'run', { bucket: true }) > count('ostrich', 'run', {}));
+  assert.ok(count('duck', 'sleep', { ice: true }, 'drake') < count('duck', 'sleep', {}, 'drake'), 'no water line on ice');
+  assert.ok(count('ostrich', 'sleep', {}) > 0);
+});
