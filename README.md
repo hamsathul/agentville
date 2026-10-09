@@ -545,7 +545,10 @@ lowercase letters, digits and dashes, up to 40), or in the folder `worldsDir` na
 can't be replaced: a world of yours named like one is just another world, listed after it. A world
 with a problem (a `world.json` that can't be read, one made for a newer Agentville, a missing
 `world.js`) is listed with what is wrong. Files are served only from inside the world's own folder,
-so a link out of it is never followed. How to write one is in [docs/worlds.md](docs/worlds.md).
+so a link out of it is never followed. A world's folder may itself be a link (to a world you
+develop elsewhere): it is followed, and its target becomes the world's folder, unless it points at
+your worlds folder, above it or at your home folder. A broken link is listed with an error. `worldsDir`
+is read at startup (a change needs a restart). How to write one is in [docs/worlds.md](docs/worlds.md).
 
 ### Notifications and the bell
 
@@ -572,7 +575,7 @@ The mod also does the dashboard's work inside the session:
 ## Configuration
 
 `config.json` sits next to `config.example.json` and is re-read when you save it. A changed
-`port` needs `agent-tracker restart`. Without a `config.json`, the defaults apply.
+`port` or `worldsDir` needs `agent-tracker restart`. Without a `config.json`, the defaults apply.
 
 | Key | Meaning (default) |
 |---|---|
@@ -641,7 +644,7 @@ and can do is in [docs/worlds.md](docs/worlds.md).
 - The dashboard's own page and its API tell the browser never to show them inside a frame
   (`frame-ancestors 'none'`), so no other page, and no world, can load the dashboard with its token
   inside itself.
-- The farm (like every world to come) runs in a sandboxed frame with no cookies, storage, network
+- The farm (like any world) runs in a sandboxed frame with no cookies, storage, network
   or token. It sees the scene, which is what the dashboard shows, and can only ask the page for the
   few things listed in [docs/worlds.md](docs/worlds.md), each checked against the scene: open an
   agent or one of its files, read an agent's or a repo's files (the page fetches them with the
@@ -649,9 +652,10 @@ and can do is in [docs/worlds.md](docs/worlds.md).
   The page takes each of those at most once a quarter second and four reads at a time, and keeps at
   most 64 settings (64 KB) for a world, so a misbehaving world can't flood the dashboard or fill your
   browser's storage.
-- Your worlds folder is read only by the collector, served only to the dashboard's own frames
-  (never outside a world's folder), and never fetched from anywhere. The list of worlds, which
-  shows your folder's names and path, needs the token.
+- Your worlds' files are served without the token, like the farm's, to anything on this Mac that
+  asks for them by path (so keep nothing secret in a world's folder), and never from outside the
+  world's own folder. The list of their names and the folder's path needs the token. The collector
+  reads the folder; it never fetches a world from anywhere.
 - File contents, folder listings, past sessions, whole conversations (and your messages in them,
   for ↑) and field close-ups are served only with a per-install token that the page carries. Every action (answer, message,
   start, end, switch…) also needs a same-origin request.

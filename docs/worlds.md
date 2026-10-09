@@ -34,8 +34,18 @@ Keys: a built-in world is named by its folder in `web/worlds/` (the farm is `far
 
 The collector lists every world at `GET /api/worlds` (token only), with the folder it reads yours
 from. Files of a world are served from inside its own folder only: `..`, hidden names and links
-pointing out of the folder are refused with a plain 404, for yours as for the built-in ones. A
-folder that has no name the rule allows is listed with an error and can't run. A world with any
+pointing out of the folder are refused with a plain 404, for yours as for the built-in ones. They
+are served without the token, like the farm's, to anything on this Mac that asks for them by path,
+so keep nothing secret in a world's folder.
+
+A world's folder may itself be a link (a world you develop elsewhere): it is followed, and its
+target becomes the world's folder. A link to your worlds folder, to a folder above it or to your
+home folder is refused ("This folder is a link to a folder that holds other things; link to the
+world's own folder."), and a broken link or a link loop is listed ("This folder is a link to
+something that isn't there.") without hiding the other worlds. The folder's name must match
+exactly: on a disk that ignores capitals, `Space` is not `u/space`. `worldsDir` is read when the
+collector starts: a relative one is under your home folder, and an empty one means the default.
+A folder that has no name the rule allows is listed with an error and can't run. A world with any
 error has no frame.
 
 ## world.json
@@ -65,11 +75,14 @@ out of the folder is never followed (it counts as missing).
 
 The rules, as checked (the first that fails is the error the list shows):
 
-- `name`: a string of 1 to 40 characters, not blank.
-- `icon` (optional): a string of at most 8 characters, one emoji. Without one, 🧩.
-- `description` (optional): a string of at most 140 characters.
+- The file is at most 64 KB ("world.json is too large (over 64 KB).").
+- `name`: a string of 1 to 40 characters, not blank. A longer one is an error.
+- `icon` (optional): a string of at most 8 characters, one emoji. Without one (or an empty one), 🧩.
+- `description` (optional): a string of at most 140 characters. A longer one is an error (the list
+  still shows the name and description, cut short to 40 and 140 characters).
 - `api`: a whole number, 1 or more, and no more than the version this Agentville has (1).
-- `nouns` (optional): an object whose values are strings of at most 30 characters.
+- `nouns` (optional): an object; only `agent`, `agents`, `repo`, `repos`, `start` and `diary` are
+  kept, each a string of at most 30 characters. Other keys are dropped.
 
 What a world can show in the list instead of running:
 
@@ -84,7 +97,10 @@ What a world can show in the list instead of running:
 | `world.json needs "api": 1.` | `api` is missing or not a whole number of 1 or more |
 | `This world needs a newer Agentville (…)` | `api` is higher than this Agentville knows |
 | `world.json: "nouns" are short words.` | `nouns` isn't an object of strings up to 30 characters |
+| `world.json is too large (over 64 KB).` | The file is bigger than 64 KB |
 | `world.js is missing (or is a link out of the folder).` | No `world.js`, or it points outside the folder |
+| `This folder is a link to something that isn't there.` | A broken link or a link loop |
+| `This folder is a link to a folder that holds other things; link to the world's own folder.` | The link points at your worlds folder, above it or at your home folder |
 | `A world's folder name is lowercase letters, digits and dashes (up to 40).` | The folder's name breaks the rule |
 
 A world with a problem still has its name, icon and description shown if they are fine; it just

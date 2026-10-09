@@ -2,8 +2,8 @@
 // a folder with world.json and world.js. This serves a world's files from inside its own folder only
 // (no way out through .., a hidden name or a symlink), and writes the page its sandboxed frame loads.
 // No dependencies.
-import { readFileSync, readdirSync, realpathSync, statSync } from 'node:fs';
-import { extname, join, sep } from 'node:path';
+import { lstatSync, readFileSync, readdirSync, realpathSync, statSync } from 'node:fs';
+import { extname, isAbsolute, join, sep } from 'node:path';
 
 export const API_VERSION = 1;
 export const WORLD_NAME = /^[a-z0-9][a-z0-9-]{0,39}$/;
@@ -17,6 +17,8 @@ const TYPES = {
 // to send anything anywhere (no fetch, frames, forms or workers). Only the dashboard may embed it.
 export const FRAME_CSP = "sandbox allow-scripts; default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self' data:; media-src 'self' data: blob:; connect-src 'none'; frame-src 'none'; worker-src 'none'; form-action 'none'; base-uri 'none'; frame-ancestors 'self'";
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+const NOUN_KEYS = ['agent', 'agents', 'repo', 'repos', 'start', 'diary'];
+const MAX_JSON = 64 * 1024;
 const NOT_FOUND = { status: 404, error: 'not found' };
 
 /** What is wrong with a world.json (as parsed), or null. */
@@ -27,15 +29,42 @@ export function checkWorldJson(j) {
   if (j.description !== undefined && (typeof j.description !== 'string' || j.description.length > 140)) return 'world.json: "description" is up to 140 characters.';
   if (!Number.isInteger(j.api) || j.api < 1) return 'world.json needs "api": 1.';
   if (j.api > API_VERSION) return `This world needs a newer Agentville (it was made for api ${j.api}; this one has ${API_VERSION}).`;
-  if (j.nouns !== undefined && (!j.nouns || typeof j.nouns !== 'object' || Array.isArray(j.nouns) || Object.values(j.nouns).some(v => typeof v !== 'string' || v.length > 30))) return 'world.json: "nouns" are short words.';
+  if (j.nouns !== undefined && (!j.nouns || typeof j.nouns !== 'object' || Array.isArray(j.nouns) || NOUN_KEYS.some(k => j.nouns[k] !== undefined && (typeof j.nouns[k] !== 'string' || j.nouns[k].length > 30)))) return 'world.json: "nouns" are short words.';
   return null;
 }
 
-export function makeWorlds({ builtinDir, userDir = null }) {
+/** Where your worlds live: worldsDir (a leading ~ is home; a relative one is under home), else ~/.agentville/worlds. */
+export function worldsDirOf(cfg, home) {
+  const w = cfg?.worldsDir;
+  if (typeof w !== 'string' || !w.trim()) return join(home, '.agentville', 'worlds');
+  const t = w.trim();
+  if (t === '~') return home;
+  if (t.startsWith('~/')) return join(home, t.slice(2));
+  return isAbsolute(t) ? t : join(home, t);
+}
+
+export function makeWorlds({ builtinDir, userDir = null, home = null }) {
+  const real = p => { try { return realpathSync(p); } catch { return null; } };
+  /** Is a folder of yours (a link, maybe) really somewhere that holds other things: your worlds folder, above it, or your home? */
+  function tooBroad(dir) {
+    const r = real(dir);
+    if (!r) return false;
+    const within = (outer, inner) => inner === outer || inner.startsWith(outer.endsWith(sep) ? outer : outer + sep);
+    const u = userDir && real(userDir), h = home && real(home);
+    return Boolean((u && within(r, u)) || (h && within(r, h)));
+  }
+  const NAME_ERR = "A world's folder name is lowercase letters, digits and dashes (up to 40).";
+  const BROAD_ERR = "This folder is a link to a folder that holds other things; link to the world's own folder.";
+  const DEAD_ERR = "This folder is a link to something that isn't there.";
   /** A world's folder from its key ('sdk' is the SDK's, 'u/<name>' one of yours); null for a key that names none. */
   function dirOf(key) {
     if (key === 'sdk') return join(builtinDir, 'sdk');
-    if (key.startsWith('u/')) { const name = key.slice(2); return userDir && WORLD_NAME.test(name) ? join(userDir, name) : null; }
+    if (key.startsWith('u/')) {
+      const name = key.slice(2);
+      if (!userDir || !WORLD_NAME.test(name)) return null;
+      try { if (!readdirSync(userDir).includes(name)) return null; } catch { return null; } // the exact name, as the list sees it (not a case-insensitive disk's idea of it)
+      return tooBroad(join(userDir, name)) ? null : join(userDir, name);
+    }
     return WORLD_NAME.test(key) && !RESERVED.has(key) ? join(builtinDir, key) : null;
   }
   /** One of a world's files: { real, type, size }; anything else is a plain 404, saying nothing about what is there. */
@@ -54,28 +83,38 @@ export function makeWorlds({ builtinDir, userDir = null }) {
   function describe(key, builtIn) {
     let j = null, error = null;
     const meta = file(key, 'world.json'); // through the folder check: a world.json linked out of the folder counts as missing
-    try { if (!meta.real) throw Object.assign(new Error('missing'), { code: 'ENOENT' }); j = JSON.parse(readFileSync(meta.real, 'utf8')); }
+    if (key.startsWith('u/') && !dirOf(key)) error = tooBroad(join(userDir, key.slice(2))) ? BROAD_ERR : NAME_ERR;
+    else if (meta.size > MAX_JSON) error = 'world.json is too large (over 64 KB).';
+    else try { if (!meta.real) throw Object.assign(new Error('missing'), { code: 'ENOENT' }); j = JSON.parse(readFileSync(meta.real, 'utf8')); }
     catch (err) { error = err.code === 'ENOENT' ? 'world.json is missing.' : `world.json can't be read: ${String(err.message).slice(0, 120)}`; }
     error ??= checkWorldJson(j) ?? (file(key, 'world.js').real ? null : 'world.js is missing (or is a link out of the folder).');
     return {
       key, builtIn, error,
       name: typeof j?.name === 'string' && j.name.trim() ? j.name.slice(0, 40) : key.replace(/^u\//, ''),
-      icon: typeof j?.icon === 'string' && [...j.icon].length <= 8 ? j.icon : '🧩',
+      icon: typeof j?.icon === 'string' && j.icon && [...j.icon].length <= 8 ? j.icon : '🧩',
       description: typeof j?.description === 'string' ? j.description.slice(0, 140) : '',
-      nouns: !error && j.nouns ? j.nouns : {},
+      nouns: !error && j.nouns ? Object.fromEntries(NOUN_KEYS.filter(k => typeof j.nouns[k] === 'string').map(k => [k, j.nouns[k]])) : {},
       preview: file(key, 'preview.png').real ? `/world/${key}/preview.png` : null,
     };
   }
+  /** The folders in a directory, each judged on its own: a broken link (dangling or a loop) is an entry with an error, never the end of the list. */
   const folders = dir => {
-    try { return readdirSync(dir).filter(n => !n.startsWith('.') && statSync(join(dir, n)).isDirectory()).sort(); } catch { return []; }
+    let names;
+    try { names = readdirSync(dir).filter(n => !n.startsWith('.')).sort(); } catch { return []; }
+    const out = [];
+    for (const name of names) {
+      try { if (statSync(join(dir, name)).isDirectory()) out.push({ name }); }
+      catch { try { if (lstatSync(join(dir, name)).isSymbolicLink()) out.push({ name, dead: true }); } catch { /* gone meanwhile */ } }
+    }
+    return out;
   };
   /** Every world: the built-in ones (the farm first), then yours (A to Z), each with what is wrong with it, if anything. */
   function list() {
-    const built = folders(builtinDir).filter(n => WORLD_NAME.test(n) && !RESERVED.has(n)).sort((a, b) => (a === 'farm' ? -1 : b === 'farm' ? 1 : a.localeCompare(b)));
+    const built = folders(builtinDir).map(f => f.name).filter(n => WORLD_NAME.test(n) && !RESERVED.has(n)).sort((a, b) => (a === 'farm' ? -1 : b === 'farm' ? 1 : a.localeCompare(b)));
     const out = built.map(n => describe(n, true));
-    for (const n of userDir ? folders(userDir) : []) {
-      out.push(WORLD_NAME.test(n) ? describe(`u/${n}`, false)
-        : { key: null, builtIn: false, name: n, icon: '🧩', description: '', nouns: {}, preview: null, error: "A world's folder name is lowercase letters, digits and dashes (up to 40)." });
+    for (const f of userDir ? folders(userDir) : []) {
+      const bad = error => ({ key: null, builtIn: false, name: f.name.slice(0, 40), icon: '🧩', description: '', nouns: {}, preview: null, error });
+      out.push(f.dead ? bad(DEAD_ERR) : WORLD_NAME.test(f.name) ? describe(`u/${f.name}`, false) : bad(NAME_ERR));
     }
     return out;
   }

@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { mkdirSync, mkdtempSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { FRAME_CSP, checkWorldJson, makeWorlds } from '../worlds.mjs';
+import { FRAME_CSP, checkWorldJson, makeWorlds, worldsDirOf } from '../worlds.mjs';
 
 const plain = v => JSON.parse(JSON.stringify(v));
 
@@ -112,6 +112,75 @@ test("your world's files come from inside its folder only: a link out of it is r
   assert.ok(w.frame('u/space').includes('/world/u/space/world.js'));
   assert.equal(w.frame('u/newer'), null, 'a world with something wrong has no frame');
   assert.deepEqual(makeWorlds({ builtinDir: builtins(), userDir: '/nowhere/at/all' }).list().map(x => x.key), ['farm'], 'no folder yet: just the farm');
+});
+
+test('a broken link in your folder is listed with its error and hides nothing', () => {
+  const dir = users();
+  symlinkSync('/nowhere/at/all/gone', join(dir, 'old-dev-world'));
+  symlinkSync(join(dir, 'loop-b'), join(dir, 'loop-a'));
+  symlinkSync(join(dir, 'loop-a'), join(dir, 'loop-b'));
+  const w = makeWorlds({ builtinDir: builtins(), userDir: dir });
+  const all = w.list(), by = Object.fromEntries(all.map(x => [x.key ?? x.name, x]));
+  assert.match(by['old-dev-world'].error, /link to something that isn't there/);
+  assert.equal(by['old-dev-world'].key, null);
+  assert.match(by['loop-a'].error, /isn't there/);
+  assert.equal(by['u/space'].error, null);
+  assert.ok(w.frame('u/space'));
+});
+
+test("a linked world folder is followed, unless it is the worlds folder, above it, or your home", () => {
+  const dir = mkdtempSync(join(tmpdir(), 'my-worlds-')), home = mkdtempSync(join(tmpdir(), 'home-'));
+  const elsewhere = mkdtempSync(join(tmpdir(), 'dev-world-'));
+  writeFileSync(join(elsewhere, 'world.json'), JSON.stringify({ name: 'Dev', api: 1 }));
+  writeFileSync(join(elsewhere, 'world.js'), 'x');
+  symlinkSync(elsewhere, join(dir, 'dev'));
+  symlinkSync('..', join(dir, 'up'));
+  symlinkSync(dir, join(dir, 'self'));
+  symlinkSync(home, join(dir, 'home'));
+  writeFileSync(join(dir, '..', 'private.json'), '{}');
+  const w = makeWorlds({ builtinDir: builtins(), userDir: dir, home });
+  const by = Object.fromEntries(w.list().map(x => [x.key ?? x.name, x]));
+  assert.equal(by['u/dev'].error, null, 'a world developed elsewhere is fine');
+  assert.ok(w.file('u/dev', 'world.js').real);
+  for (const n of ['up', 'self', 'home']) {
+    assert.match(by[`u/${n}`]?.error ?? by[n].error, /holds other things/, n);
+    assert.equal(w.file(`u/${n}`, 'world.json').status, 404, n);
+  }
+  assert.equal(w.file('u/up', 'private.json').status, 404);
+  assert.equal(w.frame('u/up'), null);
+});
+
+test('only the exact folder name is your world, whatever the disk thinks of capitals', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'my-worlds-'));
+  mkdirSync(join(dir, 'Space'));
+  writeFileSync(join(dir, 'Space', 'world.json'), JSON.stringify({ name: 'S', api: 1 }));
+  writeFileSync(join(dir, 'Space', 'world.js'), 'x');
+  const w = makeWorlds({ builtinDir: builtins(), userDir: dir });
+  assert.equal(w.file('u/space', 'world.js').status, 404);
+  assert.equal(w.dirOf('u/space'), null);
+  assert.equal(w.frame('u/space'), null);
+});
+
+test('a huge world.json is refused, only the known nouns are kept, and an empty icon falls back', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'my-worlds-'));
+  const make = (n, json) => { mkdirSync(join(dir, n)); writeFileSync(join(dir, n, 'world.json'), json); writeFileSync(join(dir, n, 'world.js'), 'x'); };
+  make('big', JSON.stringify({ name: 'Big', api: 1, description: 'x'.repeat(70000) }));
+  const nouns = { agent: 'bee', zzz: 'no' };
+  for (let i = 0; i < 5000; i++) nouns[`k${i}`] = 'v';
+  make('nouny', JSON.stringify({ name: 'Nouny', api: 1, icon: '', nouns }));
+  const by = Object.fromEntries(makeWorlds({ builtinDir: builtins(), userDir: dir }).list().map(x => [x.key, x]));
+  assert.match(by['u/big'].error, /too large/);
+  assert.deepEqual(plain(by['u/nouny'].nouns), { agent: 'bee' });
+  assert.equal(by['u/nouny'].icon, '🧩');
+});
+
+test('worldsDir: default, ~, relative to home, absolute', () => {
+  const d = join('/h', '.agentville', 'worlds');
+  assert.equal(worldsDirOf({}, '/h'), d);
+  for (const bad of [null, '', '  ', 7, {}]) assert.equal(worldsDirOf({ worldsDir: bad }, '/h'), d);
+  assert.equal(worldsDirOf({ worldsDir: '~/x' }, '/h'), '/h/x');
+  assert.equal(worldsDirOf({ worldsDir: 'x' }, '/h'), '/h/x');
+  assert.equal(worldsDirOf({ worldsDir: '/x' }, '/h'), '/x');
 });
 
 test("world.json's rules", () => {

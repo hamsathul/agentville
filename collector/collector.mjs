@@ -30,7 +30,7 @@ import { planReadings, planUsage } from './derive/plan.mjs';
 import { noteDirectDeploys } from './derive/deploys.mjs';
 import { AlertEngine, notifyMac } from './alerts.mjs';
 import { createTrackerServer } from './server.mjs';
-import { makeWorlds } from './worlds.mjs';
+import { makeWorlds, worldsDirOf } from './worlds.mjs';
 import { renderTranscriptPage } from './transcript-page.mjs';
 
 const DOC_FILE = /\.(md|markdown|mdx)$/i;
@@ -1140,10 +1140,10 @@ export async function startCollector({ root, claudeDir = join(homedir(), '.claud
   await pollAgents();
   await schedule(true);
 
-  const worldsDir = cfg.worldsDir ? String(cfg.worldsDir).replace(/^~(?=\/|$)/, home) : join(home, '.agentville', 'worlds');
+  const worldsDir = worldsDirOf(cfg, home); // read once, at startup
   server = createTrackerServer({
     port: portOverride ?? cfg.port, token, webFile: join(root, 'web', 'index.html'),
-    worlds: makeWorlds({ builtinDir: join(root, 'web', 'worlds'), userDir: worldsDir }),
+    worlds: makeWorlds({ builtinDir: join(root, 'web', 'worlds'), userDir: worldsDir, home }),
     getSnapshot: () => snapshot,
     getFeed: (id, limit) => modelFor(id)?.history(limit) ?? null,
     getConversation, getPrompts, getSubagent, claudePlugins, claudeMcp, claudeRules, fileTicket, rawFile, officeView, shellOutput, namedFiles,
