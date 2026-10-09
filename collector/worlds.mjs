@@ -8,6 +8,7 @@ import { extname, isAbsolute, join, sep } from 'node:path';
 export const API_VERSION = 1;
 export const WORLD_NAME = /^[a-z0-9][a-z0-9-]{0,39}$/;
 const RESERVED = new Set(['sdk', 'starter', 'test', 'u']);
+const HIDDEN = new Set(['starter']); // built in and runnable (the test page, new-world's template), never in the list
 const TYPES = {
   '.js': 'text/javascript; charset=utf-8', '.json': 'application/json', '.css': 'text/css; charset=utf-8',
   '.png': 'image/png', '.gif': 'image/gif', '.webp': 'image/webp', '.svg': 'image/svg+xml', '.woff2': 'font/woff2',
@@ -92,7 +93,7 @@ export function makeWorlds({ builtinDir, userDir = null, home = null }) {
       const dir = join(userDir, name);
       return !tooBroad(dir) && holdsJson(dir) ? dir : null; // a folder with no world.json of its own serves nothing
     }
-    return WORLD_NAME.test(key) && !RESERVED.has(key) ? join(builtinDir, key) : null;
+    return WORLD_NAME.test(key) && (!RESERVED.has(key) || HIDDEN.has(key)) ? join(builtinDir, key) : null;
   }
   /** One of a world's files: { real, type, size }; anything else is a plain 404, saying nothing about what is there. */
   function file(key, rel) {
@@ -148,7 +149,7 @@ export function makeWorlds({ builtinDir, userDir = null, home = null }) {
   /** A world that can run, as list() describes it; null for one that can't (or isn't). */
   function info(key) {
     if (!dirOf(key) || key === 'sdk') return null;
-    const w = list().find(x => x.key === key);
+    const w = HIDDEN.has(key) ? describe(key, true) : list().find(x => x.key === key);
     return w && !w.error ? w : null;
   }
   /** The page a world's frame loads (web/worlds/sdk/frame.html filled in), or null for a world that can't run. */
@@ -180,7 +181,7 @@ export function watchWorlds({ builtinDir, userDir }, onChange, { quietMs = 200 }
     if (!top) return null;
     if (mine) return WORLD_NAME.test(top) ? `u/${top}` : null;
     if (top === 'sdk') return '*';
-    return WORLD_NAME.test(top) && !RESERVED.has(top) ? top : null;
+    return WORLD_NAME.test(top) && (!RESERVED.has(top) || HIDDEN.has(top)) ? top : null;
   };
   const watchDir = (dir, mine) => {
     try {

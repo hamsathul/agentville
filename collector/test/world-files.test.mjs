@@ -30,7 +30,7 @@ test("a world's own files are served, typed; nothing outside its folder, hidden,
   assert.equal(w.file('farm', 'world.js').type, 'text/javascript; charset=utf-8');
   assert.equal(w.file('farm', 'art/barn.png').type, 'image/png');
   assert.equal(w.file('sdk', 'bridge.js').size, 1);
-  for (const [key, rel] of [['farm', '../sdk/bridge.js'], ['farm', 'art/../../sdk/bridge.js'], ['farm', '.secret.js'], ['farm', 'run.sh'], ['farm', 'leak.js'], ['farm', 'nope.js'], ['farm', 'art'], ['sdk', 'frame.html'], ['starter', 'world.json'], ['../farm', 'world.js'], ['FARM', 'world.js'], ['u', 'world.js']]) {
+  for (const [key, rel] of [['farm', '../sdk/bridge.js'], ['farm', 'art/../../sdk/bridge.js'], ['farm', '.secret.js'], ['farm', 'run.sh'], ['farm', 'leak.js'], ['farm', 'nope.js'], ['farm', 'art'], ['sdk', 'frame.html'],['../farm', 'world.js'], ['FARM', 'world.js'], ['u', 'world.js']]) {
     assert.equal(w.file(key, rel).status, 404, `${key}/${rel}`);
   }
 });
@@ -248,4 +248,14 @@ test('a change to a world is told once per burst, by its key; the SDK as "*"', a
   await new Promise(r => setTimeout(r, 600));
   stop();
   assert.deepEqual(seen.sort(), ['*', 'u/space']);
+});
+
+test('the starter world can be framed and served, but is never in the list', () => {
+  const builtinDir = fileURLToPath(new URL('../../web/worlds', import.meta.url));
+  const w = makeWorlds({ builtinDir });
+  assert.ok(!w.list().some(x => x.key === 'starter'), 'not listed');
+  assert.match(w.frame('starter') ?? '', /\/world\/starter\/world\.js/);
+  assert.ok(w.file('starter', 'world.js').real, 'its files are served');
+  assert.equal(w.info('starter')?.name, 'Starter');
+  assert.equal(w.dirOf('test'), null, 'test stays reserved');
 });

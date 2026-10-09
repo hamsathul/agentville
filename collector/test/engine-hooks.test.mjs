@@ -118,3 +118,10 @@ test('a saved view is restored once the first scene is in, not at mount (the can
   view.update(sdk.engineScene(twoAgents(window)));
   assert.equal(v.scrollTop, 5, 'only once');
 });
+
+test("the engine's own words come from the world's nouns; place defaults to world", () => {
+  const { sdk } = load();
+  assert.equal(sdk.withDefaults(fourHooks()).nouns.place, 'world');
+  const th = sdk.withDefaults(fourHooks({ nouns: { agents: 'bakers', place: 'bakery' } }));
+  assert.deepEqual(JSON.parse(JSON.stringify(th.nouns)), { agent: 'agent', agents: 'bakers', repo: 'repo', repos: 'repos', place: 'bakery' });
+});

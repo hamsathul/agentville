@@ -900,6 +900,7 @@
         : [b.x + (k % 2 ? 1 : -1) * (7 * SC + 4) + Math.sin(T * 1.3 + k) * 3, b.y + 2 - (k > 1 ? 4 * SC : 0)]),
       startText: n => `Morning: <b>${n}</b> farmer${n === 1 ? '' : 's'} on the farm`,
       arriveText: 'walks out of the barn',
+      nouns: { agent: 'farmer', agents: 'farmers', repo: 'field', repos: 'fields', place: 'farm' },
       tag: tagText,
       tip: f => {
         const field = fieldByKey(f.field);

@@ -562,7 +562,8 @@ unless that folder is your worlds folder, your home folder or one above either, 
 spelled. A folder with no `world.json` of its own serves nothing, and a broken link is listed with
 an error. `worldsDir` is read at startup (a change needs a restart); one that is your home folder or
 above it is ignored and the default is used. A world's names are shown as plain text, whatever they
-hold. How to write one is in [docs/worlds.md](docs/worlds.md).
+hold. How to write one is in [docs/worlds.md](docs/worlds.md). A plain starter world
+(`web/worlds/starter/`) is the template for your own; it isn't in the list.
 
 **Your own worlds, open while you write them.** Saving a file in a world's folder (or in a built-in
 world's) reloads that world on screen, keeping its zoom and where you were looking, so you can

@@ -463,7 +463,7 @@ A hook you give always wins over its default.
 | `grid` | | a `makeGrid` result, or the config for one (below); by default 3 beds of 88 × 62 centred on W |
 | `fromScene` | `(sceneV1)` | `engineScene` |
 | `help` | `()` | the info dialog's HTML: a short key naming your `nouns` |
-| `nouns` | | `{ agent, agents, repo, repos }`: `agent`, `agents`, `repo`, `repos` |
+| `nouns` | | `{ agent, agents, repo, repos, place }`: `agent`, `agents`, `repo`, `repos`, and `place`, `'world'`: the world's name for itself, which the engine uses in its own words ("Loading the …", "How to read the …", "The whole … : click to go there"). The close-up's legend and the engine's help default say `agents` and `agent` too. Give them all, so no word of the farm's is left (the farm's are `farmer`, `farmers`, `field`, `fields` and `farm`) |
 | `SH` | | `16`: a character's height |
 | `layout`, `relayout` | `()`, `(ground)` | the grid's current ground; `relayout` keeps the new one and returns it |
 | `setScene` | `(scene)` | returns `[]`. May return events `{ id?, at?: [x, y], text, cls?, log? }`: a pop-up with `text` over the agent `id` (or at `at`), and a line in the log if `log` is set. The engine records `scene.fields` itself, whether or not you give one |
@@ -690,6 +690,23 @@ flag)`. `flag` is passed on to the prop, for your own props to use; the kit's ig
 ### The farm
 The farm draws its own props and keeps them; only its plan-mode `blueprint` is the kit's, which is the
 farm's own drawing, so the farm looks the same.
+
+## The starter world
+
+`web/worlds/starter/` is a plain world with everything a world needs, short enough to read at once
+(about 80 lines). It shows:
+
+- plots: the engine's repo grid, three across inside a fence, one bed for each repo;
+- the door: agents waiting on you stand at it, with a bubble and a ring at their feet;
+- the bench: everyone else sits there; idle ones sleep;
+- people from the people kit (`lookFor` from the agent's id, `sprite` with the walking legs and the wave);
+- every step's prop from the props kit (`props.kit()`, `doing(f)`, `draw`);
+- the context filling each plot with green, and the last deploy as a flag on it (green ok, red failed,
+  blinking amber running, grey skipped).
+
+It is the template `npm run new-world -- <name>` copies, and it isn't in the list of worlds. It can
+still be framed (`/world/starter/`), which is how the test page runs it. Its `world.json` gives the
+nouns `person`, `people`, `plot` and `plots`, and its hook says `place: 'world'`.
 
 ## What a world can't do
 

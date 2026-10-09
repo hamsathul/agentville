@@ -154,7 +154,7 @@ function defaultHud({ zoom = 1, skyMode = 'live', still = false, nav = {} }) {
 function withDefaults(h) {
   if (!(h.W > 0)) throw new Error('A world needs its width, W (in world pixels).');
   for (const need of ['slots', 'drawChar', 'bg']) if (typeof h[need] !== 'function') throw new Error(`A world needs a ${need}() hook.`);
-  const nouns = { agent: 'agent', agents: 'agents', repo: 'repo', repos: 'repos', ...h.nouns };
+  const nouns = { agent: 'agent', agents: 'agents', repo: 'repo', repos: 'repos', place: 'world', ...h.nouns };
   // The default grid is centred on W, from the config merged over 3 × 88 × 62: columns centred, a
   // fence half a column wider each side (kept inside 0..W) unless the world gives cx0 or a fence itself.
   const g = h.grid ?? {};
@@ -181,7 +181,7 @@ function withDefaults(h) {
     labels: lab => { for (const s of out.layout().ST) lab(s.cx, s.rowTop + 50, pxt(cutMid(fields.find(f => f.key === s.key)?.name ?? '', 16)), 'zone'); },
     fieldAt: () => null, buildingAt: () => null, buildingTip: () => '', dialog: () => null, boardSessions: () => [],
     help: () => `<div class="px-key"><b>${esc(nouns.agents)}</b><span>one for each agent working on this Mac</span><b>${esc(nouns.repos)}</b><span>one for each repo an agent works in</span></div>`,
-    ...h, grid,
+    ...h, grid, nouns,
     // the fields are always recorded here (the default labels read them), whoever's setScene runs
     setScene(next) { fields = next.fields; return ownSetScene ? ownSetScene.call(h, next) : []; },
   };
@@ -900,7 +900,7 @@ function makePixelView(th, prefs) {
         return `<h4>${esc(f.cwd)}</h4><p class="muted">Could not read it.</p>`;
       }
     }));
-    body.innerHTML = parts.join('') || '<p class="muted">No sessions on the farm.</p>';
+    body.innerHTML = parts.join('') || '<p class="muted">No sessions here.</p>';
   }
   /** The minimap: the whole farm small in a corner while zoomed in, the view a box on it; click it to go there. */
   function drawMini() {
@@ -939,9 +939,9 @@ function makePixelView(th, prefs) {
       opts = options ?? {};
       host = el;
       still = opts.still ?? false;
-      host.innerHTML = `<div class="px"><div class="px-host"><div class="px-view"><div class="px-stage"><canvas aria-label="Pixel farm: every farmer is an agent, every field a repo"></canvas><div class="px-ov"></div>${got ? '' : '<div class="px-loading"><span class="spinner"></span>Loading the farm…</div>'}</div></div><div class="px-hud"></div></div></div>
-        <dialog class="px-help" aria-label="How to read the farm"><header><b>How to read the farm</b><button type="button" class="x" data-farm-help-close aria-label="Close">×</button></header>${th.help()}</dialog>
-        <dialog class="px-help px-dlg" aria-label="The farm"><header><b class="px-dlg-title"></b><button type="button" class="x" data-farm-dlg-close aria-label="Close">×</button></header><div class="px-dlg-body"></div></dialog>`;
+      host.innerHTML = `<div class="px"><div class="px-host"><div class="px-view"><div class="px-stage"><canvas aria-label="${esc(`Pixel ${th.nouns.place}: every ${th.nouns.agent} is an agent, every ${th.nouns.repo} a repo`)}"></canvas><div class="px-ov"></div>${got ? '' : `<div class="px-loading"><span class="spinner"></span>Loading the ${esc(th.nouns.place)}…</div>`}</div></div><div class="px-hud"></div></div></div>
+        <dialog class="px-help" aria-label="How to read the ${esc(th.nouns.place)}"><header><b>How to read the ${esc(th.nouns.place)}</b><button type="button" class="x" data-farm-help-close aria-label="Close">×</button></header>${th.help()}</dialog>
+        <dialog class="px-help px-dlg" aria-label="The ${esc(th.nouns.place)}"><header><b class="px-dlg-title"></b><button type="button" class="x" data-farm-dlg-close aria-label="Close">×</button></header><div class="px-dlg-body"></div></dialog>`;
       canvas = host.querySelector('canvas');
       ctx = canvas.getContext('2d');
       viewEl = host.querySelector('.px-view');
@@ -951,7 +951,7 @@ function makePixelView(th, prefs) {
       mini = document.createElement('canvas');
       mini.className = 'px-mini';
       mini.hidden = true;
-      mini.title = 'The whole farm: click to go there';
+      mini.title = `The whole ${th.nouns.place}: click to go there`;
       host.querySelector('.px-host').appendChild(mini);
       mini.addEventListener('click', onMiniClick);
       moverEls.clear();
@@ -1013,6 +1013,7 @@ function makePixelView(th, prefs) {
     farmerName: id => scene.farmers.find(f => f.id === id)?.name,
     farmerColor: id => { const f = scene.farmers.find(x => x.id === id); return f ? f.shirt : '#9aa0a6'; },
     field: key => scene.fields.find(f => f.key === key),
+    nouns: th.nouns,
   };
 }
 
@@ -1028,7 +1029,7 @@ function makeField(view) {
   const p = (a, b, w, h, c) => { ctx.fillStyle = c; ctx.fillRect(a, b, w, h); };
   const writers = f => f.agents.filter(a => a.wrote).length;
   const kind = f => (f.doc ? 'doc' : f.wrote && writers(f) > 1 ? 'shared' : f.wrote ? 'write' : 'read');
-  const label = f => ({ write: 'written', read: 'read only', shared: 'written by two or more farmers', doc: 'document' })[kind(f)];
+  const label = f => ({ write: 'written', read: 'read only', shared: `written by two or more ${view.nouns.agents}`, doc: 'document' })[kind(f)];
   const GIT_WORD = { M: 'modified', U: 'new, not committed', A: 'added', D: 'deleted', R: 'renamed' };
   const dirOf = path => (path.includes('/') ? `${path.split('/')[0]}/` : './');
   function groups() {
@@ -1128,7 +1129,7 @@ function makeField(view) {
     const names = f ? f.agents.map(a => esc(view.farmerName(a.id) ?? a.id)).join(' and ') : '';
     const detail = f ? `<div class="fv-detail"><b>${esc(f.path)}</b>
       <div class="muted">${esc(label(f))} · by ${names} · ${ago(f.at)} ago · git: ${f.git ? esc(GIT_WORD[f.git] ?? f.git) : 'committed'}</div>
-      ${f.doc ? '<div><button type="button" class="act" data-fv-read>Open in the reader</button></div>' : ''}${kind(f) === 'shared' ? '<div class="warnline">Two or more farmers wrote this file: this is where a collision would bite.</div>' : ''}</div>` : '';
+      ${f.doc ? '<div><button type="button" class="act" data-fv-read>Open in the reader</button></div>' : ''}${kind(f) === 'shared' ? `<div class="warnline">Two or more ${esc(view.nouns.agents)} wrote this file: this is where a collision would bite.</div>` : ''}</div>` : '';
     const status = loading && !data ? '<li class="muted">Loading…</li>' : error ? `<li class="muted">${esc(error)}</li>` : '<li class="muted">Nothing touched in the last 24 hours.</li>';
     back.querySelector('.fv-tree').innerHTML = `<div class="piles">${piles}</div><ul class="fv-list">${rows || status}</ul>${detail}
       <p class="faint fv-note">Only files agents read or wrote in the last 24 h are shown, not the whole folder.${data?.truncated ? ' Showing the newest 300.' : ''}</p>`;
@@ -1175,7 +1176,7 @@ function makeField(view) {
       back.className = 'fv-back';
       back.innerHTML = `<div class="fv" role="dialog" aria-label="Field close-up"><header><b>${esc(field.name)} field</b><span class="muted">the files agents read or wrote here</span><span class="grow"></span><button type="button" class="x" data-fv-close aria-label="Close">×</button></header>
         <div class="fv-body"><div class="fv-scene"><canvas></canvas><div class="fv-ov"></div></div><div class="fv-tree"></div></div>
-        <div class="fv-legend"><span><b class="k k-write"></b>watered = written (glows while recent)</span><span><b class="k k-read"></b>white flag = read only</span><span><b class="k k-shared"></b>trampled = written by two farmers</span><span><b class="k k-doc"></b>noticeboard = document (click to read)</span><span><b class="k k-hay"></b>hay = not committed</span><span>ribbons = which farmer</span></div></div>`;
+        <div class="fv-legend"><span><b class="k k-write"></b>watered = written (glows while recent)</span><span><b class="k k-read"></b>white flag = read only</span><span><b class="k k-shared"></b>trampled = written by two ${esc(view.nouns.agents)}</span><span><b class="k k-doc"></b>noticeboard = document (click to read)</span><span><b class="k k-hay"></b>hay = not committed</span><span>ribbons = which ${esc(view.nouns.agent)}</span></div></div>`;
       document.body.appendChild(back);
       canvas = back.querySelector('canvas');
       ctx = canvas.getContext('2d');
