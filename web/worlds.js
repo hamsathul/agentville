@@ -601,9 +601,10 @@
   // the sidebar's agent, opens the sidebar or raises a dialog, the page's action controls ignore clicks
   // for about a second — long enough that a world can't swap another agent (or a dialog) under a click
   // you meant for the one you were reading. A flag a timer clears, re-armed by input, as the can-see lock
-  // is; app.js arms it from the world's callbacks, forwards pointerdown and keydown, and asks it in the
-  // click handler. A click whose pointerdown came before the change is ignored too. The page's own clicks
-  // (a row, a sidebar tab) never arm it, so they lose nothing.
+  // is; app.js arms it from the world's callbacks, forwards pointerdown and keydown, and asks it from a
+  // capture-phase click listener that stops a held click before any handler sees it. A click whose
+  // pointerdown came before the change is ignored too. The page's own clicks (a row, a sidebar tab)
+  // never arm it, so they lose nothing.
   const GUARD_MS = 1000;
   let clickGuarded = false, guardTimer = 0, guardLockId = 0, guardChangedAt = -Infinity, guardPointerAt = Infinity; // no press yet counts as never-before-a-change
   function showGuard(on) { const root = document.documentElement; if (root?.dataset) { if (on) root.dataset.guard = 'on'; else delete root.dataset.guard; } } // the quiet disabled styling, no text

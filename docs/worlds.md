@@ -252,7 +252,9 @@ Every message is an object with a `type`. Each side checks the other's: the fram
 from the page only, and the page from its current frame only.
 
 All of it rides a private channel. When the frame says `loaded`, the page makes a `MessageChannel` and
-hands one end to the bridge, inside `start`; from then on every message both ways — `scene`,
+hands one end to the bridge, inside `start` (the bridge listens first and stops the page's messages
+there, so a world's own `message` listener never sees `start` or the port); from then on every
+message both ways — `scene`,
 `settings`, `select`, `reply`, and every frame-to-page message, `leaving` included — goes over that
 port, and the page ignores any window message from the frame. The port lives only in the frame's realm,
 so when a world navigates its frame away that realm dies with it: the page's scenes go into a dead port,

@@ -151,7 +151,11 @@
     }
   }
   addEventListener('message', e => {
-    if (e.source !== toPage || port) return; // once the port is live, the page talks only over it
+    if (e.source !== toPage) return;
+    // The page's own messages stop here: registered before the world's script, this runs first, so a
+    // world's listener never sees `start` or the port it carries.
+    e.stopImmediatePropagation?.();
+    if (port) return; // once the port is live, the page talks only over it
     const m = e.data;
     if (m && typeof m === 'object' && m.type === 'start' && e.ports && e.ports[0]) {
       port = e.ports[0]; // kept in this realm's closure; gone when the frame navigates

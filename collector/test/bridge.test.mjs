@@ -35,7 +35,11 @@ function frame(globals = {}) {
   };
   vm.createContext(ctx);
   vm.runInContext(code, ctx);
-  const fire = (t, e) => (listeners[t] ?? []).forEach(fn => fn(e));
+  // Listeners in the order they were added, until one stops the event (as the bridge does for the page's).
+  const fire = (t, e) => {
+    e.stopImmediatePropagation ??= function () { this.stopped = true; };
+    for (const fn of listeners[t] ?? []) { if (e.stopped) break; fn(e); }
+  };
   // `start` goes over the window carrying a port; the bridge keeps the port and talks over it from then
   // on, so a later page→frame message (scene, select, reply) is delivered over the port, and what the
   // bridge sends after `start` (ready, errors, pick…) comes back over the port into `sent`.
@@ -198,6 +202,18 @@ test('messages from anything but the page are ignored', () => {
   f.A.raw({ start: () => got.push('start'), scene() {} });
   f.fire('message', { source: {}, data: { type: 'start', prefs: {}, settings: {} } });
   assert.deepEqual(got, []);
+});
+
+test("a world never sees the page's `start` or its port: the bridge, listening first, takes it and stops it there", () => {
+  const f = frame(), seen = [], got = [];
+  f.A.raw({ start: () => got.push('start'), scene() {} });
+  f.ctx.seenByWorld = seen;
+  vm.runInContext("addEventListener('message', e => seenByWorld.push([e.data && e.data.type, e.ports ? e.ports.length : 0]));", f.ctx); // the world's own listener
+  f.fromPage({ type: 'start', prefs: {}, settings: {} });
+  assert.deepEqual(got, ['start'], 'the bridge took it');
+  assert.deepEqual(seen, [], "the world's listener never saw it, nor the port");
+  f.fromPage({ type: 'scene', scene: { n: 1 } });
+  assert.deepEqual(seen, [], 'and scenes ride the port, not the window');
 });
 
 test('`loaded` goes over the window; once `start` brings the port, the bridge listens only on it', () => {
