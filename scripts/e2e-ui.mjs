@@ -658,7 +658,7 @@ try {
   await js("document.getElementById('view-farm').click()");
   await until("document.getElementById('worlds-dlg').open");
   await js("document.querySelector('[data-world=\"u/throws\"]').click()");
-  check(await until("/Throws didn.t start: .*did not register a world/.test(document.querySelector('#farm .world-panel')?.textContent ?? '')", 9000), 'a world that throws as it loads is replaced by a panel saying so');
+  check(await until("/Throws didn.t start: (Uncaught Error: )?no barn here \\(world\\.js:1\\)/.test(document.querySelector('#farm .world-panel')?.textContent ?? '')", 9000), 'a world that throws as it loads is replaced by a panel saying what, and where');
   await js("document.querySelector('[data-world-back]').click()");
   check(await until("document.querySelector('#farm .world-frame')?.src.endsWith('/world/farm/')") && await funtil("document.querySelectorAll('.px-tag').length >= 2"), 'Back to the farm brings the farm back');
   check(await js("!document.querySelector('#farm .world-strip') && !document.querySelector('#farm .world-panel')"), 'with no strip or panel left over');

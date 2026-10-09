@@ -268,6 +268,8 @@ A world never traps the person using it: the page puts a panel in its place, or 
   same frame means the world navigated itself somewhere else (a link, `location`, a form). The page
   stops it at once, hears nothing more from it, and shows a panel: "<name> tried to leave the page and
   was stopped."
+- **Errors show with their message and line** (`world.js:12`), in the panel or the strip: the frame
+  loads the SDK's and your world's scripts in CORS mode, so the browser doesn't hide them as "Script error."
 - **An error after it started** (one the bridge caught in your `start`, `scene` or `select`) shows in a
   strip (`role="status"`, with a close button) over the world, which keeps running under it.
 

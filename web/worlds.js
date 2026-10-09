@@ -214,7 +214,7 @@
         break;
       case 'ready': ready = true; clearTimeout(startTimer); break;
       case 'error': {
-        if (ready) showStrip(act); else lastError = act; // before it started: the latest (the bridge's own "did not register" comes after the browser's masked "Script error.")
+        if (ready) showStrip(act); else lastError ??= act; // before it started: the first error is the cause (the bridge's own "did not register" follows it)
         const key = `${act.message}@${act.where}`;
         if (errorsSeen.has(key) || errorsSeen.size >= ERRORS_MAX) break; // each once
         errorsSeen.add(key);

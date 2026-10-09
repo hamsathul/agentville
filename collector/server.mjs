@@ -120,8 +120,9 @@ export function createTrackerServer({ port, token, webFile, getSnapshot, getFeed
           const found = worlds ? worlds.file(m[1], rel) : { status: 404 };
           if (!found.real) return send(res, 404, 'text/plain', 'not found');
           const headers = { 'content-type': found.type, 'content-length': found.size, 'cache-control': 'no-store', 'x-content-type-options': 'nosniff', 'content-security-policy': 'sandbox' };
-          // The frame's origin is opaque: fonts load only with CORS. Nothing else gets it, so a world can't read files with fetch().
-          if (req.headers.origin === 'null' && req.headers['sec-fetch-dest'] === 'font') headers['access-control-allow-origin'] = 'null';
+          // The frame's origin is opaque: fonts load only with CORS, and scripts are loaded with it so their errors are reported in full.
+          // Nothing else gets it, so a world can't read files with fetch().
+          if (req.headers.origin === 'null' && ['script', 'font'].includes(req.headers['sec-fetch-dest'])) headers['access-control-allow-origin'] = 'null';
           res.writeHead(200, headers);
           return createReadStream(found.real).on('error', () => res.destroy()).pipe(res);
         }

@@ -1,6 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { existsSync, mkdirSync, mkdtempSync, realpathSync, symlinkSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, symlinkSync, writeFileSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { FRAME_CSP, checkWorldJson, makeWorlds, watchWorlds, worldsDirOf } from '../worlds.mjs';
@@ -57,6 +58,14 @@ test("a world.json that is a link to a file outside its folder is not read: no f
 test('the frame runs sandboxed, its scripts from the dashboard only, and can reach nothing', () => {
   for (const part of ['sandbox allow-scripts', "default-src 'none'", "script-src 'self'", "connect-src 'none'", "frame-src 'none'", "form-action 'none'", "frame-ancestors 'self'"]) assert.ok(FRAME_CSP.includes(part), part);
   assert.ok(!/allow-same-origin|allow-popups|allow-top-navigation|allow-forms/.test(FRAME_CSP));
+});
+
+test("the frame page loads the SDK's and the world's scripts in CORS mode, so their errors say what and where", () => {
+  const html = readFileSync(fileURLToPath(new URL('../../web/worlds/sdk/frame.html', import.meta.url)), 'utf8');
+  for (const src of ['/world/sdk/bridge.js', '/world/sdk/pixel.js', '/world/sdk/engine.js', '__BASE__world.js']) {
+    assert.match(html, new RegExp(`<script src="${src.replace(/[.]/g, '\\.')}" crossorigin="anonymous"></script>`), src);
+  }
+  assert.match(html, /<script src="\/brand\.js"><\/script>/, 'the page-script route is left as it is');
 });
 
 function users() {

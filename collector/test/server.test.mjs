@@ -391,6 +391,9 @@ test('the list of worlds needs the token, and says where your folder is', async 
   assert.match(r.folder, /my-worlds-/);
   assert.equal((await request(port, { path: '/world/u/space/' })).status, 200);
   assert.equal((await request(port, { path: '/world/u/space/world.js' })).body, '// space');
+  const fromFrame = dest => request(port, { path: '/world/u/space/world.js', headers: { origin: 'null', 'sec-fetch-dest': dest } });
+  assert.equal((await fromFrame('script')).headers['access-control-allow-origin'], 'null', "a world's script loads in CORS mode, so its errors are reported in full");
+  assert.equal((await fromFrame('empty')).headers['access-control-allow-origin'], undefined, "but a world's fetch() can't read its files");
   await srv.close();
 });
 
