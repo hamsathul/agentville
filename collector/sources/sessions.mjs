@@ -135,9 +135,9 @@ export const MODE_FLAGS = {
  * mode, with a model and effort for this session only (flags, not your saved defaults). `exec` puts
  * Claude in the shell's place, so its window closes when it ends.
  */
-export function claudeCommand(cwd, resume, mode = 'default', { model = 'default', effort } = {}) {
+export function claudeCommand(cwd, resume, mode = 'default', { model = 'default', effort, prefillFile } = {}) {
   if (resume !== undefined && !SESSION_ID.test(resume)) throw new Error('not a session id');
-  return `cd ${shellQuote(cwd)} && exec claude${resume ? ` --resume ${resume}` : ''}${startFlags(mode, { model, effort })}`;
+  return `cd ${shellQuote(cwd)} && exec claude${resume ? ` --resume ${resume}` : ''}${startFlags(mode, { model, effort })}${prefillFlag(prefillFile)}`;
 }
 
 /**
@@ -148,8 +148,11 @@ export function claudeCommand(cwd, resume, mode = 'default', { model = 'default'
  */
 export function forkCommand(cwd, copy, mode = 'default', { model = 'default', effort, name, prefillFile } = {}) {
   if (!isAbsolute(copy) || !copy.endsWith('.jsonl')) throw new Error('not a transcript copy');
-  return `cd ${shellQuote(cwd)} && exec claude --resume ${shellQuote(copy)} --fork-session${name ? ` --name ${shellQuote(name)}` : ''}${startFlags(mode, { model, effort })}${prefillFile ? ` --prefill "$(cat ${shellQuote(prefillFile)})"` : ''}`;
+  return `cd ${shellQuote(cwd)} && exec claude --resume ${shellQuote(copy)} --fork-session${name ? ` --name ${shellQuote(name)}` : ''}${startFlags(mode, { model, effort })}${prefillFlag(prefillFile)}`;
 }
+
+/** Text for the prompt box (--prefill), read from a file by the shell, so it never goes into the command line. */
+const prefillFlag = file => (file ? ` --prefill "$(cat ${shellQuote(file)})"` : '');
 
 /** A session's permission mode, model and effort, as flags (checked: these go into a shell line). */
 function startFlags(mode, { model = 'default', effort } = {}) {

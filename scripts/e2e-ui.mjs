@@ -318,6 +318,13 @@ try {
   const copy = /--resume '([^']+)'/.exec(forked)?.[1] ?? '';
   check(forked === `cd '${repo}' && exec claude --resume '${copy}' --fork-session --name 'ui-asker (fork)' --model 'haiku'` && readFileSync(copy, 'utf8').trim().split('\n').at(-1).includes('"ui-r1"'),
     `confirmed, a terminal resumes a copy of the conversation cut at that reply as a new session (got ${forked})`);
+  check(await js("!document.querySelector('#center-body [data-restore=\"ui-r1\"]') && !!document.querySelector('#center-body [data-restore=\"ui-p1\"]')"), '↺ Restore is on your messages only');
+  await js("document.querySelector('#center-body [data-restore=\"ui-p1\"]').click()");
+  check(await until("document.getElementById('restore-dlg').open && document.getElementById('restore-what').value === 'both' && document.getElementById('restore-mode').options.length === 5 && !document.getElementById('restore-code-note').hidden"), '↺ Restore asks what to put back (the conversation and code to start with) and says what restoring code can undo');
+  await js("(() => { const w = document.getElementById('restore-what'); w.value = 'conversation'; w.dispatchEvent(new Event('change', { bubbles: true })); })()");
+  check(await js("document.getElementById('restore-code-note').hidden"), 'the note on code goes away for the conversation only');
+  await js("document.querySelector('#restore-dlg [data-restore-cancel]').click()");
+  check(await until("!document.getElementById('restore-dlg').open"), 'Cancel leaves it as it is');
   await js("document.querySelector('#center-body [data-convo=\"ui-asker\"]').click()");
   await until("!!document.getElementById('convo-msg-text')");
   await js("document.getElementById('convo-msg-text').focus()"); // before the conversation has loaded

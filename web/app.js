@@ -338,6 +338,9 @@ document.addEventListener('click', async e => {
   if (d.fork) { openFork(d.agent, d.fork, d.forkKind); return; }
   if (d.forkGo !== undefined) { await forkGo(el); return; }
   if (d.forkCancel !== undefined) { $('fork-dlg').close(); return; }
+  if (d.restore) { openRestore(d.agent, d.restore); return; }
+  if (d.restoreGo !== undefined) { await restoreGo(el); return; }
+  if (d.restoreCancel !== undefined) { $('restore-dlg').close(); return; }
   if (d.removeSession) { void removeFlow(d.removeSession); return; }
   if (el.id === 'view-list' || el.id === 'view-farm') { setView(el.id === 'view-farm' ? 'farm' : 'list'); return; }
   if (el.id === 'side-toggle') { setFarmSide(!farmSide); return; }
@@ -550,6 +553,38 @@ async function forkGo(button) {
   notice(r.ok ? `Forking ${a?.name ?? 'the session'}: a new ${r.terminal ?? 'terminal'} window opens.` : `Could not fork ${a?.name ?? 'it'}: ${r.error}`);
 }
 $('fork-mode').addEventListener('change', () => { $('fork-warn').hidden = $('fork-mode').value !== 'bypassPermissions'; });
+
+/**
+ * ↺ Restore: asks what to put back (the conversation, the code or both, as /rewind does) and in what
+ * mode; then the session ends, is put back to before your message, and resumes in a new window.
+ */
+let restoreFrom = null; // { agentId, at }
+function openRestore(agentId, at) {
+  const a = snap?.agents.find(x => x.id === agentId);
+  if (!a) return;
+  restoreFrom = { agentId, at };
+  const running = a.kind === 'interactive' && Number.isInteger(a.pid);
+  $('restore-text').textContent = `Restore ${a.name} to before this message? ${running ? `${a.name} ends now (its window closes) and resumes` : 'It resumes'} in a new terminal window at that point, with this message back in its prompt box to change and send. The messages after it stay in its transcript file.`;
+  $('restore-what').value = 'both';
+  $('restore-mode').innerHTML = $('sess-mode').innerHTML; // the ＋ Session dialog's modes
+  $('restore-mode').value = MODES.some(([m]) => m === a.mode) ? a.mode : 'default';
+  $('restore-code-note').hidden = false;
+  $('restore-dlg').showModal();
+}
+async function restoreGo(button) {
+  const from = restoreFrom, a = snap?.agents.find(x => x.id === from?.agentId);
+  if (!from) return;
+  const what = $('restore-what').value || 'both';
+  if (button) button.disabled = true;
+  const r = await post('/api/actions/restore', { agentId: from.agentId, at: from.at, what, mode: $('restore-mode').value || 'default' });
+  if (button) button.disabled = false;
+  $('restore-dlg').close();
+  restoreFrom = null;
+  const name = a?.name ?? 'the session';
+  const done = what === 'code' ? `Put back ${name}'s files` : r.files === true ? `Put back ${name}'s conversation and files` : r.files === false ? `Put back ${name}'s conversation (no file changes to put back)` : `Put back ${name}'s conversation`;
+  notice(r.ok ? `${done}: it resumes in a new ${r.terminal ?? 'terminal'} window.` : `Could not restore ${name}: ${r.error}`);
+}
+$('restore-what').addEventListener('change', () => { $('restore-code-note').hidden = $('restore-what').value === 'conversation'; });
 
 /** Switches a running session's model or effort (/model, /effort in it), after you confirm. */
 async function switchFlow(id, what, value) {

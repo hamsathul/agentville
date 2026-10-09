@@ -21,7 +21,7 @@ import { repoFiles } from './derive/repo-files.mjs';
 import { checkFiles, checkFolders, pruneUploads, saveFiles, typedPart, withAttachments } from './sources/uploads.mjs';
 import { compactSummary, memoryFiles, scratchpadOf } from './sources/memory.mjs';
 import { EFFORTS, MODELS, MODE_FLAGS, SESSION_ID, claudeCommand, closeTerminalScript, forkCommand, listSessions, projectsOf, shellQuote, terminalScript } from './sources/sessions.mjs';
-import { cutTranscript, pruneForks } from './sources/fork.mjs';
+import { appendRewind, cutTranscript, pruneForks, restorePoint } from './sources/fork.mjs';
 import { parseMcpList, parsePluginDetails, projectServersOf, readOwnSkills, readRules, removeRule } from './sources/claude-setup.mjs';
 import { applySince, buildAgent, countStates, sortAgents } from './derive/agent.mjs';
 import { findCollisions } from './derive/collisions.mjs';
@@ -936,6 +936,52 @@ export async function startCollector({ root, claudeDir = join(homedir(), '.claud
       const cut = await cutTranscript(path, body.at, forksDir, basename(path, '.jsonl')); // the copy is named as the transcript
       if (cut.error) return { ok: false, error: cut.error };
       return openTerminal(forkCommand(agent.cwd, cut.file, body.mode ?? 'default', { model: body.model ?? 'default', effort: body.effort, name: `${agent.name} (fork)`.slice(0, 80), prefillFile: cut.prefillFile }));
+    },
+    /**
+     * Restores a session to before one of your messages, as /rewind does: its conversation (the row
+     * /rewind writes, added to its transcript; nothing is removed), its code (the files Claude edited
+     * since, put back from Claude Code's own snapshots), or both. A running session is ended first;
+     * then it is resumed in a new terminal window, with your message back in its prompt box.
+     */
+    async restore(body) {
+      const what = body?.what ?? 'both';
+      if (!['both', 'conversation', 'code'].includes(what)) return { ok: false, error: 'Restore the conversation, the code, or both.' };
+      if (!validMode(body?.mode)) return { ok: false, error: 'That is not a permission mode.' };
+      const agent = snapshot?.agents.find(a => a.id === body?.agentId);
+      const path = agent && agent.kind !== 'codex' && SESSION_ID.test(agent.id) ? sessions.get(agent.id)?.path : undefined;
+      if (!path) return { ok: false, error: 'That session has no conversation to restore.' };
+      if (!agent.cwd || !isDir(agent.cwd)) return { ok: false, error: 'The folder that session ran in no longer exists.' };
+      const running = Number.isInteger(agent.pid) && sessionProcs.alive(agent.pid);
+      if (running && agent.kind !== 'interactive') return { ok: false, error: 'Only a session running in a terminal can be restored from here.' };
+      if (typeof body.at !== 'string' || !/^[\w-]{1,64}$/.test(body.at)) return { ok: false, error: 'Pick one of your messages to go back to.' };
+      const point = await restorePoint(path, body.at);
+      if (point.error) return { ok: false, error: point.error };
+      if (running) {
+        const ended = await endSession(agent);
+        if (!ended.ok) return ended;
+      }
+      const resume = prefillFile => openTerminal(claudeCommand(agent.cwd, agent.id, body.mode ?? 'default', { prefillFile }));
+      let files = null; // put back, none to put back, or not asked
+      if (what !== 'conversation') {
+        const r = await run(claudeBin, ['--resume', agent.id, '--rewind-files', body.at], { cwd: agent.cwd, timeoutMs: 60_000, env: { CLAUDE_CODE_ENABLE_SDK_FILE_CHECKPOINTING: '1' } });
+        const said = (r.stdout || r.stderr).trim().split('\n').filter(Boolean).at(-1) ?? `exit ${r.code}`;
+        files = r.code === 0;
+        if (!files && !(what === 'both' && /No file checkpoint/i.test(said))) { // nothing changed: it goes on as it was
+          const opened = await resume();
+          return { ok: false, error: `Its files could not be restored (${said}). ${opened.ok ? 'It was resumed as it was, in a new window.' : `It could not be resumed either: ${opened.error}`}` };
+        }
+      }
+      let prefillFile;
+      if (what !== 'code') {
+        appendRewind(path, { leafUuid: point.leafUuid, sessionId: agent.id });
+        if (point.prompt) {
+          mkdirSync(forksDir, { recursive: true, mode: 0o700 });
+          prefillFile = join(mkdtempSync(join(forksDir, 'r-')), 'prompt.txt');
+          writeFileSync(prefillFile, point.prompt, { mode: 0o600 });
+        }
+      }
+      const opened = await resume(prefillFile);
+      return opened.ok ? { ...opened, files } : opened;
     },
     async message(body) {
       const agent = snapshot?.agents.find(a => a.id === body?.agentId);

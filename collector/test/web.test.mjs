@@ -1392,6 +1392,42 @@ test('⑂ Fork on a message starts a new session from the conversation there, in
   assert.doesNotMatch(codex.side(), /data-fork=/, 'Codex sessions are not forked');
 });
 
+test('↺ Restore on one of your messages puts the session back to before it: the conversation, the code or both, in the mode picked', async () => {
+  const page = loadPage();
+  const feed = [
+    { at: Date.now() - 1000, kind: 'reply', text: 'Shipped.', body: 'Shipped.', uuid: 'r-2' },
+    { at: Date.now() - 2000, kind: 'prompt', text: 'Ship it', body: 'Ship it', uuid: 'p-2' },
+  ];
+  page.push(richSnapshot([richAgent({ pid: 4242, mode: 'acceptEdits', feed })]));
+  const side = page.side();
+  assert.match(side, /data-fork="p-2"[^>]*>⑂ Fork<\/button><button type="button" class="bub-reply" data-restore="p-2" data-agent="r1"[^>]*>↺ Restore<\/button>/);
+  assert.equal((side.match(/data-restore=/g) ?? []).length, 1, "only on your messages: Claude's replies are not a point to go back to");
+  await page.clickButton('restore-btn', { restore: 'p-2', agent: 'r1' });
+  assert.equal(page.el('restore-dlg').open, true);
+  assert.match(page.el('restore-text').textContent, /Restore busy-one to before this message\? busy-one ends now \(its window closes\) and resumes in a new terminal window/);
+  assert.deepEqual([page.el('restore-what').value, page.el('restore-mode').value], ['both', 'acceptEdits'], 'conversation and code, in its own mode, to start with');
+  assert.equal(page.el('restore-code-note').hidden, false, 'what restoring code can and cannot undo is said');
+  await page.clickButton('restore-go', { restoreGo: '' });
+  await page.settle();
+  assert.deepEqual(page.posts.at(-1), { path: '/api/actions/restore', body: { agentId: 'r1', at: 'p-2', what: 'both', mode: 'acceptEdits' } });
+  assert.equal(page.el('restore-dlg').open, false);
+  const codex = loadPage();
+  codex.push(richSnapshot([richAgent({ kind: 'codex', feed })]));
+  assert.doesNotMatch(codex.side(), /data-restore=/);
+});
+
+test('where a session was restored shows in its conversation, in the side panel and the dialog', async () => {
+  const page = loadPage({ replies: { '/api/agent/r1/conversation': { total: 2, from: 0, items: [
+    { at: Date.now() - 9000, kind: 'prompt', text: 'Plan it', body: 'Plan it', uuid: 'p-1' },
+    { at: Date.now() - 5000, kind: 'restored', text: 'Ship it' },
+  ] } } });
+  page.push(richSnapshot([richAgent({ feed: [{ at: Date.now() - 5000, kind: 'restored', text: 'Ship it' }, { at: Date.now() - 9000, kind: 'prompt', text: 'Plan it', body: 'Plan it' }] })]));
+  assert.match(page.side(), /class="restored-line"[^>]*>↺ Restored to before “Ship it”/);
+  await page.clickButton('read-all', { convo: 'r1' });
+  await page.settle();
+  assert.match(page.el('convo-body').innerHTML, /Plan it[\s\S]*class="restored-line"[^>]*>↺ Restored to before “Ship it”/);
+});
+
 // The sessions dialog: past sessions to resume, with search, filters and sorting.
 const H = 3_600_000;
 const pastSessions = () => {

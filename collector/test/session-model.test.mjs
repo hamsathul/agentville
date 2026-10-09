@@ -342,3 +342,23 @@ test("the turn's tokens: each reply counted once (its entries repeat the count),
   assert.equal(m.turnStartedAt, at(10));
   assert.equal(m.turnTokens(), 2856);
 });
+
+const rewound = leafUuid => JSON.stringify({ type: 'last-prompt', leafUuid, sessionId: 's', explicit: true, rewound: true });
+
+test('a restore drops the messages and steps from the restored message on, and says where it went back', () => {
+  const m = modelOf(
+    prompt(0, 'Plan it', { uuid: 'p-1' }), reply(1, 'Planned.'),
+    prompt(2, 'Ship it', { uuid: 'p-2', parentUuid: 'r-1' }), toolUse(3, 't1', 'Bash', { command: 'deploy' }), toolResult(4, 't1'), reply(5, 'Shipped.'),
+    rewound('r-1'),
+  );
+  assert.deepEqual(m.said.map(s => (s.kind === 'restored' ? `↺ ${s.text}` : s.text)), ['↺ Ship it', 'Planned.', 'Plan it']);
+  assert.ok(!m.feed.some(f => f.kind === 'tool'), 'its steps go too');
+  assert.equal(m.lastReply, 'Planned.');
+  m.applyLines([prompt(9, 'Ship it to staging', { uuid: 'p-3', parentUuid: 'r-1' }), reply(10, 'On staging.')]);
+  assert.deepEqual(m.said.map(s => s.text), ['On staging.', 'Ship it to staging', 'Ship it', 'Planned.', 'Plan it'], 'and it goes on from there');
+});
+
+test('a restore to a message it never saw changes nothing', () => {
+  const m = modelOf(prompt(0, 'Plan it', { uuid: 'p-1' }), rewound('zzz'));
+  assert.deepEqual(m.said.map(s => s.text), ['Plan it']);
+});

@@ -20,6 +20,7 @@ const isModelNamed = (id, name) => id.replace(/\[.*$/, '').replace(/-\d{8}$/, ''
 
 /** Everything the tracker knows about one session, built incrementally from its transcript. */
 export class SessionModel {
+  #follows = new WeakMap(); // your message → the row it follows, where a restore goes back to
   constructor({ feedCap = 200, saidCap = 200, callCap = 500, fileCap = 300 } = {}) {
     this.feedCap = feedCap;
     this.saidCap = saidCap;
@@ -93,7 +94,9 @@ export class SessionModel {
         this.lastPromptAt = when;
         this.finalReply = null;
         this.turnOpen = true;
-        this.#push({ at: when, kind: 'prompt', text: this.lastPrompt, body: bodyOf(ev.text), ...(ev.uuid ? { uuid: ev.uuid } : {}) });
+        const item = { at: when, kind: 'prompt', text: this.lastPrompt, body: bodyOf(ev.text), ...(ev.uuid ? { uuid: ev.uuid } : {}) };
+        if (ev.parent) this.#follows.set(item, ev.parent);
+        this.#push(item);
         break;
       case 'turn_start':
         if (!this.turnOpen) { this.wakeAt = 0; this.turnStartedAt = when; this.turnOut.clear(); } // a new turn: the wake-up came (or something else woke it)
@@ -185,6 +188,17 @@ export class SessionModel {
         this.lastTurnEndAt = when;
         this.turnOpen = false;
         break;
+      case 'rewind': { // restored to before one of your messages: it, and what came after, are no longer the conversation
+        const from = this.said.find(s => s.kind === 'prompt' && this.#follows.get(s) === ev.leafUuid);
+        if (!from) break; // that message is further back than what was read
+        const kept = item => item.at < from.at && item !== from;
+        this.said = this.said.filter(kept);
+        this.feed = this.feed.filter(kept);
+        this.said.unshift({ at: from.at, kind: 'restored', text: from.text });
+        this.lastReply = this.said.find(s => s.kind === 'reply')?.text ?? null;
+        this.finalReply = null;
+        break;
+      }
       case 'title':
         this.title = ev.text;
         break;

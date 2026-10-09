@@ -107,6 +107,11 @@ test('a permission mode goes on the command line; bypass is the dangerous flag',
   assert.throws(() => claudeCommand('/code/app', undefined, 'yolo; rm -rf ~'));
 });
 
+test('a restored session resumes with your message back in its prompt box, read from a file by the shell', () => {
+  assert.equal(claudeCommand('/code/app', ID(1), 'plan', { prefillFile: '/t/forks/f-3/prompt.txt' }),
+    `cd '/code/app' && exec claude --resume ${ID(1)} --permission-mode plan --prefill "$(cat '/t/forks/f-3/prompt.txt')"`);
+});
+
 test('a fork resumes the cut copy as a new session, named as a fork, its prompt box filled from a file by the shell', () => {
   assert.equal(forkCommand('/code/my app', '/t/forks/f-1/s.jsonl', 'plan', { model: 'sonnet', effort: 'high', name: "Bob's work (fork)" }),
     `cd '/code/my app' && exec claude --resume '/t/forks/f-1/s.jsonl' --fork-session --name 'Bob'\\''s work (fork)' --permission-mode plan --model 'sonnet' --effort high`);

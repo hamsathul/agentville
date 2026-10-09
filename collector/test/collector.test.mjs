@@ -597,6 +597,82 @@ test("a session's conversation is forked at one of its messages into a new sessi
   }
 });
 
+test('a session is restored to before one of your messages: ended, its files and conversation put back, and resumed with your message', async () => {
+  const root = mkdtempSync(join(tmpdir(), 'tracker-root-restore-'));
+  mkdirSync(join(root, 'web'));
+  writeFileSync(join(root, 'web', 'index.html'), '<html>__TRACKER_TOKEN__</html>');
+  writeFileSync(join(root, 'config.json'), JSON.stringify({ port: 0, deployRepos: {}, terminal: 'iTerm' }));
+  const work = realpathSync(mkdtempSync(join(tmpdir(), 'tracker-work-restore-')));
+  const claudeDir = mkdtempSync(join(tmpdir(), 'tracker-claude-restore-'));
+  const dir = join(claudeDir, 'projects', work.replace(/[^a-zA-Z0-9]/g, '-'));
+  mkdirSync(join(claudeDir, 'sessions'));
+  mkdirSync(dir, { recursive: true });
+  const SID = '33333333-aaaa-4bbb-8ccc-000000000001';
+  const t = Date.now() - 60_000;
+  const row = (ms, type, uuid, parentUuid, content) => JSON.stringify({ type, uuid, parentUuid, timestamp: new Date(ms).toISOString(), cwd: work, ...(type === 'user' ? { origin: { kind: 'human' } } : {}), message: { role: type, content } });
+  const lines = [row(t, 'user', 'p-1', null, 'Plan the release'), row(t + 1000, 'assistant', 'r-1', 'p-1', [{ type: 'text', text: 'Here is the plan.' }]), row(t + 2000, 'user', 'p-2', 'r-1', 'Ship it'), row(t + 3000, 'assistant', 'r-2', 'p-2', [{ type: 'text', text: 'Shipped.' }])];
+  const transcript = join(dir, `${SID}.jsonl`);
+  writeFileSync(transcript, `${lines.join('\n')}\n`);
+  writeFileSync(join(claudeDir, 'sessions', `${process.pid}.json`), JSON.stringify({ pid: process.pid, sessionId: SID, cwd: work, name: 'releaser', kind: 'interactive', status: 'idle' }));
+  // A stand-in for claude --rewind-files: what it was asked goes to a log, how it ends to a file.
+  const bin = join(root, 'claude'), log = join(root, 'claude.log'), outcome = join(root, 'outcome');
+  writeFileSync(bin, `#!/bin/sh\ncase "$*" in *--rewind-files*) ;; *) echo '[]'; exit 0 ;; esac\necho "$CLAUDE_CODE_ENABLE_SDK_FILE_CHECKPOINTING $*" >> '${log}'\nif [ -f '${outcome}' ]; then cat '${outcome}'; exit 1; fi\necho "Files rewound to state at message $4"\n`, { mode: 0o755 });
+  const launched = [], signals = [];
+  let alive = true;
+  const procs = { commandOf: async () => 'claude', ttyOf: async () => 'ttys012', kill: (pid, sig) => { signals.push([pid, sig]); alive = false; }, alive: () => alive };
+  const handle = await startCollector({ root, claudeDir, claudeBin: bin, notify: () => {}, log: () => {}, sessionProcs: procs, endWaitMs: 300,
+    launch: async args => { launched.push(args.at(-1)); return { code: 0, stdout: args.join(' ').includes('tty of') ? 'closed\n' : '', stderr: '' }; } });
+  const calls = () => (existsSync(log) ? readFileSync(log, 'utf8').trim().split('\n') : []);
+  const marker = JSON.stringify({ type: 'last-prompt', leafUuid: 'r-1', sessionId: SID, explicit: true, rewound: true });
+  try {
+    for (const body of [{ agentId: SID, at: 'r-2' }, { agentId: SID, at: 'p-1' }, { agentId: SID, at: 'p-2', what: 'all' }, { agentId: SID, at: 'p-2', mode: 'yolo' }, { agentId: 'nobody', at: 'p-2' }, null]) {
+      assert.equal((await handle.actions.restore(body)).ok, false, JSON.stringify(body));
+    }
+    assert.deepEqual([signals, calls(), launched], [[], [], []], 'refused before anything was done');
+    assert.deepEqual(await handle.actions.restore({ agentId: SID, at: 'p-2', mode: 'plan' }), { ok: true, terminal: 'iTerm', files: true });
+    assert.deepEqual(signals, [[process.pid, 'SIGTERM']], 'the session ended first');
+    assert.deepEqual(calls(), [`1 --resume ${SID} --rewind-files p-2`], 'its files put back from Claude Code\'s own snapshots');
+    assert.equal(readFileSync(transcript, 'utf8'), `${lines.join('\n')}\n${marker}\n`, "the conversation: /rewind's row added, nothing removed");
+    const command = launched.at(-1);
+    const prefill = command.match(/--prefill "\$\(cat '([^']+)'\)"$/)[1];
+    assert.equal(command, `cd '${work}' && exec claude --resume ${SID} --permission-mode plan --prefill "$(cat '${prefill}')"`, 'resumed as itself');
+    assert.equal(readFileSync(prefill, 'utf8'), 'Ship it', 'with your message back in the prompt box');
+    // Conversation only: no files touched. Code only: no row added, nothing in the prompt box.
+    alive = true;
+    writeFileSync(transcript, `${lines.join('\n')}\n`);
+    await handle.actions.restore({ agentId: SID, at: 'p-2', what: 'conversation' });
+    assert.equal(calls().length, 1);
+    assert.ok(readFileSync(transcript, 'utf8').endsWith(`${marker}\n`));
+    alive = true;
+    writeFileSync(transcript, `${lines.join('\n')}\n`);
+    assert.deepEqual(await handle.actions.restore({ agentId: SID, at: 'p-2', what: 'code' }), { ok: true, terminal: 'iTerm', files: true });
+    assert.equal(calls().length, 2);
+    assert.equal(readFileSync(transcript, 'utf8'), `${lines.join('\n')}\n`);
+    assert.equal(launched.at(-1), `cd '${work}' && exec claude --resume ${SID}`);
+    // No snapshots for that message: with both, the conversation is still restored; code alone fails, and it is resumed as it was.
+    writeFileSync(outcome, 'No file checkpoint found for this message.');
+    alive = true;
+    assert.deepEqual(await handle.actions.restore({ agentId: SID, at: 'p-2' }), { ok: true, terminal: 'iTerm', files: false });
+    assert.ok(readFileSync(transcript, 'utf8').endsWith(`${marker}\n`));
+    alive = true;
+    writeFileSync(transcript, `${lines.join('\n')}\n`);
+    const failed = await handle.actions.restore({ agentId: SID, at: 'p-2', what: 'code' });
+    assert.equal(failed.ok, false);
+    assert.match(failed.error, /files could not be restored \(No file checkpoint found for this message\.\)\. It was resumed as it was/);
+    assert.equal(launched.at(-1), `cd '${work}' && exec claude --resume ${SID}`);
+    // A session that won't end is left as it is.
+    unlinkSync(outcome);
+    alive = true;
+    procs.kill = (pid, sig) => signals.push([pid, sig]);
+    const before = [calls().length, launched.length];
+    assert.match((await handle.actions.restore({ agentId: SID, at: 'p-2' })).error, /didn't stop/);
+    assert.deepEqual([calls().length, launched.length], before);
+    assert.equal(readFileSync(transcript, 'utf8'), `${lines.join('\n')}\n`);
+  } finally {
+    await handle.stop();
+  }
+});
+
 test('a session starts or resumes in a terminal only in a listed folder, or from a past session that is not running', async () => {
   const root = mkdtempSync(join(tmpdir(), 'tracker-root-'));
   mkdirSync(join(root, 'web'));

@@ -34,6 +34,7 @@ It listens on `127.0.0.1` only and reads what Claude Code already writes to disk
   - [Side questions (/btw)](#side-questions-btw)
   - [Model, effort and permission mode](#model-effort-and-permission-mode)
   - [Starting, resuming, forking, ending and restarting sessions](#starting-resuming-forking-ending-and-restarting-sessions)
+  - [Going back to an earlier point (↺ Restore)](#going-back-to-an-earlier-point--restore)
   - [⚙ Claude Code: plugins, MCP servers and permission rules](#-claude-code-plugins-mcp-servers-and-permission-rules)
   - [Files, documents and quoting](#files-documents-and-quoting)
   - [The farm view](#the-farm-view)
@@ -76,6 +77,8 @@ It listens on `127.0.0.1` only and reads what Claude Code already writes to disk
   and waits for you.
 - Fork a conversation from any message into a new session: from one of Claude's replies, or from
   just before one of your messages, which then waits in the new session's prompt box for you to change.
+- Restore a session to before one of your messages, as `/rewind` does: its conversation, its code
+  (the files Claude edited since), or both.
 - Start a new session in any folder of yours (type it, browse to it, or create it) or in one you've
   worked in, or find a past one (search, filter by folder, model, branch or running, sort by
   activity, start, name, folder or length) and resume it, in the permission mode, model and effort
@@ -367,6 +370,28 @@ before you updated, run `/reload-plugins` in it.
   resume the conversation later.
 - A stale background session can be **removed** (`claude rm`).
 
+### Going back to an earlier point (↺ Restore)
+
+**↺ Restore** on one of your messages (beside **⑂ Fork**, when you point at it) puts the same
+session back to just before that message, as `/rewind` (Esc Esc) does in its terminal. Fork starts a
+new session and leaves this one alone; Restore takes this one back.
+
+- You pick what to put back: **Conversation and code** (the default), **Conversation only** or
+  **Code only**, and the permission mode it resumes in (its own to start with).
+- A running session ends first (its window closes, as with End session). Then it resumes, as
+  itself, in a new terminal window at that point, with your message back in its prompt box to change
+  and send.
+- The conversation: the messages from yours on are no longer part of it. They aren't deleted: they
+  stay in its transcript file, as after `/rewind`. The dashboard shows **↺ Restored to before
+  “…”** where it went back.
+- The code: the files Claude changed with its edit tools since that message are put back as they
+  were, from the snapshots Claude Code keeps before each edit.
+  - Changes made by shell commands (`git`, `rm`, builds) or by you aren't undone.
+  - Later changes to those files are lost, another session's included: on a checkout shared with
+    another session, think first, or restore the conversation only.
+  - If there were no edits to put back, the conversation is still restored, and the notice says so.
+- Restoring to before your very first message isn't possible: start a new session instead.
+
 ### ⚙ Claude Code: plugins, MCP servers and permission rules
 
 The **⚙ Claude Code** button in the top bar opens your Claude Code setup in three tabs.
@@ -580,7 +605,9 @@ line and toasts, and writes a small check-in file every 2 seconds. When the dash
 something (an answer, a message, a model switch, a side question), the collector leaves a file
 for that session's mod. The mod picks it up and does it inside the session. A fork needs no mod:
 Claude Code resumes a copy of the transcript cut at the message as a new session (`--resume <copy>
---fork-session`), and a message of yours goes in its prompt box (`--prefill`). A stop cancels the
+--fork-session`), and a message of yours goes in its prompt box (`--prefill`). Nor does a restore:
+once the session has ended, Claude Code puts its files back (`--rewind-files`), the collector adds
+the line `/rewind` writes to the end of its transcript, and the session is resumed. A stop cancels the
 running turn through Claude Code's plugin API, and the mod then writes the same
 `[Request interrupted by user]` line Esc leaves in the conversation.
 
@@ -616,6 +643,10 @@ canvas, with its text drawn as HTML on top so it stays crisp.
   them. A Word document's page shows with no scripts at all.
 - Files you attach are kept under `state/uploads/` for 7 days. A folder you attach is sent as its
   path only.
+- **↺ Restore** is the one thing that writes to Claude Code's own files. Once the session has ended,
+  it adds one line to the end of its transcript (the line `/rewind` writes; nothing is removed), and
+  with code, Claude Code itself puts files back from its snapshots. Your message for the prompt box
+  goes under `state/forks/`, as a fork's does.
 - **⑂ Fork** only reads the session's transcript. The copy cut at your message, and the message for
   the new prompt box, are written under `state/forks/`, readable only by you, and removed after an
   hour. Claude Code makes the new session from the copy.
@@ -635,6 +666,7 @@ canvas, with its text drawn as HTML on top so it stays crisp.
 | No pull requests or deploy weather | `gh auth status`. Pull requests need a GitHub `origin`; Actions runs need the repo in `deployRepos` |
 | ＋ Session or End session does nothing | Allow the tracker to control Terminal or iTerm: System Settings → Privacy & Security → Automation |
 | **Browse…** or **📁 Folder** opens no window | Allow the tracker to control System Events: System Settings → Privacy & Security → Automation. A window may also be open behind others: pick or cancel it there |
+| ↺ Restore says its files could not be restored | Claude Code's file snapshots may be off (`/config` → file checkpointing, or `CLAUDE_CODE_DISABLE_FILE_CHECKPOINTING`). The session was resumed as it was; restore the conversation only |
 | The bell is silent | Click the page once (browsers block sound until you do), and allow notifications |
 
 ## Known limits
@@ -660,7 +692,12 @@ canvas, with its text drawn as HTML on top so it stays crisp.
 - claude.ai cloud sessions and Remote Control sessions on other machines aren't visible locally.
 - **⑂ Fork** puts your message in the new prompt box with Claude Code's `--prefill` option, which its
   help doesn't list. If a Claude Code update drops it, the fork still opens, with an empty box.
-- Codex sessions can't be forked from the dashboard.
+- Codex sessions can't be forked or restored from the dashboard.
+- **↺ Restore** uses Claude Code's `--rewind-files` and `--prefill` options, which its help doesn't
+  list, and writes the line `/rewind` writes (as of Claude Code 2.1.295). A Claude Code update could
+  change them.
+- In a very long session, restoring to a message from far back restores the session, but the
+  dashboard's conversation may still show the later messages.
 
 ## Development
 

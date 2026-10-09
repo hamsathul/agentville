@@ -107,7 +107,7 @@ export function parseEntry(obj) {
       // The person typed it, or sent it from the dashboard (the mod submits it as the user's own words).
       const isHuman = !obj.origin || obj.origin.kind === 'human' || obj.origin.asUser === true;
       const clean = cleanPrompt(text);
-      if (isHuman && clean) events.push({ kind: 'prompt', text: clean, ...rowId(obj) });
+      if (isHuman && clean) events.push({ kind: 'prompt', text: clean, ...rowId(obj), ...(typeof obj.parentUuid === 'string' ? { parent: obj.parentUuid } : {}) });
       else if (!isHuman) events.push({ kind: 'turn_start' });
     }
   } else if (obj.type === 'assistant' && Array.isArray(content)) {
@@ -133,6 +133,8 @@ export function parseEntry(obj) {
     events.push({ kind: 'compact', ...(typeof meta.trigger === 'string' ? { trigger: meta.trigger } : {}), ...(Number.isFinite(meta.preTokens) ? { preTokens: meta.preTokens } : {}) });
   } else if (obj.type === 'ai-title' && typeof obj.aiTitle === 'string') {
     events.push({ kind: 'title', text: obj.aiTitle });
+  } else if (obj.type === 'last-prompt' && obj.rewound === true && typeof obj.leafUuid === 'string') {
+    events.push({ kind: 'rewind', leafUuid: obj.leafUuid }); // restored to before a message: the conversation goes on from this row
   }
   return { at, events };
 }

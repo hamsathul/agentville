@@ -565,6 +565,7 @@ html[data-view="farm"] .banner.show { position: fixed; top: 10px; left: 50%; tra
 @keyframes workline-spin { to { transform: rotate(360deg); } }
 @media (prefers-reduced-motion: reduce) { .workline .spin::before { animation: none; } }
 .workline { flex-wrap: wrap; }
+.restored-line { margin: 8px 0; padding: 3px 8px; border-top: 1px dashed var(--line); color: var(--muted); font-size: 11.5px; text-align: center; }
 .workline .stop-turn { margin-left: auto; align-self: center; flex: none; }
 .workline .stop-turn:not(:disabled) { color: var(--crit); border-color: color-mix(in srgb, var(--crit) 45%, transparent); }
 .asides-box { margin-top: 10px; }
@@ -729,6 +730,13 @@ a.pile { text-decoration: none; color: inherit; }
   <div class="sess-modes"><label for="fork-model">Model</label><select id="fork-model"></select><label for="fork-effort">Effort</label><select id="fork-effort"></select></div>
   <p id="fork-warn" class="msg-bad" hidden>⚠ every tool runs without asking (--dangerously-skip-permissions)</p>
   <p class="confirm-actions"><button type="button" class="act" data-fork-cancel>Cancel</button><button type="button" class="act primary" id="fork-go" data-fork-go>⑂ Fork</button></p>
+</dialog>
+<dialog id="restore-dlg" class="confirm-dlg" aria-labelledby="restore-text">
+  <p id="restore-text"></p>
+  <div class="sess-modes"><label for="restore-what">Restore</label><select id="restore-what"><option value="both">Conversation and code</option><option value="conversation">Conversation only</option><option value="code">Code only</option></select>
+    <label for="restore-mode">Permission mode</label><select id="restore-mode"></select></div>
+  <p id="restore-code-note" class="faint">Code: the files Claude changed with its edit tools since this message are put back as they were then. Changes made by shell commands (git, rm, builds) or by you aren't undone, and later changes to those files are lost, another session's included.</p>
+  <p class="confirm-actions"><button type="button" class="act" data-restore-cancel>Cancel</button><button type="button" class="act primary" id="restore-go" data-restore-go>↺ Restore</button></p>
 </dialog>
 <dialog id="sessions" class="sess-dlg" aria-labelledby="sess-title">
   <div class="sess-head"><h3 id="sess-title">Start or resume a session</h3><span class="grow"></span><button type="button" class="act mini" data-sess-close aria-label="Close">×</button></div>

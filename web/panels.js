@@ -279,15 +279,21 @@ function forkBtn(a, m) {
   return `<button type="button" class="bub-reply" data-fork="${esc(m.uuid)}" data-fork-kind="${m.kind === 'prompt' ? 'prompt' : 'reply'}" data-agent="${esc(a.id)}" title="${tip}">⑂ Fork</button>`;
 }
 
+/** ↺ Restore on one of your messages: the session goes back to before it (as /rewind does). */
+const restoreBtn = (a, m) => (a.kind === 'codex' || !m.uuid || m.kind !== 'prompt' ? ''
+  : `<button type="button" class="bub-reply" data-restore="${esc(m.uuid)}" data-agent="${esc(a.id)}" title="Put this session back to before this message, as /rewind does: its conversation, its code or both">↺ Restore</button>`);
+/** Where the session was restored to (the messages after it are no longer its conversation). */
+const restoredHtml = m => `<div class="restored-line" title="The messages from here on were dropped by a restore; they stay in the transcript file">↺ Restored to before “${esc(m.text)}”</div>`;
+
 function conversationHtml(a) {
   const all = fullFeeds.has(a.id);
-  const said = feedOf(a).filter(f => f.kind === 'prompt' || f.kind === 'reply' || f.kind === 'peer').slice(0, all ? Infinity : 10); // newest first, under the box
+  const said = feedOf(a).filter(f => f.kind === 'prompt' || f.kind === 'reply' || f.kind === 'peer' || f.kind === 'restored').slice(0, all ? Infinity : 10); // newest first, under the box
   if (!said.length) return '';
   // Replies are markdown (rendered by the escape-everything renderer); your prompts stay as typed.
   // Reply on an agent message quotes it into the message box.
   const peer = f => `<div class="bub peer ${f.dir === 'in' ? 'in' : 'out'}"><div class="peer-head">✉ ${f.dir === 'in' ? `from ${esc(f.other)}` : f.helper ? 'to a helper agent' : `to ${esc(f.other)}`}${f.summary ? ` · ${esc(f.summary)}` : ''}</div><div class="bub-md">${renderMarkdown(f.body || f.text)}</div>${moreHtml(a, f)}<time>${hhmm(f.at)}</time></div>`;
-  const bubble = f => (f.kind === 'peer' ? peer(f) : f.kind === 'prompt'
-    ? `<div class="bub you">${esc(f.body || f.text)}${moreHtml(a, f)}<time>${hhmm(f.at)}${forkBtn(a, f)}</time></div>`
+  const bubble = f => (f.kind === 'peer' ? peer(f) : f.kind === 'restored' ? restoredHtml(f) : f.kind === 'prompt'
+    ? `<div class="bub you">${esc(f.body || f.text)}${moreHtml(a, f)}<time>${hhmm(f.at)}${forkBtn(a, f)}${restoreBtn(a, f)}</time></div>`
     : `<div class="bub agent"><div class="bub-md">${renderMarkdown(f.body || f.text)}</div>${namedSlotHtml(a.id, f.body || f.text)}${moreHtml(a, f)}<time>${hhmm(f.at)}<button type="button" class="bub-reply" data-quote="${esc(f.body || f.text)}" data-agent="${esc(a.id)}" title="Quote this in your reply">↩ Reply</button>${forkBtn(a, f)}</time></div>`);
   // The newest message is framed as the latest, with your message when it is right below it: a quick
   // exchange frames the pair, a long working turn only its newest note.

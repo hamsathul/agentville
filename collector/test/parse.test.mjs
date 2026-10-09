@@ -16,6 +16,12 @@ test("a prompt and a reply carry their transcript row's id, so a fork can be cut
   assert.deepEqual(parseEntry({ type: 'assistant', uuid: 'a-1', message: { content: [{ type: 'text', text: 'Shipped.' }] } }).events, [{ kind: 'reply', text: 'Shipped.', uuid: 'a-1' }]);
 });
 
+test("a restore point, Claude Code's rewind row, is told apart from the ordinary last-prompt rows; a prompt says what it follows", () => {
+  assert.deepEqual(kinds({ type: 'last-prompt', leafUuid: 'a-1', sessionId: 's', lastPrompt: 'x' }), []);
+  assert.deepEqual(parseEntry({ type: 'last-prompt', leafUuid: 'a-1', sessionId: 's', explicit: true, rewound: true }).events, [{ kind: 'rewind', leafUuid: 'a-1' }]);
+  assert.deepEqual(parseEntry({ type: 'user', uuid: 'u-2', parentUuid: 'a-1', message: { content: 'again' } }).events, [{ kind: 'prompt', text: 'again', uuid: 'u-2', parent: 'a-1' }]);
+});
+
 test('meta user entries (skill bodies, reminders) are not prompts', () => {
   assert.deepEqual(kinds({ type: 'user', isMeta: true, message: { content: [{ type: 'text', text: 'Base directory…' }] } }), []);
 });
