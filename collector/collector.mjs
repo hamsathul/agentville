@@ -1140,9 +1140,10 @@ export async function startCollector({ root, claudeDir = join(homedir(), '.claud
   await pollAgents();
   await schedule(true);
 
+  const worldsDir = cfg.worldsDir ? String(cfg.worldsDir).replace(/^~(?=\/|$)/, home) : join(home, '.agentville', 'worlds');
   server = createTrackerServer({
     port: portOverride ?? cfg.port, token, webFile: join(root, 'web', 'index.html'),
-    worlds: makeWorlds({ builtinDir: join(root, 'web', 'worlds') }),
+    worlds: makeWorlds({ builtinDir: join(root, 'web', 'worlds'), userDir: worldsDir }),
     getSnapshot: () => snapshot,
     getFeed: (id, limit) => modelFor(id)?.history(limit) ?? null,
     getConversation, getPrompts, getSubagent, claudePlugins, claudeMcp, claudeRules, fileTicket, rawFile, officeView, shellOutput, namedFiles,

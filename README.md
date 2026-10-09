@@ -38,6 +38,7 @@ It listens on `127.0.0.1` only and reads what Claude Code already writes to disk
   - [⚙ Claude Code: plugins, MCP servers and permission rules](#-claude-code-plugins-mcp-servers-and-permission-rules)
   - [Files, documents and quoting](#files-documents-and-quoting)
   - [The farm view](#the-farm-view)
+  - [Worlds](#worlds)
   - [Notifications and the bell](#notifications-and-the-bell)
   - [Inside Claude Code: the mod](#inside-claude-code-the-mod)
 - [Configuration](#configuration)
@@ -536,6 +537,16 @@ The light follows your clock: cloud shadows by day, and lit windows, lanterns an
 night. The farm pauses when its tab is hidden, or while the list shows (it is kept as it was, diary
 and all, for when you come back), and follows the system's reduce-motion setting.
 
+### Worlds
+
+A world is a way to draw what the dashboard knows; the farm is the built-in one. A world is a folder
+holding `world.json` and `world.js`. Yours go in `~/.agentville/worlds/<name>/` (the name is
+lowercase letters, digits and dashes, up to 40), or in the folder `worldsDir` names. Built-in worlds
+can't be replaced: a world of yours named like one is just another world, listed after it. A world
+with a problem (a `world.json` that can't be read, one made for a newer Agentville, a missing
+`world.js`) is listed with what is wrong. Files are served only from inside the world's own folder,
+so a link out of it is never followed. How to write one is in [docs/worlds.md](docs/worlds.md).
+
 ### Notifications and the bell
 
 - **macOS notifications** come from the collector: an agent needs you, finished its turn,
@@ -575,6 +586,7 @@ The mod also does the dashboard's work inside the session:
 | `notify` | Each notification on or off: `waiting`, `collision`, `yourTurn`, `memory`, `cpu` |
 | `modToasts` | Toasts inside Claude Code sessions (on) |
 | `deployRepos` | Checkout path → `owner/repo` whose latest GitHub Actions run is shown, e.g. `{ "/Users/you/code/api": "you/api" }` |
+| `worldsDir` | Your own worlds, a folder each; `null` means `~/.agentville/worlds` (a leading `~` is your home) |
 | `terminal` | Where sessions open: `"Terminal"` or `"iTerm"` |
 
 ## Commands
@@ -637,6 +649,9 @@ and can do is in [docs/worlds.md](docs/worlds.md).
   The page takes each of those at most once a quarter second and four reads at a time, and keeps at
   most 64 settings (64 KB) for a world, so a misbehaving world can't flood the dashboard or fill your
   browser's storage.
+- Your worlds folder is read only by the collector, served only to the dashboard's own frames
+  (never outside a world's folder), and never fetched from anywhere. The list of worlds, which
+  shows your folder's names and path, needs the token.
 - File contents, folder listings, past sessions, whole conversations (and your messages in them,
   for ↑) and field close-ups are served only with a per-install token that the page carries. Every action (answer, message,
   start, end, switch…) also needs a same-origin request.

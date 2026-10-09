@@ -17,6 +17,7 @@ export const DEFAULTS = Object.freeze({
   notify: Object.freeze({ waiting: true, collision: true, yourTurn: true, memory: true, cpu: true }),
   modToasts: true,
   deployRepos: Object.freeze({}),
+  worldsDir: null, // your own worlds, a folder each (null: ~/.agentville/worlds)
   terminal: 'Terminal', // where New session / Resume open: 'Terminal' or 'iTerm'
 });
 

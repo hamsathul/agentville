@@ -28,11 +28,15 @@ async function start() {
   writeFileSync(join(builtinDir, 'sdk', 'bridge.js'), '// bridge');
   writeFileSync(join(builtinDir, 'farm', 'world.json'), JSON.stringify({ name: 'Farm', icon: '🌾', api: 1 }));
   writeFileSync(join(builtinDir, 'farm', 'world.js'), '// farm');
+  const userDir = mkdtempSync(join(tmpdir(), 'my-worlds-'));
+  mkdirSync(join(userDir, 'space'));
+  writeFileSync(join(userDir, 'space', 'world.json'), JSON.stringify({ name: 'Space', api: 1 }));
+  writeFileSync(join(userDir, 'space', 'world.js'), '// space');
   const srv = createTrackerServer({
     port: 0,
     token: 'tok',
     webFile,
-    worlds: makeWorlds({ builtinDir }),
+    worlds: makeWorlds({ builtinDir, userDir }),
     getSnapshot: () => ({ generatedAt: 1, agents: [], collisions: [] }),
     getFeed: id => (id === 's1' ? [{ at: 1, kind: 'prompt', text: 'hi' }] : null),
     getConversation: async (id, from) => (id === 's1' ? { total: 2, from, items: [{ at: 1, kind: 'prompt', body: 'hi' }, { at: 2, kind: 'reply', body: 'hello' }].slice(from) } : null),
@@ -347,6 +351,17 @@ test("a file's link and a document's reading need the token; its bytes need only
   } finally {
     await srv.close();
   }
+});
+
+test('the list of worlds needs the token, and says where your folder is', async () => {
+  const { srv, port } = await start();
+  assert.equal((await request(port, { path: '/api/worlds' })).status, 403);
+  const r = JSON.parse((await request(port, { path: '/api/worlds', headers: { 'x-tracker-token': 'tok' } })).body);
+  assert.deepEqual(r.worlds.map(w => w.key), ['farm', 'u/space']);
+  assert.match(r.folder, /my-worlds-/);
+  assert.equal((await request(port, { path: '/world/u/space/' })).status, 200);
+  assert.equal((await request(port, { path: '/world/u/space/world.js' })).body, '// space');
+  await srv.close();
 });
 
 test('folders to start in are listed only with the token, and made only from the dashboard', async () => {

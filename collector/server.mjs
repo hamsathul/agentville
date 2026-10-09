@@ -189,6 +189,10 @@ export function createTrackerServer({ port, token, webFile, getSnapshot, getFeed
           if (req.headers['x-tracker-token'] !== token) return sendJson(res, 403, { error: 'forbidden' });
           return sendJson(res, 200, await listDirs(url.searchParams.get('path') ?? '~/'));
         }
+        if (path === '/api/worlds') { // the worlds to choose from: token only (your folder's names are yours)
+          if (req.headers['x-tracker-token'] !== token) return sendJson(res, 403, { error: 'forbidden' });
+          return sendJson(res, 200, { worlds: worlds?.list() ?? [], folder: worlds?.userDir ?? null });
+        }
         if (path === '/api/repo/touched') {
           if (req.headers['x-tracker-token'] !== token) return sendJson(res, 403, { error: 'forbidden' });
           const touched = await repoTouched(url.searchParams.get('path') ?? '');

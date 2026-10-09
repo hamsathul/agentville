@@ -19,8 +19,24 @@ world's `world.js`. A world doesn't choose these: the frame always loads all of 
 into `<div id="farm">`, which fills the frame.
 
 Keys: a built-in world is named by its folder in `web/worlds/` (the farm is `farm`). Names match
-`^[a-z0-9][a-z0-9-]{0,39}$`, and `sdk`, `starter`, `test` and `u` are reserved. Your own worlds will
-be `u/<name>`; that comes in a later change, and only the farm runs today.
+`^[a-z0-9][a-z0-9-]{0,39}$`, and `sdk`, `starter`, `test` and `u` are reserved. Your own worlds are
+`u/<name>`; see below.
+
+## Where worlds live
+
+- **Built in:** `web/worlds/<name>/` in the install. The farm is first in the list, the other
+  built-in worlds follow A to Z. They can't be replaced.
+- **Yours:** `~/.agentville/worlds/<name>/`, or the folder `worldsDir` names in `config.json` (a
+  leading `~` is your home). The folder name matches the rule above (lowercase letters, digits and
+  dashes, up to 40, starting with a letter or digit). Yours are listed after the built-in ones, A to
+  Z, and are served under `/world/u/<name>/`. A world of yours named `farm` is `u/farm`: it never
+  replaces the farm.
+
+The collector lists every world at `GET /api/worlds` (token only), with the folder it reads yours
+from. Files of a world are served from inside its own folder only: `..`, hidden names and links
+pointing out of the folder are refused with a plain 404, for yours as for the built-in ones. A
+folder that has no name the rule allows is listed with an error and can't run. A world with any
+error has no frame.
 
 ## world.json
 
@@ -45,7 +61,34 @@ The farm's:
 | `nouns` | What the world calls things, so the page's words can match: an agent and agents, a repo and repos, where a new session starts (`start`), and the title of its diary (`diary`) |
 
 The page reads `world.json` through the same checks as any other file of the world: a link pointing
-out of the folder is never followed.
+out of the folder is never followed (it counts as missing).
+
+The rules, as checked (the first that fails is the error the list shows):
+
+- `name`: a string of 1 to 40 characters, not blank.
+- `icon` (optional): a string of at most 8 characters, one emoji. Without one, 🧩.
+- `description` (optional): a string of at most 140 characters.
+- `api`: a whole number, 1 or more, and no more than the version this Agentville has (1).
+- `nouns` (optional): an object whose values are strings of at most 30 characters.
+
+What a world can show in the list instead of running:
+
+| Error | Meaning |
+|---|---|
+| `world.json is missing.` | No `world.json` in the folder, or it is a link out of it |
+| `world.json can't be read: …` | It isn't valid JSON |
+| `world.json is not a JSON object.` | It is JSON, but not `{ … }` |
+| `world.json needs a "name", up to 40 characters.` | `name` is missing, blank, not a string or too long |
+| `world.json: "icon" is one emoji.` | `icon` isn't a string of up to 8 characters |
+| `world.json: "description" is up to 140 characters.` | `description` isn't a string of up to 140 characters |
+| `world.json needs "api": 1.` | `api` is missing or not a whole number of 1 or more |
+| `This world needs a newer Agentville (…)` | `api` is higher than this Agentville knows |
+| `world.json: "nouns" are short words.` | `nouns` isn't an object of strings up to 30 characters |
+| `world.js is missing (or is a link out of the folder).` | No `world.js`, or it points outside the folder |
+| `A world's folder name is lowercase letters, digits and dashes (up to 40).` | The folder's name breaks the rule |
+
+A world with a problem still has its name, icon and description shown if they are fine; it just
+doesn't run.
 
 ## The scene (version 1)
 

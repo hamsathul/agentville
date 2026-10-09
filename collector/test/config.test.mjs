@@ -46,3 +46,7 @@ test('the shipped config.example.json is valid, complete and names no private re
 test('the dashboard gets 15 seconds to answer a permission prompt by default', () => {
   assert.equal(DEFAULTS.permissionDashboardSec, 15);
 });
+
+test('your worlds folder is ~/.agentville/worlds unless you name one (worldsDir)', () => {
+  assert.equal(DEFAULTS.worldsDir, null);
+});
