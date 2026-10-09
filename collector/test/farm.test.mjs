@@ -509,6 +509,8 @@ test('every class the farm writes is styled by the stylesheets its frame loads',
 });
 
 test('the farm reaches the page only through what it is handed: no storage, network or token of its own', () => {
-  const engine = FRAME_CODE;
-  for (const banned of ['localStorage', 'sessionStorage', 'fetch(', 'XMLHttpRequest', 'document.cookie', 'x-tracker-token', 'opts.token', 'TOKEN', 'opts.diary', 'window.TrackerFarm']) assert.ok(!engine.includes(banned), banned);
+  // every script its frame runs: the farm, the bridge, the brand mark
+  for (const [file, code] of [['world.js', FRAME_CODE], ['bridge.js', web('worlds/sdk/bridge.js')], ['brand.js', web('brand.js')]]) {
+    for (const banned of ['localStorage', 'sessionStorage', 'fetch(', 'XMLHttpRequest', 'document.cookie', 'x-tracker-token', 'opts.token', 'TOKEN', 'opts.diary', 'window.TrackerFarm']) assert.ok(!code.includes(banned), `${file}: ${banned}`);
+  }
 });

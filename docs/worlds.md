@@ -151,7 +151,7 @@ from the page only, and the page from its current frame only.
 
 | Message | What it is |
 |---|---|
-| `start { world, prefs, settings }` | Once, after the frame says `loaded`: the world's key, its saved settings (`{ name: value }`, strings) and the page's settings |
+| `start { world, prefs, settings }` | Each time the frame loads, after it says `loaded`: the world's key, its saved settings (`{ name: value }`, strings) and the page's settings |
 | `settings { settings }` | The page's settings, when they change (they are looked at every second): `{ still, theme, nav: { theme, side, live }, bell }`. `still`: stand still (reduced motion, or the world's own Motion switch). `theme`: `auto`, `light` or `dark`; the bridge sets it on the frame, so `base.css`'s colours follow the dashboard. `nav`: the state of the top bar's buttons (`live`: connected to the collector). `bell`: the page's bell is on |
 | `scene { scene }` | Every snapshot, as the scene above. Before the world is ready only the newest is kept |
 | `select { id }` | The agent shown in the page's sidebar, or `null` |
@@ -161,20 +161,29 @@ from the page only, and the page from its current frame only.
 
 | Message | What the page does |
 |---|---|
-| `loaded` | The world has registered: the page sends `start`, then the newest scene and the selection |
+| `loaded` | The world has registered: the page sends `start`, then the newest scene and the selection. Once each time the frame loads: more are ignored. Replies to the frame's last load are not posted to the new one, and the paths they named are forgotten |
 | `ready` | Nothing: the world has started |
-| `error { message, where }` | Writes it to the page's console (300 and 120 characters at most) |
+| `error { message, where }` | Writes it to the page's console (300 and 120 characters at most), each once (50 at most) |
 | `pick { agentId, from? }` | Opens that agent in the sidebar. The id must be one of the scene's; `from: 'say'` when it was picked by its speech bubble |
-| `openDoc { agentId, path }` | Opens the file in a reader over the world. Only a path in that agent's folder, in a repo of the scene, or one a reply to `agentFiles` named; never one with `..`; 4096 characters at most |
+| `openDoc { agentId, path }` | Opens the file in a reader over the world. Only a path in that agent's folder, in a repo of the scene, or one a reply to `agentFiles` named for that same agent; never one with `..`; 4096 characters at most |
 | `openLink { url }` | Opens it in a new tab. Only `https://github.com/` links, 2048 characters at most |
 | `startSession` | Opens Start or resume a session |
 | `showRepos` | Shows the repos in the list view |
 | `nav { what }` | Presses one of the top bar's buttons: `list`, `session`, `setup`, `side` or `theme` (`worlds` is accepted and does nothing yet) |
 | `bell { on }` | Turns the page's bell on or off (`on` must be `true` or `false`) |
 | `motion { still }` | The world stood still, or moves again (`true` or `false`); the page keeps it for `settings` |
-| `diary { entries }` | Shows the world's diary in the sidebar: at most 20 entries `{ at, state, who, text }`, in the order given (the farm puts the newest first), with `state` one of the agents' states and `at` a time. `who` is cut to 80 characters and `text` to 300, and both are shown as text, never as HTML. One bad entry drops the whole message |
-| `store { key, value }` | Saves one of the world's settings in the page's storage, as `tracker-world:<world>:<key>`. Names match `^[a-z][a-z0-9-]{0,31}$`; values are strings of 16384 characters at most |
-| `request { id, kind, agentId? \| repo? }` | Reads one of two things with the token and answers with `reply`: `agentFiles` (an agent's files and memory; `agentId` must be in the scene) or `repoTouched` (the files agents touched in a repo; `repo` must be a repo's `key` in the scene). At most four are answered at a time: a fifth is refused at once. One that can't be done is refused, and still answered |
+| `diary { entries }` | Shows the world's diary in the sidebar: at most 20 entries `{ at, state, who, text }`, in the order given (the farm puts the newest first), with `state` one of the agents' states and `at` a time. `who` is cut to 80 characters and `text` to 300, and both are shown as text, never as HTML. One bad entry drops the whole message. Drawn at most every quarter second: the newest entries are drawn when their turn comes |
+| `store { key, value }` | Saves one of the world's settings in the page's storage, as `tracker-world:<world>:<key>`. Names match `^[a-z][a-z0-9-]{0,31}$`; values are strings of 16384 characters at most. A world keeps at most 64 settings, 64 KB in all (names and values, what it saved before included): a `store` past either is refused (the page says so once, in its console). `migrated` is the page's own |
+| `request { id, kind, agentId? \| repo? }` | Reads one of two things with the token and answers with `reply`: `agentFiles` (an agent's files and memory; `agentId` must be in the scene) or `repoTouched` (the files agents touched in a repo; `repo` must be a repo's `key` in the scene). At most four are answered at a time: a fifth is refused at once (the bridge keeps a world under that: see below). One that can't be done is refused, and still answered |
+
+The page takes each action (`pick`, `openDoc`, `openLink`, `startSession`, `showRepos`, `nav`,
+`bell`, `motion`) at most once a quarter second: the first at once, the rest dropped, so a world can't
+open a flood of dialogs, files or chimes. `bell` and `motion` are settings, so the newest of those is
+taken when its turn comes instead, and the page and the world agree.
+
+The frame stays loaded while the dashboard shows its list: it is hidden (Chrome draws nothing in it
+meanwhile), and a world keeps all it remembers. It gets no scenes while hidden, and the newest one when
+it shows again.
 
 The farm's settings from before worlds (`tracker-farm-zoom`, `tracker-farm-beds`, …) are copied
 once into `tracker-world:farm:…`, the first time the farm starts, and never again.
@@ -203,7 +212,7 @@ where a layer first lay to the fraction of a pixel: this keeps the farm looking 
 |---|---|
 | `still` | Stand still: reduced motion, or the Motion switch |
 | `navState()` | The top bar's state: `{ theme, side, live }` |
-| `request(kind, args)` | `request`; returns a promise of the reply, `{ ok, status, data?, error? }` |
+| `request(kind, args)` | `request`; returns a promise of the reply, `{ ok, status, data?, error? }`. Four at most go to the page at once; the rest wait their turn, in order |
 | `onPickAgent(agentId, { from: 'say' }?)` | `pick` |
 | `onOpenDoc(agentId, path)` | `openDoc` |
 | `onShowRepos()` | `showRepos` |
@@ -238,5 +247,6 @@ change.
   (`frame-ancestors 'none'`), so a world can't load them with the token inside itself.
 - It can't make the page do anything but the messages above, each checked against the scene.
 - The one gap: a frame can still navigate itself away (`location = …`), carrying what it saw in the
-  address. No browser rule stops a frame from doing that. Only the built-in farm runs today; before
-  your own worlds can, the page will watch for a frame that leaves its address and stop that world.
+  address. No browser rule stops a frame from doing that. Until the page catches it, a frame that
+  navigated away also keeps receiving the scene. Only the built-in farm runs today; before your own
+  worlds can, the page will watch for a frame that leaves its address and stop that world.

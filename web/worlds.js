@@ -9,6 +9,16 @@
   const STATES = new Set(['waiting', 'working', 'turn', 'idle', 'stale']);
   const PREF_NAME = /^[a-z][a-z0-9-]{0,31}$/;
   const PREF_MAX = 16_384, DIARY_MAX = 20, IN_FLIGHT_MAX = 4, ID_MAX = 200, PATH_MAX = 4096;
+  // A world keeps at most 64 settings, 64 KB in all (names and values, what is saved already included):
+  // it can't fill the page's storage, after which the page's own settings would stop saving.
+  const STORE_KEYS_MAX = 64, STORE_TOTAL_MAX = 65_536;
+  // What a world can make the page do, each at most once a quarter second: the first at once, the rest
+  // dropped (a flood of setup dialogs, chimes or file reads costs a click's worth). The bell and motion
+  // are settings, so the newest of those waits its turn instead, and the page and the world agree.
+  const ACTIONS = new Set(['pick', 'openDoc', 'openLink', 'startSession', 'showRepos', 'nav', 'bell', 'motion']);
+  const NEWEST_WINS = new Set(['bell', 'motion']);
+  const GAP_MS = 250;
+  const DROPPED_MAX = 20, ERRORS_MAX = 50; // kinds of dropped message, and world errors, written to the console
   // The farm's settings from before worlds: copied once into its own (tracker-world:farm:…).
   const OLD_FARM_PREFS = { beds: 'tracker-farm-beds', zoom: 'tracker-farm-zoom', bubbles: 'tracker-farm-bubbles', sky: 'tracker-farm-sky', resting: 'tracker-farm-resting', panel: 'tracker-farm-panel' };
   const browserStore = {
@@ -48,7 +58,8 @@
   /**
    * A message from the world's frame, checked against the scene the page last sent it: what to do, as
    * { kind, … }, or null to drop it. A request that can't be done is still answered ('refuse'), so the
-   * world isn't left waiting. ctx: { scene, private, sentPaths: Set, inFlight }.
+   * world isn't left waiting. ctx: { scene, private, sentPaths: Map(agent id → Set of paths its replies
+   * named), inFlight }.
    */
   function checkMessage(m, ctx) {
     if (!m || typeof m !== 'object' || typeof m.type !== 'string') return null;
@@ -61,7 +72,7 @@
       case 'openDoc': {
         const a = agent(m.agentId);
         if (!a || ctx.private || !short(m.path, PATH_MAX)) return null;
-        const ok = ctx.sentPaths.has(m.path) || inside(m.path, a.cwd) || repos.some(r => inside(m.path, r.key));
+        const ok = ctx.sentPaths.get(m.agentId)?.has(m.path) || inside(m.path, a.cwd) || repos.some(r => inside(m.path, r.key)); // a reply's path, for the agent it was about only
         return ok ? { kind: 'openDoc', agentId: m.agentId, path: m.path } : null;
       }
       case 'openLink': return short(m.url, 2048) && m.url.startsWith('https://github.com/') ? { kind: 'openLink', url: m.url } : null;
@@ -110,7 +121,14 @@
 
   let host = null, frame = null, opts = {}, world = 'farm', scene = null, selectedId = null, loaded = false;
   let diary = [], timer = 0, lastSettings = '', inFlight = 0, generation = 0;
-  const sentPaths = new Set(), dropped = new Set();
+  let heardLoaded = false; // the frame's `loaded`, heard since it last loaded: once per load of the frame
+  let diaryAt = -Infinity, diaryTimer = 0; // when the diary was last drawn from the world's entries; the next drawing
+  let savedTotal = 0; // the world's saved settings, in characters (names and values)
+  const sentPaths = new Map(); // agent id → the paths its replies named, which may then be opened for it
+  const saved = new Map(); // the world's saved settings: name → value's length
+  const actedAt = new Map(), waitingAct = new Map(); // action → when it last went through; a bell or motion waiting its turn
+  const dropped = new Set(), errorsSeen = new Set();
+  let storeRefused = false;
   const settingsNow = () => {
     const nav = opts.navState?.() ?? {};
     return { still: Boolean(opts.still), theme: nav.theme ?? 'auto', nav, bell: browserStore.get('tracker-bell') === 'on' };
@@ -122,27 +140,77 @@
     lastSettings = key;
     if (loaded) post({ type: 'settings', settings: s });
   }
+  /** What the world has saved already (names and values), for the caps on `store`. */
+  function measureSaved() {
+    const prefix = prefKey(world, '');
+    saved.clear();
+    savedTotal = 0;
+    for (const k of browserStore.keys()) {
+      if (!k?.startsWith(prefix) || k === prefKey(world, 'migrated')) continue;
+      const name = k.slice(prefix.length), length = String(browserStore.get(k) ?? '').length;
+      saved.set(name, length);
+      savedTotal += name.length + length;
+    }
+  }
+  /** Whether an action goes through now: one of each a quarter second (a bell or motion: the newest, when its turn comes). */
+  function paced(act) {
+    const now = Date.now(), wait = (actedAt.get(act.kind) ?? -Infinity) + GAP_MS - now;
+    if (wait <= 0 && !waitingAct.has(act.kind)) { actedAt.set(act.kind, now); return true; }
+    if (NEWEST_WINS.has(act.kind)) {
+      const mine = generation, held = waitingAct.get(act.kind);
+      waitingAct.set(act.kind, { act, timer: held?.timer ?? setTimeout(() => {
+        const next = waitingAct.get(act.kind);
+        waitingAct.delete(act.kind);
+        if (mine !== generation || !next) return; // the frame was replaced meanwhile
+        actedAt.set(act.kind, Date.now());
+        handle(next.act);
+      }, Math.max(0, wait)) });
+    }
+    return false;
+  }
+  /** The world's diary in the page's sidebar, drawn at most once a quarter second (the newest entries). */
+  function showDiary(entries) {
+    diary = entries;
+    const wait = diaryAt + GAP_MS - Date.now();
+    if (wait <= 0) { diaryAt = Date.now(); renderDiary(opts.diary, diary); return; }
+    diaryTimer ||= setTimeout(() => { diaryTimer = 0; diaryAt = Date.now(); renderDiary(opts.diary, diary); }, wait);
+  }
   function onMessage(e) {
     if (!frame || e.source !== frame.contentWindow) return;
     const act = checkMessage(e.data, { scene, private: false, sentPaths, inFlight });
     if (!act) {
       const type = String(e.data?.type ?? typeof e.data).slice(0, 40);
-      if (!dropped.has(type)) { dropped.add(type); console.warn(`The ${world} world sent a message the page does not accept (${type}); it was dropped.`); }
+      if (!dropped.has(type) && dropped.size < DROPPED_MAX) { dropped.add(type); console.warn(`The ${world} world sent a message the page does not accept (${type}); it was dropped.`); }
       return;
     }
+    if (act.kind === 'loaded') {
+      if (heardLoaded) return; // once per load of the frame: the world can't make the page start it again and again
+      heardLoaded = true;
+    }
+    if (ACTIONS.has(act.kind) && !paced(act)) return;
     handle(act);
   }
   function handle(act) {
     switch (act.kind) {
       case 'loaded':
         loaded = true;
+        generation++; // replies to the frame's last load are not posted to this one
+        inFlight = 0;
+        sentPaths.clear();
         lastSettings = JSON.stringify(settingsNow());
         post({ type: 'start', world, prefs: loadPrefs(world), settings: settingsNow() });
+        measureSaved();
         if (scene) post({ type: 'scene', scene });
         post({ type: 'select', id: selectedId });
         break;
       case 'ready': break;
-      case 'error': console.warn(`The ${world} world: ${act.message}${act.where ? ` (${act.where})` : ''}`); break;
+      case 'error': {
+        const key = `${act.message}@${act.where}`;
+        if (errorsSeen.has(key) || errorsSeen.size >= ERRORS_MAX) break; // each once
+        errorsSeen.add(key);
+        console.warn(`The ${world} world: ${act.message}${act.where ? ` (${act.where})` : ''}`);
+        break;
+      }
       case 'pick': opts.onPickAgent?.(act.agentId, act.from ? { from: act.from } : undefined); break;
       case 'openDoc': opts.onOpenDoc?.(act.agentId, act.path); break;
       case 'openLink': window.open(act.url, '_blank', 'noopener'); break;
@@ -151,16 +219,30 @@
       case 'nav': opts.onNav?.(act.what); pushSettings(); break;
       case 'bell': browserStore.set('tracker-bell', act.on ? 'on' : 'off'); opts.onBell?.(act.on); pushSettings(); break;
       case 'motion': opts.still = act.still; opts.onMotion?.(act.still); pushSettings(); break;
-      case 'store': browserStore.set(prefKey(world, act.key), act.value); break;
-      case 'diary': diary = act.entries; renderDiary(opts.diary, diary); break;
+      case 'store': {
+        const before = saved.get(act.key), total = savedTotal - (before === undefined ? 0 : act.key.length + before) + act.key.length + act.value.length;
+        if ((before === undefined && saved.size >= STORE_KEYS_MAX) || total > STORE_TOTAL_MAX) {
+          if (!storeRefused) { storeRefused = true; console.warn(`The ${world} world keeps more settings than the page allows (${STORE_KEYS_MAX}, ${STORE_TOTAL_MAX / 1024} KB in all); the rest are not saved.`); }
+          break;
+        }
+        browserStore.set(prefKey(world, act.key), act.value);
+        saved.set(act.key, act.value.length);
+        savedTotal = total;
+        break;
+      }
+      case 'diary': showDiary(act.entries); break;
       case 'refuse': post({ type: 'reply', id: act.id, ok: false, status: 403, error: act.error }); break;
       case 'request': {
         const mine = generation;
         inFlight++;
         void fetchFor(opts.token, act).then(r => {
-          if (mine !== generation) return; // the world was replaced meanwhile
+          if (mine !== generation) return; // the world was replaced, or its frame loaded again, meanwhile
           inFlight--;
-          if (r.ok && act.what === 'agentFiles') for (const f of r.data?.memory ?? []) if (typeof f?.path === 'string') sentPaths.add(f.path);
+          if (r.ok && act.what === 'agentFiles') {
+            const paths = sentPaths.get(act.agentId) ?? new Set();
+            for (const f of r.data?.memory ?? []) if (typeof f?.path === 'string') paths.add(f.path);
+            sentPaths.set(act.agentId, paths);
+          }
           post({ type: 'reply', id: act.id, ...r });
         });
         break;
@@ -168,17 +250,33 @@
     }
   }
 
+  /**
+   * Shows the farm in el. The same host again (back from the list view) keeps the frame it has, with
+   * everything the farm remembers (its diary, where everyone stands, Follow, closed bubbles): only what
+   * it is handed is refreshed. app.js hides #farm meanwhile; the frame stays loaded.
+   */
   function mount(el, options = {}) {
+    const again = Boolean(frame) && host === el && world === 'farm';
+    const still = options.still ?? (again ? opts.still : Boolean(window.matchMedia?.('(prefers-reduced-motion: reduce)').matches));
+    if (again) {
+      opts = { ...options, still };
+      pushSettings();
+      renderDiary(opts.diary, diary);
+      return;
+    }
     unmount();
     host = el;
-    opts = { ...options, still: options.still ?? Boolean(window.matchMedia?.('(prefers-reduced-motion: reduce)').matches) };
+    opts = { ...options, still };
     world = 'farm';
+    heardLoaded = false;
     frame = document.createElement('iframe');
     frame.className = 'world-frame';
     frame.setAttribute('sandbox', 'allow-scripts');
     frame.title = 'The farm';
     frame.src = `/world/${world}/`;
+    frame.addEventListener('load', () => { heardLoaded = false; }); // a new load of the frame says `loaded` again
     host.replaceChildren(frame);
+    measureSaved();
     addEventListener('message', onMessage);
     // the page's own settings (theme, sidebar, live) reach the frame's buttons; the diary's times stay fresh
     timer = setInterval(() => { pushSettings(); if (!document.hidden) renderDiary(opts.diary, diary); }, 1000);
@@ -191,13 +289,20 @@
     selectedId = id ?? null;
     if (loaded) post({ type: 'select', id: selectedId });
   }
+  /** Takes the frame down: its replies, waiting actions and diary drawing go with it. */
   function unmount() {
     removeEventListener('message', onMessage);
     clearInterval(timer);
+    clearTimeout(diaryTimer);
+    diaryTimer = 0;
+    for (const { timer: t } of waitingAct.values()) clearTimeout(t);
+    waitingAct.clear();
     host?.replaceChildren();
     host = frame = null;
     loaded = false;
+    heardLoaded = false;
     inFlight = 0;
+    sentPaths.clear();
     generation++;
   }
 

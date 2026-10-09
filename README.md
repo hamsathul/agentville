@@ -533,7 +533,8 @@ dialog over the farm, with Quote and the reply box as in the list. Click a build
 | Market stall | The pull requests, with links |
 
 The light follows your clock: cloud shadows by day, and lit windows, lanterns and fireflies at
-night. The farm pauses when its tab is hidden and follows the system's reduce-motion setting.
+night. The farm pauses when its tab is hidden, or while the list shows (it is kept as it was, diary
+and all, for when you come back), and follows the system's reduce-motion setting.
 
 ### Notifications and the bell
 
@@ -633,6 +634,9 @@ and can do is in [docs/worlds.md](docs/worlds.md).
   few things listed in [docs/worlds.md](docs/worlds.md), each checked against the scene: open an
   agent or one of its files, read an agent's or a repo's files (the page fetches them with the
   token), keep its own settings, press the top bar's buttons. Links from it open only to GitHub.
+  The page takes each of those at most once a quarter second and four reads at a time, and keeps at
+  most 64 settings (64 KB) for a world, so a misbehaving world can't flood the dashboard or fill your
+  browser's storage.
 - File contents, folder listings, past sessions, whole conversations (and your messages in them,
   for ↑) and field close-ups are served only with a per-install token that the page carries. Every action (answer, message,
   start, end, switch…) also needs a same-origin request.

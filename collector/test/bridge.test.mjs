@@ -123,3 +123,22 @@ test('messages from anything but the page are ignored', () => {
   f.fire('message', { source: {}, data: { type: 'start', prefs: {}, settings: {} } });
   assert.deepEqual(got, []);
 });
+
+test('a world asks at most four things at once; the rest wait their turn, and every one is answered', async () => {
+  const f = frame();
+  let opts;
+  f.A.raw({ start: x => { ({ opts } = x); }, scene() {} });
+  f.fromPage({ type: 'start', prefs: {}, settings: {} });
+  const got = [];
+  const asked = Array.from({ length: 8 }, (_, i) => opts.request('agentFiles', { agentId: `a${i}` }).then(r => got.push([i, r.data.n])));
+  const requests = () => f.sent.filter(m => m.type === 'request');
+  assert.deepEqual(requests().map(m => [m.id, m.agentId]), [[1, 'a0'], [2, 'a1'], [3, 'a2'], [4, 'a3']], 'four go to the page');
+  const order = [2, 1, 5, 3, 4, 6, 8, 7];
+  for (const [k, id] of order.entries()) {
+    f.fromPage({ type: 'reply', id, ok: true, status: 200, data: { n: id } });
+    assert.equal(requests().length, Math.min(8, 5 + k), `answer ${k + 1}: the next in line goes`);
+  }
+  await Promise.all(asked);
+  assert.deepEqual(got.map(([i]) => i), order.map(id => id - 1), 'each resolves when its answer comes');
+  assert.ok(got.every(([i, n]) => n === i + 1), 'with its own answer');
+});

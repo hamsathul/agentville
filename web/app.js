@@ -155,7 +155,7 @@ function setView(next, { remember = true } = {}) {
     next = 'list';
     remember = false;
   }
-  if (view === 'farm' && next === 'list') window.TrackerFarm?.unmount();
+  // The farm is not taken down for the list: #farm is hidden and its frame stays, with all it remembers.
   view = next;
   if (remember) save('tracker-view', next);
   $('main').dataset.view = next;

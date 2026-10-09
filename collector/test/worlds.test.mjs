@@ -10,9 +10,13 @@ const code = ['scene.js', 'worlds.js'].map(f => readFileSync(fileURLToPath(new U
 const NOW = Date.now();
 const plain = v => JSON.parse(JSON.stringify(v)); // objects made inside the vm have another realm's prototypes
 
-function page({ stored = {} } = {}) {
-  const posted = [], calls = [], listeners = {}, fetches = [];
-  const frame = { contentWindow: { postMessage: m => posted.push(JSON.parse(JSON.stringify(m))) }, setAttribute() {}, className: '', title: '', src: '' };
+function page({ stored = {}, hold = false } = {}) {
+  const posted = [], calls = [], listeners = {}, fetches = [], frameListeners = {}, timers = [], held = [], warnings = [], made = [];
+  const clock = { now: NOW };
+  const frame = {
+    contentWindow: { postMessage: m => posted.push(JSON.parse(JSON.stringify(m))) }, setAttribute() {},
+    addEventListener: (t, fn) => { frameListeners[t] = fn; }, className: '', title: '', src: '',
+  };
   const host = { replaceChildren() {} };
   const diary = { innerHTML: '' };
   const window = {
@@ -20,23 +24,36 @@ function page({ stored = {} } = {}) {
     open: (url, target) => calls.push(['open', url, target]), matchMedia: () => ({ matches: false }),
   };
   const ctx = {
-    window, console: { warn() {} }, document: { createElement: () => frame, hidden: false },
+    window, console: { warn: m => warnings.push(m) }, document: { createElement: tag => { made.push(tag); return frame; }, hidden: false },
     addEventListener: window.addEventListener, removeEventListener: window.removeEventListener,
     setInterval: () => 1, clearInterval() {},
+    setTimeout: (fn, ms = 0) => timers.push({ fn, at: clock.now + ms }), clearTimeout: id => { if (timers[id - 1]) timers[id - 1].fn = null; },
+    Date: class extends Date { constructor(...a) { super(...(a.length ? a : [clock.now])); } static now() { return clock.now; } },
     localStorage: { getItem: k => stored[k] ?? null, setItem: (k, v) => { stored[k] = String(v); }, get length() { return Object.keys(stored).length; }, key: i => Object.keys(stored)[i] ?? null },
-    fetch: async (url, init) => { fetches.push([url, init?.headers?.['x-tracker-token']]); return { ok: true, status: 200, json: async () => ({ memory: [{ path: '/Users/sam/.claude/projects/x/memory/a.md' }], files: [] }) }; },
+    fetch: (url, init) => {
+      fetches.push([url, init?.headers?.['x-tracker-token']]);
+      const reply = { ok: true, status: 200, json: async () => ({ memory: [{ path: '/Users/sam/.claude/projects/x/memory/a.md' }], files: [] }) };
+      return hold ? new Promise(resolve => held.push(() => resolve(reply))) : Promise.resolve(reply);
+    },
   };
   vm.createContext(ctx);
   vm.runInContext(code, ctx);
   const farm = window.TrackerFarm;
-  farm.mount(host, {
+  const options = {
     token: 'tok', diary, navState: () => ({ theme: 'dark', side: false, live: true }),
     onPickAgent: (id, o) => calls.push(['pick', id, o?.from ?? null]), onOpenDoc: (id, p) => calls.push(['doc', id, p]),
     onShowRepos: () => calls.push(['repos']), onStartSession: () => calls.push(['start']), onNav: w => calls.push(['nav', w]), onBell: on => calls.push(['bell', on]),
-  });
-  const from = data => listeners.message({ source: frame.contentWindow, data });
+  };
+  farm.mount(host, options);
+  const from = data => listeners.message?.({ source: frame.contentWindow, data });
   const settle = async () => { for (let i = 0; i < 20; i++) await Promise.resolve(); };
-  return { farm, posted, calls, from, diary, stored, fetches, settle, worlds: window.AgentvilleWorlds, listeners, frame };
+  /** Time passes: the clock moves on, and the timers that are due run. */
+  const wait = ms => { clock.now += ms; for (const t of timers) if (t.fn && t.at <= clock.now) { const fn = t.fn; t.fn = null; fn(); } };
+  /** The frame loads again (a reload, or it navigated); its bridge then says `loaded`. */
+  const reload = () => frameListeners.load?.();
+  /** The held file requests: the first one waiting is answered. */
+  const answer = async () => { held.shift()?.(); await settle(); };
+  return { farm, posted, calls, from, diary, stored, fetches, settle, wait, reload, answer, warnings, made, host, options, worlds: window.AgentvilleWorlds, listeners, frame };
 }
 const snap = { generatedAt: NOW, collisions: [], agents: [{ id: 'a1', name: 'cart-ui', kind: 'interactive', cwd: '/code/shop/web', state: 'working', feed: [], children: [], touching: [] }], repos: [{ path: '/code/shop/web', name: 'web', branch: 'main' }] };
 
@@ -153,4 +170,161 @@ test('a message from anything but the current frame is ignored', () => {
   p.farm.update(snap);
   p.listeners.message({ source: {}, data: { type: 'loaded' } });
   assert.deepEqual(p.posted, []);
+});
+
+const two = { ...snap, agents: [...snap.agents, { id: 'a2', name: 'blog', kind: 'interactive', cwd: '/code/blog', state: 'idle', feed: [], children: [], touching: [] }], repos: [...snap.repos, { path: '/code/blog', name: 'blog', branch: 'main' }] };
+
+test('a request answered frees its place: a fifth is taken once one of four is answered', async () => {
+  const p = page({ hold: true });
+  p.farm.update(snap);
+  p.from({ type: 'loaded' });
+  for (let i = 1; i <= 4; i++) p.from({ type: 'request', id: i, kind: 'agentFiles', agentId: 'a1' });
+  p.from({ type: 'request', id: 5, kind: 'agentFiles', agentId: 'a1' });
+  assert.equal(p.posted.find(m => m.type === 'reply' && m.id === 5)?.ok, false, 'four at a time');
+  await p.answer();
+  assert.equal(p.posted.find(m => m.type === 'reply' && m.id === 1)?.ok, true);
+  p.from({ type: 'request', id: 6, kind: 'agentFiles', agentId: 'a1' });
+  assert.equal(p.fetches.length, 5, 'the one after the answer is fetched');
+  assert.equal(p.posted.find(m => m.type === 'reply' && m.id === 6), undefined, 'and not refused');
+});
+
+test('replies that come after the frame is taken down, or after it loaded again, are not posted', async () => {
+  const p = page({ hold: true });
+  p.farm.update(snap);
+  p.from({ type: 'loaded' });
+  p.from({ type: 'request', id: 1, kind: 'agentFiles', agentId: 'a1' });
+  p.reload();
+  p.from({ type: 'loaded' });
+  await p.answer();
+  assert.deepEqual(p.posted.filter(m => m.type === 'reply'), [], 'the reloaded frame never asked for it (its ids start again)');
+  p.from({ type: 'request', id: 2, kind: 'agentFiles', agentId: 'a1' });
+  p.farm.unmount();
+  await p.answer();
+  assert.deepEqual(p.posted.filter(m => m.type === 'reply'), [], 'nor a frame that is gone');
+});
+
+test('the frame starts once per load: a second `loaded` from the same load is ignored', () => {
+  const p = page({ stored: { 'tracker-world:farm:zoom': '2' } });
+  p.farm.update(snap);
+  p.from({ type: 'loaded' });
+  const n = p.posted.length;
+  for (let i = 0; i < 100; i++) p.from({ type: 'loaded' });
+  assert.equal(p.posted.length, n, 'no second start, scene or settings read');
+  p.reload();
+  p.from({ type: 'loaded' });
+  assert.deepEqual(p.posted.slice(n).map(m => m.type), ['start', 'scene', 'select'], 'loaded again: started again');
+});
+
+test('back from the list, the same frame stays, with what it remembers; after it reloads, only the newest scene', () => {
+  const p = page();
+  p.farm.update({ ...snap, generatedAt: 1 });
+  p.from({ type: 'loaded' });
+  p.from({ type: 'diary', entries: [{ at: NOW, state: 'working', who: 'cart-ui', text: 'sends a note' }] });
+  const n = p.posted.length;
+  p.farm.mount(p.host, { ...p.options });
+  assert.deepEqual(p.made, ['iframe'], 'no second frame');
+  assert.deepEqual(p.posted.slice(n), [], 'nothing posted until a scene comes');
+  assert.match(p.diary.innerHTML, /sends a note/, 'its diary is still there');
+  p.farm.update({ ...snap, generatedAt: 2 });
+  assert.equal(p.posted.at(-1).scene.generatedAt, 2);
+  p.reload();
+  p.farm.update({ ...snap, generatedAt: 3 });
+  p.farm.update({ ...snap, generatedAt: 4 });
+  p.from({ type: 'loaded' });
+  const fresh = p.posted.slice(p.posted.findLastIndex(m => m.type === 'start'));
+  assert.deepEqual(fresh.map(m => (m.type === 'scene' ? m.scene.generatedAt : m.type)), ['start', 4, 'select'], 'the newest only, not every one sent while it loaded');
+});
+
+test('each action a quarter second at most: the first at once, the rest dropped; the bell keeps the newest', () => {
+  const p = page();
+  p.farm.update(snap);
+  p.from({ type: 'loaded' });
+  p.from({ type: 'nav', what: 'theme' });
+  p.from({ type: 'nav', what: 'theme' });
+  for (let i = 0; i < 50; i++) p.from({ type: 'nav', what: 'setup' });
+  assert.deepEqual(p.calls, [['nav', 'theme']]);
+  p.wait(250);
+  p.from({ type: 'nav', what: 'setup' });
+  assert.deepEqual(p.calls.at(-1), ['nav', 'setup'], 'a quarter second later, another');
+  p.from({ type: 'pick', agentId: 'a1' });
+  p.from({ type: 'pick', agentId: 'a1' });
+  assert.equal(p.calls.filter(c => c[0] === 'pick').length, 1);
+  p.from({ type: 'bell', on: true });
+  p.from({ type: 'bell', on: false });
+  p.from({ type: 'bell', on: true });
+  p.from({ type: 'bell', on: false });
+  assert.deepEqual(p.calls.filter(c => c[0] === 'bell'), [['bell', true]]);
+  p.wait(250);
+  assert.deepEqual(p.calls.filter(c => c[0] === 'bell'), [['bell', true], ['bell', false]], 'the newest, when its turn comes: the page and the world agree');
+  assert.equal(p.stored['tracker-bell'], 'off');
+});
+
+test('the diary is drawn a quarter second apart at most, from the newest entries', () => {
+  const p = page();
+  p.farm.update(snap);
+  p.from({ type: 'loaded' });
+  const say = text => p.from({ type: 'diary', entries: [{ at: NOW, state: 'working', who: 'cart-ui', text }] });
+  say('one');
+  assert.match(p.diary.innerHTML, /one/);
+  for (let i = 0; i < 1000; i++) say(`flood ${i}`);
+  assert.match(p.diary.innerHTML, /one/, 'not redrawn at once');
+  p.wait(250);
+  assert.match(p.diary.innerHTML, /flood 999/);
+});
+
+test("a world's settings: at most 64, and 64 KB in all, counting what it saved before; never `migrated`", () => {
+  const big = 'x'.repeat(16_000);
+  const p = page({ stored: { 'tracker-world:farm:migrated': '1', 'tracker-world:farm:a': big, 'tracker-world:farm:b': big } });
+  p.farm.update(snap);
+  p.from({ type: 'loaded' });
+  p.from({ type: 'store', key: 'c', value: big });
+  p.from({ type: 'store', key: 'd', value: big });
+  assert.equal(p.stored['tracker-world:farm:d'], big, 'four of 16000: under 64 KB');
+  p.from({ type: 'store', key: 'e', value: 'x'.repeat(2_000) });
+  assert.ok(!('tracker-world:farm:e' in p.stored), 'past 64 KB: refused');
+  p.from({ type: 'store', key: 'a', value: 'small' });
+  p.from({ type: 'store', key: 'e', value: 'x'.repeat(2_000) });
+  assert.equal(p.stored['tracker-world:farm:e'].length, 2_000, 'a smaller value makes room');
+  for (let i = 0; i < 70; i++) p.from({ type: 'store', key: `k${i}`, value: '1' });
+  const keys = Object.keys(p.stored).filter(k => k.startsWith('tracker-world:farm:') && k !== 'tracker-world:farm:migrated');
+  assert.equal(keys.length, 64, 'the 65th name is refused');
+  assert.ok(!('tracker-world:farm:k59' in p.stored));
+  p.from({ type: 'store', key: 'migrated', value: '0' });
+  assert.equal(p.stored['tracker-world:farm:migrated'], '1');
+  assert.equal(p.warnings.filter(w => /more settings than the page allows/.test(w)).length, 1, 'said once');
+});
+
+test('a file opens only where it belongs: a repo of the scene, or a path a reply named for that same agent', async () => {
+  const p = page();
+  p.farm.update(two);
+  p.from({ type: 'loaded' });
+  p.from({ type: 'openDoc', agentId: 'a1', path: '/code/blog/notes.md' });
+  assert.deepEqual(p.calls.at(-1), ['doc', 'a1', '/code/blog/notes.md'], 'in a repo of the scene');
+  p.from({ type: 'request', id: 1, kind: 'agentFiles', agentId: 'a1' });
+  await p.settle();
+  p.wait(250);
+  p.from({ type: 'openDoc', agentId: 'a2', path: '/Users/sam/.claude/projects/x/memory/a.md' });
+  assert.equal(p.calls.length, 1, "a1's memory is not a2's");
+  p.from({ type: 'openDoc', agentId: 'a1', path: '/Users/sam/.claude/projects/x/memory/a.md' });
+  assert.deepEqual(p.calls.at(-1), ['doc', 'a1', '/Users/sam/.claude/projects/x/memory/a.md']);
+  p.reload();
+  p.from({ type: 'loaded' });
+  p.wait(250);
+  p.from({ type: 'openDoc', agentId: 'a1', path: '/Users/sam/.claude/projects/x/memory/a.md' });
+  assert.equal(p.calls.length, 2, 'forgotten when the frame loads again');
+});
+
+test('what is malformed is dropped, and said once; a request of an unknown kind is refused, and answered', () => {
+  const p = page();
+  p.farm.update(snap);
+  p.from({ type: 'loaded' });
+  p.from({ type: 'motion', still: 'yes' });
+  assert.equal(p.calls.length, 0);
+  p.from({ type: 'request', id: 3, kind: 'readEverything', agentId: 'a1' });
+  assert.deepEqual(p.posted.find(m => m.type === 'reply' && m.id === 3), { type: 'reply', id: 3, ok: false, status: 403, error: 'That is not on the dashboard.' });
+  for (let i = 0; i < 100; i++) p.from({ type: `junk${i}` });
+  assert.equal(p.warnings.filter(w => /does not accept/.test(w)).length, 20, 'twenty kinds at most');
+  for (let i = 0; i < 10; i++) p.from({ type: 'error', message: 'x is not defined', where: 'world.js:4' });
+  p.from({ type: 'error', message: 'x is not defined', where: 'world.js:5' });
+  assert.equal(p.warnings.filter(w => /x is not defined/.test(w)).length, 2, 'each error once');
 });

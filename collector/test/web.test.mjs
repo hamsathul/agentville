@@ -774,8 +774,13 @@ test('the view toggle switches to the farm and remembers it', async () => {
   assert.deepEqual(again.calls[0], ['mount', 'farm', '__TRACKER_TOKEN__']);
   await reload.click('view-list');
   assert.equal(reload.el('main').dataset.view, 'list');
-  assert.deepEqual(again.calls.at(-1), ['unmount']);
+  assert.ok(!again.calls.some(c => c[0] === 'unmount'), 'the farm stays, hidden, with all it remembers');
   assert.equal(reload.stored['tracker-view'], 'list');
+  const seen = again.calls.length;
+  reload.push(richSnapshot([richAgent()]));
+  assert.deepEqual(again.calls.slice(seen).filter(c => c[0] === 'update'), [], 'no snapshots while it is hidden');
+  await reload.click('view-farm');
+  assert.deepEqual(again.calls.slice(seen).filter(c => c[0] !== 'select').slice(0, 2), [['mount', 'farm', '__TRACKER_TOKEN__'], ['update', 1]], 'back: mounted again (the same frame) and brought up to date');
 });
 
 test('in farm mode a snapshot goes to the farm; the list and the centre are not drawn', async () => {

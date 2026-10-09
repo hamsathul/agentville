@@ -403,6 +403,15 @@ try {
   await fjs("document.querySelector('[data-farm-resting]').click()");
   check(await funtil("!!document.querySelector('.px-tag[data-farmer=\"ui-idle\"]')"), 'and shows them again');
   check(await until("/ui-done-a\\s*sends a note to ui-done-b/.test(document.getElementById('farm-diary').textContent)"), "a message from one agent to another goes in the farm diary (and flies as a pigeon)");
+  // To the list and back: the farm's frame stays (hidden meanwhile), with its diary and all it remembers.
+  await js("window.__farmFrame = document.querySelector('#farm .world-frame'); document.getElementById('view-list').click()");
+  await until("document.getElementById('main').dataset.view === 'list'");
+  await sleep(1000);
+  await js("document.getElementById('view-farm').click()");
+  await until("document.getElementById('main').dataset.view === 'farm'");
+  await sleep(1500); // a new frame's farm would have said its (empty) diary by now
+  check(await js("document.querySelector('#farm .world-frame') === window.__farmFrame && /ui-done-a\\s*sends a note to ui-done-b/.test(document.getElementById('farm-diary').textContent)") && await funtil("document.querySelectorAll('.px-tag').length >= 2"),
+    'back from the list, the farm is the same frame, its diary as it was');
   for (let i = 0; i < 3 && !/Sky: night/.test(await fjs("document.querySelector('[data-farm-sky]').textContent")); i++) await fjs("document.querySelector('[data-farm-sky]').click()");
   await sleep(600);
   check(/Sky: night/.test(await fjs("document.querySelector('[data-farm-sky]').textContent")) && errors.length === 0, 'the farm draws its night, lights and all, without errors');
@@ -496,11 +505,15 @@ try {
   check(corners.stats && corners.nav && corners.zoom && corners.tools, `the controls lie over the farm: the panel top left, the dashboard's buttons top right, a slim row of switches and zoom along the bottom (${JSON.stringify(corners)})`);
   await fjs("document.querySelector('[data-farm-nav=\"theme\"]').click()");
   check(await until("document.documentElement.dataset.theme !== 'dark'"), "the farm's own buttons work the dashboard: the theme changes");
-  for (let i = 0; i < 2 && (await js("document.documentElement.dataset.theme")) !== 'dark'; i++) { // each click reaches the page as a message: wait for it before looking again
+  // Each click reaches the page as a message (wait for it before looking again), and the page takes one
+  // press of the top bar's buttons a quarter second.
+  for (let i = 0; i < 2 && (await js("document.documentElement.dataset.theme")) !== 'dark'; i++) {
     const was = await js("document.documentElement.dataset.theme ?? 'auto'");
+    await sleep(300);
     await fjs("document.querySelector('[data-farm-nav=\"theme\"]').click()");
     await until(`(document.documentElement.dataset.theme ?? 'auto') !== ${JSON.stringify(was)}`, 2000);
   }
+  await sleep(300);
   await fjs("document.querySelector('[data-farm-nav=\"setup\"]')?.click()");
   check(await until("document.getElementById('setup').open"), "the farm's buttons have ⚙ Claude Code too, opening its dialog");
   await js("document.getElementById('setup').close()");

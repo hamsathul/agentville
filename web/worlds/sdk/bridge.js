@@ -36,10 +36,18 @@
       send({ type: 'store', key: name, value: String(value) });
     },
   };
+  // At most four requests go to the page at once (it refuses a fifth); the rest wait their turn, in order,
+  // so a notice board of eight sessions reads all eight.
+  const IN_FLIGHT_MAX = 4, queued = [];
   function request(kind, args) {
-    const id = nextId++;
-    send({ type: 'request', id, kind, ...args });
-    return new Promise(resolve => waiting.set(id, resolve));
+    return new Promise(resolve => { queued.push({ kind, args, resolve }); sendQueued(); });
+  }
+  function sendQueued() {
+    while (waiting.size < IN_FLIGHT_MAX && queued.length) {
+      const { kind, args, resolve } = queued.shift(), id = nextId++;
+      waiting.set(id, resolve);
+      send({ type: 'request', id, kind, ...args });
+    }
   }
   // What an engine world is handed: every call becomes a message the page checks.
   const opts = {
@@ -105,8 +113,10 @@
       selected = m.id ?? null;
       if (live) run(() => world.select?.(selected), 'select');
     } else if (m.type === 'reply' && waiting.has(m.id)) {
-      waiting.get(m.id)({ ok: m.ok === true, status: m.status ?? 0, ...(m.data !== undefined ? { data: m.data } : {}), ...(m.error !== undefined ? { error: m.error } : {}) });
+      const resolve = waiting.get(m.id);
       waiting.delete(m.id);
+      sendQueued(); // the next one in line
+      resolve({ ok: m.ok === true, status: m.status ?? 0, ...(m.data !== undefined ? { data: m.data } : {}), ...(m.error !== undefined ? { error: m.error } : {}) });
     }
   });
 
