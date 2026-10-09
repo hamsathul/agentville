@@ -172,10 +172,11 @@ function setView(next, { remember = true } = {}) {
     $('center-body').innerHTML = '';
     reader = null;
     window.TrackerFarm.mount($('farm'), {
-      token: TOKEN, diary: $('farm-diary'), onPickAgent: pickFromFarm, onOpenDoc: openDocFromFarm, onShowRepos: showReposFromFarm, onStartSession: () => $('sessions-open').click(), onBell: bellSwitched,
+      token: TOKEN, diary: $('farm-diary'), onPickAgent: pickFromFarm, onOpenDoc: openDocFromFarm, onShowRepos: showReposFromFarm, onStartSession: () => { window.TrackerFarm?.armClickGuard?.(); $('sessions-open').click(); }, onBell: bellSwitched,
       // the top bar's buttons, on the farm
       onWorld: showWorld, onNotice: notice,
-      onNav: what => ({ list: () => setView('list'), worlds: () => window.TrackerFarm.openList?.(), session: () => $('sessions-open').click(), setup: () => openSetup(), side: () => setFarmSide(!farmSide), theme: () => $('theme-toggle').click() })[what]?.(),
+      // a world pressing a button that raises a view or dialog arms the click guard, so it can't steer a click onto what it raised
+      onNav: what => { window.TrackerFarm?.armClickGuard?.(); return ({ list: () => setView('list'), worlds: () => window.TrackerFarm.openList?.(), session: () => $('sessions-open').click(), setup: () => openSetup(), side: () => setFarmSide(!farmSide), theme: () => $('theme-toggle').click() })[what]?.(); },
       navState: () => ({ theme, side: farmSide, live: !$('live').classList.contains('off') }),
     });
   } else {
@@ -239,6 +240,7 @@ function showWorld(w) {
 }
 /** A farmer was clicked: show it in the farm's sidebar, where it can be answered or messaged; its speech bubble: its conversation. */
 async function pickFromFarm(id, { from } = {}) {
+  window.TrackerFarm?.armClickGuard?.(); // a world swapped the sidebar's agent: its action controls ignore clicks for a moment
   if (selected !== id) openChildren.clear();
   selected = id;
   farmTab = 'agent';
@@ -259,10 +261,12 @@ async function pickFromFarm(id, { from } = {}) {
 }
 /** A noticeboard in a field close-up: read that document over the farm. */
 async function openDocFromFarm(agentId, path) {
+  window.TrackerFarm?.armClickGuard?.(); // a world raised the reader: hold the controls under it
   await openFile(agentId, path);
 }
 /** The "+N more fields" signpost: the list view, with the repos group open. */
 function showReposFromFarm() {
+  window.TrackerFarm?.armClickGuard?.();
   closedGroups.delete('repos');
   save('tracker-closed-groups', JSON.stringify([...closedGroups]));
   setView('list');
@@ -357,6 +361,10 @@ document.addEventListener('click', async e => {
   }
   const el = e.target.closest('button');
   if (!el) return;
+  // An action control (anything with class `act`) ignores a click while the world-redress guard is up, or
+  // a click whose pointerdown came before a world moved the UI. A row or a view toggle is not an `act`, so
+  // it still works — a way out stays open. The guard is only ever armed by a world's own message.
+  if (/(?:^|\s)act(?:\s|$)/.test(el.className || '') && window.TrackerFarm?.clickGuardBlocks?.(e.detail)) return;
   const d = el.dataset;
   if (d.confirm) { settleConfirm(d.confirm === 'yes'); return; }
   if (d.endSession) { void endSessionFlow(d.endSession); return; } // not awaited: the confirm box waits for you
@@ -516,7 +524,7 @@ function requestRender() {
   isRenderPending = false;
   render();
 }
-document.addEventListener('pointerdown', () => { isPointerDown = true; });
+document.addEventListener('pointerdown', () => { isPointerDown = true; window.TrackerFarm?.clickGuardPointerDown?.(); });
 document.addEventListener('pointerup', () => {
   isPointerDown = false;
   setTimeout(() => { if (isRenderPending) requestRender(); }, 0);
@@ -744,6 +752,7 @@ function showRecalled(box, agentId, at) {
 // Enter sends a message; Shift+Enter starts a new line (and Enter while an input method is composing is left alone).
 const sendKey = e => e.key === 'Enter' && !e.shiftKey && !e.altKey && !e.isComposing && e.keyCode !== 229;
 document.addEventListener('keydown', e => {
+  window.TrackerFarm?.clickGuardKeyDown?.(); // input in the guard's window re-arms it, so it holds until a quiet second
   if (e.target?.id === 'msg-text' || e.target?.id === 'convo-msg-text') recallKey(e);
   if (sendKey(e) && (e.target?.id === 'msg-text' || e.target?.id === 'convo-msg-text')) {
     e.preventDefault();

@@ -792,7 +792,11 @@ and can do is in [docs/worlds.md](docs/worlds.md).
   what the dashboard shows. Tick it only for a world whose author you'd trust with the words. A
   world can never act for you: it can't answer, approve, message, start or stop anything. The most
   it can do is open a dialog, a file or a GitHub link for you to see, press one of the top bar's
-  buttons, or switch the bell. The farm and other built-in worlds always see everything.
+  buttons, or switch the bell. And it can't move your click onto one of those: when a world's message
+  changes or raises part of the page (swaps the sidebar's agent, opens a dialog or the reader), that
+  area's action buttons ignore clicks for about a second — re-armed while you keep moving — so a world
+  can't swap another agent's Allow (or a dialog) under a click you meant for what you were reading.
+  The farm and other built-in worlds always see everything.
 - File contents, folder listings, past sessions, whole conversations (and your messages in them,
   for ↑) and field close-ups are served only with a per-install token that the page carries. Every action (answer, message,
   start, end, switch…) also needs a same-origin request.

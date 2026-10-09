@@ -528,6 +528,11 @@ The field close-up (a field's files) is still drawn as the farm draws it.
   (`frame-ancestors 'none'`), so a world can't load them with the token inside itself.
 - It can't make the page do anything but the messages above, each checked against the scene.
   Anything else (a message type the page doesn't know, such as an answer to a question) is dropped.
+- It can't move your click onto a control it raised. When a world message changes or opens part of
+  the page (the sidebar's agent, a dialog, the reader), the action buttons in that area ignore clicks
+  for about a second, re-armed while you keep moving the pointer or typing; a click whose press began
+  before the change is ignored too. So a world can't swap another agent (or a dialog) under a click
+  you meant for the one you were reading. Your own clicks — a row, a sidebar tab — lock nothing.
 
 The sandbox protects the token and every action, not the secrecy of what a world is shown: a world
 can get what it sees out to another machine (see "The gaps"), so treat the scene a world is handed

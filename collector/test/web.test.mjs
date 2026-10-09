@@ -19,7 +19,7 @@ function loadPage({ stored = {}, storageThrows = false, files = {}, replies = {}
   const revoked = [];
   let active = null;
   const els = new Map();
-  const el = id => ({ id, title: '', innerHTML: '', textContent: '', value: '', className: '', dataset: {}, attrs: {}, setAttribute(k, v) { this.attrs[k] = String(v); }, scrollIntoView() {}, classList: { add() {}, remove() {}, toggle() {} }, addEventListener() {}, showModal() { this.open = true; }, close() { this.open = false; }, focus() {}, querySelectorAll: () => [], insertAdjacentHTML(_where, html) { this.innerHTML += html; } });
+  const el = id => ({ id, title: '', innerHTML: '', textContent: '', value: '', className: '', dataset: {}, attrs: {}, setAttribute(k, v) { this.attrs[k] = String(v); }, scrollIntoView() {}, classList: { add() {}, remove() {}, toggle() {} }, addEventListener() {}, showModal() { this.open = true; }, close() { this.open = false; }, focus() {}, click() {}, querySelectorAll: () => [], insertAdjacentHTML(_where, html) { this.innerHTML += html; } });
   const docListeners = {};
   let sourceListener = null;
   let selectedText = '';
@@ -740,6 +740,7 @@ test('when the folder itself is off, the explorer says why and still shows memor
 function fakeFarm() {
   const calls = [];
   let options = null;
+  let blocks = false;
   return {
     calls,
     pick: id => options.onPickAgent(id),
@@ -747,6 +748,8 @@ function fakeFarm() {
     openDoc: (id, path) => options.onOpenDoc(id, path),
     showRepos: () => options.onShowRepos(),
     nav: what => options.onNav(what),
+    startSession: () => options.onStartSession(),
+    setBlocks: v => { blocks = v; },
     farm: {
       mount(host, opts) { options = opts; calls.push(['mount', host.id, opts.token]); },
       diaryId: () => options?.diary?.id,
@@ -754,6 +757,10 @@ function fakeFarm() {
       colorOf: () => '#d9673a',
       update(snap) { calls.push(['update', snap.agents.length]); },
       unmount() { calls.push(['unmount']); },
+      armClickGuard() { calls.push(['arm']); },
+      clickGuardBlocks() { return blocks; },
+      clickGuardPointerDown() {},
+      clickGuardKeyDown() {},
     },
   };
 }
@@ -2452,4 +2459,28 @@ test('Now says since when it has been your turn, and what it last said; idle and
   assert.match(page.side(), /<div class="muted rest">Idle since \d{1,2}:\d{2}/);
   page.push(richSnapshot([richAgent({ state: 'stale', stateReason: 'no activity for 24h+', stateSince: since, lastActivityAt: Date.now() - 3 * 86_400_000, now: undefined, turn: undefined })]));
   assert.match(page.side(), /<div class="muted rest">Quiet since /);
+});
+
+test('the click guard: a world message arms it, a user selection does not, and a guarded click on an action control is ignored', async () => {
+  const f = fakeFarm();
+  const page = loadPage({ farm: f.farm, stored: { 'tracker-view': 'farm' } });
+  page.push(askSnapshot(QUESTION));
+  f.calls.length = 0;
+  // A world swapping the sidebar's agent, or raising a dialog, arms the guard.
+  f.pick('w1');
+  f.nav('session');
+  f.startSession();
+  assert.equal(f.calls.filter(c => c[0] === 'arm').length, 3, 'each world-raised change arms the guard');
+  // A click the user makes themselves — selecting a row — arms nothing.
+  f.calls.length = 0;
+  await page.openAgent('w1');
+  assert.equal(f.calls.filter(c => c[0] === 'arm').length, 0, "the user's own selection locks nothing");
+  // While the guard is up, a click on an action control (Allow) is ignored; it works once the guard lifts.
+  f.setBlocks(true);
+  page.el('ask-allow').className = 'act';
+  await page.clickButton('ask-allow', { agent: 'w1', tool: 'toolu_Q1' });
+  assert.equal(page.posts.filter(x => x.path === '/api/actions/permit').length, 0, 'Allow does nothing while the guard is up');
+  f.setBlocks(false);
+  await page.clickButton('ask-allow', { agent: 'w1', tool: 'toolu_Q1' });
+  assert.equal(page.posts.filter(x => x.path === '/api/actions/permit').length, 1, 'and works once it lifts');
 });

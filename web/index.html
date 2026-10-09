@@ -489,6 +489,8 @@ html[data-view="farm"] .banner.show { position: fixed; top: 10px; left: 50%; tra
 .world-preview { width: 64px; height: 40px; object-fit: cover; image-rendering: pixelated; border-radius: 6px; flex: none; }
 .world-text { display: grid; gap: 2px; min-width: 0; }
 .worlds-foot { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+/* The click guard against world redress: while it is up, action controls look quietly unavailable; the page ignores clicks on them (web/worlds.js). No text, so it reads as a brief settle, not an alert. */
+html[data-guard="on"] .app .act, html[data-guard="on"] dialog[open] .act { opacity: .55; }
 </style>
 </head>
 <body>

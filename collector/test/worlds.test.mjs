@@ -44,6 +44,7 @@ async function page({ stored = {}, hold = false, worlds = WORLDS, dialog = false
     window, console: { warn: m => warnings.push(m) },
     document: {
       hidden: false,
+      documentElement: { dataset: {} },
       getElementById: id => els[id] ?? null,
       createElement: tag => {
         made.push(tag);
@@ -946,4 +947,57 @@ test('the farm always sees everything', async () => {
   p.farm.update(snap);
   p.from({ type: 'loaded' });
   assert.equal(p.posted.find(m => m.type === 'scene').scene.private, false);
+});
+
+test('the click guard: a world change locks the action controls for a second, then unlocks', async () => {
+  const p = await page();
+  const guard = () => p.ctx.document.documentElement.dataset.guard;
+  assert.equal(p.farm.clickGuardBlocks(1), false, 'nothing is locked to begin with');
+  p.farm.armClickGuard();
+  assert.equal(p.farm.clickGuardBlocks(1), true, 'a world raising UI locks a click on an action control');
+  assert.equal(guard(), 'on', 'and shows it quietly');
+  p.wait(999);
+  assert.equal(p.farm.clickGuardBlocks(1), true, 'still locked just under a second on');
+  p.wait(1);
+  assert.equal(p.farm.clickGuardBlocks(1), false, 'a second on, it unlocks');
+  assert.equal(guard(), undefined, 'and the quiet styling goes');
+});
+
+test('the click guard: input during the window keeps it locked until a second without any', async () => {
+  const p = await page();
+  p.farm.armClickGuard();
+  p.wait(600);
+  p.farm.clickGuardPointerDown(); // a tap re-arms it
+  p.wait(600); // 1.2 s after the arm, 0.6 s after the tap
+  assert.equal(p.farm.clickGuardBlocks(1), true, 'the tap kept it locked');
+  p.farm.clickGuardKeyDown(); // a key re-arms it too
+  p.wait(999);
+  assert.equal(p.farm.clickGuardBlocks(1), true, 'still locked');
+  p.wait(1);
+  assert.equal(p.farm.clickGuardBlocks(1), false, 'a second with no input: unlocked');
+  p.farm.clickGuardPointerDown();
+  assert.equal(p.farm.clickGuardBlocks(1), false, 'a tap after the unlock does not lock it again');
+});
+
+test('the click guard: a click whose pointerdown came before the change is ignored even after the window', async () => {
+  const p = await page();
+  p.farm.clickGuardPointerDown(); // the press begins
+  p.wait(10);
+  p.farm.armClickGuard(); // the world swaps UI mid-press
+  p.wait(1001); // the one-second window lapses
+  assert.equal(p.farm.clickGuardBlocks(1), true, 'the press that began before the swap is still ignored');
+  p.farm.clickGuardPointerDown(); // a fresh press, after the swap
+  assert.equal(p.farm.clickGuardBlocks(1), false, 'a click begun after the swap is let through');
+});
+
+test('the click guard: a keyboard-activated click is caught only while the window is live', async () => {
+  const p = await page();
+  p.farm.clickGuardPointerDown();
+  p.wait(10);
+  p.farm.armClickGuard();
+  p.wait(1001);
+  assert.equal(p.farm.clickGuardBlocks(0), false, 'a keyboard click (no pointer) is not caught by the pointerdown-before check');
+  assert.equal(p.farm.clickGuardBlocks(1), true, 'but a pointer click begun before the swap is');
+  p.farm.armClickGuard();
+  assert.equal(p.farm.clickGuardBlocks(0), true, 'while the window is live, even a keyboard click waits');
 });
