@@ -590,7 +590,9 @@ The mod also does the dashboard's work inside the session:
 The **collector** (`collector/`) is a Node program run by launchd. Every few seconds it reads:
 - `~/.claude/sessions/*.json`: the live session registry;
 - `claude agents --json`: background sessions;
-- the transcripts under `~/.claude/projects/` (only the new bytes of each);
+- the transcripts under `~/.claude/projects/` (only the new bytes of each). When a session moves
+  into a worktree, Claude Code moves its transcript to the worktree's folder, and the collector
+  follows it there;
 - `ps`: processes, CPU and memory, and each session's start flags;
 - `git` in each repo, with `GIT_OPTIONAL_LOCKS=0`, so it never takes `index.lock` from an agent
   that is committing (it never fetches);

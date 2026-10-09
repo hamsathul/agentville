@@ -174,10 +174,15 @@ export async function startCollector({ root, claudeDir = join(homedir(), '.claud
     return best?.path ?? null;
   }
 
+  const freshRecord = () => ({ path: null, lookedAt: 0, model: new SessionModel(), childModels: new Map(), childPaths: new Map(), metaSeen: new Set() });
   function sessionRecord(sessionId, now) {
     let rec = sessions.get(sessionId);
+    if (rec?.path && !existsSync(rec.path)) { // moved (Claude Code moves it when the session enters a worktree): read afresh where it went
+      tail.forget(rec.path);
+      rec = null;
+    }
     if (!rec) {
-      rec = { path: null, lookedAt: 0, model: new SessionModel(), childModels: new Map(), childPaths: new Map(), metaSeen: new Set() };
+      rec = freshRecord();
       sessions.set(sessionId, rec);
     }
     if (!rec.path && now - rec.lookedAt > 10_000) {

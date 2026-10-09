@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import { execFileSync } from 'node:child_process';
 import assert from 'node:assert/strict';
-import { appendFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, realpathSync, symlinkSync, unlinkSync, utimesSync, writeFileSync } from 'node:fs';
+import { appendFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, realpathSync, renameSync, symlinkSync, unlinkSync, utimesSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { basename, dirname, join } from 'node:path';
 import { startCollector } from '../collector.mjs';
@@ -520,6 +520,35 @@ test("after a restart, files from early in a long transcript come back in the ba
       await new Promise(r => setTimeout(r, 100));
     }
     assert.deepEqual(docs, ['/w/late.md', '/w/docs/early-spec.md']);
+  } finally {
+    await handle.stop();
+  }
+});
+
+test("a session whose transcript moves (it went into a worktree) is followed to its new place, each message once", async () => {
+  const root = mkdtempSync(join(tmpdir(), 'tracker-root-moved-'));
+  mkdirSync(join(root, 'web'));
+  writeFileSync(join(root, 'web', 'index.html'), '<html></html>');
+  writeFileSync(join(root, 'config.json'), JSON.stringify({ port: 0, deployRepos: {} }));
+  const claudeDir = mkdtempSync(join(tmpdir(), 'tracker-claude-moved-'));
+  mkdirSync(join(claudeDir, 'sessions'));
+  mkdirSync(join(claudeDir, 'projects', '-w'), { recursive: true });
+  mkdirSync(join(claudeDir, 'projects', '-w--claude-worktrees-next'), { recursive: true });
+  writeFileSync(join(claudeDir, 'sessions', `${process.pid}.json`), JSON.stringify({ pid: process.pid, sessionId: 'sess-moved', cwd: '/w', name: 'mover', status: 'busy' }));
+  const line = (ms, type, message) => `${JSON.stringify({ type, timestamp: new Date(ms).toISOString(), ...(type === 'user' ? { origin: { kind: 'human' } } : {}), message })}\n`;
+  const t = Date.now() - 60_000;
+  const before = join(claudeDir, 'projects', '-w', 'sess-moved.jsonl');
+  const after = join(claudeDir, 'projects', '-w--claude-worktrees-next', 'sess-moved.jsonl');
+  writeFileSync(before, line(t, 'user', { content: 'Plan the worlds' }) + line(t + 1000, 'assistant', { model: 'm', content: [{ type: 'text', text: 'Planned.' }] }));
+  const handle = await startCollector({ root, claudeDir, claudeBin: '/usr/bin/false', notify: () => {}, log: () => {} });
+  const said = () => handle.getSnapshot().agents.find(a => a.id === 'sess-moved')?.feed.filter(f => f.kind !== 'tool').map(f => f.text) ?? [];
+  const until = async ok => { for (let i = 0; i < 80; i++) { await handle.reloadConfig(); if (ok()) return true; await new Promise(r => setTimeout(r, 50)); } return false; };
+  try {
+    assert.deepEqual(said(), ['Planned.', 'Plan the worlds']);
+    renameSync(before, after); // Claude Code moves it when the session enters a worktree, and goes on writing there
+    appendFileSync(after, line(t + 2000, 'user', { content: 'Build task 2' }));
+    assert.ok(await until(() => said()[0] === 'Build task 2'), `what it does after the move shows (got ${JSON.stringify(said())})`);
+    assert.deepEqual(said(), ['Build task 2', 'Planned.', 'Plan the worlds'], 'and nothing twice');
   } finally {
     await handle.stop();
   }
