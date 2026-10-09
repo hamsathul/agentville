@@ -58,14 +58,18 @@ npm run check-world -- <world> [--worlds <dir>]
 
 `<world>` is `farm`, `starter`, `u/<folder>` or just `<folder>` (one of yours); `--worlds` looks for
 it in that folder instead of your worlds folder. It needs no browser, server or token: it reads the
-world's folder, the SDK and the tour (and `config.json`, only for where your worlds are).
+world's `world.js` and `world.json`, the SDK and the tour (and `config.json`, only for where your
+worlds are).
 
 **Contained, not sealed.** check-world runs a world's code on your Mac, outside the dashboard's
 sandboxed frame, so it runs it contained: in a Node of its own that can read only the SDK and the
-world's folder, can't write or start programs, and is given none of your environment. It can still
-reach the network, so check only worlds you'd trust; look at any other world on the test page, in its
-frame. The command says so in a line of its own. It needs a Node that can contain it (22.13 or later);
-with an older one it says so and checks nothing.
+world's `world.js` and `world.json` (no other file of the world's), can't write or start programs, and
+is given none of your environment. A `world.js` or `world.json` that is a link out of the world's
+folder is refused before anything runs ("world.js is a link to a file outside the world's folder"); a
+link to a file inside it is fine. It can still reach the network, so check only worlds you'd trust;
+look at any other world on the test page, in its frame. The command says so in a line of its own. It
+needs a Node that can contain it (22.13 or later, or 23.5 or later); with an older one it says so and
+checks nothing.
 
 It plays **the same tour as the test page** ("The test page and the tour"), headless: each stop in a
 fresh `node:vm` holding `scene.js` and the frame's scripts in the frame's order, a stand-in page,
@@ -102,7 +106,7 @@ a mistake of each kind put in (its path shortened):
 
 ```
 check-world: u/my-bakery (/Users/you/.agentville/worlds/my-bakery)
-  · contained: it can read only the SDK and this world's folder, and can't write or start programs (it can still reach the network)
+  · contained: it can read only the SDK and this world's world.js and world.json, and can't write or start programs (it can still reach the network)
   ✗ 33 stops of the tour, a few frames each: 7 problems
   ✗ everyone: Error: no door here (world.js:68)
   ✗ waiting: Error: no door here (world.js:68)

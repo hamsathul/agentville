@@ -134,11 +134,11 @@ function tour() {
   return JSON.parse(JSON.stringify({ NOW: g.AgentvilleTour.NOW, stops: g.AgentvilleTour.stops, checks: g.AgentvilleTour.checks }));
 }
 
-export async function checkWorld({ dir, file = 'world.js', frames = 8, timeoutMs = 2000 } = {}) {
+export async function checkWorld({ dir, file = 'world.js', json = 'world.json', frames = 8, timeoutMs = 2000 } = {}) {
   const out = { errors: [], defaults: [], same: [], unknown: [], creatures: [], notes: [], json: null, ran: 0 };
   let taken = [];
   try {
-    const j = JSON.parse(readFileSync(join(dir, 'world.json'), 'utf8'));
+    const j = JSON.parse(readFileSync(join(dir, json), 'utf8'));
     out.json = checkWorldJson(j);
     if (Array.isArray(j?.taken)) taken = j.taken;
   } catch (err) { out.json = err.code === 'ENOENT' ? 'world.json is missing.' : `world.json can't be read: ${err.message}`; }
@@ -151,7 +151,7 @@ export async function checkWorld({ dir, file = 'world.js', frames = 8, timeoutMs
     // world.js itself. When the throw site is the SDK's, the world.js line that called it wins, from the stack.
     const top = stack.match(/^(\/[^\n]*?):(\d+)\n/);
     if (top?.[1] === worldPath) return at(top[1], top[2]);
-    const found = [...stack.matchAll(/\(?(\/[^\s()]+):(\d+):(\d+)\)?/g)].filter(m => m[1] === worldPath || m[1].startsWith(WEB + sep));
+    const found = [...stack.matchAll(/(?:\(|at )(\/[^()\n]*?):(\d+):(\d+)\)?$/gm)] // a path may hold spaces.filter(m => m[1] === worldPath || m[1].startsWith(WEB + sep));
     const f = found.find(m => m[1] === worldPath) ?? found[0];
     return f ? at(f[1], f[2], f[3]) : '';
   };
