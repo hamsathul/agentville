@@ -806,6 +806,7 @@ test('the list: the switch is only for your worlds, and it ignores a change in t
   assert.equal((html().match(/data-see=/g) ?? []).length, 2, 'u/space and u/broken, not the farm');
   assert.ok(!html().includes('data-see="farm"'));
   assert.ok(/data-see="u\/space"[^>]* disabled/.test(html()), 'disabled at first');
+  assert.match(html(), /<label class="world-see" title="A world can send what it sees to other sites, so allow this only for a world you trust\.">/, 'its tooltip says what is at stake');
   const box = { checked: true, dataset: { see: 'u/space' }, closest: s => (s === '[data-see]' ? box : null) };
   p.dlg.listeners.change({ target: box });
   assert.ok(!('tracker-world-cansee:u/space' in p.stored), 'a change at once does nothing');

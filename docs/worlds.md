@@ -6,12 +6,15 @@ reference for what a world gets from the dashboard and what it can do.
 ## What a world is
 
 Each world runs in a sandboxed frame of its own, loaded from `/world/<key>/`. The frame has no token,
-no cookies, no storage and no network. It sees only the **scene** (below), which the page builds from
+no cookies, no storage, no requests of its own and no WebRTC (see "What a world can't do", and "The
+gaps" for what browsers still allow). It sees only the **scene** (below), which the page builds from
 each snapshot, and it reaches the page only through the **messages** below. The page checks every
 message, and drops anything else.
 
 A world is a folder holding `world.json` and `world.js`, and any files they use (pictures, sounds,
-fonts, stylesheets). The collector serves those files from inside the folder only. The frame's page
+fonts, stylesheets), with `preview.png`, if you like, for the list of worlds. The collector serves
+those files from inside the folder only, and only these kinds: `.js`, `.json`, `.css`, `.png`,
+`.gif`, `.webp`, `.svg`, `.woff2`, `.mp3`, `.ogg` and `.wav`. The frame's page
 (`web/worlds/sdk/frame.html`) loads, in order: `/base.css` (the dashboard's colours), the world
 engine's styles (`/world/sdk/engine.css`), the bridge (`/world/sdk/bridge.js`), the brand mark
 (`/brand.js`), the pixel kit (`/world/sdk/pixel.js`), the engine (`/world/sdk/engine.js`), then the
@@ -71,11 +74,11 @@ The farm's:
 
 | Field | Meaning |
 |---|---|
-| `name` | The world's name. The frame's title today; the list of worlds will show it too |
-| `icon` | One emoji, for the world's button |
-| `description` | One line saying what the world shows |
+| `name` | The world's name: in the list of worlds, on the view button, and as the frame's title |
+| `icon` | One emoji, beside the name in the list and on the view button (`preview.png` in the folder, if there, takes its place in the list) |
+| `description` | One line saying what the world shows, in the list |
 | `api` | The version of this page the world was written for: `1` |
-| `nouns` | What the world calls things, so the page's words can match: an agent and agents, a repo and repos, where a new session starts (`start`), and the title of its diary (`diary`) |
+| `nouns` | What the world calls things: an agent and agents, a repo and repos, where a new session starts (`start`), and its diary (`diary`). The page uses `diary` as the title of the world's diary in its sidebar ("Diary" without one); the others are kept for the page's words to match, and an engine world gives its own to the engine (the `nouns` hook) |
 
 The page reads `world.json` through the same checks as any other file of the world: a link pointing
 out of the folder is never followed (it counts as missing).
@@ -213,13 +216,15 @@ Times are milliseconds since 1970, as `Date.now()` gives them.
 ## Privacy mode
 
 A world from your folder (`u/<name>`) gets a private scene (`scene.private` is `true`) until you tick
-**Can see what agents say** for it in the list of worlds (kept per browser). Built-in worlds always
-get the whole scene (`private: false`). What a private scene removes or replaces:
+**Can see what agents say** for it in the list of worlds (kept per browser, as
+`tracker-world-cansee:u/<name>`, a name no world's `store` can reach). Built-in worlds always get the
+whole scene (`private: false`). What a private scene removes or replaces:
 
 - Agents: `name` is the last part of the agent's folder (a session's own name can be its title, which
-  is conversation text), numbered when two share a folder (`shop`, `shop 2`); `codex` or `agent` with
-  no folder. `subagents[].parent` follows. `summary`, `ask`, `reply` and `said` are `''`; `question`, `cwd` and `service` (a web host) are `null`;
-  `tasks` is `{ done, total }`; `turn` is `{ word, startedAt, outTokens, mode }`; `repo` is a stand-in.
+  Claude Code makes from the conversation), numbered when two share a folder (`shop`, `shop 2`);
+  `codex` or `agent` with no folder. `subagents[].parent` follows. `summary`, `ask`, `reply` and
+  `said` are `''`; `question`, `cwd` and `service` (a web host) are `null`; `tasks` is
+  `{ done, total }`; `turn` is `{ word, startedAt, outTokens, mode }`; `repo` is a stand-in.
 - Repos: `key` and `main` are stand-ins (`r1`, `r2`, … the same for the same repo while the page is
   open); `project` is a stand-in (`p1`, …; `projectName` stays); `branch` is `null` (`onMain` stays);
   `deploy` is `{ state, label: null, detail: null, url: null, source: null }` (and `run`, if there);
@@ -228,13 +233,14 @@ get the whole scene (`private: false`). What a private scene removes or replaces
 
 What stays: the agents' folder labels (above), repos' and projects' names (folder names, already on
 the dashboard), states, tools (including MCP server names in `tool` and `mcp`), steps, subagent
-types, colours, counts, percentages, costs, the plan's windows and the repos' numbers. Requests (`agentFiles`, `repoTouched`) are refused: the reply has `ok: false`,
-`status: 403` and an `error` that says to switch on "Can see what agents say". `openDoc` is dropped;
-`pick` still works. Because the repo keys are stand-ins, `repoTouched` could not name a real repo
-anyway. Ticking the box starts the world again with the full scene; unticking starts it again
-private, but doesn't clear what the world saved while it could see (it gets its own saved settings
-back on start). The box is off when the list opens, until a second passes with no tap or key in it, and a change
-before then is undone: a world can open the list (`nav: 'worlds'`) but not tick the box for you.
+types, colours, counts, percentages, costs, the plan's windows and the repos' numbers. Requests
+(`agentFiles`, `repoTouched`) are refused: the reply has `ok: false`, `status: 403` and an `error`
+that says to switch on "Can see what agents say". `openDoc` is dropped; `pick` still works. Because
+the repo keys are stand-ins, `repoTouched` could not name a real repo anyway. Ticking the box starts
+the world again with the full scene; unticking starts it again private, but doesn't clear what the
+world saved while it could see (it gets its own saved settings back on start). The box is greyed out
+when the list opens, until a second passes with no tap or key in the list, and a change before then
+is undone: a world can open the list (`nav: 'worlds'`) but not catch a click on the box.
 
 ## Messages
 
@@ -247,7 +253,7 @@ from the page only, and the page from its current frame only.
 |---|---|
 | `start { world, prefs, settings }` | Each time the frame loads, after it says `loaded`: the world's key, its saved settings (`{ name: value }`, strings) and the page's settings |
 | `settings { settings }` | The page's settings, when they change (they are looked at every second): `{ still, theme, nav: { theme, side, live }, bell }`. `still`: stand still (reduced motion, or the world's own Motion switch). `theme`: `auto`, `light` or `dark`; the bridge sets it on the frame, so `base.css`'s colours follow the dashboard. `nav`: the state of the top bar's buttons (`live`: connected to the collector). `bell`: the page's bell is on |
-| `scene { scene }` | Every snapshot, as the scene above. Before the world is ready only the newest is kept |
+| `scene { scene }` | Every snapshot, as the scene above (none while the page shows its list view). Until the world has drawn once after `start`, the bridge keeps only the newest and hands it over then |
 | `select { id }` | The agent shown in the page's sidebar, or `null` |
 | `reply { id, ok, status, data?, error? }` | The answer to a `request`: `{ ok: true, status, data }`; `{ ok: false, status, error }` for an error from the collector (its own words, if any); `status: 0` with the reason when the request itself failed; `status: 403` with why when the page refused it |
 
@@ -259,7 +265,7 @@ from the page only, and the page from its current frame only.
 | `ready` | The world has started: the page stops waiting for it (see "When a world breaks") |
 | `leaving` | Sent by the bridge itself (`beforeunload` / `pagehide`, captured at load through the page it first saw): the document is going away. The page stops the world at once, with a panel |
 | `error { message, where }` | Shows it (300 and 120 characters at most): before `ready`, in the panel that replaces a world that doesn't start; after it, in a strip over the world. Also written to the page's console, each once (50 at most) |
-| `pick { agentId, from? }` | Opens that agent in the sidebar. The id must be one of the scene's; `from: 'say'` when it was picked by its speech bubble |
+| `pick { agentId, from? }` | Opens that agent in the sidebar. The id must be one of the scene's (any other is dropped). `from: 'say'` when it was picked by its speech bubble: then the page opens its whole conversation over the world instead, unless it waits on you or asks something answered with a button (that is done in the sidebar) |
 | `openDoc { agentId, path }` | Opens the file in a reader over the world. Only a path in that agent's folder, in a repo of the scene, or one a reply to `agentFiles` named for that same agent; never one with `..`; 4096 characters at most |
 | `openLink { url }` | Opens it in a new tab. Only `https://github.com/` links, 2048 characters at most |
 | `startSession` | Opens Start or resume a session |
@@ -269,7 +275,7 @@ from the page only, and the page from its current frame only.
 | `motion { still }` | The world stood still, or moves again (`true` or `false`); the page keeps it for `settings` |
 | `diary { entries }` | Shows the world's diary in the sidebar: at most 20 entries `{ at, state, who, text }`, in the order given (the farm puts the newest first), with `state` one of the agents' states and `at` a time. `who` is cut to 80 characters and `text` to 300, and both are shown as text, never as HTML. One bad entry drops the whole message. Drawn at most every quarter second: the newest entries are drawn when their turn comes |
 | `store { key, value }` | Saves one of the world's settings in the page's storage, as `tracker-world:<world>:<key>`. Names match `^[a-z][a-z0-9-]{0,31}$`; values are strings of 16384 characters at most. A world keeps at most 64 settings, 64 KB in all (names and values, what it saved before included): a `store` past either is refused (the page says so once, in its console). `migrated` is the page's own |
-| `request { id, kind, agentId? \| repo? }` | Reads one of two things with the token and answers with `reply`: `agentFiles` (an agent's files and memory; `agentId` must be in the scene) or `repoTouched` (the files agents touched in a repo; `repo` must be a repo's `key` in the scene). At most four are answered at a time: a fifth is refused at once (the bridge keeps a world under that: see below). One that can't be done is refused, and still answered |
+| `request { id, kind, agentId? \| repo? }` | Reads one of two things with the token and answers with `reply`: `agentFiles` (an agent's files and memory; `agentId` must be in the scene) or `repoTouched` (the files agents touched in a repo; `repo` must be a repo's `key` in the scene). At most four are answered at a time, counting any still running for a frame this one replaced: a fifth is refused at once (the bridge keeps a world under that: see below). One the collector hasn't answered in 30 seconds is cut off (`status: 0`). One that can't be done is refused, and still answered |
 
 The page takes each action (`pick`, `openDoc`, `openLink`, `startSession`, `showRepos`, `nav`,
 `bell`, `motion`) at most once a quarter second: the first at once, the rest dropped, so a world can't
@@ -283,7 +289,8 @@ it shows again.
 
 ### When a world breaks
 
-A world never traps the person using it: the page puts a panel in its place, or a strip over it.
+A world that breaks never traps the person using it: the page puts a panel in its place, or a strip
+over it. (A world that runs gives its own way back: see "Give a way back", below.)
 
 - **It must start within 5 seconds of its frame being built.** Starting means `ready`: call
   `Agentville.world(...)` or `Agentville.raw(...)` as `world.js` loads. A `world.js` that throws first,
@@ -330,6 +337,17 @@ gets the newest scene and the selection once it has drawn a frame (half a second
 tab), and each new one as it comes. The farm always drew its empty self first, and Chrome keeps
 where a layer first lay to the fraction of a pixel: this keeps the farm looking exactly as it did.
 
+`Agentville.send(message)` sends any of the messages above itself. A click on a link (`<a href>`)
+in the world goes through the page as `openLink`. Script errors, scripts that fail to load and
+errors thrown by `start`, `scene` or `select` reach the page as `error`, each once (20 at most). A
+`world.js` that registers nothing is reported too.
+
+**Give a way back.** While a world shows, the page hides its own top bar: the world fills the
+window. An engine world has the dashboard's buttons (the `hud` hook's default has List, World and
+Sidebar). A world that draws itself must draw its own, at least a **List** button (`nav { what:
+'list' }`) and a **World** button (`nav { what: 'worlds' }`), or whoever uses it has no way back to
+the list or to another world.
+
 `opts` holds the page's settings and the world's way out. Each function sends one message:
 
 | In `opts` | What it is, or sends |
@@ -363,11 +381,6 @@ reloads that world's frame once the changes stop (about 0.2 s), as if it had jus
 open it is refreshed. A world folder that is a link isn't watched, because the watcher doesn't
 follow links: reload the page to see an edit to it. Edits to a world that isn't showing reload
 nothing.
-
-`Agentville.send(message)` sends any of the messages above itself. A click on a link (`<a href>`)
-in the world goes through the page as `openLink`. Script errors, scripts that fail to load and
-errors thrown by `start`, `scene` or `select` reach the page as `error`, each once (20 at most). A
-`world.js` that registers nothing is reported too.
 
 ## Hooks
 
@@ -478,22 +491,48 @@ The field close-up (a field's files) is still drawn as the farm draws it.
 
 ## What a world can't do
 
-- It has no token, no cookies and no storage: reading them throws a `SecurityError`. It can't reach
-  the network: no `fetch`, no requests of any kind (`connect-src 'none'`), no frames, workers, forms,
-  popups or dialogs like `alert`. No WebRTC either: setting up a connection sends packets to any host
-  a page names, which no CSP stops, so the bridge takes `RTCPeerConnection` (and
-  `webkitRTCPeerConnection`, `RTCIceTransport`) away before your script runs: each is `undefined`,
-  for good. Its scripts come from the dashboard's server only: no inline
-  scripts and no `eval`. It can use pictures, fonts, sounds and stylesheets from the dashboard's
-  server (its own folder's, through `/world/<key>/…`), inline styles, and `data:` pictures, fonts and
-  sounds (`blob:` pictures and sounds too).
+- It has no token, no cookies and no storage: reading them throws a `SecurityError`. It can't fetch,
+  post or upload anything: no `fetch`, no `EventSource`, no requests of any kind (`connect-src
+  'none'`), no frames, workers, forms, popups (`window.open` gives `null`) or dialogs like `alert`.
+  No WebRTC either: setting up a connection sends packets to any host a page names, which no CSP
+  stops, so the bridge takes `RTCPeerConnection` (and `webkitRTCPeerConnection`, `RTCIceTransport`)
+  away before your script runs: each is `undefined`, for good. It can't read the page:
+  `parent.document` and setting `top.location` throw a `SecurityError`. A picture from another
+  server isn't loaded. Its scripts come from the dashboard's server only: no inline scripts and no
+  `eval`. It can use pictures, fonts, sounds and stylesheets from the dashboard's server (its own
+  folder's, through `/world/<key>/…`), inline styles, and `data:` pictures, fonts and sounds
+  (`blob:` pictures and sounds too).
 - It can't see the dashboard: the page and its API refuse to be shown in a frame
   (`frame-ancestors 'none'`), so a world can't load them with the token inside itself.
 - It can't make the page do anything but the messages above, each checked against the scene.
-- The one gap: a frame can still navigate itself away (`location = …`), and no browser rule stops
-  that. The page stops it as soon as it starts: the bridge tells the page the moment the document
-  starts to go away, and the page removes the frame and hears nothing more from it (see "When a world
-  breaks"). What remains possible is the leaving request itself, which carries whatever the world put
-  in its address, once. A world that gets a scene can put what it saw there, so treat what a world is
-  shown as visible to its author: for the farm and a world you allowed, agents' names, paths and what
-  they say; for one of your other worlds, only what a private scene keeps.
+  Anything else (a message type the page doesn't know, such as an answer to a question) is dropped.
+
+`scripts/e2e-ui.mjs` (`npm run test:ui`) runs a probe world in a real browser that tries each way
+out (`fetch`, `EventSource`, the parent page, the top page, storage, cookies, the token, a frame of
+the dashboard, a picture from another server, a popup, WebRTC, a preconnect), sends the page
+messages it must drop, and checks that every one is blocked but the first gap below, and that a
+world that loads another page is stopped.
+
+## The gaps
+
+Two things no browser rule stops, in any page:
+
+- **A connection to a host it names.** A world can make the browser open a connection to a host and
+  port of its choosing, with `<link rel="preconnect" href="https://host:port/">`, as often as it
+  likes, and the page doesn't notice. No request goes over that connection, but the host name
+  (looked up in DNS) and the port can carry what the world sees.
+  `<link rel="dns-prefetch">` presumably works the same way (untested). It can't be closed from the
+  page. So a world from your folder could send out what a private scene holds (agents' states, tool
+  and MCP server names, folder labels, repo and project names, costs), and a world allowed to see
+  what agents say could send out the words too.
+- **Leaving its frame.** A frame can always navigate itself away (`location = …`). The page stops it
+  as soon as it starts: the bridge tells the page the moment the document starts to go away (the
+  browser's `beforeunload` and `pagehide`), and the page removes the frame and hears nothing more
+  from it; should the browser not fire those, the frame's second `load` stops it (see "When a world
+  breaks"). What can't be stopped is the leaving request itself, which carries whatever the world
+  put in its address, once.
+
+So treat what a world is shown as visible to its author: for the farm and a world you allowed,
+agents' names, paths and what they say; for one of your other worlds, what a private scene keeps.
+Add only worlds you trust, and tick "Can see what agents say" only for a world whose author you'd
+trust with the words.

@@ -434,6 +434,8 @@
   // The switch for what a world sees is off while the list has just opened, and until a second without input: a world can open
   // the list (`nav: worlds`) when it likes, so it must not catch a click. A flag, not a clock reading: timers and clocks are coarse.
   const SEE_LOCK_MS = 1000;
+  // The box's tooltip: what is at stake (docs/worlds.md, "The gaps").
+  const SEE_TIP = 'A world can send what it sees to other sites, so allow this only for a world you trust.';
   let seeLocked = false, seeTimer = 0, seeLockId = 0;
   function lockSee() {
     seeLocked = true;
@@ -471,7 +473,7 @@
     list.innerHTML = worldsInfo.map(w => `<li><button type="button" class="world-pick" ${w.key && !w.error ? `data-world="${esc(w.key)}"` : 'disabled'} aria-pressed="${w.key === world}">
         ${typeof w.preview === 'string' && w.preview.startsWith('/world/') ? `<img class="world-preview" src="${esc(w.preview)}" alt="">` : `<span class="world-icon">${words(w.icon)}</span>`}
         <span class="world-text"><span><b>${words(w.name)}</b> <span class="chip">${w.builtIn ? 'Built in' : 'Your folder'}</span></span>${w.description ? `<span class="muted">${words(w.description)}</span>` : ''}${w.error ? `<span class="warnline">${words(w.error)}</span>` : ''}</span>
-      </button>${!w.builtIn && w.key ? `<label class="world-see"><input type="checkbox" data-see="${esc(w.key)}"${isPrivate(w.key) ? '' : ' checked'}${seeLocked ? ' disabled' : ''}> Can see what agents say</label>` : ''}</li>`).join('');
+      </button>${!w.builtIn && w.key ? `<label class="world-see" title="${SEE_TIP}"><input type="checkbox" data-see="${esc(w.key)}"${isPrivate(w.key) ? '' : ' checked'}${seeLocked ? ' disabled' : ''}> Can see what agents say</label>` : ''}</li>`).join('');
     const where = $('worlds-where');
     if (where) where.textContent = folder ? `Your worlds go in ${noBidi(folder)}` : '';
   }

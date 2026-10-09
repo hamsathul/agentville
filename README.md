@@ -201,8 +201,10 @@ To remove it completely, also delete the `CLAUDE_CODE_PLUGIN_DIRS` entry from
 
 ## Using it
 
-Open <http://localhost:7777>. **☰ List** and **🌾 Farm** at the top switch between the two
-views; both show the same live data, updated every few seconds.
+Open <http://localhost:7777>. **☰ List** at the top and the button beside it switch between the
+two views: the list, and the world you chose (**🌾 Farm** until you choose another). Both show the
+same live data, updated every few seconds. A world fills the window, so it has its own **List**
+button to come back.
 
 ### The list view
 
@@ -485,18 +487,24 @@ The **⚙ Claude Code** button in the top bar opens your Claude Code setup in th
 
 ### Worlds
 
-A world is a way to draw what the dashboard knows; the farm is the built-in one. **World**, in the
-farm's buttons at the top, opens the list of worlds: pick one. The view toggle in the list view's top
-bar carries the name of the world you will see. Each world keeps its own zoom and settings, and the choice is
-kept in this browser. If the world you chose has gone, or has something wrong with it, the dashboard
-opens on the farm instead and forgets the choice. **Open the worlds folder** in the list makes your
-folder if it is not there yet and shows it in Finder.
+A world is a way to draw what the dashboard knows; the farm is the built-in one. **World**, among
+the farm's buttons at the top, opens the list of worlds: pick one. In the list view, the button
+beside **☰ List** carries the name of the world you will see. Each world keeps its own zoom and
+settings, and the choice is kept in this browser. If the world you chose has gone, or has something
+wrong with it, the dashboard opens on the farm instead and forgets the choice. **Open the worlds
+folder** in the list makes your folder if it is not there yet and shows it in Finder.
 
 **Privacy mode.** A world from your folder gets a scene without words or paths: agents' states,
-tools and numbers, but no summaries, questions, replies, task, message or subagent text,
-branch names, deploy or pull request words, or folder paths (repo keys get stand-ins `r1`, `r2`…, names stay; an agent is named by its folder), and it
-can't ask for files. Each of your worlds in the list has a **Can see what agents say** box; ticking
-it (per browser) restarts that world with the full scene. Built-in worlds always see everything.
+tools and numbers, but no summaries, questions, replies, task, message or subagent text, branch
+names, deploy or pull request words, or folder paths. Repos keep their names, but their paths become
+stand-ins (`r1`, `r2`…). An agent is named by its folder (`shop`, `shop 2`), because a session's own
+name can be its title, which Claude Code makes from the conversation. Nor can such a world ask for
+files. Each of your worlds in the list has a **Can see what agents say** box; ticking it (per
+browser) restarts that world with the full scene. Tick it only for a world you trust: a world can
+send what it sees to other sites (see [Privacy and security](#privacy-and-security)), as the box's
+tooltip says. The box is greyed out for a second after the list opens, and until a second passes
+with no click or key in the list, so a world that opens the list can't catch a click meant for
+something else. Built-in worlds always see everything.
 
 ![The list of worlds](docs/worlds.png)
 
@@ -580,7 +588,7 @@ can hold.
 - **Top left, the panel.** The money spent and harvests, then waiting on you, working, your turn
   and collisions (click one to open its first agent), then RAM, CPU and plan gauges and a
   **needs you** button. Click its title to fold it away.
-- **Top right.** List, ＋ Session, ⚙ Claude Code, Sidebar and the theme.
+- **Top right.** List, World (the list of worlds), ＋ Session, ⚙ Claude Code, Sidebar and the theme.
 - **Bottom.** Follow (keep the picked farmer in view), Resting (hide idle and stale farmers),
   Bubbles, Sky (live, day or night), Motion, Bell, Help, and zoom.
 - **Mouse.** ⌘/Ctrl + scroll or a pinch zooms, drag moves around, and a minimap appears while you
@@ -709,7 +717,7 @@ and can do is in [docs/worlds.md](docs/worlds.md).
   token), keep its own settings, press the top bar's buttons. Links from it open only to GitHub.
   The page takes each of those at most once a quarter second and four reads at a time, and keeps at
   most 64 settings (64 KB) for a world, so a misbehaving world can't flood the dashboard or fill your
-  browser's storage.
+  browser's storage. While the list view shows, a world can't make the page do anything.
 - Your worlds' files are served without the token, like the farm's, to anything on this Mac that
   asks for them by path (so keep nothing secret in a world's folder), and never from outside the
   world's own folder. The list of their names and the folder's path needs the token. The collector
@@ -717,15 +725,31 @@ and can do is in [docs/worlds.md](docs/worlds.md).
 - **Open the worlds folder** (an action: token and same origin) makes your worlds folder and shows
   it in Finder (`open <folder>`); it only shows it, and runs nothing in it. The page keeps your
   choice of world in this browser (`tracker-world`), and nothing else about it leaves the page.
-- A world can't send anything out: no network, and its frame can't be navigated without the page
-  stopping it the moment it starts to leave and hearing nothing more from it. What remains possible is
-  that leaving request itself, which carries whatever the world put in its address, once.
-- Your worlds see no conversation text or paths until you tick **Can see what agents say** for one
-  (kept per browser, as `tracker-world-cansee:<world>`); then they see what the dashboard shows. A
-  world can never act for you. And plainly: a world that can see could still leak what it sees once,
-  by loading another page in its frame (browsers can't block that); the dashboard stops it at once
-  and says so. Only give a world you didn't write that permission if you trust it. The farm and other
-  built-in worlds always see everything.
+- A world can't read the page or use its token, and it can't fetch, post or upload anything: it
+  makes no requests of its own (`connect-src 'none'`), has no popups, frames or WebRTC (the frame
+  takes WebRTC away before the world runs), and can't move the dashboard's page. Two gaps remain,
+  in what browsers let any page do:
+  - **A connection to a host it names.** A world can make the browser open a connection to a host
+    and port of its choosing (`<link rel="preconnect">`), as often as it likes, and the page doesn't
+    notice. No request goes over that connection, but the host name (looked up in DNS) and the port
+    can carry what the world sees. `<link rel="dns-prefetch">` presumably works the same way
+    (untested). So a world from your folder could send out what a private scene holds: agents'
+    states, tool and MCP server names, folder labels, repo and project names, costs. A world you let
+    see what agents say could send out the words too.
+  - **Leaving its frame.** A frame can always load another page in its own place (setting its
+    `location`). The page catches that as it starts: the frame says it is leaving (the browser's
+    `beforeunload` and `pagehide`), and the page removes it, hears nothing more from it and says so;
+    should the browser not say, the frame loading a second time is caught too. What can't be stopped
+    is that one leaving request, whose address can carry whatever the world put in it, once.
+
+  A test world in `scripts/e2e-ui.mjs` tries every way out in a real browser: all are blocked but
+  these two.
+- **Add only worlds you trust.** Your worlds see no conversation text or paths until you tick **Can
+  see what agents say** for one (kept per browser, as `tracker-world-cansee:<world>`); then they see
+  what the dashboard shows. Tick it only for a world whose author you'd trust with the words. A
+  world can never act for you: it can't answer, approve, message, start or stop anything. The most
+  it can do is open a dialog, a file or a GitHub link for you to see, press one of the top bar's
+  buttons, or switch the bell. The farm and other built-in worlds always see everything.
 - File contents, folder listings, past sessions, whole conversations (and your messages in them,
   for ↑) and field close-ups are served only with a per-install token that the page carries. Every action (answer, message,
   start, end, switch…) also needs a same-origin request.
@@ -781,8 +805,9 @@ and can do is in [docs/worlds.md](docs/worlds.md).
 | **Browse…** or **📁 Folder** opens no window | Allow the tracker to control System Events: System Settings → Privacy & Security → Automation. A window may also be open behind others: pick or cancel it there |
 | ↺ Restore says its files could not be restored | Claude Code's file snapshots may be off (`/config` → file checkpointing, or `CLAUDE_CODE_DISABLE_FILE_CHECKPOINTING`). The session was resumed as it was; restore the conversation only |
 | The bell is silent | Click the page once (browsers block sound until you do), and allow notifications |
-| A world says it "didn't start" | After 5 seconds without a start, a panel replaces the (empty) world and gives the first error it reported, if any. Fix its `world.js` (or `world.json`) and save: it reloads by itself. Or press **Back to the farm**, **Show the list**, or **Try again**. A world has 5 seconds to start |
-| A world "tried to leave the page and was stopped" | A world may only draw in its own frame; this one tried to go to another page (a link, `location`). The page stops it the moment it starts to leave. Fix the world, then pick it again from the list |
+| A world says it "didn't start" | A world has 5 seconds to start. Past that, a panel replaces the (empty) world and gives the first error it reported, if any. Fix its `world.js` (or `world.json`) and save: it reloads by itself. Or press **Back to the farm**, **Show the list**, or **Try again** |
+| A world "tried to leave the page and was stopped" | A world may only draw in its own frame; this one tried to go to another page (a link, `location`). The page stops it the moment it starts to leave. Fix the world and save: it reloads by itself. Or press **Back to the farm** or **Show the list** |
+| A world of yours shows no buttons, and there is no way back to the list | The dashboard's top bar is hidden while a world shows, so a world brings its own **List** and **World** buttons (an engine world has them; a world that draws itself must make its own: [docs/worlds.md](docs/worlds.md)). Until it does, move the world's folder out of your worlds folder and reload the page: the dashboard opens on the farm. (With the sidebar open, its **☰ List** works too) |
 | A red strip over a world | The world reported an error after it started. It keeps drawing; **×** hides the strip. The page's console has the same message |
 | The farm stays empty, or says "not found" | The farm loads in a frame of its own from the collector (`/world/farm/`). After an update, restart the service (`agent-tracker restart`) and reload the page. The page's console says what a world reported, if anything |
 
@@ -831,7 +856,8 @@ docs/        screenshots, and worlds.md: what a world gets from the dashboard an
 
 ```bash
 npm test                    # collector and dashboard (node:test)
-npm run test:ui             # the dashboard and the farm in headless Chrome, on a fixture
+npm run test:ui             # the dashboard, the farm and other worlds in headless Chrome, on a fixture
+                            # (a probe world among them tries every way out of its frame)
 claude plugin test mod      # the Claude Code mod
 scripts/e2e-answer.sh       # answering and messaging real sessions
 npm start                   # run the collector in the foreground (stop the service first)

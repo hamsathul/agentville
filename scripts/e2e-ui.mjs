@@ -2,12 +2,15 @@
 // Browser test of the dashboard. Starts a collector on a fixture (two sessions in a small git
 // repo, one asking a question, with a stand-in for the mod so the question can be answered),
 // drives headless Chrome over the DevTools protocol (scripts/lib/cdp.mjs), and checks the list view,
-// the farm (inside its sandboxed frame: fjs/funtil look there), its sidebar, the info dialog and a
-// field close-up. No dependencies; needs Chrome (set CHROME to
+// the farm (inside its sandboxed frame: fjs/funtil look there), its sidebar, the info dialog, a
+// field close-up, and the worlds (one of them a probe that tries every way out of its frame).
+// No dependencies; needs Chrome (set CHROME to
 // its path if it isn't in the usual place). Exits 1 if a check fails.
 import { execFileSync, spawn } from 'node:child_process';
 import { appendFileSync, cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, realpathSync, rmSync, unlinkSync, utimesSync, writeFileSync } from 'node:fs';
+import { createSocket } from 'node:dgram';
 import { createServer } from 'node:http';
+import { createServer as createTcpServer } from 'node:net';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -75,6 +78,58 @@ await new Promise(resolve => hang.listen(0, '127.0.0.1', resolve));
 mkdirSync(join(worldsDir, 'leaves-slow'));
 writeFileSync(join(worldsDir, 'leaves-slow', 'world.json'), JSON.stringify({ name: 'Leaves slow', api: 1 }));
 writeFileSync(join(worldsDir, 'leaves-slow', 'world.js'), `Agentville.raw({ start() { location.href = 'http://127.0.0.1:${hang.address().port}/'; }, scene() {} });`);
+// A server elsewhere (another origin) that answers everything with a picture and notes what reached it:
+// a request that reaches it got out of a world, whatever the world was told.
+const elsewhereHeard = [];
+const elsewhere = createServer((req, res) => { elsewhereHeard.push(req.url); res.writeHead(200, { 'content-type': 'image/svg+xml' }); res.end('<svg xmlns="http://www.w3.org/2000/svg" width="1" height="1"/>'); });
+await new Promise(resolve => elsewhere.listen(0, '127.0.0.1', resolve));
+const ELSEWHERE = `http://127.0.0.1:${elsewhere.address().port}`;
+// And elsewhere for what isn't a request: a UDP listener (a STUN server, for WebRTC) and a TCP one (for
+// a preconnect), each noting what reaches it.
+const udpHeard = [], udp = createSocket('udp4');
+udp.on('message', (msg, from) => udpHeard.push(`${from.port}: ${msg.length} bytes`));
+await new Promise(resolve => udp.bind(0, '127.0.0.1', resolve));
+const tcpHeard = [];
+const tcp = createTcpServer(socket => { tcpHeard.push('a connection'); socket.on('data', d => tcpHeard.push(String(d).split('\r\n')[0])); socket.on('error', () => {}); setTimeout(() => socket.destroy(), 200); });
+await new Promise(resolve => tcp.listen(0, '127.0.0.1', resolve));
+// One that tries every way out of its frame and writes down what happened, in its diary.
+mkdirSync(join(worldsDir, 'probe'));
+writeFileSync(join(worldsDir, 'probe', 'world.json'), JSON.stringify({ name: 'Probe', api: 1 }));
+writeFileSync(join(worldsDir, 'probe', 'world.js'), `(() => {
+  // Tries every way out of a world's frame and writes down what happened, in the diary.
+  const notes = [];
+  const note = text => { notes.unshift({ at: Date.now(), state: 'working', who: 'probe', text }); Agentville.send({ type: 'diary', entries: notes.slice(0, 20) }); };
+  const attempt = async (name, fn) => { try { note(name + ': ' + await fn()); } catch (e) { note(name + ': blocked (' + e.name + ')'); } };
+  const wait = (ms, value) => new Promise(r => setTimeout(() => r(value), ms));
+  Agentville.raw({
+    seen: false,
+    async start() {
+      await attempt('fetch', async () => { await fetch('/api/state'); return 'ALLOWED'; });
+      await attempt('events', () => Promise.race([new Promise(r => { const s = new EventSource('/api/events'); s.onopen = () => r('ALLOWED'); s.onerror = () => r('blocked (error)'); }), wait(1500, 'blocked (no answer)')]));
+      await attempt('parent', () => (parent.document ? 'ALLOWED' : 'blocked'));
+      await attempt('top', async () => { top.location.href = '/?escaped'; await wait(500); return 'blocked (still here)'; }); // if it got out, this page is gone and the test fails loudly
+      await attempt('storage', () => { localStorage.setItem('x', '1'); return 'ALLOWED'; });
+      await attempt('cookie', () => (document.cookie ? 'ALLOWED' : 'blocked (empty)'));
+      await attempt('token', () => (typeof TOKEN === 'undefined' ? 'blocked (none)' : 'ALLOWED'));
+      await attempt('frame', () => Promise.race([new Promise(r => { const f = document.createElement('iframe'); f.src = '/'; f.onload = () => { try { r(f.contentDocument && f.contentDocument.body.innerHTML.includes('TOKEN') ? 'ALLOWED' : 'blocked (empty)'); } catch (e) { r('blocked (' + e.name + ')'); } }; document.body.append(f); }), wait(1500, 'blocked (no load)')]));
+      await attempt('image', () => Promise.race([new Promise(r => { const i = new Image(); i.onload = () => r('ALLOWED'); i.onerror = () => r('blocked (error)'); i.src = '${ELSEWHERE}/picture.svg?from=probe'; }), wait(1500, 'blocked (no answer)')]));
+      await attempt('popup', () => (window.open('${ELSEWHERE}/popup') ? 'ALLOWED' : 'blocked (none)'));
+      await attempt('webrtc', async () => { const pc = new RTCPeerConnection({ iceServers: [{ urls: 'stun:127.0.0.1:${udp.address().port}' }] }); pc.createDataChannel('x'); await pc.setLocalDescription(await pc.createOffer()); await wait(1500); return 'ALLOWED'; });
+      // The documented gap: a preconnect opens a connection to any host and port (the e2e says what came of it, and never fails on it).
+      await attempt('preconnect', async () => { const l = document.createElement('link'); l.rel = 'preconnect'; l.href = 'http://127.0.0.1:${tcp.address().port}/'; document.head.append(l); await wait(1500); return 'tried'; });
+      Agentville.send({ type: 'pick', agentId: 'nobody-here' });
+      Agentville.send({ type: 'answer', agentId: 'ui-asker', answers: { 'Which crop next?': 'Weeds' } });
+      Agentville.send({ type: 'nav', what: 'rm -rf' });
+      note('done');
+    },
+    scene(s) {
+      if (this.seen) return;
+      this.seen = true;
+      const clean = s.private === true && s.agents.every(a => a.said === '' && a.ask === '' && a.cwd === null) && s.repos.every(r => r.key.startsWith('r') && !r.key.includes('/'));
+      note('private: ' + (clean ? 'yes' : 'NO'));
+    },
+  });
+})();`);
 
 const repo = join(realpathSync(temp), 'farm-repo');
 mkdirSync(join(repo, 'src'), { recursive: true });
@@ -717,6 +772,32 @@ try {
   check(await js("!document.querySelector('#farm .world-frame') && !document.querySelector('[data-world-retry]')"), 'its frame is gone from the page');
   await js("document.querySelector('[data-world-back]').click()");
   check(await until("document.querySelector('#farm .world-frame')?.src.endsWith('/world/farm/')") && await funtil("document.querySelectorAll('.px-tag').length >= 2"), 'and Back to the farm brings the farm back');
+
+  console.log('Every way out of a world');
+  const answeredBefore = JSON.stringify(answered ?? null);
+  await funtil("!!document.querySelector('[data-farm-nav=\"worlds\"]')");
+  await fjs("document.querySelector('[data-farm-nav=\"worlds\"]').click()");
+  await until("document.getElementById('worlds-dlg').open");
+  await js("document.querySelector('[data-world=\"u/probe\"]').click()");
+  // Its tries can end before its first scene comes (a world draws once first): wait for both.
+  check(await until("(t => /probe\\s*done/.test(t) && /private: /.test(t))(document.getElementById('farm-diary').textContent)", 20_000), `the probe world tried every way out (its diary: ${await js("document.getElementById('farm-diary').textContent")})`);
+  const diaryText = await js("document.getElementById('farm-diary').textContent");
+  for (const way of ['fetch', 'events', 'parent', 'top', 'storage', 'cookie', 'token', 'frame', 'image', 'popup', 'webrtc']) check(new RegExp(`${way}: blocked`).test(diaryText), `a world can't get out by ${way} (${diaryText.match(new RegExp(`${way}: (ALLOWED|blocked( \\([^)]*\\))?)`))?.[0] ?? 'not tried'})`);
+  check(!/ALLOWED/.test(diaryText), `nothing got out (${diaryText.match(/\w+: ALLOWED/g)?.join(', ') ?? 'none'})`);
+  check(elsewhereHeard.length === 0, `no request reached the server elsewhere (${JSON.stringify(elsewhereHeard)})`);
+  check(udpHeard.length === 0, `no packet reached the STUN listener elsewhere (${JSON.stringify(udpHeard)})`);
+  // The documented gap (docs/worlds.md, "The gaps"): said, never failed on.
+  console.log(`  gap   preconnect: ${tcpHeard.length ? `reached elsewhere (${tcpHeard.join(', ')}): the documented gap` : 'did not reach elsewhere this time'}`);
+  check(await js(`new Promise(r => { const i = new Image(); i.onload = () => r(true); i.onerror = () => r(false); i.src = ${JSON.stringify(`${ELSEWHERE}/picture.svg?from=page`)}; })`),
+    "the same picture loads in the page itself: the world's frame is what stops it, not the network");
+  check(/private: yes/.test(diaryText), 'one of your worlds sees no words or paths by default');
+  check(JSON.stringify(answered ?? null) === answeredBefore, 'a message the page does not accept (an answer) reached no session');
+  check(await js("!/nobody-here/.test(document.getElementById('farm-agent').textContent)"), 'a pick for an agent not on the dashboard was dropped');
+  check(await js("document.querySelector('#farm .world-frame')?.src.endsWith('/world/u/probe/') && !document.querySelector('#farm .world-panel') && document.getElementById('main').dataset.view === 'farm'"), 'and the page is still itself, the probe still in its frame');
+  await js("document.getElementById('view-farm').click()"); // the probe draws no buttons: the view toggle opens the list
+  await until("document.getElementById('worlds-dlg').open");
+  await js("document.querySelector('[data-world=\"farm\"]').click()");
+  check(await until("document.querySelector('#farm .world-frame')?.src.endsWith('/world/farm/')") && await funtil("document.querySelectorAll('.px-tag').length >= 2"), 'and the farm comes back');
   for (let i = errors.length - 1; i >= 0; i--) if (/no barn here/.test(errors[i])) errors.splice(i, 1); // the throw was the test's own
 
   console.log('Claude Code setup');
@@ -792,6 +873,10 @@ try {
   await handle.stop();
   hang.closeAllConnections?.();
   hang.close();
+  elsewhere.closeAllConnections?.();
+  elsewhere.close();
+  udp.close();
+  tcp.close();
   rmSync(temp, { recursive: true, force: true, maxRetries: 5, retryDelay: 200 });
 }
 
