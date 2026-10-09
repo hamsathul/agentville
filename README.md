@@ -578,7 +578,8 @@ an error. `worldsDir` is read at startup (a change needs a restart); one that is
 above it is ignored and the default is used. A world's names are shown as plain text, whatever they
 hold. How to write one is in [docs/worlds.md](docs/worlds.md), a guide written for Claude Code to
 follow as much as for you: ask Claude to make you a world and point it there. A plain starter world
-(`web/worlds/starter/`, with a cat) is the template for your own; it isn't in the list. A world can have animals
+(`web/worlds/starter/`, with a cat; [a picture](docs/starter.png)) is the template for your own; it
+isn't in the list. A world can have animals
 of its own (the `animals()` hook, from a library of twelve creatures), and lists in its `world.json`
 the shapes it already uses for data (`taken`), so its animals never look like them.
 

@@ -39,6 +39,8 @@ Keys: a built-in world is named by its folder in `web/worlds/` (the farm is `far
 
 ![The farm: every agent a farmer, every repo a field](farm.png)
 
+![The starter: people at the door and on the bench, a plot for each repo, and a cat](starter.png)
+
 Each new built-in world joins this catalogue, with its own screenshot in `docs/`, and the README's
 list of worlds.
 
@@ -815,6 +817,13 @@ on the test page.
 - the context filling each plot with green, and the last deploy as a flag on it (green ok, red failed,
   blinking amber running, grey for any other state);
 - a cat from the creature library (`animals()`, `roam()`, `avoid()`; see "Creatures"), just for fun.
+
+At the tour's `everyone` stop (`npm run world-shots -- starter --stop everyone`, cut to the world's
+frame), two people wait at the door (one on a permission, one on its turn), three work in their
+plots with their props, two sit on the bench (one asleep, one stale and greyed out), the `shop`
+and `blog` plots fly their last deploy's flag (ok, running), and the cat is out on the grass:
+
+![The starter at the tour's everyone stop](starter.png)
 
 The starter you edit is the copy `new-world` made, `<worlds folder>/<name>/world.js`; the changes a
 different world needs are mostly in its outfit, its `props.kit()`, `bg` (the ground and what stands for a
