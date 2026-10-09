@@ -26,7 +26,7 @@ const DASHBOARD_REASON = 'Answered from the Agentville dashboard'
 type Offer = { stateDir: string; sessionId: string; isLive: boolean; windowSec: number; now: number }
 type Waited = { kind: 'answer'; text: string } | { kind: 'withdrawn' } | { kind: 'timeout' }
 
-const MOD_VERSION = '0.6.2'
+const MOD_VERSION = '0.7.0'
 
 let latest: TrackerView = EMPTY
 // The terminal's working line (Slithering… while thinking), for the dashboard: when the turn began,
@@ -105,7 +105,58 @@ export async function claimRequests($: any, inbox: string): Promise<any[]> {
 // Model and effort switches, compacting and plugin reloads from the dashboard run as the person's
 // own /model, /effort, /compact and /reload-plugins, the arguments checked again here: an alias
 // (opus, sonnet, opus[1m]…), an effort level, what the summary should keep (one line), or nothing.
-const SETTINGS: Record<string, RegExp> = { model: /^(?:default|opus|sonnet|haiku|fable)(?:\[1m\])?$/, effort: /^(?:low|medium|high|xhigh|max)$/, compact: /^[^\n\r]{0,500}$/, 'reload-plugins': /^$/ }
+// A stop is Esc's: it cancels the running turn.
+const SETTINGS: Record<string, RegExp> = { model: /^(?:default|opus|sonnet|haiku|fable)(?:\[1m\])?$/, effort: /^(?:low|medium|high|xhigh|max)$/, compact: /^[^\n\r]{0,500}$/, 'reload-plugins': /^$/, stop: /^$/ }
+
+// The main turn running now, which a stop cancels: its id comes with turn.start, and its own
+// turn.complete ends it (a subagent's run completes under another id).
+let runningTurn: string | null = null
+export const turnStarted = (turnId: string) => { runningTurn = turnId }
+export const turnEnded = (turnId: string) => { if (runningTurn === turnId) runningTurn = null }
+
+// What Esc leaves in the conversation. The abort writes nothing, so the mod adds it: the model reads
+// that it was cut off, and the dashboard sees the turn end.
+const INTERRUPTED = '[Request interrupted by user]'
+
+// Turns stopped from the dashboard (the last few: a stopped turn completes before its shell call
+// returns). The abort moves a command running in them to the background (backgroundedByTurnAbort),
+// where Esc would end it: so it is stopped there.
+const stoppedTurns = new Set<string>()
+function noteStopped(turnId: string) {
+  stoppedTurns.add(turnId)
+  for (const old of stoppedTurns) if (stoppedTurns.size > 8) stoppedTurns.delete(old)
+}
+
+/**
+ * A Bash call's hook: when a stop from here sent the command to the background, it is ended
+ * (TaskStop) once the turn is over, since a tool called inside the aborted turn is refused.
+ */
+export async function endStoppedCommand($: any, e: any, next: any) {
+  const turn = runningTurn
+  const r = await next(e)
+  const out = r?.result
+  if (turn && stoppedTurns.has(turn) && out?.backgroundedByTurnAbort === true && typeof out.backgroundTaskId === 'string') {
+    const taskId = out.backgroundTaskId
+    $.clock.after(250, async () => {
+      try {
+        const done = await $.tool.call({ tool: 'TaskStop', task_id: taskId })
+        if (done?.deny) logFailure($, `a stopped command was not ended (${done.deny}); stop it under Commands running`)
+      } catch (err) {
+        logFailure($, `a stopped command could not be ended (${String(err)}); stop it under Commands running`)
+      }
+    })
+  }
+  return r
+}
+
+/** Stop from the dashboard: the running turn is cancelled as Esc cancels it, its tools stopped. */
+async function stopTurn($: any) {
+  if (!runningTurn) return { text: 'It had already finished.' }
+  noteStopped(runningTurn)
+  await $.turn.abort({ turnId: runningTurn })
+  await $.session.append({ message: { type: 'user', content: [{ type: 'text', text: INTERRUPTED }] } })
+  return { text: 'Stopped.' }
+}
 
 /**
  * Runs the switches the dashboard asked for. A slash command waits for the session to be idle, so
@@ -118,7 +169,7 @@ export async function runSettings($: any, stateDir: string, sessionId: string) {
     void (async () => {
       let result: { ok: boolean; text: string }
       try {
-        const r = await $.command.run({ command, args })
+        const r = command === 'stop' ? await stopTurn($) : await $.command.run({ command, args })
         result = { ok: true, text: String(r?.text ?? '') }
       } catch (err) {
         result = { ok: false, text: String(err) }
@@ -203,8 +254,9 @@ async function pollOnce($: any) {
     previous = snapshot
     if (selfId) {
       await $.fs.write(`${stateDirFor($.plugin.root)}/mods/${selfId}.json`, JSON.stringify({ sessionId: selfId, version: MOD_VERSION, at: now, usage: await usageNow($), turn: turnNow, effort: effortNow }))
-      await deliverMessages($, stateDirFor($.plugin.root), selfId)
+      // A stop goes first: a message sent with it is then the next turn, as when you type after Esc.
       await runSettings($, stateDirFor($.plugin.root), selfId)
+      await deliverMessages($, stateDirFor($.plugin.root), selfId)
       await answerAsides($, stateDirFor($.plugin.root), selfId)
     }
   } catch (err) {
@@ -363,11 +415,13 @@ export const register: Register = on => {
   // After a hot reload session.start may not run again, so the next turn starts the poll.
   on('turn.start', async ($, e, next) => {
     startTurn(await $.clock.now())
+    turnStarted(e.turnId)
     await ensurePolling($)
     return next(e)
   })
   on('turn.complete', async ($, e, next) => {
     startTurn(null)
+    turnEnded(e.turnId)
     return next(e)
   })
 
@@ -380,6 +434,10 @@ export const register: Register = on => {
     if (!e.agentId && e.effort !== undefined) effortNow = String(e.effort)
     return yield* next(e) // the request goes out as it was, streamed through
   })
+
+  // A shell command a stop from the dashboard sent to the background is ended, as Esc ends it.
+  on('tool.call', { tool: 'Bash' }, ($, e, next) => endStoppedCommand($, e, next))
+    .catch(($, e, next) => next(e)) // replay-safe: a call already made is not run again
 
   // If answering fails, the question falls back to the terminal dialog as usual.
   on('tool.call', { tool: 'AskUserQuestion' }, async ($, e, next) => answerFromDashboard($, e, next, await offerContext($)))

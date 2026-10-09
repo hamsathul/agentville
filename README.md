@@ -30,6 +30,7 @@ It listens on `127.0.0.1` only and reads what Claude Code already writes to disk
 - [Using it](#using-it)
   - [The list view](#the-list-view)
   - [Answering and messaging agents](#answering-and-messaging-agents)
+  - [Stopping a turn (■ Stop)](#stopping-a-turn--stop)
   - [Side questions (/btw)](#side-questions-btw)
   - [Model, effort and permission mode](#model-effort-and-permission-mode)
   - [Starting, resuming, ending and restarting sessions](#starting-resuming-ending-and-restarting-sessions)
@@ -69,6 +70,8 @@ It listens on `127.0.0.1` only and reads what Claude Code already writes to disk
 - Ask a session a side question (`/btw`) without interrupting or adding to its conversation.
 
 **Steer your sessions**
+- Stop a session in the middle of its turn, as Esc does in its terminal: it stops what it was doing
+  and waits for you.
 - Start a new session in any folder of yours (type it, browse to it, or create it) or in one you've
   worked in, or find a past one (search, filter by folder, model, branch or running, sort by
   activity, start, name, folder or length) and resume it, in the permission mode, model and effort
@@ -197,8 +200,9 @@ The page is laid out like an editor, in three columns:
   - its state, folder and model (a switch with `/model` shows at once, before its next reply);
   - its controls: permission mode, model, effort, Restart in…, End session;
   - CPU, memory, context left and cost;
-  - **Now**: its working line and current tool. When nothing is running it says since when it has
-    been your turn and the first line of its last reply, or since when it has been idle or quiet;
+  - **Now**: its working line and current tool, with **■ Stop** to end the turn as Esc does. When
+    nothing is running it says since when it has been your turn and the first line of its last
+    reply, or since when it has been idle or quiet;
   - **Commands running**: each shell command it (or a subagent) runs now, foreground or background,
     with how long it has run and its CPU and memory, everything it started included. **Output**
     shows a background one's output, followed while the dialog is open (a foreground one hands its
@@ -260,6 +264,24 @@ These need the mod in that session.
   newer); it starts at the newest. While the dialog is open, new messages appear at the bottom.
   You can reply from it too: it has the same message box, with 📎 Attach and 📁 Folder, sharing the side
   panel's draft and files.
+
+### Stopping a turn (■ Stop)
+
+While a session works, its working line under **Now** has **■ Stop**. It ends the turn at once, as
+Esc does in its terminal:
+- The model stops, and a shell command it was running in the foreground ends. The session waits
+  for you, and the dashboard shows it as *your turn*.
+- The conversation stays. The session reads that it was interrupted, as after Esc, so you can tell
+  it what to do instead.
+- A message you sent while it worked isn't lost: it becomes the session's next prompt. That's the
+  way to stop it and steer it at once.
+- A command the model put in the background on purpose keeps running. Stop that one under
+  **Commands running**, whose **■ Stop** ends a single command.
+- There is no confirm, as Esc has none. It takes up to 2 seconds, since the mod checks for
+  requests every 2 seconds.
+
+It needs mod 0.7.0 or newer. For a session started before you updated, run `/reload-plugins` in
+it.
 
 ### Side questions (/btw)
 
@@ -479,6 +501,7 @@ In every session that loads it:
 
 The mod also does the dashboard's work inside the session:
 - delivers your answers and messages;
+- stops a turn when you press **■ Stop**;
 - runs model and effort switches;
 - answers side questions;
 - reports the session's cost, plan usage and working line.
@@ -531,7 +554,9 @@ collisions. It writes the result to `state/state.json` and serves it as the dash
 The **mod** (`mod/`) is a Claude Code plugin. It reads `state/state.json` for its pane, status
 line and toasts, and writes a small check-in file every 2 seconds. When the dashboard asks for
 something (an answer, a message, a model switch, a side question), the collector leaves a file
-for that session's mod. The mod picks it up and does it inside the session.
+for that session's mod. The mod picks it up and does it inside the session. A stop cancels the
+running turn through Claude Code's plugin API, and the mod then writes the same
+`[Request interrupted by user]` line Esc leaves in the conversation.
 
 The **dashboard** (`web/`) is plain HTML and JavaScript, served by the collector. The farm is a
 canvas, with its text drawn as HTML on top so it stays crisp.
@@ -545,8 +570,9 @@ canvas, with its text drawn as HTML on top so it stays crisp.
   start, end, switch…) also needs a same-origin request.
 - The explorer shows what git shows. Ignored files (`node_modules`, `.env`, build output) and
   files that look like secrets (`.env*`, keys) are neither listed nor served.
-- **■ Stop** only ever stops a session's shell commands, never the session itself, its MCP
-  servers or anything else: the collector checks again in `ps`, then sends SIGTERM to the command's
+- **■ Stop** on the working line goes through the session's own mod, as Esc would: no signal is
+  sent to anything. **■ Stop** under Commands running only ever stops a session's shell commands,
+  never the session itself, its MCP servers or anything else: the collector checks again in `ps`, then sends SIGTERM to the command's
   own process group (SIGKILL 3 s later if anything is left). A background command's output is read
   only with the token, and only from the file Claude Code named for it in the scratch folder.
 - Files a reply names are checked with the collector before anything shows: token only, the same
@@ -575,6 +601,7 @@ canvas, with its text drawn as HTML on top so it stays crisp.
 | The dashboard doesn't load | `agent-tracker status`, then `agent-tracker logs`. Check that nothing else uses the port |
 | A session shows "dashboard answers off" | Its mod isn't loaded. Check `CLAUDE_CODE_PLUGIN_DIRS` in `~/.claude/settings.json`, then type anything in the session or `/reload-plugins` |
 | "runs an older tracker mod" | `/reload-plugins` in that session, or resume it |
+| **■ Stop** on the working line is greyed out | Stopping needs mod 0.7.0: `/reload-plugins` in that session. Until then, press Esc in its terminal |
 | No cost, plan usage or working line | These come from the mod (0.4.0 or newer; the working line from 0.5.0) in a running session |
 | No pull requests or deploy weather | `gh auth status`. Pull requests need a GitHub `origin`; Actions runs need the repo in `deployRepos` |
 | ＋ Session or End session does nothing | Allow the tracker to control Terminal or iTerm: System Settings → Privacy & Security → Automation |

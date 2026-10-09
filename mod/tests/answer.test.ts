@@ -1,6 +1,6 @@
 import { expect, test } from 'claude-code/testing'
 
-import { answerAsides, answerFromDashboard, chooseAlways, deliverMessages, noteSpinner, offerContext, permitFromDashboard, runSettings, startTurn, turnForBeacon, usageNow } from '../hooks/register'
+import { answerAsides, answerFromDashboard, chooseAlways, deliverMessages, endStoppedCommand, noteSpinner, offerContext, permitFromDashboard, runSettings, startTurn, turnEnded, turnForBeacon, turnStarted, usageNow } from '../hooks/register'
 
 // The hook bodies only call $.fs.write and $.process.run, so a small stand-in records them.
 type Run = { exitCode: number; stdout: string; stderr: string }
@@ -287,14 +287,18 @@ function asker$(files: Record<string, string>, { run, fork }: { run?: (c: any) =
   const written: { path: string; value: any }[] = []
   const ran: any[] = []
   const forked: any[] = []
+  const aborted: any[] = []
+  const appended: any[] = []
   const $: any = {
     ...f.$,
+    turn: { abort: async (input: any) => { aborted.push(input) } },
+    session: { append: async (row: any) => { appended.push(row); return {} } },
     fs: { ...f.$.fs, write: async (path: string, text: string) => { written.push({ path, value: JSON.parse(text) }) } },
     clock: { now: async () => 5_000 },
     command: { run: async (c: any) => { ran.push(c); return run ? run(c) : { text: `Set ${c.command} to ${c.args}` } } },
     model: { fork: async (r: any) => { forked.push(r); return fork ? fork(r) : { isAnswered: true, text: 'It is the parser.' } } },
   }
-  return { $, files: f.files, written, ran, forked }
+  return { $, files: f.files, written, ran, forked, aborted, appended }
 }
 
 test('a model or effort switch from the dashboard runs as /model or /effort, and what Claude Code said goes back', async () => {
@@ -326,6 +330,61 @@ test('a reload from the dashboard runs /reload-plugins, with nothing after it', 
   await runSettings(f.$, '/repo/state', 's1')
   await settle()
   expect(f.ran).toEqual([{ command: 'reload-plugins', args: '' }])
+})
+
+test('a stop from the dashboard cancels the running turn, as Esc does, at once, and says so', async () => {
+  turnStarted('turn-1')
+  const f = asker$({ '1-a.json': '{"command":"stop","args":"","id":"1-a"}', '2-b.json': '{"command":"stop","args":"now","id":"2-b"}' })
+  await runSettings(f.$, '/repo/state', 's1')
+  await settle()
+  expect(f.aborted).toEqual([{ turnId: 'turn-1' }])
+  // Esc's own marker, which the abort leaves out: the model reads that it was cut off, and the dashboard sees the turn end.
+  expect(f.appended).toEqual([{ message: { type: 'user', content: [{ type: 'text', text: '[Request interrupted by user]' }] } }])
+  expect(f.ran).toEqual([])
+  expect(f.written).toEqual([{ path: '/repo/state/command-results/s1.1-a.json', value: { id: '1-a', sessionId: 's1', command: 'stop', args: '', ok: true, text: 'Stopped.', at: 5_000 } }])
+  turnEnded('turn-1')
+})
+
+test("a stop once the turn is over cancels nothing; a subagent's run ending leaves the main turn stoppable", async () => {
+  turnStarted('turn-2')
+  turnEnded('turn-2')
+  const idle = asker$({ '1-a.json': '{"command":"stop","args":"","id":"1-a"}' })
+  await runSettings(idle.$, '/repo/state', 's1')
+  await settle()
+  expect(idle.aborted).toEqual([])
+  expect(idle.appended).toEqual([])
+  expect(idle.written[0]?.value).toMatchObject({ ok: true, text: 'It had already finished.' })
+  turnStarted('turn-3')
+  turnEnded('sub-run-9')
+  const busy = asker$({ '1-a.json': '{"command":"stop","args":"","id":"1-a"}' })
+  await runSettings(busy.$, '/repo/state', 's1')
+  await settle()
+  expect(busy.aborted).toEqual([{ turnId: 'turn-3' }])
+  turnEnded('turn-3')
+})
+
+test('a shell command the stop sent to the background is ended there, as Esc ends it; others are left running', async () => {
+  const backgrounded = (id: string, byAbort = true) => async () => ({ result: { stdout: '', stderr: '', interrupted: false, backgroundTaskId: id, ...(byAbort ? { backgroundedByTurnAbort: true } : {}) } })
+  // a tool called inside the aborted turn is refused, so it waits for the turn to be over (clock.after)
+  const tools$ = () => { const called: any[] = [], waits: number[] = []; return { called, waits, $: { clock: { after: (ms: number, fn: () => void) => { waits.push(ms); fn() } }, tool: { call: async (c: any) => { called.push(c); return { result: {} } } } } } }
+  // the stop's own turn: the command is stopped, and its result goes on unchanged
+  turnStarted('turn-4')
+  const stopped = asker$({ '1-a.json': '{"command":"stop","args":"","id":"1-a"}' })
+  const t = tools$()
+  // the stopped turn completes before the shell call returns
+  const call = endStoppedCommand(t.$, { tool: 'Bash', command: 'npm run build' }, async () => { await runSettings(stopped.$, '/repo/state', 's1'); await settle(); turnEnded('turn-4'); return backgrounded('b7x')() })
+  expect(await call).toEqual({ result: { stdout: '', stderr: '', interrupted: false, backgroundTaskId: 'b7x', backgroundedByTurnAbort: true } })
+  await settle()
+  expect(t.waits.length).toBe(1)
+  expect(t.called).toEqual([{ tool: 'TaskStop', task_id: 'b7x' }])
+  turnEnded('turn-4')
+  // a command the model put in the background itself, or one another plugin's abort moved: left running
+  turnStarted('turn-5')
+  const own = tools$(), other = tools$()
+  await endStoppedCommand(own.$, { tool: 'Bash' }, backgrounded('b8y', false))
+  await endStoppedCommand(other.$, { tool: 'Bash' }, backgrounded('b9z'))
+  expect([...own.called, ...other.called]).toEqual([])
+  turnEnded('turn-5')
 })
 
 test('a switch that fails says why', async () => {

@@ -1281,6 +1281,22 @@ test("a working session shows its terminal's working line: its word, how long, t
   assert.match(page.side(), /<b>Working…<\/b> <span class="muted">\(<span data-lasted="\d+">1\ds<\/span> · ↓ 860 tokens\)/, 'without its mod: from its steps, a tool running');
 });
 
+test('■ Stop on the working line cancels the running turn at once, as Esc does: no confirm', async () => {
+  const page = loadPage();
+  const working = mod => richAgent({ pid: 4242, mod, turn: { startedAt: Date.now() - 12_000, word: 'Slithering', mode: 'thinking' } });
+  page.push(richSnapshot([working({ live: true, version: '0.7.0' })]));
+  assert.match(page.side(), /<div class="workline">[\s\S]*<button type="button" class="act mini stop-turn" data-stop-turn="r1"[^>]*>■ Stop<\/button><\/div>/);
+  await page.clickButton('stop-turn', { stopTurn: 'r1' });
+  await page.settle();
+  assert.deepEqual(page.posts, [{ path: '/api/actions/setting', body: { agentId: 'r1', stop: true } }]);
+  const older = loadPage();
+  older.push(richSnapshot([working({ live: true, version: '0.6.2' })]));
+  assert.match(older.side(), /data-stop-turn="r1" data-tip="[^"]*needs tracker mod 0\.7\.0[^"]*" disabled>■ Stop/, 'an older mod cannot, and says why');
+  const idle = loadPage();
+  idle.push(richSnapshot([richAgent({ pid: 4242, mod: { live: true, version: '0.7.0' }, state: 'yourTurn', turn: undefined })]));
+  assert.doesNotMatch(idle.side(), /data-stop-turn/, 'nothing to stop between turns');
+});
+
 // The sessions dialog: past sessions to resume, with search, filters and sorting.
 const H = 3_600_000;
 const pastSessions = () => {

@@ -1,3 +1,6 @@
+// What Claude Code writes when a turn is interrupted (Esc), and the tracker's mod writes after a stop.
+const INTERRUPTED = /^\[Request interrupted by user[^\]]*\]$/;
+
 /** Prompt text as a person would recognise it; '' for entries that are not real prompts. */
 export function cleanPrompt(text) {
   const t = String(text ?? '').trim();
@@ -91,6 +94,8 @@ export function parseEntry(obj) {
       }
     } else if (obj.isCompactSummary === true || obj.isVisibleInTranscriptOnly === true) {
       events.push({ kind: 'turn_start' });
+    } else if (INTERRUPTED.test(typeof content === 'string' ? content : blocks.find(b => b?.type === 'text')?.text ?? '')) {
+      events.push({ kind: 'turn_end' }); // Esc in the terminal, or ■ Stop on the dashboard (its mod writes the same marker)
     } else if (obj.isMeta !== true) {
       if (typeof obj.permissionMode === 'string') events.push({ kind: 'mode', mode: obj.permissionMode.slice(0, 40) }); // as of this message
       const text = typeof content === 'string' ? content : blocks.filter(b => b?.type === 'text').map(b => b.text ?? '').join('\n');

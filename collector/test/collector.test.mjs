@@ -830,6 +830,12 @@ test("a session's model and effort are switched by its mod (/model, /effort), an
     assert.ok(await until(() => taken.length === 3));
     assert.deepEqual(taken[2], ['commands', 'compact', 'keep the API decisions and the test plan'], 'one line, as /compact takes it');
     assert.deepEqual(await handle.actions.setting({ agentId: 'sess-set', compact: '' }), { ok: true }, 'a note is optional');
+    assert.match((await handle.actions.setting({ agentId: 'sess-set', stop: true })).error, /older tracker mod \(0\.6\.0\)/, 'stopping needs mod 0.7.0');
+    writeFileSync(join(root, 'state', 'mods', 'sess-set.json'), JSON.stringify({ sessionId: 'sess-set', version: '0.7.0', at: Date.now() }));
+    await handle.reloadConfig();
+    assert.deepEqual(await handle.actions.setting({ agentId: 'sess-set', stop: true }), { ok: true });
+    assert.ok(await until(() => taken.length === 5));
+    assert.deepEqual(taken[4], ['commands', 'stop', ''], 'a stop, as Esc in its terminal');
     writeFileSync(join(root, 'state', 'mods', 'sess-set.json'), JSON.stringify({ sessionId: 'sess-set', version: '0.4.0', at: Date.now() }));
     await handle.reloadConfig();
     assert.match((await handle.actions.setting({ agentId: 'sess-set', effort: 'high' })).error, /older tracker mod \(0\.4\.0\)\. Run \/reload-plugins/, 'a mod from before switching tells you how to get the new one');

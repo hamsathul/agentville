@@ -446,7 +446,15 @@ function workingLineHtml(a) {
   if (!t || a.state !== 'working') return '';
   const thinking = t.mode ? t.mode === 'thinking' : !a.now;
   const doing = thinking ? `thinking${a.effort ? ` with ${a.effort} effort` : ''}` : t.mode === 'responding' ? 'responding' : t.mode === 'requesting' ? 'waiting for the model' : '';
-  return `<div class="workline"><span class="spin" aria-hidden="true"></span><b>${esc(t.word ?? (thinking ? 'Thinking' : 'Working'))}…</b> <span class="muted">(<span data-lasted="${t.startedAt}">${lasted(t.startedAt)}</span>${t.outTokens ? ` · ↓ ${tokensShort(t.outTokens)} tokens` : ''}${doing ? ` · ${doing}` : ''})</span></div>`;
+  return `<div class="workline"><span class="spin" aria-hidden="true"></span><b>${esc(t.word ?? (thinking ? 'Thinking' : 'Working'))}…</b> <span class="muted">(<span data-lasted="${t.startedAt}">${lasted(t.startedAt)}</span>${t.outTokens ? ` · ↓ ${tokensShort(t.outTokens)} tokens` : ''}${doing ? ` · ${doing}` : ''})</span>${stopHtml(a)}</div>`;
+}
+/** ■ Stop: cancels the running turn at once, as Esc in its terminal does (mod 0.7.0). */
+function stopHtml(a) {
+  if (a.kind === 'codex') return '';
+  const can = modCan(a, '0.7.0');
+  const tip = can ? 'Stop this turn now, as Esc does in its terminal: what it was doing stops and it waits for you. The conversation stays.'
+    : !a.mod?.live ? modWhy(a) : `Stopping from here needs tracker mod 0.7.0 (this session runs ${a.mod.version}): run /reload-plugins in it, or press Esc in its terminal`;
+  return ` <button type="button" class="act mini stop-turn" data-stop-turn="${esc(a.id)}" data-tip="${esc(tip)}"${can ? '' : ' disabled'}>■ Stop</button>`;
 }
 
 /** Side questions (/btw): asked of the session from its conversation so far, answered without adding to it, even while it works. */

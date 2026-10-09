@@ -831,7 +831,8 @@ export async function startCollector({ root, claudeDir = join(homedir(), '.claud
     /**
      * Switches a running session's model or effort, or compacts it: its mod runs /model, /effort or
      * /compact there, as if you typed it (after the current turn). Claude Code saves a model or effort
-     * as your default for new sessions. Compacting needs mod 0.6.0.
+     * as your default for new sessions. Compacting needs mod 0.6.0. A stop cancels the running turn
+     * at once, as Esc does (mod 0.7.0).
      */
     async setting(body) {
       const agent = snapshot?.agents.find(a => a.id === body?.agentId);
@@ -852,10 +853,13 @@ export async function startCollector({ root, claudeDir = join(homedir(), '.claud
       } else if (body.reload === true) { // after plugins changed: /reload-plugins (mod 0.6.1)
         if (!modAtLeast(agent.mod.version, '0.6.1')) return { ok: false, error: `That session runs an older tracker mod (${agent.mod.version}). Run /reload-plugins in it yourself.` };
         request = { command: 'reload-plugins', args: '' };
+      } else if (body.stop === true) { // Esc: the running turn is cancelled at once (mod 0.7.0)
+        if (!modAtLeast(agent.mod.version, '0.7.0')) return { ok: false, error: `That session runs an older tracker mod (${agent.mod.version}). Run /reload-plugins in it (or press Esc in its terminal).` };
+        request = { command: 'stop', args: '' };
       } else return { ok: false, error: 'Pick a model or an effort level.' };
       const id = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
       const file = writeRequestFile(commandsDir, agent.id, { ...request, id, at: Date.now() }, id);
-      return confirmDelivery(file, { timeoutMs: deliveryTimeoutMs, failure: `The session didn't pick it up. Type /${request.command} ${request.args} in its terminal.` });
+      return confirmDelivery(file, { timeoutMs: deliveryTimeoutMs, failure: request.command === 'stop' ? "The session didn't pick it up. Press Esc in its terminal." : `The session didn't pick it up. Type /${request.command} ${request.args} in its terminal.` });
     },
     /** A side question (/btw): answered from the session's conversation without adding to it, even while it works. */
     async aside(body) {

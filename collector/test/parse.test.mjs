@@ -70,6 +70,13 @@ test('tool results carry the error flag', () => {
   assert.deepEqual(r.events, [{ kind: 'tool_result', toolUseId: 't1', ok: false }]);
 });
 
+test('an interrupted turn ends: Esc in the terminal, or ■ Stop on the dashboard (the mod writes Esc\'s marker)', () => {
+  assert.deepEqual(kinds({ type: 'user', message: { content: [{ type: 'text', text: '[Request interrupted by user]' }] } }), ['turn_end']);
+  assert.deepEqual(kinds({ type: 'user', message: { content: [{ type: 'text', text: '[Request interrupted by user for tool use]' }] } }), ['turn_end']);
+  assert.deepEqual(kinds({ type: 'user', isMeta: true, origin: { kind: 'plugin', name: 'agent-tracker' }, message: { content: [{ type: 'text', text: '[Request interrupted by user]' }] } }), ['turn_end']);
+  assert.deepEqual(kinds({ type: 'user', message: { content: 'what does [Request interrupted by user] mean?' } }), ['prompt'], 'only the marker itself');
+});
+
 test('turn_duration ends a turn and ai-title names the session', () => {
   assert.deepEqual(kinds({ type: 'system', subtype: 'turn_duration' }), ['turn_end']);
   assert.deepEqual(parseEntry({ type: 'ai-title', aiTitle: 'Claude mods' }).events, [{ kind: 'title', text: 'Claude mods' }]);

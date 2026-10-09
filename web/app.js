@@ -334,6 +334,7 @@ document.addEventListener('click', async e => {
   if (d.confirm) { settleConfirm(d.confirm === 'yes'); return; }
   if (d.endSession) { void endSessionFlow(d.endSession); return; } // not awaited: the confirm box waits for you
   if (d.compact) { void compactFlow(d.compact); return; }
+  if (d.stopTurn) { await stopTurn(d.stopTurn, el); return; }
   if (d.removeSession) { void removeFlow(d.removeSession); return; }
   if (el.id === 'view-list' || el.id === 'view-farm') { setView(el.id === 'view-farm' ? 'farm' : 'list'); return; }
   if (el.id === 'side-toggle') { setFarmSide(!farmSide); return; }
@@ -507,6 +508,13 @@ async function compactFlow(id) {
   if (!(await confirmBox(`Compact ${a.name}? It runs /compact in the session after its current turn: the conversation so far becomes a summary, freeing its context. Say what the summary should keep, if anything.`, 'Compact', 'What to keep (optional), e.g. the API decisions'))) return;
   const r = await post('/api/actions/setting', { agentId: id, compact: String($('confirm-note').value ?? '').trim() });
   notice(r.ok ? `${a.name} compacts after its current turn.` : `Could not compact ${a.name}: ${r.error}`);
+}
+/** ■ Stop: the session's running turn is cancelled at once, as Esc does; no confirm, as Esc has none. */
+async function stopTurn(id, button) {
+  const a = snap?.agents.find(x => x.id === id);
+  if (button) { button.disabled = true; button.textContent = 'Stopping…'; }
+  const r = await post('/api/actions/setting', { agentId: id, stop: true });
+  if (!r.ok) notice(`Could not stop ${a?.name ?? 'it'}: ${r.error}`);
 }
 /** Switches a running session's model or effort (/model, /effort in it), after you confirm. */
 async function switchFlow(id, what, value) {
