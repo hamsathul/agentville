@@ -829,6 +829,25 @@ await page.screenshot({ path: 'deploy-failed.png' });
 The page doesn't reload the world when you save its files (it has no line to the collector): reload
 the page. The world moves (motion is on), so two pictures of the same stop may differ by a step.
 
+**A picture of every stop at once.** `npm run world-shots -- <world>` does that loop for you (it
+needs Chrome; `CHROME` sets its path):
+
+```
+npm run world-shots -- <world> [--stop <name>] [--dir <folder>] [--worlds <dir>]
+```
+
+`<world>` is `farm`, `starter`, `u/<folder>` or just `<folder>` (one of yours). It starts a server
+of its own on made-up data (your real sessions and your `config.json` token are not used), opens
+each stop of the tour in headless Chrome at 1280 by 820, waits for `document.body.dataset.shown`,
+and saves `<stop>.png`. `--stop` takes one stop, `--dir` says where the pictures go (the default is
+`.private/shots/<world>/`, which git ignores), and `--worlds` looks for your world in that folder
+instead of your worlds folder. The clock and the random numbers are frozen and animations held at
+their start, so the same world gives the same pictures run after run, which makes them good to
+compare. A line starting with a tick is a stop that showed (with the error strip's text, if the
+world raised an error after it started). A line starting with a cross names a stop that didn't show
+in 15 seconds, with the text of the panel that took its place (or "never showed"); the run then
+exits with 1. An unknown world prints `No world u/<name> in <folder>.` and exits with 1.
+
 The stops, in the order the tour plays them:
 
 | Stop | What it shows |
