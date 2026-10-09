@@ -4,11 +4,30 @@ import { NAME_SYSTEM, answerAsides, answerFromDashboard, chooseAlways, deliverMe
 
 // The hook bodies only call $.fs.write and $.process.run, so a small stand-in records them.
 type Run = { exitCode: number; stdout: string; stderr: string }
-function fake$(onRun: (argv: string[]) => Run | Promise<Run>) {
+// A dashboard wait used to be a shell loop run through $.process.run; it is now polling of $.fs, so the stand-in models a wait:
+// the first look at the answer file asks `onRun` what the wait ends with (exit 0: this text is the answer; 2: the offer is
+// withdrawn; anything else: nothing arrives), the answer shows up after `answerAfterTicks` sleeps, and a hung `onRun` hangs the wait.
+function fake$(onRun: (argv: string[]) => Run | Promise<Run>, { answerAfterTicks = 0 }: { answerAfterTicks?: number } = {}) {
   const writes: { path: string; text: string }[] = []
   const removed: string[][] = []
+  let current: { res: Run; ticks: number } | null = null
   const $ = {
-    fs: { write: async (path: string, text: string) => { writes.push({ path, text }) } },
+    plugin: { root: '/repo/mod' },
+    fs: {
+      write: async (path: string, text: string) => { writes.push({ path, text }) },
+      exists: async (path: string) => {
+        if (path.includes('/answers/')) {
+          current ??= { res: await onRun(['wait', path]), ticks: 0 }
+          return current.res.exitCode === 0 && current.ticks >= answerAfterTicks
+        }
+        return !(current && current.res.exitCode === 2)
+      },
+      read: async (path: string) => {
+        if (path.includes('/answers/') && current) { const text = current.res.stdout; current = null; return text }
+        return writes.findLast(w => w.path === path)?.text ?? ''
+      },
+    },
+    clock: { sleep: async () => { if (current) current.ticks++ } },
     process: {
       run: async (argv: string[]) => {
         if (argv[0] === 'rm') { removed.push(argv.slice(2)); return ok() }
@@ -124,10 +143,10 @@ test('calls that would not prompt, questions, a zero window or a stopped collect
 })
 
 test('while waiting, the mod refreshes its offer every second so the dashboard knows it is alive', async () => {
-  let script = ''
-  const f = fake$(argv => { script = argv[2] ?? ''; return ok(JSON.stringify({ answers: { 'Pick a colour?': 'Blue' } })) })
+  const f = fake$(() => ok(JSON.stringify({ answers: { 'Pick a colour?': 'Blue' } })), { answerAfterTicks: 6 })
   await answerFromDashboard(f.$, ask('toolu_T5'), never, OFFER)
-  expect(/touch "\$2"/.test(script)).toBe(true)
+  // the offer file is written once to make the offer, then again as a heartbeat on ticks 0 and 4 of the wait
+  expect(f.writes.filter(w => w.path === '/repo/state/pending/toolu_T5.json').length).toBe(3)
 })
 
 test('a dashboard wait that fails is logged, the terminal still answers, and the offer is withdrawn', async () => {
@@ -185,6 +204,7 @@ function inbox$(initial: Record<string, string>, submit?: (input: { text: string
   const events: string[] = []
   const base = (path: string) => path.split('/').pop() ?? ''
   const $ = {
+    plugin: { root: '/repo/mod' },
     fs: {
       list: async () => [...files.keys()].map(name => ({ name, kind: 'file' })),
       read: async (path: string) => {
