@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { request as httpRequest } from 'node:http';
-import { mkdirSync, mkdtempSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, realpathSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { createTrackerServer } from '../server.mjs';
@@ -14,7 +14,7 @@ writeFileSync(join(RAW_DIR, 'page.html'), '<h1>Hi</h1>');
 const RAW = { clip: join(RAW_DIR, 'clip.mp4'), page: join(RAW_DIR, 'page.html'), doc: join(RAW_DIR, 'clip.mp4') };
 const RAW_TYPE = { clip: 'video/mp4', page: 'text/html; charset=utf-8', doc: 'application/pdf' };
 
-async function start() {
+async function start(opts = {}) {
   const calls = [];
   const webFile = join(mkdtempSync(join(tmpdir(), 'tracker-web-')), 'index.html');
   writeFileSync(webFile, '<html>token=__TRACKER_TOKEN__</html>');
@@ -36,7 +36,7 @@ async function start() {
     port: 0,
     token: 'tok',
     webFile,
-    worlds: makeWorlds({ builtinDir, userDir }),
+    worlds: makeWorlds({ builtinDir, userDir, home: opts.home }),
     getSnapshot: () => ({ generatedAt: 1, agents: [], collisions: [] }),
     getFeed: id => (id === 's1' ? [{ at: 1, kind: 'prompt', text: 'hi' }] : null),
     getConversation: async (id, from) => (id === 's1' ? { total: 2, from, items: [{ at: 1, kind: 'prompt', body: 'hi' }, { at: 2, kind: 'reply', body: 'hello' }].slice(from) } : null),
@@ -79,7 +79,7 @@ async function start() {
     pastSessions: async opts => { calls.push(['pastSessions', opts]); return { terminal: 'iTerm', projects: [{ cwd: '/code/app' }], sessions: [] }; },
   });
   const port = await srv.listen();
-  return { srv, port, calls };
+  return { srv, port, calls, userDir };
 }
 
 function request(port, { method = 'GET', path = '/', headers = {}, body } = {}) {
@@ -362,6 +362,22 @@ test('the list of worlds needs the token, and says where your folder is', async 
   assert.equal((await request(port, { path: '/world/u/space/' })).status, 200);
   assert.equal((await request(port, { path: '/world/u/space/world.js' })).body, '// space');
   await srv.close();
+});
+
+test("a world folder linked to your home or above is never served, however the link is spelled", async () => {
+  const home = realpathSync(mkdtempSync(join(tmpdir(), 'home-')));
+  writeFileSync(join(home, 'world.json'), JSON.stringify({ name: 'Home', api: 1 }));
+  writeFileSync(join(home, 'world.js'), '// the whole home folder');
+  const { srv, port, userDir } = await start({ home });
+  try {
+    const spell = p => [p, p.toUpperCase(), join('/System/Volumes/Data', p)].filter(s => existsSync(s));
+    const targets = [...spell(home), ...spell(join(userDir, '..')), '/System/Volumes/Data', '/'].filter(t => existsSync(t));
+    targets.forEach((t, i) => symlinkSync(t, join(userDir, `l${i}`)));
+    for (const i of targets.keys()) {
+      for (const f of ['world.js', 'world.json']) assert.equal((await request(port, { path: `/world/u/l${i}/${f}` })).status, 404, `${targets[i]} ${f}`);
+      assert.equal((await request(port, { path: `/world/u/l${i}/` })).status, 404, targets[i]);
+    }
+  } finally { await srv.close(); }
 });
 
 test('folders to start in are listed only with the token, and made only from the dashboard', async () => {

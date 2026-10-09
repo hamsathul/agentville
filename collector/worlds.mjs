@@ -33,25 +33,48 @@ export function checkWorldJson(j) {
   return null;
 }
 
-/** Where your worlds live: worldsDir (a leading ~ is home; a relative one is under home), else ~/.agentville/worlds. */
-export function worldsDirOf(cfg, home) {
-  const w = cfg?.worldsDir;
-  if (typeof w !== 'string' || !w.trim()) return join(home, '.agentville', 'worlds');
+const identOf = p => { try { const s = statSync(p); return `${s.dev}:${s.ino}`; } catch { return null; } };
+/**
+ * Is `target` the folder `folder`, or a folder above it, however it is spelled (capitals, a firmlink, a link)?
+ * Decided by what the folder IS (device and inode), not by its name: the folder's path is tried from every
+ * depth under `target`, and a match with the folder's own identity means target holds it.
+ */
+function holds(target, folder) {
+  let r;
+  try { r = realpathSync(folder); } catch { return false; }
+  const id = identOf(r);
+  if (!id) return false;
+  const parts = r.split(sep).filter(Boolean);
+  for (let i = 0; i <= parts.length; i++) if (identOf(join(target, ...parts.slice(i))) === id) return true;
+  return false;
+}
+
+/** Where your worlds live: worldsDir (a leading ~ is home; a relative one is under home), else ~/.agentville/worlds. Never your home or above it. */
+export function worldsDirOf(cfg, home, note = () => {}) {
+  const fallback = join(home, '.agentville', 'worlds'), w = cfg?.worldsDir;
+  if (typeof w !== 'string' || !w.trim()) return fallback;
   const t = w.trim();
-  if (t === '~') return home;
-  if (t.startsWith('~/')) return join(home, t.slice(2));
-  return isAbsolute(t) ? t : join(home, t);
+  let dir;
+  if (t === '~') dir = home;
+  else if (t.startsWith('~/')) dir = join(home, t.slice(2));
+  else if (isAbsolute(t)) dir = t;
+  else {
+    dir = join(home, t);
+    if (dir !== home && !dir.startsWith(home + sep)) { note(`worldsDir "${t}" is outside your home folder; using ${fallback}`); return fallback; }
+  }
+  if (holds(dir, home)) { note(`worldsDir "${t}" is your home folder or above it; using ${fallback}`); return fallback; }
+  return dir;
 }
 
 export function makeWorlds({ builtinDir, userDir = null, home = null }) {
-  const real = p => { try { return realpathSync(p); } catch { return null; } };
-  /** Is a folder of yours (a link, maybe) really somewhere that holds other things: your worlds folder, above it, or your home? */
-  function tooBroad(dir) {
-    const r = real(dir);
-    if (!r) return false;
-    const within = (outer, inner) => inner === outer || inner.startsWith(outer.endsWith(sep) ? outer : outer + sep);
-    const u = userDir && real(userDir), h = home && real(home);
-    return Boolean((u && within(r, u)) || (h && within(r, h)));
+  /** Is a folder of yours (a link, maybe) the worlds folder, your home, or a folder above either, however spelled? */
+  const tooBroad = dir => Boolean((userDir && holds(dir, userDir)) || (home && holds(dir, home)));
+  /** Does the folder hold a regular world.json that really is inside it? */
+  function holdsJson(dir) {
+    try {
+      const root = realpathSync(dir), r = realpathSync(join(dir, 'world.json'));
+      return r.startsWith(root + sep) && statSync(r).isFile();
+    } catch { return false; }
   }
   const NAME_ERR = "A world's folder name is lowercase letters, digits and dashes (up to 40).";
   const BROAD_ERR = "This folder is a link to a folder that holds other things; link to the world's own folder.";
@@ -63,7 +86,8 @@ export function makeWorlds({ builtinDir, userDir = null, home = null }) {
       const name = key.slice(2);
       if (!userDir || !WORLD_NAME.test(name)) return null;
       try { if (!readdirSync(userDir).includes(name)) return null; } catch { return null; } // the exact name, as the list sees it (not a case-insensitive disk's idea of it)
-      return tooBroad(join(userDir, name)) ? null : join(userDir, name);
+      const dir = join(userDir, name);
+      return !tooBroad(dir) && holdsJson(dir) ? dir : null; // a folder with no world.json of its own serves nothing
     }
     return WORLD_NAME.test(key) && !RESERVED.has(key) ? join(builtinDir, key) : null;
   }
@@ -83,7 +107,7 @@ export function makeWorlds({ builtinDir, userDir = null, home = null }) {
   function describe(key, builtIn) {
     let j = null, error = null;
     const meta = file(key, 'world.json'); // through the folder check: a world.json linked out of the folder counts as missing
-    if (key.startsWith('u/') && !dirOf(key)) error = tooBroad(join(userDir, key.slice(2))) ? BROAD_ERR : NAME_ERR;
+    if (key.startsWith('u/') && !dirOf(key)) error = tooBroad(join(userDir, key.slice(2))) ? BROAD_ERR : 'world.json is missing.';
     else if (meta.size > MAX_JSON) error = 'world.json is too large (over 64 KB).';
     else try { if (!meta.real) throw Object.assign(new Error('missing'), { code: 'ENOENT' }); j = JSON.parse(readFileSync(meta.real, 'utf8')); }
     catch (err) { error = err.code === 'ENOENT' ? 'world.json is missing.' : `world.json can't be read: ${String(err.message).slice(0, 120)}`; }
@@ -91,7 +115,7 @@ export function makeWorlds({ builtinDir, userDir = null, home = null }) {
     return {
       key, builtIn, error,
       name: typeof j?.name === 'string' && j.name.trim() ? j.name.slice(0, 40) : key.replace(/^u\//, ''),
-      icon: typeof j?.icon === 'string' && j.icon && [...j.icon].length <= 8 ? j.icon : '🧩',
+      icon: typeof j?.icon === 'string' && j.icon.trim() &&[...j.icon].length <= 8 ? j.icon : '🧩',
       description: typeof j?.description === 'string' ? j.description.slice(0, 140) : '',
       nouns: !error && j.nouns ? Object.fromEntries(NOUN_KEYS.filter(k => typeof j.nouns[k] === 'string').map(k => [k, j.nouns[k]])) : {},
       preview: file(key, 'preview.png').real ? `/world/${key}/preview.png` : null,

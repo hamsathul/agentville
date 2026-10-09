@@ -39,12 +39,19 @@ are served without the token, like the farm's, to anything on this Mac that asks
 so keep nothing secret in a world's folder.
 
 A world's folder may itself be a link (a world you develop elsewhere): it is followed, and its
-target becomes the world's folder. A link to your worlds folder, to a folder above it or to your
-home folder is refused ("This folder is a link to a folder that holds other things; link to the
-world's own folder."), and a broken link or a link loop is listed ("This folder is a link to
-something that isn't there.") without hiding the other worlds. The folder's name must match
-exactly: on a disk that ignores capitals, `Space` is not `u/space`. `worldsDir` is read when the
-collector starts: a relative one is under your home folder, and an empty one means the default.
+target becomes the world's folder, and must hold a `world.json` of its own (a folder without one
+is listed as "world.json is missing." and serves nothing). A link to your worlds folder, to your
+home folder, or to any folder above either (`/`, `/System/Volumes/Data` and so on) is refused
+("This folder is a link to a folder that holds other things; link to the world's own folder."),
+however the link is spelled: it is judged by which folder it is (device and inode), not by its
+name, so capitals and firmlinks don't get around it. A broken link or a link loop is listed ("This
+folder is a link to something that isn't there.") without hiding the other worlds. The folder's
+name must match exactly: on a disk that ignores capitals, `Space` is not `u/space`.
+
+`worldsDir` is read when the collector starts. A leading `~` is your home folder, a relative one
+is under it (one that would land outside it, such as `../x`, is ignored), and an empty one means the
+default. A `worldsDir` that is your home folder or above it (or `/`) is ignored too: the default
+`~/.agentville/worlds` is used, and the collector's log says why.
 A folder that has no name the rule allows is listed with an error and can't run. A world with any
 error has no frame.
 
@@ -88,7 +95,7 @@ What a world can show in the list instead of running:
 
 | Error | Meaning |
 |---|---|
-| `world.json is missing.` | No `world.json` in the folder, or it is a link out of it |
+| `world.json is missing.` | No `world.json` in the folder, or it is a link out of it (such a folder serves no files) |
 | `world.json can't be read: …` | It isn't valid JSON |
 | `world.json is not a JSON object.` | It is JSON, but not `{ … }` |
 | `world.json needs a "name", up to 40 characters.` | `name` is missing, blank, not a string or too long |

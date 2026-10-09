@@ -546,9 +546,11 @@ can't be replaced: a world of yours named like one is just another world, listed
 with a problem (a `world.json` that can't be read, one made for a newer Agentville, a missing
 `world.js`) is listed with what is wrong. Files are served only from inside the world's own folder,
 so a link out of it is never followed. A world's folder may itself be a link (to a world you
-develop elsewhere): it is followed, and its target becomes the world's folder, unless it points at
-your worlds folder, above it or at your home folder. A broken link is listed with an error. `worldsDir`
-is read at startup (a change needs a restart). How to write one is in [docs/worlds.md](docs/worlds.md).
+develop elsewhere): it is followed, and its target becomes the world's folder, unless that folder is
+your worlds folder, your home folder or one above either, however the link is spelled. A folder with
+no `world.json` of its own serves nothing, and a broken link is listed with an error. `worldsDir`
+is read at startup (a change needs a restart); one that is your home folder or above it is ignored
+and the default is used. How to write one is in [docs/worlds.md](docs/worlds.md).
 
 ### Notifications and the bell
 
@@ -589,7 +591,7 @@ The mod also does the dashboard's work inside the session:
 | `notify` | Each notification on or off: `waiting`, `collision`, `yourTurn`, `memory`, `cpu` |
 | `modToasts` | Toasts inside Claude Code sessions (on) |
 | `deployRepos` | Checkout path → `owner/repo` whose latest GitHub Actions run is shown, e.g. `{ "/Users/you/code/api": "you/api" }` |
-| `worldsDir` | Your own worlds, a folder each; `null` means `~/.agentville/worlds` (a leading `~` is your home) |
+| `worldsDir` | Your own worlds, a folder each; `null` means `~/.agentville/worlds` (a leading `~` is your home; a relative one is under your home) |
 | `terminal` | Where sessions open: `"Terminal"` or `"iTerm"` |
 
 ## Commands

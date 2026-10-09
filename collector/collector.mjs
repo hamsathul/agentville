@@ -1140,7 +1140,7 @@ export async function startCollector({ root, claudeDir = join(homedir(), '.claud
   await pollAgents();
   await schedule(true);
 
-  const worldsDir = worldsDirOf(cfg, home); // read once, at startup
+  const worldsDir = worldsDirOf(cfg, home, log); // read once, at startup
   server = createTrackerServer({
     port: portOverride ?? cfg.port, token, webFile: join(root, 'web', 'index.html'),
     worlds: makeWorlds({ builtinDir: join(root, 'web', 'worlds'), userDir: worldsDir, home }),
