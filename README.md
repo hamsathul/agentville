@@ -526,15 +526,18 @@ buttons of its own — any world of yours, and a built-in one that draws itself 
 control from the page in a corner instead: **World ▾** for the list of worlds and **☰ List** for
 the list view, so it can't leave you with no way back. In the list view, the button beside **☰
 List** carries the name of the world you will see. Each world
-keeps its own zoom and settings, and the choice is kept in this browser. If the world you chose has gone, or has something
-wrong with it, the dashboard opens on the farm instead and forgets the choice. **Open the worlds
+keeps its own zoom and settings, and the choice is kept in this browser. If the world you chose has
+gone, or has something wrong with it, when you open the dashboard, it opens on the farm instead and
+forgets the choice. A world you are looking at that a save breaks (an invalid `world.json`, say)
+keeps the choice: a panel says what is wrong at once, and saving it mended brings it back. **Open the worlds
 folder** in the list makes your folder if it is not there yet and shows it in Finder.
 
 **Privacy mode.** A world from your folder gets a scene without words or paths: agents' states,
 tools and numbers, but no summaries, questions, replies, task, message or subagent text, branch
 names, deploy or pull request words, or folder paths, and no names at all: repos, projects and
-agents are numbers (`repo 1`, `project 1`, `agent 1`, the same one while the page is open). A
-session's name can be its conversation's title, folder, repo and project names can name clients or
+agents are numbers (`repo 1`, `project 1`, `agent 1`, the same one while the page is open). The
+names that stay are Claude Code's own and your tools': tool names (an MCP tool's server name among
+them), the MCP servers called, and subagent types. A session's name can be its conversation's title, folder, repo and project names can name clients or
 work, and a world can reach a host it names, so a private world gets numbers only. Nor can such a
 world ask for files. Each of your worlds in the list has a **Can see what agents say** box; ticking it (per
 browser) restarts that world with the full scene. Tick it only for a world you trust: a world can
@@ -761,7 +764,7 @@ and can do is in [docs/worlds.md](docs/worlds.md).
   world's own folder. The list of their names and the folder's path needs the token. The collector
   reads the folder; it never fetches a world from anywhere.
 - **Open the worlds folder** (an action: token and same origin) makes your worlds folder and shows
-  it in Finder (`open <folder>`); it only shows it, and runs nothing in it. The page keeps your
+  it in Finder (`open -a Finder <folder>`); it only shows it, and runs nothing in it. The page keeps your
   choice of world in this browser (`tracker-world`), and nothing else about it leaves the page.
 - **The threat model.** The sandbox protects your token and every action — a world can never act
   for you — but not the secrecy of what a world is shown. A world can't read the page, use its

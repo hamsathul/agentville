@@ -98,6 +98,7 @@ async function page({ stored = {}, hold = false, worlds = WORLDS, dialog = false
   const answer = async () => { held.shift()?.(); await settle(); };
   return {
     ctx, jump: ms => { clock.now += ms; }, farm, posted, calls, diary, stored, fetches, settle, wait, answer, timeouts: timers, warnings, made, host, options, worlds: window.AgentvilleWorlds, listeners, frames, dlg, els,
+    setWorlds: list => { worlds = list; }, // what the collector lists from now on (a world saved, broken, mended)
     get frame() { return frames.at(-1); },
     // a message from the newest frame (one the page has let go of is still "the newest" here, and must be ignored)
     // `loaded` (and anything before it, like an early error) arrives over the window, as the real bridge
@@ -221,6 +222,9 @@ test("the diary is the frame's entries as text: a world can't write the page's H
   assert.ok(p.diary.innerHTML.includes('&lt;img src=x onerror=alert(1)&gt;'));
   assert.ok(!p.diary.innerHTML.includes('<img'));
   assert.ok(p.diary.innerHTML.includes('&lt;b&gt;hi&lt;/b&gt;'));
+  p.wait(250);
+  p.from({ type: 'diary', entries: [{ at: NOW, state: 'working', who: 'evil‮txt', text: 'turn⁦ed' }] });
+  assert.ok(!/[‪-‮⁦-⁩]/.test(p.diary.innerHTML), 'and without the characters that turn text around');
 });
 
 test('a message from anything but the current frame is ignored', async () => {
@@ -426,6 +430,32 @@ test('the saved world is shown if it is still there and sound; else the farm, an
   const broken = await page({ stored: { 'tracker-world': 'u/broken' } });
   assert.equal(broken.frame.src, '/world/farm/');
   assert.equal(broken.stored['tracker-world'], undefined);
+});
+
+test('a world broken by a live edit keeps the choice: only the first resolve (startup) forgets it, not a worlds event or the list', async () => {
+  const p = await page({ stored: { 'tracker-world': 'u/space' }, dialog: true });
+  assert.equal(p.frame.src, '/world/u/space/');
+  p.setWorlds([WORLDS[0], { ...WORLDS[1], error: 'world.json is not a JSON object.' }, WORLDS[2]]); // a save left it invalid
+  await p.farm.worldsChanged({ key: 'u/space' });
+  assert.equal(p.stored['tracker-world'], 'u/space', 'a worlds event does not forget it');
+  await p.farm.openList();
+  assert.equal(p.stored['tracker-world'], 'u/space', 'nor does opening the list');
+  p.setWorlds(WORLDS); // saved again, sound
+  await p.farm.worldsChanged({ key: 'u/space' });
+  assert.equal(p.frame.src, '/world/u/space/', 'mended, it comes back');
+});
+
+test('the world showing, listed with an error, gets its panel at once with that error (not after 5 s)', async () => {
+  const p = await page({ stored: { 'tracker-world': 'u/space' } });
+  p.from({ type: 'loaded' });
+  p.from({ type: 'ready' });
+  const n = p.frames.length;
+  p.setWorlds([WORLDS[0], { ...WORLDS[1], error: 'world.json needs "api": 1.' }, WORLDS[2]]);
+  await p.farm.worldsChanged({ key: 'u/space' });
+  const [panel] = p.host.held;
+  assert.equal(panel.className, 'world-panel', 'a panel at once, with no wait');
+  assert.match(panel.innerHTML, /Space didn.t start: world\.json needs &quot;api&quot;: 1\./);
+  assert.equal(p.frames.length, n, 'no frame is built for a world that cannot run');
 });
 
 test("picking a world in the list shows it, remembers it, and keeps each world's settings apart", async () => {

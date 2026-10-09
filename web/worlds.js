@@ -112,7 +112,7 @@
   /** The diary in the page's sidebar: newest first, as text (a world never writes the page's HTML). */
   function renderDiary(el, entries) {
     if (!el) return;
-    el.innerHTML = entries.map(l => `<li class="st-${l.state}"><i></i><span>${l.who ? `<b>${esc(l.who)}</b> ` : ''}${esc(l.text)}</span><time>${ago(l.at)}</time></li>`).join('') || '<li class="faint">Quiet so far.</li>';
+    el.innerHTML = entries.map(l => `<li class="st-${l.state}"><i></i><span>${l.who ? `<b>${esc(noBidi(l.who))}</b> ` : ''}${esc(noBidi(l.text))}</span><time>${ago(l.at)}</time></li>`).join('') || '<li class="faint">Quiet so far.</li>';
   }
 
   /** One of the two things a world may ask for, fetched with the token. */
@@ -299,7 +299,7 @@
   // The world you chose, per browser; the farm when that one has gone or has something wrong.
   const CHOICE = 'tracker-world';
   const FARM = { key: 'farm', builtIn: true, name: 'Farm', icon: '🌾', description: '', nouns: { diary: 'Farm diary' }, preview: null, error: null };
-  let token = null, worldsInfo = [FARM], folder = null, info = FARM;
+  let token = null, worldsInfo = [FARM], folder = null, info = FARM, resolvedOnce = false;
   /** The worlds there are (the collector's list), and the one to show. */
   async function resolveWorld() {
     let listed = false;
@@ -310,7 +310,11 @@
     } catch { /* the collector is away: the farm */ }
     const saved = browserStore.get(CHOICE);
     const pick = worldsInfo.find(w => w.key === saved && !w.error) ?? worldsInfo.find(w => w.key === 'farm') ?? FARM;
-    if (listed && saved && pick.key !== saved) browserStore.remove(CHOICE); // forgotten only when the list really loaded
+    // Forget the saved choice only at the first resolve (startup: the world was gone or broken while the
+    // dashboard was closed), and only when the list really loaded. A later `worlds` event or opening of
+    // the list resolves again, but a world that is briefly invalid mid-save must not lose the choice.
+    if (!resolvedOnce && listed && saved && pick.key !== saved) browserStore.remove(CHOICE);
+    resolvedOnce = true;
     return pick;
   }
   /** The world to show, for the view toggle before the world is ever opened. */
@@ -585,7 +589,10 @@
     if ($('worlds-dlg')?.open) renderList();
     if (!host || !(frame || failed) || (key !== world && key !== '*')) return; // a panel showing for this world is rebuilt too
     const w = worldsInfo.find(x => x.key === world);
-    info = w && !w.error ? w : info;
+    // Listed with an error now (a save left world.json invalid, say): say what is wrong at once, rather
+    // than build a frame that can't start and wait 5 s to say "it did not answer". Saving it fixed rebuilds it.
+    if (w?.error) { info = w; lastError = { message: w.error, where: '' }; fail('start'); return; }
+    info = w ?? info;
     createFrame(world);
   }
 

@@ -13,8 +13,11 @@ const TYPES = {
   '.png': 'image/png', '.gif': 'image/gif', '.webp': 'image/webp', '.svg': 'image/svg+xml', '.woff2': 'font/woff2',
   '.mp3': 'audio/mpeg', '.ogg': 'audio/ogg', '.wav': 'audio/wav',
 };
-// The frame: a sandbox of its own even when opened in a tab, scripts only from the dashboard, and no way
-// to send anything anywhere (no fetch, frames, forms or workers). Only the dashboard may embed it.
+// The frame: a sandbox of its own even when opened in a tab, scripts only from the dashboard, no request
+// a world can read (no fetch, event stream, form or worker; pictures, fonts and sounds only from the
+// dashboard), and no other page loaded in a frame it makes. Only the dashboard may embed it. What a
+// frame can still signal (a connection hint, WebRTC, its one leaving request) is in docs/worlds.md,
+// "The gaps".
 export const FRAME_CSP = "sandbox allow-scripts; default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self' data:; media-src 'self' data: blob:; connect-src 'none'; frame-src 'none'; worker-src 'none'; form-action 'none'; base-uri 'none'; frame-ancestors 'self'";
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 const NOUN_KEYS = ['agent', 'agents', 'repo', 'repos', 'start', 'diary'];

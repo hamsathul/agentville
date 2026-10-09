@@ -331,6 +331,10 @@ over it. A world that runs has a way back too: see "Give a way back", below.
   which keeps running under it. The strip is redrawn only when its text changes, at most four times a
   second, and stays closed for a few seconds after ×.
 - **Saving a world's files while its panel shows** reloads it, as it does for a world that runs.
+- **A save that leaves the world showing listed with an error** (an invalid `world.json`, a
+  `world.js` gone) puts the "didn't start" panel up at once, with that error, instead of building a
+  frame that can't start. Your choice of world is kept: it is forgotten only when you open the
+  dashboard and the world has gone or is broken, and then the farm shows.
 
 The farm's settings from before worlds (`tracker-farm-zoom`, `tracker-farm-beds`, …) are copied
 once into `tracker-world:farm:…`, the first time the farm starts, and never again.
@@ -419,10 +423,13 @@ world through the bridge. The frame has already loaded `bridge.js`, `brand.js`, 
 })();
 ```
 
-Wrap `world.js` in a function like this. The SDK's own top-level names (`ACTIVE`, `makeGrid`,
-`withDefaults`, `engineScene`, `makePixelView`, `px`, …) share the frame's scope with your script, and
-declaring one of them again at the top level is a SyntaxError that stops the world. Inside a function
-your names are your own, and the SDK's are still there to use.
+Wrap `world.js` in a function like this. The SDK's own top-level names share the frame's scope with
+your script, so a top-level name of yours can collide with one of them, in two ways. The SDK's
+`function` declarations (`makeGrid`, `withDefaults`, `engineScene`, `makePixelView`) are silently
+replaced by a top-level `function` of yours with the same name — and the engine then calls yours
+(your `engineScene` would take the place of the one that turns the scene into the engine's). Its
+`const` and `let` names (`ACTIVE`, `px`, …) can't be declared again: that is a SyntaxError that stops
+the world. Inside a function your names are your own, and the SDK's are still there to use.
 
 ### The four a world must give
 
@@ -516,8 +523,10 @@ The field close-up (a field's files) is still drawn as the farm draws it.
 ## What a world can't do
 
 - It has no token, no cookies and no storage: reading them throws a `SecurityError`. It can't
-  **fetch, post or upload** anything: no `fetch`, no `EventSource`, no requests of any kind
-  (`connect-src 'none'`), no workers, forms, popups (`window.open` gives `null`) or dialogs like
+  **fetch, post or upload** anything: no `fetch`, no `EventSource` — no request it can read, and
+  none to another server (`connect-src 'none'`; a tag can still ask the dashboard's own server for a
+  path, but the world can't read the answer, and no such request acts) — no workers, forms, popups
+  (`window.open` gives `null`) or dialogs like
   `alert`. It can make a frame of its own but can't load an address into one (`frame-src 'none'`).
   It can't read the page: `parent.document` and setting `top.location` throw a `SecurityError`. A
   picture from another server isn't loaded. Its scripts come from the dashboard's server only: no
