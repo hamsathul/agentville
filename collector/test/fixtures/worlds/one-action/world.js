@@ -21,7 +21,7 @@
     height: fence => fence.y1 + 28,
   });
   let L = grid.layoutFor([]), scene = { fields: [], farmers: [] };
-  const DEPLOY = { ok: '#2fa57a', failed: '#e04a3a', running: '#f0b429', skipped: '#9aa4ad' };
+  const DEPLOY = { ok: '#2fa57a', failed: '#e04a3a', running: '#f0b429', blocked: '#9aa4ad' };
 
   window.Agentville.world({
     W, grid, corridors: [64, 156, 244, 336],

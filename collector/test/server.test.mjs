@@ -120,6 +120,7 @@ test('the world test page: no token, never framed, its scripts by plain name onl
     assert.ok(!page.body.includes('secret'), 'no token in the page');
     assert.ok(page.body.includes('__TRACKER_TOKEN__'), 'its placeholder is left as it is');
     assert.match(page.headers['content-security-policy'], /frame-ancestors 'none'/);
+    assert.match(page.headers['content-security-policy'], /(^|; )connect-src 'none'(;|$)/, 'it fetches nothing, by policy: not even /api/state');
     assert.equal(page.headers['x-frame-options'], 'DENY');
     assert.equal((await get('/worlds/test/tour.js')).status, 200);
     assert.equal((await get('/worlds/test/tour.js')).headers['content-type'], 'text/javascript; charset=utf-8');

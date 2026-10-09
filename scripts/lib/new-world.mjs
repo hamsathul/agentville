@@ -31,3 +31,25 @@ export function newWorld({ name, worldsDir, starterDir }) {
   }
   return { dir, title };
 }
+
+/** A folder as one word on a command line: as it is when it is plain, else in single quotes. */
+const shellArg = s => (/^[\w@%+=:,./-]+$/.test(s) ? s : `'${s.replaceAll("'", "'\\''")}'`);
+
+/**
+ * What to do next, for the new world's message. Its commands name it u/<name> (a world of yours called farm is
+ * not the farm), and repeat `--worlds <dir>` when `worlds` (that folder) was given; the dashboard and its test
+ * page show only your worlds folder, so that case says so.
+ */
+export function nextSteps({ dir, name, title, port = 7777, worlds = null }) {
+  const key = `u/${name}`, w = worlds ? ` --worlds ${shellArg(worlds)}` : '';
+  return `Made ${title} in ${dir}.
+
+Next:
+  1. Edit ${join(dir, 'world.js')} (docs/worlds.md is the guide).
+  2. With the dashboard running, see it on the test page: http://localhost:${port}/worlds/test?world=${key}
+  3. npm run check-world -- ${key}${w}
+  4. npm run world-shots -- ${key}${w}
+  5. In the dashboard, World ▾ → ${title}, among your worlds (after the built-in ones).${worlds ? `
+The dashboard and its test page show only your worlds folder (worldsDir in config.json, else
+~/.agentville/worlds): for steps 2 and 5, the world has to be in it.` : ''}`;
+}

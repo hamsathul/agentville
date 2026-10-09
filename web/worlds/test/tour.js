@@ -39,7 +39,7 @@
     agent('a7', { cwd: path('api'), now: { tool: 'Read', summary: 'src/db.ts', step: 'read', startedAt: NOW - 5_000 } }),
   ], [repo('shop', { lastDeploy: { state: 'ok', source: 'actions', label: '✓ deployed', at: NOW - 30 * MIN } }), repo('blog', { lastDeploy: { state: 'running', source: 'direct', label: '◌ deploying', at: NOW - MIN } }), repo('api')]);
   const pair = (over = {}) => snap([agent('a1'), agent('a2', { now: { tool: 'Edit', summary: 'src/ui.ts', step: 'edit', startedAt: NOW - 10_000 } })], SHOP, over);
-  const deployed = state => snap([agent('a1')], [repo('shop', { lastDeploy: { state, source: 'actions', label: state, at: NOW - 5 * MIN } })]);
+  const deployed = (state, label = state) => snap([agent('a1')], [repo('shop', { lastDeploy: { state, source: 'actions', label, at: NOW - 5 * MIN } })]);
   const stop = (name, title, frames, over = {}) => ({ name, title, sky: 'day', private: false, frames, ...over });
 
   const stops = [
@@ -67,7 +67,8 @@
     stop('deploy-ok', 'Deploy: ok', [deployed('ok')]),
     stop('deploy-failed', 'Deploy: failed', [deployed('failed')]),
     stop('deploy-running', 'Deploy: running', [deployed('running')]),
-    stop('deploy-skipped', "Deploy: skipped (Actions didn't run)", [deployed('skipped')]),
+    // A run GitHub never started (billing, a spending limit): the collector's blocked (collector/derive/deploys.mjs).
+    stop('deploy-skipped', "Deploy: skipped (Actions didn't run)", [deployed('blocked', "⏸ Actions didn't run")]),
     stop('two-working', 'Two agents in one repo', [pair()]),
     stop('collision', 'A collision: two agents writing one repo', [pair({ collisions: [{ repo: path('shop'), severity: 'high', reason: 'two agents edit the same files', since: NOW - 5 * MIN, agentIds: ['a1', 'a2'] }] })]),
     stop('pigeon', 'A message from one agent to another', [snap([agent('a1', { feed: [{ at: NOW - 20_000, kind: 'peer', dir: 'out', other: 'a2', text: 'The API is ready' }] }), agent('a2', { now: { tool: 'Edit', summary: 'src/ui.ts', step: 'edit', startedAt: NOW - 10_000 } })], SHOP)]),

@@ -131,7 +131,8 @@ export function createTrackerServer({ port, token, webFile, getSnapshot, getFeed
         if (path === '/worlds/test') { // a world's test page: no token and no real data (web/worlds/test/)
           let html;
           try { html = readFileSync(join(dirname(webFile), 'worlds', 'test', 'index.html'), 'utf8'); } catch { return send(res, 404, 'text/plain', 'not found'); }
-          res.writeHead(200, { 'content-type': 'text/html; charset=utf-8', 'cache-control': 'no-store', 'content-security-policy': "default-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; frame-ancestors 'none'; base-uri 'none'; form-action 'none'", 'x-frame-options': 'DENY', 'x-content-type-options': 'nosniff', 'referrer-policy': 'no-referrer' });
+          // connect-src 'none': it fetches nothing (no list of worlds, made-up answers), so /api/state, which needs no token, is out of its reach by policy.
+          res.writeHead(200, { 'content-type': 'text/html; charset=utf-8', 'cache-control': 'no-store', 'content-security-policy': "default-src 'self'; connect-src 'none'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; frame-ancestors 'none'; base-uri 'none'; form-action 'none'", 'x-frame-options': 'DENY', 'x-content-type-options': 'nosniff', 'referrer-policy': 'no-referrer' });
           return res.end(html);
         }
         if ((m = path.match(/^\/worlds\/test\/([a-z]+)\.js$/))) { // its scripts, by plain name only

@@ -4,6 +4,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import vm from 'node:vm';
+import { lastDeployOf } from '../derive/deploys.mjs';
 
 const web = f => readFileSync(fileURLToPath(new URL(`../../web/${f}`, import.meta.url)), 'utf8');
 const plain = v => JSON.parse(JSON.stringify(v));
@@ -33,7 +34,7 @@ test("the tour covers the spec's list", () => {
   assert.equal(scene('one').agents.length, 1);
   assert.equal(scene('sixteen').agents.length, 16);
   assert.equal(scene('nobody').agents.length, 0);
-  assert.deepEqual(plain(['deploy-ok', 'deploy-failed', 'deploy-running', 'deploy-skipped'].map(n => scene(n).repos[0].deploy.state)), ['ok', 'failed', 'running', 'skipped']);
+  assert.deepEqual(plain(['deploy-ok', 'deploy-failed', 'deploy-running', 'deploy-skipped'].map(n => scene(n).repos[0].deploy.state)), ['ok', 'failed', 'running', 'blocked']);
   const steps = new Set(scene('steps').agents.map(a => a.step));
   for (const step of Object.keys(STEPS).filter(k => k !== 'other')) assert.ok(steps.has(step), `the steps stop shows ${step}`);
   assert.ok(scene('steps').agents.some(a => a.mode === 'plan'), 'and plan mode');
@@ -46,6 +47,18 @@ test("the tour covers the spec's list", () => {
   assert.ok(scene('collision').repos[0].collision);
   assert.ok(scene('pigeon').mail.length > 0);
   assert.ok(scene('mcp').mcp.length > 0);
+});
+
+test("every deploy in the tour has a state the collector sends; deploy-skipped is a run GitHub never started, in the collector's words", () => {
+  const { tour } = load();
+  // Every kind of run lastDeployOf takes (running, success, failure, never started, anything else), and a direct deploy each way.
+  const runs = [{ status: 'in_progress' }, { status: 'completed', conclusion: 'success' }, { status: 'completed', conclusion: 'failure' }, { status: 'completed', conclusion: 'failure', blocked: true }, { status: 'completed', conclusion: 'cancelled' }];
+  const sent = new Set([...runs.map(run => lastDeployOf(run, null).state), ...[true, false].map(ok => lastDeployOf(null, { ok, at: 1, by: 'a1', summary: 'deploy' }).state)]);
+  const deploys = tour.stops.flatMap(s => s.frames.flatMap(f => f.repos.map(r => [s.name, r.lastDeploy]))).filter(([, d]) => d);
+  assert.ok(deploys.length >= 4);
+  for (const [name, d] of deploys) assert.ok(sent.has(d.state), `${name}: ${d.state} is one of ${[...sent].join(', ')}`);
+  const skipped = tour.stop('deploy-skipped').frames[0].repos[0].lastDeploy, never = lastDeployOf({ status: 'completed', conclusion: 'failure', blocked: true }, null);
+  assert.deepEqual([skipped.state, skipped.label, skipped.source], [never.state, never.label, never.source]);
 });
 
 test("a stop's counts match its agents, as the collector counts them", () => {

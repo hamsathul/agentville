@@ -152,7 +152,8 @@ export async function checkWorld({ dir, file = 'world.js', json = 'world.json', 
     // world.js itself. When the throw site is the SDK's, the world.js line that called it wins, from the stack.
     const top = stack.match(/^(\/[^\n]*?):(\d+)\n/);
     if (top?.[1] === worldPath) return at(top[1], top[2]);
-    const found = [...stack.matchAll(/(?:\(|at )(\/[^()\n]*?):(\d+):(\d+)\)?$/gm)] // a path may hold spaces.filter(m => m[1] === worldPath || m[1].startsWith(WEB + sep));
+    const found = [...stack.matchAll(/(?:\(|at )(\/[^()\n]*?):(\d+):(\d+)\)?$/gm)] // a path may hold spaces
+      .filter(m => m[1] === worldPath || m[1].startsWith(WEB + sep));
     const f = found.find(m => m[1] === worldPath) ?? found[0];
     return f ? at(f[1], f[2], f[3]) : '';
   };

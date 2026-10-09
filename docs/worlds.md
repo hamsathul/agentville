@@ -54,8 +54,9 @@ world-shots pictures.
    allowed, each with one sentence and exit code 1, and leaves nothing half-made. `--worlds <dir>`
    uses another folder, to try things out (give it to `check-world` and `world-shots` too; the
    dashboard and its test page show only your worlds folder). A `config.json` that can't be read
-   gives one warning and the default folder, as the collector does. It prints the next steps, with commands as if for your own worlds folder: add `--worlds <dir>`
-   to them when you gave it one.
+   gives one warning and the default folder, as the collector does. It prints the next steps, whose
+   commands name the world `u/<name>` (so a world of yours called `farm` is never the built-in farm)
+   and repeat `--worlds <dir>` when you gave it one.
 2. Edit the world. In `world.json`, give it its own `icon`, `description` and `nouns` (only its
    `name` is new; the rest are the starter's): see "world.json". Give the engine the same words in
    `world.js`'s `nouns` hook, with `place` ("Hooks"). In `world.js`, start from the
@@ -67,9 +68,9 @@ world-shots pictures.
    dashboard's default port; `new-world` prints yours), which plays the tour ("The test page and
    the tour"). The dashboard must be running. The test page doesn't reload when you save: reload
    it.
-4. `npm run check-world -- <name>` runs the tour headless and lists what it finds ("check-world and
+4. `npm run check-world -- u/<name>` runs the tour headless and lists what it finds ("check-world and
    the checklist"). Fix every line with a cross; read the lines with a dot.
-5. `npm run world-shots -- <name>` takes a picture of the world at each stop of the tour (it needs
+5. `npm run world-shots -- u/<name>` takes a picture of the world at each stop of the tour (it needs
    Chrome), in `.private/shots/u-<name>/` in the Agentville folder. Look at each one.
 6. Choose it in the dashboard: **World**, then its name. Saving a file there reloads it on screen
    ("Reloading as you edit"). A world of yours gets the private scene, with numbers for names and no
@@ -859,8 +860,9 @@ the bell, motion…), listed and not done, but for two: a GitHub link (`openLink
 as on the dashboard, and motion is applied as well as listed; and the world's diary. Picking a stop
 gives it its own address, so a stop can be linked to or screenshotted.
 
-It holds **no token and no real data**: nothing on it comes from your sessions. Every snapshot is
-made up (`web/worlds/test/tour.js`, with names like `a1` and paths like `/Users/you/code/shop`) and
+It holds **no token and no real data**: nothing on it comes from your sessions, and its content
+policy lets it fetch nothing (`connect-src 'none'`). Every snapshot is made up
+(`web/worlds/test/tour.js`, with names like `a1` and paths like `/Users/you/code/shop`) and
 goes through `toScene` like a real one, so the world gets a scene exactly as on the dashboard. A
 world's **requests** (`agentFiles`, `repoTouched`) get made-up answers in the collector's shapes. The
 world's **settings** are kept in memory, starting fresh at each stop with the stop's sky (`sky` is
@@ -940,7 +942,7 @@ The stops, in the order the tour plays them:
 | `deploy-ok` | Deploy: ok |
 | `deploy-failed` | Deploy: failed |
 | `deploy-running` | Deploy: running |
-| `deploy-skipped` | Deploy: skipped (Actions didn't run). Its deploy's `state` is `'skipped'`; on the dashboard such a run is `blocked`, and a deploy can be `other` too, so draw every state you don't name in one way, as the starter's grey flag does |
+| `deploy-skipped` | Deploy: skipped (Actions didn't run). Its deploy is what the collector sends for a run GitHub never started: `state: 'blocked'`, labelled "⏸ Actions didn't run". A deploy can be `other` too, so draw every state you don't name one way, as the starter's grey flag does |
 | `two-working` | Two agents in one repo |
 | `collision` | A collision: two agents writing one repo |
 | `pigeon` | A message from one agent to another |

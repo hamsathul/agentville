@@ -859,9 +859,9 @@ and can do is in [docs/worlds.md](docs/worlds.md).
   world's own folder. The list of their names and the folder's path needs the token. The collector
   reads the folder; it never fetches a world from anywhere.
 - The world test page (`/worlds/test`) is served without the token and holds none: its snapshots
-  and answers are made up in the page, it never asks the collector for your sessions or files, and
-  it keeps a world's settings in memory, never in the browser. Like the dashboard, it refuses to be
-  shown in a frame.
+  and answers are made up in the page, it never asks the collector for your sessions or files (its
+  content policy lets it fetch nothing at all), and it keeps a world's settings in memory, never in
+  the browser. Like the dashboard, it refuses to be shown in a frame.
 - `npm run check-world` runs a world's code on your Mac, on made-up snapshots, outside the sandboxed
   frame. It runs it contained, in a Node of its own (Node's permission model): it can read only the
   SDK and the world's `world.js` and `world.json` (no other file of the world's, so a link the world

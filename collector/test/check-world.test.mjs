@@ -77,6 +77,13 @@ test('a failing promise is reported once a stop, with its line', () => {
   assert.match(everyone[0], /a promise failed: the ground went wrong \(world\.js:6:\d+\)/);
 });
 
+test("where a problem is from names world.js or the SDK's files only: a stack naming any other file gives no place", () => {
+  const r = run('elsewhere', '--worlds', fixture(''));
+  assert.equal(r.status, 1, r.stdout + r.stderr);
+  const everyone = r.stdout.split('\n').filter(l => l.includes('✗ everyone:'));
+  assert.deepEqual(everyone, ['  ✗ everyone: a promise failed: the ground went wrong'], r.stdout);
+});
+
 test('a world that never registers, or does not parse, is reported', async () => {
   assert.match((await checkWorld({ dir: fixture('silent') })).errors[0].message, /never registered/);
   const bad = (await checkWorld({ dir: fixture('bad-syntax') })).errors[0];
