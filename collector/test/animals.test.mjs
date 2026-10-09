@@ -258,3 +258,72 @@ test('with motion off, time still passes for the lines: they go after 4 s, thoug
   a.tick(4.5, { still: true });
   assert.equal(plain(a.bubbles()).length, 0);
 });
+
+test('habits: a goat climbs a perch (lifted), the ostrich hides, the tiger chases its tail, the dog fetches; all where they may', () => {
+  const k = load();
+  const perches = [[30, 160, 4], [70, 250, 3]];
+  const a = k.makeAnimals([{ kind: 'goat', count: 2, habits: ['climb'] }, { kind: 'ostrich', habits: ['hide', 'circles'] }, { kind: 'tiger', habits: ['chaseTail', 'pounce'] }, { kind: 'sheepdog', habits: ['fetch', 'roll', 'laps'] }], { random: k.seededRandom(4) });
+  a.place({ ...FARMISH, perches });
+  const seen = new Set();
+  for (let i = 0; i < 6000; i++) {
+    a.tick(0.1, { night: false, still: false });
+    for (const c of plain(a.list())) {
+      assert.ok(!boxHits(k, c, FARMISH.avoid), `${c.id} at ${c.x},${c.y}`);
+      if (c.kind === 'goat' && c.lift > 0) { seen.add('climb'); assert.ok(perches.some(p => p[0] === c.x && p[1] === c.y && p[2] === c.lift), 'on a perch'); }
+      if (c.kind === 'ostrich' && c.pose === 'hide') seen.add('hide');
+      if (c.kind === 'sheepdog' && c.pose === 'roll') seen.add('roll');
+      if (c.kind === 'tiger' && c.pose === 'run') seen.add('pounce or chase');
+    }
+  }
+  for (const h of ['climb', 'hide', 'roll', 'pounce or chase']) assert.ok(seen.has(h), `${h} happens in ten minutes`);
+});
+
+test('the ducklings swim in a line behind their mother', () => {
+  const k = load();
+  const a = k.makeAnimals([{ kind: 'duck', count: 4, looks: ['drake', 'hen', 'duckling', 'duckling'], home: { x: 0, y: 0, w: 200, h: 60 } }], { random: k.seededRandom(6) });
+  a.place({ roam: [], avoid: [] });
+  let near = 0, total = 0;
+  for (let i = 0; i < 3000; i++) {
+    a.tick(0.1, { night: false, still: false });
+    const ds = plain(a.list()), hen = ds.find(d => d.id === 'duck-1');
+    for (const d of ds.filter(x => x.id === 'duck-2' || x.id === 'duck-3')) { total++; if (Math.hypot(d.x - hen.x, d.y - hen.y) < 26) near++; }
+  }
+  assert.ok(near / total > 0.7, `ducklings near their mother ${Math.round((100 * near) / total)}% of the time`);
+});
+
+test('winter: goats wear scarves, the ducks are on ice (sliding, no water), the rest huddle near the huddle spot', () => {
+  const k = load();
+  const a = k.makeAnimals([{ kind: 'goat', count: 2 }, { kind: 'cow', count: 2 }, { kind: 'duck', count: 2, looks: ['drake', 'hen'], home: { x: 10, y: 160, w: 40, h: 30 } }], { random: k.seededRandom(8) });
+  a.place({ roam: [YARD], avoid: [], spots: { huddle: [50, 150] } });
+  for (let i = 0; i < 1200; i++) a.tick(0.1, { night: false, still: false, winter: true });
+  const all = plain(a.list());
+  assert.ok(all.filter(c => c.kind === 'goat').every(c => c.wear?.scarf));
+  assert.ok(all.filter(c => c.kind === 'duck').every(c => c.wear?.ice && c.pose !== 'swim' && c.pose !== 'dabble'));
+  const land = all.filter(c => c.kind !== 'duck'), d = land.reduce((t, c) => t + Math.hypot(c.x - 50, c.y - 150), 0) / land.length;
+  assert.ok(d < 35, `they huddle: ${Math.round(d)} px from the spot on average`);
+});
+
+test('reactions: a failed deploy scatters those near and hides the ostrich; one reaction per kind per 30 s; all where they may', () => {
+  const k = load();
+  const a = k.makeAnimals([{ kind: 'cow', count: 2, lines: { deployFailed: ['moo!?'] } }, { kind: 'ostrich', habits: ['hide'], lines: { deployFailed: ['not my fault'] } }, { kind: 'sheepdog', reacts: { merged: 'run', arrive: 'run' }, lines: { merged: ['WOOF!'], arrive: ['woof! hi!'] } }], { random: k.seededRandom(2) });
+  a.place(FARMISH);
+  const at = [60, 170];
+  assert.equal(a.react('deployFailed', at), true);
+  a.tick(0.1, {});
+  assert.equal(plain(a.list()).find(c => c.kind === 'ostrich').pose, 'hide');
+  assert.equal(a.react('deployFailed', at), false, 'not again within 30 s');
+  assert.equal(a.react('merged', [100, 120]), true, 'another kind may');
+  for (let i = 0; i < 301; i++) a.tick(0.1, {});
+  assert.equal(a.react('deployFailed', at), true, 'after 30 s, again');
+  for (let i = 0; i < 300; i++) { a.tick(0.1, {}); for (const c of plain(a.list())) assert.ok(!boxHits(k, c, FARMISH.avoid), `${c.id} at ${c.x},${c.y}`); }
+  assert.equal(a.react('nonsense', at), false);
+});
+
+test('habits and spots respect a new yard: after the yard shrinks, no one stays on a perch or anywhere outside it', () => {
+  const k = load();
+  const a = k.makeAnimals([{ kind: 'goat', count: 3, habits: ['climb'] }], { random: k.seededRandom(11) });
+  a.place({ roam: [{ x: 4, y: 100, w: 100, h: 200 }], avoid: [], perches: [[50, 280, 4]] });
+  for (let i = 0; i < 2000; i++) a.tick(0.1, {});
+  a.place({ roam: [{ x: 4, y: 100, w: 100, h: 100 }], avoid: [], perches: [] });
+  for (let i = 0; i < 600; i++) { a.tick(0.1, {}); for (const c of plain(a.list())) assert.ok(c.y <= 200 && !(c.lift > 0), `${c.id} at ${c.x},${c.y} lift ${c.lift}`); }
+});
