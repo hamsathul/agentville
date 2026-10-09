@@ -663,11 +663,8 @@
         if (blink(1.5)) { rp(12, 6, 1, 3, '#ffd43b'); rp(11, 7, 3, 1, '#ffd43b'); } // the knack of it
         return;
       }
-      case 'blueprint': { // plan mode: drawing up plans, a pencil moving over the sheet
-        rp(1, 9, 11, 6, '#2c4a85'); rp(1, 9, 11, 1, '#3d7be0'); rp(3, 10, 1, 5, '#a9dcf7'); rp(1, 12, 11, 1, '#a9dcf7'); rp(7, 11, 3, 2, '#a9dcf7');
-        rp(8 + blink(3) * 2, 7, 1, 3, '#f0b429'); rp(8 + blink(3) * 2, 10, 1, 1, '#1b1420');
-        return;
-      }
+      case 'blueprint': // plan mode: drawing up plans (the props kit's)
+        window.Agentville.props.draw('blueprint', rp, T); return;
       case 'clipboard': // planning: a chore list being ticked
         rp(1, 9, 5, 6, '#a8703c'); rp(2, 10, 3, 4, '#fff4d6'); rp(3, 9, 1, 1, '#9aa4ad'); rp(2, 11, 3, 1, '#9aa0a6'); rp(2, 13, 2, 1, '#9aa0a6');
         if (blink(2)) rp(4, 13, 1, 1, '#2fa57a');

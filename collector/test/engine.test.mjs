@@ -90,7 +90,7 @@ test("the frame's scripts, loaded one by one in one context, register the farm w
   const document = { addEventListener: (t, fn) => { (listeners[t] ??= []).push(fn); }, createElement: el, getElementById: () => null, querySelector: () => null, querySelectorAll: () => [], documentElement: { dataset: {}, style: {} }, body: el(), readyState: 'loading', hidden: false };
   Object.assign(window, { window, document, parent, console, Math, Date, JSON, Map, Set, Intl, URL });
   const ctx = vm.createContext(window);
-  for (const f of ['worlds/sdk/bridge.js', 'brand.js', 'worlds/sdk/pixel.js', 'worlds/sdk/people.js', 'worlds/sdk/engine.js', 'worlds/farm/world.js']) vm.runInContext(web(f), ctx, { filename: f });
+  for (const f of ['worlds/sdk/bridge.js', 'brand.js', 'worlds/sdk/pixel.js', 'worlds/sdk/people.js', 'worlds/sdk/props.js', 'worlds/sdk/engine.js', 'worlds/farm/world.js']) vm.runInContext(web(f), ctx, { filename: f });
   assert.equal(typeof window.AgentvilleFarm.layoutFor, 'function', 'the farm exported its helpers');
   assert.equal(vm.runInContext("legFrame({ walk: true }) + pixelOrigin({ x: 9, y: 9, walk: true }, 16).length", ctx), 'a2', 'the kit draws a walker without a name the farm hides');
   for (const fn of listeners.DOMContentLoaded ?? []) fn();

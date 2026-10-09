@@ -919,6 +919,7 @@ docs/        screenshots, and worlds.md: what a world gets from the dashboard an
 npm test                    # collector and dashboard (node:test)
 npm run test:ui             # the dashboard, the farm and other worlds in headless Chrome, on a fixture
                             # (a probe world among them tries every way out of its frame)
+npm run kit-sheet           # redraw docs/kits.png, the picture of the people and props kits
 claude plugin test mod      # the Claude Code mod
 scripts/e2e-answer.sh       # answering and messaging real sessions
 npm start                   # run the collector in the foreground (stop the service first)

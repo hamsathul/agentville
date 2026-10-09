@@ -8,7 +8,7 @@ import vm from 'node:vm';
 
 const web = f => readFileSync(fileURLToPath(new URL(`../../web/${f}`, import.meta.url)), 'utf8');
 // The scripts a world's frame runs (the bridge aside), and the styles it loads (it can't see the page's own).
-const FRAME_SCRIPTS = ['worlds/sdk/pixel.js', 'worlds/sdk/people.js', 'worlds/sdk/engine.js', 'worlds/farm/world.js'];
+const FRAME_SCRIPTS = ['worlds/sdk/pixel.js', 'worlds/sdk/people.js', 'worlds/sdk/props.js', 'worlds/sdk/engine.js', 'worlds/farm/world.js'];
 const FRAME_CODE = FRAME_SCRIPTS.map(web).join('\n');
 const FRAME_CSS = ['base.css', 'worlds/sdk/engine.css'].map(web).join('\n');
 // The page's scene and host, and the farm's frame, loaded together.

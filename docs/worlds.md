@@ -18,7 +18,8 @@ those files from inside the folder only, and only these kinds: `.js`, `.json`, `
 `.gif`, `.webp`, `.svg`, `.woff2`, `.mp3`, `.ogg` and `.wav`. The frame's page
 (`web/worlds/sdk/frame.html`) loads, in order: `/base.css` (the dashboard's colours), the world
 engine's styles (`/world/sdk/engine.css`), the bridge (`/world/sdk/bridge.js`), the brand mark
-(`/brand.js`), the pixel kit (`/world/sdk/pixel.js`), the engine (`/world/sdk/engine.js`), then the
+(`/brand.js`), the pixel kit (`/world/sdk/pixel.js`), the people and props kits (`/world/sdk/people.js`,
+`/world/sdk/props.js`), the engine (`/world/sdk/engine.js`), then the
 world's `world.js`. A world doesn't choose these: the frame always loads all of them. The world draws
 into `<div id="farm">`, which fills the frame.
 
@@ -527,6 +528,8 @@ The field close-up (a field's files) is still drawn as the farm draws it.
 
 ## The people kit
 
+![The people and props kits](kits.png)
+
 `window.Agentville.people` draws a person in pixels from a body and an outfit. It is loaded in every
 frame, after `pixel.js` and before the engine, so a world's `world.js` can use it at once. A person is
 14 × 16 pixels, seen from the front, from behind or from the side, standing or in a walking frame.
@@ -624,6 +627,69 @@ no extra, and never throws. The names asked for and not found are collected in `
 The farm's farmers are this kit in farm clothes: its `FARMER` outfit (straw or dyed hats, overalls over the
 shirt, a beard, glasses or cheeks), the slate caps of codex agents, and a scarecrow, which is the same
 person in sacking colours on a pole.
+
+## The props kit
+
+`window.Agentville.props` is what a person holds for each kind of step Claude Code takes. It is loaded in
+every frame right after the people kit. Every step has a plain prop, and no two props look alike (the
+picture at the top of "The people kit" shows them all, in a person's hands). A prop is drawn around a
+14 × 16 person: `rp(x, y, w, h, colour)` paints in the person's pixels, the person spans x 1–12 and
+y 0–15, and the right hand is at x 11–12, y 11–12. Props that go to the person's left use x below 11.
+
+| Step | Prop | Verb (for the tip) |
+|---|---|---|
+| `edit` | `pencil` | editing |
+| `write` | `page` | writing a new file |
+| `read` | `book` | reading |
+| `search` | `magnifier` | searching |
+| `web` | `globe` | on the web |
+| `mcp` | `plug` | using a connector |
+| `skill` | `scroll` | following a skill |
+| `test` | `checklist` | running the tests |
+| `lint` | `broom` | tidying up |
+| `build` | `hammer` | building |
+| `install` | `box` | installing |
+| `commit` | `stamp` | committing |
+| `push` | `dolly` | pushing |
+| `deploy` | `rocket` | deploying |
+| `pull` | `envelope` | pulling |
+| `serve` | `server` | keeping a server running |
+| `delete` | `bin` | deleting |
+| `agent` | `megaphone` | calling helpers |
+| `plan` | `clipboard` | planning |
+| `ask` | `card` | asking you something |
+| `shell` | `terminal` | running a command |
+| `other` | `wrench` | working |
+| plan mode (`mode: 'plan'`) | `blueprint` | drawing up plans (plan mode) |
+
+`props.STEPS` is this table as `{ step: { prop, verb, spot } }` (`spot` is where the person stands in its
+plot: -26 left for looking things up, 26 right for working, 0 the middle), `props.PLAN_MODE` is the
+plan-mode row, `props.PROPS` lists the prop names and `props.draw(prop, rp, T, flag)` draws one and
+returns `false` when the kit has no such prop.
+
+### Your own steps and props
+`props.kit({ steps, props })` makes a world's own set: `steps` changes or adds steps (`planMode` too), and
+`props` draws its own props. Everything you leave out is the kit's. It returns `{ steps, actionOf, doing,
+draw }`. This runs: in a world's `world.js`, the test step holds a beaker.
+
+```js
+const props = window.Agentville.props.kit({
+  steps: { test: { prop: 'beaker', verb: 'testing samples' } },
+  props: { beaker: (rp, T) => { rp(13, 8, 4, 6, '#a9dcf7'); rp(13, 8 + Math.floor(T * 2) % 3, 4, 1, '#ffffff'); rp(11, 11, 2, 1, '#e0a878'); } },
+});
+props.actionOf('test');        // { prop: 'beaker', verb: 'testing samples', spot: 0 }
+props.actionOf('edit').prop;   // 'pencil': the kit's
+props.actionOf(undefined, 'Grep').prop; // 'magnifier': an older snapshot with a tool and no step
+props.actionOf('nonsense').prop; // 'wrench'
+```
+
+`doing(f)` says what an agent's person holds now: its step's action, the blueprint while it is working in
+plan mode, and `null` between steps (nothing in its hands). Draw it with `props.draw(action.prop, rp, T,
+flag)`. `flag` is passed on to the prop, for your own props to use; the kit's ignore it.
+
+### The farm
+The farm draws its own props and keeps them; only its plan-mode `blueprint` is the kit's, which is the
+farm's own drawing, so the farm looks the same.
 
 ## What a world can't do
 
