@@ -48,6 +48,20 @@ test("the tour covers the spec's list", () => {
   assert.ok(scene('mcp').mcp.length > 0);
 });
 
+test("a stop's counts match its agents, as the collector counts them", () => {
+  const { tour } = load();
+  const last = n => tour.stop(n).frames.at(-1);
+  const all = last('everyone'), n = s => all.agents.filter(a => a.state === s).length;
+  assert.deepEqual(plain(all.counts), { waiting: n('waiting'), working: n('working'), yourTurn: n('yourTurn'), stale: n('stale'), idle: n('idle'), collisions: 0 });
+  assert.equal(all.counts.waiting, 1);
+  assert.equal(all.counts.yourTurn, 1);
+  assert.equal(all.counts.working, 3);
+  assert.equal(all.counts.stale, 1);
+  assert.equal(all.counts.idle, 1);
+  assert.equal(last('collision').counts.collisions, 1);
+  assert.equal(last('nobody').counts.working, 0);
+});
+
 test('every check compares two stops that exist; answers have the collector\'s shapes', () => {
   const { tour } = load();
   for (const [item, a, b] of tour.checks) assert.ok(tour.stop(a) && tour.stop(b) && item, `${item}: ${a} vs ${b}`);

@@ -28,6 +28,27 @@ Keys: a built-in world is named by its folder in `web/worlds/` (the farm is `far
 `^[a-z0-9][a-z0-9-]{0,39}$`, and `sdk`, `starter`, `test` and `u` are reserved. Your own worlds are
 `u/<name>`; see below.
 
+## Making a world
+
+If you are Claude Code making a world for someone, follow these steps in order, and show them the
+world-shots pictures.
+
+1. `npm run new-world -- <name>` copies the starter world into your worlds folder (`worldsDir` in
+   `config.json`, else `~/.agentville/worlds`) as `<name>/`, with the name (`my-bakery` becomes "My
+   bakery") written into its `world.json`. The name is lowercase letters, digits and dashes, up to
+   40. It refuses a name that is taken, a worlds folder that is a file, and a name that isn't
+   allowed, each with one sentence and exit code 1, and leaves nothing half-made. `--worlds <dir>`
+   uses another folder, to try things out. A `config.json` that can't be read gives one warning and
+   the default folder, as the collector does.
+2. Edit `world.js`. Start from the starter's hooks; the kits ("The people kit", "The props kit") draw
+   people and things; "Hooks" says what each hook gets and its default. The checklist in "The test
+   page and the tour" lists what a world should show.
+3. See it on the test page, `/worlds/test?world=u/<name>`, which plays the tour. Saving a file
+   reloads it.
+4. `npm run check-world -- <name>` runs the tour headless and lists what it finds.
+5. `npm run world-shots -- <name>` takes a picture of the world at each stop of the tour.
+6. Choose it in the dashboard: **World**, then its name.
+
 ## Where worlds live
 
 - **Built in:** `web/worlds/<name>/` in the install. The farm is first in the list, the other

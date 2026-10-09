@@ -13,11 +13,19 @@
   });
   const repo = (name, over = {}) => ({ path: path(name), name, branch: 'main', dirty: 0, ahead: 0, behind: 0, lastDeploy: null, ...over });
   const windows = (five, week) => [{ kind: 'five_hour', percentUsed: five, resetsAt: NOW + 3 * 3_600_000 }, { kind: 'seven_day', percentUsed: week, resetsAt: NOW + 4 * 86_400_000 }];
-  const snap = (agents, repos, over = {}) => ({
-    generatedAt: NOW, collector: { cpu: 0.3, rssMb: 70 }, machine: { totalMemMb: 16384, cpuCount: 8 }, sources: {}, settings: { cpuAlertPct: 90 },
-    counts: {}, plan: { from: 'tour', at: NOW, windows: windows(30, 40) }, collisions: [], agents,
-    repos: repos.map(r => ({ agentIds: agents.filter(a => a.cwd === r.path).map(a => a.id), ...r })), ...over,
-  });
+  // The panel's counts, as the collector counts them (by state; collisions from the list).
+  const countsOf = (agents, collisions) => {
+    const n = state => agents.filter(a => a.state === state).length;
+    return { waiting: n('waiting'), working: n('working'), yourTurn: n('yourTurn'), stale: n('stale'), idle: n('idle'), collisions: collisions.length };
+  };
+  const snap = (agents, repos, over = {}) => {
+    const { counts, ...rest } = over, collisions = rest.collisions ?? [];
+    return {
+      generatedAt: NOW, collector: { cpu: 0.3, rssMb: 70 }, machine: { totalMemMb: 16384, cpuCount: 8 }, sources: {}, settings: { cpuAlertPct: 90 },
+      counts: counts ?? countsOf(agents, collisions), plan: { from: 'tour', at: NOW, windows: windows(30, 40) }, collisions, agents,
+      repos: repos.map(r => ({ agentIds: agents.filter(a => a.cwd === r.path).map(a => a.id), ...r })), ...rest,
+    };
+  };
   const SHOP = [repo('shop')], one = over => snap([agent('a1', over)], SHOP);
   const STEP_TOOLS = { edit: 'Edit', write: 'Write', read: 'Read', search: 'Grep', web: 'WebFetch', mcp: 'mcp__tickets__search', skill: 'Skill', test: 'Bash', lint: 'Bash', build: 'Bash', install: 'Bash', commit: 'Bash', push: 'Bash', deploy: 'Bash', pull: 'Bash', serve: 'Bash', delete: 'Bash', agent: 'Agent', plan: 'TodoWrite', ask: 'AskUserQuestion', shell: 'Bash' };
   const STEP_REPOS = ['shop', 'blog', 'api', 'docs', 'site', 'tools'].map(n => repo(n));

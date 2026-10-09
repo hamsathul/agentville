@@ -555,8 +555,11 @@ something else. Built-in worlds always see everything.
 
 ![The list of worlds](docs/worlds.png)
 
-A world is a folder holding `world.json` and `world.js`. Yours go in `~/.agentville/worlds/<name>/`
-(the name is lowercase letters, digits and dashes, up to 40), or in the folder `worldsDir` names.
+**Your own worlds:** `npm run new-world -- <name>` copies the starter world into your worlds folder
+under that name and says what to do next (it refuses a taken or invalid name, and leaves nothing
+half-made). By hand: a world is a folder holding `world.json` and `world.js`. Yours go in
+`~/.agentville/worlds/<name>/` (the name is lowercase letters, digits and dashes, up to 40), or in
+the folder `worldsDir` names.
 Built-in worlds can't be replaced: a world of yours named like one is just another world, listed
 after it. A world with a problem (a `world.json` that can't be read, one made for a newer
 Agentville, a missing `world.js`) is listed with what is wrong. Files are served only from inside
@@ -748,6 +751,7 @@ The mod also does the dashboard's work inside the session:
 | `agent-tracker status` | Whether the service runs and the dashboard answers |
 | `agent-tracker open` | Opens the dashboard |
 | `agent-tracker logs` | The last lines of its logs |
+| `npm run new-world -- <name>` | Makes a world of your own from the starter, in your worlds folder |
 
 ## How it works
 

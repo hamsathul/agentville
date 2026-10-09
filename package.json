@@ -8,6 +8,7 @@
     "test": "node --test \"collector/test/*.test.mjs\"",
     "test:ui": "node scripts/e2e-ui.mjs",
     "golden": "node scripts/world-golden.mjs",
+    "new-world": "node scripts/new-world.mjs",
     "world-shots": "node scripts/world-shots.mjs",
     "kit-sheet": "node scripts/kit-sheet.mjs",
     "demo": "node scripts/demo-video.mjs",
