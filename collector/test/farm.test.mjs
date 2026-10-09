@@ -532,7 +532,7 @@ test('the farm’s animals: seven kinds, thirteen animals; never a chicken, the 
   assert.deepEqual(ducks.actions.map(a => a.label), ['Feed bread', 'Quack back']);
 });
 
-test('where the farm’s animals may walk: the yard and the lane, never the fields, the pond, the hammocks, the henhouse or the carts', () => {
+test('where the farm’s animals may walk: the yard, never the lane by the porch, the fields, the pond, the hammocks or the henhouse', () => {
   const window = { Agentville: { raw: () => {} } };
   vm.runInNewContext(code, { window, console, Math, Date, JSON, Map, Set });
   const th = window.AgentvilleFarm.makeFarm();
@@ -541,12 +541,13 @@ test('where the farm’s animals may walk: the yard and the lane, never the fiel
   const roam = plain(th.roam()), avoid = plain(th.avoid());
   for (const r of roam) {
     assert.ok(r.x + r.w <= GRID.x0 || r.y + r.h <= GRID.y0, `roam ${JSON.stringify(r)} stays out of the fields (fence ${JSON.stringify(GRID)})`);
-    assert.ok(r.x + r.w <= 300, 'and off the carts’ rank on the lane');
+    assert.ok(r.y >= 96, 'and off the lane along the porch, where farmers waiting on you stand');
   }
   const covers = (x, y) => avoid.some(r => x >= r.x && x <= r.x + r.w && y >= r.y && y <= r.y + r.h);
   assert.ok(covers(42, 210), 'the pond');
   assert.ok(covers(97, 204) && covers(97, 224), 'the hammocks');
   assert.ok(covers(20, 115), 'the henhouse');
+  assert.ok(covers(70, 120), 'and its run, where the hens are subagents');
 });
 
 test('with animals on, the scenery duck is gone (the ducks are the animals’ now); off, it is back as it was', () => {

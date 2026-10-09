@@ -947,8 +947,8 @@
       px(pony - 3 + step, y - 1, 1, 2, '#6b4320'); px(pony + 1 - step, y - 1, 1, 2, '#6b4320'); px(pony - dir * 4, y - 4, 1, 2, '#4e3626');
     }
     const FIREFLIES = [[20, 150], [60, 160], [92, 176], [30, 232], [74, 196], [50, 252], [100, 250], [14, 262], [88, 140], [96, 214], [240, 92], [330, 70]];
-    // The farm's animals (sdk/animals.js): just for fun, never data. They walk the yard and the lane,
-    // never the fields (their crops are context), the hay, crates or mailbox (git), the carts' rank (MCP),
+    // The farm's animals (sdk/animals.js): just for fun, never data. They walk the yard (not the lane:
+    // it runs along the porch, where farmers waiting on you stand), never the fields (their crops are context), the hay, crates or mailbox (git), the carts' rank (MCP),
     // the hammocks or the henhouse. No chickens (subagents), and the dog is a sheepdog (the Explore dog is
     // data). The ducks keep to the pond and its bank.
     const POND = { x: 12, y: 199, w: 60, h: 22 }; // the water (the pond's oval, a little inside its bank)
@@ -1100,10 +1100,10 @@
       ground() { drawScenery(); L.ST.forEach(drawPlot); L.ST.forEach(drawPiles); },
       season: () => season,
       animals: () => FARM_ANIMALS,
-      /** Where the animals may walk: the yard (down to the fence's foot) and the lane, short of the carts. */
-      roam: () => [{ x: 4, y: 100, w: 100, h: Math.max(20, L.GRID.y1 - 104) }, { x: 124, y: LANE - 2, w: 170, h: 6 }],
+      /** Where the animals may walk: the yard, down to the fence's foot (not the lane, along the porch where farmers wait on you). */
+      roam: () => [{ x: 4, y: 100, w: 100, h: Math.max(20, L.GRID.y1 - 104) }],
       /** What they keep off in there: the pond (the ducks' own), the hammocks, the henhouse and its run, the shade tree's trunk. */
-      avoid: () => [{ x: 8, y: 194, w: 70, h: 32 }, { x: 84, y: 196, w: 24, h: 34 }, { x: 0, y: 95, w: 46, h: 42 }, { x: 60, y: L.GRID.y1 - 26, w: 14, h: 12 }],
+      avoid: () => [{ x: 8, y: 194, w: 70, h: 32 }, { x: 84, y: 196, w: 24, h: 34 }, { x: 0, y: 95, w: 106, h: 44 }, { x: 60, y: L.GRID.y1 - 26, w: 14, h: 12 }], // the run's hens are subagents
       /** Particles a farmer gives off: dust when walking; splashes, clods, sparks, chips from its tool. */
       emit(f, b, dt, add) {
         const ox = b.x - 7 * SC, oy = b.y - 16 * SC, T = PXG.T;
