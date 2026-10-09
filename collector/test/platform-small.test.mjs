@@ -55,3 +55,50 @@ test('Explorer is never handed a file (it would run an .exe) or a folder that do
   for (const bad of [join(dir, 'tool.exe'), join(dir, 'missing')]) assert.notEqual((await win.openFolder(bad, fake(calls))).code, 0, bad);
   assert.equal(calls.length, 0);
 });
+
+test('is this process Claude Code? by the program it runs, not by the word claude appearing anywhere in its command line', () => {
+  const ok = [
+    `"C:${B}Users${B}me${B}.local${B}bin${B}claude.exe" --channels plugin:x --resume abc`,
+    `C:${B}Users${B}me${B}.local${B}bin${B}claude.exe`,
+    `"C:${B}Program Files${B}nodejs${B}node.exe" C:${B}Users${B}me${B}AppData${B}Roaming${B}npm${B}node_modules${B}@anthropic-ai${B}claude-code${B}cli.js --resume abc`,
+    `C:${B}Users${B}me${B}AppData${B}Roaming${B}npm${B}claude.cmd --resume abc`,
+  ];
+  const no = [
+    `"C:${B}Program Files${B}Git${B}usr${B}bin${B}bash.exe" -c "echo claude"`,
+    `C:${B}tools${B}claude-helper.exe --x`,
+    `C:${B}tools${B}notclaude.exe`,
+    `"C:${B}Windows${B}System32${B}cmd.exe" /c start claude`,
+    '', null, undefined,
+  ];
+  for (const c of ok) assert.equal(win.isClaudeCommand(c), true, c);
+  for (const c of no) assert.equal(win.isClaudeCommand(c), false, String(c));
+  assert.equal(mac.isClaudeCommand('/Users/me/.local/bin/claude --resume x'), true);
+  assert.equal(mac.isClaudeCommand('claude'), true);
+  assert.equal(mac.isClaudeCommand('/bin/zsh -c echo'), false);
+});
+
+test('the folder picker is a Windows folder dialog: start folder and prompt travel in the environment, and every answer is classified', async () => {
+  const calls = [];
+  const answer = stdout => (cmd, args, opts) => { calls.push({ cmd, args, opts }); return Promise.resolve({ code: 0, stdout, stderr: '' }); };
+  const hostile = `C:${B}x"; calc; "`;
+  assert.deepEqual(await win.chooseFolder({ start: hostile, prompt: 'Pick $(whoami)' }, answer(`PATH:C:${B}work${B}app\r\n`)), { path: `C:${B}work${B}app` });
+  assert.equal(calls[0].opts.env.AGENTVILLE_START, hostile);
+  assert.equal(calls[0].opts.env.AGENTVILLE_PROMPT, 'Pick $(whoami)');
+  assert.ok(calls[0].args.includes('-STA'), 'a folder dialog needs a single-threaded apartment');
+  assert.ok(!calls[0].args.join('\n').includes('calc') && !calls[0].args.join('\n').includes('whoami'), 'user text is not in argv');
+  assert.deepEqual(await win.chooseFolder({ start: 'C:', prompt: 'x' }, answer('CANCELLED\r\n')), { cancelled: true });
+  const bad = await win.chooseFolder({ start: 'C:', prompt: 'x' }, answer('something else'));
+  assert.ok(bad.error, 'unrecognised output is an error, never a path');
+  const failed = await win.chooseFolder({ start: 'C:', prompt: 'x' }, () => Promise.resolve({ code: 1, stdout: '', stderr: 'boom' }));
+  assert.match(failed.error, /boom/);
+  const relative = await win.chooseFolder({ start: 'C:', prompt: 'x' }, answer('PATH:relative' + B + 'dir'));
+  assert.ok(relative.error, 'a picked path must be absolute');
+});
+
+test('the folder dialog script is valid PowerShell (parsed by the real parser, not run)', { skip: process.platform !== 'win32' ? 'Windows only' : false }, async () => {
+  const { run } = await import('../lib/exec.mjs');
+  const check = '$e=$null;$t=$null;[void][System.Management.Automation.Language.Parser]::ParseInput($env:AGENTVILLE_SCRIPT,[ref]$t,[ref]$e);if($e.Count){$e|ForEach-Object{$_.Message};exit 1};"parsed ok"';
+  const r = await run('powershell.exe', ['-NoProfile', '-NonInteractive', '-Command', check], { env: { AGENTVILLE_SCRIPT: win.CHOOSE_FOLDER_SCRIPT }, timeoutMs: 30_000 });
+  assert.equal(r.code, 0, r.stdout + r.stderr);
+  assert.match(r.stdout, /parsed ok/);
+});

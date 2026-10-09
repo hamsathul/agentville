@@ -1,8 +1,11 @@
-import { existsSync, readFileSync, statSync } from 'node:fs';
-import { extname, join } from 'node:path';
+import { existsSync, mkdirSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs';
+import { dirname, extname, join, win32 } from 'node:path';
 import { tmpdir } from 'node:os';
+import { fileURLToPath } from 'node:url';
 import { run } from '../lib/exec.mjs';
 import { readWord } from '../sources/word.mjs';
+import { randomBytes } from 'node:crypto';
+import { makePrivate } from './private.mjs';
 import { WinProcReader, winSessionProcs } from './win-procs.mjs';
 // A toast through the WinRT API Windows PowerShell 5.1 ships with: nothing to install. The text goes in with
 // InnerText (so markup in a title is text), and arrives in the environment, never in this script.
@@ -61,3 +64,76 @@ const refuse = () => Promise.resolve({ code: 1, stdout: '', stderr: 'refused: th
 const isFolder = p => { try { return statSync(p).isDirectory(); } catch { return false; } };
 export const openFolder = (dir, runner = run) => (BAD_PATH.test(dir) || !isFolder(dir) ? refuse() : runner(EXPLORER, [dir], { timeoutMs: 10_000 }));
 export const revealFile = (real, runner = run) => (BAD_PATH.test(real) ? refuse() : runner(EXPLORER, [`/select,${real}`], { timeoutMs: 10_000 }));
+
+export const LAUNCHER = join(dirname(fileURLToPath(import.meta.url)), 'launch-claude.mjs');
+const WT = join(process.env.LOCALAPPDATA ?? '', 'Microsoft', 'WindowsApps', 'wt.exe');
+// What is allowed in the folder the spec file goes in: wt reads ';' as the next command and cmd reads & | < > ^ % ! " as syntax.
+const SPEC_DIR_BAD = /[;&|<>^%!"\u0000-\u001f]/;
+
+/**
+ * Opens a terminal window running Claude Code for a job { spec: { cwd, args, prefillFile? } }. The session's folder, arguments
+ * and prefill file travel in a spec file (JSON data, owner-only) that launch-claude.mjs reads; only the paths of node, the
+ * launcher and that file are on the command line, so nothing a session holds can become a command.
+ */
+// Under node --test (NODE_TEST_CONTEXT is set by the runner) or with AGENTVILLE_NO_TERMINAL=1 the real opener refuses instead of opening a window on someone's desktop (it did, once).
+const openingRun = (...a) => (process.env.AGENTVILLE_NO_TERMINAL === '1' || process.env.NODE_TEST_CONTEXT
+  ? Promise.resolve({ code: 1, stdout: '', stderr: 'refused: opening a terminal is switched off (AGENTVILLE_NO_TERMINAL=1)' }) : run(...a));
+
+export async function openTerminal(job, { claude = 'claude', specDir, wt = existsSync(WT) ? WT : null, runner = openingRun } = {}) {
+  if (!job?.spec || typeof job.spec !== 'object') return { ok: false, error: 'refused: nothing to open' };
+  if (typeof specDir !== 'string' || SPEC_DIR_BAD.test(specDir)) return { ok: false, error: 'refused: the folder for the launch file holds a character a terminal reads as syntax' };
+  mkdirSync(specDir, { recursive: true });
+  makePrivate(specDir);
+  const specFile = join(specDir, `${randomBytes(12).toString('hex')}.json`);
+  writeFileSync(specFile, JSON.stringify({ claude, ...job.spec }));
+  makePrivate(specFile);
+  let res;
+  if (wt) res = await runner(wt, ['new-tab', '--title', 'Agentville', process.execPath, LAUNCHER, specFile], { timeoutMs: 15_000 });
+  else {
+    const q = s => `"${s}"`;
+    res = await runner(join(process.env.SystemRoot ?? 'C:/Windows', 'System32', 'cmd.exe'), ['/d', '/s', '/c', `"start "Agentville" ${[process.execPath, LAUNCHER, specFile].map(q).join(' ')}"`], { timeoutMs: 15_000, windowsVerbatimArguments: true });
+  }
+  if (res.code === 0) return { ok: true, terminal: wt ? 'Windows Terminal' : 'Console' };
+  rmSync(specFile, { force: true });
+  return { ok: false, error: res.stderr.trim().slice(0, 200) || 'The terminal did not open.' };
+}
+
+// Claude Code is a program called claude (.exe native, .cmd from npm), or node running the claude-code package's cli.js.
+export function isClaudeCommand(command) {
+  if (typeof command !== 'string') return false;
+  const m = command.trim().match(/^(?:"([^"]+)"|(\S+))(?:\s+(.*))?$/);
+  if (!m) return false;
+  const program = (m[1] ?? m[2]).split(/[\x5c/]/).pop().toLowerCase();
+  if (/^claude(\.exe|\.cmd)?$/.test(program)) return true;
+  return /^node(\.exe)?$/.test(program) && /[\x5c/]@anthropic-ai[\x5c/]claude-code[\x5c/]cli\.js\b/i.test(m[3] ?? '');
+}
+export const name = 'win';
+
+// Windows' own folder window (it has New Folder), in front of the browser. Start folder and prompt arrive in the environment.
+export const CHOOSE_FOLDER_SCRIPT = [
+  "$ErrorActionPreference = 'Stop'",
+  '[Console]::OutputEncoding = [System.Text.Encoding]::UTF8',
+  'Add-Type -AssemblyName System.Windows.Forms',
+  '[System.Windows.Forms.Application]::EnableVisualStyles()',
+  '$d = New-Object System.Windows.Forms.FolderBrowserDialog',
+  '$d.Description = $env:AGENTVILLE_PROMPT',
+  '$d.ShowNewFolderButton = $true',
+  'if ($env:AGENTVILLE_START -and (Test-Path -LiteralPath $env:AGENTVILLE_START -PathType Container)) { $d.SelectedPath = $env:AGENTVILLE_START }',
+  '$owner = New-Object System.Windows.Forms.Form',
+  '$owner.TopMost = $true',
+  '$r = $d.ShowDialog($owner)',
+  "if ($r -eq [System.Windows.Forms.DialogResult]::OK) { 'PATH:' + $d.SelectedPath } else { 'CANCELLED' }",
+].join('\n');
+
+/** The folder window: { path } picked, { cancelled }, or { error }. 5 minutes to pick. */
+export async function chooseFolder({ start, prompt }, runner = run) {
+  const exe = join(process.env.SystemRoot ?? 'C:/Windows', 'System32', 'WindowsPowerShell', 'v1.0', 'powershell.exe');
+  const r = await runner(exe, ['-NoProfile', '-NonInteractive', '-STA', '-ExecutionPolicy', 'Bypass', '-Command', CHOOSE_FOLDER_SCRIPT], {
+    timeoutMs: 310_000, env: { AGENTVILLE_START: String(start ?? ''), AGENTVILLE_PROMPT: String(prompt ?? '') },
+  });
+  if (r.code !== 0) return { error: `The folder window could not open (${r.stderr.trim().slice(0, 160) || `exit ${r.code}`}).` };
+  const out = r.stdout.trim();
+  if (out === 'CANCELLED') return { cancelled: true };
+  if (out.startsWith('PATH:') && win32.isAbsolute(out.slice(5))) return { path: out.slice(5) };
+  return { error: 'The folder window gave an answer that was not a folder.' };
+}

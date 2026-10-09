@@ -6,6 +6,9 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { syncBuiltinESMExports } from 'node:module';
 
+// No test may open a real terminal window (see openTerminal in platform/win.mjs).
+process.env.AGENTVILLE_NO_TERMINAL = '1';
+
 if (process.platform === 'win32') {
   const real = fs.symlinkSync;
   fs.symlinkSync = (target, path, type) => {

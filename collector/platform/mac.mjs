@@ -31,3 +31,6 @@ export const scratchBase = () => `/private/tmp/claude-${process.getuid?.() ?? 0}
 export const folderRoots = home => [home, '/Volumes'];
 export const openFolder = (dir, runner = run) => runner('open', ['-a', 'Finder', dir], { timeoutMs: 10_000 }); // by name: a dir that names an app is shown, never launched
 export const revealFile = (real, runner = run) => runner('open', ['-R', real], { timeoutMs: 10_000 });
+
+export const isClaudeCommand = command => /(^|\/|\s)claude(\s|$)/.test(command ?? '');
+export const name = 'mac';

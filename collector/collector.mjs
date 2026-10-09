@@ -21,7 +21,7 @@ import { contentTypeOf, parseCsv, readXlsx, viewOf } from './sources/previews.mj
 import { repoFiles } from './derive/repo-files.mjs';
 import { checkFiles, checkFolders, pruneUploads, saveFiles, typedPart, withAttachments } from './sources/uploads.mjs';
 import { compactSummary, memoryFiles, scratchpadOf } from './sources/memory.mjs';
-import { EFFORTS, MODELS, MODE_FLAGS, SESSION_ID, accountPrefix, claudeCommand, closeTerminalScript, forkCommand, listSessions, projectsOf, shellQuote, terminalScript } from './sources/sessions.mjs';
+import { EFFORTS, MODELS, MODE_FLAGS, SESSION_ID, accountLaunchEnv, accountPrefix, claudeCommand, claudeLaunch, closeTerminalScript, forkCommand, forkLaunch, listSessions, projectsOf, shellQuote, terminalScript } from './sources/sessions.mjs';
 import { appendRewind, cutTranscript, pruneForks, restorePoint } from './sources/fork.mjs';
 import { MAX_NOTE_CHARS, createNotes } from './sources/notes.mjs';
 import { createHeld } from './sources/held.mjs';
@@ -37,6 +37,7 @@ import { platformFor } from './platform/index.mjs';
 const platform = platformFor();
 import { isInside, toPosix } from './platform/paths.mjs';
 import { makePrivate } from './platform/private.mjs';
+const defaultLaunch = args => run('osascript', args, { timeoutMs: 15_000 });
 import { createTrackerServer } from './server.mjs';
 import { makeWorlds, watchWorlds, worldsDirOf } from './worlds.mjs';
 import { renderTranscriptPage } from './transcript-page.mjs';
@@ -105,7 +106,7 @@ async function quickLookPicture(real) {
   }
 }
 
-export async function startCollector({ root, claudeDir = join(homedir(), '.claude'), claudeBin = 'claude', home = homedir(), signedInMs = 60_000, heldGoneMs = 120_000, scratchBase = platform.scratchBase(), port: portOverride, deliveryTimeoutMs = 5000, helperTimeoutMs = 30_000, linesGapMs = 300_000, linesIdleMs = 1_800_000, castKeepMs = 600_000, notify = platform.notify, launch = args => run('osascript', args, { timeoutMs: 15_000 }), sessionProcs = platform.sessionProcs, endWaitMs = 8000, readProcs = platform.readProcs, deployStatusOf = deployStatus, pullRequestsOf = pullRequests, githubSlugOf = githubSlug, ticketMs = 600_000, quickLook = platform.quickLookPicture ?? quickLookPicture, folderRoots = platform.folderRoots(home), chooseFolder = chooseFolderMac, stopWaitMs = 3000, revealFile = real => platform.revealFile(real), openFolder = dir => platform.openFolder(dir), log = makeLogger(join(root, 'logs')) }) {
+export async function startCollector({ root, claudeDir = join(homedir(), '.claude'), claudeBin = 'claude', home = homedir(), signedInMs = 60_000, heldGoneMs = 120_000, scratchBase = platform.scratchBase(), port: portOverride, deliveryTimeoutMs = 5000, helperTimeoutMs = 30_000, linesGapMs = 300_000, linesIdleMs = 1_800_000, castKeepMs = 600_000, notify = platform.notify, launch = defaultLaunch, sessionProcs = platform.sessionProcs, endWaitMs = 8000, readProcs = platform.readProcs, deployStatusOf = deployStatus, pullRequestsOf = pullRequests, githubSlugOf = githubSlug, ticketMs = 600_000, quickLook = platform.quickLookPicture ?? quickLookPicture, folderRoots = platform.folderRoots(home), chooseFolder = platform.name === 'win' ? platform.chooseFolder : chooseFolderMac, stopWaitMs = 3000, revealFile = real => platform.revealFile(real), openFolder = dir => platform.openFolder(dir), log = makeLogger(join(root, 'logs')) }) {
   // readProcs, deployStatusOf, pullRequestsOf and githubSlugOf read the machine and GitHub; a test or the demo video passes stand-ins.
   const stateDir = join(root, 'state');
   const pendingDir = join(stateDir, 'pending');
@@ -929,8 +930,13 @@ export async function startCollector({ root, claudeDir = join(homedir(), '.claud
   }
   const claudeRules = () => ({ files: readRules(rulesFiles()) });
 
-  const openTerminal = async command => {
-    const res = await launch(terminalScript(cfg.terminal, command));
+  // A job is { line, spec }: the shell line Mac pastes into Terminal/iTerm, and the same thing as data for Windows (see win.openTerminal).
+  const sessionJob = (...a) => ({ line: claudeCommand(...a), spec: claudeLaunch(...a) });
+  const forkJob = (...a) => ({ line: forkCommand(...a), spec: forkLaunch(...a) });
+  const openTerminal = async job => {
+    // A launch passed in (a test, the demo video) stands in for the terminal on every platform, so a test can never open a real window.
+    if (platform.name === 'win' && launch === defaultLaunch) return platform.openTerminal(job, { claude: claudeBin, specDir: join(stateDir, 'launch') });
+    const res = await launch(terminalScript(cfg.terminal, job.line));
     const app = cfg.terminal === 'iTerm' ? 'iTerm' : 'Terminal';
     if (res.code === 0) return { ok: true, terminal: app };
     if (/-1743|not authori[sz]ed/i.test(res.stderr)) return { ok: false, error: `macOS stopped the tracker from opening ${app}. Allow it in System Settings › Privacy & Security › Automation, then try again.` };
@@ -945,7 +951,7 @@ export async function startCollector({ root, claudeDir = join(homedir(), '.claud
     if (!agent) return { ok: false, error: 'That session was not found.' };
     if (agent.kind !== 'interactive' || !Number.isInteger(agent.pid)) return { ok: false, error: 'Only a session running in a terminal can be ended from here.' };
     const command = await sessionProcs.commandOf(agent.pid);
-    if (!/(^|\/|\s)claude(\s|$)/.test(command ?? '')) return { ok: false, error: "That session's process is not Claude Code any more." };
+    if (!platform.isClaudeCommand(command)) return { ok: false, error: "That session's process is not Claude Code any more." };
     const tty = await sessionProcs.ttyOf(agent.pid);
     sessionProcs.kill(agent.pid, 'SIGTERM');
     const until = Date.now() + endWaitMs;
@@ -1183,7 +1189,7 @@ export async function startCollector({ root, claudeDir = join(homedir(), '.claud
       if (chosen.account.key !== agent.account && !runsOn.includes(chosen.account.key)) return { ok: false, error: notShared(chosen.account, runsOn) };
       const ended = await endSession(agent);
       if (!ended.ok) return ended;
-      const opened = await openTerminal(claudeCommand(agent.cwd, agent.id, body.mode ?? 'default', { account: launchAccount(chosen.account) }));
+      const opened = await openTerminal(sessionJob(agent.cwd, agent.id, body.mode ?? 'default', { account: launchAccount(chosen.account) }));
       if (opened.ok) remember(agent.id, chosen.account);
       return opened;
     },
@@ -1337,7 +1343,7 @@ export async function startCollector({ root, claudeDir = join(homedir(), '.claud
       const chosen = accountFor(body, resume ? accountByKey(s.account) ?? accountOfSession(resume) : accountByKey(known.projects.find(p => p.cwd === cwd)?.account) ?? accounts[0]);
       if (chosen.error) return { ok: false, error: chosen.error };
       if (resume && !s.canRunOn.includes(chosen.account.key)) return { ok: false, error: notShared(chosen.account, s.canRunOn) };
-      const opened = await openTerminal(claudeCommand(cwd, resume, body?.mode ?? 'default', { model: body?.model ?? 'default', effort: body?.effort, account: launchAccount(chosen.account) }));
+      const opened = await openTerminal(sessionJob(cwd, resume, body?.mode ?? 'default', { model: body?.model ?? 'default', effort: body?.effort, account: launchAccount(chosen.account) }));
       if (opened.ok && resume) remember(resume, chosen.account);
       return opened;
     },
@@ -1360,7 +1366,7 @@ export async function startCollector({ root, claudeDir = join(homedir(), '.claud
       const cut = await cutTranscript(path, body.at, forksDir, basename(path, '.jsonl')); // the copy is named as the transcript
       if (cut.error) return { ok: false, error: cut.error };
       const forkId = randomUUID(); // chosen here, so the fork's notes can be ready for it
-      const opened = await openTerminal(forkCommand(agent.cwd, cut.file, body.mode ?? 'default', { model: body.model ?? 'default', effort: body.effort, name: `${agent.name} (fork)`.slice(0, 80), prefillFile: cut.prefillFile, sessionId: forkId, account: launchAccount(chosen.account) }));
+      const opened = await openTerminal(forkJob(agent.cwd, cut.file, body.mode ?? 'default', { model: body.model ?? 'default', effort: body.effort, name: `${agent.name} (fork)`.slice(0, 80), prefillFile: cut.prefillFile, sessionId: forkId, account: launchAccount(chosen.account) }));
       if (opened.ok) { notes.copy(agent.id, forkId); remember(forkId, chosen.account); }
       return opened;
     },
@@ -1388,7 +1394,7 @@ export async function startCollector({ root, claudeDir = join(homedir(), '.claud
         if (!ended.ok) return ended;
       }
       const account = accountOfSession(agent.id); // it is restored and resumed on its own account
-      const resume = prefillFile => openTerminal(claudeCommand(agent.cwd, agent.id, body.mode ?? 'default', { prefillFile, account: launchAccount(account) }));
+      const resume = prefillFile => openTerminal(sessionJob(agent.cwd, agent.id, body.mode ?? 'default', { prefillFile, account: launchAccount(account) }));
       let files = null; // put back, none to put back, or not asked
       if (what !== 'conversation') {
         const r = await run(claudeBin, ['--resume', agent.id, '--rewind-files', body.at], { cwd: agent.cwd, timeoutMs: 60_000, env: { CLAUDE_CODE_ENABLE_SDK_FILE_CHECKPOINTING: '1', ...envFor(account) } });
@@ -1553,7 +1559,7 @@ export async function startCollector({ root, claudeDir = join(homedir(), '.claud
       const checked = mcpChecked ?? await claudeMcp();
       if (body?.op === 'login') {
         if (!checked.servers?.some(s => s.name === body.name)) return { ok: false, error: 'That server is not in the list.' };
-        return openTerminal(`cd ~ && exec claude mcp login ${shellQuote(body.name)}`);
+        return openTerminal({ line: `cd ~ && exec claude mcp login ${shellQuote(body.name)}`, spec: { cwd: home, args: ['mcp', 'login', body.name] } });
       }
       if (body?.op !== 'remove') return { ok: false, error: 'Sign in or remove.' };
       const local = body.project !== undefined && checked.projects?.some(p => p.project === body.project && p.names.includes(body.name));
@@ -1580,7 +1586,8 @@ export async function startCollector({ root, claudeDir = join(homedir(), '.claud
       const agent = ID_RE.test(id) ? snapshot?.agents.find(a => a.id === id || a.cliId === id) : undefined;
       if (!agent) return { ok: false, error: 'unknown agent' };
       if (agent.kind !== 'background' || !agent.cliId || !ID_RE.test(agent.cliId)) return { ok: false, error: 'only background sessions can be opened from here' };
-      return openTerminal(`${accountPrefix(launchAccount(accountOfSession(agent.id)))}claude attach ${agent.cliId}`); // cliId is [A-Za-z0-9-] only
+      const account = launchAccount(accountOfSession(agent.id));
+      return openTerminal({ line: `${accountPrefix(account)}claude attach ${agent.cliId}`, spec: { cwd: home, args: ['attach', agent.cliId], ...(account ? { env: accountLaunchEnv(account) } : {}) } }); // cliId is [A-Za-z0-9-] only
     },
     async rm(ids) {
       const results = [];
