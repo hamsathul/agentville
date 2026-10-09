@@ -653,7 +653,11 @@ try {
   check(await funtil("/Animals: off|Animals.*off/.test(document.querySelector('[data-farm-animals]').textContent) && document.querySelectorAll('.px-animal-say:not([hidden])').length === 0") && await until("localStorage.getItem('tracker-world:farm:animals') === 'off'"), 'the Animals switch hides them and their bubbles, and is remembered');
   await fjs("document.querySelector('[data-farm-animals]').click(); true"); // back on, for the rest
   // Motion off: an action happens at once, in place, and its line still goes after a few seconds.
-  await fjs("document.querySelector('[data-farm-motion]').click(); true");
+  // Motion may start off (reduced motion, as on CI's runners): set it to what each step needs, then put it back.
+  const motionOn = async () => !(await fjs("document.querySelector('[data-farm-motion]').textContent.includes('off')"));
+  const setMotion = async on => { if ((await motionOn()) !== on) await fjs("document.querySelector('[data-farm-motion]').click(); true"); return funtil(`document.querySelector('[data-farm-motion]').textContent.includes('off') === ${!on}`); };
+  const motionWas = await motionOn();
+  await setMotion(false);
   let goatMenu = false; // a goat a click there opens: one may stand behind the ostrich (a click picks the one in front)
   for (const g of JSON.parse(await fjs("JSON.stringify(window.Agentville.animalsNow().filter(a => a.kind === 'goat'))"))) {
     for (const dy of [4, 2, 6]) {
@@ -667,9 +671,10 @@ try {
   check(await fjs(realClick('[data-animal-act="0"]')), 'and its buttons take a real click');
   check(await funtil("[...document.querySelectorAll('.px-animal-say')].some(b => !b.hidden && /baa/i.test(b.textContent))", 2000), 'with motion off, the goat says so at once');
   check(await funtil("![...document.querySelectorAll('.px-animal-say')].some(b => !b.hidden)", 8000), 'and the line goes after a few seconds, though nothing moves');
-  await fjs("document.querySelector('[data-farm-motion]').click(); true");
-  // Part B: habits in a real browser (a goat on the woodpile, the lion yawning, the dog rolling over). Gags take a minute or two: the kit's tests cover them.
+  await setMotion(true);
+  // Part B: habits in a real browser (a goat on the woodpile, the lion yawning, the dog rolling over), with motion on. Gags take a minute or two: the kit's tests cover them.
   check(await funtil('window.Agentville.animalsNow().some(a => a.lift > 0 || a.pose === "hide" || a.pose === "roll" || a.pose === "yawn" || a.pose === "stretch")', 150_000), 'within a couple of minutes an animal is up to one of its habits');
+  await setMotion(motionWas); // as it was, for the rest
 
   check(await funtil("[...document.querySelectorAll('.px-say')].some(b => b.textContent.includes('Which crop next?'))"), "the waiting farmer's question is in a speech bubble over its head");
   check(await funtil("document.querySelectorAll('.px-say').length >= 3"), 'the two finished farmers have bubbles too');
