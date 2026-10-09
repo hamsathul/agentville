@@ -99,7 +99,7 @@ test('your worlds are listed after the built-in ones, each with what is wrong wi
   const w = makeWorlds({ builtinDir: builtins(), userDir: users() });
   const all = w.list(), byKey = Object.fromEntries(all.map(x => [x.key ?? x.name, x]));
   assert.deepEqual(all.map(x => x.key ?? x.name), ['farm', 'Bad_Name', 'u/broken', 'u/escape', 'u/farm', 'u/linked', 'u/linkjson', 'u/newer', 'u/nojs', 'u/space']);
-  assert.deepEqual(plain(byKey['u/space']), { key: 'u/space', builtIn: false, error: null, name: 'Space station', icon: '🚀', description: 'Astronauts', nouns: {}, preview: '/world/u/space/preview.png' });
+  assert.deepEqual(plain(byKey['u/space']), { key: 'u/space', builtIn: false, error: null, name: 'Space station', icon: '🚀', description: 'Astronauts', nouns: {}, taken: [], preview: '/world/u/space/preview.png' });
   assert.equal(byKey.farm.builtIn, true);
   assert.equal(byKey['u/farm'].name, 'My farm', 'yours may share a name; it never replaces the built-in one');
   assert.match(byKey['u/broken'].error, /can't be read/);
@@ -248,4 +248,17 @@ test('a change to a world is told once per burst, by its key; the SDK as "*"', a
   await new Promise(r => setTimeout(r, 600));
   stop();
   assert.deepEqual(seen.sort(), ['*', 'u/space']);
+});
+
+test('world.json may list the shapes the world already uses for data ("taken"): short kind names, 16 at most', () => {
+  const ok = { name: 'X', api: 1 };
+  assert.equal(checkWorldJson({ ...ok, taken: ['drone', 'k9'] }), null);
+  for (const taken of ['drone', [1], ['Drone'], ['a b'], Array.from({ length: 17 }, (_, i) => `k${i}`), ['x'.repeat(25)]]) {
+    assert.match(checkWorldJson({ ...ok, taken }), /"taken" is a list of up to 16 short kind names/, JSON.stringify(taken));
+  }
+});
+
+test('the farm says which shapes are taken on it: chickens (subagents), the dog (Explore), pigeons (mail)', () => {
+  const worlds = makeWorlds({ builtinDir: fileURLToPath(new URL('../../web/worlds', import.meta.url)) });
+  assert.deepEqual(worlds.list().find(w => w.key === 'farm').taken, ['chicken', 'dog', 'pigeon']);
 });
