@@ -210,7 +210,7 @@ window.Agentville.world = hooks => {
 function makePixelView(th, prefs) {
   let host = null, canvas = null, ctx = null, ov = null, hudEl = null, bg = null, ro = null;
   let raf = 0, last = 0, T = 0, cs = 1, first = true, timer = 0, layoutKey = null, labelKey = '';
-  let placeTimer = 0;
+  let placeTimer = 0, placed = false;
   let viewEl = null, drag = null, dragged = false, backing = 1, hoverId = null; // the frame the farm is seen through; a drag that pans it; the farmer under the pointer
   let scene = { fields: [], farmers: [] }, overflow = {}, still = false, opts = {}, selectedId = null, got = false; // got: a scene has arrived
   // Zoom on top of "the whole farm in the frame", and speech bubbles (each can be closed until its farmer says something new).
@@ -736,6 +736,13 @@ function makePixelView(th, prefs) {
     placeMini();
     if (still) redrawStill(); else { sync(false); draw(); }
   }
+  /** Where you were looking before this world reloaded: once, after a scene has given the canvas its size (before that, the browser would clamp it). */
+  function restorePlace() {
+    if (placed || !viewEl) return;
+    placed = true;
+    const place = String(prefs.get('view') ?? '').split(',').map(Number);
+    if (place.length === 2 && place.every(Number.isFinite)) { viewEl.scrollLeft = place[0]; viewEl.scrollTop = place[1]; }
+  }
   function apply(next) {
     got = true;
     host?.querySelector('.px-loading')?.remove();
@@ -754,6 +761,7 @@ function makePixelView(th, prefs) {
       if (canvas) { bg = buildBg(); resize(); }
     }
     if (!canvas) return;
+    restorePlace();
     if (still) redrawStill(); else sync(false);
     for (const ev of news) { // a harvest over its farmer, a sale at the stall
       const b = ev.id ? bots.get(ev.id) : null, at = ev.at ?? (b ? [b.x, b.y - th.SH * SC - 14] : null);
@@ -951,8 +959,8 @@ function makePixelView(th, prefs) {
       renderHud(); // before the first fit: the panel's and switches' size place the farm
       bg = buildBg();
       resize();
-      const place = String(prefs.get('view') ?? '').split(',').map(Number);
-      if (place.length === 2 && place.every(Number.isFinite)) { viewEl.scrollLeft = place[0]; viewEl.scrollTop = place[1]; }
+      placed = false;
+      if (got) restorePlace(); // else when the first scene has been applied and the canvas has its size
       ro = new ResizeObserver(() => resize());
       ro.observe(host);
       host.addEventListener('click', onClick);

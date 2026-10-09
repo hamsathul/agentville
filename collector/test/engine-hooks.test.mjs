@@ -103,3 +103,18 @@ test("a world's corridors are checked: at least one x position", () => {
   for (const bad of [[], 'x', [NaN], [1, 'a']]) assert.throws(() => sdk.withDefaults({ ...tiny, corridors: bad }), /corridors/);
   assert.deepEqual(plain(sdk.withDefaults({ ...tiny, corridors: [50, 150] }).corridors), [50, 150]);
 });
+
+test('a saved view is restored once the first scene is in, not at mount (the canvas is empty-sized until then)', () => {
+  const { window, dom, sdk } = load();
+  const els = {}, host = dom.make();
+  host.querySelector = sel => (els[sel] ??= dom.make());
+  const view = sdk.makePixelView(sdk.withDefaults(fourHooks()), { get: k => (k === 'view' ? '120,80' : null), set() {} });
+  view.mount(host, { still: true });
+  const v = els['.px-view'];
+  assert.equal(v.scrollTop, 0, 'not at mount');
+  view.update(sdk.engineScene(twoAgents(window)));
+  assert.deepEqual([v.scrollLeft, v.scrollTop], [120, 80], 'after the first scene');
+  v.scrollTop = 5;
+  view.update(sdk.engineScene(twoAgents(window)));
+  assert.equal(v.scrollTop, 5, 'only once');
+});

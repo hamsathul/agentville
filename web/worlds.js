@@ -414,7 +414,7 @@
   async function worldsChanged({ key } = {}) {
     await resolveWorld();
     if ($('worlds-dlg')?.open) renderList();
-    if (!host || (key !== world && key !== '*')) return;
+    if (!frame || (key !== world && key !== '*')) return;
     const w = worldsInfo.find(x => x.key === world);
     info = w && !w.error ? w : info;
     createFrame(world);

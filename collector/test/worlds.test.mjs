@@ -52,6 +52,10 @@ async function page({ stored = {}, hold = false, worlds = WORLDS, dialog = false
     fetch: (url, init) => {
       if (url === '/api/worlds' && listFails) return Promise.resolve({ ok: false, status: 500, json: async () => ({ error: 'no' }) });
       if (url === '/api/actions/reveal-worlds') { fetches.push([url, init?.headers?.['x-tracker-token']]); return Promise.resolve({ ok: true, status: 200, json: async () => reveal }); }
+      if (url === '/api/worlds' && ctx.holdFirstList) { // the first list is slow: its answer comes when released
+        ctx.holdFirstList = false;
+        return new Promise(resolve => { ctx.releaseList = () => resolve({ ok: true, status: 200, json: async () => ({ worlds, folder: '/Users/sam/.agentville/worlds' }) }); });
+      }
       if (url === '/api/worlds') return Promise.resolve({ ok: true, status: 200, json: async () => ({ worlds, folder: '/Users/sam/.agentville/worlds' }) });
       fetches.push([url, init?.headers?.['x-tracker-token']]);
       const reply = { ok: true, status: 200, json: async () => ({ memory: [{ path: '/Users/sam/.claude/projects/x/memory/a.md' }], files: [] }) };
@@ -76,7 +80,7 @@ async function page({ stored = {}, hold = false, worlds = WORLDS, dialog = false
   /** The held file requests: the first one waiting is answered. */
   const answer = async () => { held.shift()?.(); await settle(); };
   return {
-    farm, posted, calls, diary, stored, fetches, settle, wait, answer, timeouts: timers, warnings, made, host, options, worlds: window.AgentvilleWorlds, listeners, frames, dlg, els,
+    ctx, farm, posted, calls, diary, stored, fetches, settle, wait, answer, timeouts: timers, warnings, made, host, options, worlds: window.AgentvilleWorlds, listeners, frames, dlg, els,
     get frame() { return frames.at(-1); },
     // a message from the newest frame (one the page has let go of is still "the newest" here, and must be ignored)
     from: data => listeners.message?.({ source: frames.at(-1)?.contentWindow, data }),
@@ -532,4 +536,18 @@ test("a change to the world showing reloads it, keeping where you were looking (
   assert.equal(p.posted.find(m => m.type === 'start').prefs.view, '120,80');
   await p.farm.worldsChanged({ key: '*' });
   assert.equal(p.frames.length, 3, 'the SDK changed: every world reloads');
+});
+
+test('a worlds event before the first frame exists builds nothing, and the chosen world still loads', async () => {
+  const p = await page({ stored: { 'tracker-world': 'u/space' }, hold: false });
+  p.farm.unmount();
+  p.frames.length = 0;
+  p.ctx.holdFirstList = true;
+  const mounted = p.farm.mount(p.host, p.options); // host is set, the world not yet resolved
+  await p.farm.worldsChanged({ key: '*' });
+  assert.deepEqual(p.frames, [], 'no frame yet: nothing to reload');
+  p.ctx.releaseList();
+  await mounted;
+  await p.settle();
+  assert.deepEqual(p.frames.map(f => f.src), ['/world/u/space/']);
 });
