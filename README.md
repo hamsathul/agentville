@@ -113,6 +113,8 @@ It listens on `127.0.0.1` only and reads what Claude Code already writes to disk
   fills, weather shows the last deploy, a cart runs to town for each web call, each MCP server's
   cart drives to the farmer calling it, and you click
   the barn to start a session.
+- The farm is a world: it runs in a sandboxed frame of its own, with no access to the token, and
+  asks the page for the little it needs ([docs/worlds.md](docs/worlds.md)).
 
 ## Requirements
 
@@ -614,7 +616,10 @@ running turn through Claude Code's plugin API, and the mod then writes the same
 `[Request interrupted by user]` line Esc leaves in the conversation.
 
 The **dashboard** (`web/`) is plain HTML and JavaScript, served by the collector. The farm is a
-canvas, with its text drawn as HTML on top so it stays crisp.
+canvas, with its text drawn as HTML on top so it stays crisp. It is a world (`web/worlds/farm/`):
+it runs in a sandboxed frame of its own, and the page (`web/worlds.js`) hands it the scene, a plain
+account of what the dashboard shows, built from each snapshot (`web/scene.js`). What a world gets
+and can do is in [docs/worlds.md](docs/worlds.md).
 
 ## Privacy and security
 
@@ -623,6 +628,11 @@ canvas, with its text drawn as HTML on top so it stays crisp.
 - The dashboard's own page and its API tell the browser never to show them inside a frame
   (`frame-ancestors 'none'`), so no other page, and no world, can load the dashboard with its token
   inside itself.
+- The farm (like every world to come) runs in a sandboxed frame with no cookies, storage, network
+  or token. It sees the scene, which is what the dashboard shows, and can only ask the page for the
+  few things listed in [docs/worlds.md](docs/worlds.md), each checked against the scene: open an
+  agent or one of its files, read an agent's or a repo's files (the page fetches them with the
+  token), keep its own settings, press the top bar's buttons. Links from it open only to GitHub.
 - File contents, folder listings, past sessions, whole conversations (and your messages in them,
   for ↑) and field close-ups are served only with a per-install token that the page carries. Every action (answer, message,
   start, end, switch…) also needs a same-origin request.
@@ -673,6 +683,7 @@ canvas, with its text drawn as HTML on top so it stays crisp.
 | **Browse…** or **📁 Folder** opens no window | Allow the tracker to control System Events: System Settings → Privacy & Security → Automation. A window may also be open behind others: pick or cancel it there |
 | ↺ Restore says its files could not be restored | Claude Code's file snapshots may be off (`/config` → file checkpointing, or `CLAUDE_CODE_DISABLE_FILE_CHECKPOINTING`). The session was resumed as it was; restore the conversation only |
 | The bell is silent | Click the page once (browsers block sound until you do), and allow notifications |
+| The farm stays empty, or says "not found" | The farm loads in a frame of its own from the collector (`/world/farm/`). After an update, restart the service (`agent-tracker restart`) and reload the page. The page's console says what a world reported, if anything |
 
 ## Known limits
 
@@ -708,12 +719,13 @@ canvas, with its text drawn as HTML on top so it stays crisp.
 
 ```
 collector/   the collector: sources/, transcript/, derive/, server.mjs; its tests in test/
-web/         the dashboard: index.html, app.js, panels.js, farm.js…
+web/         the dashboard: index.html, app.js, panels.js, scene.js, worlds.js…; worlds/ holds the
+             farm (worlds/farm/) and what every world's frame loads (worlds/sdk/)
 mod/         the Claude Code mod: hooks/register.tsx; its tests in tests/
 bin/         the agent-tracker command and the launchd entry point
 launchd/     the service definition
 scripts/     end-to-end checks and the demo videos (their shared recorder in scripts/demo/)
-docs/        screenshots
+docs/        screenshots, and worlds.md: what a world gets from the dashboard and can do
 ```
 
 ```bash

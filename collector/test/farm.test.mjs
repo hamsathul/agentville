@@ -1,19 +1,27 @@
-// Loads web/farm.js in a vm with a stub window and checks the scene adapter: the canvas code
-// only ever reads what toScene returns.
+// Loads the farm's world (web/worlds/farm/world.js) in a vm with a stub window and checks the scene
+// adapter: the canvas code only ever reads what toScene returns.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import vm from 'node:vm';
 
-// The page's scene (web/scene.js) and the farm (web/farm.js), loaded together as the page loads them.
-const code = ['scene.js', 'farm.js'].map(f => readFileSync(fileURLToPath(new URL(`../../web/${f}`, import.meta.url)), 'utf8')).join('\n;\n');
+const web = f => readFileSync(fileURLToPath(new URL(`../../web/${f}`, import.meta.url)), 'utf8');
+// The scripts a world's frame runs (the bridge aside), and the styles it loads (it can't see the page's own).
+const FRAME_SCRIPTS = ['worlds/farm/world.js'];
+const FRAME_CODE = FRAME_SCRIPTS.map(web).join('\n');
+const FRAME_CSS = ['base.css', 'worlds/sdk/engine.css'].map(web).join('\n');
+// The page's scene and host, and the farm's frame, loaded together.
+const code = ['scene.js', 'worlds.js', ...FRAME_SCRIPTS].map(web).join('\n;\n');
 function load() {
-  const window = {};
+  const window = { Agentville: { raw: h => { window.registered = h; } } };
   vm.runInNewContext(code, { window, console, Math, Date, JSON, Map, Set });
-  const farm = window.TrackerFarm, scene = window.AgentvilleScene;
-  // toScene, as the farm sees it: the page's plain-facts scene, turned into the farm's own.
-  return { ...scene, ...farm, toScene: (snap, o) => farm.farmScene(scene.toScene(snap, o)) };
+  const farm = window.AgentvilleFarm, scene = window.AgentvilleScene, host = window.TrackerFarm;
+  return {
+    ...scene, ...farm, mount: host.mount, update: host.update, unmount: host.unmount, select: host.select, colorOf: host.colorOf,
+    // toScene, as the farm sees it: the page's plain-facts scene, turned into the farm's own
+    toScene: (snap, o) => farm.farmScene(scene.toScene(snap, o)),
+  };
 }
 const plain = v => JSON.parse(JSON.stringify(v)); // objects made inside the vm have another realm's prototypes
 
@@ -489,9 +497,6 @@ test('when the page opens, fields move up into free beds in the order they had: 
   assert.deepEqual(plain(ground.beds), { '/c/api': { i: 0 }, '/c/web': { i: 1 }, '/c/ctd': { i: 2 } }, 'remembered from now on');
 });
 
-// The scripts a world's frame runs, and the styles it loads (it can't see the page's own).
-const FRAME_CODE = ['farm.js'].map(f => readFileSync(fileURLToPath(new URL(`../../web/${f}`, import.meta.url)), 'utf8')).join('\n');
-const FRAME_CSS = ['base.css', 'worlds/sdk/engine.css'].map(f => readFileSync(fileURLToPath(new URL(`../../web/${f}`, import.meta.url)), 'utf8')).join('\n');
 // Styled by the page, not the frame: none.
 const PAGE_STYLED = new Set([]);
 // Hooks the farm's own code finds its elements by (querySelector, data attributes); they carry no style, and never did.
@@ -504,6 +509,6 @@ test('every class the farm writes is styled by the stylesheets its frame loads',
 });
 
 test('the farm reaches the page only through what it is handed: no storage, network or token of its own', () => {
-  const engine = FRAME_CODE.slice(0, FRAME_CODE.indexOf('/* ---------- public API ---------- */'));
-  for (const banned of ['localStorage', 'sessionStorage', 'fetch(', 'XMLHttpRequest', 'document.cookie', 'x-tracker-token', 'opts.token', 'TOKEN', 'opts.diary']) assert.ok(!engine.includes(banned), banned);
+  const engine = FRAME_CODE;
+  for (const banned of ['localStorage', 'sessionStorage', 'fetch(', 'XMLHttpRequest', 'document.cookie', 'x-tracker-token', 'opts.token', 'TOKEN', 'opts.diary', 'window.TrackerFarm']) assert.ok(!engine.includes(banned), banned);
 });

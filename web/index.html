@@ -416,7 +416,8 @@ html[data-view="farm"] header.top, html[data-view="farm"] #kpis { display: none;
 html[data-view="farm"] .app { padding: 0; gap: 0; }
 html[data-view="farm"] .app[data-side="open"] { padding: 0 10px 10px 0; column-gap: 10px; row-gap: 8px; }
 html[data-view="farm"] .app[data-side="open"] > #farm-tabs { margin-top: 10px; }
-html[data-view="farm"] .app[data-side="open"] .px-host { border-right: 1px solid var(--line); }
+#farm > .world-frame { flex: 1; min-height: 0; width: 100%; border: 0; display: block; background: transparent; }
+html[data-view="farm"] .app[data-side="open"] #farm > .world-frame { border-right: 1px solid var(--line); background: #1c3320; } /* the edge over the farm's ground, as when the farm drew it */
 html[data-view="farm"] .banner.show { position: fixed; top: 10px; left: 50%; transform: translateX(-50%); z-index: 50; max-width: min(640px, calc(100vw - 32px)); border: 1px solid var(--line); border-radius: 8px; box-shadow: 0 6px 18px rgba(0, 0, 0, .35); }
 .app[data-view="farm"] > .col { display: none; }
 .app[data-view="farm"] > #farm { display: flex; flex-direction: column; overflow: hidden; } /* the farm's frame fits the screen */
@@ -448,7 +449,6 @@ html[data-view="farm"] .banner.show { position: fixed; top: 10px; left: 50%; tra
 .px-log li time { margin-left: auto; flex: none; color: var(--faint); font: 11px ui-monospace, Menlo, monospace; }
 .px-log .st-waiting { --st: var(--crit); } .px-log .st-working { --st: var(--good); } .px-log .st-turn { --st: var(--warn); }
 </style>
-<link rel="stylesheet" href="/world/sdk/engine.css">
 </head>
 <body>
 <header class="top">
@@ -562,7 +562,7 @@ html[data-view="farm"] .banner.show { position: fixed; top: 10px; left: 50%; tra
 </dialog>
 <script src="/brand.js"></script>
 <script src="/scene.js" defer></script>
-<script src="/farm.js" defer></script>
+<script src="/worlds.js" defer></script>
 <script>const TOKEN = '__TRACKER_TOKEN__';</script>
 <script src="/core.js"></script>
 <script src="/charts.js"></script>

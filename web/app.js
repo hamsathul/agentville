@@ -845,7 +845,7 @@ let theme = loadTheme();
 applyTheme(theme);
 
 setInterval(updateTimers, 1000);
-// farm.js loads deferred (after this script), so the remembered view is applied once the page has loaded.
+// worlds.js (the farm's host) loads deferred (after this script), so the remembered view is applied once the page has loaded.
 const startView = () => setView(view, { remember: false });
 if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', startView);
 else startView();

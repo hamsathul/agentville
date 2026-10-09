@@ -7,8 +7,8 @@ import vm from 'node:vm';
 
 const web = name => readFileSync(fileURLToPath(new URL(`../../web/${name}`, import.meta.url)), 'utf8');
 const html = web('index.html');
-// The page: its inline script (the token), then its scripts in the order it loads them. The farm
-// script loads deferred and is tested on its own.
+// The page: its inline script (the token), then its scripts in the order it loads them. The scene
+// and the worlds' host load deferred and are tested on their own.
 const pageScripts = [...html.matchAll(/<script src="\/([a-z]+)\.js"><\/script>/g)].map(m => `${m[1]}.js`);
 const inlineStart = html.lastIndexOf('<script>') + '<script>'.length;
 const script = html.slice(inlineStart, html.indexOf('</script>', inlineStart)) + pageScripts.map(web).join('\n');
@@ -833,9 +833,9 @@ test('without the farm script, the toggle stays on the list and says why', async
   assert.equal(page.el('main').dataset.view, 'list');
 });
 
-test('the page loads its mark, the scene and the farm (deferred), then its token, then its own scripts in order', () => {
+test('the page loads its mark, the scene and the host of its worlds (deferred), then its token, then its own scripts in order', () => {
   const tags = [...html.matchAll(/<script(?: src="\/([a-z]+)\.js"( defer)?)?>/g)].map(m => (m[1] ? `${m[1]}${m[2] ? ' defer' : ''}` : 'inline'));
-  assert.deepEqual(tags, ['inline', 'brand', 'scene defer', 'farm defer', 'inline', 'core', 'charts', 'panels', 'markdown', 'viewer', 'explorer', 'conversation', 'app', 'sessions', 'setup']);
+  assert.deepEqual(tags, ['inline', 'brand', 'scene defer', 'worlds defer', 'inline', 'core', 'charts', 'panels', 'markdown', 'viewer', 'explorer', 'conversation', 'app', 'sessions', 'setup']);
   assert.match(html, /<script>const TOKEN = '__TRACKER_TOKEN__';<\/script>/);
 });
 

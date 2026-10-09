@@ -128,7 +128,7 @@ dialog.px-help { max-width: min(560px, calc(100vw - 32px)); padding: 0; }
 .px-help .px-key { padding: 14px 16px 16px; }
 .px-key b { color: var(--text); font-weight: 600; }
 /* field close-up */
-.fv-back { position: fixed; inset: 0; z-index: 8; background: rgba(0, 0, 0, .55); display: flex; align-items: center; justify-content: center; padding: 16px; }
+.fv-back { position: fixed; inset: 0; z-index: 8; background: rgba(0, 0, 0, .55); display: flex; align-items: center; justify-content: center; padding: 16px; will-change: transform; } /* a layer of its own, as it had on the page (whose root scrolls): in the frame Chrome would paint it into the panel's, a shade lighter */
 .fv { width: min(1040px, 100%); max-height: calc(100vh - 32px); overflow: auto; background: var(--panel); border: 1px solid var(--line); border-radius: 14px; box-shadow: 0 20px 60px rgba(0, 0, 0, .45); }
 .fv header { display: flex; flex-wrap: wrap; gap: 4px 10px; align-items: baseline; padding: 12px 16px; border-bottom: 1px solid var(--line); }
 .fv header .x { border: 0; background: transparent; font-size: 22px; line-height: 1; cursor: pointer; color: var(--muted); }
@@ -175,3 +175,5 @@ a.pile { text-decoration: none; color: inherit; }
 .fv-note { font-size: 11.5px; margin: 10px 0 0; }
 .fv-legend { display: flex; flex-wrap: wrap; gap: 6px 16px; padding: 6px 16px 14px; font-size: 12px; color: var(--muted); }
 .fv-legend span { display: inline-flex; align-items: center; gap: 6px; }
+/* A world's own page, inside its frame: the world fills it. */
+#farm { height: 100%; min-height: 0; display: flex; flex-direction: column; overflow: hidden; }

@@ -40,7 +40,7 @@
     if (link) link.href = dataUri(svg({ size: 32, badge }));
   }
 
-  window.Agentville = { svg, favicon, ROWS };
+  window.Agentville = Object.assign(window.Agentville ?? {}, { svg, favicon, ROWS }); // in a world's frame, bridge.js got here first
   if (typeof document !== 'undefined') {
     for (const el of document.querySelectorAll('[data-brand]')) el.innerHTML = svg({ size: Number(el.dataset.brand) || 18 });
     favicon(false);

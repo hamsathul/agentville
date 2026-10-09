@@ -1,6 +1,7 @@
-// The Pixel farm: a second way to look at the dashboard. Every agent is a farmer, every repo a
-// field. Classic script, no dependencies. The canvas code reads only the scene farmScene() builds
-// from the snapshot; text (names, signs, counts) is HTML laid over the canvas so it stays crisp.
+// The farm: the first world. Every agent is a farmer, every repo a field. It runs in a sandboxed frame
+// (web/worlds/sdk/frame.html) and reaches the page only through the bridge (web/worlds/sdk/bridge.js).
+// Classic script, no dependencies. The canvas code reads only the scene farmScene() builds from the
+// page's scene; text (names, signs, counts) is HTML laid over the canvas so it stays crisp.
 (() => {
   'use strict';
 
@@ -12,8 +13,7 @@
     for (const ch of String(id)) h = (h * 31 + ch.charCodeAt(0)) >>> 0;
     return h;
   };
-  // Shirt colour follows the agent's id, never its place in the list, so colours don't jump.
-  const colorIndex = id => hashOf(id) % SHIRT.length;
+  // A farmer's shirt is its agent's colour: the scene's colorIndex (web/scene.js keeps the same list).
   /** One of n choices for an id; each salt mixes the hash differently, so the choices don't move together. */
   const pick = (id, salt, n) => {
     let h = hashOf(id) ^ Math.imul(salt, 0x9e3779b1);
@@ -1149,7 +1149,7 @@
     winter: ['....b....', '.b..b..b.', '..b.b.b..', '...bbb...', 'bbbbbbbbb', '...bbb...', '..b.b.b..', '.b..b..b.', '....b....'],
   };
   // Agentville's mark (the farmhouse, from brand.js), for the farm's panel.
-  const brandSvg = () => (typeof window !== 'undefined' && window.Agentville ? window.Agentville.svg({ size: 18, cls: 'px-logo' }) : '');
+  const brandSvg = () => (typeof window !== 'undefined' && window.Agentville?.svg ? window.Agentville.svg({ size: 18, cls: 'px-logo' }) : ''); // brand.js, loaded in the frame after the bridge
   const ICON_PAL = { k: '#4e3626', w: '#ffffff', y: '#f0b429', s: '#f4ecd8', r: '#e04a3a', g: '#3f9b3a', o: '#c8681a', b: '#a9dcf7' };
   const iconUrls = new Map();
   /** HTML for one of the farm's pixel icons (none without a DOM). */
@@ -2735,71 +2735,22 @@
     };
   }
 
-  /* ---------- public API ---------- */
+  /* ---------- the farm, as a world: the bridge (web/worlds/sdk/bridge.js) runs it ---------- */
 
-  // What the farm is handed, from the page. (Task 7 moves this to web/worlds.js, the page's side of a world.)
-  const OLD_KEYS = { beds: 'tracker-farm-beds', zoom: 'tracker-farm-zoom', bubbles: 'tracker-farm-bubbles', sky: 'tracker-farm-sky', resting: 'tracker-farm-resting', panel: 'tracker-farm-panel', bell: 'tracker-bell' };
-  const prefs = {
-    get: name => { try { return localStorage.getItem(OLD_KEYS[name]); } catch { return null; } },
-    set: (name, value) => { try { localStorage.setItem(OLD_KEYS[name], value); } catch { /* a private window: this page only */ } },
-  };
-  /** One of the two things the farm may ask the page for, fetched with the token. */
-  async function request(token, kind, args) {
-    const url = kind === 'agentFiles' ? `/api/agent/${encodeURIComponent(args.agentId)}/files` : kind === 'repoTouched' ? `/api/repo/touched?path=${encodeURIComponent(args.repo)}` : null;
-    if (!url) return { ok: false, status: 0, error: 'Not something a world can ask for.' };
-    try {
-      const r = await fetch(url, { headers: { 'x-tracker-token': token } });
-      const body = await r.json();
-      return r.ok ? { ok: true, status: r.status, data: body } : { ok: false, status: r.status, error: body?.error };
-    } catch (err) {
-      return { ok: false, status: 0, error: String(err?.message ?? err) };
-    }
-  }
-  /** The diary in the page's sidebar: newest first, as text. */
-  function renderDiary(el, entries) {
-    if (!el) return;
-    el.innerHTML = entries.map(l => `<li class="st-${esc(l.state)}"><i></i><span>${l.who ? `<b>${esc(l.who)}</b> ` : ''}${esc(l.text)}</span><time>${ago(l.at)}</time></li>`).join('') || '<li class="faint">Quiet so far.</li>';
-  }
-
-  let theme = null, view = null, field = null, lastSnap = null, mounted = false;
-  function ensure() {
-    if (view) return;
-    theme = makeFarm();
-    view = makePixelView(theme, prefs);
-    field = makeField(view);
-  }
-  window.TrackerFarm = {
-    /** Builds the farm inside hostEl. options: { token, onPickAgent(id, { from: 'say' }?), onOpenDoc(agentId, path), onShowRepos(), still } */
-    mount(hostEl, options = {}) {
-      ensure();
-      const still = options.still ?? Boolean(window.matchMedia?.('(prefers-reduced-motion: reduce)').matches);
-      const handed = { ...options, still, request: (kind, args) => request(options.token, kind, args), onDiary: entries => renderDiary(options.diary, entries) };
-      field.setOptions(handed);
-      view.mount(hostEl, { ...handed, onOpenField: key => field.open(key) });
-      mounted = true;
-      if (lastSnap) view.update(farmScene(window.AgentvilleScene.toScene(lastSnap)));
+  let view = null, field = null;
+  window.Agentville.raw({
+    start({ el, opts, prefs }) {
+      view = makePixelView(makeFarm(), prefs);
+      field = makeField(view);
+      field.setOptions(opts);
+      view.mount(el, { ...opts, onOpenField: key => field.open(key) });
     },
-    /** Every snapshot: updates the scene; never rebuilds the page around it. */
-    update(snap) {
-      lastSnap = snap;
-      if (!mounted) return;
-      view.update(farmScene(window.AgentvilleScene.toScene(snap)));
-      field.refresh();
-    },
-    /** Marks the farmer shown in the page's sidebar (null for none). */
-    select(id) {
-      ensure();
-      view.select(id ?? null);
-    },
-    /** A farmer's shirt colour, so the page can match it. */
-    colorOf: id => SHIRT[colorIndex(id)],
-    actionOf, paint, growthStage, STAGES, skyAt, PALETTE, ink, spriteRows, walkFrame, stepParticles, seasonOf, siloOf, glyphOf, textWidth,
-    unmount() {
-      if (!view) return;
-      field.close();
-      view.unmount();
-      mounted = false;
-    },
-    farmScene, weatherOf, helpHtml, layoutFor, packedLayout, rowsOfGroup, cartRoute, cartGoal, cutMid, tagText,
+    scene(s) { view.update(farmScene(s)); field.refresh(); },
+    select(id) { view.select(id ?? null); },
+  });
+  // The farm's own pieces, for its tests (and the world tools to come).
+  window.AgentvilleFarm = {
+    farmScene, actionOf, paint, growthStage, STAGES, skyAt, PALETTE, ink, spriteRows, walkFrame, stepParticles, seasonOf, siloOf, glyphOf, textWidth,
+    weatherOf, helpHtml, layoutFor, packedLayout, rowsOfGroup, cartRoute, cartGoal, cutMid, tagText,
   };
 })();
