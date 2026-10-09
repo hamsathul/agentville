@@ -487,6 +487,7 @@ function helperHtml(h = {}) {
     <p><b>How it calls Haiku:</b> through the Agentville mod inside one of your open Claude Code sessions, with your sign-in, on your Claude plan. No API key, nothing added to any conversation, no new session. With no session open, nothing is called.</p>
     <label class="helper-use"><input type="checkbox" id="helper-names"${h.uses?.names ? ' checked' : ''}><span><b>Name suggestions.</b> When a new session has replied once, it suggests a short name for it (Name it login-bug? ✓ Rename · ✎ Edit · ✕), and ✨ beside a session's name asks any time. That session reads its own first three messages and the start of Claude's first reply (about 2,000 characters) and sends them to Haiku itself: the dashboard only ever sees the name.</span></label>
     <p class="helper-limit">At most <input type="number" id="helper-limit" min="1" max="2000" value="${esc(String(limit))}"> calls a day.${on ? ` Today: ${esc(String(h.today ?? 0))} of ${esc(String(limit))} calls.` : ''}</p>
+    ${on && (h.today ?? 0) >= limit ? `<p class="msg-bad">Today's limit is reached: nothing more is called until midnight.</p>` : ''}
     ${h.lastError ? `<p class="msg-bad">Last error: ${esc(h.lastError)}</p>` : ''}
     <p class="confirm-actions"><button type="button" class="act" data-helper-cancel>Cancel</button>${on
       ? '<button type="button" class="act" data-helper-off>Switch off</button><button type="button" class="act primary" data-helper-save>Save</button>'

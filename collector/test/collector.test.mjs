@@ -1239,7 +1239,7 @@ test('the helper: off by default; on, it asks a new default-named session’s mo
     assert.deepEqual(handle.getSnapshot().helper, { on: false, uses: { names: false }, dailyLimit: 200, today: 0 });
     assert.equal(agent('old-one').defaultName, true);
     assert.match((await handle.actions.name({ agentId: 'old-one', op: 'suggest' })).error, /off/);
-    assert.deepEqual(await handle.actions.helper({ on: true, uses: { names: true }, dailyLimit: 5 }), { ok: true, helper: { on: true, uses: { names: true }, dailyLimit: 5, today: 0 } });
+    assert.deepEqual(await handle.actions.helper({ on: true, uses: { names: true }, dailyLimit: 10 }), { ok: true, helper: { on: true, uses: { names: true }, dailyLimit: 10, today: 0 } });
     await new Promise(r => setTimeout(r, 400));
     await handle.reloadConfig();
     assert.deepEqual(taken, [], 'no burst: a session started before you switched on is not asked by itself');
@@ -1277,6 +1277,11 @@ test('the helper: off by default; on, it asks a new default-named session’s mo
     await handle.actions.name({ agentId: 'old-one', op: 'suggest' });
     assert.ok(await until(() => /model_not_found/.test(agent('old-one')?.naming?.error ?? '')));
     assert.equal(handle.getSnapshot().helper.lastError, 'model_not_found');
+    // A good answer after it: the dialog's last error clears.
+    answer = { ok: true, text: 'back-again' };
+    await handle.actions.name({ agentId: 'old-one', op: 'suggest' });
+    assert.ok(await until(() => agent('old-one')?.naming?.offer?.name === 'back-again'));
+    assert.equal(handle.getSnapshot().helper.lastError, undefined, 'cleared by a good answer');
     // Switched off mid-request: withdrawn, a late answer dropped.
     answer = 'silent';
     await handle.actions.name({ agentId: 'old-one', op: 'suggest' });
@@ -1335,6 +1340,26 @@ test('a request with no answer in 30 seconds is withdrawn, and says so', async (
     await handle.reloadConfig();
     assert.match(agent().naming.error, /no answer in 30 seconds/);
     assert.equal(existsSync(join(root, 'state', 'helper', 'quiet', file)), false, 'the request is withdrawn');
+  } finally {
+    await handle.stop();
+  }
+});
+
+test('the collector starts and runs with a damaged helper.json or names.json', async () => {
+  const root = mkdtempSync(join(tmpdir(), 'tracker-root-helper-bad-'));
+  mkdirSync(join(root, 'web'));
+  writeFileSync(join(root, 'web', 'index.html'), '<html></html>');
+  writeFileSync(join(root, 'config.json'), JSON.stringify({ port: 0, deployRepos: {} }));
+  mkdirSync(join(root, 'state'), { recursive: true });
+  writeFileSync(join(root, 'state', 'helper.json'), 'null');
+  writeFileSync(join(root, 'state', 'names.json'), 'null');
+  const claudeDir = mkdtempSync(join(tmpdir(), 'tracker-claude-helper-bad-'));
+  mkdirSync(join(claudeDir, 'sessions'));
+  writeFileSync(join(claudeDir, 'sessions', `${process.pid}.json`), JSON.stringify({ pid: process.pid, sessionId: 'odd', cwd: '/w', name: 'w-o', nameSource: 'derived', status: 'idle', startedAt: Date.now() }));
+  const handle = await startCollector({ root, claudeDir, claudeBin: '/usr/bin/false', notify: () => {}, log: () => {} });
+  try {
+    assert.equal(handle.getSnapshot().helper.on, false);
+    assert.ok(handle.getSnapshot().agents.some(a => a.id === 'odd'), 'the dashboard still shows its sessions');
   } finally {
     await handle.stop();
   }

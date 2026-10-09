@@ -1569,6 +1569,17 @@ test('✨ Helper says how it calls Haiku and what names send; switching on needs
   assert.equal(page.el('helper-dlg').open, false);
 });
 
+test('at the daily limit, ✨ Helper says so and when it resets', async () => {
+  const page = loadPage();
+  page.push(helperSnap({ on: true, uses: { names: true }, dailyLimit: 20, today: 20 }));
+  await page.clickButton('helper-open');
+  assert.match(page.el('helper-body').innerHTML, /Today's limit is reached: nothing more is called until midnight\./);
+  const under = loadPage();
+  under.push(helperSnap({ on: true, uses: { names: true }, dailyLimit: 20, today: 3 }));
+  await under.clickButton('helper-open');
+  assert.doesNotMatch(under.el('helper-body').innerHTML, /limit is reached/);
+});
+
 test('switched on, ✨ Helper shows today’s count and the last error, and switches off', async () => {
   const page = loadPage({ replies: { '/api/actions/helper': { ok: true, helper: { on: false } } } });
   page.push(helperSnap({ on: true, uses: { names: true }, dailyLimit: 200, today: 7, lastError: 'model_not_found' }));

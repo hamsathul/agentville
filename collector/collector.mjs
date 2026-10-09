@@ -358,7 +358,7 @@ export async function startCollector({ root, claudeDir = join(homedir(), '.claud
 
     queueResolve(agents);
     const collisions = findCollisions(agents, now, cfg.collisionWindowMin * 60_000);
-    helperTick(agents, now);
+    try { helperTick(agents, now); markOk('helper'); } catch (err) { markFail('helper', err); } // the helper never stops the dashboard
     snapshot = {
       generatedAt: now,
       settings: { modToasts: cfg.modToasts, permissionDashboardSec: cfg.permissionDashboardSec, memoryAlertGb: cfg.memoryAlertGb, cpuAlertPct: cfg.cpuAlertPct },
@@ -886,6 +886,7 @@ export async function startCollector({ root, claudeDir = join(homedir(), '.claud
         if (!p || p.id !== r.id) continue; // late, or the helper was switched off: dropped
         helperPending.delete(sid);
         const name = r.ok ? cleanName(r.text) : '';
+        if (r.ok) helper.ok(); // Haiku answered: an earlier error no longer stands
         if (name) {
           nameOffers.set(sid, { name, at: now, auto: p.auto });
           if (p.auto) helper.record(sid, 'offered');
