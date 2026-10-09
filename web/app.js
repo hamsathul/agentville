@@ -15,7 +15,7 @@ function overviewHtml(a) {
     ? `CPU <b>${Math.round(a.proc.cpu)}%</b> · RAM <b>${gb(a.proc.rssMb)}</b> · ${a.proc.childCount} child process${a.proc.childCount === 1 ? '' : 'es'}${a.proc.children.length ? ` <span class="muted">(${esc(a.proc.children.join(', '))})</span>` : ''}`
     : '<span class="muted">No process found.</span>';
   const resume = a.kind === 'codex' ? '' : `cd ${shellQuote(a.cwd)} && claude --resume ${a.id}`;
-  return `<div class="ov"><div class="head"><span class="swatch" style="background:${color}"></span><span class="name">${esc(a.name)}</span><span class="chip c-${a.state}">${STATE_CHIP[a.state] ?? esc(a.state)} · <span data-since="${a.stateSince}"></span></span></div>
+  return `<div class="ov"><div class="head"><span class="swatch" style="background:${color}"></span><span class="name">${esc(a.name)}</span>${suggestBtn(a, snap?.helper)}<span class="chip c-${a.state}">${STATE_CHIP[a.state] ?? esc(a.state)} · <span data-since="${a.stateSince}"></span></span></div>${nameLineHtml(a)}
     ${askHtml(a)}
     <div class="muted where" style="margin-top:6px">${esc(short(a.cwd))} · ${esc(a.kind)}${modelOf(a) ? ` · ${esc(modelOf(a))}` : ''}
       ${a.kind === 'codex' ? '' : a.mod?.live
@@ -208,7 +208,7 @@ function setFarmSide(open) {
 function farmSideHtml(a) {
   const color = window.TrackerFarm?.colorOf?.(a.id) ?? colorOf(a.id);
   const now = a.now ? `<div class="now mono"><span class="pulse"></span> ${esc(a.now.tool)} ${esc(a.now.summary)} · <b data-since="${a.now.startedAt}"></b></div>` : restHtml(a);
-  return `<div class="fs-head"><span class="swatch" style="background:${color}"></span><span class="name">${esc(a.name)}</span><span class="chip c-${a.state}">${STATE_CHIP[a.state] ?? esc(a.state)} · <span data-since="${a.stateSince}"></span></span><span class="grow"></span><button class="act mini" id="fs-list" type="button" data-tip="Show this agent in the list view">☰ List</button></div>
+  return `<div class="fs-head"><span class="swatch" style="background:${color}"></span><span class="name">${esc(a.name)}</span>${suggestBtn(a, snap?.helper)}<span class="chip c-${a.state}">${STATE_CHIP[a.state] ?? esc(a.state)} · <span data-since="${a.stateSince}"></span></span><span class="grow"></span><button class="act mini" id="fs-list" type="button" data-tip="Show this agent in the list view">☰ List</button></div>${nameLineHtml(a)}
     <div class="muted where" style="margin-top:4px">${esc(short(a.cwd))}${modelOf(a) ? ` · ${esc(modelOf(a))}` : ''}</div>
     ${sessionBarHtml(a)}
     ${askHtml(a)}
@@ -372,6 +372,12 @@ document.addEventListener('click', async e => {
   if (d.helperOff !== undefined) { await saveHelper(false); return; }
   if (d.helperSave !== undefined) { await saveHelper(true); return; }
   if (d.helperCancel !== undefined) { $('helper-dlg').close(); return; }
+  if (d.nameSuggest) { if (snap?.helper?.on && snap.helper.uses?.names) await nameAction({ agentId: d.nameSuggest, op: 'suggest' }); else openHelper(); return; }
+  if (d.nameRename !== undefined) { await nameAction({ agentId: d.agent, op: 'rename', name: d.nameRename }); return; }
+  if (d.nameEdit !== undefined) { const a = snap?.agents.find(x => x.id === d.agent); nameEdits.set(d.agent, a?.naming?.offer?.name ?? a?.name ?? ''); render(); $('name-edit')?.focus?.(); return; }
+  if (d.nameSave !== undefined) { await renameEdited(d.agent); return; }
+  if (d.nameCancel !== undefined) { nameEdits.delete(d.agent); render(); return; }
+  if (d.nameDismiss !== undefined) { await nameAction({ agentId: d.agent, op: 'dismiss' }); return; }
   if (el.id === 'note-add') { await addNote(d.agent); return; }
   if (d.noteUse) { useNote(d.agent, d.noteUse); return; }
   if (d.noteSend) { await sendNote(d.agent, d.noteSend, el); return; }
@@ -730,6 +736,10 @@ document.addEventListener('keydown', e => {
     e.preventDefault();
     void addNote(e.target.dataset.noteAgent);
   }
+  if (e.target?.id === 'name-edit' && (sendKey(e) || e.key === 'Escape')) { // ↩ renames, Esc leaves it
+    e.preventDefault();
+    if (e.key === 'Escape') { nameEdits.delete(e.target.dataset.agent); render(); } else void renameEdited(e.target.dataset.agent);
+  }
   if (e.target?.dataset?.noteEdit !== undefined && (sendKey(e) || e.key === 'Escape')) { // a note being edited: ↩ saves, Esc leaves it as it was
     e.preventDefault();
     if (e.key === 'Escape') { noteEdits.delete(e.target.dataset.agent); render(); } else void saveNote(e.target.dataset.agent);
@@ -758,6 +768,7 @@ document.addEventListener('input', e => {
     readerDrafts.set(readerKey(), t.value);
     return;
   }
+  if (t?.id === 'name-edit') { nameEdits.set(t.dataset.agent, t.value); return; }
   if (t?.dataset?.noteAgent !== undefined) {
     noteDrafts.set(t.dataset.noteAgent, t.value);
     return;
@@ -794,6 +805,17 @@ async function saveHelper(on) {
   if (!r.ok) { notice(`Helper: ${r.error}`); return; }
   $('helper-dlg').close();
   notice(on ? '✨ The helper is on.' : 'The helper is off: nothing calls Haiku.');
+}
+
+async function nameAction(body) {
+  const r = await post('/api/actions/name', body);
+  if (!r.ok) notice(`Name: ${r.error}`);
+  return r;
+}
+async function renameEdited(agentId) {
+  const name = (nameEdits.get(agentId) ?? '').trim();
+  const r = await nameAction({ agentId, op: 'rename', name, edited: true });
+  if (r.ok) { nameEdits.delete(agentId); render(); }
 }
 
 /* ---------- your notes on a session ---------- */

@@ -493,6 +493,25 @@ function helperHtml(h = {}) {
       : '<button type="button" class="act primary" data-helper-on>Switch on</button>'}</p>`;
 }
 
+const nameEdits = new Map(); // agentId → the name being edited before Rename
+
+/** ✨ beside a session's name: asks Haiku for a name (the helper on), or opens ✨ Helper (off). */
+function suggestBtn(a, h) {
+  if (a.kind === 'codex') return '';
+  const on = Boolean(h?.on && h.uses?.names);
+  return `<button type="button" class="act mini name-suggest" data-name-suggest="${esc(a.id)}" data-tip="${on ? 'Suggest a name for this session (Haiku, through its own Claude Code)' : 'Suggest a name: the helper is off, so this opens ✨ Helper'}"${a.naming?.asking ? ' disabled' : ''}>✨</button>`;
+}
+/** Under the name: the offer (Name it …? ✓ Rename · ✎ Edit · ✕), its edit box, asking…, or why there is none. */
+function nameLineHtml(a) {
+  const n = a.naming;
+  if (!n || a.kind === 'codex') return '';
+  const ids = `data-agent="${esc(a.id)}"`;
+  if (nameEdits.has(a.id)) return `<div class="name-offer"><input type="text" id="name-edit" ${ids} maxlength="60" value="${esc(nameEdits.get(a.id))}" aria-label="New name"><button type="button" class="act mini primary" data-name-save ${ids}>Rename</button><button type="button" class="act mini" data-name-cancel ${ids}>Cancel</button></div>`;
+  if (n.offer) return `<div class="name-offer">Name it <code>${esc(n.offer.name)}</code>? <button type="button" class="act mini primary" data-name-rename="${esc(n.offer.name)}" ${ids}>✓ Rename</button><button type="button" class="act mini" data-name-edit ${ids}>✎ Edit</button><button type="button" class="act mini" data-name-dismiss ${ids} aria-label="No, keep its name" data-tip="No, keep its name">✕</button></div>`;
+  if (n.asking) return '<div class="name-offer faint"><span class="spinner"></span> Asking Haiku for a name…</div>';
+  return n.error ? `<div class="name-offer msg-bad">No name: ${esc(n.error)}</div>` : '';
+}
+
 /* ---------- your notes on a session ---------- */
 // Things you may want to say to it later, or not: kept by the collector (state/notes), read when the
 // section shows and again when their rev in the snapshot moves on. Nothing goes to the session until

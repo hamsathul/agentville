@@ -1579,6 +1579,47 @@ test('switched on, ✨ Helper shows today’s count and the last error, and swit
   assert.deepEqual(page.posts.at(-1).body, { on: false, uses: { names: true }, dailyLimit: 200 });
 });
 
+test('a name offer under the session’s name: ✓ Rename sends it, ✎ Edit renames what you type, ✕ dismisses', async () => {
+  const page = loadPage({ replies: { '/api/actions/name': { ok: true } } });
+  page.push(helperSnap({ on: true, uses: { names: true }, dailyLimit: 200, today: 1 }, { naming: { offer: { name: 'fix-login-bug', at: 1 } } }));
+  const side = page.side();
+  assert.match(side, /class="name-offer">Name it <code>fix-login-bug<\/code>\? <button[^>]*data-name-rename="fix-login-bug"[^>]*>✓ Rename<\/button><button[^>]*data-name-edit[^>]*>✎ Edit<\/button><button[^>]*data-name-dismiss/);
+  await page.clickButton('name-rename', { nameRename: 'fix-login-bug', agent: 'r1' });
+  assert.deepEqual(page.posts.at(-1), { path: '/api/actions/name', body: { agentId: 'r1', op: 'rename', name: 'fix-login-bug' } });
+  await page.clickButton('name-edit', { nameEdit: '', agent: 'r1' });
+  assert.match(page.side(), /<input type="text" id="name-edit" data-agent="r1" maxlength="60" value="fix-login-bug"/);
+  const box = { id: 'name-edit', value: 'login cookie', dataset: { agent: 'r1' } };
+  page.edit('input', box);
+  assert.equal(page.key('Enter', box), true);
+  await page.settle();
+  assert.deepEqual(page.posts.at(-1).body, { agentId: 'r1', op: 'rename', name: 'login cookie', edited: true });
+  await page.clickButton('name-dismiss', { nameDismiss: '', agent: 'r1' });
+  assert.deepEqual(page.posts.at(-1).body, { agentId: 'r1', op: 'dismiss' });
+});
+
+test('✨ beside the name asks for one while the helper is on, and opens ✨ Helper while it is off; asking and errors show; none on Codex', async () => {
+  const on = loadPage({ replies: { '/api/actions/name': { ok: true } } });
+  on.push(helperSnap({ on: true, uses: { names: true }, dailyLimit: 200, today: 0 }));
+  assert.match(on.side(), /<span class="name">busy-one<\/span><button type="button" class="act mini name-suggest" data-name-suggest="r1"/);
+  await on.clickButton('name-suggest', { nameSuggest: 'r1' });
+  assert.deepEqual(on.posts.at(-1), { path: '/api/actions/name', body: { agentId: 'r1', op: 'suggest' } });
+  const off = loadPage();
+  off.push(helperSnap({ on: false, uses: { names: false }, dailyLimit: 200, today: 0 }));
+  await off.clickButton('name-suggest', { nameSuggest: 'r1' });
+  assert.equal(off.el('helper-dlg').open, true, 'off: the dialog, to switch it on');
+  assert.equal(off.posts.length, 0);
+  const asking = loadPage();
+  asking.push(helperSnap({ on: true, uses: { names: true }, dailyLimit: 200, today: 1 }, { naming: { asking: true } }));
+  assert.match(asking.side(), /data-name-suggest="r1"[^>]*disabled/);
+  assert.match(asking.side(), /Asking Haiku for a name…/);
+  const failed = loadPage();
+  failed.push(helperSnap({ on: true, uses: { names: true }, dailyLimit: 200, today: 1 }, { naming: { error: 'Haiku gave no usable name.' } }));
+  assert.match(failed.side(), /class="name-offer msg-bad">No name: Haiku gave no usable name\./);
+  const codex = loadPage();
+  codex.push(helperSnap({ on: true, uses: { names: true }, dailyLimit: 200, today: 0 }, { kind: 'codex', naming: { offer: { name: 'x', at: 1 } } }));
+  assert.doesNotMatch(codex.side(), /name-suggest|name-offer/);
+});
+
 // The sessions dialog: past sessions to resume, with search, filters and sorting.
 const H = 3_600_000;
 const pastSessions = () => {
