@@ -9,7 +9,12 @@ import { basename, dirname, isAbsolute, join } from 'node:path';
 const KEY = /[^a-z0-9_-]/g;
 const isDir = p => { try { return statSync(p).isDirectory(); } catch { return false; } };
 const realOrNull = p => { try { return realpathSync(p); } catch { return null; } };
-const trim = p => (p.length > 1 ? p.replace(/\/+$/, '') : p);
+// A trailing separator is dropped (a backslash too on Windows, where it is one; a drive root like C:\ keeps its own).
+const TRAILING = process.platform === 'win32' ? /[\\/]+$/ : /\/+$/;
+const trim = p => (p.length > 1 && !/^[A-Za-z]:[\\/]*$/.test(p) ? p.replace(TRAILING, '') : p);
+// ~ in config.json's folder names: ~/x on every system, ~\x as well on Windows.
+const underHome = f => f.startsWith('~/') || (process.platform === 'win32' && f.startsWith('~\\'));
+
 
 /** The login an account file records ({ email, org }), or null. */
 function loginOf(file) {
@@ -39,7 +44,7 @@ export function findAccounts({ claudeDir, names, home, log = () => {} }) {
   const named = new Map();
   for (const [folder, name] of Object.entries(names && typeof names === 'object' && !Array.isArray(names) ? names : {})) {
     if (typeof name !== 'string' || !name.trim()) continue;
-    const dir = trim(folder === '~' ? home : folder.startsWith('~/') ? join(home, folder.slice(2)) : folder);
+    const dir = trim(folder === '~' ? home : underHome(folder) ? join(home, folder.slice(2)) : folder);
     if (isAbsolute(dir)) named.set(dir, name.trim().slice(0, 24));
   }
   const first = trim(claudeDir);

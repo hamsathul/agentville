@@ -86,7 +86,7 @@ export function readOwnSkills(home) {
     const path = join(dir, folder, 'SKILL.md');
     let text;
     try { text = readFileSync(path, 'utf8'); } catch { continue; }
-    const front = text.match(/^---\n([\s\S]*?)\n---/)?.[1] ?? '';
+    const front = text.match(/^---\r?\n([\s\S]*?)\r?\n---/)?.[1] ?? '';
     const field = key => front.match(new RegExp(`^${key}:\\s*(.*)$`, 'm'))?.[1].trim().replace(/^(["'])(.*)\1$/, '$2') ?? '';
     out.push({ name: field('name') || folder, description: field('description'), path, tokens: Math.round(text.length / 4) }); // about 4 characters a token
   }

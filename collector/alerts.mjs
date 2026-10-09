@@ -1,10 +1,7 @@
-import { run } from './lib/exec.mjs';
+import { notifyMac } from './platform/mac.mjs';
+import { platformFor } from './platform/index.mjs';
 
-/** macOS notification. Title/message travel as argv, never inside the script text. */
-export function notifyMac(title, message, runner = run) {
-  const script = ['on run argv', 'display notification (item 2 of argv) with title (item 1 of argv)', 'end run'];
-  return runner('osascript', [...script.flatMap(line => ['-e', line]), String(title), String(message)], { timeoutMs: 5000 });
-}
+export { notifyMac };
 
 export function cpuSustained(history, now, cfg) {
   const windowMs = cfg.cpuAlertSustainSec * 1000;
@@ -17,7 +14,7 @@ const STICKY = new Set(['waiting', 'yourTurn']);
 const STICKY_TTL_MS = 24 * 3_600_000;
 
 export class AlertEngine {
-  constructor({ cfg, notify = notifyMac, startedAt, warmupMs = 10_000 }) {
+  constructor({ cfg, notify = platformFor().notify, startedAt, warmupMs = 10_000 }) {
     this.cfg = cfg;
     this.notify = notify;
     this.startedAt = startedAt;

@@ -1,4 +1,6 @@
+import { NO_FILE_LINKS } from './win-links.mjs';
 import { test } from 'node:test';
+import { assertPrivate, shellStandIn, toSh } from './support.mjs';
 import { execFileSync, spawn } from 'node:child_process';
 import assert from 'node:assert/strict';
 import { appendFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, realpathSync, renameSync, statSync, symlinkSync, unlinkSync, utimesSync, writeFileSync } from 'node:fs';
@@ -226,7 +228,7 @@ test('a chat message is handed to the session through its mod, with delivery con
   }
 });
 
-test('a document can be read only if the agent opened it, and only if it is a markdown file of sane size', async () => {
+test('a document can be read only if the agent opened it, and only if it is a markdown file of sane size', { skip: NO_FILE_LINKS }, async () => {
   const root = mkdtempSync(join(tmpdir(), 'tracker-root-doc-'));
   mkdirSync(join(root, 'web'));
   writeFileSync(join(root, 'web', 'index.html'), '<html></html>');
@@ -661,7 +663,7 @@ test("your notes on a session: added, edited, used, deleted; counted in its snap
     assert.equal(JSON.stringify(agent()).includes('and the tests'), false, 'the snapshot carries counts, never the text');
     assert.deepEqual(handle.getNotes(SID).notes.map(n => n.text), ['ask about the cache, again', 'and the tests']);
     assert.equal((await handle.pastSessions()).sessions.find(s => s.id === SID).notes, 1, 'the resume list counts the unused ones');
-    assert.equal(statSync(join(root, 'state', 'notes', `${SID}.json`)).mode & 0o777, 0o600);
+    assertPrivate(join(root, 'state', 'notes', `${SID}.json`), 0o600);
     assert.deepEqual((await handle.actions.note({ agentId: SID, op: 'clear-used' })).notes.map(n => n.text), ['and the tests']);
     assert.equal((await handle.actions.note({ agentId: SID, op: 'delete', id: handle.getNotes(SID).notes[0].id })).notes.length, 0);
     for (const body of [{ agentId: 'nobody', op: 'add', text: 'x' }, { agentId: SID, op: 'shout', text: 'x' }, { agentId: SID, op: 'add', text: '' }, { agentId: SID, op: 'add' }, null]) {
@@ -691,8 +693,8 @@ test('a session is restored to before one of your messages: ended, its files and
   writeFileSync(transcript, `${lines.join('\n')}\n`);
   writeFileSync(join(claudeDir, 'sessions', `${process.pid}.json`), JSON.stringify({ pid: process.pid, sessionId: SID, cwd: work, name: 'releaser', kind: 'interactive', status: 'idle' }));
   // A stand-in for claude --rewind-files: what it was asked goes to a log, how it ends to a file.
-  const bin = join(root, 'claude'), log = join(root, 'claude.log'), outcome = join(root, 'outcome');
-  writeFileSync(bin, `#!/bin/sh\ncase "$*" in *--rewind-files*) ;; *) echo '[]'; exit 0 ;; esac\necho "$CLAUDE_CODE_ENABLE_SDK_FILE_CHECKPOINTING $*" >> '${log}'\nif [ -f '${outcome}' ]; then cat '${outcome}'; exit 1; fi\necho "Files rewound to state at message $4"\n`, { mode: 0o755 });
+  const binBase = join(root, 'claude'), log = join(root, 'claude.log'), outcome = join(root, 'outcome');
+  const bin = shellStandIn(binBase, `#!/bin/sh\ncase "$*" in *--rewind-files*) ;; *) echo '[]'; exit 0 ;; esac\necho "$CLAUDE_CODE_ENABLE_SDK_FILE_CHECKPOINTING $*" >> '${toSh(log)}'\nif [ -f '${toSh(outcome)}' ]; then cat '${toSh(outcome)}'; exit 1; fi\necho "Files rewound to state at message $4"\n`);
   const launched = [], signals = [];
   let alive = true;
   const procs = { commandOf: async () => 'claude', ttyOf: async () => 'ttys012', kill: (pid, sig) => { signals.push([pid, sig]); alive = false; }, alive: () => alive };
@@ -1046,17 +1048,17 @@ test("a session's model and effort are switched by its mod (/model, /effort), an
 
 // A stand-in for the claude CLI: plugins, their details, MCP servers; what it was asked to change goes to a log.
 function fakeClaude(dir) {
-  const log = join(dir, 'claude.log'), bin = join(dir, 'claude');
-  writeFileSync(bin, `#!/bin/sh
+  const log = join(dir, 'claude.log'), binBase = join(dir, 'claude');
+  const bin = shellStandIn(binBase, `#!/bin/sh
 case "$1 $2" in
   "agents --json") echo '[]' ;;
   "plugin list") echo '[{"id":"alpha@market","version":"1.0.0","enabled":true,"scope":"user","lastUpdated":"2026-10-01T00:00:00Z"},{"id":"agent-tracker@inline","version":"0.6.1","enabled":true,"scope":"user"}]' ;;
   "plugin details") printf 'alpha 1.0.0\\n  Description: Alpha things.\\n\\nComponent inventory\\n  Skills (2)  one, two\\n  Agents (0)\\n  Hooks (0)\\n  MCP servers (1)  mine\\n  LSP servers (0)\\n\\nProjected token cost\\n  Always-on:   ~1,200 tok   added to every session\\n' ;;
-  "plugin enable"|"plugin disable"|"plugin update"|"plugin uninstall") echo "$*" >> "${log}"; echo "Done: $2 $3" ;;
+  "plugin enable"|"plugin disable"|"plugin update"|"plugin uninstall") echo "$*" >> "${toSh(log)}"; echo "Done: $2 $3" ;;
   "mcp list") printf 'Checking MCP server health…\\n\\nmine: https://mine.example/mcp (HTTP) - ! Needs authentication\\nplugin:alpha:extra: https://extra.example/mcp (HTTP) - ✔ Connected\\n' ;;
-  "mcp remove") echo "$* in $(pwd -P)" >> "${log}" ;;
+  "mcp remove") echo "$* in $(cygpath -w "$(pwd -P)" 2>/dev/null || pwd -P)" >> "${toSh(log)}" ;;
 esac
-`, { mode: 0o755 });
+`);
   return { bin, log: () => (existsSync(log) ? readFileSync(log, 'utf8') : '') };
 }
 
@@ -1095,7 +1097,9 @@ test("Claude Code's setup for the ⚙ dialog: plugins with their costs, MCP serv
     assert.equal(launched.at(-1), "cd ~ && exec claude mcp login 'mine'");
     assert.deepEqual(await handle.actions.mcp({ name: 'mine', op: 'remove' }), { ok: true });
     assert.deepEqual(await handle.actions.mcp({ name: 'local1', op: 'remove', project }), { ok: true });
-    assert.match(claude.log(), new RegExp(`^mcp remove mine -s user in .*\\n^mcp remove local1 -s local in ${project}$`, 'm'));
+    const logged = claude.log().split('\n');
+    assert.ok(logged.some(l => l.startsWith('mcp remove mine -s user in ')), 'user-scope server removed');
+    assert.ok(logged.includes(`mcp remove local1 -s local in ${project}`), 'local-scope server removed from its own project folder');
 
     mkdirSync(join(project, '.claude'));
     writeFileSync(join(project, '.claude', 'settings.local.json'), JSON.stringify({ permissions: { deny: ['Bash(rm:*)'] } }));

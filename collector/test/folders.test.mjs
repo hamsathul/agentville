@@ -1,4 +1,5 @@
 // Folders a new session may start in: suggested as you type, checked, and made when missing.
+import { NO_FILE_LINKS } from './win-links.mjs';
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { existsSync, mkdirSync, mkdtempSync, realpathSync, symlinkSync, writeFileSync } from 'node:fs';
@@ -15,7 +16,7 @@ function fixture() {
   return { home, roots: [home] };
 }
 
-test('suggestions: the subfolders of what you typed, starting with its last part, hidden ones only once you type the dot', async () => {
+test('suggestions: the subfolders of what you typed, starting with its last part, hidden ones only once you type the dot', { skip: NO_FILE_LINKS }, async () => {
   const f = fixture();
   const at = async typed => listDirs(typed, f);
   assert.deepEqual((await at('~/')).dirs, ['code', 'Docs', 'Volumes-like', 'work'], 'A–Z, folders only, no hidden ones, no link out of the allowed places');
@@ -32,7 +33,7 @@ test('suggestions: the subfolders of what you typed, starting with its last part
   assert.match((await at('/etc/')).error, /home folder or a drive/);
 });
 
-test('a folder to start in must exist, be a folder, and be in an allowed place: its real path', async () => {
+test('a folder to start in must exist, be a folder, and be in an allowed place: its real path', { skip: NO_FILE_LINKS }, async () => {
   const f = fixture();
   assert.deepEqual(await startPlace('~/work', f), { path: join(f.home, 'code') });
   assert.deepEqual(await startPlace(`${f.home}/Docs/`, f), { path: join(f.home, 'Docs') });
@@ -41,7 +42,7 @@ test('a folder to start in must exist, be a folder, and be in an allowed place: 
   for (const typed of ['/etc', '~/out', '~/..', 'code']) assert.ok((await startPlace(typed, f)).error, typed);
 });
 
-test('a missing folder is made, with any missing parents, only in an allowed place', async () => {
+test('a missing folder is made, with any missing parents, only in an allowed place', { skip: NO_FILE_LINKS }, async () => {
   const f = fixture();
   assert.deepEqual(await makeDir('~/code/new/deep', f), { ok: true, path: join(f.home, 'code', 'new', 'deep') });
   assert.ok(existsSync(join(f.home, 'code', 'new', 'deep')));

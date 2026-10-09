@@ -17,8 +17,8 @@ const WEB = join(ROOT, 'web');
 // too, for toScene and privateScene, as the page has them.
 const SDK = ['scene.js', 'brand.js', 'worlds/sdk/pixel.js', 'worlds/sdk/people.js', 'worlds/sdk/props.js', 'worlds/sdk/creatures.js', 'worlds/sdk/animals.js', 'worlds/sdk/engine.js'].filter(f => existsSync(join(WEB, f)));
 const TOUR = join(WEB, 'worlds', 'test', 'tour.js');
-/** Every file a check reads besides the world's own folder: this module, what it imports, the SDK and the tour. */
-export const FILES = [fileURLToPath(import.meta.url), join(ROOT, 'collector', 'worlds.mjs'), join(ROOT, 'scripts', 'lib', 'plain-text.mjs'), ...SDK.map(f => join(WEB, f)), TOUR];
+/** Every file a check reads besides the world's own folder: this module, what it imports (worlds.mjs and the path helper it uses), the SDK and the tour. */
+export const FILES = [fileURLToPath(import.meta.url), join(ROOT, 'collector', 'worlds.mjs'), join(ROOT, 'collector', 'platform', 'paths.mjs'), join(ROOT, 'scripts', 'lib', 'plain-text.mjs'), ...SDK.map(f => join(WEB, f)), TOUR];
 const REQUIRED = ['W', 'slots', 'drawChar', 'bg', 'grid'];
 const hash = s => { let h = 0; for (let i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) >>> 0; return h.toString(36); };
 const NUMBERS = new Set(['offsetWidth', 'offsetHeight', 'clientWidth', 'clientHeight', 'scrollLeft', 'scrollTop', 'scrollWidth', 'scrollHeight', 'width', 'height', 'length', 'size']);
@@ -198,9 +198,10 @@ export async function checkWorld({ dir, file = 'world.js', json = 'world.json', 
     const stack = String(err?.stack ?? '');
     // Node puts the throw site first ("<file>:<line>\n<source>"): a world.js that doesn't parse, or a throw in
     // world.js itself. When the throw site is the SDK's, the world.js line that called it wins, from the stack.
-    const top = stack.match(/^(\/[^\n]*?):(\d+)\n/);
+    // A path starts with a slash, or on Windows with a drive letter and a colon (C:\ or C:/): the colon before the line number is the last one.
+    const top = stack.match(/^((?:[A-Za-z]:)?[\\/][^\n]*?):(\d+)\n/);
     if (top?.[1] === worldPath) return at(top[1], top[2]);
-    const found = [...stack.matchAll(/(?:\(|at )(\/[^()\n]*?):(\d+):(\d+)\)?$/gm)] // a path may hold spaces
+    const found = [...stack.matchAll(/(?:\(|at )((?:[A-Za-z]:)?[\\/][^()\n]*?):(\d+):(\d+)\)?$/gm)] // a path may hold spaces
       .filter(m => m[1] === worldPath || m[1].startsWith(WEB + sep));
     const f = found.find(m => m[1] === worldPath) ?? found[0];
     return f ? at(f[1], f[2], f[3]) : '';

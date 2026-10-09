@@ -1,3 +1,4 @@
+import { NO_FILE_LINKS } from './win-links.mjs';
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
@@ -74,7 +75,7 @@ test('the home folder and the disk root are not listed', async () => {
   assert.match((await listFolder('/', { home: '/nowhere' })).error, /home folder/);
 });
 
-test('a file inside the folder is read; everything the explorer hides is refused', async () => {
+test('a file inside the folder is read; everything the explorer hides is refused', { skip: NO_FILE_LINKS }, async () => {
   const dir = repo();
   symlinkSync('/etc/hosts', join(dir, 'hosts.txt'));
   const ok = await readFolderFile(dir, join(dir, 'src/app.ts'));

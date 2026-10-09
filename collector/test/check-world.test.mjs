@@ -1,6 +1,7 @@
 // npm run check-world: the tour run headless against a world; exceptions with file and line, hooks left
 // to defaults, checklist items drawn the same, outfit parts the kit lacks, creatures that break the kit's
 // rules; never hangs.
+import { NO_FILE_LINKS } from './win-links.mjs';
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
@@ -28,13 +29,14 @@ test('the starter passes clean', async () => {
 });
 
 test('the farm passes clean too', async () => {
-  const r = await checkWorld({ dir: builtIn('farm') });
+  // a slow runner needs more than the 2 s a hook gets by default: the limit is what is tested elsewhere
+  const r = await checkWorld({ dir: builtIn('farm'), timeoutMs: 20_000 });
   assert.deepEqual(r.errors, []);
   assert.deepEqual(r.creatures, [], 'its animals keep the kit\'s rules');
 });
 
 test("the factory's creatures pass clean: its robot dog, vacuum and cat, its gag and play, as the kit reads them", async () => {
-  const r = await checkWorld({ dir: builtIn('factory') });
+  const r = await checkWorld({ dir: builtIn('factory'), timeoutMs: 20_000 });
   assert.deepEqual(r.errors, []);
   assert.deepEqual(r.creatures, [], 'no creature problem');
   assert.deepEqual(r.notes.filter(n => /creature|roam/.test(n)), [], 'no pointer about them either');
@@ -162,7 +164,7 @@ test("what a contained run prints reaches you a line at a time through plain()",
 
 /* ---------- containment: the command's world code runs in a Node that may read only the check's files ---------- */
 
-test("contained as the command runs a world: it reads the SDK and the world's two files, nothing else (not through a link in its folder), and writes and starts nothing", () => {
+test("contained as the command runs a world: it reads the SDK and the world's two files, nothing else (not through a link in its folder), and writes and starts nothing", { skip: NO_FILE_LINKS }, () => {
   // Real paths throughout (macOS's temp folder is behind a link): Node judges a path as it is given.
   const tmp = realpathSync(mkdtempSync(join(tmpdir(), 'check-world-'))), outside = join(tmp, 'outside.txt'), target = join(tmp, 'written.txt'), dir = join(tmp, 'world');
   try {
@@ -187,12 +189,16 @@ test("contained as the command runs a world: it reads the SDK and the world's tw
     const got = JSON.parse(r.stdout);
     for (const k of ['sdk', 'js', 'json']) assert.equal(got[k], 'allowed', k);
     for (const k of ['notes', 'peek', 'up', 'outside', 'write', 'program']) assert.equal(got[k], 'ERR_ACCESS_DENIED', k);
-    assert.ok(!got.env.includes('HOME') && !got.env.includes('PATH'), `no environment of yours: ${got.env}`);
+    // Windows adds its own base variables to any process (PATH, USERPROFILE, TEMP...): on a Mac there is none.
+    const base = new Set(['HOMEDRIVE', 'HOMEPATH', 'LOGONSERVER', 'PATH', 'SYSTEMDRIVE', 'SYSTEMROOT', 'TEMP', 'TMP', 'USERDOMAIN', 'USERNAME', 'USERPROFILE', 'WINDIR', 'COMSPEC', 'PATHEXT', 'OS', 'APPDATA', 'LOCALAPPDATA', 'PROGRAMDATA', 'PROGRAMFILES', 'COMPUTERNAME', 'NUMBER_OF_PROCESSORS', 'PROCESSOR_ARCHITECTURE']);
+    const ours = process.platform === 'win32' ? got.env.filter(k => !base.has(k.toUpperCase())) : got.env;
+    assert.deepEqual(ours, [], `no environment of yours: ${got.env}`);
+    if (process.platform !== 'win32') assert.ok(!got.env.includes('HOME') && !got.env.includes('PATH'));
     assert.equal(existsSync(target), false, 'nothing written');
   } finally { rmSync(tmp, { recursive: true, force: true }); }
 });
 
-test("the command refuses a world whose world.js leads out of its folder, before starting anything; one inside it is fine", () => {
+test("the command refuses a world whose world.js leads out of its folder, before starting anything; one inside it is fine", { skip: NO_FILE_LINKS }, () => {
   const tmp = mkdtempSync(join(tmpdir(), 'check-world-')), worlds = join(tmp, 'worlds');
   try {
     const starter = readFileSync(join(builtIn('starter'), 'world.js'), 'utf8'), json = '{ "name": "w", "api": 1 }\n';
@@ -215,7 +221,7 @@ test("the command refuses a world whose world.js leads out of its folder, before
   } finally { rmSync(tmp, { recursive: true, force: true }); }
 });
 
-test("worldFiles: each of the two files a regular file inside the folder's real path, or one line saying which", () => {
+test("worldFiles: each of the two files a regular file inside the folder's real path, or one line saying which", { skip: NO_FILE_LINKS }, () => {
   const tmp = mkdtempSync(join(tmpdir(), 'check-world-')), dir = join(tmp, 'w');
   try {
     mkdirSync(dir);
@@ -233,6 +239,22 @@ test("worldFiles: each of the two files a regular file inside the folder's real 
     mkdirSync(join(dir, 'world.json'));
     assert.throws(() => worldFiles(dir), { message: "world.json isn't a file." });
   } finally { rmSync(tmp, { recursive: true, force: true }); }
+});
+
+test('a contained run is started with env {}: it starts (also on Windows, where {} is not empty) and nothing of ours is passed on', () => {
+  const was = process.env.AGENTVILLE_TEST_SECRET;
+  process.env.AGENTVILLE_TEST_SECRET = 'not for a world';
+  try {
+    const world = worldFiles(fixture('throws'));
+    const r = runContained(world, ['-e', 'console.log(JSON.stringify({ node: process.version, env: Object.keys(process.env) }))']);
+    assert.equal(r.status, 0, r.stderr);
+    const got = JSON.parse(r.stdout);
+    assert.equal(got.node, process.version, 'a Node of the same version ran it');
+    assert.equal(got.env.includes('AGENTVILLE_TEST_SECRET'), false, 'nothing of ours is passed on');
+    // Windows adds its own base variables (PATH, TEMP, USERPROFILE...) to any process: only what we hold is checked for
+  } finally {
+    if (was === undefined) delete process.env.AGENTVILLE_TEST_SECRET; else process.env.AGENTVILLE_TEST_SECRET = was;
+  }
 });
 
 test('the contained half refuses to run unless it is contained', () => {

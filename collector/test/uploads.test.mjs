@@ -2,7 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, utimesSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { basename, dirname, join } from 'node:path';
 import { checkFiles, checkFolders, pruneUploads, safeName, saveFiles, typedPart, withAttachments } from '../sources/uploads.mjs';
 
 const PNG = Buffer.from('89504e470d0a1a0a0000000d4948445200000001000000010806000000', 'hex');
@@ -39,7 +39,8 @@ test('files are saved whole under the session, and the message tells the agent w
   const dir = mkdtempSync(join(tmpdir(), 'tracker-uploads-'));
   const paths = saveFiles(dir, 'sess-1', checkFiles([{ name: 'shot.png', data: b64(PNG) }, { name: 'notes.md', data: b64(Buffer.from('# Notes')) }]).files);
   assert.equal(paths.length, 2);
-  assert.match(paths[0], /\/sess-1\/[\w-]+-1-shot\.png$/);
+  assert.match(basename(paths[0]), /^[\w-]+-1-shot\.png$/);
+  assert.equal(basename(dirname(paths[0])), 'sess-1');
   assert.match(paths[1], /-2-notes\.md$/);
   assert.ok(readFileSync(paths[0]).equals(PNG));
   assert.throws(() => saveFiles(dir, '../evil', []), /session id/);

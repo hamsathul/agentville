@@ -5,7 +5,7 @@
   "type": "module",
   "description": "Local dashboard of every AI agent working on this Mac",
   "scripts": {
-    "test": "node --test \"collector/test/*.test.mjs\"",
+    "test": "node --import ./collector/test/win-links.mjs --test \"collector/test/*.test.mjs\"",
     "test:ui": "node scripts/e2e-ui.mjs",
     "golden": "node scripts/world-golden.mjs",
     "new-world": "node scripts/new-world.mjs",

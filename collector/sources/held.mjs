@@ -1,10 +1,11 @@
-import { chmodSync, mkdirSync, readFileSync, readdirSync, renameSync, unlinkSync, writeFileSync } from 'node:fs';
+import { mkdirSync, readFileSync, readdirSync, renameSync, unlinkSync, writeFileSync } from 'node:fs';
 import { randomBytes } from 'node:crypto';
 import { join } from 'node:path';
+import { makePrivate } from '../platform/private.mjs';
 
 // Messages you sent a session while it worked: kept here, where you can remove, edit or send each
 // one early, until its turn ends and the collector sends them (one per turn, or all together).
-// Under state/held/<sessionId>.json (the folder 0700, the file 0600); nothing reaches the session
+// Under state/held/<sessionId>.json (the folder 0700, the file 0600; on Windows an ACL for you alone); nothing reaches the session
 // until one goes out. Files sent with one are saved already (uploads); their lines are added only
 // when it goes out, so an edit changes only what you typed.
 export const MAX_HELD = 50;
@@ -34,9 +35,10 @@ export function createHeld(dir, { now = () => Date.now(), newId = () => randomBy
     bump(id);
     if (!got.items.length && !got.together) { try { unlinkSync(fileOf(id)); } catch { /* none */ } return; }
     mkdirSync(dir, { recursive: true, mode: 0o700 });
-    chmodSync(dir, 0o700);
+    makePrivate(dir); // 0700 on a Mac; on Windows (no modes) an ACL for this user alone
     const tmp = `${fileOf(id)}.tmp`;
     writeFileSync(tmp, JSON.stringify(got), { mode: 0o600 });
+    makePrivate(tmp);
     renameSync(tmp, fileOf(id));
   }
   const clean = t => (typeof t === 'string' ? t.trim() : '');

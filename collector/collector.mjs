@@ -33,6 +33,10 @@ import { reposFor } from './derive/repos.mjs';
 import { planReadings, planUsage } from './derive/plan.mjs';
 import { noteDirectDeploys } from './derive/deploys.mjs';
 import { AlertEngine, notifyMac } from './alerts.mjs';
+import { platformFor } from './platform/index.mjs';
+const platform = platformFor();
+import { isInside, toPosix } from './platform/paths.mjs';
+import { makePrivate } from './platform/private.mjs';
 import { createTrackerServer } from './server.mjs';
 import { makeWorlds, watchWorlds, worldsDirOf } from './worlds.mjs';
 import { renderTranscriptPage } from './transcript-page.mjs';
@@ -77,6 +81,7 @@ function loadToken(path) {
   }
   const token = randomBytes(32).toString('hex');
   writeFileSync(path, token, { mode: 0o600 });
+  makePrivate(path);
   return token;
 }
 
@@ -109,7 +114,7 @@ async function quickLookPicture(real) {
   }
 }
 
-export async function startCollector({ root, claudeDir = join(homedir(), '.claude'), claudeBin = 'claude', home = homedir(), signedInMs = 60_000, heldGoneMs = 120_000, scratchBase = `/private/tmp/claude-${process.getuid?.() ?? 0}`, port: portOverride, deliveryTimeoutMs = 5000, helperTimeoutMs = 30_000, linesGapMs = 300_000, linesIdleMs = 1_800_000, castKeepMs = 600_000, notify = notifyMac, launch = args => run('osascript', args, { timeoutMs: 15_000 }), sessionProcs = systemProcs, endWaitMs = 8000, readProcs = readPs, deployStatusOf = deployStatus, pullRequestsOf = pullRequests, githubSlugOf = githubSlug, ticketMs = 600_000, quickLook = quickLookPicture, folderRoots = [home, '/Volumes'], chooseFolder = chooseFolderMac, stopWaitMs = 3000, revealFile = real => run('open', ['-R', real], { timeoutMs: 10_000 }), openFolder = dir => run('open', ['-a', 'Finder', dir], { timeoutMs: 10_000 }), log = makeLogger(join(root, 'logs')) }) {
+export async function startCollector({ root, claudeDir = join(homedir(), '.claude'), claudeBin = 'claude', home = homedir(), signedInMs = 60_000, heldGoneMs = 120_000, scratchBase = `/private/tmp/claude-${process.getuid?.() ?? 0}`, port: portOverride, deliveryTimeoutMs = 5000, helperTimeoutMs = 30_000, linesGapMs = 300_000, linesIdleMs = 1_800_000, castKeepMs = 600_000, notify = notifyMac, launch = args => run('osascript', args, { timeoutMs: 15_000 }), sessionProcs = systemProcs, endWaitMs = 8000, readProcs = readPs, deployStatusOf = deployStatus, pullRequestsOf = pullRequests, githubSlugOf = githubSlug, ticketMs = 600_000, quickLook = platform.quickLookPicture ?? quickLookPicture, folderRoots = [home, '/Volumes'], chooseFolder = chooseFolderMac, stopWaitMs = 3000, revealFile = real => run('open', ['-R', real], { timeoutMs: 10_000 }), openFolder = dir => run('open', ['-a', 'Finder', dir], { timeoutMs: 10_000 }), log = makeLogger(join(root, 'logs')) }) {
   // readProcs, deployStatusOf, pullRequestsOf and githubSlugOf read the machine and GitHub; a test or the demo video passes stand-ins.
   const stateDir = join(root, 'state');
   const pendingDir = join(stateDir, 'pending');
@@ -144,7 +149,7 @@ export async function startCollector({ root, claudeDir = join(homedir(), '.claud
   const commandsDir = join(stateDir, 'commands'), resultsDir = join(stateDir, 'command-results');
   const asksDir = join(stateDir, 'btw'), asideAnswersDir = join(stateDir, 'asides');
   for (const dir of [stateDir, pendingDir, answersDir, modsDir, messagesDir, uploadsDir, commandsDir, resultsDir, asksDir, asideAnswersDir]) mkdirSync(dir, { recursive: true });
-  for (const dir of [helperDir, helperRepliesDir]) mkdirSync(dir, { recursive: true, mode: 0o700 });
+  for (const dir of [helperDir, helperRepliesDir]) { mkdirSync(dir, { recursive: true, mode: 0o700 }); makePrivate(dir); }
   const pendingAsides = new Map(); // session → [{ id, question, at }] asked and not answered yet
   const configPath = join(root, 'config.json');
 
@@ -657,8 +662,8 @@ export async function startCollector({ root, claudeDir = join(homedir(), '.claud
     const out = {};
     for (const m of rec ? [rec.model, ...rec.childModels.values()] : []) {
       for (const f of m?.touchedFiles() ?? []) {
-        if (!f.path.startsWith(`${cwd}/`)) continue;
-        const rel = f.path.slice(cwd.length + 1);
+        if (!isInside(cwd, f.path)) continue;
+        const rel = toPosix(f.path.slice(cwd.length + 1));
         const prev = out[rel];
         out[rel] = prev ? { wrote: prev.wrote || f.wrote, at: Math.max(prev.at, f.at) } : { wrote: f.wrote, at: f.at };
       }
@@ -697,8 +702,8 @@ export async function startCollector({ root, claudeDir = join(homedir(), '.claud
     if (!agent || typeof path !== 'string') return null;
     if (agent.kind !== 'codex' && memoryOf(agent).some(m => m.path === path)) return dirname(path);
     const scratchRoot = agent.kind === 'codex' ? null : scratchpadOf(agentId, scratchBase, agent.cwd);
-    if (scratchRoot && path.startsWith(`${scratchRoot}/`)) return scratchRoot;
-    if (browsable(agent) && path.startsWith(`${agent.cwd}/`)) return agent.cwd;
+    if (scratchRoot && isInside(scratchRoot, path)) return scratchRoot;
+    if (browsable(agent) && isInside(agent.cwd, path)) return agent.cwd;
     return null;
   }
   const OUTSIDE = { status: 403, error: "That file is outside the agent's folder." };
@@ -775,7 +780,7 @@ export async function startCollector({ root, claudeDir = join(homedir(), '.claud
     try { real = realpathSync(call.outputPath); } catch { return { status: 404, error: 'Its output file is gone.' }; }
     let base = scratchBase;
     try { base = realpathSync(scratchBase); } catch { /* none */ }
-    if (!real.startsWith(`${base}/`) || !real.endsWith('.output')) return { status: 403, error: 'That output file is outside the scratch folder.' };
+    if (!isInside(base, real) || !real.endsWith('.output')) return { status: 403, error: 'That output file is outside the scratch folder.' };
     const size = statSync(real).size;
     const fd = openSync(real, 'r');
     try {
@@ -808,16 +813,12 @@ export async function startCollector({ root, claudeDir = join(homedir(), '.claud
       const book = readXlsx(readFileSync(ok.real));
       return book.error ? { status: 415, error: book.error } : { view: 'sheet', sheets: book.sheets };
     }
-    if (view === 'word') { // macOS's textutil: the document as a page, and as plain text to quote from
-      const [html, text] = await Promise.all(['html', 'txt'].map(as => run('textutil', ['-convert', as, '-stdout', ok.real], { timeoutMs: 30_000 })));
-      if (html.code !== 0) return { status: 415, error: `macOS could not read this document (${html.stderr.trim().split('\n')[0] || `exit ${html.code}`}).` };
-      return { view: 'word', html: html.stdout, text: text.code === 0 ? text.stdout : '' };
-    }
+    if (view === 'word') return platform.readWordFile(ok.real); // the document as a page, and as plain text to quote from
     if (view === 'office') {
       try {
         return { view: 'picture', picture: `data:image/png;base64,${(await quickLook(ok.real)).toString('base64')}` };
       } catch (err) {
-        return { status: 415, error: `Quick Look could not make a picture of it (${err.message}).` };
+        return { status: 415, error: `A picture of it could not be made (${err.message}).` };
       }
     }
     return { status: 415, error: 'This is not a document to read this way.' };
@@ -1414,6 +1415,7 @@ export async function startCollector({ root, claudeDir = join(homedir(), '.claud
           mkdirSync(forksDir, { recursive: true, mode: 0o700 });
           prefillFile = join(mkdtempSync(join(forksDir, 'r-')), 'prompt.txt');
           writeFileSync(prefillFile, point.prompt, { mode: 0o600 });
+          makePrivate(prefillFile);
         }
       }
       const opened = await resume(prefillFile);

@@ -1,3 +1,4 @@
+import { fromGit } from '../platform/paths.mjs';
 import { existsSync, readFileSync, readdirSync, realpathSync, statSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { basename, dirname, isAbsolute, join, relative, sep } from 'node:path';
@@ -35,7 +36,8 @@ async function listRepo(dir, runner) {
   const git = args => runner('git', ['-C', dir, ...args], { env: GIT_ENV, timeoutMs: 10_000 });
   const inRepo = await git(['rev-parse', '--show-toplevel', '--show-prefix']);
   if (inRepo.code !== 0) return null;
-  const [top, prefix = ''] = inRepo.stdout.split('\n');
+  const [gitTop, prefix = ''] = inRepo.stdout.split('\n');
+  const top = fromGit(gitTop);
   const listed = await git(['ls-files', '-z', '--cached', '--others', '--exclude-standard']);
   if (listed.code !== 0) return { error: `git could not list this folder (${listed.stderr.trim().slice(0, 200)}).` };
   const files = [...new Set(listed.stdout.split('\0').filter(Boolean))].filter(p => !SECRET_FILE.test(p)).sort();

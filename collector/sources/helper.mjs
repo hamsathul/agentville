@@ -1,5 +1,6 @@
 import { mkdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
+import { makePrivate } from '../platform/private.mjs';
 
 // The helper: small writing jobs for the dashboard with Haiku, called through the Agentville mod
 // inside an open Claude Code session (your sign-in, your plan; never an API key). Off until you
@@ -37,6 +38,7 @@ export function createHelper(dir, { now = () => Date.now() } = {}) {
   const write = (file, value) => {
     mkdirSync(dir, { recursive: true });
     writeFileSync(`${file}.tmp`, JSON.stringify(value), { mode: 0o600 });
+    makePrivate(`${file}.tmp`);
     renameSync(`${file}.tmp`, file);
   };
   const stored = read(settingsFile);
