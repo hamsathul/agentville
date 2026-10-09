@@ -40,6 +40,18 @@ test("a world's frame page: the SDK's template with its name (escaped) and its o
   assert.equal(w.frame('starter'), null);
 });
 
+test("a world.json that is a link to a file outside its folder is not read: no frame, no file", () => {
+  const dir = builtins();
+  const outside = join(mkdtempSync(join(tmpdir(), 'outside-')), 'x.json');
+  writeFileSync(outside, JSON.stringify({ name: 'LEAKED-NAME' }));
+  mkdirSync(join(dir, 'linky'));
+  symlinkSync(outside, join(dir, 'linky', 'world.json'));
+  const w = makeWorlds({ builtinDir: dir });
+  assert.equal(w.frame('linky'), null);
+  assert.equal(w.info('linky'), null);
+  assert.equal(w.file('linky', 'world.json').status, 404);
+});
+
 test('the frame runs sandboxed, its scripts from the dashboard only, and can reach nothing', () => {
   for (const part of ['sandbox allow-scripts', "default-src 'none'", "script-src 'self'", "connect-src 'none'", "frame-src 'none'", "form-action 'none'", "frame-ancestors 'self'"]) assert.ok(FRAME_CSP.includes(part), part);
   assert.ok(!/allow-same-origin|allow-popups|allow-top-navigation|allow-forms/.test(FRAME_CSP));

@@ -40,10 +40,11 @@ export function makeWorlds({ builtinDir }) {
   }
   /** A world's world.json as an object, or null. */
   function info(key) {
-    const dir = key === 'sdk' ? null : dirOf(key);
-    if (!dir) return null;
+    if (key === 'sdk') return null;
+    const meta = file(key, 'world.json'); // through the same checks as any file: never a link out of the folder
+    if (!meta.real) return null;
     try {
-      const j = JSON.parse(readFileSync(join(dir, 'world.json'), 'utf8'));
+      const j = JSON.parse(readFileSync(meta.real, 'utf8'));
       return j && typeof j === 'object' && !Array.isArray(j) ? j : null;
     } catch {
       return null;

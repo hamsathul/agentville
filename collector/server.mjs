@@ -87,7 +87,7 @@ export function createTrackerServer({ port, token, webFile, getSnapshot, getFeed
         res.setHeader('x-frame-options', 'DENY');
       }
 
-      if ((req.method === 'GET' || req.method === 'HEAD') && (m =path.match(/^\/raw\/([\w-]+)\/(.+)$/))) {
+      if ((req.method === 'GET' || req.method === 'HEAD') && (m = path.match(/^\/raw\/([\w-]+)\/(.+)$/))) {
         // A link's bytes: the random id is all it takes (an <img> or a player can't send the token).
         let rel;
         try { rel = m[2].split('/').map(decodeURIComponent).join('/'); } catch { return send(res, 404, 'text/plain', 'not found'); }
