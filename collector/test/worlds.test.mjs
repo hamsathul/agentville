@@ -16,7 +16,7 @@ const WORLDS = [
   { key: 'u/broken', builtIn: false, name: 'broken', icon: '🧩', description: '', nouns: {}, preview: null, error: 'world.json is missing.' },
 ];
 
-async function page({ stored = {}, hold = false, worlds = WORLDS, dialog = false } = {}) {
+async function page({ stored = {}, hold = false, worlds = WORLDS, dialog = false, listFails = false, reveal = { ok: true, path: '/w' } } = {}) {
   const posted = [], calls = [], listeners = {}, fetches = [], held = [], warnings = [], made = [], frames = [], timers = [];
   const clock = { now: NOW };
   const element = tag => ({ tag, innerHTML: '', textContent: '', className: '', listeners: {}, addEventListener(t, fn) { this.listeners[t] = fn; }, setAttribute() {}, remove() {} });
@@ -50,6 +50,8 @@ async function page({ stored = {}, hold = false, worlds = WORLDS, dialog = false
       get length() { return Object.keys(stored).length; }, key: i => Object.keys(stored)[i] ?? null,
     },
     fetch: (url, init) => {
+      if (url === '/api/worlds' && listFails) return Promise.resolve({ ok: false, status: 500, json: async () => ({ error: 'no' }) });
+      if (url === '/api/actions/reveal-worlds') { fetches.push([url, init?.headers?.['x-tracker-token']]); return Promise.resolve({ ok: true, status: 200, json: async () => reveal }); }
       if (url === '/api/worlds') return Promise.resolve({ ok: true, status: 200, json: async () => ({ worlds, folder: '/Users/sam/.agentville/worlds' }) });
       fetches.push([url, init?.headers?.['x-tracker-token']]);
       const reply = { ok: true, status: 200, json: async () => ({ memory: [{ path: '/Users/sam/.claude/projects/x/memory/a.md' }], files: [] }) };
@@ -64,6 +66,7 @@ async function page({ stored = {}, hold = false, worlds = WORLDS, dialog = false
     onPickAgent: (id, o) => calls.push(['pick', id, o?.from ?? null]), onOpenDoc: (id, p) => calls.push(['doc', id, p]),
     onShowRepos: () => calls.push(['repos']), onStartSession: () => calls.push(['start']), onNav: w => calls.push(['nav', w]), onBell: on => calls.push(['bell', on]),
     onWorld: w => calls.push(['world', w.key]),
+    onNotice: t => calls.push(['notice', t]),
   };
   const settle = async () => { for (let i = 0; i < 20; i++) await Promise.resolve(); };
   farm.mount(host, options);
@@ -73,7 +76,7 @@ async function page({ stored = {}, hold = false, worlds = WORLDS, dialog = false
   /** The held file requests: the first one waiting is answered. */
   const answer = async () => { held.shift()?.(); await settle(); };
   return {
-    farm, posted, calls, diary, stored, fetches, settle, wait, answer, warnings, made, host, options, worlds: window.AgentvilleWorlds, listeners, frames, dlg, els,
+    farm, posted, calls, diary, stored, fetches, settle, wait, answer, timeouts: timers, warnings, made, host, options, worlds: window.AgentvilleWorlds, listeners, frames, dlg, els,
     get frame() { return frames.at(-1); },
     // a message from the newest frame (one the page has let go of is still "the newest" here, and must be ignored)
     from: data => listeners.message?.({ source: frames.at(-1)?.contentWindow, data }),
@@ -435,9 +438,10 @@ test('a bell held for its turn is dropped if the world is hidden when the turn c
 });
 
 test('the list: names, descriptions and errors written by strangers are text, never markup', async () => {
-  const evil = '<img src=x onerror=alert(1)>', rlo = '‮';
+  const evil = '<img src=x onerror=alert(1)>', rlo = '\u202e';
   const worlds = [WORLDS[0], { key: 'u/evil', builtIn: false, name: `${evil}${rlo}txet`, icon: evil, description: `${evil}<script>x</script>`, nouns: {}, preview: null, error: null },
-    { key: 'u/bad"onclick="x', builtIn: false, name: 'bad', icon: '!', description: '', nouns: {}, preview: null, error: `<b>${evil}</b>` }];
+    { key: 'u/bad"onclick="x', builtIn: false, name: 'bad', icon: '!', description: `<b>${evil}</b>`, nouns: {}, preview: null, error: null },
+    { key: 'u/oops', builtIn: false, name: 'oops', icon: '!', description: '', nouns: {}, preview: null, error: `<b>${evil}</b>` }];
   const p = await page({ worlds, dialog: true });
   await p.farm.openList();
   const html = p.els['worlds-list'].innerHTML;
@@ -461,4 +465,55 @@ test('the list: clicking a world shows it and closes the list; Open the worlds f
   click('#worlds-folder');
   await p.settle();
   assert.deepEqual(p.fetches.at(-1), ['/api/actions/reveal-worlds', 'tok']);
+  assert.equal(p.calls.filter(c => c[0] === 'notice').length, 0, 'nothing to say when it worked');
+});
+
+test('Open the worlds folder: when the collector says it could not, the page says so', async () => {
+  const p = await page({ dialog: true, reveal: { ok: false, error: 'Finder could not show it.' } });
+  await p.farm.openList();
+  p.dlg.listeners.click({ target: { closest: s => (s === '#worlds-folder' ? {} : null) } });
+  await p.settle();
+  assert.deepEqual(p.calls.filter(c => c[0] === 'notice'), [['notice', 'Finder could not show it.']]);
+});
+
+test('a list that did not load does not make the saved world look gone: the choice is kept (the farm shows meanwhile)', async () => {
+  const down = await page({ stored: { 'tracker-world': 'u/space' }, listFails: true });
+  assert.equal(down.frame.src, '/world/farm/');
+  assert.equal(down.stored['tracker-world'], 'u/space', 'kept for when the collector answers');
+  const there = await page({ stored: { 'tracker-world': 'u/space' } });
+  assert.equal(there.frame.src, '/world/u/space/');
+});
+
+test('choosing the world already showing just closes the list: its frame, with what it remembers, stays', async () => {
+  const p = await page({ dialog: true });
+  await p.farm.openList();
+  p.dlg.listeners.click({ target: { closest: s => (s === '[data-world]' ? { dataset: { world: 'farm' } } : null) } });
+  assert.ok(!p.dlg.open);
+  assert.equal(p.frames.length, 1, 'no new frame');
+  p.worlds.choose('u/space');
+  p.worlds.choose('u/space');
+  assert.equal(p.frames.length, 2);
+});
+
+test("a second world's first warnings are not muted by the first world's", async () => {
+  const p = await page();
+  p.from({ type: 'loaded' });
+  p.from({ type: 'error', message: 'boom', where: 'a.js:1' });
+  p.from({ type: 'bogus' });
+  p.worlds.choose('u/space');
+  p.from({ type: 'loaded' });
+  p.from({ type: 'error', message: 'boom', where: 'a.js:1' });
+  p.from({ type: 'bogus' });
+  assert.equal(p.warnings.filter(w => /boom/.test(w)).length, 2);
+  assert.equal(p.warnings.filter(w => /does not accept/.test(w)).length, 2);
+});
+
+test('the timers a page set are there to fire: timeouts is the record, wait(ms) fires the due ones', async () => {
+  const p = await page();
+  p.from({ type: 'loaded' });
+  p.from({ type: 'diary', entries: [{ at: NOW, state: 'working', who: 'a', text: 'one' }] });
+  p.from({ type: 'diary', entries: [{ at: NOW, state: 'working', who: 'a', text: 'two' }] });
+  assert.ok(p.timeouts.some(t => t.fn), 'the second drawing waits for its turn');
+  p.wait(250);
+  assert.match(p.diary.innerHTML, /two/);
 });

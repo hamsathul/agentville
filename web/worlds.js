@@ -33,7 +33,8 @@
     return m < 1 ? 'now' : m < 60 ? `${Math.round(m)}m` : m < 1440 ? `${Math.round(m / 60)}h` : `${Math.round(m / 1440)}d`;
   };
   // Text from a world's folder is written by whoever wrote the world: escaped, and without the characters that turn text around.
-  const words = s => esc(String(s ?? '').replace(/[\u202a-\u202e\u2066-\u2069]/g, ''));
+  const noBidi = s => String(s ?? '').replace(/[\u202a-\u202e\u2066-\u2069]/g, '');
+  const words = s => esc(noBidi(s));
   const prefKey = (world, name) => `tracker-world:${world}:${name}`;
   const short = (v, max) => typeof v === 'string' && v.length > 0 && v.length <= max;
   /** Inside a folder (or the folder itself), with no `..` on the way. */
@@ -260,14 +261,15 @@
   let token = null, worldsInfo = [FARM], folder = null, info = FARM;
   /** The worlds there are (the collector's list), and the one to show. */
   async function resolveWorld() {
+    let listed = false;
     try {
       const r = await fetch('/api/worlds', { headers: { 'x-tracker-token': token } });
       const body = r.ok ? await r.json() : null;
-      if (Array.isArray(body?.worlds) && body.worlds.length) { worldsInfo = body.worlds; folder = body.folder ?? null; }
+      if (Array.isArray(body?.worlds) && body.worlds.length) { worldsInfo = body.worlds; folder = body.folder ?? null; listed = true; }
     } catch { /* the collector is away: the farm */ }
     const saved = browserStore.get(CHOICE);
     const pick = worldsInfo.find(w => w.key === saved && !w.error) ?? worldsInfo.find(w => w.key === 'farm') ?? FARM;
-    if (saved && pick.key !== saved) browserStore.remove(CHOICE);
+    if (listed && saved && pick.key !== saved) browserStore.remove(CHOICE); // forgotten only when the list really loaded
     return pick;
   }
   /** The world to show, for the view toggle before the world is ever opened. */
@@ -283,6 +285,7 @@
     browserStore.set(CHOICE, key);
     info = w;
     opts.onWorld?.(w);
+    if (key === world && frame) return; // the one already showing: its frame, and all it remembers, stay
     if (host) createFrame(w.key);
   }
   function createFrame(key) {
@@ -295,7 +298,10 @@
     for (const { timer: t } of waitingAct.values()) clearTimeout(t);
     waitingAct.clear();
     if (diary.length) { diary = []; renderDiary(opts.diary, diary); } // the last world's diary goes with it
-    frame =document.createElement('iframe');
+    dropped.clear(); // the next world's first warnings are said too
+    errorsSeen.clear();
+    storeRefused = false;
+    frame = document.createElement('iframe');
     frame.className = 'world-frame';
     frame.setAttribute('sandbox', 'allow-scripts');
     frame.title = info.name;
@@ -357,13 +363,24 @@
         <span class="world-text"><span><b>${words(w.name)}</b> <span class="chip">${w.builtIn ? 'Built in' : 'Your folder'}</span></span>${w.description ? `<span class="muted">${words(w.description)}</span>` : ''}${w.error ? `<span class="warnline">${words(w.error)}</span>` : ''}</span>
       </button></li>`).join('');
     const where = $('worlds-where');
-    if (where) where.textContent = folder ? `Your worlds go in ${String(folder).replace(/[‪-‮⁦-⁩]/g, '')}` : '';
+    if (where) where.textContent = folder ? `Your worlds go in ${noBidi(folder)}` : '';
   }
   function onListClick(e) {
     const pick = e.target.closest?.('[data-world]');
     if (pick) { $('worlds-dlg').close(); choose(pick.dataset.world); return; }
     if (e.target.closest?.('[data-worlds-close]')) { $('worlds-dlg').close(); return; }
-    if (e.target.closest?.('#worlds-folder')) void fetch('/api/actions/reveal-worlds', { method: 'POST', headers: { 'x-tracker-token': token, 'content-type': 'application/json' }, body: '{}' }).catch(() => {});
+    if (e.target.closest?.('#worlds-folder')) void revealFolder();
+  }
+  /** Open the worlds folder: the collector makes it and shows it in Finder; if it can't, the page says why. */
+  async function revealFolder() {
+    const say = text => (opts.onNotice ? opts.onNotice(text) : console.warn(text));
+    try {
+      const r = await fetch('/api/actions/reveal-worlds', { method: 'POST', headers: { 'x-tracker-token': token, 'content-type': 'application/json' }, body: '{}' });
+      const body = await r.json().catch(() => null);
+      if (!r.ok || !body?.ok) say(noBidi(body?.error ?? 'The worlds folder could not be opened.'));
+    } catch {
+      say('The worlds folder could not be opened: the collector did not answer.');
+    }
   }
   function update(snap) {
     scene = window.AgentvilleScene.toScene(snap);

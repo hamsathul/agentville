@@ -458,9 +458,9 @@ The **⚙ Claude Code** button in the top bar opens your Claude Code setup in th
 
 ### Worlds
 
-A world is a way to draw what the dashboard knows; the farm is the built-in one. The view toggle
-in the top bar (next to **List**) shows the name of the world you are looking at. Click it again for
-the list of worlds, and pick one. Each world keeps its own zoom and settings, and the choice is
+A world is a way to draw what the dashboard knows; the farm is the built-in one. **World**, in the
+farm's buttons at the top, opens the list of worlds: pick one. The view toggle in the list view's top
+bar carries the name of the world you will see. Each world keeps its own zoom and settings, and the choice is
 kept in this browser. If the world you chose has gone, or has something wrong with it, the dashboard
 opens on the farm instead and forgets the choice. **Open the worlds folder** in the list makes your
 folder if it is not there yet and shows it in Finder.

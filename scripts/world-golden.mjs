@@ -26,7 +26,7 @@ const VIEWS = [
   { name: 'night', stored: { 'tracker-farm-sky': 'night' } },
   { name: 'zoomed', stored: { 'tracker-farm-sky': 'day', 'tracker-farm-zoom': '2' } },
   { name: 'sidebar', stored: { 'tracker-farm-sky': 'day', 'tracker-farm-side': 'open' } },
-  { name: 'worlds', stored: { 'tracker-farm-sky': 'day' }, onPage: "document.getElementById('view-farm').click(); true", pageReady: "document.getElementById('worlds-dlg').open && document.querySelectorAll('.world-pick').length > 0" },
+  { name: 'worlds', stored: { 'tracker-farm-sky': 'day' }, onPage: "document.querySelector('[data-farm-nav=\"worlds\"]').click(); true", pageReady: "document.getElementById('worlds-dlg').open && document.querySelectorAll('.world-pick').length > 0" },
   { name: 'closeup', stored: { 'tracker-farm-sky': 'day' }, then: "document.querySelector('[data-farm-field$=\"/shop/web\"]').click(); true", ready: "document.querySelectorAll('.fv-f').length > 0" },
 ];
 // Before any script of the page or a frame runs: one moment in time, and the same "random" numbers.
@@ -85,7 +85,7 @@ try {
       if (!(await until(() => farm(v.ready)))) { failures.push(`${v.name}: ${v.ready} never came true`); continue; }
     }
     if (v.onPage) {
-      await chrome.js(v.onPage);
+      await farm(v.onPage); // clicked in the farm's own buttons, as a person would
       if (!(await until(() => chrome.js(v.pageReady)))) { failures.push(`${v.name}: ${v.pageReady} never came true`); continue; }
     }
     await sleep(1500); // the pixel font's images, the close-up's first frame

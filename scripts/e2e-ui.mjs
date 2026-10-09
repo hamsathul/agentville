@@ -631,14 +631,16 @@ try {
   check(answered?.answers?.['Which crop next?'] === 'Pumpkins', 'the session received the answer');
 
   console.log('Worlds');
-  await js("document.getElementById('view-farm').click()");
-  check(await until("document.getElementById('worlds-dlg').open && /Farm[\\s\\S]*Built in[\\s\\S]*Sample[\\s\\S]*Your folder/.test(document.getElementById('worlds-list').textContent)"), 'clicking the view toggle again lists the worlds: the farm, built in, and one of yours');
+  check(await funtil("!!document.querySelector('[data-farm-nav=\"worlds\"]')"), "the farm's buttons include World");
+  await fjs("document.querySelector('[data-farm-nav=\"worlds\"]').click()");
+  check(await until("document.getElementById('worlds-dlg').open && /Farm[\\s\\S]*Built in[\\s\\S]*Sample[\\s\\S]*Your folder/.test(document.getElementById('worlds-list').textContent)"), 'World, in the farm buttons, lists the worlds: the farm, built in, and one of yours');
   await js("document.querySelector('[data-world=\"u/sample\"]').click()");
   check(await until("document.querySelector('#farm .world-frame')?.src.endsWith('/world/u/sample/')"), 'picking one shows it');
   check(await funtil("!!document.querySelector('#farm canvas') && document.querySelectorAll('.px-tag').length > 0"), 'a world made of three hooks draws, with the engine doing the rest');
   check(await until("/Sample/.test(document.getElementById('view-farm').textContent) && localStorage.getItem('tracker-world') === 'u/sample'"), 'the toggle says its name, and the choice is kept');
   check(await js("document.querySelector('#farm-diary-pane .sec').textContent === 'Lab book'"), "the diary takes the world's own word for it");
-  await js("document.getElementById('view-farm').click()");
+  await funtil("!!document.querySelector('[data-farm-nav=\"worlds\"]')");
+  await fjs("document.querySelector('[data-farm-nav=\"worlds\"]').click()"); // the sample world's buttons are the engine's: World is there too
   await until("document.getElementById('worlds-dlg').open");
   await js("document.querySelector('[data-world=\"farm\"]').click()");
   check(await until("document.querySelector('#farm .world-frame')?.src.endsWith('/world/farm/') && /Farm/.test(document.getElementById('view-farm').textContent)"), 'and back to the farm');

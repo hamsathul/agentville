@@ -104,7 +104,7 @@ async function quickLookPicture(real) {
   }
 }
 
-export async function startCollector({ root, claudeDir = join(homedir(), '.claude'), claudeBin = 'claude', home = homedir(), scratchBase = `/private/tmp/claude-${process.getuid?.() ?? 0}`, port: portOverride, deliveryTimeoutMs = 5000, notify = notifyMac, launch = args => run('osascript', args, { timeoutMs: 15_000 }), sessionProcs = systemProcs, endWaitMs = 8000, readProcs = readPs, deployStatusOf = deployStatus, pullRequestsOf = pullRequests, githubSlugOf = githubSlug, ticketMs = 600_000, quickLook = quickLookPicture, folderRoots = [home, '/Volumes'], chooseFolder = chooseFolderMac, stopWaitMs = 3000, revealFile = real => run('open', ['-R', real], { timeoutMs: 10_000 }), openFolder = dir => run('open', [dir], { timeoutMs: 10_000 }), log = makeLogger(join(root, 'logs')) }) {
+export async function startCollector({ root, claudeDir = join(homedir(), '.claude'), claudeBin = 'claude', home = homedir(), scratchBase = `/private/tmp/claude-${process.getuid?.() ?? 0}`, port: portOverride, deliveryTimeoutMs = 5000, notify = notifyMac, launch = args => run('osascript', args, { timeoutMs: 15_000 }), sessionProcs = systemProcs, endWaitMs = 8000, readProcs = readPs, deployStatusOf = deployStatus, pullRequestsOf = pullRequests, githubSlugOf = githubSlug, ticketMs = 600_000, quickLook = quickLookPicture, folderRoots = [home, '/Volumes'], chooseFolder = chooseFolderMac, stopWaitMs = 3000, revealFile = real => run('open', ['-R', real], { timeoutMs: 10_000 }), openFolder = dir => run('open', ['-a', 'Finder', dir], { timeoutMs: 10_000 }), log = makeLogger(join(root, 'logs')) }) {
   // readProcs, deployStatusOf, pullRequestsOf and githubSlugOf read the machine and GitHub; a test or the demo video passes stand-ins.
   const stateDir = join(root, 'state');
   const pendingDir = join(stateDir, 'pending');
@@ -1069,7 +1069,8 @@ export async function startCollector({ root, claudeDir = join(homedir(), '.claud
     /** Your worlds folder in Finder, made first so there is one to show. */
     async revealWorlds() {
       try { mkdirSync(worldsDir, { recursive: true }); } catch (err) { return { ok: false, error: `Could not make ${worldsDir}: ${err.message}` }; }
-      await openFolder(worldsDir);
+      const r = await openFolder(worldsDir); // Finder, by name: a worldsDir that names an app is shown, never launched
+      if (r.code !== 0) return { ok: false, error: 'Finder could not show the worlds folder.' };
       return { ok: true, path: worldsDir };
     },
     /** Turns an installed plugin on or off, updates or uninstalls it (claude plugin …). */

@@ -786,6 +786,7 @@
     spring: ['.........', '.gg...gg.', '.ggg.ggg.', '..gg.gg..', '....g....', '....g....', '....g....', '..kkkkk..', '.........'],
     autumn: ['......oo.', '....oooo.', '..ooooo..', '.ooooo...', '.oooo....', '.ooo.....', '.k.......', 'k........', '.........'],
     list: ['.........', 'kk.kkkkkk', '.........', 'kk.kkkkkk', '.........', 'kk.kkkkkk', '.........', '.........', '.........'],
+    world: ['..kkkkk..', '.kbbgbbk.', 'kbgggbbbk', 'kbbggbgbk', 'kbbbbbggk', 'kgbbbbbbk', 'kggbbgbbk', '.kbbgbbk.', '..kkkkk..'],
     plus: ['....k....', '....k....', '....k....', 'kkkkkkkkk', '....k....', '....k....', '....k....', '.........', '.........'],
     gear: ['....k....', '.k.kkk.k.', '..kkkkk..', '.kkk.kkk.', 'kkk...kkk', '.kkk.kkk.', '..kkkkk..', '.k.kkk.k.', '....k....'],
     side: ['kkkkkkkkk', 'k...kyyyk', 'k...kyyyk', 'k...kyyyk', 'k...kyyyk', 'k...kyyyk', 'kkkkkkkkk', '.........', '.........'],
@@ -1052,6 +1053,7 @@
           </div>
           <div class="px-nav">
             ${navBtn('list', 'list', 'LIST', 'Back to the list view')}
+            ${navBtn('worlds', 'world', 'WORLD', 'Choose a world')}
             ${navBtn('session', 'plus', 'SESSION', 'Start a new Claude Code session in a folder, or resume a past one')}
             ${navBtn('setup', 'gear', 'CLAUDE CODE', 'Your Claude Code setup: plugins and skills (and what each costs in context), MCP servers, permission rules')}
             ${navBtn('side', 'side', 'SIDEBAR', "Show the selected farmer's answer box, activity and files beside the farm", Boolean(nav.side))}

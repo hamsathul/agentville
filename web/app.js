@@ -172,7 +172,7 @@ function setView(next, { remember = true } = {}) {
     window.TrackerFarm.mount($('farm'), {
       token: TOKEN, diary: $('farm-diary'), onPickAgent: pickFromFarm, onOpenDoc: openDocFromFarm, onShowRepos: showReposFromFarm, onStartSession: () => $('sessions-open').click(), onBell: bellSwitched,
       // the top bar's buttons, on the farm
-      onWorld: showWorld,
+      onWorld: showWorld, onNotice: notice,
       onNav: what => ({ list: () => setView('list'), worlds: () => window.TrackerFarm.openList?.(), session: () => $('sessions-open').click(), setup: () => openSetup(), side: () => setFarmSide(!farmSide), theme: () => $('theme-toggle').click() })[what]?.(),
       navState: () => ({ theme, side: farmSide, live: !$('live').classList.contains('off') }),
     });
@@ -227,11 +227,12 @@ function showWorld(w) {
   w ??= shownWorld;
   if (!w) return;
   shownWorld = w;
-  $('view-farm').textContent = `${w.icon} ${w.name}`;
-  $('view-farm').dataset.tip = view === 'farm' ? 'Choose another world' : `The ${w.name} view`;
-  const title = document.querySelector('#farm-diary-pane .sec');
-  if (title) title.textContent = w.nouns?.diary ?? 'Diary';
-  $('farm-diary-pane').setAttribute('aria-label', w.nouns?.diary ?? 'Diary');
+  const plain = s => String(s ?? '').replace(/[‪-‮⁦-⁩]/g, ''); // a stranger's text can't turn the toggle around
+  $('view-farm').textContent = `${plain(w.icon)} ${plain(w.name)}`;
+  $('view-farm').dataset.tip = view === 'farm' ? 'Choose another world' : `The ${plain(w.name)} view`;
+  const title = document.querySelector('#farm-diary-pane .sec'), noun = plain(w.nouns?.diary) || 'Diary';
+  if (title) title.textContent = noun;
+  $('farm-diary-pane').setAttribute('aria-label', noun);
 }
 /** A farmer was clicked: show it in the farm's sidebar, where it can be answered or messaged. */
 async function pickFromFarm(id, { from } = {}) {

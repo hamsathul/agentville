@@ -1120,3 +1120,27 @@ test('files that are not text: a short-lived link to the bytes, for one file or 
     await handle.stop();
   }
 });
+
+test('Open the worlds folder makes the folder, opens it in Finder only, and says when that fails', async () => {
+  const root = mkdtempSync(join(tmpdir(), 'tracker-root-worlds-'));
+  mkdirSync(join(root, 'web'));
+  writeFileSync(join(root, 'web', 'index.html'), '<html></html>');
+  const worldsDir = join(realpathSync(mkdtempSync(join(tmpdir(), 'tracker-worlds-'))), 'mine');
+  writeFileSync(join(root, 'config.json'), JSON.stringify({ port: 0, deployRepos: {}, worldsDir }));
+  const claudeDir = mkdtempSync(join(tmpdir(), 'tracker-claude-worlds-'));
+  const opened = [];
+  let code = 0;
+  const handle = await startCollector({ root, claudeDir, claudeBin: '/usr/bin/false', notify: () => {}, log: () => {}, home: '/nowhere',
+    openFolder: async dir => { opened.push(dir); return { code }; } });
+  try {
+    assert.deepEqual(await handle.actions.revealWorlds(), { ok: true, path: worldsDir });
+    assert.ok(existsSync(worldsDir), 'the folder is made');
+    assert.deepEqual(opened, [worldsDir]);
+    code = 1;
+    const failed = await handle.actions.revealWorlds();
+    assert.equal(failed.ok, false);
+    assert.match(failed.error, /Finder/);
+  } finally {
+    await handle.stop();
+  }
+});
