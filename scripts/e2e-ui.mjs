@@ -534,6 +534,22 @@ try {
   check(!/ui-asker/.test(bubbles) && (bubbles.match(/ui-done/g) ?? []).length === 2, `it stays closed while the agent says nothing new; the others stay (now: ${bubbles})`);
   await js(`document.querySelector('.px-say-min[data-say="ui-asker"] [data-say-open]').click()`);
   check(await until(`!!document.querySelector('.px-say[data-say="ui-asker"]') && !document.querySelector('.px-say-min')`), 'the 💬 shows the bubble again');
+  const sideBefore = await js("document.getElementById('main').dataset.side");
+  await js(`document.querySelector('.px-say[data-say="ui-done-a"] span').click()`);
+  check(await until("document.getElementById('convo').open && /I updated the README and the changelog/.test(document.getElementById('convo-body').textContent)"), "clicking a farmer's speech bubble opens its whole conversation over the farm");
+  await js("document.getElementById('convo').close()");
+  await js(`document.querySelector('.px-say[data-say="ui-asker"] span').click()`);
+  check(await until("!document.getElementById('convo').open && /Which crop next\\?/.test(document.getElementById('farm-agent')?.textContent ?? '')"), 'a bubble waiting on you opens the sidebar instead, where you answer it');
+  if (sideBefore !== 'open') { // the sidebar as it was, for the size checks that follow
+    await js("document.getElementById('side-toggle').click()");
+    await until("document.getElementById('main').dataset.side === 'closed'");
+  }
+  for (let i = 0, last = ''; i < 20; i++) { // the farm refits its frame: wait until it holds still
+    const now = await js("document.querySelector('#farm canvas').style.width + '|' + document.querySelector('#farm .px-view').getBoundingClientRect().width");
+    if (now === last) break;
+    last = now;
+    await sleep(250);
+  }
   const width = () => js("parseFloat(document.querySelector('#farm canvas').style.width)");
   const frameBox = () => js("JSON.stringify((({ left, top, width, height }) => [left, top, width, height].map(Math.round))(document.querySelector('#farm .px-view').getBoundingClientRect()))");
   const view = expr => js(`(v => ${expr})(document.querySelector('#farm .px-view'))`);

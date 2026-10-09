@@ -544,7 +544,11 @@ can hold.
 
 **Click things.** Click a farmer to open its sidebar, with Agent, Activity, Subagents (its
 subagents' cards, as in the list), Files and Diary tabs, or a field for a close-up of the files
-agents touched there. A file you open from the farm, from its Files tab or a close-up, opens in a
+agents touched there. Click a farmer's speech bubble to read its whole conversation over the farm
+(⤢ Read all, with search and a message box), the farmer picked in the sidebar behind it. A bubble
+waiting on you (a question or a permission prompt), or asking a question you can answer with a
+button, opens the sidebar instead, where you answer it. (A bubble's tooltip still says it opens the
+sidebar; it is updated when the farm moves into the worlds platform.) A file you open from the farm, from its Files tab or a close-up, opens in a
 dialog over the farm, with Quote and the reply box as in the list. Click a building for the rest:
 
 | Building | Opens |

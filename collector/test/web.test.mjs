@@ -1045,20 +1045,31 @@ test('a long message shows its preview and "Show the whole message", which loads
   assert.doesNotMatch(page.side(), /Show the whole message/);
 });
 
-test('clicking a cut-off speech bubble opens the sidebar with the whole message loaded; a farmer click does not', async () => {
-  const full = `Start\n\n${'w'.repeat(700)} THE END`;
-  const preview = { at: Date.now() - 2000, kind: 'reply', text: 'Start', body: `${full.slice(0, 600)}…`, more: true };
+test('clicking a speech bubble opens the whole conversation over the farm, its farmer picked in the sidebar behind it; a farmer click opens the sidebar only', async () => {
+  const said = { at: Date.now() - 2000, kind: 'reply', text: 'Start', body: 'Start of a long reply…', more: true };
   const f = fakeFarm();
-  const page = loadPage({ farm: f.farm, stored: { 'tracker-view': 'farm' }, feeds: { r1: [{ ...preview, body: full, more: undefined }] } });
-  page.push(richSnapshot([richAgent({ mod: { version: '0.3.1', live: true }, feed: [preview] })]));
+  const page = loadPage({ farm: f.farm, stored: { 'tracker-view': 'farm' }, replies: { '/api/agent/r1/conversation': { total: 1, from: 0, items: [{ at: said.at, kind: 'reply', body: 'Start of a long reply, THE END' }] } } });
+  page.push(richSnapshot([richAgent({ mod: { version: '0.7.0', live: true }, feed: [said] })]));
   f.pick('r1');
   await page.settle();
-  assert.ok(!page.gets.some(g => g.path.startsWith('/api/agent/r1/feed')), 'a farmer click shows the preview only');
-  assert.doesNotMatch(page.el('farm-agent').innerHTML, /THE END/);
+  assert.notEqual(page.el('convo').open, true, 'a farmer click opens the sidebar, not the conversation');
   f.pickSay('r1');
   await page.settle();
-  assert.match(page.el('farm-agent').innerHTML, /THE END/);
-  assert.doesNotMatch(page.el('farm-agent').innerHTML, /Show the whole message/);
+  assert.equal(page.el('convo').open, true);
+  assert.match(page.el('convo-body').innerHTML, /THE END/);
+  assert.ok(f.farm && page.el('farm-agent').innerHTML.includes('busy-one'), 'its farmer is the one in the sidebar behind it');
+});
+
+test('a bubble waiting on you, or asking a question you answer with a button, opens the sidebar where you answer; so does a Codex one', async () => {
+  for (const over of [{ state: 'waiting', stateReason: 'question pending' }, { question: 'Shall I push it?' }, { kind: 'codex' }]) {
+    const f = fakeFarm();
+    const page = loadPage({ farm: f.farm, stored: { 'tracker-view': 'farm' } });
+    page.push(richSnapshot([richAgent({ mod: { version: '0.7.0', live: true }, feed: [{ at: Date.now() - 2000, kind: 'reply', text: 'Done.', body: 'Done.' }], ...over })]));
+    f.pickSay('r1');
+    await page.settle();
+    assert.notEqual(page.el('convo').open, true, JSON.stringify(over));
+    assert.match(page.el('farm-agent').innerHTML, /busy-one/, JSON.stringify(over));
+  }
 });
 
 test('the farm sidebar shows the question card too', () => {

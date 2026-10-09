@@ -221,14 +221,22 @@ function farmSideHtml(a) {
     ${conversationHtml(a)}`;
 }
 
-/** A farmer was clicked: show it in the farm's sidebar, where it can be answered or messaged. */
+/** A farmer was clicked: show it in the farm's sidebar, where it can be answered or messaged; its speech bubble: its conversation. */
 async function pickFromFarm(id, { from } = {}) {
   if (selected !== id) openChildren.clear();
   selected = id;
   farmTab = 'agent';
   save('tracker-farm-tab', farmTab);
+  const agent = snap?.agents.find(a => a.id === id);
+  // A speech bubble opens the whole conversation over the farm (its farmer picked behind it), unless
+  // it waits on you or asks something answered with a button: that is done in the sidebar.
+  if (from === 'say' && agent && agent.kind !== 'codex' && agent.state !== 'waiting' && !agent.question) {
+    if (farmSide) { applyFarmSide(); render(); }
+    await openConversation(id);
+    return;
+  }
   // A speech bubble only shows the start of a message: when its reply was cut, open the sidebar with it whole.
-  const reply = snap?.agents.find(a => a.id === id)?.feed?.find(f => f.kind === 'reply');
+  const reply = agent?.feed?.find(f => f.kind === 'reply');
   if (from === 'say' && reply?.more && !fullFeeds.has(id)) await loadFullFeed(id);
   if (farmSide) { applyFarmSide(); render(); }
   else setFarmSide(true);
