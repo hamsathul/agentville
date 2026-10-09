@@ -5,9 +5,14 @@
 (() => {
   'use strict';
 
-  // No WebRTC: setting up a connection sends packets to any host a world names, and no CSP stops that
-  // (Chrome). Taken away before the world's script runs, for good: undefined, and it can't be put back.
-  // (A frame the world makes is another origin, so it can't hand the world a fresh one either.)
+  // WebRTC can reach another machine, and no CSP stops it (Chrome ignores a `webrtc` directive). So in
+  // this page, before the world's script runs, these are made undefined, not writable, not configurable:
+  // the straightforward way is gone, and a world can't put them back. This does NOT fully close WebRTC:
+  // a world could reach a fresh realm the bridge never touched (a child browsing context it makes), where
+  // these are intact. It is a gap, documented like the connection-hint one (docs/worlds.md, "The gaps").
+  // Checked (Chrome 154): of the WebRTC entry points, RTCPeerConnection and webkitRTCPeerConnection are
+  // the constructible ones; RTCDataChannel, RTCRtpTransceiver and RTCIceTransport are not constructible
+  // (locked anyway, if present, in case that changes).
   for (const name of ['RTCPeerConnection', 'webkitRTCPeerConnection', 'RTCIceTransport']) {
     if (name in window) Object.defineProperty(window, name, { value: undefined, writable: false, configurable: false });
   }

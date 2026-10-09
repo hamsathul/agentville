@@ -747,7 +747,30 @@ try {
   await js("document.querySelector('[data-world=\"u/sample\"]').click()");
   check(await until("document.querySelector('#farm .world-frame')?.src.endsWith('/world/u/sample/')"), 'picking one shows it');
   check(await funtil("!!document.querySelector('#farm canvas') && document.querySelectorAll('.px-tag').length > 0"), 'a world made of three hooks draws, with the engine doing the rest');
-  check(await js("!document.querySelector('#farm .world-corner')"), "an engine world has the dashboard's buttons: no corner control");
+  // A world of yours gets the page's corner even when it uses the engine; it sits clear of the engine's own buttons.
+  check(await until("!!document.querySelector('#farm .world-corner')"), 'a world of yours gets the page corner, engine or not');
+  const [cornerBox, navBox] = [
+    JSON.parse(await js("JSON.stringify((r => [r.left, r.top, r.right, r.bottom])(document.querySelector('#farm .world-corner').getBoundingClientRect()))")),
+    JSON.parse(await (async () => { const [fx, fy] = await frameAt(); return fjs(`JSON.stringify((r => [${fx} + r.left, ${fy} + r.top, ${fx} + r.right, ${fy} + r.bottom])(document.querySelector('.px-nav').getBoundingClientRect()))`); })()),
+  ];
+  check(cornerBox[2] <= navBox[0] + 1 || cornerBox[3] <= navBox[1] + 1 || cornerBox[0] >= navBox[2] - 1 || cornerBox[1] >= navBox[3] - 1, `the corner doesn't cover the engine's HUD buttons (corner ${JSON.stringify(cornerBox)}, nav ${JSON.stringify(navBox)})`);
+  // In a narrow window, an error strip (over the world, top centre) still leaves the corner clear.
+  await send('Emulation.setDeviceMetricsOverride', { width: 760, height: 900, deviceScaleFactor: 1, mobile: false });
+  await sleep(400);
+  const stripClear = await js(`(() => {
+    const host = document.querySelector('#farm'), corner = host.querySelector('.world-corner');
+    const strip = document.createElement('div'); strip.className = 'world-strip';
+    strip.innerHTML = '<span><b>Sample:</b> a long error message, as wide as the strip will ever grow, to crowd the corner</span><button class="x">×</button>';
+    host.append(strip);
+    const a = corner.getBoundingClientRect(), b = strip.getBoundingClientRect();
+    const over = Math.min(a.right, b.right) - Math.max(a.left, b.left) > 1 && Math.min(a.bottom, b.bottom) - Math.max(a.top, b.top) > 1;
+    const info = JSON.stringify({ corner: [Math.round(a.left), Math.round(a.right)], strip: [Math.round(b.left), Math.round(b.right)] });
+    strip.remove();
+    return JSON.stringify({ over, info });
+  })()`);
+  check(!JSON.parse(stripClear).over, `an error strip leaves room for the corner in a narrow window (${JSON.parse(stripClear).info})`);
+  await send('Emulation.setDeviceMetricsOverride', { width: 1400, height: 950, deviceScaleFactor: 1, mobile: false });
+  await sleep(400);
   check(await until("/Sample/.test(document.getElementById('view-farm').textContent) && localStorage.getItem('tracker-world') === 'u/sample'"), 'the toggle says its name, and the choice is kept');
   check(await js("document.querySelector('#farm-diary-pane .sec').textContent === 'Lab book'"), "the diary takes the world's own word for it");
   await js("window.__sampleFrame = document.querySelector('#farm .world-frame'); true");
@@ -784,12 +807,15 @@ try {
   // Its tries can end before its first scene comes (a world draws once first): wait for both.
   check(await until("(t => /probe\\s*done/.test(t) && /private: /.test(t))(document.getElementById('farm-diary').textContent)", 20_000), `the probe world tried every way out (its diary: ${await js("document.getElementById('farm-diary').textContent")})`);
   const diaryText = await js("document.getElementById('farm-diary').textContent");
-  for (const way of ['fetch', 'events', 'parent', 'top', 'storage', 'cookie', 'token', 'frame', 'image', 'popup', 'webrtc']) check(new RegExp(`${way}: blocked`).test(diaryText), `a world can't get out by ${way} (${diaryText.match(new RegExp(`${way}: (ALLOWED|blocked( \\([^)]*\\))?)`))?.[0] ?? 'not tried'})`);
+  const label = { webrtc: 'webrtc (off in the world\'s own page)' };
+  for (const way of ['fetch', 'events', 'parent', 'top', 'storage', 'cookie', 'token', 'frame', 'image', 'popup', 'webrtc']) check(new RegExp(`${way}: blocked`).test(diaryText), `a world can't get out by ${label[way] ?? way} (${diaryText.match(new RegExp(`${way}: (ALLOWED|blocked( \\([^)]*\\))?)`))?.[0] ?? 'not tried'})`);
   check(!/ALLOWED/.test(diaryText), `nothing got out (${diaryText.match(/\w+: ALLOWED/g)?.join(', ') ?? 'none'})`);
   check(elsewhereHeard.length === 0, `no request reached the server elsewhere (${JSON.stringify(elsewhereHeard)})`);
-  check(udpHeard.length === 0, `no packet reached the STUN listener elsewhere (${JSON.stringify(udpHeard)})`);
-  // The documented gap (docs/worlds.md, "The gaps"): said, never failed on.
+  check(udpHeard.length === 0, `no STUN packet reached the listener elsewhere from the world's own page (${JSON.stringify(udpHeard)})`);
+  // The documented gap (docs/worlds.md, "The gaps"): said, never failed on. But the shape of the gap is
+  // checked: a preconnect opens a bare connection, and nothing is ever sent over it (no request line).
   console.log(`  gap   preconnect: ${tcpHeard.length ? `reached elsewhere (${tcpHeard.join(', ')}): the documented gap` : 'did not reach elsewhere this time'}`);
+  check(tcpHeard.every(x => x === 'a connection'), `a preconnect sends no request over its connection, only opens it (${JSON.stringify(tcpHeard)})`);
   check(await js(`new Promise(r => { const i = new Image(); i.onload = () => r(true); i.onerror = () => r(false); i.src = ${JSON.stringify(`${ELSEWHERE}/picture.svg?from=page`)}; })`),
     "the same picture loads in the page itself: the world's frame is what stops it, not the network");
   check(/private: yes/.test(diaryText), 'one of your worlds sees no words or paths by default');

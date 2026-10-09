@@ -6,8 +6,9 @@ reference for what a world gets from the dashboard and what it can do.
 ## What a world is
 
 Each world runs in a sandboxed frame of its own, loaded from `/world/<key>/`. The frame has no token,
-no cookies, no storage, no requests of its own and no WebRTC (see "What a world can't do", and "The
-gaps" for what browsers still allow). It sees only the **scene** (below), which the page builds from
+no cookies and no storage, and can't fetch, post or upload anything (see "What a world can't do", and
+"The gaps" for what a frame can still do that the page can't fully close). It sees only the **scene**
+(below), which the page builds from
 each snapshot, and it reaches the page only through the **messages** below. The page checks every
 message, and drops anything else.
 
@@ -261,7 +262,7 @@ from the page only, and the page from its current frame only.
 
 | Message | What the page does |
 |---|---|
-| `loaded { raw? }` | The world has registered: the page sends `start`, then the newest scene and the selection. `raw: true` (the bridge adds it for a world registered with `Agentville.raw`) gets the world the page's corner control (see "Give a way back"). The page builds a new frame for every load, and takes `loaded` once from each: an extra one is dropped, `raw` and all. Replies to an earlier frame's requests are not posted to the new one, and the paths they named are forgotten |
+| `loaded { raw? }` | The world has registered: the page sends `start`, then the newest scene and the selection. `raw: true` (the bridge adds it for a world registered with `Agentville.raw`, not by the engine) is one of two things the page weighs for the corner control — see "Give a way back". The page builds a new frame for every load, and takes `loaded` once from each: an extra one is dropped, `raw` and all. Replies to an earlier frame's requests are not posted to the new one, and the paths they named are forgotten |
 | `ready` | The world has started: the page stops waiting for it (see "When a world breaks") |
 | `leaving` | Sent by the bridge itself (`beforeunload` / `pagehide`, captured at load through the page it first saw): the document is going away. The page stops the world at once, with a panel |
 | `error { message, where }` | Shows it (300 and 120 characters at most): before `ready`, in the panel that replaces a world that doesn't start; after it, in a strip over the world. Also written to the page's console, each once (50 at most) |
@@ -343,15 +344,18 @@ errors thrown by `start`, `scene` or `select` reach the page as `error`, each on
 `world.js` that registers nothing is reported too.
 
 **Give a way back.** While a world shows, the page hides its own top bar: the world fills the
-window. So the page gives a world registered with `Agentville.raw` a small control of its own, in
-the top right corner over the frame: **World ▾** opens the list of worlds (as `nav { what: 'worlds'
-}` does) and **☰ List** goes to the list view (as `nav { what: 'list' }`). It is the page's, not the
-frame's, so nothing the world draws can cover it, and it goes with the frame. Drawing your own List
-and World buttons as well is optional. An engine world (`Agentville.world`) gets no corner: its HUD
-has the dashboard's buttons (the `hud` hook's default has List, World and Sidebar), so a world that
-gives its own `hud` should keep a List and a World button (`data-farm-nav="list"` and
-`data-farm-nav="worlds"`, as the farm's do). The engine registers through the bridge as
-`Agentville.raw(handlers, { engine: true })`, which is what tells the page apart.
+window. So the **page itself** (not the frame) puts a small control in the top left corner over the
+frame — **World ▾** opens the list of worlds (as `nav { what: 'worlds' }` does) and **☰ List** goes
+to the list view (as `nav { what: 'list' }`) — whenever a world might draw none of its own. The
+page decides who gets it, not the world's own report: **every world of yours** (`u/<name>`), engine
+or not, and a **built-in** world only when it draws itself with `Agentville.raw`. Nothing the world
+draws can cover it, and it goes with the frame (another world, a reload, a panel). It sits top left,
+clear of the engine's HUD buttons (top right), so an engine world of yours shows both. Drawing your
+own List and World buttons is optional for a raw world; a world that gives its own `hud` should keep
+a List and a World button (`data-farm-nav="list"` and `data-farm-nav="worlds"`, as the farm's do),
+since the page adds no corner to a built-in engine world. (The engine registers through the bridge as
+`Agentville.raw(handlers, { engine: true })`, so the bridge marks only a plain `Agentville.raw` world
+as `raw` in `loaded`; the page uses that only to decide a built-in world's corner.)
 
 `opts` holds the page's settings and the world's way out. Each function sends one message:
 
@@ -496,40 +500,46 @@ The field close-up (a field's files) is still drawn as the farm draws it.
 
 ## What a world can't do
 
-- It has no token, no cookies and no storage: reading them throws a `SecurityError`. It can't fetch,
-  post or upload anything: no `fetch`, no `EventSource`, no requests of any kind (`connect-src
-  'none'`), no frames, workers, forms, popups (`window.open` gives `null`) or dialogs like `alert`.
-  No WebRTC either: setting up a connection sends packets to any host a page names, which no CSP
-  stops, so the bridge takes `RTCPeerConnection` (and `webkitRTCPeerConnection`, `RTCIceTransport`)
-  away before your script runs: each is `undefined`, for good. It can't read the page:
-  `parent.document` and setting `top.location` throw a `SecurityError`. A picture from another
-  server isn't loaded. Its scripts come from the dashboard's server only: no inline scripts and no
-  `eval`. It can use pictures, fonts, sounds and stylesheets from the dashboard's server (its own
-  folder's, through `/world/<key>/…`), inline styles, and `data:` pictures, fonts and sounds
-  (`blob:` pictures and sounds too).
+- It has no token, no cookies and no storage: reading them throws a `SecurityError`. It can't
+  **fetch, post or upload** anything: no `fetch`, no `EventSource`, no requests of any kind
+  (`connect-src 'none'`), no workers, forms, popups (`window.open` gives `null`) or dialogs like
+  `alert`. It can make a frame of its own but can't load an address into one (`frame-src 'none'`).
+  It can't read the page: `parent.document` and setting `top.location` throw a `SecurityError`. A
+  picture from another server isn't loaded. Its scripts come from the dashboard's server only: no
+  inline scripts and no `eval`. It can use pictures, fonts, sounds and stylesheets from the
+  dashboard's server (its own folder's, through `/world/<key>/…`), inline styles, and `data:`
+  pictures, fonts and sounds (`blob:` pictures and sounds too).
 - It can't see the dashboard: the page and its API refuse to be shown in a frame
   (`frame-ancestors 'none'`), so a world can't load them with the token inside itself.
 - It can't make the page do anything but the messages above, each checked against the scene.
   Anything else (a message type the page doesn't know, such as an answer to a question) is dropped.
 
+The sandbox protects the token and every action, not the secrecy of what a world is shown: a world
+can get what it sees out to another machine (see "The gaps"), so treat the scene a world is handed
+as visible to its author.
+
 `scripts/e2e-ui.mjs` (`npm run test:ui`) runs a probe world in a real browser that tries each way
 out (`fetch`, `EventSource`, the parent page, the top page, storage, cookies, the token, a frame of
 the dashboard, a picture from another server, a popup, WebRTC, a preconnect), sends the page
-messages it must drop, and checks that every one is blocked but the first gap below, and that a
-world that loads another page is stopped.
+messages it must drop, and checks that every one is blocked but the gaps below, and that a world
+that loads another page in its frame is stopped.
 
 ## The gaps
 
-Two things no browser rule stops, in any page:
+Browsers let any page signal another machine in ways the page can't fully close. A world can't fetch,
+post or upload, but it can get out what it sees:
 
-- **A connection to a host it names.** A world can make the browser open a connection to a host and
-  port of its choosing, with `<link rel="preconnect" href="https://host:port/">`, as often as it
-  likes, and the page doesn't notice. No request goes over that connection, but the host name
-  (looked up in DNS) and the port can carry what the world sees. `<link rel="dns-prefetch">`
-  presumably works the same way (untested). It can't be closed from the page. So a world from your
-  folder could send out what a private scene holds (agents' states, tool and MCP server names,
-  folder labels, repo and project names, costs), and a world allowed to see what agents say could
-  send out the words too.
+- **A connection hint to a host it names.** A world can make the browser reach out to a host of its
+  choosing (a connection hint such as `preconnect`, or `dns-prefetch`), repeatedly and unseen. No
+  request of yours goes with it, but the host name (looked up in DNS) and the choice of host carry
+  what the world sees. This can't be closed from the page.
+- **WebRTC.** A peer connection reaches another machine directly, and no CSP stops it. The bridge
+  switches WebRTC off in the world's own page (its constructors are made `undefined` before the
+  world runs), which stops the straightforward use; a determined world can still get round it (a
+  fresh page it makes keeps WebRTC), so this is narrowed, not closed.
+- So a world from your folder could get out what a private scene holds (states, tools and numbers;
+  see "Privacy mode" for exactly what that is), and a world you let see what agents say could get
+  out the words too.
 - **Leaving its frame.** A frame can always navigate itself away (`location = …`). The page stops it
   as soon as it starts: the bridge tells the page the moment the document starts to go away (the
   browser's `beforeunload` and `pagehide`), and the page removes the frame and hears nothing more
@@ -537,7 +547,8 @@ Two things no browser rule stops, in any page:
   breaks"). What can't be stopped is the leaving request itself, which carries whatever the world
   put in its address, once.
 
-So treat what a world is shown as visible to its author: for the farm and a world you allowed,
-agents' names, paths and what they say; for one of your other worlds, what a private scene keeps.
-Add only worlds you trust, and tick "Can see what agents say" only for a world whose author you'd
-trust with the words.
+The threat model, plainly: the sandbox protects your token and every action — a world can't act for
+you — but not the secrecy of what a world is shown. So treat the scene a world is handed as visible
+to its author: for the farm and a world you allowed, agents' names, paths and what they say; for one
+of your other worlds, what a private scene keeps. Add only worlds you trust, and tick "Can see what
+agents say" only for a world whose author you'd trust with the words.

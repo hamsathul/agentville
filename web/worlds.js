@@ -219,7 +219,9 @@
         measureSaved();
         sendScene();
         post({ type: 'select', id: selectedId });
-        if (act.raw) showCorner();
+        // The page decides who gets the way back, not the frame: every world of yours (its HUD, if any, is
+        // its own doing), and a built-in one only when it draws itself (the farm's buttons are already there).
+        if (world.startsWith('u/') || act.raw) showCorner();
         break;
       case 'leaving': fail('left'); break; // its document is going away: stopped before any page it goes to can speak
       case 'ready':
@@ -367,9 +369,10 @@
     host?.replaceChildren(panel);
   }
   /**
-   * A world that draws itself (Agentville.raw) may draw no buttons, and the page's top bar is hidden while
-   * a world shows: the page gives it a way back, in a corner over its frame. The page's, so no world can
-   * cover it; it goes with the frame (another world, a reload, a panel).
+   * A way back, in a corner over the frame, for a world that might draw none of its own (every world of
+   * yours, and a built-in one that draws itself). The page's, so no world can cover it, and it goes with
+   * the frame (another world, a reload, a panel). Top left, clear of the engine HUD (its buttons are top
+   * right), so an engine world of yours shows both and neither covers the other.
    */
   function showCorner() {
     if (!host || !frame) return;

@@ -634,11 +634,11 @@ test('the panel buttons: try again, back to the farm', async () => {
   assert.equal(p.host.held[0], p.frame);
 });
 
-test("a world that draws itself gets the page's way back in a corner; an engine world none; it goes with its frame", async () => {
+test('the page gives a world its way back in a corner: every world of yours, and a built-in one only when it draws itself', async () => {
   const p = await page({ stored: { 'tracker-world': 'u/space' } });
   const corners = () => p.host.held.filter(el => el.className === 'world-corner');
-  p.from({ type: 'loaded', raw: true });
-  assert.equal(corners().length, 1, 'shown for a world that registered with Agentville.raw');
+  p.from({ type: 'loaded' }); // a world of yours, its frame reporting no `raw`: the page gives it one anyway
+  assert.equal(corners().length, 1, 'shown for a world of yours, whatever its frame says');
   assert.equal(p.host.held[0], p.frame, 'over the frame, which stays');
   const [corner] = corners();
   assert.match(corner.innerHTML, /data-corner-worlds[^>]*>World ▾</);
@@ -654,12 +654,15 @@ test("a world that draws itself gets the page's way back in a corner; an engine 
   p.worlds.choose('farm');
   assert.equal(corners().length, 0, 'gone with the frame when another world shows');
   p.from({ type: 'loaded' });
-  assert.equal(corners().length, 0, 'an engine world (the farm) gets none');
-  p.from({ type: 'loaded', raw: true });
-  assert.equal(corners().length, 0, "the frame's first loaded stands: a later raw isn't heard");
+  assert.equal(corners().length, 0, 'a built-in engine world (the farm) gets none: its HUD has the buttons');
   assert.equal(p.worlds.checkMessage({ type: 'loaded', raw: 'yes' }, { sentPaths: new Map() }).raw, false, 'raw is true or nothing');
+
+  const b = await page(); // the farm (built-in), but drawing itself (raw): the page gives it the corner
+  b.from({ type: 'loaded', raw: true });
+  assert.equal(b.host.held.filter(el => el.className === 'world-corner').length, 1, 'a built-in world that draws itself gets it');
+
   const q = await page({ stored: { 'tracker-world': 'u/space' } });
-  q.from({ type: 'loaded', raw: true });
+  q.from({ type: 'loaded' });
   q.from({ type: 'leaving' });
   assert.deepEqual(q.host.held.map(el => el.className), ['world-panel'], 'a panel in its place takes the corner away too (the panel has its own ways back)');
 });

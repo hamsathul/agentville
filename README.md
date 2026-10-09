@@ -204,8 +204,8 @@ To remove it completely, also delete the `CLAUDE_CODE_PLUGIN_DIRS` entry from
 Open <http://localhost:7777>. **☰ List** at the top and the button beside it switch between the
 two views: the list, and the world you chose (**🌾 Farm** until you choose another). Both show the
 same live data, updated every few seconds. A world fills the window, so it has its own **List**
-button to come back (a world that draws no buttons of its own gets the page's **World ▾** and **☰
-List** in its top right corner).
+button to come back; where one might not (any world of yours, and a built-in one that draws itself),
+the page adds **World ▾** and **☰ List** in a corner.
 
 ### The list view
 
@@ -489,10 +489,11 @@ The **⚙ Claude Code** button in the top bar opens your Claude Code setup in th
 ### Worlds
 
 A world is a way to draw what the dashboard knows; the farm is the built-in one. **World**, among
-the farm's buttons at the top, opens the list of worlds: pick one. A world that draws itself, with
-no such buttons, gets a small control from the page in its top right corner instead: **World ▾**
-for the list of worlds and **☰ List** for the list view, so it can't leave you stuck in it. In
-the list view, the button beside **☰ List** carries the name of the world you will see. Each world
+the farm's buttons at the top, opens the list of worlds: pick one. A world that might draw no
+buttons of its own — any world of yours, and a built-in one that draws itself — gets a small
+control from the page in a corner instead: **World ▾** for the list of worlds and **☰ List** for
+the list view, so it can't leave you with no way back. In the list view, the button beside **☰
+List** carries the name of the world you will see. Each world
 keeps its own zoom and settings, and the choice is kept in this browser. If the world you chose has gone, or has something
 wrong with it, the dashboard opens on the farm instead and forgets the choice. **Open the worlds
 folder** in the list makes your folder if it is not there yet and shows it in Finder.
@@ -713,8 +714,8 @@ and can do is in [docs/worlds.md](docs/worlds.md).
 - The dashboard's own page and its API tell the browser never to show them inside a frame
   (`frame-ancestors 'none'`), so no other page, and no world, can load the dashboard with its token
   inside itself.
-- The farm (like any world) runs in a sandboxed frame with no cookies, storage, requests of its
-  own, WebRTC or token. It sees the scene, which is what the dashboard shows, and can only ask the page for the
+- The farm (like any world) runs in a sandboxed frame with no cookies, storage or token, and can't
+  fetch, post or upload anything. It sees the scene, which is what the dashboard shows, and can only ask the page for the
   few things listed in [docs/worlds.md](docs/worlds.md), each checked against the scene: open an
   agent or one of its files, read an agent's or a repo's files (the page fetches them with the
   token), keep its own settings, press the top bar's buttons. Links from it open only to GitHub.
@@ -728,25 +729,27 @@ and can do is in [docs/worlds.md](docs/worlds.md).
 - **Open the worlds folder** (an action: token and same origin) makes your worlds folder and shows
   it in Finder (`open <folder>`); it only shows it, and runs nothing in it. The page keeps your
   choice of world in this browser (`tracker-world`), and nothing else about it leaves the page.
-- A world can't read the page or use its token, and it can't fetch, post or upload anything: it
-  makes no requests of its own (`connect-src 'none'`), has no popups, frames or WebRTC (the frame
-  takes WebRTC away before the world runs), and can't move the dashboard's page. Two gaps remain,
-  in what browsers let any page do:
-  - **A connection to a host it names.** A world can make the browser open a connection to a host
-    and port of its choosing (`<link rel="preconnect">`), as often as it likes, and the page doesn't
-    notice. No request goes over that connection, but the host name (looked up in DNS) and the port
-    can carry what the world sees. `<link rel="dns-prefetch">` presumably works the same way
-    (untested). So a world from your folder could send out what a private scene holds: agents'
-    states, tool and MCP server names, folder labels, repo and project names, costs. A world you let
-    see what agents say could send out the words too.
+- **The threat model.** The sandbox protects your token and every action — a world can never act
+  for you — but not the secrecy of what a world is shown. A world can't read the page, use its
+  token, fetch, post or upload anything, make a frame load another page, or move the dashboard's
+  page. But browsers let any page signal another machine in ways the page can't fully close, so a
+  world can get out what it is shown:
+  - **A connection hint to a host it names.** A world can make the browser reach out to a host of
+    its choosing (a connection hint such as `preconnect`, or `dns-prefetch`), repeatedly and unseen.
+    No request of yours goes with it, but the host name (looked up in DNS) and the choice of host
+    carry what the world sees. This can't be closed from the page.
+  - **WebRTC**, which reaches another machine directly and no CSP stops. The frame switches WebRTC
+    off in the world's own page, which stops the straightforward use; a determined world can still
+    get round it, so this is narrowed, not closed.
   - **Leaving its frame.** A frame can always load another page in its own place (setting its
     `location`). The page catches that as it starts: the frame says it is leaving (the browser's
     `beforeunload` and `pagehide`), and the page removes it, hears nothing more from it and says so;
     should the browser not say, the frame loading a second time is caught too. What can't be stopped
     is that one leaving request, whose address can carry whatever the world put in it, once.
 
-  A test world in `scripts/e2e-ui.mjs` tries every way out in a real browser: all are blocked but
-  these two.
+  So a world from your folder could get out what a private scene holds (its states, tools and
+  numbers), and a world you let see what agents say could get out the words too. A test world in
+  `scripts/e2e-ui.mjs` tries every way out in a real browser.
 - **Add only worlds you trust.** Your worlds see no conversation text or paths until you tick **Can
   see what agents say** for one (kept per browser, as `tracker-world-cansee:<world>`); then they see
   what the dashboard shows. Tick it only for a world whose author you'd trust with the words. A
