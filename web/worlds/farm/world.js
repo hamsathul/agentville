@@ -792,6 +792,7 @@
     side: ['kkkkkkkkk', 'k...kyyyk', 'k...kyyyk', 'k...kyyyk', 'k...kyyyk', 'k...kyyyk', 'kkkkkkkkk', '.........', '.........'],
     bell: ['....k....', '...kyk...', '..kyyyk..', '..kyyyk..', '..kyyyk..', '.kyyyyyk.', 'kkkkkkkkk', '...kyk...', '....k....'],
     winter: ['....b....', '.b..b..b.', '..b.b.b..', '...bbb...', 'bbbbbbbbb', '...bbb...', '..b.b.b..', '.b..b..b.', '....b....'],
+    animals: ['.k.k.k...', '.k.k.k...', '.........', 'k.kkk.k..', '.kkkkk...', '.kkkkk...', '..kkk....', '.........', '.........'],
   };
   // Agentville's mark (the farmhouse, from brand.js), for the farm's panel.
   const brandSvg = () => (typeof window !== 'undefined' && window.Agentville?.svg ? window.Agentville.svg({ size: 18, cls: 'px-logo' }) : ''); // brand.js, loaded in the frame after the bridge
@@ -879,8 +880,10 @@
       if (season !== 'winter') { // ripples, and a duck paddling round the pond
         for (let i = 0; i < 2; i++) { const ph = (T * 0.5 + i * 0.5) % 1, r = Math.round(ph * 6); PXG.ctx.globalAlpha = 0.6 * (1 - ph); px(30 - r, 208 + i * 5, r * 2 + 1, 1, '#a9dcf7'); }
         PXG.ctx.globalAlpha = 1;
-        const dx = Math.round(42 + Math.sin(T * 0.25) * 16), face = Math.cos(T * 0.25) > 0 ? 1 : -1, dy = 206;
-        px(dx - 1, dy + 3, 7, 1, '#2c4a85'); px(dx, dy, 5, 3, '#ffffff'); px(dx + (face > 0 ? 3 : -1), dy - 2, 3, 3, '#ffffff'); px(dx + (face > 0 ? 6 : -2), dy - 1, 2, 1, '#f08a24'); px(dx + (face > 0 ? 4 : 0), dy - 1, 1, 1, '#1b1420');
+        if (!PXG.animals) { // with the animals on, the duck family lives here instead (FARM_ANIMALS)
+          const dx = Math.round(42 + Math.sin(T * 0.25) * 16), face = Math.cos(T * 0.25) > 0 ? 1 : -1, dy = 206;
+          px(dx - 1, dy + 3, 7, 1, '#2c4a85'); px(dx, dy, 5, 3, '#ffffff'); px(dx + (face > 0 ? 3 : -1), dy - 2, 3, 3, '#ffffff'); px(dx + (face > 0 ? 6 : -2), dy - 1, 2, 1, '#f08a24'); px(dx + (face > 0 ? 4 : 0), dy - 1, 1, 1, '#1b1420');
+        }
       } else if (blink(1.5)) px(36, 206, 2, 1, '#ffffff'); // ice glints
       const eggs = scene.henhouse?.eggs ?? 0, roost = Math.min(3, scene.henhouse?.roosting ?? 0);
       px(4, 132, 12, 3, '#c9a24a'); px(4, 132, 12, 1, '#e9c46a'); // the nest
@@ -944,6 +947,28 @@
       px(pony - 3 + step, y - 1, 1, 2, '#6b4320'); px(pony + 1 - step, y - 1, 1, 2, '#6b4320'); px(pony - dir * 4, y - 4, 1, 2, '#4e3626');
     }
     const FIREFLIES = [[20, 150], [60, 160], [92, 176], [30, 232], [74, 196], [50, 252], [100, 250], [14, 262], [88, 140], [96, 214], [240, 92], [330, 70]];
+    // The farm's animals (sdk/animals.js): just for fun, never data. They walk the yard and the lane,
+    // never the fields (their crops are context), the hay, crates or mailbox (git), the carts' rank (MCP),
+    // the hammocks or the henhouse. No chickens (subagents), and the dog is a sheepdog (the Explore dog is
+    // data). The ducks keep to the pond and its bank.
+    const POND = { x: 12, y: 199, w: 60, h: 22 }; // the water (the pond's oval, a little inside its bank)
+    const FARM_ANIMALS = [
+      { kind: 'cow', count: 2, name: 'Cow', actions: [{ label: 'Pet', fx: 'hearts', line: 'petted' }, { label: 'Feed', fx: 'crumbs', pose: 'eat', line: 'fed' }, { label: 'Ride', pose: 'run', run: true, line: 'ride' }, { label: 'Moo back', line: 'moo' }],
+        lines: { idle: ['MOO.', 'moo?', 'grass again. good.', 'I am a cow.'], petted: ['moo ♥'], fed: ['MOO! thank you'], ride: ['this was not in my contract'], moo: ['MOO!!'] } },
+      { kind: 'goat', count: 2, name: 'Goat', actions: [{ label: 'Pet', fx: 'hearts', line: 'petted' }, { label: 'Feed', fx: 'crumbs', pose: 'eat', line: 'fed' }, { label: 'Get my hat back', pose: 'run', run: true, line: 'hat' }],
+        lines: { idle: ['baa.', 'this hat tastes of deadlines', 'I ate a sock once', 'baa?'], petted: ['baa ♥'], fed: ['BAA! more'], hat: ['what hat?'] } },
+      { kind: 'sheepdog', name: 'Sheepdog', actions: [{ label: 'Pet', fx: 'hearts', line: 'petted' }, { label: 'Throw a stick', pose: 'run', run: true, fx: 'dust', line: 'stick' }, { label: 'Belly rub', pose: 'sleep', fx: 'hearts', line: 'rub' }],
+        lines: { idle: ['woof.', 'I herd things', 'is that a squirrel', 'woof?'], petted: ['woof ♥'], stick: ['STICK!'], rub: ['best day ever'] } },
+      { kind: 'ostrich', name: 'Ostrich', actions: [{ label: 'Pet', fx: 'hearts', line: 'petted' }, { label: 'Race it', pose: 'run', run: true, fx: 'dust', line: 'race' }, { label: 'Ride', pose: 'run', run: true, line: 'ride' }],
+        lines: { idle: ['not my fault', 'I run, therefore I am', 'honk?'], petted: ['…fine.'], race: ['too slow!'], ride: ['hold on to your hat'] } },
+      { kind: 'lion', name: 'Lion', actions: [{ label: 'Pet', fx: 'hearts', line: 'petted' }, { label: 'Give a fish', pose: 'eat', fx: 'crumbs', line: 'fish' }, { label: 'Boop the nose', pose: 'happy', line: 'boop' }],
+        lines: { idle: ['*yawn*', 'I am the king of this yard', 'nap time'], petted: ['purr…'], fish: ['FISH. yes.'], boop: ['…boop.'] } },
+      { kind: 'tiger', name: 'Tiger', actions: [{ label: 'Pet', fx: 'hearts', line: 'petted' }, { label: 'Give a fish', pose: 'eat', fx: 'crumbs', line: 'fish' }, { label: 'Boop the nose', pose: 'happy', line: 'boop' }],
+        lines: { idle: ['where is my tail', 'butterfly!', 'rawr (friendly)'], petted: ['purr ♥'], fish: ['mine now'], boop: ['boop back'] } },
+      { kind: 'duck', count: 5, looks: ['drake', 'hen', 'duckling', 'duckling', 'duckling'], name: 'Ducks', home: POND, bank: [[42, 194], [42, 226], [78, 210]],
+        actions: [{ label: 'Feed bread', fx: 'crumbs', gather: true, line: 'fed' }, { label: 'Quack back', line: 'quack' }],
+        lines: { idle: ['quack.', 'QUACK', 'any bread?', 'peep'], fed: ['BREAD!', 'bread bread bread'], quack: ['quack quack!'] } },
+    ];
 
     return {
       key: 'farm', SH: 16, W, corridors: CORR, grid: { layoutFor, packedLayout }, help: helpHtml, fromScene: farmScene,
@@ -951,10 +976,10 @@
       setScene(next) {
         const events = [];
         const comp = new Map(next.farmers.map(f => [f.id, f.compactions ?? 0]));
-        if (seenCompactions) for (const f of next.farmers) if (seenCompactions.has(f.id) && comp.get(f.id) > seenCompactions.get(f.id)) events.push({ id: f.id, text: 'Harvest!', cls: 'good', log: 'brings in the harvest: its conversation was compacted, and it sows again' });
+        if (seenCompactions) for (const f of next.farmers) if (seenCompactions.has(f.id) && comp.get(f.id) > seenCompactions.get(f.id)) events.push({ id: f.id, kind: 'harvest', text: 'Harvest!', cls: 'good', log: 'brings in the harvest: its conversation was compacted, and it sows again' });
         seenCompactions = comp;
         const merged = next.fields.flatMap(fl => (fl.prs?.merged ?? []).map(m => ({ ...m, repo: fl.name, key: `${fl.key}#${m.number}` })));
-        if (seenMerged) for (const m of merged) if (!seenMerged.has(m.key) && (m.at ?? 0) > Date.now() - 30 * 60_000) events.push({ at: [STALL.x + 14, STALL.y + 8], text: `Sold! #${m.number}`, cls: 'good', log: `${m.repo}: pull request #${m.number} merged (${clip(m.title ?? '', 50)})` });
+        if (seenMerged) for (const m of merged) if (!seenMerged.has(m.key) && (m.at ?? 0) > Date.now() - 30 * 60_000) events.push({ at: [STALL.x + 14, STALL.y + 8], kind: 'merged', text: `Sold! #${m.number}`, cls: 'good', log: `${m.repo}: pull request #${m.number} merged (${clip(m.title ?? '', 50)})` });
         seenMerged = new Set(merged.map(m => m.key));
         scene = next;
         season = seasonOf(next.plan);
@@ -1018,7 +1043,7 @@
        * dashboard's top bar and count cards say; top right, the dashboard's own buttons; along the
        * bottom, below the fields' fence, a slim row of switches and zoom.
        */
-      hud({ still, zoom = 1, saysOn = true, skyMode = 'live', follow = false, canFollow = false, restingHidden = null, bell = false, nav = {}, panelOpen = true }) {
+      hud({ still, zoom = 1, saysOn = true, skyMode = 'live', follow = false, canFollow = false, restingHidden = null, bell = false, nav = {}, panelOpen = true, animals = null }) {
         const need = scene.farmers.filter(a => a.state === 'waiting' || a.question).length;
         const spent = scene.farmers.reduce((t, a) => t + (a.cost ?? 0), 0), harvested = scene.farmers.reduce((t, a) => t + (a.compactions ?? 0), 0);
         const ch = scene.chrome ?? {}, c = ch.counts ?? {};
@@ -1063,6 +1088,7 @@
               ${tool('data-farm-follow', 'follow', 'Follow', follow ? 'on' : 'off', canFollow ? 'Keep the farmer you picked in the middle of the view (zooms in); dragging the view turns it off' : 'Pick a farmer first, then Follow keeps it in view', !canFollow)}
               ${tool('data-farm-resting', 'resting', 'Resting', restingHidden === null ? 'shown' : `hidden (${restingHidden})`, 'Idle farmers (under the tree) and stale ones (scarecrows): show them, or hide them to keep the farm to the agents at work')}
               ${tool('data-farm-bubbles', 'bubbles', 'Bubbles', saysOn ? 'on' : 'off', 'Speech bubbles with what each farmer last said. × hides one; its 💬 shows it again')}
+              ${animals === null ? '' : tool('data-farm-animals', 'animals', 'Animals', animals ? 'on' : 'off', 'Animals on the farm, just for fun: click one to pet or feed it (or the pond, for the ducks). They never stand for anything')}
               ${tool('data-farm-sky', skyMode, 'Sky', skyMode, 'The light: live follows your clock (dawn, day, dusk, night); or hold it at day or night')}
               ${tool('class="px-motion" data-farm-motion', still ? 'pause' : 'play', 'Motion', still ? 'off' : 'on', 'Walking and animation on the farm')}
               ${tool('data-farm-bell', 'bell', 'Bell', bell ? 'on' : 'off', 'A chime, and a desktop notice when the page is in the background, whenever an agent starts waiting on you (in the list view too)')}
@@ -1073,6 +1099,11 @@
       bg(f, season, ext) { drawLand(f, L, season, ext); },
       ground() { drawScenery(); L.ST.forEach(drawPlot); L.ST.forEach(drawPiles); },
       season: () => season,
+      animals: () => FARM_ANIMALS,
+      /** Where the animals may walk: the yard (down to the fence's foot) and the lane, short of the carts. */
+      roam: () => [{ x: 4, y: 100, w: 100, h: Math.max(20, L.GRID.y1 - 104) }, { x: 124, y: LANE - 2, w: 170, h: 6 }],
+      /** What they keep off in there: the pond (the ducks' own), the hammocks, the henhouse and its run, the shade tree's trunk. */
+      avoid: () => [{ x: 8, y: 194, w: 70, h: 32 }, { x: 84, y: 196, w: 24, h: 34 }, { x: 0, y: 95, w: 46, h: 42 }, { x: 60, y: L.GRID.y1 - 26, w: 14, h: 12 }],
       /** Particles a farmer gives off: dust when walking; splashes, clods, sparks, chips from its tool. */
       emit(f, b, dt, add) {
         const ox = b.x - 7 * SC, oy = b.y - 16 * SC, T = PXG.T;
@@ -1391,6 +1422,7 @@
       <b>Above a field</b><span>hay = uncommitted files, crates = unpushed commits, mailbox = behind the remote</span>
       <b>Weather</b><span>the repo's last deploy, from GitHub Actions or a deploy an agent ran itself (a deploy script over ssh, rsync, vercel…), whichever is newer: rainbow = deployed, rain = deploy failed (hover its sign for why; the close-up links to the run), windmill = deploying. A run GitHub never started (billing, spending limit) brings no weather: ⏸ Actions didn't run. Rope = two agents writing one repo</span>
       <b>Hearts, crops</b><span>hearts = context left. Crops grow as the context fills: seeds, sprouts, young plants, in flower, ripening, then ripe with a sparkle (golden wheat, red tomatoes, sunflowers in bloom…) when it is nearly full. When the conversation is compacted, that's the harvest: the field starts again from seed. Chickens = subagents, the dog = an Explore subagent</span>
+      <b>Animals</b><span>cows, goats, a sheepdog (with a red bandana), an ostrich, a lion, a tiger and the ducks on the pond live here just for fun: they never stand for anything. Click one, or the pond, to pet or feed it: the nearest farmer that isn't waiting on you walks over and does it. The Animals switch hides them</span>
       <b>Shade tree, scarecrows</b><span>idle agents nap under the tree (bottom left); stale ones stand as scarecrows (top right); the meadow by the henhouse is for agents outside any repo</span>
       <b>Silo</b><span>its grain is your plan's weekly limit used (the % under it; when it resets on hover); its lamp turns amber from 70% and blinks red from 90%</span>
       <b>Seasons</b><span>follow your plan's 5-hour limit: spring while it is fresh (blossom), then summer, autumn (falling leaves), and winter (snow) when it is nearly used up; a new window brings spring back</span>
@@ -1408,7 +1440,7 @@
   window.Agentville.world(makeFarm());
   // The farm's own pieces, for its tests (and the world tools to come).
   window.AgentvilleFarm = {
-    farmScene, actionOf, paint, growthStage, STAGES, skyAt, PALETTE, ink, spriteRows, walkFrame, stepParticles, seasonOf, siloOf, glyphOf, textWidth,
+    farmScene, makeFarm, actionOf, paint, growthStage, STAGES, skyAt, PALETTE, ink, spriteRows, walkFrame, stepParticles, seasonOf, siloOf, glyphOf, textWidth,
     weatherOf, helpHtml, layoutFor, packedLayout, rowsOfGroup, cartRoute, cartGoal, cutMid, tagText,
   };
 })();
