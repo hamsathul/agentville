@@ -7,8 +7,9 @@ on:
 
 jobs:
   test:
-    # The tracker is macOS-only (launchd, ps, osascript); the runner also has Chrome for the browser test.
+    # The macOS runner also has Chrome for the browser test.
     runs-on: macos-latest
+    timeout-minutes: 30 # a hung job must not hold the runner for the default six hours
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -18,3 +19,15 @@ jobs:
         run: npm test
       - name: Dashboard in a browser
         run: npm run test:ui
+
+  test-windows:
+    # The Windows code paths (platform/win.mjs and friends) only run here. The browser test stays on macOS.
+    runs-on: windows-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Collector and dashboard
+        run: npm test
