@@ -639,6 +639,9 @@ try {
   check(await funtil("!!document.querySelector('#farm canvas') && document.querySelectorAll('.px-tag').length > 0"), 'a world made of three hooks draws, with the engine doing the rest');
   check(await until("/Sample/.test(document.getElementById('view-farm').textContent) && localStorage.getItem('tracker-world') === 'u/sample'"), 'the toggle says its name, and the choice is kept');
   check(await js("document.querySelector('#farm-diary-pane .sec').textContent === 'Lab book'"), "the diary takes the world's own word for it");
+  await js("window.__sampleFrame = document.querySelector('#farm .world-frame'); true");
+  appendFileSync(join(worldsDir, 'sample', 'world.js'), '\n// edited\n');
+  check(await until("document.querySelector('#farm .world-frame') !== window.__sampleFrame", 5000) && await funtil("!!document.querySelector('#farm canvas')"), 'saving a world while it shows reloads it');
   await funtil("!!document.querySelector('[data-farm-nav=\"worlds\"]')");
   await fjs("document.querySelector('[data-farm-nav=\"worlds\"]').click()"); // the sample world's buttons are the engine's: World is there too
   await until("document.getElementById('worlds-dlg').open");

@@ -480,6 +480,14 @@ an error. `worldsDir` is read at startup (a change needs a restart); one that is
 above it is ignored and the default is used. A world's names are shown as plain text, whatever they
 hold. How to write one is in [docs/worlds.md](docs/worlds.md).
 
+**Your own worlds, open while you write them.** Saving a file in a world's folder (or in a built-in
+world's) reloads that world on screen, keeping its zoom and where you were looking, so you can
+write one with it open. Where you were looking is kept only until you reload the page; nothing about
+it is stored in the browser. The dashboard learns of the change from the collector, which watches
+the worlds' folders and sends only a world's name, never its files. A world folder that is a link
+isn't watched (the watcher doesn't follow links): reload the page to see an edit to it. If your
+worlds folder doesn't exist yet, the collector looks for it again every few seconds.
+
 #### The farm
 
 The same live data, as a farm. It fills the window, and its controls sit around the edges like a

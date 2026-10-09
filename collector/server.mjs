@@ -263,6 +263,11 @@ export function createTrackerServer({ port, token, webFile, getSnapshot, getFeed
       const data = `event: snapshot\ndata: ${JSON.stringify(snapshot)}\n\n`;
       for (const c of clients) c.write(data);
     },
+    /** A world's files changed (or '*': the SDK, or the list): the page reloads it, or its list. */
+    broadcastWorlds(change) {
+      const data = `event: worlds\ndata: ${JSON.stringify(change)}\n\n`;
+      for (const c of clients) c.write(data);
+    },
     close: () => new Promise(resolve => {
       clearInterval(heartbeat);
       for (const c of clients) c.end();

@@ -143,6 +143,24 @@ test('the event stream sends the snapshot on connect and on every broadcast', as
   await srv.close();
 });
 
+test('a change to a world is sent on the event stream, by its key', async () => {
+  const { srv, port } = await start();
+  let all = '', sent = false;
+  await new Promise((resolve, reject) => {
+    const req = httpRequest({ host: '127.0.0.1', port, path: '/api/events', headers: { host: `127.0.0.1:${port}` } }, res => {
+      res.on('data', chunk => {
+        all += chunk;
+        if (!sent && all.includes('"generatedAt":1')) { sent = true; srv.broadcastWorlds({ key: 'u/space' }); }
+        if (all.includes('event: worlds')) { req.destroy(); resolve(); }
+      });
+    });
+    req.on('error', err => (err.code === 'ECONNRESET' ? resolve() : reject(err)));
+    req.end();
+  });
+  assert.ok(all.includes('event: worlds\ndata: {"key":"u/space"}'));
+  await srv.close();
+});
+
 test('Open the worlds folder takes the token and the dashboard as origin, like every action', async () => {
   const { srv, port, calls } = await start();
   const origin = `http://127.0.0.1:${port}`, path = '/api/actions/reveal-worlds', type = { 'content-type': 'application/json' };

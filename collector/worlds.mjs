@@ -2,7 +2,7 @@
 // a folder with world.json and world.js. This serves a world's files from inside its own folder only
 // (no way out through .., a hidden name or a symlink), and writes the page its sandboxed frame loads.
 // No dependencies.
-import { lstatSync, readFileSync, readdirSync, realpathSync, statSync } from 'node:fs';
+import { existsSync, lstatSync, readFileSync, readdirSync, realpathSync, statSync, watch } from 'node:fs';
 import { extname, isAbsolute, join, sep } from 'node:path';
 
 export const API_VERSION = 1;
@@ -157,4 +157,49 @@ export function makeWorlds({ builtinDir, userDir = null, home = null }) {
       .replaceAll('__BASE__', () => `/world/${key}/`);
   }
   return { dirOf, file, info, list, frame, userDir };
+}
+
+/**
+ * Watches the built-in worlds and your folder, and calls onChange(key) once per burst of changes: a
+ * world's key, or '*' (the SDK changed, or your folder appeared). Your folder may not exist yet: it is
+ * looked for again every 5 s. A world folder that is a link is not followed (the watcher doesn't).
+ * Returns a function that stops watching.
+ */
+export function watchWorlds({ builtinDir, userDir }, onChange, { quietMs = 200 } = {}) {
+  const timers = new Map(), watchers = [];
+  let retry = null, stopped = false;
+  const bump = key => {
+    clearTimeout(timers.get(key));
+    timers.set(key, setTimeout(() => { timers.delete(key); if (!stopped) onChange(key); }, quietMs));
+  };
+  const keyOf = (rel, mine) => {
+    const top = String(rel ?? '').split(/[\\/]/)[0];
+    if (!top) return null;
+    if (mine) return WORLD_NAME.test(top) ? `u/${top}` : null;
+    if (top === 'sdk') return '*';
+    return WORLD_NAME.test(top) && !RESERVED.has(top) ? top : null;
+  };
+  const watchDir = (dir, mine) => {
+    try {
+      const w = watch(dir, { recursive: true }, (_event, rel) => { const key = keyOf(rel, mine); if (key) bump(key); });
+      w.on('error', () => {});
+      watchers.push(w);
+      return true;
+    } catch {
+      return false;
+    }
+  };
+  watchDir(builtinDir, false);
+  if (userDir && !watchDir(userDir, true)) {
+    retry = setInterval(() => {
+      if (existsSync(userDir) && watchDir(userDir, true)) { clearInterval(retry); retry = null; bump('*'); }
+    }, 5000);
+    retry.unref?.();
+  }
+  return () => {
+    stopped = true;
+    clearInterval(retry);
+    for (const t of timers.values()) clearTimeout(t);
+    for (const w of watchers) w.close();
+  };
 }

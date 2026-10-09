@@ -30,7 +30,7 @@ import { planReadings, planUsage } from './derive/plan.mjs';
 import { noteDirectDeploys } from './derive/deploys.mjs';
 import { AlertEngine, notifyMac } from './alerts.mjs';
 import { createTrackerServer } from './server.mjs';
-import { makeWorlds, worldsDirOf } from './worlds.mjs';
+import { makeWorlds, watchWorlds, worldsDirOf } from './worlds.mjs';
 import { renderTranscriptPage } from './transcript-page.mjs';
 
 const DOC_FILE = /\.(md|markdown|mdx)$/i;
@@ -1157,6 +1157,7 @@ export async function startCollector({ root, claudeDir = join(homedir(), '.claud
     getTranscriptHtml, getDoc: readDoc, listFiles, readFile, repoTouched, actions, pastSessions, listDirs: dirsFor, log,
   });
   const port = await server.listen();
+  const stopWatchingWorlds = watchWorlds({ builtinDir: join(root, 'web', 'worlds'), userDir: worldsDir }, key => server.broadcastWorlds({ key }));
 
   try {
     watchers.push(watch(pendingDir, () => scheduleLight()));
@@ -1187,6 +1188,7 @@ export async function startCollector({ root, claudeDir = join(homedir(), '.claud
     clearTimeout(lightTimer);
     clearTimeout(configTimer);
     for (const w of watchers) w.close();
+    stopWatchingWorlds();
     await chain;
     await backfills;
     await server.close();

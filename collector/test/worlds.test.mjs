@@ -517,3 +517,19 @@ test('the timers a page set are there to fire: timeouts is the record, wait(ms) 
   p.wait(250);
   assert.match(p.diary.innerHTML, /two/);
 });
+
+test("a change to the world showing reloads it, keeping where you were looking (for this page's life only)", async () => {
+  const p = await page();
+  p.from({ type: 'loaded' });
+  p.from({ type: 'store', key: 'view', value: '120,80' });
+  assert.equal(p.stored['tracker-world:farm:view'], undefined, 'never saved in the browser');
+  await p.farm.worldsChanged({ key: 'u/space' });
+  assert.equal(p.frames.length, 1, 'another world changed: nothing to reload');
+  await p.farm.worldsChanged({ key: 'farm' });
+  assert.equal(p.frames.length, 2);
+  p.posted.length = 0;
+  p.from({ type: 'loaded' });
+  assert.equal(p.posted.find(m => m.type === 'start').prefs.view, '120,80');
+  await p.farm.worldsChanged({ key: '*' });
+  assert.equal(p.frames.length, 3, 'the SDK changed: every world reloads');
+});

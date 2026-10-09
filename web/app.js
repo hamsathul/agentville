@@ -822,6 +822,7 @@ $('file-dlg').addEventListener('click', e => { if (e.target === $('file-dlg')) c
 
 function connect() {
   const events = new EventSource('/api/events');
+  events.addEventListener('worlds', e => { try { window.TrackerFarm?.worldsChanged?.(JSON.parse(e.data)); } catch { /* not ours */ } });
   events.addEventListener('snapshot', ev => {
     snap = JSON.parse(ev.data);
     ringBell();

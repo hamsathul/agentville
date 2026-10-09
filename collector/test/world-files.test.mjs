@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { existsSync, mkdirSync, mkdtempSync, realpathSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
-import { FRAME_CSP, checkWorldJson, makeWorlds, worldsDirOf } from '../worlds.mjs';
+import { FRAME_CSP, checkWorldJson, makeWorlds, watchWorlds, worldsDirOf } from '../worlds.mjs';
 
 const plain = v => JSON.parse(JSON.stringify(v));
 
@@ -227,4 +227,16 @@ test("world.json's rules", () => {
   for (const bad of [null, [], 'x', { api: 1 }, { name: '', api: 1 }, { name: 'x'.repeat(41), api: 1 }, { name: 'A' }, { name: 'A', api: 0 }, { name: 'A', api: 1.5 }, { name: 'A', api: 1, icon: 3 }, { name: 'A', api: 1, description: 'x'.repeat(141) }, { name: 'A', api: 1, nouns: { agent: 7 } }, { name: 'A', api: 1, nouns: [] }]) {
     assert.ok(checkWorldJson(bad), JSON.stringify(bad));
   }
+});
+
+test('a change to a world is told once per burst, by its key; the SDK as "*"', async () => {
+  const builtinDir = builtins(), userDir = users(), seen = [];
+  const stop = watchWorlds({ builtinDir, userDir }, key => seen.push(key), { quietMs: 100 });
+  await new Promise(r => setTimeout(r, 500)); // macOS replays what the setup just wrote: let it be told, then start counting
+  seen.length = 0;
+  for (let i = 0; i < 5; i++) writeFileSync(join(userDir, 'space', 'world.js'), `// ${i}`);
+  writeFileSync(join(builtinDir, 'sdk', 'bridge.js'), '// 2');
+  await new Promise(r => setTimeout(r, 600));
+  stop();
+  assert.deepEqual(seen.sort(), ['*', 'u/space']);
 });

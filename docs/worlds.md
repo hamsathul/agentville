@@ -293,7 +293,20 @@ where a layer first lay to the fraction of a pixel: this keeps the farm looking 
 `prefs.get(name)` and `prefs.set(name, value)` keep the world's own settings: the page stores them
 (a frame has no storage) and hands them back in the next `start`. Values are strings. `bell` is the
 page's own setting: `prefs.get('bell')` says `'on'` or `'off'`, and `set` leaves it alone (use
-`onBell`).
+`onBell`). `view` (`"<scrollLeft>,<scrollTop>"`, where the engine's view was scrolled to) is the one
+setting kept only for the page's life: the page holds it in memory, hands it back in `start` when
+the frame reloads, and loses it when the page reloads. It is never written to the browser and does
+not count toward the 64 settings or 64 KB.
+
+## Reloading as you edit
+
+The collector watches `web/worlds/` and your worlds folder. When files in a world change, the page
+reloads that world's frame once the changes stop (about 0.2 s), as if it had just been opened: a
+`start` again, the latest scene, the selection. Zoom and the `view` place come back. A change in
+`sdk/` reloads whichever world is showing, and so does your worlds folder appearing. If the list is
+open it is refreshed. A world folder that is a link isn't watched, because the watcher doesn't
+follow links: reload the page to see an edit to it. Edits to a world that isn't showing reload
+nothing.
 
 `Agentville.send(message)` sends any of the messages above itself. A click on a link (`<a href>`)
 in the world goes through the page as `openLink`. Script errors, scripts that fail to load and

@@ -123,6 +123,8 @@
     }
   }
 
+  const SESSION_PREFS = new Set(['view']);
+  const sessionPrefs = new Map(); // world → { name: value }: kept for this page's life only, never in the browser
   let host = null, frame = null, opts = {}, world = 'farm', scene = null, selectedId = null, loaded = false;
   let diary = [], timer = 0, lastSettings = '', inFlight = 0, generation = 0;
   let heardLoaded = false; // the frame's `loaded`, heard since it last loaded: once per load of the frame
@@ -203,7 +205,7 @@
         inFlight = 0;
         sentPaths.clear();
         lastSettings = JSON.stringify(settingsNow());
-        post({ type: 'start', world, prefs: loadPrefs(world), settings: settingsNow() });
+        post({ type: 'start', world, prefs: { ...loadPrefs(world), ...sessionPrefs.get(world) }, settings: settingsNow() });
         measureSaved();
         if (scene) post({ type: 'scene', scene });
         post({ type: 'select', id: selectedId });
@@ -225,6 +227,7 @@
       case 'bell': browserStore.set('tracker-bell', act.on ? 'on' : 'off'); opts.onBell?.(act.on); pushSettings(); break;
       case 'motion': opts.still = act.still; opts.onMotion?.(act.still); pushSettings(); break;
       case 'store': {
+        if (SESSION_PREFS.has(act.key)) { sessionPrefs.set(world, { ...sessionPrefs.get(world), [act.key]: act.value }); break; } // memory only, outside the caps
         const before = saved.get(act.key), total = savedTotal - (before === undefined ? 0 : act.key.length + before) + act.key.length + act.value.length;
         if ((before === undefined && saved.size >= STORE_KEYS_MAX) || total > STORE_TOTAL_MAX) {
           if (!storeRefused) { storeRefused = true; console.warn(`The ${world} world keeps more settings than the page allows (${STORE_KEYS_MAX}, ${STORE_TOTAL_MAX / 1024} KB in all); the rest are not saved.`); }
@@ -407,6 +410,16 @@
     generation++;
   }
 
-  window.TrackerFarm = { mount, update, select, unmount, hide, current, openList, colorOf: id => window.AgentvilleScene.colorOf(id), toScene: snap => window.AgentvilleScene.toScene(snap) };
+  /** A world's files changed: reload it if it is the one showing (or the SDK changed); refresh the list if it is open. */
+  async function worldsChanged({ key } = {}) {
+    await resolveWorld();
+    if ($('worlds-dlg')?.open) renderList();
+    if (!host || (key !== world && key !== '*')) return;
+    const w = worldsInfo.find(x => x.key === world);
+    info = w && !w.error ? w : info;
+    createFrame(world);
+  }
+
+  window.TrackerFarm = { mount, update, select, unmount, hide, current, openList, worldsChanged, colorOf: id => window.AgentvilleScene.colorOf(id), toScene: snap => window.AgentvilleScene.toScene(snap) };
   window.AgentvilleWorlds = { checkMessage, loadPrefs, renderDiary, prefKey, choose };
 })();

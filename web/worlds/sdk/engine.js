@@ -210,6 +210,7 @@ window.Agentville.world = hooks => {
 function makePixelView(th, prefs) {
   let host = null, canvas = null, ctx = null, ov = null, hudEl = null, bg = null, ro = null;
   let raf = 0, last = 0, T = 0, cs = 1, first = true, timer = 0, layoutKey = null, labelKey = '';
+  let placeTimer = 0;
   let viewEl = null, drag = null, dragged = false, backing = 1, hoverId = null; // the frame the farm is seen through; a drag that pans it; the farmer under the pointer
   let scene = { fields: [], farmers: [] }, overflow = {}, still = false, opts = {}, selectedId = null, got = false; // got: a scene has arrived
   // Zoom on top of "the whole farm in the frame", and speech bubbles (each can be closed until its farmer says something new).
@@ -950,6 +951,8 @@ function makePixelView(th, prefs) {
       renderHud(); // before the first fit: the panel's and switches' size place the farm
       bg = buildBg();
       resize();
+      const place = String(prefs.get('view') ?? '').split(',').map(Number);
+      if (place.length === 2 && place.every(Number.isFinite)) { viewEl.scrollLeft = place[0]; viewEl.scrollTop = place[1]; }
       ro = new ResizeObserver(() => resize());
       ro.observe(host);
       host.addEventListener('click', onClick);
@@ -959,7 +962,11 @@ function makePixelView(th, prefs) {
       viewEl.addEventListener('pointerup', onPointerUp);
       viewEl.addEventListener('pointercancel', onPointerUp);
       viewEl.addEventListener('pointerleave', () => setHover(null));
-      viewEl.addEventListener('scroll', () => { if (still) drawMini(); }, { passive: true });
+      viewEl.addEventListener('scroll', () => {
+        if (still) drawMini();
+        clearTimeout(placeTimer); // where you were looking, so a reload of this world (you editing it) comes back here
+        placeTimer = setTimeout(() => prefs.set('view', `${Math.round(viewEl.scrollLeft)},${Math.round(viewEl.scrollTop)}`), 400);
+      }, { passive: true });
       document.addEventListener('visibilitychange', onVisibility);
       renderLog();
       renderHud();
@@ -976,6 +983,7 @@ function makePixelView(th, prefs) {
     },
     unmount() {
       stopLoop();
+      clearTimeout(placeTimer);
       ro?.disconnect();
       ro = null;
       clearInterval(timer);
