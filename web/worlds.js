@@ -27,6 +27,8 @@
     remove: key => { try { localStorage.removeItem(key); } catch { /* this page only */ } },
     keys: () => { try { return Array.from({ length: localStorage.length }, (_, i) => localStorage.key(i)); } catch { return []; } },
   };
+  const tick = () => (typeof performance !== 'undefined' ? performance.now() : Date.now()); // a steady clock: a wall-clock jump can't block actions
+  const START_MS = 5000; // a world that has not said `ready` by then is replaced by a panel
   const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
   const ago = ms => {
     const m = Math.max(0, (Date.now() - ms) / 60_000);
@@ -127,7 +129,8 @@
   const sessionPrefs = new Map(); // world → { name: value }: kept for this page's life only, never in the browser
   let host = null, frame = null, opts = {}, world = 'farm', scene = null, selectedId = null, loaded = false;
   let diary = [], timer = 0, lastSettings = '', inFlight = 0, generation = 0;
-  let heardLoaded = false; // the frame's `loaded`, heard since it last loaded: once per load of the frame
+  let heardLoaded = false; // the frame's `loaded`, heard: once per frame (every load builds a new one)
+  let ready = false, loadsLeft = 0, startTimer = 0, lastError = null, strip = null;
   let diaryAt = -Infinity, diaryTimer = 0; // when the diary was last drawn from the world's entries; the next drawing
   let savedTotal = 0; // the world's saved settings, in characters (names and values)
   const sentPaths = new Map(); // agent id → the paths its replies named, which may then be opened for it
@@ -161,7 +164,7 @@
   }
   /** Whether an action goes through now: one of each a quarter second (a bell or motion: the newest, when its turn comes). */
   function paced(act) {
-    const now = Date.now(), wait = (actedAt.get(act.kind) ?? -Infinity) + GAP_MS - now;
+    const now = tick(), wait = (actedAt.get(act.kind) ?? -Infinity) + GAP_MS - now;
     if (wait <= 0 && !waitingAct.has(act.kind)) { actedAt.set(act.kind, now); return true; }
     if (NEWEST_WINS.has(act.kind)) {
       const mine = generation, held = waitingAct.get(act.kind);
@@ -169,7 +172,7 @@
         const next = waitingAct.get(act.kind);
         waitingAct.delete(act.kind);
         if (mine !== generation || !next || hidden) return; // the frame was replaced, or put out of sight, meanwhile
-        actedAt.set(act.kind, Date.now());
+        actedAt.set(act.kind, tick());
         handle(next.act);
       }, Math.max(0, wait)) });
     }
@@ -178,9 +181,9 @@
   /** The world's diary in the page's sidebar, drawn at most once a quarter second (the newest entries). */
   function showDiary(entries) {
     diary = entries;
-    const wait = diaryAt + GAP_MS - Date.now();
-    if (wait <= 0) { diaryAt = Date.now(); renderDiary(opts.diary, diary); return; }
-    diaryTimer ||= setTimeout(() => { diaryTimer = 0; diaryAt = Date.now(); renderDiary(opts.diary, diary); }, wait);
+    const wait = diaryAt + GAP_MS - tick();
+    if (wait <= 0) { diaryAt = tick(); renderDiary(opts.diary, diary); return; }
+    diaryTimer ||= setTimeout(() => { diaryTimer = 0; diaryAt = tick(); renderDiary(opts.diary, diary); }, wait);
   }
   function onMessage(e) {
     if (!frame || e.source !== frame.contentWindow) return;
@@ -201,8 +204,7 @@
     switch (act.kind) {
       case 'loaded':
         loaded = true;
-        generation++; // replies to the frame's last load are not posted to this one
-        inFlight = 0;
+        generation++; // replies to an earlier frame's requests are not posted to this one
         sentPaths.clear();
         lastSettings = JSON.stringify(settingsNow());
         post({ type: 'start', world, prefs: { ...loadPrefs(world), ...sessionPrefs.get(world) }, settings: settingsNow() });
@@ -210,8 +212,9 @@
         if (scene) post({ type: 'scene', scene });
         post({ type: 'select', id: selectedId });
         break;
-      case 'ready': break;
+      case 'ready': ready = true; clearTimeout(startTimer); break;
       case 'error': {
+        if (ready) showStrip(act); else lastError = act; // before it started: the latest (the bridge's own "did not register" comes after the browser's masked "Script error.")
         const key = `${act.message}@${act.where}`;
         if (errorsSeen.has(key) || errorsSeen.size >= ERRORS_MAX) break; // each once
         errorsSeen.add(key);
@@ -242,10 +245,10 @@
       case 'refuse': post({ type: 'reply', id: act.id, ok: false, status: 403, error: act.error }); break;
       case 'request': {
         const mine = generation;
-        inFlight++;
+        inFlight++; // counts every fetch still running, whichever frame asked
         void fetchFor(opts.token, act).then(r => {
-          if (mine !== generation) return; // the world was replaced, or its frame loaded again, meanwhile
           inFlight--;
+          if (mine !== generation) return; // the world was replaced, or its frame loaded again, meanwhile
           if (r.ok && act.what === 'agentFiles') {
             const paths = sentPaths.get(act.agentId) ?? new Set();
             for (const f of r.data?.memory ?? []) if (typeof f?.path === 'string') paths.add(f.path);
@@ -296,7 +299,6 @@
     loaded = false;
     heardLoaded = false;
     generation++;
-    inFlight = 0;
     sentPaths.clear();
     for (const { timer: t } of waitingAct.values()) clearTimeout(t);
     waitingAct.clear();
@@ -309,9 +311,54 @@
     frame.setAttribute('sandbox', 'allow-scripts');
     frame.title = info.name;
     frame.src = `/world/${key}/`;
-    frame.addEventListener('load', () => { heardLoaded = false; }); // a new load of the frame says `loaded` again
+    ready = false; lastError = null; loadsLeft = 1; strip = null;
+    clearTimeout(startTimer);
+    startTimer = setTimeout(() => { if (!ready) fail('start'); }, START_MS);
+    frame.addEventListener('load', onFrameLoad);
     host.replaceChildren(frame);
     measureSaved();
+  }
+  // A frame is built for every load, so it loads once; a second load the page didn't ask for is the world going to another page.
+  function onFrameLoad() {
+    if (loadsLeft > 0) { loadsLeft--; return; }
+    fail('left');
+  }
+  /** The world is gone: a panel in its place says why, with ways back. */
+  function fail(why) {
+    clearTimeout(startTimer);
+    generation++; // its replies and messages are not heard any more
+    loaded = false;
+    frame = null;
+    const name = words(info.name);
+    const what = why === 'left'
+      ? `<b>${name} tried to leave the page and was stopped.</b> A world may only draw here; this one loaded another page in its place.`
+      : `<b>${name} didn't start${lastError ? `: ${words(lastError.message)}${lastError.where ? ` (${words(lastError.where)})` : ''}` : ': it did not answer.'}</b>`;
+    const back = world === 'farm'
+      ? '<button type="button" class="act" data-world-tolist>List</button>'
+      : '<button type="button" class="act primary" data-world-back>Back to the farm</button>';
+    const panel = document.createElement('div');
+    panel.className = 'world-panel';
+    panel.setAttribute('role', 'alert');
+    panel.innerHTML = `<p>${what}</p><p>${back}<button type="button" class="act" data-world-list>Show the list</button>${why === 'start' ? '<button type="button" class="act" data-world-retry>Try again</button>' : ''}</p>`;
+    panel.addEventListener('click', e => {
+      if (e.target.closest?.('[data-world-back]')) choose('farm');
+      else if (e.target.closest?.('[data-world-tolist]')) opts.onNav?.('list');
+      else if (e.target.closest?.('[data-world-list]')) void openList();
+      else if (e.target.closest?.('[data-world-retry]')) createFrame(world);
+    });
+    host?.replaceChildren(panel);
+  }
+  /** An error after the world started: a strip over it (the latest one), which it keeps drawing under. */
+  function showStrip(act) {
+    if (!host) return;
+    if (!strip) {
+      strip = document.createElement('div');
+      strip.className = 'world-strip';
+      strip.setAttribute('role', 'status');
+      strip.addEventListener('click', e => { if (e.target.closest?.('[data-strip-close]')) { strip.remove?.(); strip = null; } });
+      host.append(strip);
+    }
+    strip.innerHTML = `<span><b>${words(info.name)}:</b> ${words(act.message)}${act.where ? ` (${words(act.where)})` : ''}</span><button type="button" class="x" data-strip-close aria-label="Hide">×</button>`;
   }
 
   /**
@@ -405,7 +452,7 @@
     host = frame = null;
     loaded = false;
     heardLoaded = false;
-    inFlight = 0;
+    clearTimeout(startTimer);
     sentPaths.clear();
     generation++;
   }

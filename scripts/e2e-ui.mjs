@@ -63,8 +63,12 @@ writeFileSync(join(worldsDir, 'sample', 'world.js'), `(() => {
     bg: (fill, season, ext) => fill(ext.x0, ext.y0, ext.x1 - ext.x0, ext.y1 - ext.y0, '#3f7d3a'),
   });
 })();`);
+// One that throws as it loads, and so never starts.
+mkdirSync(join(worldsDir, 'throws'));
+writeFileSync(join(worldsDir, 'throws', 'world.json'), JSON.stringify({ name: 'Throws', api: 1 }));
+writeFileSync(join(worldsDir, 'throws', 'world.js'), "throw new Error('no barn here');");
 
-const repo = join(realpathSync(temp), 'farm-repo');
+const repo =join(realpathSync(temp), 'farm-repo');
 mkdirSync(join(repo, 'src'), { recursive: true });
 const git = (...args) => execFileSync('git', ['-C', repo, '-c', 'user.email=t@t', '-c', 'user.name=t', ...args]);
 git('init', '-q', '-b', 'main');
@@ -630,6 +634,8 @@ try {
   check(await until("/Answer sent to ui-asker/.test(document.getElementById('notice').textContent)"), 'the answer is sent from the farm sidebar');
   check(answered?.answers?.['Which crop next?'] === 'Pumpkins', 'the session received the answer');
 
+  check(await js("!document.querySelector('#farm .world-strip') && !document.querySelector('#farm .world-panel')"), "the farm broke nothing: no error strip or panel (an error its bridge caught would show here)");
+
   console.log('Worlds');
   check(await funtil("!!document.querySelector('[data-farm-nav=\"worlds\"]')"), "the farm's buttons include World");
   await fjs("document.querySelector('[data-farm-nav=\"worlds\"]').click()");
@@ -648,6 +654,15 @@ try {
   await js("document.querySelector('[data-world=\"farm\"]').click()");
   check(await until("document.querySelector('#farm .world-frame')?.src.endsWith('/world/farm/') && /Farm/.test(document.getElementById('view-farm').textContent)"), 'and back to the farm');
   await funtil("document.querySelectorAll('.px-tag').length >= 2");
+
+  await js("document.getElementById('view-farm').click()");
+  await until("document.getElementById('worlds-dlg').open");
+  await js("document.querySelector('[data-world=\"u/throws\"]').click()");
+  check(await until("/Throws didn.t start: .*did not register a world/.test(document.querySelector('#farm .world-panel')?.textContent ?? '')", 9000), 'a world that throws as it loads is replaced by a panel saying so');
+  await js("document.querySelector('[data-world-back]').click()");
+  check(await until("document.querySelector('#farm .world-frame')?.src.endsWith('/world/farm/')") && await funtil("document.querySelectorAll('.px-tag').length >= 2"), 'Back to the farm brings the farm back');
+  check(await js("!document.querySelector('#farm .world-strip') && !document.querySelector('#farm .world-panel')"), 'with no strip or panel left over');
+  for (let i = errors.length - 1; i >= 0; i--) if (/no barn here/.test(errors[i])) errors.splice(i, 1); // the throw was the test's own
 
   console.log('Claude Code setup');
   await js("document.getElementById('setup-open').click()");

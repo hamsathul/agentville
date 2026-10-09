@@ -228,9 +228,9 @@ from the page only, and the page from its current frame only.
 
 | Message | What the page does |
 |---|---|
-| `loaded` | The world has registered: the page sends `start`, then the newest scene and the selection. Once each time the frame loads: more are ignored. Replies to the frame's last load are not posted to the new one, and the paths they named are forgotten |
-| `ready` | Nothing: the world has started |
-| `error { message, where }` | Writes it to the page's console (300 and 120 characters at most), each once (50 at most) |
+| `loaded` | The world has registered: the page sends `start`, then the newest scene and the selection. The page builds a new frame for every load, and takes `loaded` once from each: an extra one is dropped. Replies to an earlier frame's requests are not posted to the new one, and the paths they named are forgotten |
+| `ready` | The world has started: the page stops waiting for it (see "When a world breaks") |
+| `error { message, where }` | Shows it (300 and 120 characters at most): before `ready`, in the panel that replaces a world that doesn't start; after it, in a strip over the world. Also written to the page's console, each once (50 at most) |
 | `pick { agentId, from? }` | Opens that agent in the sidebar. The id must be one of the scene's; `from: 'say'` when it was picked by its speech bubble |
 | `openDoc { agentId, path }` | Opens the file in a reader over the world. Only a path in that agent's folder, in a repo of the scene, or one a reply to `agentFiles` named for that same agent; never one with `..`; 4096 characters at most |
 | `openLink { url }` | Opens it in a new tab. Only `https://github.com/` links, 2048 characters at most |
@@ -252,6 +252,24 @@ A world that is out of sight (the page is showing its list view, the frame kept 
 The frame stays loaded while the dashboard shows its list: it is hidden (Chrome draws nothing in it
 meanwhile), and a world keeps all it remembers. It gets no scenes while hidden, and the newest one when
 it shows again.
+
+### When a world breaks
+
+A world never traps the person using it: the page puts a panel in its place, or a strip over it.
+
+- **It must start within 5 seconds of its frame being built.** Starting means `ready`: call
+  `Agentville.world(...)` or `Agentville.raw(...)` as `world.js` loads. A `world.js` that throws first,
+  a missing file, a `world.json` that is briefly invalid mid-save (the frame loads a 404), or one that
+  never registers: after 5 s the frame is replaced by a panel (`role="alert"`) saying
+  "<name> didn't start" and the last error the bridge caught, if any. Its buttons: **Back to the
+  farm** (for the farm itself, **List**), **Show the list**, and **Try again**. Save the file and the
+  world reloads on its own.
+- **It must stay in its frame.** The page builds a new frame for each load, so a second `load` of the
+  same frame means the world navigated itself somewhere else (a link, `location`, a form). The page
+  stops it at once, hears nothing more from it, and shows a panel: "<name> tried to leave the page and
+  was stopped."
+- **An error after it started** (one the bridge caught in your `start`, `scene` or `select`) shows in a
+  strip (`role="status"`, with a close button) over the world, which keeps running under it.
 
 The farm's settings from before worlds (`tracker-farm-zoom`, `tracker-farm-beds`, …) are copied
 once into `tracker-world:farm:…`, the first time the farm starts, and never again.

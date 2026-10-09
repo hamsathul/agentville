@@ -730,6 +730,9 @@ and can do is in [docs/worlds.md](docs/worlds.md).
 | **Browse…** or **📁 Folder** opens no window | Allow the tracker to control System Events: System Settings → Privacy & Security → Automation. A window may also be open behind others: pick or cancel it there |
 | ↺ Restore says its files could not be restored | Claude Code's file snapshots may be off (`/config` → file checkpointing, or `CLAUDE_CODE_DISABLE_FILE_CHECKPOINTING`). The session was resumed as it was; restore the conversation only |
 | The bell is silent | Click the page once (browsers block sound until you do), and allow notifications |
+| A world says it "didn't start" | A panel replaces the world and gives the error it reported, if any. Fix its `world.js` (or `world.json`) and save: it reloads by itself. Or press **Back to the farm**, **Show the list**, or **Try again**. A world has 5 seconds to start |
+| A world "tried to leave the page and was stopped" | A world may only draw in its own frame; this one loaded another page (a link or a redirect) there. Fix the world, then pick it again from the list |
+| A red strip over a world | The world reported an error after it started. It keeps drawing; **×** hides the strip. The page's console has the same message |
 | The farm stays empty, or says "not found" | The farm loads in a frame of its own from the collector (`/world/farm/`). After an update, restart the service (`agent-tracker restart`) and reload the page. The page's console says what a world reported, if anything |
 
 ## Known limits

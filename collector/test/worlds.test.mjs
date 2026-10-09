@@ -18,7 +18,7 @@ const WORLDS = [
 
 async function page({ stored = {}, hold = false, worlds = WORLDS, dialog = false, listFails = false, reveal = { ok: true, path: '/w' } } = {}) {
   const posted = [], calls = [], listeners = {}, fetches = [], held = [], warnings = [], made = [], frames = [], timers = [];
-  const clock = { now: NOW };
+  const clock = { now: NOW, perf: 1000 }; // now: the wall clock (it can jump); perf: the page's steady clock
   const element = tag => ({ tag, innerHTML: '', textContent: '', className: '', listeners: {}, addEventListener(t, fn) { this.listeners[t] = fn; }, setAttribute() {}, remove() {} });
   const host = { held: [], replaceChildren(...els) { this.held = els; }, append(el) { this.held.push(el); } };
   const diary = { innerHTML: '' };
@@ -43,7 +43,8 @@ async function page({ stored = {}, hold = false, worlds = WORLDS, dialog = false
     },
     addEventListener: window.addEventListener, removeEventListener: window.removeEventListener,
     setInterval: () => 1, clearInterval() {},
-    setTimeout: (fn, ms = 0) => timers.push({ fn, at: clock.now + ms }), clearTimeout: id => { if (timers[id - 1]) timers[id - 1].fn = null; },
+    setTimeout: (fn, ms = 0) => timers.push({ fn, at: clock.perf + ms }), clearTimeout: id => { if (timers[id - 1]) timers[id - 1].fn = null; },
+    performance: { now: () => clock.perf },
     Date: class extends Date { constructor(...a) { super(...(a.length ? a : [clock.now])); } static now() { return clock.now; } },
     localStorage: {
       getItem: k => stored[k] ?? null, setItem: (k, v) => { stored[k] = String(v); }, removeItem: k => { delete stored[k]; },
@@ -76,11 +77,11 @@ async function page({ stored = {}, hold = false, worlds = WORLDS, dialog = false
   farm.mount(host, options);
   await settle();
   /** Time passes: the clock moves on, and the timers that are due run. */
-  const wait = ms => { clock.now += ms; for (const t of timers) if (t.fn && t.at <= clock.now) { const fn = t.fn; t.fn = null; fn(); } };
+  const wait = ms => { clock.now += ms; clock.perf += ms; for (const t of timers) if (t.fn && t.at <= clock.perf) { const fn = t.fn; t.fn = null; fn(); } };
   /** The held file requests: the first one waiting is answered. */
   const answer = async () => { held.shift()?.(); await settle(); };
   return {
-    ctx, farm, posted, calls, diary, stored, fetches, settle, wait, answer, timeouts: timers, warnings, made, host, options, worlds: window.AgentvilleWorlds, listeners, frames, dlg, els,
+    ctx, jump: ms => { clock.now += ms; }, farm, posted, calls, diary, stored, fetches, settle, wait, answer, timeouts: timers, warnings, made, host, options, worlds: window.AgentvilleWorlds, listeners, frames, dlg, els,
     get frame() { return frames.at(-1); },
     // a message from the newest frame (one the page has let go of is still "the newest" here, and must be ignored)
     from: data => listeners.message?.({ source: frames.at(-1)?.contentWindow, data }),
@@ -227,7 +228,7 @@ test('replies that come after the frame is taken down, or after it loaded again,
   p.farm.update(snap);
   p.from({ type: 'loaded' });
   p.from({ type: 'request', id: 1, kind: 'agentFiles', agentId: 'a1' });
-  p.reload();
+  await p.farm.worldsChanged({ key: 'farm' }); // a new frame
   p.from({ type: 'loaded' });
   await p.answer();
   assert.deepEqual(p.posted.filter(m => m.type === 'reply'), [], 'the reloaded frame never asked for it (its ids start again)');
@@ -244,7 +245,7 @@ test('the frame starts once per load: a second `loaded` from the same load is ig
   const n = p.posted.length;
   for (let i = 0; i < 100; i++) p.from({ type: 'loaded' });
   assert.equal(p.posted.length, n, 'no second start, scene or settings read');
-  p.reload();
+  await p.farm.worldsChanged({ key: 'farm' }); // a new frame is a new load
   p.from({ type: 'loaded' });
   assert.deepEqual(p.posted.slice(n).map(m => m.type), ['start', 'scene', 'select'], 'loaded again: started again');
 });
@@ -261,7 +262,7 @@ test('back from the list, the same frame stays, with what it remembers; after it
   assert.match(p.diary.innerHTML, /sends a note/, 'its diary is still there');
   p.farm.update({ ...snap, generatedAt: 2 });
   assert.equal(p.posted.at(-1).scene.generatedAt, 2);
-  p.reload();
+  await p.farm.worldsChanged({ key: 'farm' }); // a new frame
   p.farm.update({ ...snap, generatedAt: 3 });
   p.farm.update({ ...snap, generatedAt: 4 });
   p.from({ type: 'loaded' });
@@ -343,7 +344,7 @@ test('a file opens only where it belongs: a repo of the scene, or a path a reply
   assert.equal(p.calls.length, 1, "a1's memory is not a2's");
   p.from({ type: 'openDoc', agentId: 'a1', path: '/Users/sam/.claude/projects/x/memory/a.md' });
   assert.deepEqual(p.calls.at(-1), ['doc', 'a1', '/Users/sam/.claude/projects/x/memory/a.md']);
-  p.reload();
+  await p.farm.worldsChanged({ key: 'farm' }); // a new frame
   p.from({ type: 'loaded' });
   p.wait(250);
   p.from({ type: 'openDoc', agentId: 'a1', path: '/Users/sam/.claude/projects/x/memory/a.md' });
@@ -550,4 +551,106 @@ test('a worlds event before the first frame exists builds nothing, and the chose
   await mounted;
   await p.settle();
   assert.deepEqual(p.frames.map(f => f.src), ['/world/u/space/']);
+});
+
+test('4 requests in flight, the frame reloads: a fifth from the new frame waits until an old fetch finishes', async () => {
+  const p = await page({ hold: true });
+  p.farm.update(snap);
+  p.from({ type: 'loaded' });
+  for (let i = 1; i <= 4; i++) p.from({ type: 'request', id: i, kind: 'agentFiles', agentId: 'a1' });
+  await p.farm.worldsChanged({ key: 'farm' });
+  p.from({ type: 'loaded' });
+  p.from({ type: 'request', id: 1, kind: 'agentFiles', agentId: 'a1' });
+  assert.equal(p.posted.find(m => m.type === 'reply' && m.id === 1)?.ok, false, 'the old fetches still count');
+  await p.answer();
+  assert.deepEqual(p.posted.filter(m => m.type === 'reply' && m.ok), [], 'the old frame is not answered');
+  p.from({ type: 'request', id: 2, kind: 'agentFiles', agentId: 'a1' });
+  assert.equal(p.posted.find(m => m.type === 'reply' && m.id === 2), undefined, 'one finished: taken');
+});
+
+test("a wall-clock jump does not block a world's actions", async () => {
+  const p = await page();
+  p.farm.update(snap);
+  p.from({ type: 'loaded' });
+  p.from({ type: 'pick', agentId: 'a1' });
+  p.jump(-3_600_000);
+  p.wait(250);
+  p.from({ type: 'pick', agentId: 'a1' });
+  assert.equal(p.calls.filter(c => c[0] === 'pick').length, 2);
+});
+
+test('a second `load` of a frame is the world leaving; an extra `loaded` is dropped', async () => {
+  const p = await page();
+  p.frame.listeners.load();
+  p.from({ type: 'loaded' });
+  const n = p.posted.length;
+  p.frame.listeners.load();
+  assert.match(p.host.held[0].innerHTML, /tried to leave the page/);
+  p.from({ type: 'loaded' });
+  assert.equal(p.posted.length, n);
+});
+
+test("a world that doesn't start in 5 s is replaced by a panel that says why, with ways back", async () => {
+  const p = await page({ stored: { 'tracker-world': 'u/space' } });
+  p.from({ type: 'loaded' });
+  p.from({ type: 'error', message: 'barn is not defined', where: 'world.js:12' });
+  p.wait(5000);
+  const [panel] = p.host.held;
+  assert.equal(panel.className, 'world-panel');
+  assert.match(panel.innerHTML, /Space didn.t start: barn is not defined \(world\.js:12\)/);
+  assert.match(panel.innerHTML, /data-world-back/);
+  assert.match(panel.innerHTML, /data-world-list/);
+  assert.match(panel.innerHTML, /data-world-retry/);
+});
+
+test('the farm itself failing offers the list view instead of "back to the farm"', async () => {
+  const p = await page();
+  p.wait(5000);
+  assert.match(p.host.held[0].innerHTML, /did not answer/);
+  assert.match(p.host.held[0].innerHTML, /data-world-tolist/);
+  assert.doesNotMatch(p.host.held[0].innerHTML, /data-world-back/);
+});
+
+test('a world that started in time is not replaced when the 5 s pass', async () => {
+  const p = await page();
+  p.from({ type: 'loaded' });
+  p.from({ type: 'ready' });
+  p.wait(5000);
+  assert.equal(p.host.held[0], p.frame);
+});
+
+test('the panel buttons: try again, back to the farm', async () => {
+  const p = await page({ stored: { 'tracker-world': 'u/space' } });
+  p.wait(5000);
+  const click = attr => p.host.held[0].listeners.click({ target: { closest: s => (s === `[${attr}]` ? {} : null) } });
+  click('data-world-retry');
+  assert.equal(p.frames.length, 2);
+  assert.equal(p.frame.src, '/world/u/space/');
+  p.wait(5000);
+  click('data-world-back');
+  assert.equal(p.frames.length, 3);
+  assert.equal(p.frame.src, '/world/farm/');
+  assert.equal(p.host.held[0], p.frame);
+});
+
+test('a world that loads another page in its frame is stopped at once', async () => {
+  const p = await page({ stored: { 'tracker-world': 'u/space' } });
+  p.frame.listeners.load(); // its own page
+  p.from({ type: 'loaded' });
+  p.from({ type: 'ready' });
+  p.frame.listeners.load(); // a page it went to
+  assert.match(p.host.held[0].innerHTML, /Space tried to leave the page and was stopped/);
+  p.posted.length = 0;
+  p.from({ type: 'pick', agentId: 'a1' });
+  assert.deepEqual(p.calls.filter(c => c[0] === 'pick'), [], 'its messages are not heard any more');
+});
+
+test('an error after a world started shows in a strip over it; the world keeps going', async () => {
+  const p = await page();
+  p.from({ type: 'loaded' });
+  p.from({ type: 'ready' });
+  p.from({ type: 'error', message: 'drawChar failed', where: 'world.js:120' });
+  const strip = p.host.held.find(el => el.className === 'world-strip');
+  assert.match(strip.innerHTML, /<b>Farm:<\/b> drawChar failed \(world\.js:120\)/);
+  assert.equal(p.host.held[0], p.frame, 'the frame stays');
 });
