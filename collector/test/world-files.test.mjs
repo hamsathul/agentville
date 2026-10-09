@@ -30,7 +30,7 @@ test("a world's own files are served, typed; nothing outside its folder, hidden,
   assert.equal(w.file('farm', 'world.js').type, 'text/javascript; charset=utf-8');
   assert.equal(w.file('farm', 'art/barn.png').type, 'image/png');
   assert.equal(w.file('sdk', 'bridge.js').size, 1);
-  for (const [key, rel] of [['farm', '../sdk/bridge.js'], ['farm', 'art/../../sdk/bridge.js'], ['farm', '.secret.js'], ['farm', 'run.sh'], ['farm', 'leak.js'], ['farm', 'nope.js'], ['farm', 'art'], ['sdk', 'frame.html'], ['starter', 'world.json'], ['../farm', 'world.js'], ['FARM', 'world.js'], ['u', 'world.js']]) {
+  for (const [key, rel] of [['farm', '../sdk/bridge.js'], ['farm', 'art/../../sdk/bridge.js'], ['farm', '.secret.js'], ['farm', 'run.sh'], ['farm', 'leak.js'], ['farm', 'nope.js'], ['farm', 'art'], ['sdk', 'frame.html'],['../farm', 'world.js'], ['FARM', 'world.js'], ['u', 'world.js']]) {
     assert.equal(w.file(key, rel).status, 404, `${key}/${rel}`);
   }
 });
@@ -62,10 +62,12 @@ test('the frame runs sandboxed, its scripts from the dashboard only, and can rea
 
 test("the frame page loads the SDK's and the world's scripts in CORS mode, so their errors say what and where", () => {
   const html = readFileSync(fileURLToPath(new URL('../../web/worlds/sdk/frame.html', import.meta.url)), 'utf8');
-  for (const src of ['/world/sdk/bridge.js', '/world/sdk/pixel.js', '/world/sdk/engine.js', '__BASE__world.js']) {
+  const sdk = ['/world/sdk/bridge.js', '/world/sdk/pixel.js', '/world/sdk/people.js', '/world/sdk/props.js', '/world/sdk/creatures.js', '/world/sdk/animals.js', '/world/sdk/engine.js', '__BASE__world.js'];
+  for (const src of sdk) {
     assert.match(html, new RegExp(`<script src="${src.replace(/[.]/g, '\\.')}" crossorigin="anonymous"></script>`), src);
   }
   assert.match(html, /<script src="\/brand\.js"><\/script>/, 'the page-script route is left as it is');
+  assert.deepEqual([...html.matchAll(/<script src="([^"]+)"/g)].map(m => m[1]), [sdk[0], '/brand.js', ...sdk.slice(1)], 'in order: each after what it uses');
 });
 
 function users() {
@@ -248,6 +250,16 @@ test('a change to a world is told once per burst, by its key; the SDK as "*"', a
   await new Promise(r => setTimeout(r, 600));
   stop();
   assert.deepEqual(seen.sort(), ['*', 'u/space']);
+});
+
+test('the starter world can be framed and served, but is never in the list', () => {
+  const builtinDir = fileURLToPath(new URL('../../web/worlds', import.meta.url));
+  const w = makeWorlds({ builtinDir });
+  assert.ok(!w.list().some(x => x.key === 'starter'), 'not listed');
+  assert.match(w.frame('starter') ?? '', /\/world\/starter\/world\.js/);
+  assert.ok(w.file('starter', 'world.js').real, 'its files are served');
+  assert.equal(w.info('starter')?.name, 'Starter');
+  assert.equal(w.dirOf('test'), null, 'test stays reserved');
 });
 
 test('world.json may list the shapes the world already uses for data ("taken"): short kind names, 16 at most', () => {

@@ -52,3 +52,12 @@ dialog::backdrop { background: rgba(0, 0, 0, .45); }
 @keyframes spin { to { transform: rotate(360deg); } }
 @keyframes blink { 50% { opacity: .25; } }
 .ell { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
+/* A world's frame host (the dashboard's #farm, the test page's #world): a world that broke gets a panel
+   in its place, or a strip over it; the page's way back sits in a corner over it. */
+.world-panel { margin: auto; max-width: min(560px, calc(100% - 32px)); padding: 16px 18px; border: 1px solid var(--line); border-radius: 12px; background: var(--panel); }
+.world-panel p { margin: 0 0 10px; } .world-panel p:last-child { display: flex; gap: 8px; flex-wrap: wrap; margin: 0; }
+/* Centred, but it keeps room on each side for the corner control, so the two never overlap even in a narrow frame. */
+.world-strip { position: absolute; top: 10px; left: 50%; transform: translateX(-50%); z-index: 5; display: flex; gap: 10px; align-items: center; max-width: min(560px, calc(100% - 400px)); padding: 6px 10px; border: 1px solid color-mix(in srgb, var(--crit) 50%, var(--line)); border-radius: 10px; background: var(--panel); color: var(--text); font-size: 12px; }
+.world-strip .x { border: 0; background: none; color: var(--muted); font-size: 16px; cursor: pointer; }
+/* The page's way back for a world (top left, clear of the engine HUD's buttons on the right); above the strip. */
+.world-corner { position: absolute; top: 10px; left: 10px; z-index: 6; display: flex; gap: 6px; padding: 4px; border: 1px solid var(--line); border-radius: 10px; background: color-mix(in srgb, var(--panel) 92%, transparent); }

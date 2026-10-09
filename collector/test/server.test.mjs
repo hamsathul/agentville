@@ -28,13 +28,16 @@ async function start(opts = {}) {
   writeFileSync(join(builtinDir, 'sdk', 'bridge.js'), '// bridge');
   writeFileSync(join(builtinDir, 'farm', 'world.json'), JSON.stringify({ name: 'Farm', icon: '🌾', api: 1 }));
   writeFileSync(join(builtinDir, 'farm', 'world.js'), '// farm');
+  mkdirSync(join(builtinDir, 'test')); // the world test page: a page with a token's placeholder, which must never be filled in
+  writeFileSync(join(builtinDir, 'test', 'index.html'), '<title>World test page</title><!-- __TRACKER_TOKEN__ -->');
+  writeFileSync(join(builtinDir, 'test', 'tour.js'), 'window.AgentvilleTour = {};');
   const userDir = mkdtempSync(join(tmpdir(), 'my-worlds-'));
   mkdirSync(join(userDir, 'space'));
   writeFileSync(join(userDir, 'space', 'world.json'), JSON.stringify({ name: 'Space', api: 1 }));
   writeFileSync(join(userDir, 'space', 'world.js'), '// space');
   const srv = createTrackerServer({
     port: 0,
-    token: 'tok',
+    token: opts.token ?? 'tok',
     webFile,
     worlds: makeWorlds({ builtinDir, userDir, home: opts.home }),
     getSnapshot: () => ({ generatedAt: 1, agents: [], collisions: [] }),
@@ -106,6 +109,27 @@ test('the dashboard is served with the token filled in', async () => {
   assert.equal(r.status, 200);
   assert.equal(r.body, '<html>token=tok</html>');
   await srv.close();
+});
+
+test('the world test page: no token, never framed, its scripts by plain name only', async () => {
+  const { srv, port } = await start({ token: 'secret' });
+  try {
+    const get = path => request(port, { path });
+    const page = await get('/worlds/test');
+    assert.equal(page.status, 200);
+    assert.ok(!page.body.includes('secret'), 'no token in the page');
+    assert.ok(page.body.includes('__TRACKER_TOKEN__'), 'its placeholder is left as it is');
+    assert.match(page.headers['content-security-policy'], /frame-ancestors 'none'/);
+    assert.match(page.headers['content-security-policy'], /(^|; )connect-src 'none'(;|$)/, 'it fetches nothing, by policy: not even /api/state');
+    assert.equal(page.headers['x-frame-options'], 'DENY');
+    assert.equal((await get('/worlds/test/tour.js')).status, 200);
+    assert.equal((await get('/worlds/test/tour.js')).headers['content-type'], 'text/javascript; charset=utf-8');
+    assert.equal((await get('/worlds/test/..%2Fworlds.js')).status, 404);
+    assert.equal((await get('/worlds/test/Tour.js')).status, 404);
+    assert.equal((await get('/worlds/test/missing.js')).status, 404);
+  } finally {
+    await srv.close();
+  }
 });
 
 test('a request for another Host name is refused (DNS rebinding guard)', async () => {

@@ -127,11 +127,19 @@ It listens on `127.0.0.1` only and reads what Claude Code already writes to disk
 - The farm is a world: it runs in a sandboxed frame of its own, with no access to the token, and
   asks the page for the little it needs ([docs/worlds.md](docs/worlds.md)). A world from your own
   folder sees no words or paths until you tick **Can see what agents say** for it.
+- Make your own world, or have Claude make one: `npm run new-world`, the test page, `check-world`
+  and `world-shots`, with a guide written for Claude Code to follow ([docs/worlds.md](docs/worlds.md)).
+  The test page shows any world playing a tour of made-up snapshots, each situation at its own
+  address for a screenshot, with no token and no real data; `npm run check-world` plays the same
+  tour headless and names the file and line of what breaks; `npm run world-shots` takes a picture of
+  every stop. A world draws its people, what they hold and its animals with the kits that come with
+  it.
 
 ## Requirements
 
 - **macOS.** The service runs under launchd, and the tracker uses `ps` and `osascript`.
-- **Node.js 22 or newer.** An nvm install is found automatically.
+- **Node.js 22 or newer.** An nvm install is found automatically. `npm run check-world` needs
+  22.13 or later (or 23.5 or later), to run a world contained.
 - **Claude Code.** The mod needs a build with plugin mods; it is tested on 2.1.293.
 - **Optional: the GitHub CLI (`gh`)**, signed in, for deploy status and pull requests.
 
@@ -554,8 +562,11 @@ something else. Built-in worlds always see everything.
 
 ![The list of worlds](docs/worlds.png)
 
-A world is a folder holding `world.json` and `world.js`. Yours go in `~/.agentville/worlds/<name>/`
-(the name is lowercase letters, digits and dashes, up to 40), or in the folder `worldsDir` names.
+**Your own worlds:** `npm run new-world -- <name>` copies the starter world into your worlds folder
+under that name and says what to do next (it refuses a taken or invalid name, and leaves nothing
+half-made). By hand: a world is a folder holding `world.json` and `world.js`. Yours go in
+`~/.agentville/worlds/<name>/` (the name is lowercase letters, digits and dashes, up to 40), or in
+the folder `worldsDir` names.
 Built-in worlds can't be replaced: a world of yours named like one is just another world, listed
 after it. A world with a problem (a `world.json` that can't be read, one made for a newer
 Agentville, a missing `world.js`) is listed with what is wrong. Files are served only from inside
@@ -565,9 +576,47 @@ unless that folder is your worlds folder, your home folder or one above either, 
 spelled. A folder with no `world.json` of its own serves nothing, and a broken link is listed with
 an error. `worldsDir` is read at startup (a change needs a restart); one that is your home folder or
 above it is ignored and the default is used. A world's names are shown as plain text, whatever they
-hold. How to write one is in [docs/worlds.md](docs/worlds.md). A world can have animals of its own
-(the `animals()` hook, from a library of twelve creatures), and lists in its `world.json` the shapes it
-already uses for data (`taken`), so its animals never look like them.
+hold. How to write one is in [docs/worlds.md](docs/worlds.md), a guide written for Claude Code to
+follow as much as for you: ask Claude to make you a world and point it there. A plain starter world
+(`web/worlds/starter/`, with a cat; [a picture](docs/starter.png)) is the template for your own; it
+isn't in the list. A world can have animals
+of its own (the `animals()` hook, from a library of twelve creatures), and lists in its `world.json`
+the shapes it already uses for data (`taken`), so its animals never look like them.
+
+**Try a world on the test page:** `http://localhost:7777/worlds/test?world=farm` (or `?world=starter`,
+or `?world=u/<folder>` for one of yours). It shows the world playing a tour of made-up snapshots,
+one stop for each thing a world may show (every state, deploys, a compaction, a collision, the
+limits, night, privacy mode…), and `&stop=<name>` holds one stop at its own address, for a
+screenshot. The page has no token and no real data: requests get made-up answers, what the world
+asks the page to do is listed rather than done (but a GitHub link still opens, and motion is applied
+too), and the world's settings are kept in memory, so the
+dashboard's own settings in this browser (the world you chose, each world's settings, the **Can see
+what agents say** switches) are never read or written. The stop decides privacy mode, for every
+world. The error strip and the "didn't start" panel show here as on the dashboard. It doesn't reload
+when you save: reload the page. The stops are
+listed in [docs/worlds.md](docs/worlds.md#the-test-page-and-the-tour).
+
+**A picture of every stop:** `npm run world-shots -- <name>` (or `farm`, `starter`) opens each stop
+of the tour in headless Chrome, on a server of its own with made-up data, and saves a picture of
+each in `.private/shots/` (`--stop <name>` for one stop, `--dir <folder>` for another place). The
+clock is frozen, so the same world gives the same pictures, which makes a change easy to compare.
+`new-world`, `check-world` and `world-shots` all take `--worlds <dir>`, to use a folder other than
+your worlds folder.
+
+**Check a world without a browser:** `npm run check-world -- <name>` (or `farm`, `starter`) plays the
+same tour headless, a few frames a stop, and lists each exception with its stop, file and line, a
+hook that never returns (cut off after 2 seconds; it never hangs), a `world.json` problem, creatures
+that break the animals kit's rules (a kind in `taken`, a line over 40 characters, fewer than 2 or more
+than 4 actions…; not yet their gags or play), and, as pointers rather than verdicts, the hooks left
+to their defaults, the checklist items it draws the same in two states ("deploy failed" draws the
+same as "deploy ok"), and outfit parts the people kit doesn't have. It exits 1 on a problem. It needs no server or token and
+reads none of your sessions: only the world's `world.js` and `world.json`, the SDK and the tour (and
+`config.json`, for where your worlds are). What it reports, and the checklist, are in
+[docs/worlds.md](docs/worlds.md#check-world-and-the-checklist). It runs the world's code on your Mac, contained (it can
+read only the SDK and the world's `world.js` and `world.json`, no other file of the world's, and can't
+write or start programs), but the world can still reach the network: check only worlds you'd trust
+([Privacy and security](#privacy-and-security)). A world whose `world.js` or `world.json` is a link out
+of its folder isn't run.
 
 **Your own worlds, open while you write them.** Saving a file in a world's folder (or in a built-in
 world's) reloads that world on screen, keeping its zoom and where you were looking, so you can
@@ -753,6 +802,9 @@ The mod also does the dashboard's work inside the session:
 | `agent-tracker status` | Whether the service runs and the dashboard answers |
 | `agent-tracker open` | Opens the dashboard |
 | `agent-tracker logs` | The last lines of its logs |
+| `npm run new-world -- <name>` | Makes a world of your own from the starter, in your worlds folder, and says what to do next ([docs/worlds.md](docs/worlds.md#making-a-world)) |
+| `npm run world-shots -- <world>` | A picture of a world (`farm`, `starter` or one of yours) at every stop of the test tour, in headless Chrome on made-up data, in `.private/shots/` (`--stop <name>` for one stop). Exits 1 if a stop didn't show |
+| `npm run check-world -- <world>` | Runs the test tour headless against a world (`farm`, `starter` or one of yours): its exceptions with file and line, a hook that never returns, creatures that break the animals kit's rules, and pointers to what it may draw the same ([docs/worlds.md](docs/worlds.md#check-world-and-the-checklist)). Exits 1 on a problem. It runs the world's code contained (it can read only the SDK and the world's `world.js` and `world.json`), but the world can still reach the network: check only worlds you'd trust ([Privacy and security](#privacy-and-security)) |
 
 ## How it works
 
@@ -807,6 +859,21 @@ and can do is in [docs/worlds.md](docs/worlds.md).
   asks for them by path (so keep nothing secret in a world's folder), and never from outside the
   world's own folder. The list of their names and the folder's path needs the token. The collector
   reads the folder; it never fetches a world from anywhere.
+- The world test page (`/worlds/test`) is served without the token and holds none: its snapshots
+  and answers are made up in the page, it never asks the collector for your sessions or files (its
+  content policy lets it fetch nothing at all), and it keeps a world's settings in memory, never in
+  the browser. Like the dashboard, it refuses to be shown in a frame.
+- `npm run check-world` runs a world's code on your Mac, on made-up snapshots, outside the sandboxed
+  frame. It runs it contained, in a Node of its own (Node's permission model): it can read only the
+  SDK and the world's `world.js` and `world.json` (no other file of the world's, so a link the world
+  ships in its folder leads nowhere), can't write or start programs, and gets none of your
+  environment, nor your terminal: what it prints, the world's words among it, is printed without
+  control characters (as `world-shots` prints a world's), so a world can't steer your terminal. A
+  world whose `world.js` or `world.json` is itself a link out of its folder is refused before
+  anything runs. It can still reach the network, and Node's containment is a seat belt rather than a
+  sandbox, so check only worlds you'd trust; look at any other world on the test page, in its frame.
+  A Node too old to contain it (before 22.13, or 23.0 to 23.4) gets a one-line refusal, never an
+  unconfined run.
 - **Open the worlds folder** (an action: token and same origin) makes your worlds folder and shows
   it in Finder (`open -a Finder <folder>`); it only shows it, and runs nothing in it. The page keeps your
   choice of world in this browser (`tracker-world`), and nothing else about it leaves the page.
@@ -902,14 +969,15 @@ and can do is in [docs/worlds.md](docs/worlds.md).
 | An idle farmer walks off to the animals, or has no hat | It is playing (idle three minutes or more) or a goat has its hat; it is the farm's fun, not the session. It comes back the moment it gets work or needs you. Switch **Animals** off to stop it all |
 | **■ Stop** on the working line, or **✕ Cancel** on a question, is greyed out | Both need mod 0.7.0: `/reload-plugins` in that session. Until then, press Esc in its terminal |
 | No cost, plan usage or working line | These come from the mod (0.4.0 or newer; the working line from 0.5.0) in a running session |
-| My world shows no bubbles and calls repos r1, r2… | It is in privacy mode: tick **Can see what agents say** for it in the list of worlds. Unticking later doesn't clear what the world saved while it could see; it gets its own saved settings back on start |
+| My world shows no bubbles and calls its repos `repo 1`, `repo 2`… (and its agents `agent 1`…) | It is in privacy mode: tick **Can see what agents say** for it in the list of worlds. Unticking later doesn't clear what the world saved while it could see; it gets its own saved settings back on start |
 | No pull requests or deploy weather | `gh auth status`. Pull requests need a GitHub `origin`; Actions runs need the repo in `deployRepos` |
 | ＋ Session or End session does nothing | Allow the tracker to control Terminal or iTerm: System Settings → Privacy & Security → Automation |
 | **Browse…** or **📁 Folder** opens no window | Allow the tracker to control System Events: System Settings → Privacy & Security → Automation. A window may also be open behind others: pick or cancel it there |
 | ↺ Restore says its files could not be restored | Claude Code's file snapshots may be off (`/config` → file checkpointing, or `CLAUDE_CODE_DISABLE_FILE_CHECKPOINTING`). The session was resumed as it was; restore the conversation only |
 | The bell is silent | Click the page once (browsers block sound until you do), and allow notifications |
-| A world says it "didn't start" | A world has 5 seconds to start. Past that, a panel replaces the (empty) world and gives the first error it reported, if any. Fix its `world.js` (or `world.json`) and save: it reloads by itself. Or press **Back to the farm**, **Show the list**, or **Try again** |
+| A world says it "didn't start" | A world has 5 seconds to start. Past that, a panel replaces the (empty) world and gives the first error it reported, if any. For a world you'd trust, run `npm run check-world -- <name>`: it names the file and line (it runs the world contained, reading only the SDK and the world's `world.js` and `world.json`, but the world can still reach the network; see [Privacy and security](#privacy-and-security)). Fix its `world.js` (or `world.json`) and save: it reloads by itself. Or press **Back to the farm**, **Show the list**, or **Try again** |
 | A world "tried to leave the page and was stopped" | A world may only draw in its own frame; this one tried to go to another page (a link, `location`). The page stops it the moment it starts to leave. Fix the world and save: it reloads by itself. Or press **Back to the farm** or **Show the list** |
+| My world looks wrong in one situation | Open the test page at that stop: `http://localhost:7777/worlds/test?world=u/<folder>&stop=…` (the stops are listed in [docs/worlds.md](docs/worlds.md#the-test-page-and-the-tour)). It has no live reload: reload the page after saving. Or take a picture of that stop: `npm run world-shots -- <folder> --stop …` |
 | A red strip over a world | The world reported an error after it started. It keeps drawing; **×** hides the strip. The page's console has the same message |
 | The farm stays empty, or says "not found" | The farm loads in a frame of its own from the collector (`/world/farm/`). After an update, restart the service (`agent-tracker restart`) and reload the page. The page's console says what a world reported, if anything |
 | **✨** says no name came, or the ✨ Helper shows a last error | No session is listening with mod 0.8.0 (`/reload-plugins` in it), today's limit is reached (it resets at midnight), or your organisation doesn't allow Haiku (the error says so) |
@@ -949,18 +1017,23 @@ and can do is in [docs/worlds.md](docs/worlds.md).
 ```
 collector/   the collector: sources/, transcript/, derive/, server.mjs; its tests in test/
 web/         the dashboard: index.html, app.js, panels.js, scene.js, worlds.js…; worlds/ holds the
-             farm (worlds/farm/) and what every world's frame loads (worlds/sdk/)
+             farm (worlds/farm/), the starter (worlds/starter/), the test page and its tour
+             (worlds/test/) and what every world's frame loads (worlds/sdk/)
 mod/         the Claude Code mod: hooks/register.tsx; its tests in tests/
 bin/         the agent-tracker command and the launchd entry point
 launchd/     the service definition
-scripts/     end-to-end checks and the demo videos (their shared recorder in scripts/demo/)
-docs/        screenshots, and worlds.md: what a world gets from the dashboard and can do
+scripts/     end-to-end checks, the world tools (new-world, check-world, world-shots) and the demo
+             videos (their shared recorder in scripts/demo/)
+docs/        screenshots, and worlds.md: the guide to making a world, and what a world gets and can do
 ```
 
 ```bash
 npm test                    # collector and dashboard (node:test)
 npm run test:ui             # the dashboard, the farm and other worlds in headless Chrome, on a fixture
                             # (a probe world among them tries every way out of its frame)
+npm run kit-sheet           # redraw docs/kits.png, the picture of the people and props kits
+npm run world-shots -- <world>  # a picture of a world at every stop of its test tour (.private/shots/)
+npm run check-world -- <world>  # the test tour run headless against a world: exceptions, loops, creatures, pointers
 claude plugin test mod      # the Claude Code mod
 scripts/e2e-answer.sh       # answering and messaging real sessions
 npm start                   # run the collector in the foreground (stop the service first)

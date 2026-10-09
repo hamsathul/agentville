@@ -8,37 +8,18 @@
   /* ---------- the scene: what the farm draws, from the snapshot (pure, tested) ---------- */
 
   const SHIRT = ['#d9673a', '#4a7bd0', '#2fa57a', '#8a6fd8', '#d55181', '#c99a16', '#e05555', '#3c9c3c'];
-  const hashOf = id => {
-    let h = 0;
-    for (const ch of String(id)) h = (h * 31 + ch.charCodeAt(0)) >>> 0;
-    return h;
-  };
   // A farmer's shirt is its agent's colour: the scene's colorIndex (web/scene.js keeps the same list).
-  /** One of n choices for an id; each salt mixes the hash differently, so the choices don't move together. */
-  const pick = (id, salt, n) => {
-    let h = hashOf(id) ^ Math.imul(salt, 0x9e3779b1);
-    h = Math.imul(h ^ (h >>> 16), 0x85ebca6b);
-    h = Math.imul(h ^ (h >>> 13), 0xc2b2ae35);
-    return ((h ^ (h >>> 16)) >>> 0) % n;
-  };
+  const { hashOf, pick, lookFor, sprite: personSprite } = window.Agentville.people;
 
-  // What makes each farmer look like itself, besides its shirt: hat, hair, skin, overalls, an extra.
-  const HATS = ['straw', 'cap', 'beanie', 'bandana', 'none'];
+  // What makes each farmer look like itself, besides its shirt: farm clothes for the people kit (people.js),
+  // picked by the agent's id. A hat (straw, or a dyed one), overalls over the shirt, an extra; codex agents wear slate caps.
   const STRAW = [['#e9c46a', '#b5562f'], ['#e2c27a', '#3c5a99'], ['#f0d58c', '#2f6b2f'], ['#d4ad55', '#8e2b2b']]; // [hat, band]
   const DYED = [['#d64545', '#8e2b2b'], ['#4f9d4a', '#2f6b2f'], ['#4a74c9', '#2c4a85'], ['#8a5fc0', '#5a3b85'], ['#ece6d6', '#9a9488'], ['#3a3a40', '#c9a24a'], ['#e58a2e', '#9a5212']];
   const CODEX_CAPS = [['#5d7184', '#2a3644'], ['#4a7a8c', '#22404a'], ['#7a8a9c', '#3a4452'], ['#3f4f66', '#cfd8e3']]; // slate caps
-  const HAIR = ['#2b1d14', '#5a3a22', '#a0522d', '#d9b26a', '#9a9a9a'];
-  const SKIN = ['#f1c7a1', '#e0a878', '#c68a5a', '#9c6644', '#7d5236'];
   const OVERALLS = ['#3c5a99', '#6b4f2a', '#4a4a52', '#2f6b4f', '#7a3b5a'];
-  const EXTRAS = ['none', 'beard', 'glasses', 'cheeks'];
-  function lookOf(a) {
-    const hat = a.kind === 'codex' ? 'cap' : HATS[pick(a.id, 1, HATS.length)];
-    const colors = a.kind === 'codex' ? CODEX_CAPS[pick(a.id, 2, CODEX_CAPS.length)] : hat === 'straw' ? STRAW[pick(a.id, 2, STRAW.length)] : DYED[pick(a.id, 2, DYED.length)];
-    return {
-      hat, hatColor: colors[0], band: colors[1], hair: HAIR[pick(a.id, 3, HAIR.length)], skin: SKIN[pick(a.id, 4, SKIN.length)],
-      overalls: OVERALLS[pick(a.id, 5, OVERALLS.length)], extra: EXTRAS[pick(a.id, 6, EXTRAS.length)],
-    };
-  }
+  const FARMER = { hat: ['straw', 'cap', 'beanie', 'bandana', 'none'], hatColors: { straw: STRAW, '*': DYED }, top: 'shirt', bottom: 'overalls', bottomColors: OVERALLS, extra: ['none', 'beard', 'glasses', 'cheeks'] };
+  const CODEX = { ...FARMER, hat: 'cap', hatColors: CODEX_CAPS };
+  const lookOf = a => lookFor(a, a.kind === 'codex' ? CODEX : FARMER);
   // And each field, by its repo: what grows there and the colour of its fence. The branch is a pennant.
   const CROPS = ['wheat', 'corn', 'carrot', 'cabbage', 'sunflower', 'tomato', 'pumpkin'];
   const FENCES = ['#c98d4f', '#8a8f96', '#9c3b30', '#5f7f9a', '#6b8f4a', '#4e3626'];
@@ -450,61 +431,10 @@
   /* ---------- the farm theme: sprites, ground, weather, labels ---------- */
 
   const K = '#2a1d14';
-  // 14×16 farmer, front view, put together from its look. h hat · b hat band · r hair · s skin ·
-  // g glasses · p cheeks · C shirt · o overalls · P pole. The eyes are drawn on top (row 6, or 7 looking down).
-  const HEADS = {
-    straw: ['.....kkkk.....', '....kwwhhk....', '...khhhhhhk...', '..kbbbbbbbbk..', '.khhhhhhhhhhk.'],
-    cap: ['..............', '.....kkkk.....', '....kwwhhk....', '...khhhhhhk...', '...kbbbbbbbbk.'],
-    beanie: ['......kk......', '.....kbbk.....', '....kwwhhk....', '...khhhhhhk...', '...kbbbbbbk...'],
-    bandana: ['..............', '....kkkkkk....', '...kwwhhhhk...', '...khbhhbhkhk.', '...khhhhhhk.h.'],
-    none: ['..............', '....kkkkkk....', '...krrrrrrk...', '...krrrrrrk...', '...krrrrrrk...'],
-  };
-  // Four views: from the front (walking down or standing), from behind (walking up), and from the
-  // side (walking right; walking left is its mirror). The hat is the same from every side.
-  const FRONT_FACE = look => [
-    '...krssssrk...',
-    look.extra === 'glasses' ? '...kggkkggk...' : '...kssssssk...',
-    look.extra === 'beard' ? '...krssssrk...' : look.extra === 'cheeks' ? '...kpsssspk...' : '...kssssssk...',
-    look.extra === 'beard' ? '....krrrrk....' : '....kkkkkk....',
-  ];
-  const BACK_HEAD = ['...krrrrrrk...', '...krrrrrrk...', '...krrrrrrk...', '....kkkkkk....'];
-  const SIDE_FACE = look => [ // facing right: hair at the back, one eye (drawn later), a nose
-    '...krrsssssk..',
-    look.extra === 'glasses' ? '...krssggggk..' : '...krssssssk..',
-    look.extra === 'beard' ? '...krssrrrrrk.' : look.extra === 'cheeks' ? '...krsspssssk.' : '...krsssssssk.',
-    look.extra === 'beard' ? '....krrrrrk...' : '....kkkkkkk...',
-  ];
-  const HIPS = `...k${'o'.repeat(5)}Ok...`;
-  const FRONT_BODY = ['..kCCCCCCCck..', '.kCCoCCCCocck.', '.kCCooooooCck.', '.ks.oooooO.sk.', HIPS];
-  const BACK_BODY = ['..kCCCCCCCck..', '.kCCCoCCoCcck.', '.kCCooooooCck.', '.ks.oooooO.sk.', HIPS]; // straps cross on the back
-  const SIDE_BODY = ['...kCCCCCck...', '...kCCoCCck...', '...kCoooock...', '...kooooOok...', HIPS];
-  const LEGS = { s: ['...koo..ook...', '...kkk..kkk...'], a: ['...koo..ook...', '...kkk........'], b: ['...koo..ook...', '........kkk...'], p: ['......PP......', '......PP......'] };
-  const SIDE_LEGS = { s: ['.....kook.....', '.....kkkk.....'], a: ['....ko..ok....', '...kk....kk...'], b: ['.....koko.....', '....kk..kk....'] };
-  /** A farmer's sprite rows: 14 wide, 16 tall, for a view (down, up, right, left) and a leg frame. */
-  function spriteRows(look, view = 'down', legs = 's') {
-    const head = HEADS[look.hat] ?? HEADS.straw;
-    if (view === 'left') return spriteRows(look, 'right', legs).map(r => [...r].reverse().join(''));
-    if (view === 'right') return [...head, ...SIDE_FACE(look), ...SIDE_BODY, ...(SIDE_LEGS[legs] ?? SIDE_LEGS.s)];
-    if (view === 'up') return [...head, ...BACK_HEAD, ...BACK_BODY, ...(LEGS[legs] ?? LEGS.s)];
-    return [...head, ...FRONT_FACE(look), ...FRONT_BODY, ...(LEGS[legs] ?? LEGS.s)];
-  }
-  const sprites = new Map();
-  function farmerSprite(look, color, scare, legs, up, view = 'down') {
-    if (scare) view = 'down';
-    const key = `${Object.values(look).join()}|${color}|${scare}|${legs}|${up}|${view}`;
-    if (sprites.has(key)) return sprites.get(key);
-    const pal = scare // a scarecrow keeps its farmer's hat and shape, in straw and sacking
-      ? { k: '#3a2a1a', h: '#c9a24a', w: '#e2c27a', b: '#7a5230', r: '#c9a24a', s: '#d8c48a', g: '#d8c48a', p: '#d8c48a', C: '#8b7a55', c: '#6b5a3a', o: '#6b5a3a', O: '#4e3626', P: '#6b4320' }
-      : { k: K, h: look.hatColor, w: shade(look.hatColor, 1.3), b: look.band, r: look.hair, s: look.skin, g: '#e6eef5', p: '#e58a8a', C: color, c: shade(color, 0.78), o: look.overalls, O: shade(look.overalls, 0.75), P: '#6b4320' };
-    for (const key of Object.keys(pal)) if (!'Cwc'.includes(key)) pal[key] = ink(pal[key]); // one palette; the shirt is the agent's colour, its light and shade made from it
-    const c = makeSprite(spriteRows(look, view, legs), pal);
-    if (up && view === 'down') { // one arm up, waving
-      const g = c.getContext('2d');
-      g.clearRect(11, 11, 2, 2); g.fillStyle = color; g.fillRect(12, 5, 1, 6); g.fillStyle = pal.s; g.fillRect(12, 3, 1, 2); g.fillStyle = K; g.fillRect(13, 3, 1, 8);
-    }
-    sprites.set(key, c);
-    return c;
-  }
+  // A scarecrow keeps its farmer's hat and shape, in straw and sacking.
+  const SCARECROW = { k: '#3a2a1a', h: '#c9a24a', w: '#e2c27a', b: '#7a5230', r: '#c9a24a', s: '#d8c48a', g: '#d8c48a', p: '#d8c48a', C: '#8b7a55', c: '#6b5a3a', o: '#6b5a3a', O: '#4e3626', P: '#6b4320' };
+  /** A farmer's sprite: the people kit's (people.js); a scarecrow faces you, on its pole. */
+  const farmerSprite = (look, color, scare, legs, up, view = 'down') => personSprite(look, color, { view: scare ? 'down' : view, legs, wave: up, palette: scare ? SCARECROW : null });
 
   const FAMILY_PIN = { opus: '#8a5fc0', sonnet: '#3d7be0', haiku: '#2fa57a', fable: '#f08a24' };
   // What a farmer does for each kind of step, what it holds, and where it stands in its field
@@ -539,13 +469,6 @@
   const BLUEPRINT = { prop: 'blueprint', verb: 'drawing up plans (plan mode)', spot: 0 };
   /** What a farmer does now: its step's tool; in plan mode, a blueprint. */
   const doing = f => (f.mode === 'plan' && f.state === 'working' ? BLUEPRINT : f.step || f.tool ? actionOf(f.step, f.tool) : null);
-  const shades = new Map();
-  /** A colour made darker (k < 1) or lighter (k > 1). */
-  function shade(hex, k) {
-    const key = hex + k;
-    if (!shades.has(key)) shades.set(key, `#${[1, 3, 5].map(i => Math.min(255, Math.round(parseInt(hex.slice(i, i + 2), 16) * k)).toString(16).padStart(2, '0')).join('')}`);
-    return shades.get(key);
-  }
   // The seed packet on each field's fence: a 5×6 picture of its crop.
   const SEED_ICONS = {
     wheat: ['..y..', '.yyy.', '..y..', '.yyy.', '..g..', '..g..'],
@@ -740,11 +663,8 @@
         if (blink(1.5)) { rp(12, 6, 1, 3, '#ffd43b'); rp(11, 7, 3, 1, '#ffd43b'); } // the knack of it
         return;
       }
-      case 'blueprint': { // plan mode: drawing up plans, a pencil moving over the sheet
-        rp(1, 9, 11, 6, '#2c4a85'); rp(1, 9, 11, 1, '#3d7be0'); rp(3, 10, 1, 5, '#a9dcf7'); rp(1, 12, 11, 1, '#a9dcf7'); rp(7, 11, 3, 2, '#a9dcf7');
-        rp(8 + blink(3) * 2, 7, 1, 3, '#f0b429'); rp(8 + blink(3) * 2, 10, 1, 1, '#1b1420');
-        return;
-      }
+      case 'blueprint': // plan mode: drawing up plans (the props kit's)
+        window.Agentville.props.draw('blueprint', rp, T); return;
       case 'clipboard': // planning: a chore list being ticked
         rp(1, 9, 5, 6, '#a8703c'); rp(2, 10, 3, 4, '#fff4d6'); rp(3, 9, 1, 1, '#9aa4ad'); rp(2, 11, 3, 1, '#9aa0a6'); rp(2, 13, 2, 1, '#9aa0a6');
         if (blink(2)) rp(4, 13, 1, 1, '#2fa57a');
@@ -1041,6 +961,7 @@
         : [b.x + (k % 2 ? 1 : -1) * (7 * SC + 4) + Math.sin(T * 1.3 + k) * 3, b.y + 2 - (k > 1 ? 4 * SC : 0)]),
       startText: n => `Morning: <b>${n}</b> farmer${n === 1 ? '' : 's'} on the farm`,
       arriveText: 'walks out of the barn',
+      nouns: { agent: 'farmer', agents: 'farmers', repo: 'field', repos: 'fields', place: 'farm' },
       tag: tagText,
       tip: f => {
         const field = fieldByKey(f.field);
@@ -1482,7 +1403,7 @@
   window.Agentville.world(makeFarm());
   // The farm's own pieces, for its tests (and the world tools to come).
   window.AgentvilleFarm = {
-    farmScene, makeFarm, actionOf, paint, growthStage, STAGES, skyAt, PALETTE, ink, spriteRows, walkFrame, stepParticles, seasonOf, siloOf, glyphOf, textWidth,
+    farmScene, makeFarm, actionOf, paint, growthStage, STAGES, skyAt, PALETTE, ink, walkFrame, stepParticles, seasonOf, siloOf, glyphOf, textWidth,
     weatherOf, helpHtml, layoutFor, packedLayout, rowsOfGroup, cartRoute, cartGoal, cutMid, tagText,
   };
 })();

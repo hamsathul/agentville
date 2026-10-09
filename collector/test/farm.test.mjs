@@ -8,7 +8,7 @@ import vm from 'node:vm';
 
 const web = f => readFileSync(fileURLToPath(new URL(`../../web/${f}`, import.meta.url)), 'utf8');
 // The scripts a world's frame runs (the bridge aside), and the styles it loads (it can't see the page's own).
-const FRAME_SCRIPTS = ['worlds/sdk/pixel.js', 'worlds/sdk/creatures.js', 'worlds/sdk/animals.js', 'worlds/sdk/engine.js', 'worlds/farm/world.js'];
+const FRAME_SCRIPTS = ['worlds/sdk/pixel.js', 'worlds/sdk/people.js', 'worlds/sdk/props.js', 'worlds/sdk/creatures.js', 'worlds/sdk/animals.js', 'worlds/sdk/engine.js', 'worlds/farm/world.js'];
 const FRAME_CODE = FRAME_SCRIPTS.map(web).join('\n');
 const FRAME_CSS = ['base.css', 'worlds/sdk/engine.css'].map(web).join('\n');
 // The page's scene and host, and the farm's frame, loaded together.
@@ -18,7 +18,7 @@ function load() {
   vm.runInNewContext(code, { window, console, Math, Date, JSON, Map, Set });
   const farm = window.AgentvilleFarm, scene = window.AgentvilleScene, host = window.TrackerFarm;
   return {
-    ...scene, ...farm, mount: host.mount, update: host.update, unmount: host.unmount, select: host.select, colorOf: host.colorOf,
+    ...scene, ...farm, spriteRows: window.Agentville.people.rows, mount: host.mount, update: host.update, unmount: host.unmount, select: host.select, colorOf: host.colorOf,
     // toScene, as the farm sees it: the page's plain-facts scene, turned into the farm's own
     toScene: (snap, o) => farm.farmScene(scene.toScene(snap, o)),
   };
@@ -145,7 +145,7 @@ test('every farmer gets its own look from its id: hat, colours, skin, extras; th
   const { toScene } = load();
   const ids = ['agent-alpha', 'agent-bravo', 'agent-charlie', 'agent-delta', 'agent-echo', 'agent-foxtrot', 'agent-golf', 'agent-hotel'];
   const looks = plain(toScene(snapOf(ids.map(id => agent(id)), []), { cpuAlertPct: 90 }).farmers.map(f => f.look));
-  for (const l of looks) for (const k of ['hat', 'hatColor', 'hair', 'skin', 'overalls', 'extra']) assert.ok(l[k], k);
+  for (const l of looks) for (const k of ['hat', 'hatColor', 'hair', 'skin', 'bottomColor', 'extra']) assert.ok(l[k], k);
   assert.ok(new Set(looks.map(l => JSON.stringify(l))).size === ids.length, 'eight agents, eight looks');
   assert.ok(new Set(looks.map(l => l.hat)).size >= 3, 'several hat styles');
   const again = plain(toScene(snapOf([agent(ids[3])], []), { cpuAlertPct: 90 }).farmers[0].look);
@@ -262,7 +262,7 @@ test('every colour the farm paints comes from one palette of ramps', () => {
 
 test('a farmer has four views: front, back, and a side each way (one the mirror of the other)', () => {
   const { spriteRows } = load();
-  const look = { hat: 'cap', hatColor: '#4a74c9', band: '#2c4a85', hair: '#5a3a22', skin: '#e0a878', overalls: '#3c5a99', extra: 'beard' };
+  const look = { hat: 'cap', hatColor: '#4a74c9', band: '#2c4a85', hair: '#5a3a22', skin: '#e0a878', top: 'shirt', bottom: 'overalls', bottomColor: '#3c5a99', extra: 'beard' };
   const views = Object.fromEntries(['down', 'up', 'right', 'left'].map(v => [v, plain(spriteRows(look, v, 's'))]));
   for (const rows of Object.values(views)) { assert.equal(rows.length, 16); assert.ok(rows.every(r => r.length === 14)); }
   assert.equal(new Set(Object.values(views).map(r => r.join('|'))).size, 4);

@@ -980,6 +980,49 @@ try {
   await js("document.getElementById('view-list').click()"); // leave the navigated frame behind for the rest of the run
   await until("document.getElementById('main').dataset.view === 'list'");
 
+  console.log('World test page');
+  // A world on its own page, shown the tour (made-up snapshots) with no token and no real data. It shares
+  // the dashboard's origin, so the dashboard's storage is snapshotted first and compared after.
+  const addr = path => `http://127.0.0.1:${handle.port}${path}`;
+  const dashboardSettled = () => until("typeof TOKEN === 'string' && document.querySelectorAll('.row[data-id]').length > 0");
+  await send('Page.navigate', { url: addr('/') });
+  await dashboardSettled();
+  await js("localStorage.setItem('tracker-world-cansee:u/sample', 'on'); true"); // a can-see switch on, for the snapshot to hold one
+  const pageToken = await js('TOKEN'), dashboardStorage = await js('JSON.stringify(Object.entries(localStorage).sort())');
+  const testPageHtml = await (await fetch(addr('/worlds/test'))).text();
+  check(typeof pageToken === 'string' && pageToken.length > 8 && !testPageHtml.includes(pageToken), 'the test page holds no token');
+  await send('Page.navigate', { url: addr('/worlds/test?world=starter&stop=waiting') });
+  check(await until("document.body.dataset.shown === 'waiting'", 15_000), 'a stop of the tour shows, at its own address');
+  check(await js("document.getElementById('stops').value") === 'waiting', 'the stop picker names it');
+  await shot('world-test-page');
+  check(Boolean(await chrome.inFrame('/world/starter/', "document.querySelectorAll('.px-tag').length > 0").catch(() => false)), 'the starter draws its people in its frame');
+  check(await js("typeof TOKEN === 'undefined' && typeof window.TrackerFarm?.mount === 'function'"), 'the page itself has no token either');
+  await send('Page.navigate', { url: addr('/worlds/test?world=farm&stop=compaction') });
+  check(await until("document.body.dataset.shown === 'compaction'", 15_000), 'a two-snapshot stop plays both');
+  await send('Page.navigate', { url: addr('/worlds/test?world=u/nope') });
+  check(await until("document.querySelector('.world-panel')?.textContent.includes(\"didn't start\")", 8000), 'a world that is not there: its panel, not a blank page');
+  await shot('world-test-page-missing');
+  await send('Page.navigate', { url: addr('/worlds/test?world=u/throws&stop=one') });
+  check(await until("/didn.t start: (Uncaught Error: )?no barn here \\(world\\.js:1\\)/.test(document.querySelector('.world-panel')?.textContent ?? '')", 9000), 'a world that throws as it loads: its panel, with what and where');
+  await js("document.querySelector('.world-panel [data-world-back]')?.click(); true");
+  check(await until("new URLSearchParams(location.search).get('world') === 'farm' && document.body.dataset.shown === 'one'", 15_000), "its Back to the farm opens the farm's test page, at the same stop");
+  await send('Page.navigate', { url: addr('/worlds/test') });
+  check(await until("document.querySelector('.note')?.textContent.includes('?world=farm')"), 'no world named: a note saying how');
+  await send('Page.navigate', { url: addr('/worlds/test?world=farm&stop=night') });
+  await until("document.body.dataset.shown === 'night'", 15_000);
+  await send('Page.navigate', { url: addr('/worlds/test?world=u/sample&stop=private') });
+  check(await until("document.body.dataset.shown === 'private'", 15_000) && Boolean(await chrome.inFrame('/world/u/sample/', "(t => t.length > 0 && t.every(x => /^agent \\d+/.test(x.textContent.trim())))([...document.querySelectorAll('.px-tag')])").catch(() => false)),
+    'the privacy stop gives one of your worlds the private scene, though its can-see switch is on');
+  await send('Page.navigate', { url: addr('/') });
+  await dashboardSettled();
+  check(String(dashboardStorage).includes('"tracker-world"') && String(dashboardStorage).includes('"tracker-world-cansee:u/sample"') && await js('JSON.stringify(Object.entries(localStorage).sort())') === dashboardStorage,
+    `the dashboard's storage is just as it was (${JSON.parse(dashboardStorage ?? '[]').length} keys, its choice of world and a can-see switch among them)`);
+  await js("localStorage.removeItem('tracker-world-cansee:u/sample'); true");
+  await js("document.getElementById('view-worlds').click()"); // the ▾ beside the view toggle: the list of worlds, from the list view
+  check(await until("document.getElementById('worlds-dlg')?.open && document.querySelectorAll('.world-pick').length > 0 && ![...document.querySelectorAll('.world-pick')].some(b => b.textContent.includes('Starter'))"), 'the starter is not in the list of worlds');
+  await js("document.querySelector('#worlds-dlg [data-worlds-close]').click()");
+  await until("!document.getElementById('worlds-dlg').open");
+
   for (let i = errors.length - 1; i >= 0; i--) if (/no barn here/.test(errors[i])) errors.splice(i, 1); // the throw was the test's own
 
   console.log('Claude Code setup');

@@ -128,6 +128,18 @@ export function createTrackerServer({ port, token, webFile, getSnapshot, getFeed
           res.writeHead(200, headers);
           return createReadStream(found.real).on('error', () => res.destroy()).pipe(res);
         }
+        if (path === '/worlds/test') { // a world's test page: no token and no real data (web/worlds/test/)
+          let html;
+          try { html = readFileSync(join(dirname(webFile), 'worlds', 'test', 'index.html'), 'utf8'); } catch { return send(res, 404, 'text/plain', 'not found'); }
+          // connect-src 'none': it fetches nothing (no list of worlds, made-up answers), so /api/state, which needs no token, is out of its reach by policy.
+          res.writeHead(200, { 'content-type': 'text/html; charset=utf-8', 'cache-control': 'no-store', 'content-security-policy': "default-src 'self'; connect-src 'none'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; frame-ancestors 'none'; base-uri 'none'; form-action 'none'", 'x-frame-options': 'DENY', 'x-content-type-options': 'nosniff', 'referrer-policy': 'no-referrer' });
+          return res.end(html);
+        }
+        if ((m = path.match(/^\/worlds\/test\/([a-z]+)\.js$/))) { // its scripts, by plain name only
+          let code;
+          try { code = readFileSync(join(dirname(webFile), 'worlds', 'test', `${m[1]}.js`), 'utf8'); } catch { return send(res, 404, 'text/plain', 'not found'); }
+          return send(res, 200, 'text/javascript; charset=utf-8', code);
+        }
         if (path === '/api/state') return sendJson(res, 200, getSnapshot());
         if (path === '/api/events') return openStream(req, res);
         if ((m = path.match(/^\/api\/agent\/([\w:-]+)\/feed$/))) {
