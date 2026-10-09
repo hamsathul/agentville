@@ -24,6 +24,7 @@
   const browserStore = {
     get: key => { try { return localStorage.getItem(key); } catch { return null; } },
     set: (key, value) => { try { localStorage.setItem(key, value); } catch { /* a private window: this page only */ } },
+    remove: key => { try { localStorage.removeItem(key); } catch { /* this page only */ } },
     keys: () => { try { return Array.from({ length: localStorage.length }, (_, i) => localStorage.key(i)); } catch { return []; } },
   };
   const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -31,6 +32,8 @@
     const m = Math.max(0, (Date.now() - ms) / 60_000);
     return m < 1 ? 'now' : m < 60 ? `${Math.round(m)}m` : m < 1440 ? `${Math.round(m / 60)}h` : `${Math.round(m / 1440)}d`;
   };
+  // Text from a world's folder is written by whoever wrote the world: escaped, and without the characters that turn text around.
+  const words = s => esc(String(s ?? '').replace(/[\u202a-\u202e\u2066-\u2069]/g, ''));
   const prefKey = (world, name) => `tracker-world:${world}:${name}`;
   const short = (v, max) => typeof v === 'string' && v.length > 0 && v.length <= max;
   /** Inside a folder (or the folder itself), with no `..` on the way. */
@@ -129,6 +132,7 @@
   const actedAt = new Map(), waitingAct = new Map(); // action → when it last went through; a bell or motion waiting its turn
   const dropped = new Set(), errorsSeen = new Set();
   let storeRefused = false;
+  let hidden = false; // the world is out of sight (the list view is showing): it can't make the page do anything
   const settingsNow = () => {
     const nav = opts.navState?.() ?? {};
     return { still: Boolean(opts.still), theme: nav.theme ?? 'auto', nav, bell: browserStore.get('tracker-bell') === 'on' };
@@ -161,7 +165,7 @@
       waitingAct.set(act.kind, { act, timer: held?.timer ?? setTimeout(() => {
         const next = waitingAct.get(act.kind);
         waitingAct.delete(act.kind);
-        if (mine !== generation || !next) return; // the frame was replaced meanwhile
+        if (mine !== generation || !next || hidden) return; // the frame was replaced, or put out of sight, meanwhile
         actedAt.set(act.kind, Date.now());
         handle(next.act);
       }, Math.max(0, wait)) });
@@ -187,7 +191,7 @@
       if (heardLoaded) return; // once per load of the frame: the world can't make the page start it again and again
       heardLoaded = true;
     }
-    if (ACTIONS.has(act.kind) && !paced(act)) return;
+    if (ACTIONS.has(act.kind) && (hidden || !paced(act))) return; // out of sight, a world acts on nothing
     handle(act);
   }
   function handle(act) {
@@ -250,36 +254,116 @@
     }
   }
 
+  // The world you chose, per browser; the farm when that one has gone or has something wrong.
+  const CHOICE = 'tracker-world';
+  const FARM = { key: 'farm', builtIn: true, name: 'Farm', icon: '🌾', description: '', nouns: { diary: 'Farm diary' }, preview: null, error: null };
+  let token = null, worldsInfo = [FARM], folder = null, info = FARM;
+  /** The worlds there are (the collector's list), and the one to show. */
+  async function resolveWorld() {
+    try {
+      const r = await fetch('/api/worlds', { headers: { 'x-tracker-token': token } });
+      const body = r.ok ? await r.json() : null;
+      if (Array.isArray(body?.worlds) && body.worlds.length) { worldsInfo = body.worlds; folder = body.folder ?? null; }
+    } catch { /* the collector is away: the farm */ }
+    const saved = browserStore.get(CHOICE);
+    const pick = worldsInfo.find(w => w.key === saved && !w.error) ?? worldsInfo.find(w => w.key === 'farm') ?? FARM;
+    if (saved && pick.key !== saved) browserStore.remove(CHOICE);
+    return pick;
+  }
+  /** The world to show, for the view toggle before the world is ever opened. */
+  async function current(o = {}) {
+    token = o.token ?? token;
+    info = await resolveWorld();
+    return info;
+  }
+  /** Shows a world in place of the one showing (its settings are its own). */
+  function choose(key) {
+    const w = worldsInfo.find(x => x.key === key && !x.error);
+    if (!w) return;
+    browserStore.set(CHOICE, key);
+    info = w;
+    opts.onWorld?.(w);
+    if (host) createFrame(w.key);
+  }
+  function createFrame(key) {
+    world = key;
+    loaded = false;
+    heardLoaded = false;
+    generation++;
+    inFlight = 0;
+    sentPaths.clear();
+    for (const { timer: t } of waitingAct.values()) clearTimeout(t);
+    waitingAct.clear();
+    if (diary.length) { diary = []; renderDiary(opts.diary, diary); } // the last world's diary goes with it
+    frame =document.createElement('iframe');
+    frame.className = 'world-frame';
+    frame.setAttribute('sandbox', 'allow-scripts');
+    frame.title = info.name;
+    frame.src = `/world/${key}/`;
+    frame.addEventListener('load', () => { heardLoaded = false; }); // a new load of the frame says `loaded` again
+    host.replaceChildren(frame);
+    measureSaved();
+  }
+
   /**
-   * Shows the farm in el. The same host again (back from the list view) keeps the frame it has, with
-   * everything the farm remembers (its diary, where everyone stands, Follow, closed bubbles): only what
-   * it is handed is refreshed. app.js hides #farm meanwhile; the frame stays loaded.
+   * Shows the chosen world in el. The same host again (back from the list view) keeps the frame it has,
+   * with everything the world remembers (its diary, where everyone stands, Follow, closed bubbles): only
+   * what it is handed is refreshed. app.js hides #farm meanwhile (hide()); the frame stays loaded.
    */
   function mount(el, options = {}) {
-    const again = Boolean(frame) && host === el && world === 'farm';
+    hidden = false;
+    const again = Boolean(frame) && host === el;
     const still = options.still ?? (again ? opts.still : Boolean(window.matchMedia?.('(prefers-reduced-motion: reduce)').matches));
     if (again) {
       opts = { ...options, still };
       pushSettings();
       renderDiary(opts.diary, diary);
-      return;
+      return Promise.resolve();
     }
     unmount();
     host = el;
     opts = { ...options, still };
-    world = 'farm';
-    heardLoaded = false;
-    frame = document.createElement('iframe');
-    frame.className = 'world-frame';
-    frame.setAttribute('sandbox', 'allow-scripts');
-    frame.title = 'The farm';
-    frame.src = `/world/${world}/`;
-    frame.addEventListener('load', () => { heardLoaded = false; }); // a new load of the frame says `loaded` again
-    host.replaceChildren(frame);
-    measureSaved();
+    token = options.token ?? token;
     addEventListener('message', onMessage);
     // the page's own settings (theme, sidebar, live) reach the frame's buttons; the diary's times stay fresh
     timer = setInterval(() => { pushSettings(); if (!document.hidden) renderDiary(opts.diary, diary); }, 1000);
+    const mine = generation;
+    return resolveWorld().then(w => {
+      if (host !== el || mine !== generation) return; // taken down meanwhile
+      info = w;
+      opts.onWorld?.(w);
+      createFrame(w.key);
+    });
+  }
+  /** Puts the world out of sight (the list view): its frame stays, but it can't act on the page. */
+  function hide() { hidden = true; }
+
+  const $ = id => document.getElementById(id);
+  let listWired = false;
+  /** The list of worlds: pick one, see what is wrong with one, open your folder. */
+  async function openList() {
+    const dlg = $('worlds-dlg');
+    if (!dlg) return;
+    if (!listWired) { dlg.addEventListener('click', onListClick); listWired = true; }
+    await resolveWorld(); // a fresh list: worlds come and go in your folder
+    renderList();
+    if (!dlg.open) dlg.showModal();
+  }
+  function renderList() {
+    const list = $('worlds-list');
+    if (!list) return;
+    list.innerHTML = worldsInfo.map(w => `<li><button type="button" class="world-pick" ${w.key && !w.error ? `data-world="${esc(w.key)}"` : 'disabled'} aria-pressed="${w.key === world}">
+        ${typeof w.preview === 'string' && w.preview.startsWith('/world/') ? `<img class="world-preview" src="${esc(w.preview)}" alt="">` : `<span class="world-icon">${words(w.icon)}</span>`}
+        <span class="world-text"><span><b>${words(w.name)}</b> <span class="chip">${w.builtIn ? 'Built in' : 'Your folder'}</span></span>${w.description ? `<span class="muted">${words(w.description)}</span>` : ''}${w.error ? `<span class="warnline">${words(w.error)}</span>` : ''}</span>
+      </button></li>`).join('');
+    const where = $('worlds-where');
+    if (where) where.textContent = folder ? `Your worlds go in ${String(folder).replace(/[‪-‮⁦-⁩]/g, '')}` : '';
+  }
+  function onListClick(e) {
+    const pick = e.target.closest?.('[data-world]');
+    if (pick) { $('worlds-dlg').close(); choose(pick.dataset.world); return; }
+    if (e.target.closest?.('[data-worlds-close]')) { $('worlds-dlg').close(); return; }
+    if (e.target.closest?.('#worlds-folder')) void fetch('/api/actions/reveal-worlds', { method: 'POST', headers: { 'x-tracker-token': token, 'content-type': 'application/json' }, body: '{}' }).catch(() => {});
   }
   function update(snap) {
     scene = window.AgentvilleScene.toScene(snap);
@@ -306,6 +390,6 @@
     generation++;
   }
 
-  window.TrackerFarm = { mount, update, select, unmount, colorOf: id => window.AgentvilleScene.colorOf(id), toScene: snap => window.AgentvilleScene.toScene(snap) };
-  window.AgentvilleWorlds = { checkMessage, loadPrefs, renderDiary, prefKey };
+  window.TrackerFarm = { mount, update, select, unmount, hide, current, openList, colorOf: id => window.AgentvilleScene.colorOf(id), toScene: snap => window.AgentvilleScene.toScene(snap) };
+  window.AgentvilleWorlds = { checkMessage, loadPrefs, renderDiary, prefKey, choose };
 })();

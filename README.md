@@ -37,8 +37,8 @@ It listens on `127.0.0.1` only and reads what Claude Code already writes to disk
   - [Going back to an earlier point (↺ Restore)](#going-back-to-an-earlier-point--restore)
   - [⚙ Claude Code: plugins, MCP servers and permission rules](#-claude-code-plugins-mcp-servers-and-permission-rules)
   - [Files, documents and quoting](#files-documents-and-quoting)
-  - [The farm view](#the-farm-view)
   - [Worlds](#worlds)
+    - [The farm](#the-farm)
   - [Notifications and the bell](#notifications-and-the-bell)
   - [Inside Claude Code: the mod](#inside-claude-code-the-mod)
 - [Configuration](#configuration)
@@ -109,7 +109,8 @@ It listens on `127.0.0.1` only and reads what Claude Code already writes to disk
 - A bell in the page, and a count in the tab title.
 - Inside Claude Code: a `/tracker` pane, a status line and toasts.
 
-**Watch it as a farm** (optional)
+**Watch it as a farm, or a world of your own** (optional)
+- Choose how the dashboard draws your agents: the farm, or a world of your own.
 - A pixel farm where every agent is a farmer and every repo a field. Crops grow as context
   fills, weather shows the last deploy, a cart runs to town for each web call, each MCP server's
   cart drives to the farmer calling it, and you click
@@ -437,7 +438,8 @@ The **⚙ Claude Code** button in the top bar opens your Claude Code setup in th
   | PowerPoint, Keynote, Pages, Numbers… | a picture of the first page, made by Quick Look |
   | Anything else (zip, fonts…) | a note saying it can't be shown |
 
-- **Show in Finder** reveals the file, to open it in its own app. It never opens or runs it.
+- **Show in Finder** reveals the file, to open it in its own app. It never opens or runs it. (The
+  world list's **Open the worlds folder** opens Finder the same way, on your worlds folder.)
 - **Documents** lists the specs, plans and other markdown files the agent wrote or read, and the
   pictures, videos and PDFs (a screenshot it checked, say).
 - **Files a reply names.** When an agent's reply names a picture, a video, a PDF or a document (a
@@ -454,7 +456,31 @@ The **⚙ Claude Code** button in the top bar opens your Claude Code setup in th
   passage and **Quote** it, then reply. Quotes from code keep their line numbers, and the agent
   gets your reply as a message about that file. The reply box is there for every kind.
 
-### The farm view
+### Worlds
+
+A world is a way to draw what the dashboard knows; the farm is the built-in one. The view toggle
+in the top bar (next to **List**) shows the name of the world you are looking at. Click it again for
+the list of worlds, and pick one. Each world keeps its own zoom and settings, and the choice is
+kept in this browser. If the world you chose has gone, or has something wrong with it, the dashboard
+opens on the farm instead and forgets the choice. **Open the worlds folder** in the list makes your
+folder if it is not there yet and shows it in Finder.
+
+![The list of worlds](docs/worlds.png)
+
+A world is a folder holding `world.json` and `world.js`. Yours go in `~/.agentville/worlds/<name>/`
+(the name is lowercase letters, digits and dashes, up to 40), or in the folder `worldsDir` names.
+Built-in worlds can't be replaced: a world of yours named like one is just another world, listed
+after it. A world with a problem (a `world.json` that can't be read, one made for a newer
+Agentville, a missing `world.js`) is listed with what is wrong. Files are served only from inside
+the world's own folder, so a link out of it is never followed. A world's folder may itself be a link
+(to a world you develop elsewhere): it is followed, and its target becomes the world's folder,
+unless that folder is your worlds folder, your home folder or one above either, however the link is
+spelled. A folder with no `world.json` of its own serves nothing, and a broken link is listed with
+an error. `worldsDir` is read at startup (a change needs a restart); one that is your home folder or
+above it is ignored and the default is used. A world's names are shown as plain text, whatever they
+hold. How to write one is in [docs/worlds.md](docs/worlds.md).
+
+#### The farm
 
 The same live data, as a farm. It fills the window, and its controls sit around the edges like a
 game's.
@@ -536,21 +562,6 @@ dialog over the farm, with Quote and the reply box as in the list. Click a build
 The light follows your clock: cloud shadows by day, and lit windows, lanterns and fireflies at
 night. The farm pauses when its tab is hidden, or while the list shows (it is kept as it was, diary
 and all, for when you come back), and follows the system's reduce-motion setting.
-
-### Worlds
-
-A world is a way to draw what the dashboard knows; the farm is the built-in one. A world is a folder
-holding `world.json` and `world.js`. Yours go in `~/.agentville/worlds/<name>/` (the name is
-lowercase letters, digits and dashes, up to 40), or in the folder `worldsDir` names. Built-in worlds
-can't be replaced: a world of yours named like one is just another world, listed after it. A world
-with a problem (a `world.json` that can't be read, one made for a newer Agentville, a missing
-`world.js`) is listed with what is wrong. Files are served only from inside the world's own folder,
-so a link out of it is never followed. A world's folder may itself be a link (to a world you
-develop elsewhere): it is followed, and its target becomes the world's folder, unless that folder is
-your worlds folder, your home folder or one above either, however the link is spelled. A folder with
-no `world.json` of its own serves nothing, and a broken link is listed with an error. `worldsDir`
-is read at startup (a change needs a restart); one that is your home folder or above it is ignored
-and the default is used. How to write one is in [docs/worlds.md](docs/worlds.md).
 
 ### Notifications and the bell
 
@@ -658,6 +669,9 @@ and can do is in [docs/worlds.md](docs/worlds.md).
   asks for them by path (so keep nothing secret in a world's folder), and never from outside the
   world's own folder. The list of their names and the folder's path needs the token. The collector
   reads the folder; it never fetches a world from anywhere.
+- **Open the worlds folder** (an action: token and same origin) makes your worlds folder and shows
+  it in Finder (`open <folder>`); it only shows it, and runs nothing in it. The page keeps your
+  choice of world in this browser (`tracker-world`), and nothing else about it leaves the page.
 - File contents, folder listings, past sessions, whole conversations (and your messages in them,
   for ↑) and field close-ups are served only with a per-install token that the page carries. Every action (answer, message,
   start, end, switch…) also needs a same-origin request.

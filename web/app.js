@@ -172,12 +172,15 @@ function setView(next, { remember = true } = {}) {
     window.TrackerFarm.mount($('farm'), {
       token: TOKEN, diary: $('farm-diary'), onPickAgent: pickFromFarm, onOpenDoc: openDocFromFarm, onShowRepos: showReposFromFarm, onStartSession: () => $('sessions-open').click(), onBell: bellSwitched,
       // the top bar's buttons, on the farm
-      onNav: what => ({ list: () => setView('list'), session: () => $('sessions-open').click(), setup: () => openSetup(), side: () => setFarmSide(!farmSide), theme: () => $('theme-toggle').click() })[what]?.(),
+      onWorld: showWorld,
+      onNav: what => ({ list: () => setView('list'), worlds: () => window.TrackerFarm.openList?.(), session: () => $('sessions-open').click(), setup: () => openSetup(), side: () => setFarmSide(!farmSide), theme: () => $('theme-toggle').click() })[what]?.(),
       navState: () => ({ theme, side: farmSide, live: !$('live').classList.contains('off') }),
     });
   } else {
+    window.TrackerFarm?.hide?.(); // out of sight, the world can't act on the page
     $('farm-agent').innerHTML = '';
   }
+  showWorld(null); // the toggle's tip says what a click does now
   shownKey = ''; // the centre is drawn afresh when the list comes back
   render();
 }
@@ -218,6 +221,18 @@ function farmSideHtml(a) {
     ${conversationHtml(a)}`;
 }
 
+/** The world shown in the farm view: the toggle says its name, the diary its word for one. */
+let shownWorld = null;
+function showWorld(w) {
+  w ??= shownWorld;
+  if (!w) return;
+  shownWorld = w;
+  $('view-farm').textContent = `${w.icon} ${w.name}`;
+  $('view-farm').dataset.tip = view === 'farm' ? 'Choose another world' : `The ${w.name} view`;
+  const title = document.querySelector('#farm-diary-pane .sec');
+  if (title) title.textContent = w.nouns?.diary ?? 'Diary';
+  $('farm-diary-pane').setAttribute('aria-label', w.nouns?.diary ?? 'Diary');
+}
 /** A farmer was clicked: show it in the farm's sidebar, where it can be answered or messaged. */
 async function pickFromFarm(id, { from } = {}) {
   if (selected !== id) openChildren.clear();
@@ -342,6 +357,7 @@ document.addEventListener('click', async e => {
   if (d.restoreGo !== undefined) { await restoreGo(el); return; }
   if (d.restoreCancel !== undefined) { $('restore-dlg').close(); return; }
   if (d.removeSession) { void removeFlow(d.removeSession); return; }
+  if (el.id === 'view-farm' && view === 'farm') { window.TrackerFarm?.openList?.(); return; } // already there: the list of worlds
   if (el.id === 'view-list' || el.id === 'view-farm') { setView(el.id === 'view-farm' ? 'farm' : 'list'); return; }
   if (el.id === 'side-toggle') { setFarmSide(!farmSide); return; }
   if (d.farmTab) { setFarmTab(d.farmTab); return; }
@@ -846,7 +862,7 @@ applyTheme(theme);
 
 setInterval(updateTimers, 1000);
 // worlds.js (the farm's host) loads deferred (after this script), so the remembered view is applied once the page has loaded.
-const startView = () => setView(view, { remember: false });
+const startView = () => { setView(view, { remember: false }); window.TrackerFarm?.current?.({ token: TOKEN }).then(showWorld).catch(() => {}); };
 if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', startView);
 else startView();
 connect();

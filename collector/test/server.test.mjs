@@ -59,6 +59,7 @@ async function start(opts = {}) {
       restart: async body => { calls.push(['restart', body]); return { ok: true }; },
       plugin: async body => { calls.push(['plugin', body]); return { ok: true }; },
       reveal: async body => { calls.push(['reveal', body]); return { ok: true }; },
+      revealWorlds: async () => { calls.push(['revealWorlds']); return { ok: true, path: '/Users/me/.agentville/worlds' }; },
       mkdir: async body => { calls.push(['mkdir', body]); return { ok: true, path: '/Users/me/new' }; },
       chooseFolder: async body => { calls.push(['choose', body]); return { ok: true, path: '/Users/me/picked' }; },
       stopShell: async body => { calls.push(['stop', body]); return { ok: true }; },
@@ -139,6 +140,17 @@ test('the event stream sends the snapshot on connect and on every broadcast', as
     req.end();
   });
   assert.match(all, /event: snapshot\ndata: \{"generatedAt":1/);
+  await srv.close();
+});
+
+test('Open the worlds folder takes the token and the dashboard as origin, like every action', async () => {
+  const { srv, port, calls } = await start();
+  const origin = `http://127.0.0.1:${port}`, path = '/api/actions/reveal-worlds', type = { 'content-type': 'application/json' };
+  assert.equal((await request(port, { method: 'POST', path, headers: { ...type, origin }, body: '{}' })).status, 403);
+  assert.equal((await request(port, { method: 'POST', path, headers: { ...type, 'x-tracker-token': 'tok', origin: 'https://evil.example' }, body: '{}' })).status, 403);
+  const r = await request(port, { method: 'POST', path, headers: { ...type, 'x-tracker-token': 'tok', origin }, body: '{}' });
+  assert.deepEqual(JSON.parse(r.body), { ok: true, path: '/Users/me/.agentville/worlds' });
+  assert.deepEqual(calls.at(-1), ['revealWorlds']);
   await srv.close();
 });
 

@@ -236,7 +236,7 @@ from the page only, and the page from its current frame only.
 | `openLink { url }` | Opens it in a new tab. Only `https://github.com/` links, 2048 characters at most |
 | `startSession` | Opens Start or resume a session |
 | `showRepos` | Shows the repos in the list view |
-| `nav { what }` | Presses one of the top bar's buttons: `list`, `session`, `setup`, `side` or `theme` (`worlds` is accepted and does nothing yet) |
+| `nav { what }` | Presses one of the top bar's buttons: `list`, `session`, `setup`, `side` or `theme` (`worlds` opens the list of worlds) |
 | `bell { on }` | Turns the page's bell on or off (`on` must be `true` or `false`) |
 | `motion { still }` | The world stood still, or moves again (`true` or `false`); the page keeps it for `settings` |
 | `diary { entries }` | Shows the world's diary in the sidebar: at most 20 entries `{ at, state, who, text }`, in the order given (the farm puts the newest first), with `state` one of the agents' states and `at` a time. `who` is cut to 80 characters and `text` to 300, and both are shown as text, never as HTML. One bad entry drops the whole message. Drawn at most every quarter second: the newest entries are drawn when their turn comes |
@@ -247,6 +247,7 @@ The page takes each action (`pick`, `openDoc`, `openLink`, `startSession`, `show
 `bell`, `motion`) at most once a quarter second: the first at once, the rest dropped, so a world can't
 open a flood of dialogs, files or chimes. `bell` and `motion` are settings, so the newest of those is
 taken when its turn comes instead, and the page and the world agree.
+A world that is out of sight (the page is showing its list view, the frame kept loaded) can do none of them: those messages are dropped until it is shown again. `store`, `diary` and `request` still work.
 
 The frame stays loaded while the dashboard shows its list: it is hidden (Chrome draws nothing in it
 meanwhile), and a world keeps all it remembers. It gets no scenes while hidden, and the newest one when

@@ -47,7 +47,22 @@ const root = join(temp, 'root');
 cpSync(join(ROOT, 'web'), join(root, 'web'), { recursive: true });
 // permissionGuessSec: the working session's command never finishes and its process is quiet, so after
 // the default 20s it would count as "probably a permission prompt" (waiting) partway through the run.
-writeFileSync(join(root, 'config.json'), JSON.stringify({ port: 0, deployRepos: {}, pollMs: 300, permissionGuessSec: 3600 }));
+const worldsDir = join(temp, 'worlds');
+writeFileSync(join(root, 'config.json'), JSON.stringify({ port: 0, deployRepos: {}, pollMs: 300, permissionGuessSec: 3600, worldsDir }));
+// One plain world of the user's, built on the engine's defaults.
+mkdirSync(join(worldsDir, 'sample'), { recursive: true });
+writeFileSync(join(worldsDir, 'sample', 'world.json'), JSON.stringify({ name: 'Sample', icon: '🧪', description: 'A world made for the test', api: 1, nouns: { diary: 'Lab book' } }));
+writeFileSync(join(worldsDir, 'sample', 'world.js'), `(() => {
+  // Each agent a block of its colour; each repo a bed of the engine's grid; a plain green ground.
+  Agentville.world({
+    W: 300,
+    slots: f => (f.state === 'working' && f.field
+      ? { group: 'st:' + f.field, at: used => { const off = [0, -14, 14].find(o => !used.includes(o)) ?? 0; used.push(off); return [150 + off, 170]; }, zone: 'work' }
+      : { group: f.state, cap: 8, at: i => [30 + i * 16, 60], zone: f.state }),
+    drawChar: (f, b) => px(b.x - 3, b.y - 10, 6, 10, f.shirt),
+    bg: (fill, season, ext) => fill(ext.x0, ext.y0, ext.x1 - ext.x0, ext.y1 - ext.y0, '#3f7d3a'),
+  });
+})();`);
 
 const repo = join(realpathSync(temp), 'farm-repo');
 mkdirSync(join(repo, 'src'), { recursive: true });
@@ -614,6 +629,20 @@ try {
   await js("(() => { const r = document.querySelector('#farm-agent input[value=\"Pumpkins\"]'); r.checked = true; r.dispatchEvent(new Event('change', { bubbles: true })); document.getElementById('ask-send').click(); })()");
   check(await until("/Answer sent to ui-asker/.test(document.getElementById('notice').textContent)"), 'the answer is sent from the farm sidebar');
   check(answered?.answers?.['Which crop next?'] === 'Pumpkins', 'the session received the answer');
+
+  console.log('Worlds');
+  await js("document.getElementById('view-farm').click()");
+  check(await until("document.getElementById('worlds-dlg').open && /Farm[\\s\\S]*Built in[\\s\\S]*Sample[\\s\\S]*Your folder/.test(document.getElementById('worlds-list').textContent)"), 'clicking the view toggle again lists the worlds: the farm, built in, and one of yours');
+  await js("document.querySelector('[data-world=\"u/sample\"]').click()");
+  check(await until("document.querySelector('#farm .world-frame')?.src.endsWith('/world/u/sample/')"), 'picking one shows it');
+  check(await funtil("!!document.querySelector('#farm canvas') && document.querySelectorAll('.px-tag').length > 0"), 'a world made of three hooks draws, with the engine doing the rest');
+  check(await until("/Sample/.test(document.getElementById('view-farm').textContent) && localStorage.getItem('tracker-world') === 'u/sample'"), 'the toggle says its name, and the choice is kept');
+  check(await js("document.querySelector('#farm-diary-pane .sec').textContent === 'Lab book'"), "the diary takes the world's own word for it");
+  await js("document.getElementById('view-farm').click()");
+  await until("document.getElementById('worlds-dlg').open");
+  await js("document.querySelector('[data-world=\"farm\"]').click()");
+  check(await until("document.querySelector('#farm .world-frame')?.src.endsWith('/world/farm/') && /Farm/.test(document.getElementById('view-farm').textContent)"), 'and back to the farm');
+  await funtil("document.querySelectorAll('.px-tag').length >= 2");
 
   console.log('Claude Code setup');
   await js("document.getElementById('setup-open').click()");
