@@ -4,6 +4,194 @@
 // in a world's frame, after pixel.js. No dependencies.
 'use strict';
 
+/* ---------- worlds: the states, the repo grid, the defaults, the engine's scene, Agentville.world ---------- */
+
+// The states an agent is out and about in: its bubble shows, its field grows.
+const ACTIVE = new Set(['waiting', 'working', 'turn']);
+
+// A project: the folder holding sibling repos. The scene says which (a repo's `project`); a field
+// without one falls back to its path, read the same way as web/scene.js reads it.
+const CATCH_ALL = new Set(['code', 'projects', 'repos', 'src', 'dev', 'work', 'tools', 'github', 'git', 'documents', 'desktop', 'downloads', 'workspace', 'workspaces', 'sites', 'apps', 'clients', 'tmp']);
+function projectOf(path) {
+  const parts = String(path).split('/').filter(Boolean).slice(0, -1);
+  return parts.length >= 3 && !CATCH_ALL.has(parts.at(-1).toLowerCase()) ? `/${parts.join('/')}` : null;
+}
+// A field keeps its bed; one that leaves keeps it held for a day, so it comes back to the same place.
+const BED_HELD_MS = 86_400_000;
+
+/**
+ * The repo grid an engine world lays its fields out on: a bed per repo, in rows of `cols`. While you
+ * look a repo keeps its bed (a new one takes a free bed near its project's, a worktree right after its
+ * repo), a repo that leaves keeps its bed for a day, and when the page opens the beds are packed. The
+ * farm's is 3 across, 88 × 62, from (174, 100).
+ */
+function makeGrid({ cols = 3, colW, rowH, cx0, top0, minRows = 3, maxRows = 6, max = 18, slot = () => ({}), fence, height }) {
+  const slotAt = i => { const cx = cx0 + (i % cols) * colW, rowTop = top0 + Math.floor(i / cols) * rowH; return { i, cx, rowTop, ...slot(cx, rowTop) }; };
+  /** The fields as units to place: a project's repos together, else a repo alone; a worktree right after its repo. */
+  function unitsOf(fields) {
+    const byKey = new Map(fields.map(f => [f.key, f]));
+    const home = f => (f.worktree && f.main ? f.main : f.key);
+    const units = new Map();
+    for (const f of fields) {
+      const project = f.project !== undefined ? f.project : projectOf(home(f)), id = project ?? `repo:${home(f)}`;
+      if (!units.has(id)) units.set(id, { project, name: f.projectName ?? (project ? project.split('/').pop() : null), keys: [] });
+      units.get(id).keys.push(f.key);
+    }
+    for (const u of units.values()) { // each repo, then its worktrees
+      const order = [];
+      for (const k of u.keys) if (!byKey.get(k).worktree) { order.push(k); for (const w of u.keys) if (byKey.get(w).worktree && byKey.get(w).main === k) order.push(w); }
+      for (const k of u.keys) if (!order.includes(k)) order.push(k);
+      u.keys = order;
+      if (u.project && new Set(u.keys.map(k => home(byKey.get(k)))).size < 2) u.project = null; // one repo is no project
+    }
+    return { byKey, units: [...units.values()] };
+  }
+  const groupsOf = units => units.filter(u => u.project).map(u => ({ name: u.name, keys: u.keys }));
+  /** Which bed each field gets, the first time: a project's repos side by side (kept to one row when they fit). */
+  function arrange(fields) {
+    const { units } = unitsOf(fields);
+    const slotOf = new Map(), queue = [...units];
+    let row = 0, col = 0;
+    const place = u => { for (const k of u.keys) { slotOf.set(k, row * cols + col); if (++col === cols) { col = 0; row++; } } };
+    while (queue.length) {
+      const n = queue[0].keys.length;
+      if (col > 0 && (n > cols || col + n > cols)) { // it does not fit the rest of this row: a smaller one may, else the next row
+        const j = queue.findIndex(u => u.keys.length <= cols - col);
+        if (j > 0) place(queue.splice(j, 1)[0]); else { row++; col = 0; }
+        continue;
+      }
+      place(queue.shift());
+    }
+    return { slotOf, groups: groupsOf(units) };
+  }
+  /** Beds that stay put, from `beds` (key → { i, left? }). Returns { slotOf, groups, beds } (beds: what to remember now). */
+  function placeBeds(fields, beds, now) {
+    if (!Object.keys(beds).length) {
+      const { slotOf, groups } = arrange(fields);
+      return { slotOf, groups, beds: Object.fromEntries([...slotOf].map(([k, i]) => [k, { i }])) };
+    }
+    const { byKey, units } = unitsOf(fields);
+    const slotOf = new Map(), kept = {}, taken = new Set(), held = new Set();
+    for (const [k, b] of Object.entries(beds)) {
+      if (!Number.isInteger(b?.i)) continue;
+      if (byKey.has(k)) { if (!taken.has(b.i)) { slotOf.set(k, b.i); taken.add(b.i); kept[k] = { i: b.i }; } }
+      else if (now - (b.left ?? now) < BED_HELD_MS) { kept[k] = { i: b.i, left: b.left ?? now }; held.add(b.i); }
+    }
+    const dist = (i, j) => Math.abs(Math.floor(i / cols) - Math.floor(j / cols)) * 10 + Math.abs((i % cols) - (j % cols));
+    const free = () => Array.from({ length: max }, (_, i) => i).filter(i => !taken.has(i) && !held.has(i));
+    for (const u of units) {
+      for (const k of u.keys) {
+        if (slotOf.has(k)) continue;
+        const f = byKey.get(k), open = free();
+        const near = f.worktree && slotOf.has(f.main) ? [slotOf.get(f.main)] : u.project ? u.keys.filter(x => slotOf.has(x)).map(x => slotOf.get(x)) : [];
+        let i;
+        if (!open.length) i = max + slotOf.size; // the grid is full: "+N more"
+        else if (near.length) {
+          const next = near.map(n => n + 1).find(n => n % cols !== 0 && open.includes(n)); // right after it, in the same row
+          i = next ?? open.reduce((best, b) => (Math.min(...near.map(n => dist(b, n))) < Math.min(...near.map(n => dist(best, n))) ? b : best));
+        } else i = open[0];
+        slotOf.set(k, i);
+        taken.add(i);
+        kept[k] = { i };
+      }
+    }
+    return { slotOf, groups: groupsOf(units), beds: kept };
+  }
+  /** The ground for these fields: the beds remembered in `beds` stay put (null: laid out afresh). */
+  function layoutFor(fields, beds = null, now = Date.now()) {
+    const placed = beds ? placeBeds(fields, beds, now) : { ...arrange(fields), beds: null };
+    const { slotOf, groups } = placed;
+    const shown = fields.filter(f => slotOf.get(f.key) < max);
+    const last = Math.max(-1, ...shown.map(f => slotOf.get(f.key)));
+    const rows = Math.min(maxRows, Math.max(minRows, Math.floor(last / cols) + 1));
+    const slots = Array.from({ length: rows * cols }, (_, i) => slotAt(i));
+    const ST = shown.map(f => ({ key: f.key, ...slots[slotOf.get(f.key)] }));
+    const used = new Set(ST.map(s => s.i));
+    const GRID = fence(rows);
+    return {
+      // the key goes by bed: the same ground, whatever order the repos are listed in
+      key: [...ST].sort((a, b) => a.i - b.i).map(s => `${s.key}@${s.i}`).join('\n'), ST, slots, empty: slots.filter(s => !used.has(s.i)), rows, GRID, H: height(GRID),
+      groups: groups.map(g => ({ name: g.name, slots: g.keys.filter(k => slotOf.get(k) < rows * cols).map(k => slotOf.get(k)) })).filter(g => g.slots.length),
+      more: fields.length - shown.length,
+      beds: placed.beds,
+    };
+  }
+  /** The ground when the page opens: the fields in the order of the beds they had, packed into the first free beds. */
+  function packedLayout(fields, beds, now = Date.now()) {
+    const at = k => (Number.isInteger(beds?.[k]?.i) ? beds[k].i : Infinity);
+    return layoutFor([...fields].sort((x, y) => at(x.key) - at(y.key)), {}, now);
+  }
+  return { layoutFor, packedLayout, slotAt, cols };
+}
+
+/**
+ * The engine's scene, from the page's plain-facts one (web/scene.js), under the names the engine draws
+ * from: agents as `farmers` (each in its `field`, `pct` of context used, `hearts` left of 4, `shirt` its
+ * colour), repos as `fields`, the plan as windows. A world adds its own looks on top (the farm: hats, crops).
+ */
+function engineScene(s) {
+  return {
+    plan: s.plan ? { windows: s.plan.windows.map(w => ({ kind: w.kind, percentUsed: w.pct, resetsAt: w.resetsAt, reset: w.reset })) } : null,
+    chrome: s.chrome,
+    subagents: s.subagents,
+    mail: s.mail,
+    carts: s.mcp,
+    henhouse: { eggs: s.subagentCounts.done, roosting: s.subagentCounts.overflow },
+    fields: s.repos.map(r => ({ ...r, weather: null, lastDeploy: r.deploy && !r.deploy.run ? r.deploy : null })),
+    farmers: s.agents.map(a => ({ ...a, field: a.repo, pct: a.contextPct, hearts: Math.round((1 - a.contextPct) * 4), color: a.colorIndex, shirt: a.color })),
+  };
+}
+
+/** The HUD a world gets unless it draws its own: the dashboard's buttons, the sky, help and zoom. */
+function defaultHud({ zoom = 1, skyMode = 'live', still = false, nav = {} }) {
+  const btn = (attr, label, title, pressed) => `<button type="button" ${attr} title="${esc(title)}"${pressed === undefined ? '' : ` aria-pressed="${pressed}"`}>${pxImg(label, '#4e3626', null)}<span class="px-sr">${esc(label)}</span></button>`;
+  return `<div class="px-nav">${btn('data-farm-nav="list"', 'List', 'The list of agents')}${btn('data-farm-nav="worlds"', 'World', 'Choose a world')}${btn('data-farm-nav="side"', 'Sidebar', 'The selected agent beside the map', Boolean(nav.side))}</div>
+    <div class="px-tools">${btn('data-farm-sky', `Sky: ${skyMode}`, 'Live follows your clock; or day, or night')}${btn('data-farm-motion', `Motion: ${still ? 'off' : 'on'}`, 'Walking and animation')}${btn('data-farm-help', 'Help', 'How to read this world')}
+      <span class="px-zoombar">${btn('data-farm-zoom="-1"', '-', 'Zoom out')}${btn('data-farm-zoom="0"', `${Math.round(zoom * 100)}%`, 'The whole world')}${btn('data-farm-zoom="1"', '+', 'Zoom in')}</span></div>`;
+}
+
+/** A world's hooks, with the engine's default for each one it leaves out (docs/worlds.md, "Hooks"). */
+function withDefaults(h) {
+  if (!(h.W > 0)) throw new Error('A world needs its width, W (in world pixels).');
+  for (const need of ['slots', 'drawChar', 'bg']) if (typeof h[need] !== 'function') throw new Error(`A world needs a ${need}() hook.`);
+  const nouns = { agent: 'agent', agents: 'agents', repo: 'repo', repos: 'repos', ...h.nouns };
+  const grid = h.grid?.layoutFor ? h.grid : makeGrid({
+    cols: 3, colW: 88, rowH: 62, cx0: Math.round(h.W / 2) - 88, top0: 100, slot: (cx, rowTop) => ({ lane: rowTop + 44 }),
+    fence: rows => ({ x0: Math.round(h.W / 2) - 132, x1: Math.round(h.W / 2) + 132, y0: 96, y1: 104 + rows * 62 }), height: f => f.y1 + 28, ...h.grid,
+  });
+  let L = grid.layoutFor([]), fields = [];
+  const out = {
+    key: 'world', SH: 16, corridors: [Math.round(h.W / 2)], fromScene: engineScene,
+    layout: () => L, relayout(g) { L = g; return L; },
+    setScene(next) { fields = next.fields; return []; }, spawn: () => [Math.round(h.W / 2), 0], follow: (b, k) => [b.x - 8 - k * 7, b.y + 2],
+    startText: n => `${n} ${n === 1 ? nouns.agent : nouns.agents} here`, arriveText: 'arrives',
+    tag: f => cutMid(f.name, 16), tip: f => f.name, onMove() {}, speed: () => 40, zoneText: () => 'moves',
+    hud: defaultHud, ground() {}, season: () => 'summer', shadows() {}, lights: () => [], items: () => [], top() {}, movers: () => [],
+    // each field's name under its bed (a world that gives its own layout() gets these under its own beds)
+    labels: lab => { for (const s of out.layout().ST) lab(s.cx, s.rowTop + 50, pxt(cutMid(fields.find(f => f.key === s.key)?.name ?? '', 16)), 'zone'); },
+    fieldAt: () => null, buildingAt: () => null, buildingTip: () => '', dialog: () => null, boardSessions: () => [],
+    help: () => `<div class="px-key"><b>${esc(nouns.agents)}</b><span>one for each agent working on this Mac</span><b>${esc(nouns.repos)}</b><span>one for each repo an agent works in</span></div>`,
+    ...h, grid,
+  };
+  return out;
+}
+
+/** A world drawn by the engine, from its hooks; the bridge (bridge.js) runs it. */
+window.Agentville.world = hooks => {
+  const th = withDefaults(hooks);
+  let view = null, field = null;
+  window.Agentville.raw({
+    start({ el, opts, prefs }) {
+      view = makePixelView(th, prefs);
+      field = makeField(view);
+      field.setOptions(opts);
+      view.mount(el, { ...opts, onOpenField: key => field.open(key) });
+    },
+    scene(s) { view.update(th.fromScene(s)); field.refresh(); },
+    select(id) { view.select(id ?? null); },
+  });
+};
+
 /* ---------- the engine: positions, walking, tags, pop-ups, diary, the loop ---------- */
 
 function makePixelView(th, prefs) {
@@ -18,9 +206,9 @@ function makePixelView(th, prefs) {
   // While you look, a field keeps its bed; when the page opens, fields move up into free beds, so empty rows close up.
   let packed = false;
   const groundFor = fields => {
-    if (packed || !fields.length) return layoutFor(fields, beds);
+    if (packed || !fields.length) return th.grid.layoutFor(fields, beds);
     packed = true;
-    return packedLayout(fields, beds);
+    return th.grid.packedLayout(fields, beds);
   };
   const settle = ground => { beds = ground.beds; prefs.set('beds', JSON.stringify(beds)); th.relayout(ground); layoutKey = ground.key; };
   let zoom = ZOOMS.includes(Number(prefs.get('zoom'))) ? Number(prefs.get('zoom')) : 1;
@@ -39,7 +227,7 @@ function makePixelView(th, prefs) {
   const resting = f => f.state === 'idle' || f.state === 'stale';
   let glide = null; // a zoom easing in: { from: scale, start, ox, oy }
   let pad = { l: 0, r: 0, t: 0, b: 0 }; // the frame's spare room, in world pixels: more forest all round
-  const extOf = () => ({ x0: -pad.l, x1: W + pad.r, y0: -pad.t, y1: th.layout().H + pad.b });
+  const extOf = () => ({ x0: -pad.l, x1: th.W + pad.r, y0: -pad.t, y1: th.layout().H + pad.b });
   const skyNow = () => skyAt(skyMode === 'day' ? new Date(2000, 0, 1, 12) : skyMode === 'night' ? new Date(2000, 0, 1, 23) : new Date());
   let wheel = 0;
   const says = new Map(); // farmer id → { el, text }
@@ -72,7 +260,7 @@ function makePixelView(th, prefs) {
   // Walk along the corridors between field columns, so farmers never cross a field.
   function plan(b, tx, ty) {
     if (Math.abs(b.y - ty) < 0.5) return [[tx, ty]];
-    const c = CORR.reduce((best, x) => (Math.abs(b.x - x) + Math.abs(tx - x) < Math.abs(b.x - best) + Math.abs(tx - best) ? x : best));
+    const c = th.corridors.reduce((best, x) => (Math.abs(b.x - x) + Math.abs(tx - x) < Math.abs(b.x - best) + Math.abs(tx - best) ? x : best));
     return [[c, b.y], [c, ty], [tx, ty]];
   }
   function pop(x, y, text, cls = '') {
@@ -168,7 +356,7 @@ function makePixelView(th, prefs) {
   /** The farmer under a pointer, if any (its sprite, in farm pixels). */
   function botAt(e) {
     if (!canvas || e.target !== canvas) return null;
-    const r = canvas.getBoundingClientRect(), on = r.width / (W + pad.l + pad.r) || cs, x = (e.clientX - r.left) / on - pad.l, y = (e.clientY - r.top) / on - pad.t; // the size on screen: right even while a zoom glides
+    const r = canvas.getBoundingClientRect(), on = r.width / (th.W + pad.l + pad.r) || cs, x = (e.clientX - r.left) / on - pad.l, y = (e.clientY - r.top) / on - pad.t; // the size on screen: right even while a zoom glides
     for (const [id, b] of bots) if (Math.abs(x - b.x) <= 7 * SC + 1 && y >= b.y - th.SH * SC - 1 && y <= b.y + 1) return id;
     return null;
   }
@@ -182,7 +370,7 @@ function makePixelView(th, prefs) {
   /** The farm point under a pointer, or null off the canvas. */
   function farmPoint(e) {
     if (!canvas || e.target !== canvas) return null;
-    const r = canvas.getBoundingClientRect(), on = r.width / (W + pad.l + pad.r) || cs;
+    const r = canvas.getBoundingClientRect(), on = r.width / (th.W + pad.l + pad.r) || cs;
     return [(e.clientX - r.left) / on - pad.l, (e.clientY - r.top) / on - pad.t];
   }
   function onPointerMove(e) {
@@ -267,7 +455,7 @@ function makePixelView(th, prefs) {
     for (const s of list) if (s.w == null) { s.w = s.el.offsetWidth; s.h = s.el.offsetHeight; }
     list.sort((p, q) => p.x - q.x || q.bottom - p.bottom);
     // The farm's edges in the overlay's coordinates: the stage cuts off anything past them.
-    const edge = { top: -pad.t * cs + 2, left: -pad.l * cs + 2, right: (W + pad.r) * cs - 2 };
+    const edge = { top: -pad.t * cs + 2, left: -pad.l * cs + 2, right: (th.W + pad.r) * cs - 2 };
     if (zoom <= 1 && viewEl) { // the whole farm in view: keep clear of the panel and the buttons lying over it
       const stage = canvas.parentElement, dx = viewEl.scrollLeft - stage.offsetLeft - pad.l * cs, dy = viewEl.scrollTop - stage.offsetTop - pad.t * cs;
       for (const r of hudBoxes) placed.push({ left: r.left + dx, right: r.right + dx, top: r.top + dy, bottom: r.bottom + dy });
@@ -385,6 +573,7 @@ function makePixelView(th, prefs) {
     PXG.ctx = ctx;
     PXG.T = T;
     PXG.k = backing;
+    PXG.W = th.W;
     if (th.season() !== bgSeason) bg = buildBg(); // the season turned: new grass and trees
     PXG.ext = extOf();
     const sky = skyNow();
@@ -487,11 +676,12 @@ function makePixelView(th, prefs) {
   function buildBg() {
     const { H } = th.layout();
     const c = document.createElement('canvas');
-    c.width = W + pad.l + pad.r;
+    c.width = th.W + pad.l + pad.r;
     c.height = H + pad.t + pad.b;
     const g = c.getContext('2d');
     g.translate(pad.l, pad.t);
     bgSeason = th.season();
+    PXG.W = th.W;
     th.bg((x, y, w, h, col) => { g.fillStyle = ink(col); g.fillRect(x, y, w, h); }, bgSeason, extOf());
     return c;
   }
@@ -501,10 +691,10 @@ function makePixelView(th, prefs) {
     // 100% fits the whole farm in the frame (its outer size, so scrollbars coming and going don't
     // change it); zoom scales the farm inside. The backing store is a whole multiple of the art,
     // at most ~24M pixels, and image-rendering: pixelated keeps the pixels square when scaled.
-    const fw = viewEl?.offsetWidth || W, fh = viewEl?.offsetHeight || 0;
-    const fit = Math.max(0.5, Math.min(6, (fw - 2) / W, fh > 60 ? (fh - 2) / H : Infinity));
+    const fw = viewEl?.offsetWidth || th.W, fh = viewEl?.offsetHeight || 0;
+    const fit = Math.max(0.5, Math.min(6, (fw - 2) / th.W, fh > 60 ? (fh - 2) / H : Infinity));
     // The frame's spare room is more land, not empty frame: the forest round the farm.
-    const spareW = Math.max(0, (fw - 2) / fit - W), spareH = fh > 60 ? Math.floor(Math.max(0, (fh - 2) / fit - H)) : 0;
+    const spareW = Math.max(0, (fw - 2) / fit - th.W), spareH = fh > 60 ? Math.floor(Math.max(0, (fh - 2) / fit - H)) : 0;
     const was = `${pad.l},${pad.r},${pad.t},${pad.b}`;
     // The panel lies over the frame's left edge: with room to spare, the farm sits beside it rather
     // than in the middle.
@@ -512,7 +702,7 @@ function makePixelView(th, prefs) {
     const left = edge('.px-stats'), right = 0, room = spareW - left - right;
     const padL = spareW <= 0 ? 0 : room >= 0 ? left + room / 2 : (spareW * left) / Math.max(1, left + right);
     pad = { l: Math.floor(padL), r: Math.floor(spareW) - Math.floor(padL), t: Math.floor(spareH / 2), b: spareH - Math.floor(spareH / 2) };
-    const EW = W + pad.l + pad.r, EH = H + pad.t + pad.b;
+    const EW = th.W + pad.l + pad.r, EH = H + pad.t + pad.b;
     cs = Math.max(0.25, Math.min(18, fit * zoom));
     const k = Math.max(1, Math.min(Math.ceil(cs * dpr), Math.floor(Math.sqrt(24e6 / (EW * EH)))));
     backing = k;
@@ -693,18 +883,18 @@ function makePixelView(th, prefs) {
     const zoomed = viewEl.scrollWidth > viewEl.clientWidth + 2 || viewEl.scrollHeight > viewEl.clientHeight + 2;
     mini.hidden = !zoomed;
     if (!zoomed) return;
-    const EW = W + pad.l + pad.r, EH = th.layout().H + pad.t + pad.b, mw = 150, mh = Math.round((mw * EH) / EW);
+    const EW = th.W + pad.l + pad.r, EH = th.layout().H + pad.t + pad.b, mw = 150, mh = Math.round((mw * EH) / EW);
     if (mini.width !== mw || mini.height !== mh) { mini.width = mw; mini.height = mh; }
     const g = mini.getContext('2d'), k = mw / EW;
     g.imageSmoothingEnabled = true;
     g.drawImage(bg, 0, 0, mw, mh);
-    for (const f of scene.farmers) { const b = bots.get(f.id); if (b) { g.fillStyle = f.state === 'waiting' ? '#e04a3a' : SHIRT[f.color]; g.fillRect(Math.round((b.x + pad.l) * k) - 1, Math.round((b.y + pad.t) * k) - 2, 3, 3); } }
+    for (const f of scene.farmers) { const b = bots.get(f.id); if (b) { g.fillStyle = f.state === 'waiting' ? '#e04a3a' : f.shirt; g.fillRect(Math.round((b.x + pad.l) * k) - 1, Math.round((b.y + pad.t) * k) - 2, 3, 3); } }
     const stage = canvas.parentElement, vx = (viewEl.scrollLeft - stage.offsetLeft) / cs, vy = (viewEl.scrollTop - stage.offsetTop) / cs;
     g.strokeStyle = '#ffd43b'; g.lineWidth = 1.5;
     g.strokeRect(Math.max(0, vx * k), Math.max(0, vy * k), Math.min(mw, (viewEl.clientWidth / cs) * k), Math.min(mh, (viewEl.clientHeight / cs) * k));
   }
   function onMiniClick(e) {
-    const r = mini.getBoundingClientRect(), k = (W + pad.l + pad.r) / r.width, stage = canvas.parentElement;
+    const r = mini.getBoundingClientRect(), k = (th.W + pad.l + pad.r) / r.width, stage = canvas.parentElement;
     viewEl.scrollLeft = (e.clientX - r.left) * k * cs + stage.offsetLeft - viewEl.clientWidth / 2;
     viewEl.scrollTop = (e.clientY - r.top) * k * cs + stage.offsetTop - viewEl.clientHeight / 2;
     if (follow) { follow = false; renderHud(); }
@@ -725,7 +915,7 @@ function makePixelView(th, prefs) {
       host = el;
       still = opts.still ?? false;
       host.innerHTML = `<div class="px"><div class="px-host"><div class="px-view"><div class="px-stage"><canvas aria-label="Pixel farm: every farmer is an agent, every field a repo"></canvas><div class="px-ov"></div>${got ? '' : '<div class="px-loading"><span class="spinner"></span>Loading the farm…</div>'}</div></div><div class="px-hud"></div></div></div>
-        <dialog class="px-help" aria-label="How to read the farm"><header><b>How to read the farm</b><button type="button" class="x" data-farm-help-close aria-label="Close">×</button></header>${helpHtml()}</dialog>
+        <dialog class="px-help" aria-label="How to read the farm"><header><b>How to read the farm</b><button type="button" class="x" data-farm-help-close aria-label="Close">×</button></header>${th.help()}</dialog>
         <dialog class="px-help px-dlg" aria-label="The farm"><header><b class="px-dlg-title"></b><button type="button" class="x" data-farm-dlg-close aria-label="Close">×</button></header><div class="px-dlg-body"></div></dialog>`;
       canvas = host.querySelector('canvas');
       ctx = canvas.getContext('2d');
@@ -789,7 +979,7 @@ function makePixelView(th, prefs) {
     resume: () => { if (still) redrawStill(); else startLoop(); },
     isStill: () => still,
     farmerName: id => scene.farmers.find(f => f.id === id)?.name,
-    farmerColor: id => { const f = scene.farmers.find(x => x.id === id); return f ? SHIRT[f.color] : '#9aa0a6'; },
+    farmerColor: id => { const f = scene.farmers.find(x => x.id === id); return f ? f.shirt : '#9aa0a6'; },
     field: key => scene.fields.find(f => f.key === key),
   };
 }

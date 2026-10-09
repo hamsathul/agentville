@@ -26,7 +26,7 @@ const ago = ms => {
   const m = Math.max(0, (Date.now() - ms) / 60_000);
   return m < 1 ? 'now' : m < 60 ? `${Math.round(m)}m` : m < 1440 ? `${Math.round(m / 60)}h` : `${Math.round(m / 1440)}d`;
 };
-const PXG = { ctx: null, T: 0, k: 1, lights: null, ext: null }; // ext: the world drawn, past the farm's own edges when the frame has room // the canvas being drawn now, the animation clock, device pixels per world pixel, lights to glow at night
+const PXG = { ctx: null, T: 0, k: 1, lights: null, ext: null, W: 400 }; // ext: the world drawn, past the farm's own edges when the frame has room // the canvas being drawn now, the animation clock, device pixels per world pixel, lights to glow at night
 const px = (x, y, w, h, c) => { PXG.ctx.fillStyle = ink(c); PXG.ctx.fillRect(x, y, w, h); };
 const SC = 1; // one sprite pixel = one world pixel, the same pixels as the land
 const blink = (hz, n = 2) => Math.floor(PXG.T * hz) % n;
@@ -36,6 +36,8 @@ const rpAt = (ox, oy) => Object.assign((x, y, w, h, c) => {
   const x0 = snap(ox + x * SC), y0 = snap(oy + y * SC);
   px(x0, y0, snap(ox + (x + w) * SC) - x0, snap(oy + (y + h) * SC) - y0, c);
 }, { ox, oy });
+/** The walk: foot, pass, other foot, pass (8 steps a second); the body rises on the passes. */
+const walkFrame = T => { const i = Math.floor(T * 8) % 4; return { legs: ['a', 's', 'b', 's'][i], bob: i % 2 }; };
 const legFrame = b => (b.walk ? walkFrame(PXG.T).legs : 's');
 const pixelOrigin = (b, SH) => [snap(Math.round(b.x) - 7 * SC), snap(Math.round(b.y) - SH * SC + (b.walk && walkFrame(PXG.T).bob ? -SC : 0))];
 function makeSprite(rows, pal) {
@@ -103,7 +105,7 @@ function skyAt(date) {
   const h = date.getHours() + date.getMinutes() / 60;
   const phase = h >= 7 && h < 18 ? 'day' : h >= 5 && h < 7 ? 'dawn' : h >= 18 && h < 20 ? 'dusk' : 'night';
   const light = phase === 'day' ? 1 : phase === 'dawn' ? (h - 5) / 2 : phase === 'dusk' ? 1 - (h - 18) / 2 : 0;
-  const arc = (t, lo, hi) => ({ x: Math.round(14 + t * (W - 28)), y: Math.round(12 - Math.sin(t * Math.PI) * 10), lo, hi }); // left to right, high at midday
+  const arc = (t, lo, hi) => ({ x: Math.round(14 + t * (PXG.W - 28)), y: Math.round(12 - Math.sin(t * Math.PI) * 10), lo, hi }); // left to right, high at midday
   const sun = h >= 5.5 && h < 20 ? arc((h - 5.5) / 14.5) : null;
   const nh = (h + 24 - 19.5) % 24; // the moon: from 19:30 to 6:00
   const moon = !sun || phase === 'dusk' || phase === 'dawn' ? (nh < 10.5 ? arc(nh / 10.5) : null) : null;
@@ -130,7 +132,7 @@ let lightMap = null; // the night's darkness, one pixel per world pixel, with th
 function drawNight(sky, H, lights) {
   const ctx = PXG.ctx, dark = 1 - sky.light;
   if (dark < 0.02 || typeof document === 'undefined') return;
-  const e = PXG.ext ?? { x0: 0, x1: W, y0: 0, y1: H }, w = e.x1 - e.x0, h = e.y1 - e.y0;
+  const e = PXG.ext ?? { x0: 0, x1: PXG.W, y0: 0, y1: H }, w = e.x1 - e.x0, h = e.y1 - e.y0;
   // Laid over the farm with multiply: white leaves a pixel as it is, the shade darkens it. So
   // the darkness is the shade mixed toward white by its strength, and a light is a round hole in
   // it, in five soft steps to warm white in the middle: lit places keep their colours, no fog.

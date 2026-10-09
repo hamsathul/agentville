@@ -235,6 +235,87 @@ errors thrown by `start`, `scene` or `select` reach the page as `error`, each on
 `Agentville.world(hooks)`, a world drawn by the farm's engine from a few hooks, comes in a later
 change.
 
+## Hooks
+
+A world drawn by the engine (`web/worlds/sdk/engine.js`, over the pixel kit in `pixel.js`) gives its
+hooks to `Agentville.world(hooks)`, which fills in a default for each one it leaves out and runs it
+through the bridge. Load `bridge.js`, `pixel.js` and `engine.js` first, then your `world.js`.
+
+```js
+Agentville.world({ W: 400, slots(agent) { … }, drawChar(agent, body) { … }, bg(fill, season, ext) { … } });
+```
+
+### The four a world must give
+
+A world without one of them stops with an error that names it.
+
+- `W`: the world's width in world pixels (a number above 0).
+- `slots(agent)`: where this agent stands. Either `{ group, cap, at(i) → [x, y], zone }` (a place for
+  up to `cap` agents of the same `group`; `at(i)` is the i-th spot), or, for agents standing in a
+  field, `{ group: 'st:<key>', at(usedOffsets) → [x, y], zone }` (push the offset you took into
+  `usedOffsets`).
+- `drawChar(agent, body)`: draws the agent. `body` has `x`, `y` (where it is), `walk` (walking now),
+  `face`, `lift` and `zone`.
+- `bg(fill, season, ext)`: draws the ground once per season. `fill(x, y, w, h, colour)` paints a
+  rectangle; `ext` is `{ x0, x1, y0, y1 }`, the area to cover (it grows past the world's edges when the
+  frame has room).
+
+### The optional ones, with their defaults
+
+| Hook | Default |
+|---|---|
+| `corridors` | `[W / 2]`: the x positions of the paths running down; agents walk along one |
+| `grid` | a `makeGrid` result, or the config for one (see below); default: 3 beds across, 88 × 62, around `W / 2` |
+| `fromScene(sceneV1)` | `engineScene` |
+| `help()` | the info dialog's HTML: a short key naming your `nouns` |
+| `nouns` | `{ agent, agents, repo, repos }`: `agent`, `agents`, `repo`, `repos` |
+| `SH` | `16`: a character's height |
+| `layout()`, `relayout(ground)` | the grid's current ground; relayout keeps the new one |
+| `setScene(scene)` | remembers the fields; returns no events |
+| `spawn()` | `[W / 2, 0]`: where a new agent appears |
+| `follow(body, k)` | where the k-th subagent follows its agent |
+| `startText(n)`, `arriveText` | "n agents here"; the text `'arrives'` (a string) in the log |
+| `tag(agent)`, `tip(agent)` | the name, cut to 16; the name |
+| `onMove`, `speed()`, `zoneText()` | nothing; `40`; `'moves'` |
+| `hud(state)` | the dashboard's buttons: list, world, sidebar, sky, motion, help, zoom |
+| `ground`, `shadows`, `top` | nothing (drawn under, beneath, and over the agents) |
+| `season()` | `'summer'` |
+| `lights()` | `[]`; each `[x, y, r, colour]` glows at night |
+| `items()` | `[]`; each `[y, draw]`, drawn among the agents sorted by `y` |
+| `movers()` | `[]`; each `{ key, html, title, x, y }`, a label that moves |
+| `labels(lab)` | each field's name under its bed |
+| `fieldAt(x, y)`, `buildingAt(x, y)` | `null`: nothing to click |
+| `buildingTip(key)` | `''` |
+| `dialog(key)` | `null`; or `{ title, html }` for a clicked building |
+| `boardSessions()` | `[]` |
+
+A hook you give always wins over its default.
+
+### `makeGrid(config)`
+
+The repo grid an engine world lays its fields out on, where a repo keeps its bed while you look, a
+project's repos sit together, and a repo that leaves keeps its bed for a day. `config`:
+
+- `cols` (3), `colW`, `rowH`: beds across, and each bed's width and height;
+- `cx0`, `top0`: the centre x of the first column and the top of the first row;
+- `minRows` (3), `maxRows` (6), `max` (18): how many rows show, and how many beds in all (more show as "+N more");
+- `slot(cx, rowTop)` → object: extra fields for each bed (the farm adds `lane`, `x0`, `y0`);
+- `fence(rows)` → `{ x0, x1, y0, y1 }`: the fenced ground for that many rows;
+- `height(fence)` → the world's height.
+
+It returns `{ layoutFor(fields, beds?, now?), packedLayout(fields, beds, now?), slotAt(i), cols }`.
+`layoutFor` returns `{ key, ST, slots, empty, rows, GRID, H, groups, more, beds }`.
+
+### `engineScene(scene)`
+
+The engine's scene, from the version 1 scene: `farmers` (the agents, each with `field`, its repo;
+`pct`, the context used; `hearts`, left of 4; `shirt`, its colour), `fields` (the repos, with
+`lastDeploy`), `plan.windows` (each with `percentUsed`), `henhouse`, `carts`, `mail`, `subagents` and
+`chrome`. A world's `fromScene` can call it and add its own looks (the farm adds each farmer's `look`
+and each field's crop, fence, soil, pennant and weather).
+
+The field close-up (a field's files) is still drawn as the farm draws it.
+
 ## What a world can't do
 
 - It has no token, no cookies and no storage: reading them throws a `SecurityError`. It can't reach
