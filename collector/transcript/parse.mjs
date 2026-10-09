@@ -1,6 +1,9 @@
 // What Claude Code writes when a turn is interrupted (Esc), and the tracker's mod writes after a stop.
 const INTERRUPTED = /^\[Request interrupted by user[^\]]*\]$/;
 
+// A message's row in the transcript, where a fork can be cut.
+const rowId = obj => (typeof obj.uuid === 'string' ? { uuid: obj.uuid } : {});
+
 /** Prompt text as a person would recognise it; '' for entries that are not real prompts. */
 export function cleanPrompt(text) {
   const t = String(text ?? '').trim();
@@ -104,7 +107,7 @@ export function parseEntry(obj) {
       // The person typed it, or sent it from the dashboard (the mod submits it as the user's own words).
       const isHuman = !obj.origin || obj.origin.kind === 'human' || obj.origin.asUser === true;
       const clean = cleanPrompt(text);
-      if (isHuman && clean) events.push({ kind: 'prompt', text: clean });
+      if (isHuman && clean) events.push({ kind: 'prompt', text: clean, ...rowId(obj) });
       else if (!isHuman) events.push({ kind: 'turn_start' });
     }
   } else if (obj.type === 'assistant' && Array.isArray(content)) {
@@ -113,7 +116,7 @@ export function parseEntry(obj) {
       if (b?.type === 'tool_use' && typeof b.id === 'string') {
         events.push({ kind: 'tool_use', id: b.id, name: String(b.name ?? ''), input: b.input && typeof b.input === 'object' ? b.input : {}, cwd });
       } else if (b?.type === 'text' && typeof b.text === 'string' && b.text.trim()) {
-        events.push({ kind: 'reply', text: b.text });
+        events.push({ kind: 'reply', text: b.text, ...rowId(obj) });
       }
     }
     if (typeof obj.message?.model === 'string') events.push({ kind: 'model', model: obj.message.model, usage: obj.message.usage, ...(typeof obj.message.id === 'string' ? { id: obj.message.id } : {}) });

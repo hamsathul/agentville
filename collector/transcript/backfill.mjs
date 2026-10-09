@@ -53,7 +53,7 @@ export async function earlierHistory(path, end) {
         else if (ev.kind === 'prompt' || ev.kind === 'reply' || ev.kind === 'peer_in' || (ev.kind === 'tool_use' && ev.name === 'SendMessage' && typeof ev.input?.to === 'string')) {
           said.push(ev.kind === 'peer_in' ? { kind: 'peer', dir: 'in', other: ev.from, text: ev.text, at: at ?? 0 }
             : ev.kind === 'tool_use' ? { kind: 'peer', dir: 'out', other: ev.input.to, ...(ev.input.summary ? { summary: String(ev.input.summary) } : {}), ...(/^a[0-9a-f]{16}$/.test(ev.input.to) ? { helper: true } : {}), text: String(ev.input.message ?? ''), at: at ?? 0 }
-            : { kind: ev.kind, text: ev.text, at: at ?? 0 });
+            : { kind: ev.kind, text: ev.text, at: at ?? 0, ...(ev.uuid ? { uuid: ev.uuid } : {}) });
           if (said.length > SAID_KEPT) said.shift();
         }
       }

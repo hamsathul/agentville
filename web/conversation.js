@@ -8,7 +8,8 @@ const convoWhen = ms => new Date(ms).toLocaleString([], { month: 'short', day: '
 
 /** One message as the dialog shows it, for reading: only the files a reply names open (in the file dialog). */
 function convoBubble(m) {
-  const when = `<time>${esc(convoWhen(m.at))}</time>`;
+  const owner = convo.id.includes(':') ? null : snap?.agents.find(a => a.id === convo.id); // a subagent's are not forked
+  const when = `<time>${esc(convoWhen(m.at))}${owner && m.kind !== 'peer' ? forkBtn(owner, m) : ''}</time>`;
   if (m.kind === 'prompt') return `<div class="bub you"><div class="cv-text">${esc(m.body || m.text)}</div>${when}</div>`;
   if (m.kind === 'peer') {
     const head = m.dir === 'in' ? `from ${esc(m.other)}` : m.helper ? 'to a helper agent' : `to ${esc(m.other)}`;

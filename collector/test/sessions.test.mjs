@@ -4,7 +4,7 @@ import assert from 'node:assert/strict';
 import { mkdirSync, mkdtempSync, utimesSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { claudeCommand, closeTerminalScript, listSessions, projectsOf, terminalScript } from '../sources/sessions.mjs';
+import { claudeCommand, closeTerminalScript, forkCommand, listSessions, projectsOf, terminalScript } from '../sources/sessions.mjs';
 
 const NOW = Date.parse('2026-10-07T12:00:00Z');
 const DAY = 86_400_000;
@@ -105,6 +105,16 @@ test('a permission mode goes on the command line; bypass is the dangerous flag',
   assert.equal(claudeCommand('/code/app', undefined, 'bypassPermissions'), "cd '/code/app' && exec claude --dangerously-skip-permissions");
   assert.equal(claudeCommand('/code/app', undefined, 'default'), "cd '/code/app' && exec claude");
   assert.throws(() => claudeCommand('/code/app', undefined, 'yolo; rm -rf ~'));
+});
+
+test('a fork resumes the cut copy as a new session, named as a fork, its prompt box filled from a file by the shell', () => {
+  assert.equal(forkCommand('/code/my app', '/t/forks/f-1/s.jsonl', 'plan', { model: 'sonnet', effort: 'high', name: "Bob's work (fork)" }),
+    `cd '/code/my app' && exec claude --resume '/t/forks/f-1/s.jsonl' --fork-session --name 'Bob'\\''s work (fork)' --permission-mode plan --model 'sonnet' --effort high`);
+  assert.equal(forkCommand('/code/app', '/t/forks/f-2/s.jsonl', 'default', { prefillFile: '/t/forks/f-2/prompt.txt' }),
+    `cd '/code/app' && exec claude --resume '/t/forks/f-2/s.jsonl' --fork-session --prefill "$(cat '/t/forks/f-2/prompt.txt')"`);
+  assert.throws(() => forkCommand('/code/app', 'relative.jsonl'), /transcript/);
+  assert.throws(() => forkCommand('/code/app', '/t/s.jsonl', 'yolo'));
+  assert.throws(() => forkCommand('/code/app', '/t/s.jsonl', 'default', { model: 'gpt' }));
 });
 
 test("closing a session's window finds it by its tty, only in a terminal app that is already running", () => {

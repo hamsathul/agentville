@@ -557,6 +557,46 @@ test("a session's whole conversation is read from its transcript, then only what
   }
 });
 
+test("a session's conversation is forked at one of its messages into a new session, in a new terminal window", async () => {
+  const root = mkdtempSync(join(tmpdir(), 'tracker-root-fork-'));
+  mkdirSync(join(root, 'web'));
+  writeFileSync(join(root, 'web', 'index.html'), '<html>__TRACKER_TOKEN__</html>');
+  writeFileSync(join(root, 'config.json'), JSON.stringify({ port: 0, deployRepos: {}, terminal: 'iTerm' }));
+  const work = realpathSync(mkdtempSync(join(tmpdir(), 'tracker-work-fork-')));
+  const claudeDir = mkdtempSync(join(tmpdir(), 'tracker-claude-fork-'));
+  const dir = join(claudeDir, 'projects', work.replace(/[^a-zA-Z0-9]/g, '-'));
+  mkdirSync(join(claudeDir, 'sessions'));
+  mkdirSync(dir, { recursive: true });
+  const SID = '22222222-aaaa-4bbb-8ccc-000000000001';
+  const t = Date.now() - 60_000;
+  const row = (ms, type, uuid, content) => JSON.stringify({ type, uuid, timestamp: new Date(ms).toISOString(), cwd: work, ...(type === 'user' ? { origin: { kind: 'human' } } : {}), message: { role: type, ...(type === 'assistant' ? { model: 'claude-opus-5-5' } : {}), content } });
+  const lines = [row(t, 'user', 'p-1', 'Plan the release'), row(t + 1000, 'assistant', 'r-1', [{ type: 'text', text: 'Here is the plan.' }]), row(t + 2000, 'user', 'p-2', 'Ship it'), row(t + 3000, 'assistant', 'r-2', [{ type: 'text', text: 'Shipped.' }])];
+  writeFileSync(join(dir, `${SID}.jsonl`), `${lines.join('\n')}\n`);
+  writeFileSync(join(claudeDir, 'sessions', `${process.pid}.json`), JSON.stringify({ pid: process.pid, sessionId: SID, cwd: work, name: 'releaser', kind: 'interactive', status: 'idle' }));
+  const launched = [];
+  const handle = await startCollector({ root, claudeDir, claudeBin: '/usr/bin/false', notify: () => {}, log: () => {}, launch: async args => { launched.push(args); return { code: 0, stdout: '', stderr: '' }; } });
+  try {
+    const feed = handle.getSnapshot().agents.find(a => a.id === SID).feed;
+    assert.deepEqual(feed.filter(f => f.kind === 'prompt' || f.kind === 'reply').map(f => f.uuid), ['r-2', 'p-2', 'r-1', 'p-1'], 'each message says where it is in the transcript');
+    assert.deepEqual(await handle.actions.fork({ agentId: SID, at: 'r-1', mode: 'plan', model: 'sonnet' }), { ok: true, terminal: 'iTerm' });
+    const command = launched[0].at(-1);
+    const copy = command.match(/--resume '([^']+)'/)[1];
+    assert.equal(command, `cd '${work}' && exec claude --resume '${copy}' --fork-session --name 'releaser (fork)' --permission-mode plan --model 'sonnet'`);
+    assert.ok(copy.startsWith(join(root, 'state', 'forks')), 'the copy is kept in the tracker\'s own state');
+    assert.equal(readFileSync(copy, 'utf8'), `${lines.slice(0, 2).join('\n')}\n`, 'up to and including that reply');
+    assert.equal(readFileSync(join(dir, `${SID}.jsonl`), 'utf8'), `${lines.join('\n')}\n`, 'the original is untouched');
+    assert.deepEqual(await handle.actions.fork({ agentId: SID, at: 'p-2' }), { ok: true, terminal: 'iTerm' });
+    const prefill = launched[1].at(-1).match(/--prefill "\$\(cat '([^']+)'\)"$/)[1];
+    assert.equal(readFileSync(prefill, 'utf8'), 'Ship it', 'forked from your message: it goes in the new prompt box');
+    for (const body of [{ agentId: SID, at: 'nope' }, { agentId: SID, at: 'p-1' }, { agentId: SID }, { agentId: 'nobody', at: 'r-1' }, { agentId: SID, at: 'r-1', mode: 'yolo' }, { agentId: SID, at: 'r-1', model: 'gpt-5' }, null]) {
+      assert.equal((await handle.actions.fork(body)).ok, false, JSON.stringify(body));
+    }
+    assert.equal(launched.length, 2);
+  } finally {
+    await handle.stop();
+  }
+});
+
 test('a session starts or resumes in a terminal only in a listed folder, or from a past session that is not running', async () => {
   const root = mkdtempSync(join(tmpdir(), 'tracker-root-'));
   mkdirSync(join(root, 'web'));

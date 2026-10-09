@@ -723,6 +723,13 @@ a.pile { text-decoration: none; color: inherit; }
   <input id="confirm-note" type="text" class="confirm-note" maxlength="500" autocomplete="off" hidden>
   <p class="confirm-actions"><button type="button" class="act" id="confirm-no" data-confirm="no">Cancel</button><button type="button" class="act primary" id="confirm-yes" data-confirm="yes">OK</button></p>
 </dialog>
+<dialog id="fork-dlg" class="confirm-dlg" aria-labelledby="fork-text">
+  <p id="fork-text"></p>
+  <div class="sess-modes"><label for="fork-mode">Permission mode</label><select id="fork-mode"></select></div>
+  <div class="sess-modes"><label for="fork-model">Model</label><select id="fork-model"></select><label for="fork-effort">Effort</label><select id="fork-effort"></select></div>
+  <p id="fork-warn" class="msg-bad" hidden>⚠ every tool runs without asking (--dangerously-skip-permissions)</p>
+  <p class="confirm-actions"><button type="button" class="act" data-fork-cancel>Cancel</button><button type="button" class="act primary" id="fork-go" data-fork-go>⑂ Fork</button></p>
+</dialog>
 <dialog id="sessions" class="sess-dlg" aria-labelledby="sess-title">
   <div class="sess-head"><h3 id="sess-title">Start or resume a session</h3><span class="grow"></span><button type="button" class="act mini" data-sess-close aria-label="Close">×</button></div>
   <div class="sess-modes"><label for="sess-mode">Permission mode</label><select id="sess-mode"><option value="default">Ask first</option><option value="acceptEdits">Accept edits</option><option value="plan">Plan mode</option><option value="auto">Auto</option><option value="bypassPermissions">Bypass permissions</option></select><span id="sess-mode-warn" class="msg-bad" hidden>⚠ every tool runs without asking (--dangerously-skip-permissions)</span></div>

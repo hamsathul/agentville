@@ -1342,6 +1342,39 @@ test('↑ in the message box brings back your earlier messages to that session, 
   assert.deepEqual(page.posts.at(-1), { path: '/api/actions/message', body: { agentId: 'r1', text: 'ship it today' } });
 });
 
+test('⑂ Fork on a message starts a new session from the conversation there, in the mode, model and effort picked', async () => {
+  const page = loadPage();
+  const feed = [
+    { at: Date.now() - 1000, kind: 'reply', text: 'Shipped.', body: 'Shipped.', uuid: 'r-2' },
+    { at: Date.now() - 2000, kind: 'prompt', text: 'Ship it', body: 'Ship it', uuid: 'p-2' },
+    { at: Date.now() - 3000, kind: 'reply', text: 'Older', body: 'Older' }, // read before rows had ids: no fork
+  ];
+  page.push(richSnapshot([richAgent({ pid: 4242, mode: 'plan', model: 'claude-sonnet-5-5', effort: 'high', feed })]));
+  const side = page.side();
+  assert.match(side, /class="bub agent">[\s\S]*Shipped\.[\s\S]*↩ Reply<\/button><button type="button" class="bub-reply" data-fork="r-2" data-fork-kind="reply" data-agent="r1"[^>]*>⑂ Fork<\/button>/);
+  assert.match(side, /class="bub you">Ship it<time>[^<]*<button type="button" class="bub-reply" data-fork="p-2" data-fork-kind="prompt" data-agent="r1"/);
+  assert.equal((side.match(/data-fork=/g) ?? []).length, 2);
+  await page.clickButton('fork-btn', { fork: 'p-2', forkKind: 'prompt', agent: 'r1' });
+  assert.equal(page.el('fork-dlg').open, true);
+  assert.match(page.el('fork-text').textContent, /busy-one.*before this message.*prompt box.*busy-one stays as it is/);
+  assert.deepEqual([page.el('fork-mode').value, page.el('fork-model').value, page.el('fork-effort').value], ['plan', 'sonnet', 'high'], "the session's own, to start with");
+  page.el('fork-model').value = 'opus';
+  await page.clickButton('fork-go', { forkGo: '' });
+  await page.settle();
+  assert.deepEqual(page.posts.at(-1), { path: '/api/actions/fork', body: { agentId: 'r1', at: 'p-2', mode: 'plan', model: 'opus', effort: 'high' } });
+  assert.equal(page.el('fork-dlg').open, false);
+  await page.clickButton('fork-btn', { fork: 'r-2', forkKind: 'reply', agent: 'r1' });
+  assert.match(page.el('fork-text').textContent, /up to and including this reply/);
+  page.el('fork-model').value = 'default';
+  page.el('fork-effort').value = '';
+  await page.clickButton('fork-go', { forkGo: '' });
+  await page.settle();
+  assert.deepEqual(page.posts.at(-1).body, { agentId: 'r1', at: 'r-2', mode: 'plan' }, 'your defaults: no flags');
+  const codex = loadPage();
+  codex.push(richSnapshot([richAgent({ kind: 'codex', feed })]));
+  assert.doesNotMatch(codex.side(), /data-fork=/, 'Codex sessions are not forked');
+});
+
 // The sessions dialog: past sessions to resume, with search, filters and sorting.
 const H = 3_600_000;
 const pastSessions = () => {
@@ -1455,8 +1488,8 @@ const convoPage = async () => {
   const t = Date.now() - 3_600_000;
   const page = loadPage({ replies: {
     '/api/agent/r1/conversation': talk(0, [
-      { at: t, kind: 'prompt', text: 'First question', body: 'First question' },
-      { at: t + 60_000, kind: 'reply', text: 'The answer', body: 'The **answer**' },
+      { at: t, kind: 'prompt', text: 'First question', body: 'First question', uuid: 'p-1' },
+      { at: t + 60_000, kind: 'reply', text: 'The answer', body: 'The **answer**', uuid: 'r-1' },
       { at: t + 120_000, kind: 'peer', dir: 'in', other: 'docs-bot', text: 'Docs are done', body: 'Docs are done' },
     ]),
     '/api/agent/r1/conversation?from=3': talk(3, [{ at: t + 180_000, kind: 'reply', text: 'Later', body: 'Later news' }]),
@@ -1479,6 +1512,8 @@ test('⤢ Read all on the conversation opens the whole of it in a dialog, oldest
   const body = page.el('convo-body').innerHTML;
   assert.match(body, /class="bub you"><div class="cv-text">First question<\/div>[\s\S]*class="bub agent"><div class="bub-md cv-text"><p>The <strong>answer<\/strong><\/p>[\s\S]*class="bub peer in"[\s\S]*from docs-bot[\s\S]*Docs are done/, 'oldest first; replies as markdown');
   assert.doesNotMatch(body, /data-quote/, 'no reply buttons: it is for reading');
+  assert.match(body, /First question[\s\S]*data-fork="p-1" data-fork-kind="prompt" data-agent="r1"[\s\S]*The <strong>answer[\s\S]*data-fork="r-1" data-fork-kind="reply" data-agent="r1"/, 'each message can be forked from, there too');
+  assert.equal((body.match(/data-fork=/g) ?? []).length, 2, 'not a message from another session');
 });
 
 test('while the dialog is open, new messages are added at the bottom; closing it stops that', async () => {

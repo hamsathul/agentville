@@ -264,6 +264,14 @@ const feedOf = a => fullFeeds.get(a.id)?.items ?? a.feed;
 const moreHtml = (a, f) =>
   f.more ? `<button type="button" class="act mini bub-more" data-full-feed="${esc(a.id)}">Show the whole message</button>` : '';
 
+/** ⑂ Fork on a message: a new session from the conversation there (its transcript row says where). */
+function forkBtn(a, m) {
+  if (a.kind === 'codex' || !m.uuid) return '';
+  const tip = m.kind === 'prompt' ? 'A new session with the conversation up to just before this message, and this message in its prompt box to change'
+    : 'A new session with the conversation up to and including this reply, in a new terminal window';
+  return `<button type="button" class="bub-reply" data-fork="${esc(m.uuid)}" data-fork-kind="${m.kind === 'prompt' ? 'prompt' : 'reply'}" data-agent="${esc(a.id)}" title="${tip}">⑂ Fork</button>`;
+}
+
 function conversationHtml(a) {
   const all = fullFeeds.has(a.id);
   const said = feedOf(a).filter(f => f.kind === 'prompt' || f.kind === 'reply' || f.kind === 'peer').slice(0, all ? Infinity : 10); // newest first, under the box
@@ -272,8 +280,8 @@ function conversationHtml(a) {
   // Reply on an agent message quotes it into the message box.
   const peer = f => `<div class="bub peer ${f.dir === 'in' ? 'in' : 'out'}"><div class="peer-head">✉ ${f.dir === 'in' ? `from ${esc(f.other)}` : f.helper ? 'to a helper agent' : `to ${esc(f.other)}`}${f.summary ? ` · ${esc(f.summary)}` : ''}</div><div class="bub-md">${renderMarkdown(f.body || f.text)}</div>${moreHtml(a, f)}<time>${hhmm(f.at)}</time></div>`;
   const bubble = f => (f.kind === 'peer' ? peer(f) : f.kind === 'prompt'
-    ? `<div class="bub you">${esc(f.body || f.text)}${moreHtml(a, f)}<time>${hhmm(f.at)}</time></div>`
-    : `<div class="bub agent"><div class="bub-md">${renderMarkdown(f.body || f.text)}</div>${namedSlotHtml(a.id, f.body || f.text)}${moreHtml(a, f)}<time>${hhmm(f.at)}<button type="button" class="bub-reply" data-quote="${esc(f.body || f.text)}" data-agent="${esc(a.id)}" title="Quote this in your reply">↩ Reply</button></time></div>`);
+    ? `<div class="bub you">${esc(f.body || f.text)}${moreHtml(a, f)}<time>${hhmm(f.at)}${forkBtn(a, f)}</time></div>`
+    : `<div class="bub agent"><div class="bub-md">${renderMarkdown(f.body || f.text)}</div>${namedSlotHtml(a.id, f.body || f.text)}${moreHtml(a, f)}<time>${hhmm(f.at)}<button type="button" class="bub-reply" data-quote="${esc(f.body || f.text)}" data-agent="${esc(a.id)}" title="Quote this in your reply">↩ Reply</button>${forkBtn(a, f)}</time></div>`);
   // The newest message is framed as the latest, with your message when it is right below it: a quick
   // exchange frames the pair, a long working turn only its newest note.
   const cut = said[0].kind !== 'prompt' && said[1]?.kind === 'prompt' ? 2 : 1;

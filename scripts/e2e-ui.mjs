@@ -88,11 +88,12 @@ const resting = spawn('sleep', ['600'], { stdio: 'ignore' }); // an idle session
 const now = Date.now();
 const iso = ms => new Date(ms).toISOString();
 const line = (ms, message, type = 'assistant') => JSON.stringify({ type, timestamp: iso(ms), cwd: repo, message });
+const withId = (json, uuid) => JSON.stringify({ ...JSON.parse(json), uuid }); // a message's row id, where a fork is cut
 const use = (ms, id, name, input) => line(ms, { model: 'claude-haiku', content: [{ type: 'tool_use', id, name, input }] });
 const QUESTION = { question: 'Which crop next?', header: 'Crop', multiSelect: false, options: [{ label: 'Wheat' }, { label: 'Pumpkins' }] };
 const sessions = {
   'ui-asker': { pid: process.pid, lines: [
-    line(now - 60_000, { content: 'Plan the next crop' }, 'user'),
+    withId(line(now - 60_000, { content: 'Plan the next crop' }, 'user'), 'ui-p1'),
     use(now - 50_000, 'toolu_W1', 'Write', { file_path: join(repo, 'docs', 'plan.md'), content: '# Plan' }),
     // a subagent at work: its own transcript is written below
     use(now - 46_000, 'toolu_SUB1', 'Agent', { description: 'Survey the fields', subagent_type: 'Explore', prompt: 'Survey every field and list what grows where.' }),
@@ -100,7 +101,7 @@ const sessions = {
     line(now - 45_000, { model: 'claude-haiku', content: [{ type: 'text', text: `The rotation:\n\n\`\`\`\n${'wheat → barley → clover → pumpkins → '.repeat(6)}fallow\n\`\`\`` }] }),
     use(now - 40_000, 'toolu_E1', 'Edit', { file_path: join(repo, 'src', 'app.ts'), old_string: '1', new_string: '2' }),
     line(now - 35_000, { model: 'claude-haiku', content: [{ type: 'text', text: 'Here is the field as it is now: `pic.svg`' }] }), // a picture named in a reply
-    line(now - 30_000, { model: 'claude-haiku', content: [{ type: 'text', text: 'Plan written. One question before I go on.' }] }),
+    withId(line(now - 30_000, { model: 'claude-haiku', content: [{ type: 'text', text: 'Plan written. One question before I go on.' }] }), 'ui-r1'), // a reply to fork from
     use(now - 20_000, 'toolu_ASK1', 'AskUserQuestion', { questions: [QUESTION] }),
   ] },
   'ui-worker': { pid: worker.pid, lines: [
@@ -310,6 +311,13 @@ try {
   check(await until("document.getElementById('msg-text')?.value === 'Plan the next crop'"), `↑ in the message box brings back what you said to the session (got ${JSON.stringify(await js("document.getElementById('msg-text')?.value"))})`);
   await arrow('ArrowDown', 40);
   check(await until("document.getElementById('msg-text')?.value === ''"), '↓ goes back to what you were typing');
+  await js("document.querySelector('#center-body [data-fork=\"ui-r1\"]').click()");
+  check(await until("document.getElementById('fork-dlg').open && document.getElementById('fork-mode').options.length === 5 && document.getElementById('fork-model').value === 'haiku'"), "⑂ Fork on a reply asks in what mode, model and effort, the session's own to start with");
+  await js("document.getElementById('fork-go').click()");
+  const forked = await until("!document.getElementById('fork-dlg').open && /Forking ui-asker/.test(document.getElementById('notice').textContent)") ? launched.at(-1) : '';
+  const copy = /--resume '([^']+)'/.exec(forked)?.[1] ?? '';
+  check(forked === `cd '${repo}' && exec claude --resume '${copy}' --fork-session --name 'ui-asker (fork)' --model 'haiku'` && readFileSync(copy, 'utf8').trim().split('\n').at(-1).includes('"ui-r1"'),
+    `confirmed, a terminal resumes a copy of the conversation cut at that reply as a new session (got ${forked})`);
   await js("document.querySelector('#center-body [data-convo=\"ui-asker\"]').click()");
   await until("!!document.getElementById('convo-msg-text')");
   await js("document.getElementById('convo-msg-text').focus()"); // before the conversation has loaded

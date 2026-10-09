@@ -39,6 +39,7 @@ async function start() {
       permit: async body => { calls.push(['permit', body]); return { ok: true }; },
       message: async body => { calls.push(['message', body]); return { ok: true }; },
       start: async body => { calls.push(['start', body]); return { ok: true }; },
+      fork: async body => { calls.push(['fork', body]); return { ok: true }; },
       end: async body => { calls.push(['end', body]); return { ok: true }; },
       restart: async body => { calls.push(['restart', body]); return { ok: true }; },
       plugin: async body => { calls.push(['plugin', body]); return { ok: true }; },
@@ -446,19 +447,20 @@ test('past sessions need the token; starting one needs the token and a same-orig
   }
 });
 
-test('ending or restarting a session needs the token and a same-origin Origin header', async () => {
+test('ending, restarting or forking a session needs the token and a same-origin Origin header', async () => {
   const { srv, port, calls } = await start();
   try {
     const origin = `http://127.0.0.1:${port}`;
     const json = { 'content-type': 'application/json' };
-    for (const path of ['/api/actions/end', '/api/actions/restart']) {
+    for (const path of ['/api/actions/end', '/api/actions/restart', '/api/actions/fork']) {
       assert.equal((await request(port, { method: 'POST', path, headers: { ...json, origin }, body: '{"agentId":"s1"}' })).status, 403);
       assert.equal((await request(port, { method: 'POST', path, headers: { ...json, 'x-tracker-token': 'tok', origin: 'https://evil.example' }, body: '{"agentId":"s1"}' })).status, 403);
     }
     assert.deepEqual(calls, []);
     await request(port, { method: 'POST', path: '/api/actions/end', headers: { ...json, 'x-tracker-token': 'tok', origin }, body: '{"agentId":"s1"}' });
     await request(port, { method: 'POST', path: '/api/actions/restart', headers: { ...json, 'x-tracker-token': 'tok', origin }, body: '{"agentId":"s1","mode":"plan"}' });
-    assert.deepEqual(calls, [['end', { agentId: 's1' }], ['restart', { agentId: 's1', mode: 'plan' }]]);
+    await request(port, { method: 'POST', path: '/api/actions/fork', headers: { ...json, 'x-tracker-token': 'tok', origin }, body: '{"agentId":"s1","at":"r-1"}' });
+    assert.deepEqual(calls, [['end', { agentId: 's1' }], ['restart', { agentId: 's1', mode: 'plan' }], ['fork', { agentId: 's1', at: 'r-1' }]]);
   } finally {
     await srv.close();
   }

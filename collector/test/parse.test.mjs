@@ -11,6 +11,11 @@ test('a typed prompt becomes a prompt event with its timestamp', () => {
   assert.deepEqual(r.events, [{ kind: 'prompt', text: 'ship it' }]);
 });
 
+test("a prompt and a reply carry their transcript row's id, so a fork can be cut there", () => {
+  assert.deepEqual(parseEntry({ type: 'user', uuid: 'u-1', message: { content: 'ship it' } }).events, [{ kind: 'prompt', text: 'ship it', uuid: 'u-1' }]);
+  assert.deepEqual(parseEntry({ type: 'assistant', uuid: 'a-1', message: { content: [{ type: 'text', text: 'Shipped.' }] } }).events, [{ kind: 'reply', text: 'Shipped.', uuid: 'a-1' }]);
+});
+
 test('meta user entries (skill bodies, reminders) are not prompts', () => {
   assert.deepEqual(kinds({ type: 'user', isMeta: true, message: { content: [{ type: 'text', text: 'Base directory…' }] } }), []);
 });

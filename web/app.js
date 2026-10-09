@@ -335,6 +335,9 @@ document.addEventListener('click', async e => {
   if (d.endSession) { void endSessionFlow(d.endSession); return; } // not awaited: the confirm box waits for you
   if (d.compact) { void compactFlow(d.compact); return; }
   if (d.stopTurn) { await stopTurn(d.stopTurn, el); return; }
+  if (d.fork) { openFork(d.agent, d.fork, d.forkKind); return; }
+  if (d.forkGo !== undefined) { await forkGo(el); return; }
+  if (d.forkCancel !== undefined) { $('fork-dlg').close(); return; }
   if (d.removeSession) { void removeFlow(d.removeSession); return; }
   if (el.id === 'view-list' || el.id === 'view-farm') { setView(el.id === 'view-farm' ? 'farm' : 'list'); return; }
   if (el.id === 'side-toggle') { setFarmSide(!farmSide); return; }
@@ -516,6 +519,38 @@ async function stopTurn(id, button) {
   const r = await post('/api/actions/setting', { agentId: id, stop: true });
   if (!r.ok) notice(`Could not stop ${a?.name ?? 'it'}: ${r.error}`);
 }
+/**
+ * ⑂ Fork: asks in what mode, model and effort (the session's own to start with), then a new session
+ * starts from the conversation at that message, in a new terminal window.
+ */
+let forkFrom = null; // { agentId, at, kind }
+function openFork(agentId, at, kind) {
+  const a = snap?.agents.find(x => x.id === agentId);
+  if (!a) return;
+  forkFrom = { agentId, at, kind };
+  $('fork-text').textContent = kind === 'prompt'
+    ? `Fork ${a.name} from before this message? A new session opens in a new terminal window with the conversation up to just before it, and this message in its prompt box, to change and send. ${a.name} stays as it is.`
+    : `Fork ${a.name} here? A new session opens in a new terminal window with the conversation up to and including this reply. ${a.name} stays as it is.`;
+  for (const what of ['mode', 'model', 'effort']) $(`fork-${what}`).innerHTML = $(`sess-${what}`).innerHTML; // the ＋ Session dialog's choices
+  $('fork-mode').value = MODES.some(([m]) => m === a.mode) ? a.mode : 'default';
+  $('fork-model').value = /(opus|sonnet|haiku|fable)/.exec(String(a.model ?? ''))?.[1] ?? 'default';
+  $('fork-effort').value = EFFORTS.includes(a.effort) ? a.effort : '';
+  $('fork-warn').hidden = $('fork-mode').value !== 'bypassPermissions';
+  $('fork-dlg').showModal();
+}
+async function forkGo(button) {
+  const from = forkFrom, a = snap?.agents.find(x => x.id === from?.agentId);
+  if (!from) return;
+  const mode = $('fork-mode').value || 'default', model = $('fork-model').value || 'default', effort = $('fork-effort').value || undefined;
+  if (button) button.disabled = true;
+  const r = await post('/api/actions/fork', { agentId: from.agentId, at: from.at, mode, ...(model !== 'default' ? { model } : {}), ...(effort ? { effort } : {}) });
+  if (button) button.disabled = false;
+  $('fork-dlg').close();
+  forkFrom = null;
+  notice(r.ok ? `Forking ${a?.name ?? 'the session'}: a new ${r.terminal ?? 'terminal'} window opens.` : `Could not fork ${a?.name ?? 'it'}: ${r.error}`);
+}
+$('fork-mode').addEventListener('change', () => { $('fork-warn').hidden = $('fork-mode').value !== 'bypassPermissions'; });
+
 /** Switches a running session's model or effort (/model, /effort in it), after you confirm. */
 async function switchFlow(id, what, value) {
   const a = snap?.agents.find(x => x.id === id);

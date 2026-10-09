@@ -93,7 +93,7 @@ export class SessionModel {
         this.lastPromptAt = when;
         this.finalReply = null;
         this.turnOpen = true;
-        this.#push({ at: when, kind: 'prompt', text: this.lastPrompt, body: bodyOf(ev.text) });
+        this.#push({ at: when, kind: 'prompt', text: this.lastPrompt, body: bodyOf(ev.text), ...(ev.uuid ? { uuid: ev.uuid } : {}) });
         break;
       case 'turn_start':
         if (!this.turnOpen) { this.wakeAt = 0; this.turnStartedAt = when; this.turnOut.clear(); } // a new turn: the wake-up came (or something else woke it)
@@ -103,7 +103,7 @@ export class SessionModel {
         this.lastReply = firstLine(ev.text);
         this.finalReply = String(ev.text ?? '').slice(0, 8000);
         this.turnOpen = true;
-        this.#push({ at: when, kind: 'reply', text: this.lastReply, body: bodyOf(ev.text) });
+        this.#push({ at: when, kind: 'reply', text: this.lastReply, body: bodyOf(ev.text), ...(ev.uuid ? { uuid: ev.uuid } : {}) });
         break;
       case 'tool_use': {
         this.toolCount += 1;

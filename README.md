@@ -33,7 +33,7 @@ It listens on `127.0.0.1` only and reads what Claude Code already writes to disk
   - [Stopping a turn (■ Stop)](#stopping-a-turn--stop)
   - [Side questions (/btw)](#side-questions-btw)
   - [Model, effort and permission mode](#model-effort-and-permission-mode)
-  - [Starting, resuming, ending and restarting sessions](#starting-resuming-ending-and-restarting-sessions)
+  - [Starting, resuming, forking, ending and restarting sessions](#starting-resuming-forking-ending-and-restarting-sessions)
   - [⚙ Claude Code: plugins, MCP servers and permission rules](#-claude-code-plugins-mcp-servers-and-permission-rules)
   - [Files, documents and quoting](#files-documents-and-quoting)
   - [The farm view](#the-farm-view)
@@ -73,6 +73,8 @@ It listens on `127.0.0.1` only and reads what Claude Code already writes to disk
 **Steer your sessions**
 - Stop a session in the middle of its turn, as Esc does in its terminal: it stops what it was doing
   and waits for you.
+- Fork a conversation from any message into a new session: from one of Claude's replies, or from
+  just before one of your messages, which then waits in the new session's prompt box for you to change.
 - Start a new session in any folder of yours (type it, browse to it, or create it) or in one you've
   worked in, or find a past one (search, filter by folder, model, branch or running, sort by
   activity, start, name, folder or length) and resume it, in the permission mode, model and effort
@@ -320,7 +322,7 @@ Each terminal session's bar shows its **permission mode**, its **model** (e.g. *
 Switching and side questions need mod 0.5.0 or newer, and Compact 0.6.0. For a session started
 before you updated, run `/reload-plugins` in it.
 
-### Starting, resuming, ending and restarting sessions
+### Starting, resuming, forking, ending and restarting sessions
 
 - **＋ Session** starts Claude Code in any folder, or resumes a past session.
   - **New session in any folder**: type or paste a path (`~/code/new-app`), and the folders in it
@@ -347,6 +349,16 @@ before you updated, run `/reload-plugins` in it.
     (`--model`, `--effort`), not your defaults.
   - It opens a new Terminal or iTerm window (the `terminal` setting), and the window closes when
     Claude exits.
+- **⑂ Fork** on any message in the conversation (in the side panel or ⤢ Read all; it shows when you
+  point at the message) starts a new session from the conversation at that point, in a new terminal
+  window. The original session is left as it is and can keep working.
+  - On one of Claude's replies, the new session has the conversation up to and including that reply.
+  - On one of your messages, it has the conversation up to just before it, and your message waits in
+    its prompt box, so you can change it and send it. That is how you try a different answer.
+  - You pick the permission mode, model and effort; they start as the original session's.
+  - The new session is named after the original, with "(fork)". It is a session of its own: resume
+    it later from ＋ Session like any other.
+  - Forking from your very first message isn't possible: start a new session instead.
 - **End session** stops Claude cleanly after you confirm and closes its terminal window. You can
   resume the conversation later.
 - A stale background session can be **removed** (`claude rm`).
@@ -562,7 +574,9 @@ collisions. It writes the result to `state/state.json` and serves it as the dash
 The **mod** (`mod/`) is a Claude Code plugin. It reads `state/state.json` for its pane, status
 line and toasts, and writes a small check-in file every 2 seconds. When the dashboard asks for
 something (an answer, a message, a model switch, a side question), the collector leaves a file
-for that session's mod. The mod picks it up and does it inside the session. A stop cancels the
+for that session's mod. The mod picks it up and does it inside the session. A fork needs no mod:
+Claude Code resumes a copy of the transcript cut at the message as a new session (`--resume <copy>
+--fork-session`), and a message of yours goes in its prompt box (`--prefill`). A stop cancels the
 running turn through Claude Code's plugin API, and the mod then writes the same
 `[Request interrupted by user]` line Esc leaves in the conversation.
 
@@ -598,6 +612,9 @@ canvas, with its text drawn as HTML on top so it stays crisp.
   them. A Word document's page shows with no scripts at all.
 - Files you attach are kept under `state/uploads/` for 7 days. A folder you attach is sent as its
   path only.
+- **⑂ Fork** only reads the session's transcript. The copy cut at your message, and the message for
+  the new prompt box, are written under `state/forks/`, readable only by you, and removed after an
+  hour. Claude Code makes the new session from the copy.
 - The ⚙ Claude Code dialog runs `claude plugin …` and `claude mcp …` for you, and removing a rule
   edits that one entry in its settings file. A server's full command line or URL is never shown,
   as either can carry a key: only its host or the command it runs.
@@ -637,6 +654,9 @@ canvas, with its text drawn as HTML on top so it stays crisp.
 - "Documents" and the explorer's dots come from the agent's Write, Edit and Read tool calls (not
   shell commands).
 - claude.ai cloud sessions and Remote Control sessions on other machines aren't visible locally.
+- **⑂ Fork** puts your message in the new prompt box with Claude Code's `--prefill` option, which its
+  help doesn't list. If a Claude Code update drops it, the fork still opens, with an empty box.
+- Codex sessions can't be forked from the dashboard.
 
 ## Development
 

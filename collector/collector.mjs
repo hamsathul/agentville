@@ -20,7 +20,8 @@ import { contentTypeOf, parseCsv, readXlsx, viewOf } from './sources/previews.mj
 import { repoFiles } from './derive/repo-files.mjs';
 import { checkFiles, checkFolders, pruneUploads, saveFiles, typedPart, withAttachments } from './sources/uploads.mjs';
 import { compactSummary, memoryFiles, scratchpadOf } from './sources/memory.mjs';
-import { EFFORTS, MODELS, MODE_FLAGS, SESSION_ID, claudeCommand, closeTerminalScript, listSessions, projectsOf, shellQuote, terminalScript } from './sources/sessions.mjs';
+import { EFFORTS, MODELS, MODE_FLAGS, SESSION_ID, claudeCommand, closeTerminalScript, forkCommand, listSessions, projectsOf, shellQuote, terminalScript } from './sources/sessions.mjs';
+import { cutTranscript, pruneForks } from './sources/fork.mjs';
 import { parseMcpList, parsePluginDetails, projectServersOf, readOwnSkills, readRules, removeRule } from './sources/claude-setup.mjs';
 import { applySince, buildAgent, countStates, sortAgents } from './derive/agent.mjs';
 import { findCollisions } from './derive/collisions.mjs';
@@ -110,6 +111,7 @@ export async function startCollector({ root, claudeDir = join(homedir(), '.claud
   const modsDir = join(stateDir, 'mods');
   const messagesDir = join(stateDir, 'messages');
   const uploadsDir = join(stateDir, 'uploads');
+  const forksDir = join(stateDir, 'forks'); // transcripts cut at a message, for a fork to start from
   // Model and effort switches and side questions go to a session's mod as files; it writes back what came of them.
   const commandsDir = join(stateDir, 'commands'), resultsDir = join(stateDir, 'command-results');
   const asksDir = join(stateDir, 'btw'), asideAnswersDir = join(stateDir, 'asides');
@@ -411,7 +413,7 @@ export async function startCollector({ root, claudeDir = join(homedir(), '.claud
     timers.push(setInterval(() => void pollGit(), cfg.gitPollMs));
     timers.push(setInterval(() => void pollDeploys(), cfg.deployPollMs));
     timers.push(setInterval(() => void pollPullRequests(), cfg.prPollMs));
-    timers.push(setInterval(() => pruneUploads(uploadsDir, Date.now()), 3_600_000));
+    timers.push(setInterval(() => { pruneUploads(uploadsDir, Date.now()); pruneForks(forksDir, Date.now()); }, 3_600_000));
   }
 
   function reloadConfig() {
@@ -917,6 +919,24 @@ export async function startCollector({ root, claudeDir = join(homedir(), '.claud
       }
       return openTerminal(claudeCommand(cwd, resume, body?.mode ?? 'default', { model: body?.model ?? 'default', effort: body?.effort }));
     },
+    /**
+     * Forks a session's conversation at one of its messages (`at`, its transcript row) into a new
+     * session in a new terminal window: up to and including a reply of Claude's, or up to a message of
+     * yours, which then waits in the new prompt box. The original session is left as it is.
+     */
+    async fork(body) {
+      if (!validMode(body?.mode)) return { ok: false, error: 'That is not a permission mode.' };
+      if (!validStart(body)) return { ok: false, error: 'That is not a model or an effort level to start with.' };
+      const agent = snapshot?.agents.find(a => a.id === body?.agentId);
+      const path = agent && agent.kind !== 'codex' ? sessions.get(agent.id)?.path : undefined;
+      if (!path) return { ok: false, error: 'That session has no conversation to fork.' };
+      if (!agent.cwd || !isDir(agent.cwd)) return { ok: false, error: 'The folder that session ran in no longer exists.' };
+      if (typeof body.at !== 'string' || !/^[\w-]{1,64}$/.test(body.at)) return { ok: false, error: 'Pick a message to fork from.' };
+      pruneForks(forksDir, Date.now());
+      const cut = await cutTranscript(path, body.at, forksDir, basename(path, '.jsonl')); // the copy is named as the transcript
+      if (cut.error) return { ok: false, error: cut.error };
+      return openTerminal(forkCommand(agent.cwd, cut.file, body.mode ?? 'default', { model: body.model ?? 'default', effort: body.effort, name: `${agent.name} (fork)`.slice(0, 80), prefillFile: cut.prefillFile }));
+    },
     async message(body) {
       const agent = snapshot?.agents.find(a => a.id === body?.agentId);
       if (!agent || agent.kind === 'codex') return { ok: false, error: 'That session was not found.' };
@@ -1094,6 +1114,7 @@ export async function startCollector({ root, claudeDir = join(homedir(), '.claud
 
   startTimers();
   pruneUploads(uploadsDir, Date.now());
+  pruneForks(forksDir, Date.now());
   void pollGit();
   void pollDeploys();
   timers.push(setTimeout(() => void pollPullRequests(), 8000)); // once the first snapshot lists the repos

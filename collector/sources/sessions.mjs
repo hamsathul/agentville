@@ -1,5 +1,5 @@
 import { closeSync, openSync, readSync, readdirSync, statSync } from 'node:fs';
-import { join } from 'node:path';
+import { isAbsolute, join } from 'node:path';
 import { parseEntry } from '../transcript/parse.mjs';
 import { firstLine } from '../transcript/summarize.mjs';
 
@@ -137,10 +137,26 @@ export const MODE_FLAGS = {
  */
 export function claudeCommand(cwd, resume, mode = 'default', { model = 'default', effort } = {}) {
   if (resume !== undefined && !SESSION_ID.test(resume)) throw new Error('not a session id');
+  return `cd ${shellQuote(cwd)} && exec claude${resume ? ` --resume ${resume}` : ''}${startFlags(mode, { model, effort })}`;
+}
+
+/**
+ * The shell line that forks a conversation: Claude Code resumes the cut copy of its transcript at
+ * `copy` as a new session of its own (--fork-session), in the folder, under `name`, in a permission
+ * mode with a model and effort for it alone. `prefillFile` holds the text for its prompt box, read by
+ * the shell (--prefill), so the text never goes into the command line.
+ */
+export function forkCommand(cwd, copy, mode = 'default', { model = 'default', effort, name, prefillFile } = {}) {
+  if (!isAbsolute(copy) || !copy.endsWith('.jsonl')) throw new Error('not a transcript copy');
+  return `cd ${shellQuote(cwd)} && exec claude --resume ${shellQuote(copy)} --fork-session${name ? ` --name ${shellQuote(name)}` : ''}${startFlags(mode, { model, effort })}${prefillFile ? ` --prefill "$(cat ${shellQuote(prefillFile)})"` : ''}`;
+}
+
+/** A session's permission mode, model and effort, as flags (checked: these go into a shell line). */
+function startFlags(mode, { model = 'default', effort } = {}) {
   if (!Object.hasOwn(MODE_FLAGS, mode)) throw new Error('not a permission mode');
   if (!MODELS.includes(model)) throw new Error('not a model');
   if (effort !== undefined && !EFFORTS.includes(effort)) throw new Error('not an effort level');
-  return `cd ${shellQuote(cwd)} && exec claude${resume ? ` --resume ${resume}` : ''}${MODE_FLAGS[mode]}${model !== 'default' ? ` --model ${shellQuote(model)}` : ''}${effort ? ` --effort ${effort}` : ''}`;
+  return `${MODE_FLAGS[mode]}${model !== 'default' ? ` --model ${shellQuote(model)}` : ''}${effort ? ` --effort ${effort}` : ''}`;
 }
 
 /**
