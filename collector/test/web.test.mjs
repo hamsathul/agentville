@@ -1538,6 +1538,47 @@ test('folded, Notes says how many are unused; a session with none has nothing to
   assert.doesNotMatch(codex.side(), /data-group="notes"/);
 });
 
+// The ✨ Helper: off until you switch it on, saying how it calls Haiku and what each use sends.
+const helperSnap = (helper, agent = {}) => ({ ...richSnapshot([richAgent({ mod: { live: true, version: '0.8.0' }, ...agent })]), helper });
+
+test('✨ Helper says how it calls Haiku and what names send; switching on needs a use ticked, then saves', async () => {
+  const page = loadPage({ replies: { '/api/actions/helper': { ok: true, helper: { on: true, uses: { names: true }, dailyLimit: 50, today: 0 } } } });
+  page.push(helperSnap({ on: false, uses: { names: false }, dailyLimit: 200, today: 0 }));
+  await page.clickButton('helper-open');
+  assert.equal(page.el('helper-dlg').open, true);
+  const body = page.el('helper-body').innerHTML;
+  assert.match(body, /through the Agentville mod inside one of your open Claude Code sessions/);
+  assert.match(body, /No API key/);
+  assert.match(body, /first three messages[\s\S]*the dashboard only ever sees the name/);
+  assert.match(body, /<input type="checkbox" id="helper-names"(?![^>]*checked)/);
+  assert.match(body, /id="helper-limit"[^>]*value="200"/);
+  assert.match(body, /data-helper-on[^>]*>Switch on</);
+  page.el('helper-names').checked = false;
+  page.el('helper-limit').value = '50';
+  await page.clickButton('helper-on', { helperOn: '' });
+  assert.equal(page.posts.length, 0, 'nothing ticked: not switched on');
+  page.el('helper-names').checked = true;
+  await page.clickButton('helper-on', { helperOn: '' });
+  await page.settle();
+  assert.deepEqual(page.posts.at(-1), { path: '/api/actions/helper', body: { on: true, uses: { names: true }, dailyLimit: 50 } });
+  assert.equal(page.el('helper-dlg').open, false);
+});
+
+test('switched on, ✨ Helper shows today’s count and the last error, and switches off', async () => {
+  const page = loadPage({ replies: { '/api/actions/helper': { ok: true, helper: { on: false } } } });
+  page.push(helperSnap({ on: true, uses: { names: true }, dailyLimit: 200, today: 7, lastError: 'model_not_found' }));
+  await page.clickButton('helper-open');
+  const body = page.el('helper-body').innerHTML;
+  assert.match(body, /Today: 7 of 200 calls/);
+  assert.match(body, /Last error: model_not_found/);
+  assert.match(body, /data-helper-off[^>]*>Switch off</);
+  page.el('helper-names').checked = true; // what the rendered box holds (the harness's elements don't parse HTML)
+  page.el('helper-limit').value = '200';
+  await page.clickButton('helper-off', { helperOff: '' });
+  await page.settle();
+  assert.deepEqual(page.posts.at(-1).body, { on: false, uses: { names: true }, dailyLimit: 200 });
+});
+
 // The sessions dialog: past sessions to resume, with search, filters and sorting.
 const H = 3_600_000;
 const pastSessions = () => {

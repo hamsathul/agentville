@@ -367,6 +367,11 @@ document.addEventListener('click', async e => {
   }
   if (el.id === 'msg-send' || el.id === 'convo-msg-send') { await sendMessage(d.agent, el); return; }
   if (el.id === 'aside-send') { await askAside(d.agent, el); return; }
+  if (el.id === 'helper-open') { openHelper(); return; }
+  if (d.helperOn !== undefined) { await saveHelper(true); return; }
+  if (d.helperOff !== undefined) { await saveHelper(false); return; }
+  if (d.helperSave !== undefined) { await saveHelper(true); return; }
+  if (d.helperCancel !== undefined) { $('helper-dlg').close(); return; }
   if (el.id === 'note-add') { await addNote(d.agent); return; }
   if (d.noteUse) { useNote(d.agent, d.noteUse); return; }
   if (d.noteSend) { await sendNote(d.agent, d.noteSend, el); return; }
@@ -775,6 +780,21 @@ document.addEventListener('input', e => {
   if (!t?.dataset?.tool || t.dataset.q === undefined || t.type !== 'text') return;
   draftFor(t.dataset.tool).other.set(Number(t.dataset.q), t.value);
 });
+
+/* ---------- the helper (Haiku) ---------- */
+
+function openHelper() {
+  $('helper-body').innerHTML = helperHtml(snap?.helper);
+  $('helper-dlg').showModal();
+}
+async function saveHelper(on) {
+  const names = Boolean($('helper-names').checked), dailyLimit = Number($('helper-limit').value);
+  if (on && !names) { notice('Tick at least one use to switch the helper on.'); return; }
+  const r = await post('/api/actions/helper', { on, uses: { names }, dailyLimit });
+  if (!r.ok) { notice(`Helper: ${r.error}`); return; }
+  $('helper-dlg').close();
+  notice(on ? '✨ The helper is on.' : 'The helper is off: nothing calls Haiku.');
+}
 
 /* ---------- your notes on a session ---------- */
 
