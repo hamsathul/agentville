@@ -258,6 +258,44 @@ function makePixelView(th, prefs) {
   const placeAnimals = () => kit?.place({ roam: th.roam?.() ?? [], avoid: th.avoid?.() ?? [] });
   const animalSays = new Map(); // creature id → its bubble element
   if (typeof window !== 'undefined' && window.Agentville) window.Agentville.animalsNow = () => (kit ? kit.list() : []); // read-only: where they are (the browser test)
+  const errands = typeof makeErrands === 'function' ? makeErrands() : null; // farmers borrowed by animals (sdk/animals.js)
+  let menuEl = null, menuFor = null; // the open animal menu: its element and { id, doer }
+  const awayIds = () => new Set(scene.farmers.filter(f => errands?.has(f.id)).map(f => f.id));
+  function freeFarmers() { return scene.farmers.filter(f => bots.has(f.id) && f.state !== 'waiting' && !errands?.has(f.id)); }
+  function closeMenu() { menuFor = null; menuEl?.remove(); menuEl = null; }
+  function openMenu(id) {
+    const o = kit.where(id);
+    if (!o) return;
+    const doer = chooseDoer(scene.farmers, fid => bots.get(fid) ?? null, o.x, o.y, awayIds());
+    menuFor = { id, doer: doer?.id ?? null };
+    renderMenu();
+  }
+  function renderMenu() {
+    const m = menuFor && kit.menu(menuFor.id), o = menuFor && kit.where(menuFor.id);
+    if (!m || !o || !ov) { closeMenu(); return; }
+    if (!menuEl) { menuEl = document.createElement('div'); menuEl.className = 'px-animal-menu'; menuEl.setAttribute('role', 'menu'); ov.appendChild(menuEl); }
+    const free = freeFarmers(), doer = scene.farmers.find(f => f.id === menuFor.doer);
+    menuEl.innerHTML = `<b>${esc(m.title)}</b>${m.actions.map((a, i) => `<button type="button" role="menuitem" data-animal-act="${i}">${esc(a)}</button>`).join('')}
+      <span class="px-animal-who">${doer ? `${esc(doer.name)} will go` : 'You do it'}${still ? '' : free.filter(f => f.id !== menuFor.doer).map(f => `<button type="button" data-animal-who="${esc(f.id)}" title="Send ${esc(f.name)} instead" aria-label="Send ${esc(f.name)} instead" style="background:${esc(f.shirt ?? '#9aa0a6')}"></button>`).join('')}</span>`;
+    menuEl.style.transform = `translate(${Math.round(o.x * cs)}px, ${Math.round((o.y - o.h - 4) * cs)}px) translate(-50%, -100%)`;
+  }
+  /** An action from the menu: the farmer chosen walks over and does it; with no one (or motion off), you do it in place. */
+  function doAct(i) {
+    const { id, doer } = menuFor;
+    closeMenu();
+    const o = kit.where(id), f = doer && scene.farmers.find(x => x.id === doer);
+    const done = by => { const r = kit.perform(id, i, by); if (r) showFx(r); };
+    if (!o || !f || !bots.has(f.id) || still || !errands) { done(null); return; }
+    errands.start(f.id, { x: o.stand[0], y: o.stand[1], now: T, busy: f.state === 'working', then: () => done(f.name), missed: () => done(null) });
+    sync(false);
+  }
+  function showFx(r) {
+    const [x, y] = r.at;
+    if (r.fx === 'hearts') pop(x, y - 12, '♥', 'good');
+    if (r.fx === 'crumbs') for (let k = 0; k < 12; k++) addPart({ x: x + rand(-8, 8), y: y - 2, vx: rand(-14, 14), vy: rand(-22, -8), g: 70, life: 0.8, max: 0.8, size: 1, color: '#e9c46a' });
+    if (r.fx === 'dust') for (let k = 0; k < 8; k++) addPart({ x: x + rand(-4, 4), y: y - 1, vx: rand(-18, 18), vy: rand(-12, -4), g: 30, life: 0.5, max: 0.5, size: rand(1, 2), color: '#c9a46a', alpha: 0.7 });
+  }
+  function onMenuKey(e) { if (e.key === 'Escape' && menuFor) closeMenu(); }
 
   function targets() {
     const out = new Map(), count = {}, used = new Map(), over = { desk: 0, turn: 0, storage: 0, charge: 0, meadow: 0 };
@@ -274,7 +312,8 @@ function makePixelView(th, prefs) {
         if (i >= s.cap) { over[s.group] = (over[s.group] ?? 0) + 1; continue; }
         at = s.at(i);
       }
-      out.set(f.id, { x: at[0], y: at[1], zone: s.zone });
+      const away = errands?.target(f); // borrowed by an animal: there instead, same zone (no diary line); waiting drops it
+      out.set(f.id, away ? { x: away[0], y: away[1], zone: s.zone } : { x: at[0], y: at[1], zone: s.zone });
     }
     overflow = over;
     return out;
@@ -702,6 +741,7 @@ function makePixelView(th, prefs) {
     last = now;
     T += dt;
     for (const f of scene.farmers) { const b = bots.get(f.id); if (b) { step(dt, f, b); th.emit?.(f, b, dt, addPart); } }
+    if (errands?.tick(T, id => bots.get(id) ?? null, id => scene.farmers.find(f => f.id === id)?.state)) sync(false);
     th.tick?.(dt, id => bots.get(id)); // what else moves, where the farmers are: the MCP carts
     th.ambient?.(dt, addPart);
     if (animalsShown()) kit.tick(dt, { night: skyNow().phase === 'night', still: false });
@@ -812,6 +852,11 @@ function makePixelView(th, prefs) {
   }
   function onClick(e) {
     if (dragged) { dragged = false; e.stopPropagation(); return; }
+    const actBtn = e.target.closest?.('[data-animal-act]');
+    if (actBtn && menuFor) { e.stopPropagation(); doAct(Number(actBtn.dataset.animalAct)); return; }
+    const whoBtn = e.target.closest?.('[data-animal-who]');
+    if (whoBtn && menuFor) { e.stopPropagation(); menuFor.doer = whoBtn.dataset.animalWho; renderMenu(); return; }
+    if (menuEl && !menuEl.contains(e.target)) closeMenu(); // a click anywhere else closes it (and does what it does)
     const tag = e.target.closest?.('[data-farmer]');
     if (tag) { e.stopPropagation(); opts.onPickAgent?.(tag.dataset.farmer); return; }
     if (e.target.closest?.('[data-farm-more]')) { e.stopPropagation(); opts.onShowRepos?.(); return; }
@@ -871,6 +916,7 @@ function makePixelView(th, prefs) {
       e.stopPropagation();
       animalsOn = !animalsOn;
       prefs.set('animals', animalsOn ? 'on' : 'off');
+      closeMenu();
       renderHud();
       draw();
       return;
@@ -910,6 +956,8 @@ function makePixelView(th, prefs) {
     const hit = botAt(e);
     if (hit) { opts.onPickAgent?.(hit); return; }
     const [x, y] = farmPoint(e);
+    const animal = animalsShown() ? kit.at(x, y) ?? kit.homeAt(x, y) : null; // farmers first, then animals, then an animal's home
+    if (animal) { openMenu(animal); return; }
     const building = th.buildingAt?.(x, y);
     if (building) { openBuilding(building); return; }
     const key = th.fieldAt(x, y);
@@ -1022,6 +1070,7 @@ function makePixelView(th, prefs) {
         placeTimer = setTimeout(() => prefs.set('view', `${Math.round(viewEl.scrollLeft)},${Math.round(viewEl.scrollTop)}`), 400);
       }, { passive: true });
       document.addEventListener('visibilitychange', onVisibility);
+      document.addEventListener('keydown', onMenuKey);
       renderLog();
       renderHud();
       timer = setInterval(() => { if (!document.hidden) { renderLog(); renderHud(); } }, 1000);
@@ -1043,6 +1092,9 @@ function makePixelView(th, prefs) {
       clearInterval(timer);
       host?.removeEventListener('click', onClick);
       document.removeEventListener('visibilitychange', onVisibility);
+      document.removeEventListener('keydown', onMenuKey);
+      closeMenu();
+      errands?.clear();
       if (host) host.innerHTML = '';
       for (const b of bots.values()) { b.tag = null; b.tagText = ''; }
       says.clear();
