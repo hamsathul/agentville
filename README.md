@@ -620,6 +620,9 @@ canvas, with its text drawn as HTML on top so it stays crisp.
 
 - Everything stays on your Mac. The collector listens on `127.0.0.1` only and sends nothing
   anywhere. The exception is `gh`, which asks GitHub about your own repos.
+- The dashboard's own page and its API tell the browser never to show them inside a frame
+  (`frame-ancestors 'none'`), so no other page, and no world, can load the dashboard with its token
+  inside itself.
 - File contents, folder listings, past sessions, whole conversations (and your messages in them,
   for ↑) and field close-ups are served only with a per-install token that the page carries. Every action (answer, message,
   start, end, switch…) also needs a same-origin request.

@@ -1,12 +1,13 @@
 import { createServer } from 'node:http';
 import { createReadStream, readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
+import { FRAME_CSP } from './worlds.mjs';
 
 const BODY_LIMIT = 64 * 1024;
 const MESSAGE_LIMIT = 90 * 1024 * 1024; // up to six 10 MB attached files, base64-encoded
 
 function send(res, status, type, body) {
-  res.writeHead(status, { 'content-type': type, 'cache-control': 'no-store' });
+  res.writeHead(status, { 'content-type': type, 'cache-control': 'no-store', 'x-content-type-options': 'nosniff' });
   res.end(body);
 }
 const sendJson = (res, status, value) => send(res, status, 'application/json', JSON.stringify(value));
@@ -59,7 +60,7 @@ function clampInt(value, min, max, fallback) {
   return Number.isFinite(n) ? Math.min(max, Math.max(min, n)) : fallback;
 }
 
-export function createTrackerServer({ port, token, webFile, getSnapshot, getFeed, getConversation, getPrompts, getSubagent, claudePlugins, claudeMcp, claudeRules, fileTicket, rawFile, officeView, listDirs, shellOutput, namedFiles, getTranscriptHtml, getDoc, listFiles, readFile, repoTouched, actions, pastSessions, log = () => {} }) {
+export function createTrackerServer({ port, token, webFile, getSnapshot, getFeed, getConversation, getPrompts, getSubagent, claudePlugins, claudeMcp, claudeRules, fileTicket, rawFile, officeView, listDirs, shellOutput, namedFiles, getTranscriptHtml, getDoc, listFiles, readFile, repoTouched, actions, pastSessions, worlds, log = () => {} }) {
   const clients = new Set();
   let server;
   const actualPort = () => server.address()?.port ?? port;
@@ -80,8 +81,13 @@ export function createTrackerServer({ port, token, webFile, getSnapshot, getFeed
       const url = new URL(req.url ?? '/', `http://127.0.0.1:${actualPort()}`);
       const path = url.pathname;
       let m;
+      // The dashboard holds the token: it is never shown inside a frame, not even a world's own.
+      if (path === '/' || path.startsWith('/api/')) {
+        res.setHeader('content-security-policy', "frame-ancestors 'none'");
+        res.setHeader('x-frame-options', 'DENY');
+      }
 
-      if ((req.method === 'GET' || req.method === 'HEAD') && (m = path.match(/^\/raw\/([\w-]+)\/(.+)$/))) {
+      if ((req.method === 'GET' || req.method === 'HEAD') && (m =path.match(/^\/raw\/([\w-]+)\/(.+)$/))) {
         // A link's bytes: the random id is all it takes (an <img> or a player can't send the token).
         let rel;
         try { rel = m[2].split('/').map(decodeURIComponent).join('/'); } catch { return send(res, 404, 'text/plain', 'not found'); }
@@ -95,6 +101,29 @@ export function createTrackerServer({ port, token, webFile, getSnapshot, getFeed
           let code;
           try { code = readFileSync(join(dirname(webFile), `${m[1]}.js`), 'utf8'); } catch { return send(res, 404, 'text/plain', 'not found'); }
           return send(res, 200, 'text/javascript; charset=utf-8', code);
+        }
+        if ((m = path.match(/^\/([a-z]+)\.css$/))) { // the page's and the worlds' shared styles, from web/ by plain name only
+          let css;
+          try { css = readFileSync(join(dirname(webFile), `${m[1]}.css`), 'utf8'); } catch { return send(res, 404, 'text/plain', 'not found'); }
+          return send(res, 200, 'text/css; charset=utf-8', css);
+        }
+        if ((m = path.match(/^\/world\/((?:u\/)?[a-z0-9-]+)\/$/))) { // a world's frame: sandboxed, its own CSP
+          const html = worlds?.frame(m[1]);
+          if (!html) return send(res, 404, 'text/plain', 'not found');
+          res.writeHead(200, { 'content-type': 'text/html; charset=utf-8', 'cache-control': 'no-store', 'content-security-policy': FRAME_CSP, 'x-content-type-options': 'nosniff', 'referrer-policy': 'no-referrer' });
+          return res.end(html);
+        }
+        if ((m = path.match(/^\/world\/((?:u\/)?[a-z0-9-]+)\/(.+)$/))) { // one of a world's files, from inside its folder only
+          let rel;
+          try { rel = m[2].split('/').map(decodeURIComponent).join('/'); } catch { return send(res, 404, 'text/plain', 'not found'); }
+          if (rel.includes('\0')) return send(res, 404, 'text/plain', 'not found');
+          const found = worlds ? worlds.file(m[1], rel) : { status: 404 };
+          if (!found.real) return send(res, 404, 'text/plain', 'not found');
+          const headers = { 'content-type': found.type, 'content-length': found.size, 'cache-control': 'no-store', 'x-content-type-options': 'nosniff', 'content-security-policy': 'sandbox' };
+          // The frame's origin is opaque: fonts load only with CORS. Nothing else gets it, so a world can't read files with fetch().
+          if (req.headers.origin === 'null' && req.headers['sec-fetch-dest'] === 'font') headers['access-control-allow-origin'] = 'null';
+          res.writeHead(200, headers);
+          return createReadStream(found.real).on('error', () => res.destroy()).pipe(res);
         }
         if (path === '/api/state') return sendJson(res, 200, getSnapshot());
         if (path === '/api/events') return openStream(req, res);

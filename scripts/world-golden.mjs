@@ -10,6 +10,7 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { createTrackerServer } from '../collector/server.mjs';
+import { makeWorlds } from '../collector/worlds.mjs';
 import { GOLDEN_NOW, goldenSnapshot, goldenTouched } from './golden/fixture.mjs';
 import { openChrome, sleep } from './lib/cdp.mjs';
 
@@ -45,6 +46,7 @@ const snapshot = goldenSnapshot();
 const none = async () => ({ status: 404, error: 'Not in the reference pictures.' });
 const srv = createTrackerServer({
   port: 0, token: 'golden', webFile: join(ROOT, 'web', 'index.html'),
+  worlds: makeWorlds({ builtinDir: join(ROOT, 'web', 'worlds') }),
   getSnapshot: () => snapshot, getFeed: () => [], getConversation: async () => null, getPrompts: async () => null, getSubagent: () => null,
   getTranscriptHtml: async () => null, getDoc: () => ({ status: 404, error: 'none' }), listFiles: none, readFile: none,
   repoTouched: async path => goldenTouched(path), claudePlugins: async () => ({ plugins: [], skills: [] }), claudeMcp: async () => ({ servers: [], projects: [] }),

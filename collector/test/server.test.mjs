@@ -1,11 +1,12 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { request as httpRequest } from 'node:http';
-import { mkdtempSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { createTrackerServer } from '../server.mjs';
 import { renderTranscriptPage } from '../transcript-page.mjs';
+import { makeWorlds } from '../worlds.mjs';
 
 const RAW_DIR = mkdtempSync(join(tmpdir(), 'tracker-raw-'));
 writeFileSync(join(RAW_DIR, 'clip.mp4'), '0123456789');
@@ -19,10 +20,19 @@ async function start() {
   writeFileSync(webFile, '<html>token=__TRACKER_TOKEN__</html>');
   writeFileSync(join(webFile, '..', 'farm.js'), 'window.TrackerFarm = {};');
   writeFileSync(join(webFile, '..', 'app.js'), 'const app = 1;');
+  writeFileSync(join(webFile, '..', 'base.css'), ':root { --page: #fff; }');
+  const builtinDir = join(webFile, '..', 'worlds');
+  mkdirSync(join(builtinDir, 'sdk'), { recursive: true });
+  mkdirSync(join(builtinDir, 'farm'));
+  writeFileSync(join(builtinDir, 'sdk', 'frame.html'), '<title>__TITLE__</title><script src="__BASE__world.js"></script>');
+  writeFileSync(join(builtinDir, 'sdk', 'bridge.js'), '// bridge');
+  writeFileSync(join(builtinDir, 'farm', 'world.json'), JSON.stringify({ name: 'Farm', icon: '🌾', api: 1 }));
+  writeFileSync(join(builtinDir, 'farm', 'world.js'), '// farm');
   const srv = createTrackerServer({
     port: 0,
     token: 'tok',
     webFile,
+    worlds: makeWorlds({ builtinDir }),
     getSnapshot: () => ({ generatedAt: 1, agents: [], collisions: [] }),
     getFeed: id => (id === 's1' ? [{ at: 1, kind: 'prompt', text: 'hi' }] : null),
     getConversation: async (id, from) => (id === 's1' ? { total: 2, from, items: [{ at: 1, kind: 'prompt', body: 'hi' }, { at: 2, kind: 'reply', body: 'hello' }].slice(from) } : null),
@@ -466,4 +476,47 @@ test('ending, restarting, forking or restoring a session needs the token and a s
   } finally {
     await srv.close();
   }
+});
+
+test("a world's frame page is served sandboxed with its own CSP; an unknown world is 404", async () => {
+  const { srv, port } = await start();
+  const r = await request(port, { path: '/world/farm/' });
+  assert.equal(r.status, 200);
+  assert.equal(r.headers['content-type'], 'text/html; charset=utf-8');
+  assert.match(r.headers['content-security-policy'], /^sandbox allow-scripts; default-src 'none'; script-src 'self'/);
+  assert.equal(r.headers['x-content-type-options'], 'nosniff');
+  assert.equal(r.body, '<title>Farm</title><script src="/world/farm/world.js"></script>');
+  assert.equal((await request(port, { path: '/world/nope/' })).status, 404);
+  assert.equal((await request(port, { path: '/world/Farm/' })).status, 404);
+  await srv.close();
+});
+
+test("a world's files: typed, sandboxed, never cached (they change while you write them); nothing outside", async () => {
+  const { srv, port } = await start();
+  const js = await request(port, { path: '/world/farm/world.js' });
+  assert.equal(js.status, 200);
+  assert.equal(js.body, '// farm');
+  assert.equal(js.headers['content-type'], 'text/javascript; charset=utf-8');
+  assert.equal(js.headers['content-security-policy'], 'sandbox');
+  assert.equal(js.headers['cache-control'], 'no-store');
+  assert.equal((await request(port, { path: '/world/sdk/bridge.js' })).body, '// bridge');
+  // (A literal /world/farm/%2e%2e/ is folded to /world/ by the URL parser before routing, so it can't escape either.)
+  for (const path of ['/world/farm/art%2f..%2f..%2fsdk%2fbridge.js', '/world/farm/..%2fsdk%2fbridge.js', '/world/sdk/frame.html', '/world/farm/world.json%00.js']) {
+    assert.equal((await request(port, { path })).status, 404, path);
+  }
+  await srv.close();
+});
+
+test('the dashboard and its API refuse to be shown in a frame; every reply says not to sniff its type', async () => {
+  const { srv, port } = await start();
+  for (const path of ['/', '/api/state']) {
+    const r = await request(port, { path });
+    assert.equal(r.headers['content-security-policy'], "frame-ancestors 'none'", path);
+    assert.equal(r.headers['x-frame-options'], 'DENY', path);
+    assert.equal(r.headers['x-content-type-options'], 'nosniff', path);
+  }
+  const css = await request(port, { path: '/base.css' });
+  assert.equal(css.headers['content-type'], 'text/css; charset=utf-8');
+  assert.equal(css.body, ':root { --page: #fff; }');
+  await srv.close();
 });
