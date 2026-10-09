@@ -140,3 +140,33 @@ test('a world with animals draws them, and draws nothing more with them switched
   };
   assert.ok(run(null) > run('off'), 'on by default: more drawn');
 });
+
+test('a world event with a kind reaches the animals; one without text pops nothing', () => {
+  const { window, dom, sdk } = load();
+  const reacted = [];
+  const world = fourHooks({ animals: () => [{ kind: 'cow' }], roam: () => [{ x: 10, y: 50, w: 150, h: 40 }], setScene: () => [{ kind: 'deployFailed', at: [60, 60], text: '' }] });
+  const view = sdk.makePixelView(sdk.withDefaults(world), prefs);
+  view.mount(dom.make(), { still: true });
+  view.animalsKit().react = (kind, at) => { reacted.push([kind, at]); return true; };
+  view.update(sdk.engineScene(twoAgents(window)));
+  assert.deepEqual(plain(reacted), [['deployFailed', [60, 60]]]);
+});
+
+test('a world event with no text pops nothing; one with text still pops', () => {
+  const { window, dom, sdk } = load();
+  const made = [];
+  dom.document.createElement = () => { const el = dom.make(); made.push(el); return el; };
+  const world = fourHooks({ setScene: () => [{ kind: 'deployFailed', at: [60, 60], text: '' }, { at: [70, 70], text: 'sold!' }] });
+  const view = sdk.makePixelView(sdk.withDefaults(world), prefs);
+  view.mount(dom.make(), { still: false });
+  view.update(sdk.engineScene(twoAgents(window)));
+  assert.equal(made.filter(el => String(el.className).startsWith('px-pop')).length, 1);
+});
+
+test('a world whose animals() gives { cast, gags, play } gets its creatures and its gags', () => {
+  const { dom, sdk } = load();
+  const gag = { id: 'baa', needs: { cow: 1 }, steps: [{ wait: 100 }] };
+  const view = sdk.makePixelView(sdk.withDefaults(fourHooks({ animals: () => ({ cast: [{ kind: 'cow', count: 2 }], gags: [gag], play: [] }), roam: () => [{ x: 10, y: 50, w: 150, h: 40 }] })), prefs);
+  view.mount(dom.make(), { still: true });
+  assert.equal(view.animalsKit().list().length, 2);
+});

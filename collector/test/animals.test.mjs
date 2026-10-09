@@ -419,3 +419,50 @@ test('the cow naps in the empty hammock and leaves the moment a farmer needs it'
   const c = plain(a.list())[0];
   assert.ok(!(c.x >= 84 && c.x <= 108 && c.y >= 196 && c.y <= 230), `out of the hammock (${c.x},${c.y})`);
 });
+
+test('idle-only errands drop when work comes (play); end() lets a farmer go with nothing done', () => {
+  const k = load();
+  const e = k.makeErrands(), log = [];
+  e.start('a', { x: 50, y: 0, now: 0, busy: false, idleOnly: true, missed: () => log.push('missed') });
+  assert.equal(e.tick(1, () => ({ x: 0, y: 0 }), () => 'working'), true, 'work came: it goes back');
+  assert.equal(e.has('a'), false);
+  e.start('b', { x: 50, y: 0, now: 0, busy: false, missed: () => log.push('missed') });
+  e.end('b');
+  assert.equal(e.has('b'), false);
+  assert.deepEqual(log, [], 'nothing is done for a play or an end');
+});
+
+test('play: a farmer idle a long while plays with a creature, two at most, and stops when work comes', () => {
+  const k = load();
+  const PLAY = { id: 'pet', needs: { goat: 1, farmer: 'idle' }, steps: [{ go: 'farmer', to: 'goat' }, { fx: 'hearts', at: 'goat' }, { wait: 60000 }] };
+  const a = k.makeAnimals({ cast: [{ kind: 'goat', count: 3 }], play: [PLAY] }, { random: k.seededRandom(2) });
+  a.place({ roam: [YARD], avoid: [] });
+  const crew = fakeCrew([{ id: 'p', state: 'idle', x: 50, y: 150 }, { id: 'q', state: 'idle', x: 60, y: 150 }, { id: 'r', state: 'idle', x: 70, y: 150 }]);
+  a.play(crew);
+  assert.equal(crew.log.filter(l => l[0] === 'send').length, 0, 'no one idle long enough: no play');
+  for (const f of crew.farmers) f.long = true;
+  a.play(crew); a.play(crew); a.play(crew);
+  assert.equal(a.gagNow(), null, 'play is not the gag: one may still start');
+  for (let i = 0; i < 50; i++) a.tick(0.1, { crew });
+  const sent = new Set(crew.log.filter(l => l[0] === 'send').map(l => l[1]));
+  assert.equal(sent.size, 2, 'two farmers playing at most');
+  assert.ok(crew.log.some(l => l[0] === 'fx' && l[1] === 'hearts'));
+  const one = [...sent][0];
+  crew.farmers.find(f => f.id === one).state = 'working';
+  a.tick(0.1, { crew });
+  assert.ok(crew.log.some(l => l[0] === 'release' && l[1] === one), 'work came: it goes back to it');
+});
+
+test('stopGags ends every gag and play at once (motion off, animals hidden): hats back, farmers let go', () => {
+  const k = load();
+  const a = k.makeAnimals({ cast: [{ kind: 'goat', lines: { hat: ['x'] } }], gags: [HAT_GAG] }, { random: k.seededRandom(1) });
+  a.place({ roam: [YARD], avoid: [] });
+  const crew = fakeCrew([{ id: 'pip', state: 'idle', x: 50, y: 150 }]);
+  for (let i = 0; i < 1300 && crew.flags['pip.hatless'] !== true; i++) a.tick(0.1, { crew });
+  assert.equal(crew.flags['pip.hatless'], true);
+  a.stopGags(crew);
+  assert.equal(a.gagNow(), null);
+  assert.equal(crew.flags['pip.hatless'], false);
+  assert.equal(a.list()[0].wear?.hat, undefined, 'the goat has no hat');
+  assert.ok(crew.log.some(l => l[0] === 'release' && l[1] === 'pip'));
+});

@@ -459,6 +459,10 @@
       },
       /** The lines being said now, above their creatures. */
       bubbles() { return says.map(s => { const o = byId(s.id); return o && !o.away ? { id: s.id, x: o.x, y: o.y - (o.lift || 0) - lib[o.kind].h - 2, text: s.text } : null; }).filter(Boolean); },
+      /** A farmer idle a long while plays with a creature (a play gag), when fewer than two are playing. */
+      play(crew) { if (crew && running.filter(g => g.play).length < 2) startGag(plays, crew, { longIdle: true }); },
+      /** Every gag and play ends now (motion off, the animals hidden, a new mount): hats back, farmers let go. */
+      stopGags(crew) { for (const g of [...running]) endGag(g, crew); },
       /** The gag under way (not play), for tests and the browser check. */
       gagNow() { const g = running.find(r => !r.play); return g ? { id: g.def.id } : null; },
       /** What the animals have taken just now ('bucket'): the world doesn't draw it where it was. */
@@ -489,7 +493,7 @@
     const drop = (id, e) => { list.delete(id); if (!e.arrived) e.missed?.(); };
     return {
       has: id => list.has(id),
-      start(id, { x, y, now, busy, stay = 1.5, then, missed }) { list.set(id, { x, y, until: now + (busy ? 5 : 30), busy: Boolean(busy), stay, arrived: 0, then, missed }); },
+      start(id, { x, y, now, busy, stay = 1.5, then, missed, idleOnly = false }) { list.set(id, { x, y, until: now + (busy ? 5 : 30), busy: Boolean(busy), stay, arrived: 0, then, missed, idleOnly }); },
       /** Where a farmer goes instead of its place, or null; one that waits on you (or is on its turn) is let go. */
       target(f) {
         const e = list.get(f.id);
@@ -503,6 +507,7 @@
         for (const [id, e] of list) {
           const at = posOf(id), state = stateOf(id);
           if (!at || !state || forYou(state)) { drop(id, e); changed = true; continue; }
+          if (e.idleOnly && state !== 'idle') { list.delete(id); changed = true; continue; } // a gag or play: work came, it goes back to it (nothing was asked of it)
           if (state === 'working' && !e.busy) { e.busy = true; e.until = Math.min(e.until, now + 5); } // it got busy: its few seconds start now
           if (!e.arrived && Math.hypot(at.x - e.x, at.y - e.y) < 1) { e.arrived = now; e.then?.(); }
           if (e.arrived ? now - e.arrived >= e.stay || now > e.until + e.stay : now > e.until) { drop(id, e); changed = true; }
@@ -511,6 +516,8 @@
       },
       /** Every errand ends where it is (motion switched off, or the animals hidden): one not there yet is done by you. */
       finish() { for (const [id, e] of [...list]) drop(id, e); },
+      /** Let go, nothing done (a gag over). */
+      end(id) { list.delete(id); },
       clear() { list.clear(); },
     };
   }
