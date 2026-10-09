@@ -64,7 +64,8 @@ It listens on `127.0.0.1` only and reads what Claude Code already writes to disk
   deploy an agent ran itself) and open pull requests.
 
 **Respond without switching windows**
-- Answer an agent's question (with its options) or a permission prompt (**Allow** / **Deny**).
+- Answer an agent's question (with its options) or a permission prompt (**Allow** / **Deny**), or
+  cancel its questions as Esc does and tell it what you want instead.
 - Message any session like a chat, with screenshots, PDFs or other files; it arrives as your own prompt.
   ↑ in the box brings back what you sent it before, as in its terminal.
 - Read a session's whole conversation, from its first message, in a dialog you can search.
@@ -241,6 +242,9 @@ These need the mod in that session.
 
 - **Questions.** A waiting agent's question shows with its options, plus an "Other" box. Pick and
   send; the session carries on as if you had answered in its terminal.
+  - **✕ Cancel** dismisses all its questions and stops the turn, as Esc does in the terminal. The
+    session reads that you interrupted it; then send what you want instead from the message box. It
+    needs mod 0.7.0, like **■ Stop**.
 - **Permission prompts.** These show the command with **Allow** / **Always allow…** / **Deny**. The
   dashboard has the first 15 seconds (`permissionDashboardSec`); then the terminal asks as usual.
   **Always allow…** brings up Claude Code's own options for that call, the terminal's "Yes, and…"
@@ -626,7 +630,7 @@ canvas, with its text drawn as HTML on top so it stays crisp.
 | The dashboard doesn't load | `agent-tracker status`, then `agent-tracker logs`. Check that nothing else uses the port |
 | A session shows "dashboard answers off" | Its mod isn't loaded. Check `CLAUDE_CODE_PLUGIN_DIRS` in `~/.claude/settings.json`, then type anything in the session or `/reload-plugins` |
 | "runs an older tracker mod" | `/reload-plugins` in that session, or resume it |
-| **■ Stop** on the working line is greyed out | Stopping needs mod 0.7.0: `/reload-plugins` in that session. Until then, press Esc in its terminal |
+| **■ Stop** on the working line, or **✕ Cancel** on a question, is greyed out | Both need mod 0.7.0: `/reload-plugins` in that session. Until then, press Esc in its terminal |
 | No cost, plan usage or working line | These come from the mod (0.4.0 or newer; the working line from 0.5.0) in a running session |
 | No pull requests or deploy weather | `gh auth status`. Pull requests need a GitHub `origin`; Actions runs need the repo in `deployRepos` |
 | ＋ Session or End session does nothing | Allow the tracker to control Terminal or iTerm: System Settings → Privacy & Security → Automation |

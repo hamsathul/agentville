@@ -515,7 +515,7 @@ async function compactFlow(id) {
 /** ■ Stop: the session's running turn is cancelled at once, as Esc does; no confirm, as Esc has none. */
 async function stopTurn(id, button) {
   const a = snap?.agents.find(x => x.id === id);
-  if (button) { button.disabled = true; button.textContent = 'Stopping…'; }
+  if (button) { button.disabled = true; button.textContent = button.id === 'ask-cancel' ? 'Cancelling…' : 'Stopping…'; }
   const r = await post('/api/actions/setting', { agentId: id, stop: true });
   if (!r.ok) notice(`Could not stop ${a?.name ?? 'it'}: ${r.error}`);
 }

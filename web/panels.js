@@ -253,7 +253,14 @@ function askHtml(a) {
     return `<fieldset><legend>${q.header ? `<span class="pill">${esc(q.header)}</span> ` : ''}${esc(q.question)}</legend>${options}
       <input type="text" class="other" placeholder="Other…" ${field} value="${esc(d.other.get(qi) ?? '')}"></fieldset>`;
   }).join('');
-  return `<div class="ask"><div class="sec" style="margin-top:0">❓ Needs your answer</div>${questions}<button class="act primary" id="ask-send" ${ids}>Send answer</button></div>`;
+  return `<div class="ask"><div class="sec" style="margin-top:0">❓ Needs your answer</div>${questions}<button class="act primary" id="ask-send" ${ids}>Send answer</button>${cancelAskHtml(a)}</div>`;
+}
+/** ✕ Cancel on a question: every question dismissed and the turn stopped, as Esc does there (a stop, mod 0.7.0). */
+function cancelAskHtml(a) {
+  const can = modCan(a, '0.7.0');
+  const tip = can ? 'Dismiss these questions and stop, as Esc does in its terminal. Then tell it what you want instead in the message box.'
+    : !a.mod?.live ? modWhy(a) : `Cancelling from here needs tracker mod 0.7.0 (this session runs ${a.mod.version}): run /reload-plugins in it, or press Esc in its terminal`;
+  return `<button type="button" class="act" id="ask-cancel" data-stop-turn="${esc(a.id)}" data-tip="${esc(tip)}"${can ? '' : ' disabled'}>✕ Cancel</button>`;
 }
 
 /** Your prompts (typed or sent from here) and the agent's replies, oldest first, like a chat. */

@@ -186,6 +186,23 @@ test("a waiting question shows its options, and Send posts the chosen answer", a
   assert.deepEqual(page.posts, [{ path: '/api/actions/answer', body: { agentId: 'w1', toolUseId: 'toolu_Q1', answers: { 'Pick a colour?': 'Blue' } } }]);
 });
 
+test('✕ Cancel on a question dismisses every question and stops the turn, as Esc does', async () => {
+  const page = loadPage();
+  const snap = askSnapshot(QUESTION);
+  snap.agents[0].mod = { live: true, version: '0.7.0' };
+  page.push(snap);
+  await page.openAgent('w1');
+  assert.match(page.side(), /id="ask-send"[^>]*>Send answer<\/button><button type="button" class="act" id="ask-cancel" data-stop-turn="w1" data-tip="[^"]*Esc[^"]*">✕ Cancel<\/button>/);
+  await page.clickButton('ask-cancel', { stopTurn: 'w1' });
+  await page.settle();
+  assert.deepEqual(page.posts, [{ path: '/api/actions/setting', body: { agentId: 'w1', stop: true } }]);
+  const older = loadPage();
+  snap.agents[0].mod = { live: true, version: '0.6.2' };
+  older.push(snap);
+  await older.openAgent('w1');
+  assert.match(older.side(), /id="ask-cancel" data-stop-turn="w1" data-tip="[^"]*needs tracker mod 0\.7\.0[^"]*" disabled>✕ Cancel/, 'an older mod cannot, and says to press Esc');
+});
+
 test('Send with a question unanswered posts nothing and says why', async () => {
   const page = loadPage();
   page.push(askSnapshot(QUESTION));
