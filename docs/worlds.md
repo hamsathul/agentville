@@ -139,7 +139,8 @@ Times are milliseconds since 1970, as `Date.now()` gives them.
 
 - `version`: `1`, the version this page describes.
 - `generatedAt`: when the collector took the snapshot.
-- `private`: `false`. A later change adds a private mode for worlds that shouldn't see what agents say.
+- `private`: `false` for the farm and any world you have allowed to see what agents say; `true` for one of
+  your worlds that may not (see "Privacy mode": most words and all paths are removed).
 - `plan`: the plan's usage limits, from the mod; `null` without a reading. `windows` lists every
   window: `kind` (`five_hour`, `seven_day`, …), `pct` (0–100 used; 0 once it has reset), `resetsAt`
   (when it resets, or `null`) and `reset` (it has reset since it was read). `fiveHour` and `weekly`
@@ -163,7 +164,7 @@ Times are milliseconds since 1970, as `Date.now()` gives them.
 
 **Each repo** (`repos`)
 
-- `key`: its folder, which is also its id. `name`: the folder's name.
+- `key`: its folder, which is also its id (in a private scene: a stand-in, `r1`, `r2`…). `name`: the folder's name.
 - `branch`: the branch it is on, or `null`; `onMain`: that branch is `main` or `master`.
 - `dirty`: uncommitted files; `ahead` and `behind`: commits against its upstream.
 - `deploy`: its last deploy, or `null`. From the collector: `{ state, label, detail, url, source }`,
@@ -171,7 +172,7 @@ Times are milliseconds since 1970, as `Date.now()` gives them.
   `{ state: 'running' | 'ok' | 'failed' | 'other', label: null, detail: null, url, source: 'actions', run: true }`.
 - `collision`: two agents writing in it at once: `'high'` (one of them used git), `'normal'`, or `null`.
 - `worktree`: it is a git worktree; `main`: the folder of the repo it belongs to, or `null`.
-- `project`: an id for grouping repos that sit side by side in one folder (that folder's path), or
+- `project`: an id for grouping repos that sit side by side in one folder (that folder's path; in a private scene a stand-in, `p1`, `p2`…), or
   `null`; `projectName`: its label.
 - `prs`: its pull requests, from `gh`, or `null`: `{ open: [{ number, title, url, draft, branch, checks }], merged: [{ number, title, url, at }] }`,
   with `checks` `ok`, `failed`, `running` or `null`.
@@ -215,7 +216,9 @@ A world from your folder (`u/<name>`) gets a private scene (`scene.private` is `
 **Can see what agents say** for it in the list of worlds (kept per browser). Built-in worlds always
 get the whole scene (`private: false`). What a private scene removes or replaces:
 
-- Agents: `summary`, `ask`, `reply` and `said` are `''`; `question`, `cwd` and `service` are `null`;
+- Agents: `name` is the last part of the agent's folder (a session's own name can be its title, which
+  is conversation text), numbered when two share a folder (`shop`, `shop 2`); `codex` or `agent` with
+  no folder. `subagents[].parent` follows. `summary`, `ask`, `reply` and `said` are `''`; `question`, `cwd` and `service` (a web host) are `null`;
   `tasks` is `{ done, total }`; `turn` is `{ word, startedAt, outTokens, mode }`; `repo` is a stand-in.
 - Repos: `key` and `main` are stand-ins (`r1`, `r2`, … the same for the same repo while the page is
   open); `project` is a stand-in (`p1`, …; `projectName` stays); `branch` is `null` (`onMain` stays);
@@ -223,11 +226,15 @@ get the whole scene (`private: false`). What a private scene removes or replaces
   `prs` is `{ open: [{ number, checks, draft }], merged: [{ number, at }] }`.
 - `subagents[].label` and `mail[].text` are `''`; `chrome.errors` is `[]`.
 
-What stays: names, states, tools, steps, colours, counts, percentages, costs, the plan's windows and
-the repos' numbers. Requests (`agentFiles`, `repoTouched`) are refused: the reply has `ok: false`,
+What stays: the agents' folder labels (above), repos' and projects' names (folder names, already on
+the dashboard), states, tools (including MCP server names in `tool` and `mcp`), steps, subagent
+types, colours, counts, percentages, costs, the plan's windows and the repos' numbers. Requests (`agentFiles`, `repoTouched`) are refused: the reply has `ok: false`,
 `status: 403` and an `error` that says to switch on "Can see what agents say". `openDoc` is dropped;
 `pick` still works. Because the repo keys are stand-ins, `repoTouched` could not name a real repo
-anyway. Ticking the box starts the world again with the full scene.
+anyway. Ticking the box starts the world again with the full scene; unticking starts it again
+private, but doesn't clear what the world saved while it could see (it gets its own saved settings
+back on start). The box is off for the first second the list is open, and a change in that second is
+undone: a world can open the list (`nav: 'worlds'`) but not tick the box for you.
 
 ## Messages
 
@@ -485,4 +492,5 @@ The field close-up (a field's files) is still drawn as the farm draws it.
   starts to go away, and the page removes the frame and hears nothing more from it (see "When a world
   breaks"). What remains possible is the leaving request itself, which carries whatever the world put
   in its address, once. A world that gets a scene can put what it saw there, so treat what a world is
-  shown (agents' names, paths, what they say) as visible to its author.
+  shown as visible to its author: for the farm and a world you allowed, agents' names, paths and what
+  they say; for one of your other worlds, only what a private scene keeps.

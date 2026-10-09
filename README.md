@@ -466,9 +466,9 @@ kept in this browser. If the world you chose has gone, or has something wrong wi
 opens on the farm instead and forgets the choice. **Open the worlds folder** in the list makes your
 folder if it is not there yet and shows it in Finder.
 
-**Privacy mode.** A world from your folder gets a scene without words or paths: agents' names,
-states, tools and numbers, but no summaries, questions, replies, task, message or subagent text,
-branch names, deploy or pull request words, or folder paths (repos get stand-in names), and it
+**Privacy mode.** A world from your folder gets a scene without words or paths: agents' states,
+tools and numbers, but no summaries, questions, replies, task, message or subagent text,
+branch names, deploy or pull request words, or folder paths (repo keys get stand-ins `r1`, `r2`…, names stay; an agent is named by its folder), and it
 can't ask for files. Each of your worlds in the list has a **Can see what agents say** box; ticking
 it (per browser) restarts that world with the full scene. Built-in worlds always see everything.
 
@@ -741,6 +741,7 @@ and can do is in [docs/worlds.md](docs/worlds.md).
 | "runs an older tracker mod" | `/reload-plugins` in that session, or resume it |
 | **■ Stop** on the working line, or **✕ Cancel** on a question, is greyed out | Both need mod 0.7.0: `/reload-plugins` in that session. Until then, press Esc in its terminal |
 | No cost, plan usage or working line | These come from the mod (0.4.0 or newer; the working line from 0.5.0) in a running session |
+| My world shows no bubbles and calls repos r1, r2… | It is in privacy mode: tick **Can see what agents say** for it in the list of worlds. Unticking later doesn't clear what the world saved while it could see; it gets its own saved settings back on start |
 | No pull requests or deploy weather | `gh auth status`. Pull requests need a GitHub `origin`; Actions runs need the repo in `deployRepos` |
 | ＋ Session or End session does nothing | Allow the tracker to control Terminal or iTerm: System Settings → Privacy & Security → Automation |
 | **Browse…** or **📁 Folder** opens no window | Allow the tracker to control System Events: System Settings → Privacy & Security → Automation. A window may also be open behind others: pick or cancel it there |

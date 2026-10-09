@@ -194,10 +194,20 @@
    * and no paths (repos and projects get stand-in ids). Names, states, tools, steps, numbers and colours stay.
    */
   function privateScene(s) {
+    // A session's name can be its title (conversation text): a private scene names an agent by its folder instead, numbered when two share one.
+    const used = new Set(), labels = new Map(), byName = new Map();
+    for (const a of s.agents) {
+      const base = String(a.cwd ?? '').split('/').filter(Boolean).pop() || (a.kind === 'codex' ? 'codex' : 'agent');
+      let label = base;
+      for (let n = 2; used.has(label); n++) label = `${base} ${n}`;
+      used.add(label);
+      labels.set(a.id, label);
+      if (!byName.has(a.name)) byName.set(a.name, label);
+    }
     return {
       ...s, private: true,
       chrome: { ...s.chrome, errors: [] },
-      subagents: s.subagents.map(x => ({ ...x, label: '' })),
+      subagents: s.subagents.map(x => ({ ...x, label: '', parent: byName.get(x.parent) ?? null })),
       mail: s.mail.map(m => ({ ...m, text: '' })),
       repos: s.repos.map(r => ({
         ...r, key: standIn(r.key, 'r'), main: standIn(r.main, 'r'), branch: null, project: standIn(r.project, 'p'),
@@ -205,7 +215,7 @@
         prs: r.prs ? { open: (r.prs.open ?? []).map(p => ({ number: p.number, checks: p.checks, draft: p.draft })), merged: (r.prs.merged ?? []).map(p => ({ number: p.number, at: p.at })) } : null,
       })),
       agents: s.agents.map(a => ({
-        ...a, cwd: null, repo: standIn(a.repo, 'r'), summary: '', ask: '', question: null, reply: '', said: '', service: null,
+        ...a, name: labels.get(a.id), cwd: null, repo: standIn(a.repo, 'r'), summary: '', ask: '', question: null, reply: '', said: '', service: null,
         tasks: a.tasks ? { done: a.tasks.done, total: a.tasks.total } : null,
         turn: a.turn ? { word: a.turn.word ?? null, startedAt: a.turn.startedAt ?? null, outTokens: a.turn.outTokens ?? null, mode: a.turn.mode ?? null } : null,
       })),

@@ -430,17 +430,28 @@
   function hide() { hidden = true; }
 
   const $ = id => document.getElementById(id);
-  let listWired = false;
+  let listWired = false, listOpenedAt = -Infinity;
+  const SEE_LOCK_MS = 1000; // the switch for what a world sees is off for the first second the list is open
   /** The list of worlds: pick one, see what is wrong with one, open your folder. */
   async function openList() {
     const dlg = $('worlds-dlg');
     if (!dlg) return;
     if (!listWired) {
       dlg.addEventListener('click', onListClick);
-      dlg.addEventListener('change', e => { const box = e.target.closest?.('[data-see]'); if (box) setCanSee(box.dataset.see, box.checked); });
+      dlg.addEventListener('change', e => {
+        const box = e.target.closest?.('[data-see]');
+        if (!box) return;
+        // a world can open this list (`nav: worlds`) when it likes, so a change in its first second is not the user's: undone
+        if (tick() - listOpenedAt < SEE_LOCK_MS) { box.checked = !box.checked; return; }
+        setCanSee(box.dataset.see, box.checked);
+      });
       listWired = true;
     }
     await resolveWorld(); // a fresh list: worlds come and go in your folder
+    if (!dlg.open) {
+      listOpenedAt = tick();
+      setTimeout(() => { if (dlg.open) renderList(); }, SEE_LOCK_MS); // the boxes come on
+    }
     renderList();
     if (!dlg.open) dlg.showModal();
   }
@@ -450,7 +461,7 @@
     list.innerHTML = worldsInfo.map(w => `<li><button type="button" class="world-pick" ${w.key && !w.error ? `data-world="${esc(w.key)}"` : 'disabled'} aria-pressed="${w.key === world}">
         ${typeof w.preview === 'string' && w.preview.startsWith('/world/') ? `<img class="world-preview" src="${esc(w.preview)}" alt="">` : `<span class="world-icon">${words(w.icon)}</span>`}
         <span class="world-text"><span><b>${words(w.name)}</b> <span class="chip">${w.builtIn ? 'Built in' : 'Your folder'}</span></span>${w.description ? `<span class="muted">${words(w.description)}</span>` : ''}${w.error ? `<span class="warnline">${words(w.error)}</span>` : ''}</span>
-      </button>${!w.builtIn && w.key ? `<label class="world-see"><input type="checkbox" data-see="${esc(w.key)}"${isPrivate(w.key) ? '' : ' checked'}> Can see what agents say</label>` : ''}</li>`).join('');
+      </button>${!w.builtIn && w.key ? `<label class="world-see"><input type="checkbox" data-see="${esc(w.key)}"${isPrivate(w.key) ? '' : ' checked'}${tick() - listOpenedAt < SEE_LOCK_MS ? ' disabled' : ''}> Can see what agents say</label>` : ''}</li>`).join('');
     const where = $('worlds-where');
     if (where) where.textContent = folder ? `Your worlds go in ${noBidi(folder)}` : '';
   }
@@ -484,8 +495,11 @@
   /** Whether one of your worlds may see what agents say; the world starts again with the scene it may now see. */
   function setCanSee(key, on) {
     if (on) browserStore.set(CAN_SEE(key), 'on'); else browserStore.remove(CAN_SEE(key));
-    if (host && key === world) createFrame(world);
-    if ($('worlds-dlg')?.open) renderList();
+    if (host && frame && key === world) createFrame(world); // a world showing its failure panel restarts on Try again, or on a save
+    if ($('worlds-dlg')?.open) {
+      renderList();
+      $('worlds-list')?.querySelector?.(`[data-see="${key}"]`)?.focus?.(); // the keyboard stays where it was
+    }
   }
   function select(id) {
     selectedId = id ?? null;

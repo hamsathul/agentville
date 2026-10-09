@@ -769,6 +769,55 @@ test("one of your worlds sees no words or paths, and can't ask for files, until 
   assert.equal(p.posted.find(m => m.type === 'scene').scene.private, false);
 });
 
+test('private mode: a file path is not opened, a scene sent later is private too, and unticking makes it private again', async () => {
+  const p = await page({ stored: { 'tracker-world': 'u/space' } });
+  p.farm.update(snap);
+  p.from({ type: 'loaded' });
+  p.from({ type: 'openDoc', agentId: 'a1', path: '/code/shop/web/README.md' });
+  assert.deepEqual(p.calls.filter(c => c[0] === 'doc'), [], 'a file is never opened for a private world');
+  p.posted.length = 0;
+  p.farm.update(snap);
+  assert.equal(p.posted.find(m => m.type === 'scene').scene.private, true);
+  assert.equal(p.posted.find(m => m.type === 'scene').scene.agents[0].name, 'web', 'named by its folder');
+  p.worlds.setCanSee('u/space', true);
+  p.from({ type: 'loaded' });
+  p.from({ type: 'openDoc', agentId: 'a1', path: '/code/shop/web/README.md' });
+  assert.equal(p.calls.filter(c => c[0] === 'doc').length, 1, 'allowed: it opens');
+  p.worlds.setCanSee('u/space', false);
+  assert.equal(p.frames.length, 3);
+  assert.ok(!('tracker-world-cansee:u/space' in p.stored));
+  p.posted.length = 0;
+  p.from({ type: 'loaded' });
+  assert.equal(p.posted.find(m => m.type === 'scene').scene.private, true);
+});
+
+test('a world that failed is not restarted by the switch', async () => {
+  const p = await page({ stored: { 'tracker-world': 'u/space' } });
+  p.from({ type: 'leaving' });
+  const n = p.frames.length;
+  p.worlds.setCanSee('u/space', true);
+  assert.equal(p.frames.length, n);
+});
+
+test('the list: the switch is only for your worlds, and it ignores a change in the list\'s first second', async () => {
+  const p = await page({ dialog: true, stored: { 'tracker-world': 'u/space' } });
+  await p.farm.openList();
+  const html = () => p.els['worlds-list'].innerHTML;
+  assert.equal((html().match(/data-see=/g) ?? []).length, 2, 'u/space and u/broken, not the farm');
+  assert.ok(!html().includes('data-see="farm"'));
+  assert.ok(/data-see="u\/space"[^>]* disabled/.test(html()), 'disabled at first');
+  const box = { checked: true, dataset: { see: 'u/space' }, closest: s => (s === '[data-see]' ? box : null) };
+  p.dlg.listeners.change({ target: box });
+  assert.ok(!('tracker-world-cansee:u/space' in p.stored), 'a change at once does nothing');
+  assert.equal(box.checked, false, 'and is undone');
+  p.wait(1000);
+  assert.ok(!/data-see="u\/space"[^>]* disabled/.test(html()), 'enabled after a second');
+  box.checked = true;
+  p.dlg.listeners.change({ target: box });
+  assert.equal(p.stored['tracker-world-cansee:u/space'], 'on');
+  assert.ok(/data-see="u\/space"[^>]* checked/.test(html()));
+});
+
 test('the farm always sees everything', async () => {
   const p = await page();
   p.farm.update(snap);

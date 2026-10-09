@@ -75,6 +75,22 @@ test("an agent's colour follows its id, and the page gets the same one", () => {
   assert.equal(colorOf('abc'), colorOf('abc'));
 });
 
+test("a private scene: an agent is named by its folder (a session's name can be its title); twins are numbered; subagents follow", () => {
+  const { toScene, privateScene } = load();
+  const kid = { id: 's', kind: 'subagent', state: 'running', label: 'x', agentType: 'Explore' };
+  const s = toScene(snapOf([
+    agent('a', { name: 'Fix invoices', cwd: '/Users/sam/code/shop/', children: [kid] }),
+    agent('b', { name: 'Refund the Acme order', cwd: '/Users/sam/code/shop' }),
+    agent('c', { name: 'Plan the launch', kind: 'codex', cwd: null }),
+    agent('d', { name: 'Another secret title', cwd: null }),
+  ], []));
+  const p = JSON.parse(JSON.stringify(privateScene(s)));
+  assert.deepEqual(p.agents.map(a => a.name), ['shop', 'shop 2', 'codex', 'agent']);
+  assert.deepEqual(p.subagents.map(x => [x.parent, x.type]), [['shop', 'Explore']]);
+  const text = JSON.stringify(p);
+  for (const title of ['Fix invoices', 'Refund', 'Acme', 'Plan the launch', 'secret title']) assert.ok(!text.includes(title), title);
+});
+
 test('a private scene: no words and no paths; names, states, tools and numbers stay; stand-ins are stable', () => {
   const { toScene, privateScene } = load();
   const s = toScene(snapOf([agent('a', { cwd: '/Users/sam/code/shop/api', now: { tool: 'Bash', summary: 'deploy --prod secret', step: 'deploy', service: 'internal.example' }, lastReply: 'Shipped the key rotation', question: 'Rotate the prod key?', state: 'waiting', ask: { kind: 'question', questions: [{ question: 'Rotate the prod key?' }] }, tasks: { done: 1, total: 3, current: 'Rotate', items: [{ text: 'secret' }] }, touching: [{ path: '/Users/sam/code/shop/api/x', mode: 'write', lastAt: 1, repo: '/Users/sam/code/shop/api' }], children: [{ id: 's', kind: 'subagent', state: 'running', label: 'read the secrets' }], feed: [{ at: NOW, kind: 'peer', dir: 'out', other: 'b', text: 'the password is x' }] }), agent('b')],
@@ -84,7 +100,7 @@ test('a private scene: no words and no paths; names, states, tools and numbers s
   const text = JSON.stringify(p);
   for (const secret of ['deploy --prod', 'internal.example', 'Shipped', 'Rotate', 'secret', 'password', 'acme', 'Acme', '/Users/sam']) assert.ok(!text.includes(secret), secret);
   const [a] = p.agents, [api, web, wt] = p.repos;
-  assert.deepEqual([a.name, a.state, a.tool, a.step, a.tasks], ['a', 'waiting', 'Bash', 'deploy', { done: 1, total: 3 }]);
+  assert.deepEqual([a.name, a.state, a.tool, a.step, a.tasks], ['api', 'waiting', 'Bash', 'deploy', { done: 1, total: 3 }]);
   assert.equal(a.repo, api.key);
   assert.match(api.key, /^r\d+$/);
   assert.notEqual(api.key, web.key);
