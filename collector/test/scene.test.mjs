@@ -75,7 +75,7 @@ test("an agent's colour follows its id, and the page gets the same one", () => {
   assert.equal(colorOf('abc'), colorOf('abc'));
 });
 
-test("a private scene: an agent is named by its folder (a session's name can be its title); twins are numbered; subagents follow", () => {
+test("a private scene: an agent is named 'agent N' (a session's name can be its title); subagents' parents follow", () => {
   const { toScene, privateScene } = load();
   const kid = { id: 's', kind: 'subagent', state: 'running', label: 'x', agentType: 'Explore' };
   const s = toScene(snapOf([
@@ -85,10 +85,52 @@ test("a private scene: an agent is named by its folder (a session's name can be 
     agent('d', { name: 'Another secret title', cwd: null }),
   ], []));
   const p = JSON.parse(JSON.stringify(privateScene(s)));
-  assert.deepEqual(p.agents.map(a => a.name), ['shop', 'shop 2', 'codex', 'agent']);
-  assert.deepEqual(p.subagents.map(x => [x.parent, x.type]), [['shop', 'Explore']]);
+  assert.deepEqual(p.agents.map(a => a.name), ['agent 1', 'agent 2', 'agent 3', 'agent 4']);
+  assert.deepEqual(p.subagents.map(x => [x.parent, x.type]), [['agent 1', 'Explore']]);
   const text = JSON.stringify(p);
-  for (const title of ['Fix invoices', 'Refund', 'Acme', 'Plan the launch', 'secret title']) assert.ok(!text.includes(title), title);
+  for (const title of ['Fix invoices', 'Refund', 'Acme', 'Plan the launch', 'secret title', 'shop']) assert.ok(!text.includes(title), title);
+});
+
+test('a private scene: an agent keeps its number while the page is open, and a new one gets the next', () => {
+  const { toScene, privateScene } = load();
+  const names = ids => privateScene(toScene(snapOf(ids.map(i => agent(i, { name: 'Title ' + i })), []))).agents.map(a => a.name);
+  assert.deepEqual(names(['a', 'b']), ['agent 1', 'agent 2']);
+  assert.deepEqual(names(['b']), ['agent 2']);
+  assert.deepEqual(names(['a', 'c', 'b']), ['agent 1', 'agent 3', 'agent 2']);
+});
+
+test("a private scene: a repo's and a project's names match the numbers of their stand-ins", () => {
+  const { toScene, privateScene } = load();
+  const s = toScene(snapOf([], [repo('/Users/sam/code/shop/api'), repo('/Users/sam/code/shop/web'), repo('/Users/sam/code/other/app'), repo('/Users/sam/code/solo')]));
+  const p = JSON.parse(JSON.stringify(privateScene(s)));
+  for (const r of p.repos) assert.equal(r.name, 'repo ' + r.key.slice(1));
+  assert.deepEqual(p.repos.map(r => r.name), ['repo 1', 'repo 2', 'repo 3', 'repo 4']);
+  for (const r of p.repos.filter(r => r.project)) assert.equal(r.projectName, 'project ' + r.project.slice(1));
+  assert.deepEqual(p.repos.map(r => r.projectName), ['project 1', 'project 1', 'project 2', null]);
+  assert.equal(p.repos[3].project, null);
+});
+
+test("a private scene: a subagent's parent is its parent agent's stand-in name", () => {
+  const { toScene, privateScene } = load();
+  const kid = { id: 's', kind: 'subagent', state: 'running', label: 'x', agentType: 'Explore' };
+  const p = JSON.parse(JSON.stringify(privateScene(toScene(snapOf([agent('a', { name: 'One' }), agent('b', { name: 'Two', children: [kid] })], [])))));
+  assert.equal(p.subagents[0].parent, p.agents[1].name);
+  assert.equal(p.subagents[0].parent, 'agent 2');
+});
+
+test('a private scene holds nothing that names the work: the sweep', () => {
+  const { toScene, privateScene } = load();
+  const kid = { id: 's', kind: 'subagent', state: 'running', label: 'acme-secret subagent', agentType: 'Explore' };
+  const wt = repo('/Users/x/clients/acme-secret/api-wt', { name: 'acme-secret', worktree: true, main: '/Users/x/clients/acme-secret/api', branch: 'acme-secret' });
+  const s = toScene(snapOf([
+    agent('a', { name: 'Fix acme-secret login', cwd: '/Users/x/clients/acme-secret/api', children: [kid], now: { tool: 'Bash', summary: 'acme-secret', service: 'acme-secret.example' }, lastReply: 'acme-secret reply', question: 'acme-secret?', ask: { kind: 'question', questions: [{ question: 'acme-secret?' }] }, state: 'waiting', tasks: { done: 0, total: 1, current: 'acme-secret' },
+      feed: [{ at: NOW, kind: 'peer', dir: 'out', other: 'Home work', text: 'acme-secret mail' }, { at: NOW, kind: 'reply', text: 'acme-secret said' }], touching: [{ path: '/Users/x/clients/acme-secret/api/f', mode: 'write', lastAt: 1, repo: '/Users/x/clients/acme-secret/api' }] }),
+    agent('h', { name: 'Home work', cwd: '/Users/jdoe' }),
+  ], [repo('/Users/x/clients/acme-secret/api', { name: 'acme-secret', branch: 'acme-secret', main: 'acme-secret', prs: { open: [{ number: 1, title: 'acme-secret', url: 'https://x/acme-secret', checks: 'ok', draft: false }], merged: [] }, lastDeploy: { state: 'ok', label: 'acme-secret', detail: 'acme-secret', url: 'https://acme-secret', source: 'actions' } }), wt, repo('/Users/jdoe/proj/x', { name: 'jdoe' })]));
+  assert.ok(JSON.stringify(s).includes('acme-secret') && JSON.stringify(s).includes('jdoe'), 'the full scene has them');
+  const text = JSON.stringify(privateScene(s));
+  assert.ok(!text.includes('acme-secret'), 'acme-secret');
+  assert.ok(!text.includes('jdoe'), 'jdoe');
 });
 
 test('a private scene: no words and no paths; names, states, tools and numbers stay; stand-ins are stable', () => {
@@ -98,15 +140,15 @@ test('a private scene: no words and no paths; names, states, tools and numbers s
   const p = JSON.parse(JSON.stringify(privateScene(s)));
   assert.equal(p.private, true);
   const text = JSON.stringify(p);
-  for (const secret of ['deploy --prod', 'internal.example', 'Shipped', 'Rotate', 'secret', 'password', 'acme', 'Acme', '/Users/sam']) assert.ok(!text.includes(secret), secret);
+  for (const secret of ['deploy --prod', 'internal.example', 'Shipped', 'Rotate', 'secret', 'password', 'acme', 'Acme', '/Users/sam', 'shop', 'api']) assert.ok(!text.includes(secret), secret);
   const [a] = p.agents, [api, web, wt] = p.repos;
-  assert.deepEqual([a.name, a.state, a.tool, a.step, a.tasks], ['api', 'waiting', 'Bash', 'deploy', { done: 1, total: 3 }]);
+  assert.deepEqual([a.name, a.state, a.tool, a.step, a.tasks], ['agent 1', 'waiting', 'Bash', 'deploy', { done: 1, total: 3 }]);
   assert.equal(a.repo, api.key);
   assert.match(api.key, /^r\d+$/);
   assert.notEqual(api.key, web.key);
   assert.equal(wt.main, api.key);
-  assert.equal(api.name, 'api');
-  assert.equal(api.projectName, 'shop');
+  assert.equal(api.name, 'repo ' + api.key.slice(1));
+  assert.equal(api.projectName, 'project ' + api.project.slice(1));
   assert.match(api.project, /^p\d+$/);
   assert.equal(api.project, web.project);
   assert.deepEqual(api.deploy, { state: 'failed', label: null, detail: null, url: null, source: null });

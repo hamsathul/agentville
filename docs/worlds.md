@@ -168,7 +168,7 @@ Times are milliseconds since 1970, as `Date.now()` gives them.
 
 **Each repo** (`repos`)
 
-- `key`: its folder, which is also its id (in a private scene: a stand-in, `r1`, `r2`…). `name`: the folder's name.
+- `key`: its folder, which is also its id (in a private scene: a stand-in, `r1`, `r2`…). `name`: the folder's name (private: `repo 1`…).
 - `branch`: the branch it is on, or `null`; `onMain`: that branch is `main` or `master`.
 - `dirty`: uncommitted files; `ahead` and `behind`: commits against its upstream.
 - `deploy`: its last deploy, or `null`. From the collector: `{ state, label, detail, url, source }`,
@@ -183,7 +183,7 @@ Times are milliseconds since 1970, as `Date.now()` gives them.
 
 **Each agent** (`agents`)
 
-- `id`, `name`; `kind`: `interactive`, `background`, `codex`…; `cwd`: its folder, or `null`.
+- `id`, `name` (private: `agent 1`…); `kind`: `interactive`, `background`, `codex`…; `cwd`: its folder, or `null`.
 - `state`: `waiting` (on you: a question or a permission), `working`, `turn` (its turn ended),
   `idle` or `stale`.
 - `repo`: the repo it works in (its newest write, else its newest touch, else the repo holding its
@@ -221,19 +221,22 @@ A world from your folder (`u/<name>`) gets a private scene (`scene.private` is `
 `tracker-world-cansee:u/<name>`, a name no world's `store` can reach). Built-in worlds always get the
 whole scene (`private: false`). What a private scene removes or replaces:
 
-- Agents: `name` is the last part of the agent's folder (a session's own name can be its title, which
-  Claude Code makes from the conversation), numbered when two share a folder (`shop`, `shop 2`);
-  `codex` or `agent` with no folder. `subagents[].parent` follows. `summary`, `ask`, `reply` and
+- Agents: `name` is `agent N`, a number kept for that agent (by its `id`) while the page is open, so
+  it doesn't change as agents come and go (a session's own name can be its title, which Claude Code
+  makes from the conversation, and its folder can name a client). `subagents[].parent` is the
+  parent's `agent N`. `summary`, `ask`, `reply` and
   `said` are `''`; `question`, `cwd` and `service` (a web host) are `null`; `tasks` is
   `{ done, total }`; `turn` is `{ word, startedAt, outTokens, mode }`; `repo` is a stand-in.
 - Repos: `key` and `main` are stand-ins (`r1`, `r2`, … the same for the same repo while the page is
-  open); `project` is a stand-in (`p1`, …; `projectName` stays); `branch` is `null` (`onMain` stays);
+  open) and `name` is `repo N` to match (`r3` is `repo 3`); `project` is a stand-in (`p1`, …) and
+  `projectName` is `project N` to match (`null` when there is no project); `branch` is `null` (`onMain` stays);
   `deploy` is `{ state, label: null, detail: null, url: null, source: null }` (and `run`, if there);
   `prs` is `{ open: [{ number, checks, draft }], merged: [{ number, at }] }`.
 - `subagents[].label` and `mail[].text` are `''`; `chrome.errors` is `[]`.
 
-What stays: the agents' folder labels (above), repos' and projects' names (folder names, already on
-the dashboard), states, tools (including MCP server names in `tool` and `mcp`), steps, subagent
+Why numbers and no names: a world can reach a host it names (see "The gaps"), so what a private
+scene holds could leave the machine. A session's name can be its conversation's title, and folder,
+repo and project names can name clients or work, so none of them is in it. What stays: states, tools (including MCP server names in `tool` and `mcp`), steps, subagent
 types, colours, counts, percentages, costs, the plan's windows and the repos' numbers. Requests
 (`agentFiles`, `repoTouched`) are refused: the reply has `ok: false`, `status: 403` and an `error`
 that says to switch on "Can see what agents say". `openDoc` is dropped; `pick` still works. Because

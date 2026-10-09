@@ -180,8 +180,8 @@
     };
   }
 
-  // Stand-ins for paths in a private scene: the same repo (or project) gets the same one while the page is open.
-  const standIns = new Map(), counts = { r: 0, p: 0 };
+  // Stand-ins in a private scene: the same repo, project or agent gets the same number while the page is open.
+  const standIns = new Map(), counts = { r: 0, p: 0, a: 0 };
   const standIn = (value, prefix) => {
     if (value == null) return null;
     const k = `${prefix}:${value}`;
@@ -190,20 +190,21 @@
   };
   /**
    * The scene for a world that may not see what agents say: no words (questions, replies, summaries,
-   * task, message and subagent text, pull requests' titles, deploys' words, branches, where calls go)
-   * and no paths (repos and projects get stand-in ids). Names, states, tools, steps, numbers and colours stay.
+   * task, message and subagent text, pull requests' titles, deploys' words, branches, where calls go),
+   * no paths, and no names. A world can reach a host it names, so what it sees could leave the machine;
+   * a session's name can be its conversation's title, and folder, repo and project names can name
+   * clients or work. So repos, projects and agents are numbers (repo 1, project 1, agent 1; keys r1, p1).
+   * States, tools (and MCP server names), steps, numbers, colours, ids and PR numbers stay.
    */
   function privateScene(s) {
-    // A session's name can be its title (conversation text): a private scene names an agent by its folder instead, numbered when two share one.
-    const used = new Set(), labels = new Map(), byName = new Map();
+    // Agents are named by number, kept per agent id for the page's lifetime; a parent is looked up by the agent's real name.
+    const labels = new Map(), byName = new Map();
     for (const a of s.agents) {
-      const base = String(a.cwd ?? '').split('/').filter(Boolean).pop() || (a.kind === 'codex' ? 'codex' : 'agent');
-      let label = base;
-      for (let n = 2; used.has(label); n++) label = `${base} ${n}`;
-      used.add(label);
+      const label = `agent ${standIn(a.id, 'a').slice(1)}`;
       labels.set(a.id, label);
       if (!byName.has(a.name)) byName.set(a.name, label);
     }
+    const num = id => id.slice(1);
     return {
       ...s, private: true,
       chrome: { ...s.chrome, errors: [] },
@@ -211,6 +212,7 @@
       mail: s.mail.map(m => ({ ...m, text: '' })),
       repos: s.repos.map(r => ({
         ...r, key: standIn(r.key, 'r'), main: standIn(r.main, 'r'), branch: null, project: standIn(r.project, 'p'),
+        name: `repo ${num(standIn(r.key, 'r'))}`, projectName: r.project ? `project ${num(standIn(r.project, 'p'))}` : null,
         deploy: r.deploy ? { state: r.deploy.state, label: null, detail: null, url: null, source: null, ...(r.deploy.run ? { run: true } : {}) } : null,
         prs: r.prs ? { open: (r.prs.open ?? []).map(p => ({ number: p.number, checks: p.checks, draft: p.draft })), merged: (r.prs.merged ?? []).map(p => ({ number: p.number, at: p.at })) } : null,
       })),

@@ -500,10 +500,11 @@ folder** in the list makes your folder if it is not there yet and shows it in Fi
 
 **Privacy mode.** A world from your folder gets a scene without words or paths: agents' states,
 tools and numbers, but no summaries, questions, replies, task, message or subagent text, branch
-names, deploy or pull request words, or folder paths. Repos keep their names, but their paths become
-stand-ins (`r1`, `r2`…). An agent is named by its folder (`shop`, `shop 2`), because a session's own
-name can be its title, which Claude Code makes from the conversation. Nor can such a world ask for
-files. Each of your worlds in the list has a **Can see what agents say** box; ticking it (per
+names, deploy or pull request words, or folder paths, and no names at all: repos, projects and
+agents are numbers (`repo 1`, `project 1`, `agent 1`, the same one while the page is open). A
+session's name can be its conversation's title, folder, repo and project names can name clients or
+work, and a world can reach a host it names, so a private world gets numbers only. Nor can such a
+world ask for files. Each of your worlds in the list has a **Can see what agents say** box; ticking it (per
 browser) restarts that world with the full scene. Tick it only for a world you trust: a world can
 send what it sees to other sites (see [Privacy and security](#privacy-and-security)), as the box's
 tooltip says. The box is greyed out for a second after the list opens, and until a second passes

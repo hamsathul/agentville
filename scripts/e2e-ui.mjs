@@ -125,7 +125,7 @@ writeFileSync(join(worldsDir, 'probe', 'world.js'), `(() => {
     scene(s) {
       if (this.seen) return;
       this.seen = true;
-      const clean = s.private === true && s.agents.every(a => a.said === '' && a.ask === '' && a.cwd === null) && s.repos.every(r => r.key.startsWith('r') && !r.key.includes('/'));
+      const clean = s.private === true && s.agents.every(a => a.said === '' && a.ask === '' && a.cwd === null) && s.repos.every(r => r.key.startsWith('r') && !r.key.includes('/') && /^repo [0-9]+$/.test(r.name) && (r.projectName === null || /^project [0-9]+$/.test(r.projectName))) && s.agents.every(a => /^agent [0-9]+$/.test(a.name));
       note('private: ' + (clean ? 'yes' : 'NO'));
     },
   });

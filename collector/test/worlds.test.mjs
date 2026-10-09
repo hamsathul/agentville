@@ -811,7 +811,7 @@ test('private mode: a file path is not opened, a scene sent later is private too
   p.posted.length = 0;
   p.farm.update(snap);
   assert.equal(p.posted.find(m => m.type === 'scene').scene.private, true);
-  assert.equal(p.posted.find(m => m.type === 'scene').scene.agents[0].name, 'web', 'named by its folder');
+  assert.equal(p.posted.find(m => m.type === 'scene').scene.agents[0].name, 'agent 1', 'named by a number');
   p.worlds.setCanSee('u/space', true);
   p.from({ type: 'loaded' });
   p.from({ type: 'openDoc', agentId: 'a1', path: '/code/shop/web/README.md' });
