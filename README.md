@@ -154,6 +154,7 @@ It listens on `127.0.0.1` only and reads what Claude Code already writes to disk
 ## Requirements
 
 - **macOS.** The service runs under launchd, and the tracker uses `ps` and `osascript`.
+- **Or Windows 10/11** with Windows PowerShell 5.1. It detects the platform, checks its dependencies and refuses to start with a clear message if one is missing: see [docs/windows.md](docs/windows.md).
 - **Node.js 22 or newer.** An nvm install is found automatically. `npm run check-world` needs
   22.13 or later (or 23.5 or later), to run a world contained.
 - **Claude Code.** The mod needs a build with plugin mods; it is tested on 2.1.293.

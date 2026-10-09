@@ -3,7 +3,7 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
-  "description": "Local dashboard of every AI agent working on this Mac",
+  "description": "Local dashboard of every AI agent working on this Mac or Windows PC",
   "scripts": {
     "test": "node --import ./collector/test/win-links.mjs --test \"collector/test/*.test.mjs\"",
     "test:ui": "node scripts/e2e-ui.mjs",
@@ -25,6 +25,7 @@
     "url": "https://github.com/hamsathul/agentville.git"
   },
   "os": [
-    "darwin"
+    "darwin",
+    "win32"
   ]
 }
