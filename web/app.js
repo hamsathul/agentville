@@ -227,7 +227,7 @@ function showWorld(w) {
   w ??= shownWorld;
   if (!w) return;
   shownWorld = w;
-  const plain = s => String(s ?? '').replace(/[‪-‮⁦-⁩]/g, ''); // a stranger's text can't turn the toggle around
+  const plain = s => String(s ?? '').replace(/[\u202a-\u202e\u2066-\u2069]/g, ''); // a stranger's text can't turn the toggle around
   $('view-farm').textContent = `${plain(w.icon)} ${plain(w.name)}`;
   $('view-farm').dataset.tip = view === 'farm' ? 'Choose another world' : `The ${plain(w.name)} view`;
   const title = document.querySelector('#farm-diary-pane .sec'), noun = plain(w.nouns?.diary) || 'Diary';
