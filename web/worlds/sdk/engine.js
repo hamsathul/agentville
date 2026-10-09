@@ -155,12 +155,22 @@ function withDefaults(h) {
   if (!(h.W > 0)) throw new Error('A world needs its width, W (in world pixels).');
   for (const need of ['slots', 'drawChar', 'bg']) if (typeof h[need] !== 'function') throw new Error(`A world needs a ${need}() hook.`);
   const nouns = { agent: 'agent', agents: 'agents', repo: 'repo', repos: 'repos', ...h.nouns };
-  const grid = h.grid?.layoutFor ? h.grid : makeGrid({
-    cols: 3, colW: 88, rowH: 62, cx0: Math.round(h.W / 2) - 88, top0: 100, slot: (cx, rowTop) => ({ lane: rowTop + 44 }),
-    fence: rows => ({ x0: Math.round(h.W / 2) - 132, x1: Math.round(h.W / 2) + 132, y0: 96, y1: 104 + rows * 62 }), height: f => f.y1 + 28, ...h.grid,
-  });
+  // The default grid is centred on W, from the config merged over 3 × 88 × 62: columns centred, a
+  // fence half a column wider each side (kept inside 0..W) unless the world gives cx0 or a fence itself.
+  const g = h.grid ?? {};
+  const grid = g.layoutFor ? g : (() => {
+    const cols = g.cols ?? 3, colW = g.colW ?? 88, rowH = g.rowH ?? 62;
+    const cx0 = g.cx0 ?? Math.round(h.W / 2 - ((cols - 1) * colW) / 2);
+    return makeGrid({
+      cols, colW, rowH, cx0, top0: 100, slot: (cx, rowTop) => ({ lane: rowTop + 44 }),
+      fence: rows => ({ x0: Math.max(0, cx0 - Math.round(colW / 2)), x1: Math.min(h.W, cx0 + (cols - 1) * colW + Math.round(colW / 2)), y0: 96, y1: 104 + rows * rowH }),
+      height: f => f.y1 + 28, ...g,
+    });
+  })();
   let L = grid.layoutFor([]), fields = [];
+  const ownSetScene = h.setScene;
   const out = {
+    drawFx() {},
     key: 'world', SH: 16, corridors: [Math.round(h.W / 2)], fromScene: engineScene,
     layout: () => L, relayout(g) { L = g; return L; },
     setScene(next) { fields = next.fields; return []; }, spawn: () => [Math.round(h.W / 2), 0], follow: (b, k) => [b.x - 8 - k * 7, b.y + 2],
@@ -172,7 +182,10 @@ function withDefaults(h) {
     fieldAt: () => null, buildingAt: () => null, buildingTip: () => '', dialog: () => null, boardSessions: () => [],
     help: () => `<div class="px-key"><b>${esc(nouns.agents)}</b><span>one for each agent working on this Mac</span><b>${esc(nouns.repos)}</b><span>one for each repo an agent works in</span></div>`,
     ...h, grid,
+    // the fields are always recorded here (the default labels read them), whoever's setScene runs
+    setScene(next) { fields = next.fields; return ownSetScene ? ownSetScene.call(h, next) : []; },
   };
+  if (!Array.isArray(out.corridors) || !out.corridors.length || !out.corridors.every(Number.isFinite)) throw new Error("A world's corridors are the x positions of its paths (at least one).");
   return out;
 }
 
@@ -249,7 +262,7 @@ function makePixelView(th, prefs) {
       } else {
         const i = count[s.group] ?? 0;
         count[s.group] = i + 1;
-        if (i >= s.cap) { over[s.group] += 1; continue; }
+        if (i >= s.cap) { over[s.group] = (over[s.group] ?? 0) + 1; continue; }
         at = s.at(i);
       }
       out.set(f.id, { x: at[0], y: at[1], zone: s.zone });

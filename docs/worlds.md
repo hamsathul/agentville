@@ -14,8 +14,9 @@ A world is a folder holding `world.json` and `world.js`, and any files they use 
 fonts, stylesheets). The collector serves those files from inside the folder only. The frame's page
 (`web/worlds/sdk/frame.html`) loads, in order: `/base.css` (the dashboard's colours), the world
 engine's styles (`/world/sdk/engine.css`), the bridge (`/world/sdk/bridge.js`), the brand mark
-(`/brand.js`), then the world's `world.js`. The world draws into `<div id="farm">`, which fills the
-frame.
+(`/brand.js`), the pixel kit (`/world/sdk/pixel.js`), the engine (`/world/sdk/engine.js`), then the
+world's `world.js`. A world doesn't choose these: the frame always loads all of them. The world draws
+into `<div id="farm">`, which fills the frame.
 
 Keys: a built-in world is named by its folder in `web/worlds/` (the farm is `farm`). Names match
 `^[a-z0-9][a-z0-9-]{0,39}$`, and `sdk`, `starter`, `test` and `u` are reserved. Your own worlds will
@@ -232,64 +233,83 @@ in the world goes through the page as `openLink`. Script errors, scripts that fa
 errors thrown by `start`, `scene` or `select` reach the page as `error`, each once (20 at most). A
 `world.js` that registers nothing is reported too.
 
-`Agentville.world(hooks)`, a world drawn by the farm's engine from a few hooks, comes in a later
-change.
-
 ## Hooks
 
 A world drawn by the engine (`web/worlds/sdk/engine.js`, over the pixel kit in `pixel.js`) gives its
-hooks to `Agentville.world(hooks)`, which fills in a default for each one it leaves out and runs it
-through the bridge. Load `bridge.js`, `pixel.js` and `engine.js` first, then your `world.js`.
+hooks to `Agentville.world(hooks)`, which fills in a default for each one it leaves out and runs the
+world through the bridge. The frame has already loaded `bridge.js`, `brand.js`, `pixel.js` and
+`engine.js` when your `world.js` runs.
 
 ```js
-Agentville.world({ W: 400, slots(agent) { … }, drawChar(agent, body) { … }, bg(fill, season, ext) { … } });
+(() => {
+  Agentville.world({ W: 400, slots(agent) { … }, drawChar(agent, body) { … }, bg(fill, season, ext) { … } });
+})();
 ```
+
+Wrap `world.js` in a function like this. The SDK's own top-level names (`ACTIVE`, `makeGrid`,
+`withDefaults`, `engineScene`, `makePixelView`, `px`, …) share the frame's scope with your script, and
+declaring one of them again at the top level is a SyntaxError that stops the world. Inside a function
+your names are your own, and the SDK's are still there to use.
 
 ### The four a world must give
 
 A world without one of them stops with an error that names it.
 
 - `W`: the world's width in world pixels (a number above 0).
-- `slots(agent)`: where this agent stands. Either `{ group, cap, at(i) → [x, y], zone }` (a place for
-  up to `cap` agents of the same `group`; `at(i)` is the i-th spot), or, for agents standing in a
-  field, `{ group: 'st:<key>', at(usedOffsets) → [x, y], zone }` (push the offset you took into
-  `usedOffsets`).
-- `drawChar(agent, body)`: draws the agent. `body` has `x`, `y` (where it is), `walk` (walking now),
-  `face`, `lift` and `zone`.
-- `bg(fill, season, ext)`: draws the ground once per season. `fill(x, y, w, h, colour)` paints a
-  rectangle; `ext` is `{ x0, x1, y0, y1 }`, the area to cover (it grows past the world's edges when the
-  frame has room).
+- `slots(agent)`: where this agent stands. Either `{ group, cap, at(i) → [x, y], zone }` (room for
+  `cap` agents of the same `group`; `at(i)` is the i-th spot; more than that are not drawn, and
+  the count over is given to `labels` as `overflow[group]`), or, for agents standing in a field,
+  `{ group: 'st:<key>', at(usedOffsets) → [x, y], zone }` (push the offset you took into
+  `usedOffsets`; no cap).
+- `drawChar(agent, body)`: draws the agent. `body` has `x`, `y`, `walk` (walking now), `face`, `lift`
+  and `zone`.
+- `bg(fill, season, ext)`: draws the ground. `fill(x, y, w, h, colour)` paints a rectangle; `ext` is
+  `{ x0, x1, y0, y1 }`, the area to cover (it grows past the world's edges when the frame has room).
+  It is redrawn when the season turns, the layout changes or the frame is resized.
 
 ### The optional ones, with their defaults
 
-| Hook | Default |
-|---|---|
-| `corridors` | `[W / 2]`: the x positions of the paths running down; agents walk along one |
-| `grid` | a `makeGrid` result, or the config for one (see below); default: 3 beds across, 88 × 62, around `W / 2` |
-| `fromScene(sceneV1)` | `engineScene` |
-| `help()` | the info dialog's HTML: a short key naming your `nouns` |
-| `nouns` | `{ agent, agents, repo, repos }`: `agent`, `agents`, `repo`, `repos` |
-| `SH` | `16`: a character's height |
-| `layout()`, `relayout(ground)` | the grid's current ground; relayout keeps the new one |
-| `setScene(scene)` | remembers the fields; returns no events |
-| `spawn()` | `[W / 2, 0]`: where a new agent appears |
-| `follow(body, k)` | where the k-th subagent follows its agent |
-| `startText(n)`, `arriveText` | "n agents here"; the text `'arrives'` (a string) in the log |
-| `tag(agent)`, `tip(agent)` | the name, cut to 16; the name |
-| `onMove`, `speed()`, `zoneText()` | nothing; `40`; `'moves'` |
-| `hud(state)` | the dashboard's buttons: list, world, sidebar, sky, motion, help, zoom |
-| `ground`, `shadows`, `top` | nothing (drawn under, beneath, and over the agents) |
-| `season()` | `'summer'` |
-| `lights()` | `[]`; each `[x, y, r, colour]` glows at night |
-| `items()` | `[]`; each `[y, draw]`, drawn among the agents sorted by `y` |
-| `movers()` | `[]`; each `{ key, html, title, x, y }`, a label that moves |
-| `labels(lab)` | each field's name under its bed |
-| `fieldAt(x, y)`, `buildingAt(x, y)` | `null`: nothing to click |
-| `buildingTip(key)` | `''` |
-| `dialog(key)` | `null`; or `{ title, html }` for a clicked building |
-| `boardSessions()` | `[]` |
-
 A hook you give always wins over its default.
+
+| Hook | Arguments | Default |
+|---|---|---|
+| `corridors` | | `[W / 2]`: the x positions of the paths running down, which agents walk along. A non-empty array of numbers, else the world stops |
+| `grid` | | a `makeGrid` result, or the config for one (below); by default 3 beds of 88 × 62 centred on W |
+| `fromScene` | `(sceneV1)` | `engineScene` |
+| `help` | `()` | the info dialog's HTML: a short key naming your `nouns` |
+| `nouns` | | `{ agent, agents, repo, repos }`: `agent`, `agents`, `repo`, `repos` |
+| `SH` | | `16`: a character's height |
+| `layout`, `relayout` | `()`, `(ground)` | the grid's current ground; `relayout` keeps the new one and returns it |
+| `setScene` | `(scene)` | returns `[]`. May return events `{ id?, at?: [x, y], text, cls?, log? }`: a pop-up with `text` over the agent `id` (or at `at`), and a line in the log if `log` is set. The engine records `scene.fields` itself, whether or not you give one |
+| `spawn` | `()` | `[W / 2, 0]`: where a new agent appears |
+| `follow` | `(body, k, T, kid)` | where the k-th subagent stands beside its agent (`T` the clock, `kid` the subagent's scene entry) |
+| `startText` | `(n)` | "n agents here": the first line of the log |
+| `arriveText` | | the string `'arrives'`: the log line when an agent walks in |
+| `tag`, `tip` | `(agent)` | the name, cut to 16; the name |
+| `onMove` | `(agent, zone, prevZone, pop)` | nothing; `pop(text, cls)` shows a pop-up over the agent |
+| `speed` | `(agent)` | `40`: walking speed |
+| `zoneText` | `(agent, zone)` | `'moves'`: the log line when an agent changes zone |
+| `hud` | `(state)` | the dashboard's buttons: list, world, sidebar, sky, motion, help, zoom. `state` is `{ still, zoom, saysOn, skyMode, follow, canFollow, restingHidden, bell, nav, panelOpen }` |
+| `ground`, `shadows(body)`, `top`, `drawFx(agent, body)` | | nothing: drawn under the agents, under each agent, over everything, and over each agent |
+| `season` | `()` | `'summer'` |
+| `lights` | `()` | `[]`; each `[x, y, r, colour]` glows at night |
+| `items` | `()` | `[]`; each `[y, draw]`, drawn among the agents in order of `y`. Return a fresh array each call: the engine pushes its own into it |
+| `movers` | `(posOf)` | `[]`; each `{ key, html, title, x, y }`, an HTML label that moves; `posOf(id)` gives an agent's body |
+| `labels` | `(lab, overflow)` | each field's name under its bed. `lab(x, y, html, cls, title)` places HTML at a world position; `overflow` counts the agents over each group's `cap` |
+| `fieldAt` | `(x, y)` | `null`: the field under that point, which opens its close-up |
+| `buildingAt` | `(x, y)` | `null`: the building under that point (a key, below) |
+| `buildingTip` | `(key)` | `''` |
+| `dialog` | `(key)` | `null`; or `{ title, html }` |
+| `boardSessions` | `()` | `[]`: the agents the notice board is read from |
+| `emit` | `(agent, body, dt, addParticle)` | nothing: called each frame per agent |
+| `tick` | `(dt, posOf, snap)` | nothing: called each frame, and `snap` is true when the world is drawn still |
+| `ambient` | `(dt, addParticle)` | nothing: called each frame |
+| `weather` | `(sky)` | nothing: drawn over the sky |
+
+Buildings: `buildingAt` returns a key when the point is on a building. The key `'barn'` calls the
+page's ＋ Session (starting a session) and `'board'` opens the notice board, built from
+`boardSessions()`. Any other key goes to `dialog(key)`, which gives the dialog's title and HTML (or
+`null` for none).
 
 ### `makeGrid(config)`
 
@@ -305,6 +325,10 @@ project's repos sit together, and a repo that leaves keeps its bed for a day. `c
 
 It returns `{ layoutFor(fields, beds?, now?), packedLayout(fields, beds, now?), slotAt(i), cols }`.
 `layoutFor` returns `{ key, ST, slots, empty, rows, GRID, H, groups, more, beds }`.
+
+If a world's `grid` is a config (not a `makeGrid` result), the engine fills in what is missing:
+`cols` 3, `colW` 88, `rowH` 62, the first column so the columns are centred on `W`, and a fence half a
+column wider on each side (kept inside 0 to `W`).
 
 ### `engineScene(scene)`
 
