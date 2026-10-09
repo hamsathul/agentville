@@ -124,6 +124,8 @@ It listens on `127.0.0.1` only and reads what Claude Code already writes to disk
 - The farm is a world: it runs in a sandboxed frame of its own, with no access to the token, and
   asks the page for the little it needs ([docs/worlds.md](docs/worlds.md)). A world from your own
   folder sees no words or paths until you tick **Can see what agents say** for it.
+- A test page that shows any world playing a tour of made-up snapshots, each situation at its own
+  address for a screenshot, with no token and no real data.
 
 ## Requirements
 
@@ -565,6 +567,17 @@ above it is ignored and the default is used. A world's names are shown as plain 
 hold. How to write one is in [docs/worlds.md](docs/worlds.md). A plain starter world
 (`web/worlds/starter/`) is the template for your own; it isn't in the list.
 
+**Try a world on the test page:** `http://localhost:7777/worlds/test?world=farm` (or `?world=starter`,
+or `?world=u/<folder>` for one of yours). It shows the world playing a tour of made-up snapshots,
+one stop for each thing a world may show (every state, deploys, a compaction, a collision, the
+limits, night, privacy mode…), and `&stop=<name>` holds one stop at its own address, for a
+screenshot. The page has no token and no real data: requests get made-up answers, what the world
+asks the page to do is listed rather than done, and the world's settings are kept in memory, so the
+dashboard's own settings in this browser (the world you chose, each world's settings, the **Can see
+what agents say** switches) are never read or written. The stop decides privacy mode, for every
+world. The error strip and the "didn't start" panel show here as on the dashboard. The stops are
+listed in [docs/worlds.md](docs/worlds.md#the-test-page-and-the-tour).
+
 **Your own worlds, open while you write them.** Saving a file in a world's folder (or in a built-in
 world's) reloads that world on screen, keeping its zoom and where you were looking, so you can
 write one with it open. Where you were looking is kept only until you reload the page; nothing about
@@ -767,6 +780,10 @@ and can do is in [docs/worlds.md](docs/worlds.md).
   asks for them by path (so keep nothing secret in a world's folder), and never from outside the
   world's own folder. The list of their names and the folder's path needs the token. The collector
   reads the folder; it never fetches a world from anywhere.
+- The world test page (`/worlds/test`) is served without the token and holds none: its snapshots
+  and answers are made up in the page, it never asks the collector for your sessions or files, and
+  it keeps a world's settings in memory, never in the browser. Like the dashboard, it refuses to be
+  shown in a frame.
 - **Open the worlds folder** (an action: token and same origin) makes your worlds folder and shows
   it in Finder (`open -a Finder <folder>`); it only shows it, and runs nothing in it. The page keeps your
   choice of world in this browser (`tracker-world`), and nothing else about it leaves the page.
@@ -869,6 +886,7 @@ and can do is in [docs/worlds.md](docs/worlds.md).
 | The bell is silent | Click the page once (browsers block sound until you do), and allow notifications |
 | A world says it "didn't start" | A world has 5 seconds to start. Past that, a panel replaces the (empty) world and gives the first error it reported, if any. Fix its `world.js` (or `world.json`) and save: it reloads by itself. Or press **Back to the farm**, **Show the list**, or **Try again** |
 | A world "tried to leave the page and was stopped" | A world may only draw in its own frame; this one tried to go to another page (a link, `location`). The page stops it the moment it starts to leave. Fix the world and save: it reloads by itself. Or press **Back to the farm** or **Show the list** |
+| My world looks wrong in one situation | Open the test page at that stop: `http://localhost:7777/worlds/test?world=u/<folder>&stop=…` (the stops are listed in [docs/worlds.md](docs/worlds.md#the-test-page-and-the-tour)). It has no live reload: reload the page after saving |
 | A red strip over a world | The world reported an error after it started. It keeps drawing; **×** hides the strip. The page's console has the same message |
 | The farm stays empty, or says "not found" | The farm loads in a frame of its own from the collector (`/world/farm/`). After an update, restart the service (`agent-tracker restart`) and reload the page. The page's console says what a world reported, if anything |
 | **✨** says no name came, or the ✨ Helper shows a last error | No session is listening with mod 0.8.0 (`/reload-plugins` in it), today's limit is reached (it resets at midnight), or your organisation doesn't allow Haiku (the error says so) |

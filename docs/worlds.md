@@ -220,7 +220,8 @@ Times are milliseconds since 1970, as `Date.now()` gives them.
 A world from your folder (`u/<name>`) gets a private scene (`scene.private` is `true`) until you tick
 **Can see what agents say** for it in the list of worlds (kept per browser, as
 `tracker-world-cansee:u/<name>`, a name no world's `store` can reach). Built-in worlds always get the
-whole scene (`private: false`). What a private scene removes or replaces:
+whole scene (`private: false`). On the test page the tour's stop decides instead, for every world
+(see "The test page and the tour"). What a private scene removes or replaces:
 
 - Agents: `name` is `agent N`, a number kept for that agent (by its `id`) while the page is open, so
   it doesn't change as agents come and go (a session's own name can be its title, which Claude Code
@@ -707,6 +708,106 @@ farm's own drawing, so the farm looks the same.
 It is the template `npm run new-world -- <name>` copies, and it isn't in the list of worlds. It can
 still be framed (`/world/starter/`), which is how the test page runs it. Its `world.json` gives the
 nouns `person`, `people`, `plot` and `plots`, and its hook says `place: 'world'`.
+
+## The test page and the tour
+
+The test page shows any world playing the **tour**: made-up snapshots, one stop for each thing a
+world may have to show. Open it with the dashboard running:
+
+```
+http://localhost:7777/worlds/test?world=<key>&stop=<name>
+```
+
+- `world`: the world's key. `farm`, `starter`, or `u/<folder>` for one of yours (the name of its
+  folder in your worlds folder). With no `world`, or one that isn't a key, the page says how to name one.
+- `stop`: one stop of the tour, by name (the table below). With no `stop`, the page plays the tour:
+  each stop for 4 seconds once the world has started (5.5 for a stop with two snapshots), then the
+  next, round and round.
+
+The page shows the world in its frame, as the dashboard does; the stop picker (**◀**, the list of
+stops, **▶**); **Play the tour**; what the world asked the page to do (picks, files to open, `nav`,
+the bell, motion…), listed and not done; and the world's diary. Picking a stop gives it its own
+address, so a stop can be linked to or screenshotted.
+
+It holds **no token and no real data**: nothing on it comes from your sessions. Every snapshot is
+made up (`web/worlds/test/tour.js`, with names like `a1` and paths like `/Users/you/code/shop`) and
+goes through `toScene` like a real one, so the world gets a scene exactly as on the dashboard. A
+world's **requests** (`agentFiles`, `repoTouched`) get made-up answers in the collector's shapes. The
+world's **settings** are kept in memory, starting fresh at each stop with the stop's sky (`sky` is
+`day` or `night`); `prefs.set` works as usual, but nothing is written to the browser. The page shares
+the dashboard's origin (the same address and port), so it never reads or writes the dashboard's own storage in this browser:
+the world you chose, each world's saved settings, and the **Can see what agents say** switches are
+left as they were.
+
+**Privacy mode is the stop's to say.** At the `private` stop every world, built-in or yours, gets
+the private scene (and its requests are refused, as on the dashboard); at every other stop every
+world gets the whole scene, a world of yours too, since nothing in it is real. The switch in the list
+of worlds plays no part here.
+
+**When a world breaks**, the page shows what the dashboard shows: the error strip over a world that
+reported an error after it started, and the panel in place of a world that didn't start in 5 seconds
+(with its first error, file and line), or that tried to leave the page. A world that isn't there
+(`?world=u/nope`) gets the panel too, never a blank page. On this page the panel's **Back to the
+farm** opens the farm's test page at the same stop; **Try again** loads the world again; there is no
+list of worlds here, so **Show the list** does nothing.
+
+**For a screenshot.** Once a stop's last snapshot has been shown for a second, the page sets
+`document.body.dataset.shown` to the stop's name (a stop with two snapshots shows the second 1.5
+seconds after the world starts). Wait for it, then take the picture. With Playwright (Claude Code's
+`playwright` tools, or a script):
+
+```js
+await page.goto('http://localhost:7777/worlds/test?world=u/my-world&stop=deploy-failed');
+await page.waitForFunction(() => document.body.dataset.shown === 'deploy-failed');
+await page.screenshot({ path: 'deploy-failed.png' });
+```
+
+The page doesn't reload the world when you save its files (it has no line to the collector): reload
+the page. The world moves (motion is on), so two pictures of the same stop may differ by a step.
+
+The stops, in the order the tour plays them:
+
+| Stop | What it shows |
+|---|---|
+| `everyone` | A busy morning: every state at once |
+| `one` | One agent |
+| `sixteen` | Sixteen agents |
+| `nobody` | No agents at all |
+| `working` | Working: editing a file |
+| `waiting` | Waiting on you: a permission |
+| `question` | Waiting on you: a question |
+| `plan-ask` | Waiting on you: a plan to approve |
+| `turn` | Your turn: it finished |
+| `idle` | Idle |
+| `stale` | Stale: untouched for days |
+| `nap` | Napping: it wakes up by itself |
+| `thinking` | Thinking between steps |
+| `steps` | Every step, and plan mode |
+| `context-low` | A repo with little context used |
+| `context-high` | A repo nearly full of context |
+| `compaction` | A compaction: the context starts again (two snapshots: full, then emptied) |
+| `compacted-plain` | After a compaction, without seeing it happen |
+| `deploy-ok` | Deploy: ok |
+| `deploy-failed` | Deploy: failed |
+| `deploy-running` | Deploy: running |
+| `deploy-skipped` | Deploy: skipped (Actions didn't run) |
+| `two-working` | Two agents in one repo |
+| `collision` | A collision: two agents writing one repo |
+| `pigeon` | A message from one agent to another |
+| `merged` | A pull request merged (two snapshots: open, then merged) |
+| `mcp` | An MCP call: a connector cart |
+| `subagents` | Subagents running and done |
+| `limits-low` | The 5-hour and weekly limits: barely used |
+| `limits-high` | The 5-hour and weekly limits: nearly used up |
+| `day` | By day |
+| `night` | By night (the stop's sky is `night`) |
+| `private` | Privacy mode: no words, paths or names |
+
+The tour is a classic script that sets `window.AgentvilleTour`: `stops` (each `{ name, title, sky,
+private, frames }`, `frames` being one or two snapshots in the collector's shape), `stop(name)`,
+`answer(act)` (the made-up answers), `checks` (pairs of stops that differ in one thing, such as
+`deploy-ok` and `deploy-failed`) and `NOW` (the fixed time the snapshots are set at, 9 October 2026,
+09:00 UTC).
 
 ## What a world can't do
 

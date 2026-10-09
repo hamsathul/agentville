@@ -1,7 +1,8 @@
 // Worlds, the page's side. The farm (and, later, any world) runs in a sandboxed frame with no token:
 // this file builds the scene from each snapshot (web/scene.js), carries messages both ways, checks every
 // one that comes back and drops the rest, keeps each world's settings, and answers the frame's two file
-// requests. To app.js it is window.TrackerFarm, as the farm always was. Classic script, no dependencies.
+// requests. To app.js it is window.TrackerFarm, as the farm always was. The world test page
+// (web/worlds/test/) mounts it too: one world, made-up answers, settings in memory. Classic script, no dependencies.
 (() => {
   'use strict';
 
@@ -27,6 +28,12 @@
     remove: key => { try { localStorage.removeItem(key); } catch { /* this page only */ } },
     keys: () => { try { return Array.from({ length: localStorage.length }, (_, i) => localStorage.key(i)); } catch { return []; } },
   };
+  /** Settings kept in memory only (the test page): the dashboard's own, in this browser, are never read or written. */
+  const memoryStore = (initial = {}) => {
+    const m = new Map(Object.entries(initial).map(([k, v]) => [k, String(v)]));
+    return { get: k => m.get(k) ?? null, set: (k, v) => { m.set(k, String(v)); }, remove: k => { m.delete(k); }, keys: () => [...m.keys()] };
+  };
+  let store = browserStore; // the dashboard's browser storage; the test page's own in memory
   const tick = () => (typeof performance !== 'undefined' ? performance.now() : Date.now()); // a steady clock: a wall-clock jump can't block actions
   const FETCH_MS = 30_000, STRIP_QUIET_MS = 5000; // a world's file request is cut off then; a closed strip stays closed this long
   const START_MS = 5000; // a world that has not said `ready` by then is replaced by a panel
@@ -130,7 +137,8 @@
 
   // A world from your folder sees no words or paths until you allow it, per browser (a setting no world can reach: its names can't hold ':').
   const CAN_SEE = key => `tracker-world-cansee:${key}`;
-  const isPrivate = key => key.startsWith('u/') && browserStore.get(CAN_SEE(key)) !== 'on';
+  // The test page says, per stop, whether the world is private (opts.private), whatever the switch says.
+  const isPrivate = key => opts.private ?? (key.startsWith('u/') && store.get(CAN_SEE(key)) !== 'on');
   const SESSION_PREFS = new Set(['view']);
   const sessionPrefs = new Map(); // world → { name: value }: kept for this page's life only, never in the browser
   let host = null, frame = null, opts = {}, world = 'farm', scene = null, selectedId = null, loaded = false;
@@ -150,7 +158,7 @@
   let hidden = false; // the world is out of sight (the list view is showing): it can't make the page do anything
   const settingsNow = () => {
     const nav = opts.navState?.() ?? {};
-    return { still: Boolean(opts.still), theme: nav.theme ?? 'auto', nav, bell: browserStore.get('tracker-bell') === 'on' };
+    return { still: Boolean(opts.still), theme: nav.theme ?? 'auto', nav, bell: store.get('tracker-bell') === 'on' };
   };
   // Every message after `start` goes over the port (scene, settings, select, reply). `start` itself is
   // posted to the frame with the port transferred alongside it (see handle('loaded')); nothing else uses
@@ -170,9 +178,9 @@
     const prefix = prefKey(world, '');
     saved.clear();
     savedTotal = 0;
-    for (const k of browserStore.keys()) {
+    for (const k of store.keys()) {
       if (!k?.startsWith(prefix) || k === prefKey(world, 'migrated')) continue;
-      const name = k.slice(prefix.length), length = String(browserStore.get(k) ?? '').length;
+      const name = k.slice(prefix.length), length = String(store.get(k) ?? '').length;
       saved.set(name, length);
       savedTotal += name.length + length;
     }
@@ -233,7 +241,7 @@
         port = channel.port1;
         port.onmessage = ev => receive(ev.data); // a listener on the port: it, not the window, carries the frame's messages from here
         // `start` is the one message sent over the window, to hand the frame the other end of the port.
-        frame?.contentWindow?.postMessage({ type: 'start', world, prefs: { ...loadPrefs(world), ...sessionPrefs.get(world) }, settings: settingsNow() }, '*', [channel.port2]);
+        frame?.contentWindow?.postMessage({ type: 'start', world, prefs: { ...loadPrefs(world, store), ...sessionPrefs.get(world) }, settings: settingsNow() }, '*', [channel.port2]);
         measureSaved();
         sendScene();
         post({ type: 'select', id: selectedId });
@@ -243,11 +251,14 @@
         break;
       }
       case 'leaving': fail('left'); break; // its document is going away: stopped before any page it goes to can speak
-      case 'ready':
+      case 'ready': {
+        const first = !ready; // a world that says `ready` again: the test page hears it once
         ready = true;
         clearTimeout(startTimer);
         if (lastError) showStrip(lastError); // an error it threw while starting
+        if (first) opts.onReady?.();
         break;
+      }
       case 'error': {
         if (ready) showStrip(act); else lastError ??= act; // before it started: the first error is the cause (the bridge's own "did not register" follows it)
         const key = `${act.message}@${act.where}`;
@@ -262,7 +273,7 @@
       case 'startSession': opts.onStartSession?.(); break;
       case 'showRepos': opts.onShowRepos?.(); break;
       case 'nav': opts.onNav?.(act.what); pushSettings(); break;
-      case 'bell': browserStore.set('tracker-bell', act.on ? 'on' : 'off'); opts.onBell?.(act.on); pushSettings(); break;
+      case 'bell': store.set('tracker-bell', act.on ? 'on' : 'off'); opts.onBell?.(act.on); pushSettings(); break;
       case 'motion': opts.still = act.still; opts.onMotion?.(act.still); pushSettings(); break;
       case 'store': {
         if (SESSION_PREFS.has(act.key)) { sessionPrefs.set(world, { ...sessionPrefs.get(world), [act.key]: act.value }); break; } // memory only, outside the caps
@@ -271,7 +282,7 @@
           if (!storeRefused) { storeRefused = true; console.warn(`The ${world} world keeps more settings than the page allows (${STORE_KEYS_MAX}, ${STORE_TOTAL_MAX / 1024} KB in all); the rest are not saved.`); }
           break;
         }
-        browserStore.set(prefKey(world, act.key), act.value);
+        store.set(prefKey(world, act.key), act.value);
         saved.set(act.key, act.value.length);
         savedTotal = total;
         break;
@@ -281,7 +292,8 @@
       case 'request': {
         const mine = generation;
         inFlight++; // counts every fetch still running, whichever frame asked
-        void fetchFor(opts.token, act).then(r => {
+        // the test page answers with made-up data (opts.answer); the dashboard fetches it with the token
+        void (opts.answer ? Promise.resolve(opts.answer(act)) : fetchFor(opts.token, act)).then(r => {
           inFlight--;
           if (mine !== generation) return; // the world was replaced, or its frame loaded again, meanwhile
           if (r.ok && act.what === 'agentFiles') {
@@ -302,18 +314,19 @@
   let token = null, worldsInfo = [FARM], folder = null, info = FARM, resolvedOnce = false, worldShown = null;
   /** The worlds there are (the collector's list), and the one to show. */
   async function resolveWorld() {
+    if (opts.world) return { builtIn: !opts.world.key.startsWith('u/'), icon: '🧩', description: '', nouns: {}, preview: null, error: null, name: opts.world.key, ...opts.world }; // the test page: this world, no list, no saved choice
     let listed = false;
     try {
       const r = await fetch('/api/worlds', { headers: { 'x-tracker-token': token } });
       const body = r.ok ? await r.json() : null;
       if (Array.isArray(body?.worlds) && body.worlds.length) { worldsInfo = body.worlds; folder = body.folder ?? null; listed = true; }
     } catch { /* the collector is away: the farm */ }
-    const saved = browserStore.get(CHOICE);
+    const saved = store.get(CHOICE);
     const pick = worldsInfo.find(w => w.key === saved && !w.error) ?? worldsInfo.find(w => w.key === 'farm') ?? FARM;
     // Forget the saved choice only at the first resolve (startup: the world was gone or broken while the
     // dashboard was closed), and only when the list really loaded. A later `worlds` event or opening of
     // the list resolves again, but a world that is briefly invalid mid-save must not lose the choice.
-    if (!resolvedOnce && listed && saved && pick.key !== saved) browserStore.remove(CHOICE);
+    if (!resolvedOnce && listed && saved && pick.key !== saved) store.remove(CHOICE);
     resolvedOnce = true;
     return pick;
   }
@@ -328,7 +341,7 @@
   function choose(key) {
     const w = worldsInfo.find(x => x.key === key && !x.error);
     if (!w) return;
-    browserStore.set(CHOICE, key);
+    store.set(CHOICE, key);
     info = w;
     (opts.onWorld ?? worldShown)?.(w);
     if (key === world && frame) return; // the one already showing: its frame, and all it remembers, stay
@@ -462,6 +475,8 @@
     host = el;
     opts = { ...options, still };
     token = options.token ?? token;
+    // The test page keeps the world's settings in memory, starting from the stop's; the dashboard, in the browser.
+    store = options.memory ? memoryStore(Object.fromEntries(Object.entries(options.memory.prefs ?? {}).map(([n, v]) => [prefKey(options.world?.key ?? 'farm', n), v]))) : browserStore;
     addEventListener('message', onMessage);
     // the page's own settings (theme, sidebar, live) reach the frame's buttons; the diary's times stay fresh
     timer = setInterval(() => { pushSettings(); if (!document.hidden) renderDiary(opts.diary, diary); }, 1000);
@@ -553,7 +568,7 @@
   }
   /** Whether one of your worlds may see what agents say; the world starts again with the scene it may now see. */
   function setCanSee(key, on) {
-    if (on) browserStore.set(CAN_SEE(key), 'on'); else browserStore.remove(CAN_SEE(key));
+    if (on) store.set(CAN_SEE(key), 'on'); else store.remove(CAN_SEE(key));
     if (host && frame && key === world) createFrame(world); // a world showing its failure panel restarts on Try again, or on a save
     if ($('worlds-dlg')?.open) {
       renderList();

@@ -1,0 +1,44 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>World test page</title>
+<link rel="stylesheet" href="/base.css">
+<style>
+  body { margin: 0; background: var(--page); color: var(--text); font: 13px/1.4 system-ui, sans-serif; display: grid; grid-template-rows: auto 1fr; height: 100vh; }
+  header { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; padding: 8px 12px; border-bottom: 1px solid var(--line); }
+  #stop-title { color: var(--muted); }
+  main { display: grid; grid-template-columns: 1fr 260px; min-height: 0; }
+  #world { position: relative; display: flex; flex-direction: column; min-height: 0; }
+  #world > .world-frame { flex: 1; min-height: 0; width: 100%; border: 0; display: block; }
+  aside { border-left: 1px solid var(--line); padding: 8px 10px; overflow: auto; }
+  aside h2 { font-size: 12px; margin: 10px 0 4px; color: var(--muted); }
+  aside ol, aside ul { margin: 0; padding-left: 18px; }
+  #diary time { margin-left: 6px; color: var(--faint); }
+  .note { padding: 16px; max-width: 560px; }
+  @media (max-width: 700px) { main { grid-template-columns: 1fr; } aside { border-left: 0; border-top: 1px solid var(--line); } }
+</style>
+</head>
+<body>
+<header>
+  <b id="world-name">World test page</b>
+  <button type="button" class="act" id="prev" aria-label="Previous stop">◀</button>
+  <select id="stops" aria-label="Tour stop"></select>
+  <button type="button" class="act" id="next" aria-label="Next stop">▶</button>
+  <label><input type="checkbox" id="play"> Play the tour</label>
+  <span id="stop-title"></span>
+</header>
+<main>
+  <section id="world" aria-label="The world"></section>
+  <aside>
+    <h2>What the world asked the page to do</h2><ol id="asked"></ol>
+    <h2>Its diary</h2><ul id="diary"></ul>
+  </aside>
+</main>
+<script src="/scene.js"></script>
+<script src="/worlds.js"></script>
+<script src="/worlds/test/tour.js"></script>
+<script src="/worlds/test/test.js"></script>
+</body>
+</html>

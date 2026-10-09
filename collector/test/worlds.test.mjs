@@ -1043,3 +1043,62 @@ test('the click guard: a keyboard-activated click is caught only while the windo
   p.farm.armClickGuard();
   assert.equal(p.farm.clickGuardBlocks(0), true, 'while the window is live, even a keyboard click waits');
 });
+
+/** The test page's mount: a fixed world, made-up answers, settings in memory; localStorage spied on. */
+async function testPage(extra = {}) {
+  const p = await page({ mounted: false });
+  const touched = [];
+  const real = p.ctx.localStorage;
+  // Every touch counts, not only calls: reading `length` (an empty store's keys()) is one too.
+  p.ctx.localStorage = new Proxy(real, { get: (t, k) => (typeof t[k] === 'function' ? (...a) => { touched.push([k, ...a]); return t[k](...a); } : (touched.push([k]), t[k])) });
+  // The harness answers the list of worlds without noting it: noted here, so "no list fetched" can fail.
+  const realFetch = p.ctx.fetch;
+  p.ctx.fetch = (url, init) => { if (url === '/api/worlds') p.fetches.push([url, init?.headers?.['x-tracker-token']]); return realFetch(url, init); };
+  const ready = [];
+  p.farm.mount(p.host, { ...p.options, token: undefined, world: { key: 'starter' }, memory: { prefs: { sky: 'night' } }, answer: act => ({ ok: true, status: 200, data: { made: act.what } }), onReady: () => ready.push(1), ...extra });
+  await p.settle();
+  return { ...p, touched, ready };
+}
+
+test('the test page: settings in memory only, never the dashboard\'s storage', async () => {
+  const p = await testPage();
+  p.farm.update(snap);
+  p.from({ type: 'loaded' });
+  assert.equal(p.posted.find(m => m.type === 'start').prefs.sky, 'night');
+  p.from({ type: 'store', key: 'zoom', value: '2' });
+  p.from({ type: 'ready' });
+  await p.settle();
+  assert.deepEqual(p.touched, [], 'localStorage was never read or written');
+});
+
+test('the test page: a fixed world, no list fetched, its frame at /world/<key>/', async () => {
+  const p = await testPage();
+  assert.equal(p.frame.src, '/world/starter/');
+  assert.ok(!p.fetches.some(([url]) => url === '/api/worlds'));
+});
+
+test("the test page: a request is answered by answer(), not the collector", async () => {
+  const p = await testPage();
+  p.farm.update(snap);
+  p.from({ type: 'loaded' });
+  p.from({ type: 'request', id: 3, kind: 'repoTouched', repo: '/code/shop/web' });
+  await p.settle();
+  assert.deepEqual(p.fetches, []);
+  const reply = p.posted.find(m => m.type === 'reply' && m.id === 3);
+  assert.equal(reply.ok, true);
+  assert.equal(JSON.stringify(reply).includes('repoTouched'), true, 'the made-up answer came back');
+});
+
+test('the test page: private decides, whatever the can-see switch; onReady once', async () => {
+  const on = await testPage({ private: true });
+  on.farm.update(snap);
+  on.from({ type: 'loaded' });
+  assert.equal(on.posted.find(m => m.type === 'scene').scene.private, true, 'a built-in world, private because the stop says so');
+  on.from({ type: 'ready' });
+  on.from({ type: 'ready' });
+  assert.equal(on.ready.length, 1);
+  const off = await testPage({ private: false, world: { key: 'u/space' } });
+  off.farm.update(snap);
+  off.from({ type: 'loaded' });
+  assert.equal(off.posted.find(m => m.type === 'scene').scene.private, false, 'one of yours, shown in full because the stop says so');
+});
