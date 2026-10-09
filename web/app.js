@@ -27,6 +27,7 @@ function overviewHtml(a) {
     ${shellsHtml(a)}
     ${questionHtml(a)}
     ${composeHtml(a)}
+    ${notesHtml(a)}
     ${asideHtml(a)}
     ${conversationHtml(a)}
     ${activityHtml(a)}
@@ -53,6 +54,7 @@ function render() {
   document.title = needs ? `(${needs}) Agentville` : 'Agentville';
   window.Agentville?.favicon(needs > 0); // a red light on the tab's farmhouse while an agent waits
   refreshFullFeeds();
+  refreshNotes(centreAgent()); // the shown session's notes, when they changed
   refreshSubagents();
   void followConversation(); // the conversation dialog, if open, takes the new messages
   renderConvoCompose(); // and its message box
@@ -217,6 +219,7 @@ function farmSideHtml(a) {
     ${shellsHtml(a)}
     ${questionHtml(a)}
     ${composeHtml(a)}
+    ${notesHtml(a)}
     ${asideHtml(a)}
     ${conversationHtml(a)}`;
 }
@@ -234,14 +237,22 @@ function showWorld(w) {
   if (title) title.textContent = noun;
   $('farm-diary-pane').setAttribute('aria-label', noun);
 }
-/** A farmer was clicked: show it in the farm's sidebar, where it can be answered or messaged. */
+/** A farmer was clicked: show it in the farm's sidebar, where it can be answered or messaged; its speech bubble: its conversation. */
 async function pickFromFarm(id, { from } = {}) {
   if (selected !== id) openChildren.clear();
   selected = id;
   farmTab = 'agent';
   save('tracker-farm-tab', farmTab);
+  const agent = snap?.agents.find(a => a.id === id);
+  // A speech bubble opens the whole conversation over the farm (its farmer picked behind it), unless
+  // it waits on you or asks something answered with a button: that is done in the sidebar.
+  if (from === 'say' && agent && agent.kind !== 'codex' && agent.state !== 'waiting' && !agent.question) {
+    if (farmSide) { applyFarmSide(); render(); }
+    await openConversation(id);
+    return;
+  }
   // A speech bubble only shows the start of a message: when its reply was cut, open the sidebar with it whole.
-  const reply = snap?.agents.find(a => a.id === id)?.feed?.find(f => f.kind === 'reply');
+  const reply = agent?.feed?.find(f => f.kind === 'reply');
   if (from === 'say' && reply?.more && !fullFeeds.has(id)) await loadFullFeed(id);
   if (farmSide) { applyFarmSide(); render(); }
   else setFarmSide(true);
@@ -373,6 +384,14 @@ document.addEventListener('click', async e => {
   }
   if (el.id === 'msg-send' || el.id === 'convo-msg-send') { await sendMessage(d.agent, el); return; }
   if (el.id === 'aside-send') { await askAside(d.agent, el); return; }
+  if (el.id === 'note-add') { await addNote(d.agent); return; }
+  if (d.noteUse) { useNote(d.agent, d.noteUse); return; }
+  if (d.noteSend) { await sendNote(d.agent, d.noteSend, el); return; }
+  if (d.noteDelete) { await changeNotes(d.agent, { op: 'delete', id: d.noteDelete }); return; }
+  if (d.notesClear !== undefined) { await changeNotes(d.agent, { op: 'clear-used' }); return; }
+  if (d.noteOpen) { openNoteEdit(d.agent, d.noteOpen); return; }
+  if (d.noteSave) { await saveNote(d.agent); return; }
+  if (d.noteCancel) { noteEdits.delete(d.agent); render(); return; }
   if (d.quickReply !== undefined) { await sendMessage(d.agent, el, d.quickReply); return; }
   if (d.quickDraft !== undefined || d.quote !== undefined) {
     const prev = msgDrafts.get(d.agent) ?? '';
@@ -719,6 +738,14 @@ document.addEventListener('keydown', e => {
     e.preventDefault();
     sendMessage(e.target.dataset.msgAgent, $(e.target.id.replace(/text$/, 'send')));
   }
+  if (sendKey(e) && e.target?.id === 'note-text') {
+    e.preventDefault();
+    void addNote(e.target.dataset.noteAgent);
+  }
+  if (e.target?.dataset?.noteEdit !== undefined && (sendKey(e) || e.key === 'Escape')) { // a note being edited: ↩ saves, Esc leaves it as it was
+    e.preventDefault();
+    if (e.key === 'Escape') { noteEdits.delete(e.target.dataset.agent); render(); } else void saveNote(e.target.dataset.agent);
+  }
   if (sendKey(e) && e.target?.id === 'aside-text') {
     e.preventDefault();
     void askAside(e.target.dataset.asideAgent, $('aside-send'));
@@ -743,8 +770,18 @@ document.addEventListener('input', e => {
     readerDrafts.set(readerKey(), t.value);
     return;
   }
+  if (t?.dataset?.noteAgent !== undefined) {
+    noteDrafts.set(t.dataset.noteAgent, t.value);
+    return;
+  }
+  if (t?.dataset?.noteEdit !== undefined) {
+    const edit = noteEdits.get(t.dataset.agent);
+    if (edit) edit.text = t.value;
+    return;
+  }
   if (t?.dataset?.msgAgent !== undefined) {
     msgDrafts.set(t.dataset.msgAgent, t.value);
+    if (!t.value.trim()) notesInDraft.delete(t.dataset.msgAgent); // cleared, not sent: the notes in it stay unused
     resetRecall(); // typing: the next ↑ starts from your newest message again, keeping this
     return;
   }
@@ -755,6 +792,64 @@ document.addEventListener('input', e => {
   if (!t?.dataset?.tool || t.dataset.q === undefined || t.type !== 'text') return;
   draftFor(t.dataset.tool).other.set(Number(t.dataset.q), t.value);
 });
+
+/* ---------- your notes on a session ---------- */
+
+const noteOf = (agentId, id) => notesCache.get(agentId)?.notes?.find(n => n.id === id);
+/** A change to a session's notes (delete, clear used…): the list it answers with is shown. */
+async function changeNotes(agentId, change) {
+  const r = await post('/api/actions/note', { agentId, ...change });
+  if (r.ok) tookNotes(agentId, r);
+  else notice(`Notes: ${r.error}`);
+  render();
+  return r;
+}
+async function addNote(agentId) {
+  const text = (noteDrafts.get(agentId) ?? '').trim();
+  if (!text) { notice('Write the note first.'); return; }
+  const r = await post('/api/actions/note', { agentId, op: 'add', text });
+  if (!r.ok) { notice(`Notes: ${r.error}`); return; }
+  tookNotes(agentId, r);
+  noteDrafts.delete(agentId);
+  render();
+  $('note-text')?.focus?.(); // ready for the next one
+}
+/** ↳ Use: the note goes at the end of the message box, to edit before sending; it counts as used once that message is sent. */
+function useNote(agentId, id) {
+  const n = noteOf(agentId, id);
+  if (!n) return;
+  const prev = msgDrafts.get(agentId) ?? '';
+  msgDrafts.set(agentId, prev.trim() ? `${prev.replace(/\s*$/, '')}\n\n${n.text}` : n.text);
+  if (!notesInDraft.has(agentId)) notesInDraft.set(agentId, new Set());
+  notesInDraft.get(agentId).add(id);
+  resetRecall();
+  render();
+  $('msg-text')?.focus?.();
+}
+/** Send now: the note as your own message, as the message box sends it; then it is used. */
+async function sendNote(agentId, id, button) {
+  const n = noteOf(agentId, id);
+  if (!n) return;
+  if (!(await sendMessage(agentId, button, n.text))) return;
+  tookNotes(agentId, await post('/api/actions/note', { agentId, op: 'used', ids: [id] }));
+  render();
+}
+function openNoteEdit(agentId, id) {
+  const n = noteOf(agentId, id);
+  if (!n) return;
+  noteEdits.set(agentId, { id, text: n.text });
+  render();
+  document.querySelector?.('.note-edit')?.focus?.();
+}
+async function saveNote(agentId) {
+  const edit = noteEdits.get(agentId);
+  if (!edit) return;
+  const r = await post('/api/actions/note', { agentId, op: 'edit', id: edit.id, text: edit.text });
+  if (!r.ok) { notice(`Notes: ${r.error}`); return; }
+  tookNotes(agentId, r);
+  noteEdits.delete(agentId);
+  render();
+}
 
 async function sendAnswer(agentId, toolUseId) {
   const agent = snap?.agents.find(a => a.id === agentId);

@@ -117,6 +117,9 @@ test('a fork resumes the cut copy as a new session, named as a fork, its prompt 
     `cd '/code/my app' && exec claude --resume '/t/forks/f-1/s.jsonl' --fork-session --name 'Bob'\\''s work (fork)' --permission-mode plan --model 'sonnet' --effort high`);
   assert.equal(forkCommand('/code/app', '/t/forks/f-2/s.jsonl', 'default', { prefillFile: '/t/forks/f-2/prompt.txt' }),
     `cd '/code/app' && exec claude --resume '/t/forks/f-2/s.jsonl' --fork-session --prefill "$(cat '/t/forks/f-2/prompt.txt')"`);
+  assert.equal(forkCommand('/code/app', '/t/forks/f-4/s.jsonl', 'default', { sessionId: '6f1c2a3b-0000-4000-8000-000000000002' }),
+    `cd '/code/app' && exec claude --resume '/t/forks/f-4/s.jsonl' --fork-session --session-id 6f1c2a3b-0000-4000-8000-000000000002`); // its id chosen here, so its notes can go with it
+  assert.throws(() => forkCommand('/code/app', '/t/s.jsonl', 'default', { sessionId: "x'; rm -rf ~" }), /session id/);
   assert.throws(() => forkCommand('/code/app', 'relative.jsonl'), /transcript/);
   assert.throws(() => forkCommand('/code/app', '/t/s.jsonl', 'yolo'));
   assert.throws(() => forkCommand('/code/app', '/t/s.jsonl', 'default', { model: 'gpt' }));

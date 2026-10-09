@@ -146,9 +146,10 @@ export function claudeCommand(cwd, resume, mode = 'default', { model = 'default'
  * mode with a model and effort for it alone. `prefillFile` holds the text for its prompt box, read by
  * the shell (--prefill), so the text never goes into the command line.
  */
-export function forkCommand(cwd, copy, mode = 'default', { model = 'default', effort, name, prefillFile } = {}) {
+export function forkCommand(cwd, copy, mode = 'default', { model = 'default', effort, name, prefillFile, sessionId } = {}) {
   if (!isAbsolute(copy) || !copy.endsWith('.jsonl')) throw new Error('not a transcript copy');
-  return `cd ${shellQuote(cwd)} && exec claude --resume ${shellQuote(copy)} --fork-session${name ? ` --name ${shellQuote(name)}` : ''}${startFlags(mode, { model, effort })}${prefillFlag(prefillFile)}`;
+  if (sessionId !== undefined && !SESSION_ID.test(sessionId)) throw new Error('not a session id');
+  return `cd ${shellQuote(cwd)} && exec claude --resume ${shellQuote(copy)} --fork-session${sessionId ? ` --session-id ${sessionId}` : ''}${name ? ` --name ${shellQuote(name)}` : ''}${startFlags(mode, { model, effort })}${prefillFlag(prefillFile)}`;
 }
 
 /** Text for the prompt box (--prefill), read from a file by the shell, so it never goes into the command line. */

@@ -423,6 +423,8 @@ function makePixelView(th, prefs) {
     const text = saysOn && ACTIVE.has(f.state) && !f.nap ? (f.state === 'waiting' ? f.ask : f.question || f.said) : '';
     let s = says.get(f.id);
     const min = closedSays.get(f.id) === sayKey(f);
+    // what a click does mirrors the page's pickFromFarm: what the farmer said opens its whole conversation; waiting, a button question and codex open the sidebar
+    const toSidebar = f.state === 'waiting' || !!f.question || f.kind === 'codex';
     if (s && (!text || s.min !== min)) { s.el.remove(); says.delete(f.id); s = null; }
     if (!text) return;
     if (!s) {
@@ -438,11 +440,12 @@ function makePixelView(th, prefs) {
     if (min) {
       const cls = `px-say-min st-${f.state}`;
       if (s.el.className !== cls) { s.el.className = cls; s.el.title = `${f.name} ${f.state === 'waiting' ? 'is waiting for you' : 'said something'}: click the 💬 to show it`; }
-    } else if (s.text !== text) {
+    } else if (s.text !== text || s.toSidebar !== toSidebar) {
       s.el.querySelector('span').textContent = text;
       s.el.className = `px-say st-${f.state}${f.question ? ' q' : ''}`;
-      s.el.title = `${f.name}: ${text} (click to open it in the sidebar)`;
+      s.el.title = `${f.name}: ${text} (click to ${toSidebar ? 'open it in the sidebar' : 'read the whole conversation'})`;
       s.text = text;
+      s.toSidebar = toSidebar;
       s.w = null; // measured again
     }
     s.x = Math.round(b.x * cs);

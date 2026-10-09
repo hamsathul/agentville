@@ -157,7 +157,7 @@ function mcpUsed(model, childModels, now) {
   return last.size ? [...last].map(([server, at]) => ({ server, at })).sort((x, y) => y.at - x.at).slice(0, 8) : undefined;
 }
 
-export function buildAgent({ base, model, registry, proc, command, cpuHistory = [], childModels = new Map(), offer, beacon, repoOf, now, cfg, home, asides, setting, shells }) {
+export function buildAgent({ base, model, registry, proc, command, cpuHistory = [], childModels = new Map(), offer, beacon, repoOf, now, cfg, home, asides, setting, shells, notes }) {
   const mode = modeOf(model, command, registry?.startedAt);
   // An older mod offers every call Claude Code's check hands on, even where the mode decides it without you.
   const ask = offer?.kind === 'permission' && DECIDES_ALONE.has(mode) ? undefined : askOf(offer, model, now);
@@ -200,6 +200,7 @@ export function buildAgent({ base, model, registry, proc, command, cpuHistory = 
     turn: derived.state === 'working' ? turnOf(model, beacon) : undefined,
     asides: asides?.length ? asides : undefined, // side questions (/btw) asked from the dashboard, newest first
     setting, // the last model or effort switch asked from the dashboard, and what Claude Code said
+    notes, // your notes on it: how many, how many unused, and a rev that moves with each change (never their text)
     usage: beacon?.usage ? { costUsd: beacon.usage.costUsd, contextPercent: beacon.usage.contextPercent } : undefined, // the plan's windows go in snapshot.plan
     lastActivityAt: model?.lastActivityAt || undefined,
     now: nowOf(model),
