@@ -9,7 +9,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import vm from 'node:vm';
-import { RUNNER, runContained, worldFiles } from '../../scripts/lib/contained.mjs';
+import { RUNNER, plainLines, runContained, worldFiles } from '../../scripts/lib/contained.mjs';
 import { RULES, checkWorld, creatureProblems } from '../../scripts/lib/world-vm.mjs';
 
 const fixture = n => fileURLToPath(new URL(`./fixtures/worlds/${n}`, import.meta.url));
@@ -115,6 +115,35 @@ test('the command: exit 0 for a clean world, 1 with a ✗ line for a creature pr
   const bad = run('one-action', '--worlds', fixture(''));
   assert.equal(bad.status, 1, bad.stdout + bad.stderr);
   assert.match(bad.stdout, /✗ creatures: cat: 1 action in its menu/);
+});
+
+test("the command prints a world's words plain: no control sequence of the world's reaches your terminal", () => {
+  const r = run('escapes', '--worlds', fixture(''));
+  assert.equal(r.status, 1, r.stdout + r.stderr);
+  for (const [name, out] of [['stdout', r.stdout], ['stderr', r.stderr]]) {
+    assert.ok(!out.includes('\x1b'), `no ESC in ${name}: ${JSON.stringify(out)}`);
+    assert.ok(!out.includes('\x07'), `no BEL in ${name}`);
+    assert.ok(!/[\x80-\x9f]/.test(out), `no C1 control in ${name}`);
+    assert.ok(!out.includes('\r'), `no carriage return in ${name}`);
+  }
+  const lines = r.stdout.split('\n');
+  assert.ok(lines.includes('  ✗ everyone: Error2J: 2J ✓ clean'), 'what is left of the message is there, as plain text on its line');
+  assert.ok(lines.includes('  ✗ creatures: cat: lines.purr2J is a list of lines'));
+  assert.ok(lines.includes("  · outfit parts the people kit doesn't have (drawn as the default): hat:cap2J"));
+});
+
+test("what a contained run prints reaches you a line at a time through plain()", () => {
+  const tmp = realpathSync(mkdtempSync(join(tmpdir(), 'check-world-'))), dir = join(tmp, 'world');
+  try {
+    mkdirSync(dir);
+    writeFileSync(join(dir, 'world.js'), '// a world\n');
+    const code = "process.stdout.write('one\\x1b]0;owned\\x07\\n\\x1b[2Jtwo\\r\\n'); process.stderr.write('three\\x9b2J\\n'); process.exitCode = 3;";
+    const r = runContained(worldFiles(dir), ['-e', code]);
+    assert.equal(r.status, 3, 'its exit code is kept');
+    assert.equal(plainLines(r.stdout), 'one\ntwo\n');
+    assert.equal(plainLines(r.stderr), 'three2J\n');
+    assert.equal(plainLines(null), '');
+  } finally { rmSync(tmp, { recursive: true, force: true }); }
 });
 
 /* ---------- containment: the command's world code runs in a Node that may read only the check's files ---------- */

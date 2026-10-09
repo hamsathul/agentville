@@ -7,14 +7,15 @@
 //
 // The world's code runs contained, in a Node of its own (scripts/lib/contained.mjs): it can read only the
 // SDK and the world's world.js and world.json, and can't write or start programs. It can still reach the
-// network. A world whose world.js or world.json leads out of its folder isn't run, nor is any world with a
-// Node that can't contain it.
+// network. It doesn't get your terminal: what it prints is printed here, without control sequences. A world
+// whose world.js or world.json leads out of its folder isn't run, nor is any world with a Node that can't
+// contain it.
 //
 //   npm run check-world -- <world> [--worlds <dir>]      <world>: farm, starter, u/<folder> or <folder>
 import { homedir } from 'node:os';
 import { join } from 'node:path';
 import { makeWorlds } from '../collector/worlds.mjs';
-import { canContain, runContained, runnerArgs, worldFiles } from './lib/contained.mjs';
+import { canContain, plainLines, runContained, runnerArgs, worldFiles } from './lib/contained.mjs';
 import { ROOT, keyOf, worldsDir } from './lib/worlds-dir.mjs';
 
 const args = process.argv.slice(2);
@@ -27,5 +28,9 @@ if (!canContain()) { console.error(`check-world needs a Node that can contain a 
 let world;
 try { world = worldFiles(dir); } catch (err) { console.error(`${key}: ${err.message}`); process.exit(1); }
 const r = runContained(world, runnerArgs(key, world));
-if (r.error || r.status === null) { console.error(`check-world couldn't run the contained check: ${r.error?.message ?? `it stopped (${r.signal})`}.`); process.exit(1); }
-process.exit(r.status);
+// The check's report, and anything else it printed, a line at a time with no control sequence in it: a world's
+// words are its own to choose, and your terminal would act on them (scripts/lib/plain-text.mjs).
+process.stdout.write(plainLines(r.stdout));
+process.stderr.write(plainLines(r.stderr));
+if (r.error || r.status === null) { console.error(`check-world couldn't run the contained check: ${r.error?.message ?? `it stopped (${r.signal})`}.`); process.exitCode = 1; }
+else process.exitCode = r.status;

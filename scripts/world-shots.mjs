@@ -12,6 +12,7 @@ import { createTrackerServer } from '../collector/server.mjs';
 import { makeWorlds } from '../collector/worlds.mjs';
 import { openChrome, sleep } from './lib/cdp.mjs';
 import { freezeScript } from './lib/freeze.mjs';
+import { oneLine } from './lib/plain-text.mjs';
 import { ROOT, keyOf, worldsDir } from './lib/worlds-dir.mjs';
 
 const args = process.argv.slice(2), opt = name => { const i = args.indexOf(name); return i >= 0 ? args[i + 1] : null; };
@@ -52,10 +53,11 @@ try {
     const png = Buffer.from((await chrome.send('Page.captureScreenshot', { format: 'png' })).result.data, 'base64');
     writeFileSync(join(OUT, `${stop}.png`), png);
     const strip = await chrome.js("document.querySelector('.world-strip')?.textContent ?? ''");
-    if (state !== 'shown') { failed++; console.log(`  ✗ ${stop}: ${state ? state.trim() : 'never showed'}`); }
-    else console.log(`  ✓ ${stop}${strip ? `  (error strip: ${strip.replace('×', '').trim()})` : ''}`);
+    // The panel's words, the strip's and the errors are the world's: printed plain (scripts/lib/plain-text.mjs).
+    if (state !== 'shown') { failed++; console.log(`  ✗ ${stop}: ${state ? oneLine(state.trim()) : 'never showed'}`); }
+    else console.log(`  ✓ ${stop}${strip ? `  (error strip: ${oneLine(strip.replace('×', '').trim())})` : ''}`);
   }
-  if (chrome.errors.length) console.log(`  errors in the page or the frame: ${chrome.errors.join(' | ')}`);
+  if (chrome.errors.length) console.log(`  errors in the page or the frame: ${chrome.errors.map(e => oneLine(e)).join(' | ')}`);
   console.log(`Pictures in ${OUT}`);
 } finally {
   await chrome.close();

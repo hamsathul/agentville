@@ -974,7 +974,9 @@ worlds are).
 **Contained, not sealed.** check-world runs a world's code on your Mac, outside the dashboard's
 sandboxed frame, so it runs it contained: in a Node of its own that can read only the SDK and the
 world's `world.js` and `world.json` (no other file of the world's), can't write or start programs, and
-is given none of your environment. A `world.js` or `world.json` that is a link out of the world's
+is given none of your environment, nor your terminal: what it prints, the world's words among it (an
+exception's message, a creature's line, a part's name), is printed without control characters, as
+`world-shots` prints a world's. A `world.js` or `world.json` that is a link out of the world's
 folder is refused before anything runs ("world.js is a link to a file outside the world's folder"); a
 link to a file inside it is fine. It can still reach the network, so check only worlds you'd trust;
 look at any other world on the test page, in its frame. The command says so in a line of its own. It

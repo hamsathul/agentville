@@ -1,15 +1,19 @@
 // check-world's containment: the world's code runs in a Node of its own under Node's permission model. It may
 // read only what a check needs (the files world-vm.mjs lists, and the world's world.js and world.json, never
 // its folder: Node follows a link inside a folder it may read); it may not write, start programs or workers;
-// and it gets no environment, so nothing secret is in reach of it. It can still reach the network.
+// and it gets no environment, so nothing secret is in reach of it. It can still reach the network. Nor does it
+// get your terminal: no input, and what it prints comes back here, to be printed plain (plainLines).
 // No dependencies.
 import { spawnSync } from 'node:child_process';
 import { lstatSync, realpathSync, statSync } from 'node:fs';
 import { join, relative, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { plain } from './plain-text.mjs';
 import { FILES } from './world-vm.mjs';
 
 export const RUNNER = fileURLToPath(new URL('./check-world-run.mjs', import.meta.url));
+const PLAIN = fileURLToPath(new URL('./plain-text.mjs', import.meta.url)); // the runner prints with it
+const LINE_MAX = 2000;
 /** Can this Node contain a world? (--permission is Node 22.13 and later, and 23.5 and later.) */
 export const canContain = () => process.allowedNodeEnvironmentFlags.has('--permission');
 
@@ -37,9 +41,11 @@ export function worldFiles(folder) {
 }
 
 /** Node's flags for a contained run that may read the check's own files and the world's two files, and nothing else. */
-export const containedFlags = world => ['--permission', ...[RUNNER, ...FILES, world.js, world.json].map(p => `--allow-fs-read=${p}`)];
-/** Runs `args` (a script and its arguments) in a contained Node with an empty environment. */
-export const runContained = (world, args, { stdio = 'inherit' } = {}) =>
+export const containedFlags = world => ['--permission', ...[RUNNER, PLAIN, ...FILES, world.js, world.json].map(p => `--allow-fs-read=${p}`)];
+/** Runs `args` (a script and its arguments) in a contained Node with an empty environment, no input, and its output piped back as text. */
+export const runContained = (world, args, { stdio = ['ignore', 'pipe', 'pipe'] } = {}) =>
   spawnSync(process.execPath, [...containedFlags(world), ...args], { stdio, env: {}, encoding: 'utf8' });
+/** What a contained run printed, a line at a time through plain(): a world that got out of its vm chooses it. */
+export const plainLines = text => String(text ?? '').split('\n').map(line => plain(line, LINE_MAX)).join('\n');
 /** The runner's arguments for a world: its key, its folder, and its two files relative to the folder. */
 export const runnerArgs = (key, world) => [RUNNER, key, world.dir, relative(world.dir, world.js), relative(world.dir, world.json)];

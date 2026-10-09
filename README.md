@@ -866,11 +866,13 @@ and can do is in [docs/worlds.md](docs/worlds.md).
   frame. It runs it contained, in a Node of its own (Node's permission model): it can read only the
   SDK and the world's `world.js` and `world.json` (no other file of the world's, so a link the world
   ships in its folder leads nowhere), can't write or start programs, and gets none of your
-  environment. A world whose `world.js` or `world.json` is itself a link out of its folder is refused
-  before anything runs. It can still reach the network, and Node's containment is a seat belt rather
-  than a sandbox, so check only worlds you'd trust; look at any other world on the test page, in its
-  frame. A Node too old to contain it (before 22.13, or 23.0 to 23.4) gets a one-line refusal, never
-  an unconfined run.
+  environment, nor your terminal: what it prints, the world's words among it, is printed without
+  control characters (as `world-shots` prints a world's), so a world can't steer your terminal. A
+  world whose `world.js` or `world.json` is itself a link out of its folder is refused before
+  anything runs. It can still reach the network, and Node's containment is a seat belt rather than a
+  sandbox, so check only worlds you'd trust; look at any other world on the test page, in its frame.
+  A Node too old to contain it (before 22.13, or 23.0 to 23.4) gets a one-line refusal, never an
+  unconfined run.
 - **Open the worlds folder** (an action: token and same origin) makes your worlds folder and shows
   it in Finder (`open -a Finder <folder>`); it only shows it, and runs nothing in it. The page keeps your
   choice of world in this browser (`tracker-world`), and nothing else about it leaves the page.
