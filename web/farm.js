@@ -2431,6 +2431,7 @@
       const parts = await Promise.all(sessions.map(async f => {
         try {
           const r = await opts.request('agentFiles', { agentId: f.id });
+          if (!r.ok && r.status === 0) throw new Error(r.error); // the request itself failed: "Could not read it."
           const files = (r.ok ? r.data : null)?.memory ?? [];
           return `<h4>${esc(f.cwd.split('/').pop() || f.cwd)}</h4>${files.length ? `<ul class="px-dl">${files.map(m => `<li><button type="button" class="act" data-farm-mem="${esc(f.id)}" data-path="${esc(m.path)}">${esc(m.label)}</button><span class="muted">${esc(m.where)}</span></li>`).join('')}</ul>` : '<p class="muted">Nothing remembered here yet.</p>'}`;
         } catch {
@@ -2671,7 +2672,7 @@
       try {
         const r = await opts.request('repoTouched', { repo: asked });
         if (asked !== key) return;
-        if (r.ok) { data = r.data; error = ''; } else error = r.error ?? `Could not load the field (HTTP ${r.status}).`;
+        if (r.ok) { data = r.data; error = ''; } else error = r.status === 0 ? `Could not load the field: ${r.error}` : r.error ?? `Could not load the field (HTTP ${r.status}).`;
       } catch (err) {
         if (asked === key) error = `Could not load the field: ${err?.message ?? err}`;
       } finally {
@@ -2749,7 +2750,7 @@
     try {
       const r = await fetch(url, { headers: { 'x-tracker-token': token } });
       const body = await r.json();
-      return r.ok ? { ok: true, status: r.status, data: body } : { ok: false, status: r.status, error: body?.error ?? `HTTP ${r.status}` };
+      return r.ok ? { ok: true, status: r.status, data: body } : { ok: false, status: r.status, error: body?.error };
     } catch (err) {
       return { ok: false, status: 0, error: String(err?.message ?? err) };
     }
