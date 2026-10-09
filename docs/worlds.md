@@ -525,6 +525,70 @@ and each field's crop, fence, soil, pennant and weather).
 
 The field close-up (a field's files) is still drawn as the farm draws it.
 
+## The people kit
+
+`window.Agentville.people` draws a person in pixels from a body and an outfit. It is loaded in every
+frame, after `pixel.js` and before the engine, so a world's `world.js` can use it at once. A person is
+14 × 16 pixels, seen from the front, from behind or from the side, standing or in a walking frame.
+
+### The look and the outfit
+
+A **look** is what one person wears: `{ hat, hatColor, band, hair, skin, top, bottom, bottomColor, extra }`.
+An **outfit** is what a world offers its people, and `lookFor(agent, outfit)` picks a look from it by the
+agent's id, so the same agent always looks the same. Every field of an outfit is optional:
+
+`{ hat?, hatColors?, hair?, skin?, top?, bottom?, bottomColors?, extra? }`
+
+- Each field is one value (no choice) or a list to pick from by the agent's id.
+- `hatColors` is a list of `[hat, band]` colour pairs, or `{ <hat name>: pairs, '*': pairs }` to give each
+  hat its own pairs (`'*'` is for the rest).
+- `bottomColors` is a list of colours; the value `'shirt'` means the agent's own colour (`f.shirt`).
+- `hair` and `skin` are lists of colours; without them the kit's own (`HAIR`, `SKIN`) are used.
+
+```js
+const { lookFor, sprite } = window.Agentville.people;
+const OUTFIT = { hat: ['cap', 'beanie'], top: 'shirt', bottom: 'overalls', extra: ['none', 'glasses'] };
+// in drawChar(f, b):
+const [ox, oy] = pixelOrigin(b, 16);
+PXG.ctx.drawImage(sprite(lookFor(f, OUTFIT), f.shirt, { view: b.walk ? b.face ?? 'down' : 'down', legs: legFrame(b), wave: f.state === 'waiting' }), ox, oy, 14 * SC, 16 * SC);
+```
+
+### What it gives you
+
+- `HATS`, `TOPS`, `BOTTOMS`, `EXTRAS`: the part names the kit draws. `HAIR`, `SKIN`, `BOTTOM_COLORS`:
+  colour lists; `HAT_COLORS`: `[hat, band]` pairs.
+- `lookFor(agent, outfit)` → a look. `hashOf(id)` and `pick(id, salt, n)` are the hash it picks with.
+- `rows(look, view = 'down', legs = 's')` → 16 strings of 14 letters, the picture before it is coloured.
+  `view` is `down`, `up`, `right` or `left` (the mirror of `right`); `legs` is `s` standing, `a` or `b` a
+  step with each foot, or `p` a pole (a scarecrow's).
+- `palette(look, shirt, overrides = null)` → each letter's colour. The shirt is exact; the rest are snapped
+  to the pixel kit's palette. `overrides` is `{ letter: colour }`.
+- `sprite(look, shirt, { view, legs, wave, palette })` → a canvas, made once per look, colour and pose.
+  `wave` puts one arm up (from the front). `palette` is `overrides` for a special person, such as a
+  scarecrow.
+- The eyes are not in the sprite: the world draws them on top (row 6, or 7 when looking down).
+
+### The parts that exist now
+
+- Hats: `straw`, `cap`, `beanie`, `bandana`, `none`.
+- Tops: `shirt`.
+- Bottoms: `overalls`.
+- Extras: `none`, `beard`, `glasses`, `cheeks`.
+
+The other worlds' clothes come in the next change.
+
+### Defaults
+
+A part the kit lacks (`hat: 'hardhatt'`) is drawn as the default, which is no hat, a shirt, overalls and
+no extra, and never throws. The names asked for and not found are collected in `people.unknown`
+(`'hat:hardhatt'`), and `check-world` lists them.
+
+### The farm
+
+The farm's farmers are this kit in farm clothes: its `FARMER` outfit (straw or dyed hats, overalls over the
+shirt, a beard, glasses or cheeks), the slate caps of codex agents, and a scarecrow, which is the same
+person in sacking colours on a pole.
+
 ## What a world can't do
 
 - It has no token, no cookies and no storage: reading them throws a `SecurityError`. It can't

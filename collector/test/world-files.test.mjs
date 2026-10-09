@@ -62,7 +62,7 @@ test('the frame runs sandboxed, its scripts from the dashboard only, and can rea
 
 test("the frame page loads the SDK's and the world's scripts in CORS mode, so their errors say what and where", () => {
   const html = readFileSync(fileURLToPath(new URL('../../web/worlds/sdk/frame.html', import.meta.url)), 'utf8');
-  for (const src of ['/world/sdk/bridge.js', '/world/sdk/pixel.js', '/world/sdk/engine.js', '__BASE__world.js']) {
+  for (const src of ['/world/sdk/bridge.js', '/world/sdk/pixel.js', '/world/sdk/people.js', '/world/sdk/engine.js', '__BASE__world.js']) {
     assert.match(html, new RegExp(`<script src="${src.replace(/[.]/g, '\\.')}" crossorigin="anonymous"></script>`), src);
   }
   assert.match(html, /<script src="\/brand\.js"><\/script>/, 'the page-script route is left as it is');
