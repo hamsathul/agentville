@@ -247,6 +247,7 @@ let answered = null;
 // What the mod reads from $.session.usage(): this session's cost and the plan's limits.
 const USAGE = { costUsd: 1.23, rateLimits: [{ kind: 'five_hour', percentUsed: 34, resetsAt: new Date(Date.now() + 2 * 3_600_000).toISOString() }, { kind: 'seven_day', percentUsed: 61, resetsAt: new Date(Date.now() + 3 * 86_400_000).toISOString() }] };
 const received = []; // messages the fake mod took from the dashboard
+const renamed = []; // names the fake mod was asked to /rename to
 const fakeMod = setInterval(() => {
   const inbox = join(state, 'messages', 'ui-asker');
   if (existsSync(inbox)) for (const name of readdirSync(inbox)) {
@@ -254,8 +255,23 @@ const fakeMod = setInterval(() => {
     received.push(JSON.parse(readFileSync(join(inbox, name), 'utf8')).text);
     unlinkSync(join(inbox, name));
   }
-  writeFileSync(join(state, 'mods', 'ui-asker.json'), JSON.stringify({ sessionId: 'ui-asker', version: 'ui-test', at: Date.now(), usage: USAGE }));
+  writeFileSync(join(state, 'mods', 'ui-asker.json'), JSON.stringify({ sessionId: 'ui-asker', version: '0.8.0', at: Date.now(), usage: USAGE }));
   if (existsSync(offer)) utimesSync(offer, new Date(), new Date());
+  const helperInbox = join(state, 'helper', 'ui-asker');
+  if (existsSync(helperInbox)) for (const name of readdirSync(helperInbox)) {
+    if (!name.endsWith('.json')) continue;
+    const req = JSON.parse(readFileSync(join(helperInbox, name), 'utf8'));
+    unlinkSync(join(helperInbox, name));
+    mkdirSync(join(state, 'helper-replies'), { recursive: true });
+    writeFileSync(join(state, 'helper-replies', `ui-asker.${req.id}.json`), JSON.stringify({ id: req.id, sessionId: 'ui-asker', kind: 'name', ok: true, text: 'Plan the crops', at: Date.now() }));
+  }
+  const cmdInbox = join(state, 'commands', 'ui-asker');
+  if (existsSync(cmdInbox)) for (const name of readdirSync(cmdInbox)) {
+    if (!name.endsWith('.json')) continue;
+    const req = JSON.parse(readFileSync(join(cmdInbox, name), 'utf8'));
+    unlinkSync(join(cmdInbox, name));
+    if (req.command === 'rename') renamed.push(req.args);
+  }
   for (const name of readdirSync(join(state, 'answers'))) {
     if (!name.endsWith('.json')) continue;
     answered = JSON.parse(readFileSync(join(state, 'answers', name), 'utf8'));
@@ -406,6 +422,17 @@ try {
   await js("document.querySelector('#center-body .note:not(.used) [data-note-send]').click()");
   for (let i = 0; i < 40 && received.at(-1) !== 'Water the beans'; i++) await sleep(150);
   check(received.at(-1) === 'Water the beans' && await until("document.querySelectorAll('#center-body .note.used').length === 2"), 'Send now sends a note as your own message, and it is used too');
+  // ✨ Helper and a suggested name
+  await js("document.querySelector('#center-body [data-name-suggest]').click()");
+  check(await until("document.getElementById('helper-dlg').open && /No API key/.test(document.getElementById('helper-body').textContent)"), '✨ while the helper is off opens ✨ Helper, which says how it calls Haiku');
+  await js("document.getElementById('helper-names').checked = true; document.querySelector('[data-helper-on]').click()");
+  check(await until("!document.getElementById('helper-dlg').open && /The helper is on/.test(document.getElementById('notice').textContent)"), 'ticked and switched on, the dialog closes');
+  await until("!!document.querySelector('#center-body [data-name-suggest]')");
+  await js("document.querySelector('#center-body [data-name-suggest]').click()");
+  check(await until("/Name it plan-the-crops\\?/.test(document.querySelector('#center-body .name-offer')?.textContent ?? '')"), '✨ asks the session’s mod; its answer comes back cleaned, as an offer under the name');
+  await js("document.querySelector('#center-body [data-name-rename]').click()");
+  for (let i = 0; i < 40 && !renamed.length; i++) await sleep(150);
+  check(renamed[0] === 'plan-the-crops' && await until("!document.querySelector('#center-body .name-offer')"), `✓ Rename runs /rename in the session (got ${JSON.stringify(renamed)})`);
   await js("document.querySelector('#center-body [data-fork=\"ui-r1\"]').click()");
   check(await until("document.getElementById('fork-dlg').open && document.getElementById('fork-mode').options.length === 5 && document.getElementById('fork-model').value === 'haiku'"), "⑂ Fork on a reply asks in what mode, model and effort, the session's own to start with");
   await js("document.getElementById('fork-go').click()");

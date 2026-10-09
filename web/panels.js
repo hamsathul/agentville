@@ -478,6 +478,40 @@ function stopHtml(a) {
   return ` <button type="button" class="act mini stop-turn" data-stop-turn="${esc(a.id)}" data-tip="${esc(tip)}"${can ? '' : ' disabled'}>■ Stop</button>`;
 }
 
+/* ---------- the helper (Haiku) and suggested names ---------- */
+
+/** The ✨ Helper dialog: what it does, how it calls Haiku, what each use sends, the daily limit, on or off. */
+function helperHtml(h = {}) {
+  const on = Boolean(h.on), limit = h.dailyLimit ?? 200;
+  return `<p>The helper does small writing jobs for the dashboard with Haiku, a small, fast Claude model. It is off until you switch it on, and does only what you tick.</p>
+    <p><b>How it calls Haiku:</b> through the Agentville mod inside one of your open Claude Code sessions, with your sign-in, on your Claude plan. No API key, nothing added to any conversation, no new session. With no session open, nothing is called.</p>
+    <label class="helper-use"><input type="checkbox" id="helper-names"${h.uses?.names ? ' checked' : ''}><span><b>Name suggestions.</b> When a new session has replied once, it suggests a short name for it (Name it login-bug? ✓ Rename · ✎ Edit · ✕), and ✨ beside a session's name asks any time. That session reads its own first three messages and the start of Claude's first reply (about 2,000 characters) and sends them to Haiku itself: the dashboard only ever sees the name.</span></label>
+    <p class="helper-limit">At most <input type="number" id="helper-limit" min="1" max="2000" value="${esc(String(limit))}"> calls a day.${on ? ` Today: ${esc(String(h.today ?? 0))} of ${esc(String(limit))} calls.` : ''}</p>
+    ${h.lastError ? `<p class="msg-bad">Last error: ${esc(h.lastError)}</p>` : ''}
+    <p class="confirm-actions"><button type="button" class="act" data-helper-cancel>Cancel</button>${on
+      ? '<button type="button" class="act" data-helper-off>Switch off</button><button type="button" class="act primary" data-helper-save>Save</button>'
+      : '<button type="button" class="act primary" data-helper-on>Switch on</button>'}</p>`;
+}
+
+const nameEdits = new Map(); // agentId → the name being edited before Rename
+
+/** ✨ beside a session's name: asks Haiku for a name (the helper on), or opens ✨ Helper (off). */
+function suggestBtn(a, h) {
+  if (a.kind === 'codex') return '';
+  const on = Boolean(h?.on && h.uses?.names);
+  return `<button type="button" class="act mini name-suggest" data-name-suggest="${esc(a.id)}" data-tip="${on ? 'Suggest a name for this session (Haiku, through its own Claude Code)' : 'Suggest a name: the helper is off, so this opens ✨ Helper'}"${a.naming?.asking ? ' disabled' : ''}>✨</button>`;
+}
+/** Under the name: the offer (Name it …? ✓ Rename · ✎ Edit · ✕), its edit box, asking…, or why there is none. */
+function nameLineHtml(a) {
+  const n = a.naming;
+  if (!n || a.kind === 'codex') return '';
+  const ids = `data-agent="${esc(a.id)}"`;
+  if (nameEdits.has(a.id)) return `<div class="name-offer"><input type="text" id="name-edit" ${ids} maxlength="60" value="${esc(nameEdits.get(a.id))}" aria-label="New name"><button type="button" class="act mini primary" data-name-save ${ids}>Rename</button><button type="button" class="act mini" data-name-cancel ${ids}>Cancel</button></div>`;
+  if (n.offer) return `<div class="name-offer">Name it <code>${esc(n.offer.name)}</code>? <button type="button" class="act mini primary" data-name-rename="${esc(n.offer.name)}" ${ids}>✓ Rename</button><button type="button" class="act mini" data-name-edit ${ids}>✎ Edit</button><button type="button" class="act mini" data-name-dismiss ${ids} aria-label="No, keep its name" data-tip="No, keep its name">✕</button></div>`;
+  if (n.asking) return '<div class="name-offer faint"><span class="spinner"></span> Asking Haiku for a name…</div>';
+  return n.error ? `<div class="name-offer msg-bad">No name: ${esc(n.error)}</div>` : '';
+}
+
 /* ---------- your notes on a session ---------- */
 // Things you may want to say to it later, or not: kept by the collector (state/notes), read when the
 // section shows and again when their rev in the snapshot moves on. Nothing goes to the session until

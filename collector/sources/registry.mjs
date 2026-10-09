@@ -39,6 +39,7 @@ export function readRegistry(dir, isAlive = isPidAlive) {
       status: entry.status ?? '',
       version: entry.version ?? '',
       startedAt: entry.startedAt ?? 0,
+      nameSource: entry.nameSource ?? '',
     });
   }
   return out;

@@ -33,6 +33,7 @@ It listens on `127.0.0.1` only and reads what Claude Code already writes to disk
   - [Stopping a turn (■ Stop)](#stopping-a-turn--stop)
   - [Side questions (/btw)](#side-questions-btw)
   - [Notes for later](#notes-for-later)
+  - [✨ Helper and suggested names](#-helper-and-suggested-names)
   - [Model, effort and permission mode](#model-effort-and-permission-mode)
   - [Starting, resuming, forking, ending and restarting sessions](#starting-resuming-forking-ending-and-restarting-sessions)
   - [Going back to an earlier point (↺ Restore)](#going-back-to-an-earlier-point--restore)
@@ -83,6 +84,8 @@ It listens on `127.0.0.1` only and reads what Claude Code already writes to disk
   just before one of your messages, which then waits in the new session's prompt box for you to change.
 - Restore a session to before one of your messages, as `/rewind` does: its conversation, its code
   (the files Claude edited since), or both.
+- Name a session with one click: a small Claude model (Haiku) suggests a short name from what it is
+  working on, through your own Claude Code, only after you switch the ✨ Helper on.
 - Start a new session in any folder of yours (type it, browse to it, or create it) or in one you've
   worked in, or find a past one (search, filter by folder, model, branch or running, sort by
   activity, start, name, folder or length) and resume it, in the permission mode, model and effort
@@ -342,6 +345,32 @@ the session until you use it.
   and how many.
 - A session holds up to 200 notes of up to 4,000 characters each.
 - Like Side question, the heading folds the section away and, folded, says how many notes are unused.
+
+### ✨ Helper and suggested names
+
+The **✨ Helper** does small writing jobs for the dashboard with Haiku, a small, fast Claude
+model. It is **off until you switch it on**, in **✨ Helper** in the header (or with ✨ beside a
+session's name), and does only what you tick there.
+
+- **How it calls Haiku:** through the Agentville mod inside one of your open Claude Code
+  sessions, with your sign-in, on your Claude plan. There is no API key, nothing is added to any
+  conversation, and no new session starts. With no session open, nothing is called.
+- **Name suggestions** (its one use so far):
+  - When a new session (started after you switched the helper on) has replied once and still
+    has Claude Code's own name (such as `agent-tracker-9c`), its sidebar offers one:
+    **Name it `login-bug`?** ✓ Rename · ✎ Edit · ✕.
+  - **✓ Rename** runs `/rename` in the session, as if you typed it. The dashboard, its terminal
+    tab, ＋ Session and messages between sessions then use the new name. A session's name is
+    also how other sessions address it.
+  - **✎ Edit** lets you change the name first. **✕** keeps its name, and it isn't offered again.
+  - **✨** beside any session's name asks for a name at any time.
+- **What it sends:** the session reads its own first three messages and the start of Claude's
+  first reply (about 2,000 characters) and sends them to Haiku itself, as it sends its whole
+  conversation to its own model. The dashboard only ever sees the name.
+- **A daily limit** (200 to start, 1 to 2,000) caps the calls. The dialog shows today's count and
+  the last error. **Switch off** stops everything at once.
+- It needs mod 0.8.0 in the session. For a session started before you updated, run
+  `/reload-plugins` in it.
 
 ### Model, effort and permission mode
 
@@ -639,8 +668,9 @@ In every session that loads it:
 The mod also does the dashboard's work inside the session:
 - delivers your answers and messages;
 - stops a turn when you press **■ Stop**;
-- runs model and effort switches;
+- runs model and effort switches, and renames (`/rename`);
 - answers side questions;
+- asks Haiku for a session's name when the ✨ Helper is on;
 - reports the session's cost, plan usage and working line.
 
 ## Configuration
@@ -786,6 +816,11 @@ and can do is in [docs/worlds.md](docs/worlds.md).
   you) until you delete them. They never leave your Mac, and nothing in one reaches the session
   until you use or send it. The snapshot the page reads every few seconds carries only how many
   there are; the text is read with the token when the section shows.
+- The ✨ Helper is off by default. Switched on, it calls Haiku only through `$.model.complete` in
+  your own sessions' Claude Code, never with a key of its own. A request file carries no
+  prompt (the mod's instruction for each job is fixed), and for a name the session sends its own
+  first messages itself: the collector and the page see only the name. Its setting and each
+  session's answer are kept in `state/helper.json` and `state/names.json`, readable only by you. No world is told the helper's setting, a suggested name or a pending offer: a world gets only the fields in the scene (see [docs/worlds.md](docs/worlds.md)).
 - **↺ Restore** is the one thing that writes to Claude Code's own files. Once the session has ended,
   it adds one line to the end of its transcript (the line `/rewind` writes; nothing is removed), and
   with code, Claude Code itself puts files back from its snapshots. Your message for the prompt box
@@ -816,6 +851,7 @@ and can do is in [docs/worlds.md](docs/worlds.md).
 | A world "tried to leave the page and was stopped" | A world may only draw in its own frame; this one tried to go to another page (a link, `location`). The page stops it the moment it starts to leave. Fix the world and save: it reloads by itself. Or press **Back to the farm** or **Show the list** |
 | A red strip over a world | The world reported an error after it started. It keeps drawing; **×** hides the strip. The page's console has the same message |
 | The farm stays empty, or says "not found" | The farm loads in a frame of its own from the collector (`/world/farm/`). After an update, restart the service (`agent-tracker restart`) and reload the page. The page's console says what a world reported, if anything |
+| **✨** says no name came, or the ✨ Helper shows a last error | No session is listening with mod 0.8.0 (`/reload-plugins` in it), today's limit is reached (it resets at midnight), or your organisation doesn't allow Haiku (the error says so) |
 
 ## Known limits
 

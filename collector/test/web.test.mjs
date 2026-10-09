@@ -1543,6 +1543,88 @@ test('folded, Notes says how many are unused; a session with none has nothing to
   assert.doesNotMatch(codex.side(), /data-group="notes"/);
 });
 
+// The ✨ Helper: off until you switch it on, saying how it calls Haiku and what each use sends.
+const helperSnap = (helper, agent = {}) => ({ ...richSnapshot([richAgent({ mod: { live: true, version: '0.8.0' }, ...agent })]), helper });
+
+test('✨ Helper says how it calls Haiku and what names send; switching on needs a use ticked, then saves', async () => {
+  const page = loadPage({ replies: { '/api/actions/helper': { ok: true, helper: { on: true, uses: { names: true }, dailyLimit: 50, today: 0 } } } });
+  page.push(helperSnap({ on: false, uses: { names: false }, dailyLimit: 200, today: 0 }));
+  await page.clickButton('helper-open');
+  assert.equal(page.el('helper-dlg').open, true);
+  const body = page.el('helper-body').innerHTML;
+  assert.match(body, /through the Agentville mod inside one of your open Claude Code sessions/);
+  assert.match(body, /No API key/);
+  assert.match(body, /first three messages[\s\S]*the dashboard only ever sees the name/);
+  assert.match(body, /<input type="checkbox" id="helper-names"(?![^>]*checked)/);
+  assert.match(body, /id="helper-limit"[^>]*value="200"/);
+  assert.match(body, /data-helper-on[^>]*>Switch on</);
+  page.el('helper-names').checked = false;
+  page.el('helper-limit').value = '50';
+  await page.clickButton('helper-on', { helperOn: '' });
+  assert.equal(page.posts.length, 0, 'nothing ticked: not switched on');
+  page.el('helper-names').checked = true;
+  await page.clickButton('helper-on', { helperOn: '' });
+  await page.settle();
+  assert.deepEqual(page.posts.at(-1), { path: '/api/actions/helper', body: { on: true, uses: { names: true }, dailyLimit: 50 } });
+  assert.equal(page.el('helper-dlg').open, false);
+});
+
+test('switched on, ✨ Helper shows today’s count and the last error, and switches off', async () => {
+  const page = loadPage({ replies: { '/api/actions/helper': { ok: true, helper: { on: false } } } });
+  page.push(helperSnap({ on: true, uses: { names: true }, dailyLimit: 200, today: 7, lastError: 'model_not_found' }));
+  await page.clickButton('helper-open');
+  const body = page.el('helper-body').innerHTML;
+  assert.match(body, /Today: 7 of 200 calls/);
+  assert.match(body, /Last error: model_not_found/);
+  assert.match(body, /data-helper-off[^>]*>Switch off</);
+  page.el('helper-names').checked = true; // what the rendered box holds (the harness's elements don't parse HTML)
+  page.el('helper-limit').value = '200';
+  await page.clickButton('helper-off', { helperOff: '' });
+  await page.settle();
+  assert.deepEqual(page.posts.at(-1).body, { on: false, uses: { names: true }, dailyLimit: 200 });
+});
+
+test('a name offer under the session’s name: ✓ Rename sends it, ✎ Edit renames what you type, ✕ dismisses', async () => {
+  const page = loadPage({ replies: { '/api/actions/name': { ok: true } } });
+  page.push(helperSnap({ on: true, uses: { names: true }, dailyLimit: 200, today: 1 }, { naming: { offer: { name: 'fix-login-bug', at: 1 } } }));
+  const side = page.side();
+  assert.match(side, /class="name-offer">Name it <code>fix-login-bug<\/code>\? <button[^>]*data-name-rename="fix-login-bug"[^>]*>✓ Rename<\/button><button[^>]*data-name-edit[^>]*>✎ Edit<\/button><button[^>]*data-name-dismiss/);
+  await page.clickButton('name-rename', { nameRename: 'fix-login-bug', agent: 'r1' });
+  assert.deepEqual(page.posts.at(-1), { path: '/api/actions/name', body: { agentId: 'r1', op: 'rename', name: 'fix-login-bug' } });
+  await page.clickButton('name-edit', { nameEdit: '', agent: 'r1' });
+  assert.match(page.side(), /<input type="text" id="name-edit" data-agent="r1" maxlength="60" value="fix-login-bug"/);
+  const box = { id: 'name-edit', value: 'login cookie', dataset: { agent: 'r1' } };
+  page.edit('input', box);
+  assert.equal(page.key('Enter', box), true);
+  await page.settle();
+  assert.deepEqual(page.posts.at(-1).body, { agentId: 'r1', op: 'rename', name: 'login cookie', edited: true });
+  await page.clickButton('name-dismiss', { nameDismiss: '', agent: 'r1' });
+  assert.deepEqual(page.posts.at(-1).body, { agentId: 'r1', op: 'dismiss' });
+});
+
+test('✨ beside the name asks for one while the helper is on, and opens ✨ Helper while it is off; asking and errors show; none on Codex', async () => {
+  const on = loadPage({ replies: { '/api/actions/name': { ok: true } } });
+  on.push(helperSnap({ on: true, uses: { names: true }, dailyLimit: 200, today: 0 }));
+  assert.match(on.side(), /<span class="name">busy-one<\/span><button type="button" class="act mini name-suggest" data-name-suggest="r1"/);
+  await on.clickButton('name-suggest', { nameSuggest: 'r1' });
+  assert.deepEqual(on.posts.at(-1), { path: '/api/actions/name', body: { agentId: 'r1', op: 'suggest' } });
+  const off = loadPage();
+  off.push(helperSnap({ on: false, uses: { names: false }, dailyLimit: 200, today: 0 }));
+  await off.clickButton('name-suggest', { nameSuggest: 'r1' });
+  assert.equal(off.el('helper-dlg').open, true, 'off: the dialog, to switch it on');
+  assert.equal(off.posts.length, 0);
+  const asking = loadPage();
+  asking.push(helperSnap({ on: true, uses: { names: true }, dailyLimit: 200, today: 1 }, { naming: { asking: true } }));
+  assert.match(asking.side(), /data-name-suggest="r1"[^>]*disabled/);
+  assert.match(asking.side(), /Asking Haiku for a name…/);
+  const failed = loadPage();
+  failed.push(helperSnap({ on: true, uses: { names: true }, dailyLimit: 200, today: 1 }, { naming: { error: 'Haiku gave no usable name.' } }));
+  assert.match(failed.side(), /class="name-offer msg-bad">No name: Haiku gave no usable name\./);
+  const codex = loadPage();
+  codex.push(helperSnap({ on: true, uses: { names: true }, dailyLimit: 200, today: 0 }, { kind: 'codex', naming: { offer: { name: 'x', at: 1 } } }));
+  assert.doesNotMatch(codex.side(), /name-suggest|name-offer/);
+});
+
 // The sessions dialog: past sessions to resume, with search, filters and sorting.
 const H = 3_600_000;
 const pastSessions = () => {

@@ -26,3 +26,9 @@ test('a missing sessions folder reads as empty', () => {
 test('isPidAlive is true for this process', () => {
   assert.equal(isPidAlive(process.pid), true);
 });
+
+test('a session’s nameSource is kept, so a default name can be told from one you gave it', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'reg-'));
+  writeFileSync(join(dir, `${process.pid}.json`), JSON.stringify({ pid: process.pid, sessionId: 's1', name: 'app-9c', nameSource: 'derived' }));
+  assert.equal(readRegistry(dir)[0].nameSource, 'derived');
+});

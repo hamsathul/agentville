@@ -26,7 +26,7 @@ const DASHBOARD_REASON = 'Answered from the Agentville dashboard'
 type Offer = { stateDir: string; sessionId: string; isLive: boolean; windowSec: number; now: number }
 type Waited = { kind: 'answer'; text: string } | { kind: 'withdrawn' } | { kind: 'timeout' }
 
-const MOD_VERSION = '0.7.0'
+const MOD_VERSION = '0.8.0'
 
 let latest: TrackerView = EMPTY
 // The terminal's working line (Slithering… while thinking), for the dashboard: when the turn began,
@@ -102,11 +102,12 @@ export async function claimRequests($: any, inbox: string): Promise<any[]> {
   return out
 }
 
-// Model and effort switches, compacting and plugin reloads from the dashboard run as the person's
-// own /model, /effort, /compact and /reload-plugins, the arguments checked again here: an alias
-// (opus, sonnet, opus[1m]…), an effort level, what the summary should keep (one line), or nothing.
+// Model and effort switches, compacting, plugin reloads and renames from the dashboard run as the
+// person's own /model, /effort, /compact, /reload-plugins and /rename, the arguments checked again
+// here: an alias (opus, sonnet, opus[1m]…), an effort level, what the summary should keep (one
+// line), nothing, or a name (letters, digits, spaces, . _ -; 1 to 60).
 // A stop is Esc's: it cancels the running turn.
-const SETTINGS: Record<string, RegExp> = { model: /^(?:default|opus|sonnet|haiku|fable)(?:\[1m\])?$/, effort: /^(?:low|medium|high|xhigh|max)$/, compact: /^[^\n\r]{0,500}$/, 'reload-plugins': /^$/, stop: /^$/ }
+const SETTINGS: Record<string, RegExp> = { model: /^(?:default|opus|sonnet|haiku|fable)(?:\[1m\])?$/, effort: /^(?:low|medium|high|xhigh|max)$/, compact: /^[^\n\r]{0,500}$/, 'reload-plugins': /^$/, stop: /^$/, rename: /^[\p{L}\p{N} ._-]{1,60}$/u }
 
 // The main turn running now, which a stop cancels: its id comes with turn.start, and its own
 // turn.complete ends it (a subagent's run completes under another id).
@@ -201,6 +202,45 @@ export async function answerAsides($: any, stateDir: string, sessionId: string) 
   }
 }
 
+// The helper: small writing jobs for the dashboard with Haiku, through $.model.complete in this
+// session (your sign-in, your plan; nothing added to the conversation). A request names only its
+// kind: the prompt for each kind is fixed here, so a file in state/ can't make the model do
+// anything else. The collector only asks while the helper is on; a request found after it was
+// switched off is dropped.
+export const NAME_SYSTEM = 'You name coding sessions. From the start of a session below, reply with one short kebab-case name of 2 to 4 words for what it is working on (for example login-bug or worlds-kit), and nothing else.'
+
+/** The start of this session, for naming it: your first three messages and Claude's first reply's first 1,000 characters, 2,000 at most. */
+export function namePrompt(messages: any[]): string {
+  const said = (m: any) => (typeof m?.text === 'string' ? m.text.trim() : '')
+  const list = Array.isArray(messages) ? messages : []
+  const yours = list.filter(m => m?.role === 'user').map(said).filter(Boolean).slice(0, 3)
+  const reply = said(list.find(m => m?.role === 'assistant')).slice(0, 1000)
+  return [...yours.map(t => `The person: ${t}`), ...(reply ? [`Claude: ${reply}`] : [])].join('\n\n').slice(0, 2000)
+}
+
+/** Runs the helper's requests for this session (names only, for now), each on its own. */
+export async function runHelper($: any, stateDir: string, sessionId: string, snapshot: any) {
+  for (const req of await claimRequests($, `${stateDir}/helper/${sessionId}`)) {
+    const id = String(req?.id ?? '')
+    if (!SAFE_ID.test(id) || req?.kind !== 'name') continue
+    if (snapshot?.helper?.on !== true || snapshot?.helper?.uses?.names !== true) continue
+    void (async () => {
+      let out: { ok: boolean; text?: string; error?: string }
+      try {
+        const prompt = namePrompt(await $.session.messages())
+        if (!prompt) out = { ok: false, error: 'nothing said yet' }
+        else {
+          const r = await $.model.complete({ model: 'haiku', system: NAME_SYSTEM, prompt, maxTokens: 30, timeoutMs: 20000 })
+          out = r?.isAnswered ? { ok: true, text: String(r.text ?? '').slice(0, 200) } : { ok: false, error: String(r?.error ?? r?.reason ?? 'no answer') }
+        }
+      } catch (err) {
+        out = { ok: false, error: String(err) }
+      }
+      await writeReply($, `${stateDir}/helper-replies/${sessionId}.${id}.json`, { id, sessionId, kind: 'name', ...out, at: await $.clock.now() })
+    })()
+  }
+}
+
 async function writeReply($: any, path: string, value: unknown) {
   try {
     await $.fs.write(path, JSON.stringify(value))
@@ -258,6 +298,7 @@ async function pollOnce($: any) {
       await runSettings($, stateDirFor($.plugin.root), selfId)
       await deliverMessages($, stateDirFor($.plugin.root), selfId)
       await answerAsides($, stateDirFor($.plugin.root), selfId)
+      await runHelper($, stateDirFor($.plugin.root), selfId, snapshot)
     }
   } catch (err) {
     fresh = { snapshot: null, readAt: now, error: String(err) }

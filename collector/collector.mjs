@@ -23,6 +23,7 @@ import { compactSummary, memoryFiles, scratchpadOf } from './sources/memory.mjs'
 import { EFFORTS, MODELS, MODE_FLAGS, SESSION_ID, claudeCommand, closeTerminalScript, forkCommand, listSessions, projectsOf, shellQuote, terminalScript } from './sources/sessions.mjs';
 import { appendRewind, cutTranscript, pruneForks, restorePoint } from './sources/fork.mjs';
 import { createNotes } from './sources/notes.mjs';
+import { NAME_RE, cleanName, createHelper } from './sources/helper.mjs';
 import { parseMcpList, parsePluginDetails, projectServersOf, readOwnSkills, readRules, removeRule } from './sources/claude-setup.mjs';
 import { applySince, buildAgent, countStates, sortAgents } from './derive/agent.mjs';
 import { findCollisions } from './derive/collisions.mjs';
@@ -105,7 +106,7 @@ async function quickLookPicture(real) {
   }
 }
 
-export async function startCollector({ root, claudeDir = join(homedir(), '.claude'), claudeBin = 'claude', home = homedir(), scratchBase = `/private/tmp/claude-${process.getuid?.() ?? 0}`, port: portOverride, deliveryTimeoutMs = 5000, notify = notifyMac, launch = args => run('osascript', args, { timeoutMs: 15_000 }), sessionProcs = systemProcs, endWaitMs = 8000, readProcs = readPs, deployStatusOf = deployStatus, pullRequestsOf = pullRequests, githubSlugOf = githubSlug, ticketMs = 600_000, quickLook = quickLookPicture, folderRoots = [home, '/Volumes'], chooseFolder = chooseFolderMac, stopWaitMs = 3000, revealFile = real => run('open', ['-R', real], { timeoutMs: 10_000 }), openFolder = dir => run('open', ['-a', 'Finder', dir], { timeoutMs: 10_000 }), log = makeLogger(join(root, 'logs')) }) {
+export async function startCollector({ root, claudeDir = join(homedir(), '.claude'), claudeBin = 'claude', home = homedir(), scratchBase = `/private/tmp/claude-${process.getuid?.() ?? 0}`, port: portOverride, deliveryTimeoutMs = 5000, helperTimeoutMs = 30_000, notify = notifyMac, launch = args => run('osascript', args, { timeoutMs: 15_000 }), sessionProcs = systemProcs, endWaitMs = 8000, readProcs = readPs, deployStatusOf = deployStatus, pullRequestsOf = pullRequests, githubSlugOf = githubSlug, ticketMs = 600_000, quickLook = quickLookPicture, folderRoots = [home, '/Volumes'], chooseFolder = chooseFolderMac, stopWaitMs = 3000, revealFile = real => run('open', ['-R', real], { timeoutMs: 10_000 }), openFolder = dir => run('open', ['-a', 'Finder', dir], { timeoutMs: 10_000 }), log = makeLogger(join(root, 'logs')) }) {
   // readProcs, deployStatusOf, pullRequestsOf and githubSlugOf read the machine and GitHub; a test or the demo video passes stand-ins.
   const stateDir = join(root, 'state');
   const pendingDir = join(stateDir, 'pending');
@@ -115,10 +116,16 @@ export async function startCollector({ root, claudeDir = join(homedir(), '.claud
   const uploadsDir = join(stateDir, 'uploads');
   const forksDir = join(stateDir, 'forks'); // transcripts cut at a message, for a fork to start from
   const notes = createNotes(join(stateDir, 'notes')); // your notes on each session, for later (or never)
+  const helper = createHelper(stateDir); // the helper (Haiku through a session's mod): its setting, today's count, each session's name outcome
+  const helperDir = join(stateDir, 'helper'), helperRepliesDir = join(stateDir, 'helper-replies');
+  const helperPending = new Map(); // sessionId → { id, file, at, auto }: a name asked for, not yet answered
+  const nameOffers = new Map(); // sessionId → { name, at, auto }
+  const nameErrors = new Map(); // sessionId → { error, at }
   // Model and effort switches and side questions go to a session's mod as files; it writes back what came of them.
   const commandsDir = join(stateDir, 'commands'), resultsDir = join(stateDir, 'command-results');
   const asksDir = join(stateDir, 'btw'), asideAnswersDir = join(stateDir, 'asides');
   for (const dir of [stateDir, pendingDir, answersDir, modsDir, messagesDir, uploadsDir, commandsDir, resultsDir, asksDir, asideAnswersDir]) mkdirSync(dir, { recursive: true });
+  for (const dir of [helperDir, helperRepliesDir]) mkdirSync(dir, { recursive: true, mode: 0o700 });
   const pendingAsides = new Map(); // session → [{ id, question, at }] asked and not answered yet
   const configPath = join(root, 'config.json');
 
@@ -351,6 +358,7 @@ export async function startCollector({ root, claudeDir = join(homedir(), '.claud
 
     queueResolve(agents);
     const collisions = findCollisions(agents, now, cfg.collisionWindowMin * 60_000);
+    helperTick(agents, now);
     snapshot = {
       generatedAt: now,
       settings: { modToasts: cfg.modToasts, permissionDashboardSec: cfg.permissionDashboardSec, memoryAlertGb: cfg.memoryAlertGb, cpuAlertPct: cfg.cpuAlertPct },
@@ -361,6 +369,7 @@ export async function startCollector({ root, claudeDir = join(homedir(), '.claud
       agents: sortAgents(agents),
       repos: reposFor(agents, { deployRepos: cfg.deployRepos, repoInfo, deploys, directs: directDeploys, prs, lookup: p => resolver.lookup(p), home }),
       plan: planUsage(planReadings(beacons, agents), now),
+      helper: helper.view(),
       collisions,
     };
     prevAgents = new Map(agents.map(a => [a.id, a]));
@@ -847,6 +856,72 @@ export async function startCollector({ root, claudeDir = join(homedir(), '.claud
     return { command: r.command, args: r.args, ok: r.ok === true, text: typeof r.text === 'string' ? r.text.slice(0, 300) : '', at: r.at };
   }
 
+  /** Asks a session's mod for a name: the request carries only its kind (the mod's prompt is fixed). */
+  function askName(agent, auto) {
+    const can = helper.canCall('names');
+    if (!can.ok) return can;
+    const id = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+    const file = writeRequestFile(helperDir, agent.id, { id, kind: 'name', at: Date.now() }, id);
+    helper.count();
+    helperPending.set(agent.id, { id, file, at: Date.now(), auto });
+    nameErrors.delete(agent.id);
+    return { ok: true };
+  }
+  function withdrawName(sessionId) {
+    const p = helperPending.get(sessionId);
+    if (!p) return;
+    try { unlinkSync(p.file); } catch { /* taken already: its answer is dropped */ }
+    helperPending.delete(sessionId);
+  }
+  /**
+   * Each tick: the mods' answers (a clean name becomes an offer), requests that waited too long,
+   * the automatic offer (a new session on its default name, after its first reply, started after
+   * you switched the helper on), and what each agent shows.
+   */
+  function helperTick(agents, now) {
+    for (const [sid, list] of readReplies(helperRepliesDir, now, { perSession: 5 })) {
+      for (const r of list) {
+        try { unlinkSync(join(helperRepliesDir, `${sid}.${r.id}.json`)); } catch { /* gone */ }
+        const p = helperPending.get(sid);
+        if (!p || p.id !== r.id) continue; // late, or the helper was switched off: dropped
+        helperPending.delete(sid);
+        const name = r.ok ? cleanName(r.text) : '';
+        if (name) {
+          nameOffers.set(sid, { name, at: now, auto: p.auto });
+          if (p.auto) helper.record(sid, 'offered');
+          continue;
+        }
+        const error = r.ok ? 'Haiku gave no usable name.' : `Haiku did not answer (${String(r.error ?? 'no reason').slice(0, 200)}).`;
+        if (!r.ok) helper.fail(String(r.error ?? 'no answer'));
+        nameErrors.set(sid, { error, at: now });
+        if (p.auto) helper.record(sid, 'failed');
+      }
+    }
+    for (const [sid, p] of helperPending) {
+      if (now - p.at <= helperTimeoutMs) continue;
+      withdrawName(sid);
+      nameErrors.set(sid, { error: 'The session gave no answer in 30 seconds.', at: now });
+      if (p.auto) helper.record(sid, 'failed');
+    }
+    const s = helper.settings();
+    const byId = new Map(agents.map(a => [a.id, a]));
+    for (const id of [...nameOffers.keys(), ...nameErrors.keys(), ...helperPending.keys()]) {
+      if (!byId.has(id)) { nameOffers.delete(id); nameErrors.delete(id); withdrawName(id); } // gone from the dashboard
+    }
+    for (const a of agents) {
+      if (nameOffers.get(a.id)?.auto && !a.defaultName) nameOffers.delete(a.id); // renamed elsewhere since
+      if (!s.on || !s.uses.names || a.kind === 'codex' || !a.defaultName || !a.lastReply || a.state === 'working') continue;
+      if (!a.mod?.live || !modAtLeast(a.mod.version, '0.8.0') || (a.startedAt ?? 0) < (s.consentedAt ?? Infinity)) continue;
+      if (helperPending.has(a.id) || nameOffers.has(a.id) || helper.outcome(a.id)) continue;
+      askName(a, true);
+    }
+    for (const a of agents) {
+      const offer = nameOffers.get(a.id), err = nameErrors.get(a.id), asking = helperPending.has(a.id);
+      const error = err && now - err.at < 600_000 ? err.error : undefined;
+      if (offer || asking || error) a.naming = { ...(offer ? { offer: { name: offer.name, at: offer.at } } : {}), ...(asking ? { asking: true } : {}), ...(!offer && !asking && error ? { error } : {}) };
+    }
+  }
+
   const actions = {
     /** Ends a session and closes its terminal window. */
     async end(body) {
@@ -894,7 +969,51 @@ export async function startCollector({ root, claudeDir = join(homedir(), '.claud
       const file = writeRequestFile(commandsDir, agent.id, { ...request, id, at: Date.now() }, id);
       return confirmDelivery(file, { timeoutMs: deliveryTimeoutMs, failure: request.command === 'stop' ? "The session didn't pick it up. Press Esc in its terminal." : `The session didn't pick it up. Type /${request.command} ${request.args} in its terminal.` });
     },
-    /** A side question (/btw): answered from the session's conversation without adding to it, even while it works. */
+    /** The ✨ Helper dialog: on or off, its uses, the daily limit. Switching off withdraws what is out. */
+    async helper(body) {
+      const r = helper.update(body ?? {});
+      if (r.ok && !r.helper.on) for (const id of [...helperPending.keys()]) withdrawName(id);
+      if (r.ok) await schedule(false);
+      return r;
+    },
+    /** A session's name: ✨ suggest (Haiku, through its own mod), rename (/rename, as /compact runs), or dismiss the offer. */
+    async name(body) {
+      const agent = snapshot?.agents.find(a => a.id === body?.agentId);
+      if (!agent || agent.kind === 'codex') return { ok: false, error: 'That session was not found.' };
+      const listening = () => (!agent.mod?.live ? "That session isn't listening for the dashboard yet. Send it anything in its terminal once, or start a new session."
+        : !modAtLeast(agent.mod.version, '0.8.0') ? `That session runs an older tracker mod (${agent.mod.version}). Run /reload-plugins in it (or resume it), then try again.` : null);
+      if (body.op === 'suggest') {
+        const why = listening();
+        if (why) return { ok: false, error: why };
+        if (helperPending.has(agent.id)) return { ok: false, error: 'A name is being asked for already.' };
+        nameOffers.delete(agent.id);
+        const r = askName(agent, false);
+        if (r.ok) await schedule(false);
+        return r;
+      }
+      if (body.op === 'dismiss') {
+        nameOffers.delete(agent.id);
+        nameErrors.delete(agent.id);
+        helper.record(agent.id, 'dismissed');
+        await schedule(false);
+        return { ok: true };
+      }
+      if (body.op === 'rename') {
+        const name = typeof body.name === 'string' ? body.name.trim() : '';
+        if (!NAME_RE.test(name)) return { ok: false, error: 'A name is 1 to 60 letters, digits, spaces, dots, dashes or underscores.' };
+        const why = listening();
+        if (why) return { ok: false, error: why };
+        const id = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+        const file = writeRequestFile(commandsDir, agent.id, { command: 'rename', args: name, id, at: Date.now() }, id);
+        const delivered = await confirmDelivery(file, { timeoutMs: deliveryTimeoutMs, failure: `The session didn't pick it up. Type /rename ${name} in its terminal.` });
+        if (!delivered.ok) return delivered;
+        nameOffers.delete(agent.id);
+        helper.record(agent.id, body.edited === true ? 'edited' : 'renamed');
+        await schedule(false);
+        return { ok: true };
+      }
+      return { ok: false, error: 'That is not something to do with a name.' };
+    },
     /**
      * Your notes on a session: add, edit, delete, mark used (sent, or put in a message that was), or
      * clear the used ones. Only for a session on the dashboard. Answers with all its notes.
@@ -912,6 +1031,7 @@ export async function startCollector({ root, claudeDir = join(homedir(), '.claud
         default: return { ok: false, error: 'That is not something a note can do.' };
       }
     },
+    /** A side question (/btw): answered from the session's conversation without adding to it, even while it works. */
     async aside(body) {
       const agent = snapshot?.agents.find(a => a.id === body?.agentId);
       if (!agent || agent.kind === 'codex') return { ok: false, error: 'That session was not found.' };

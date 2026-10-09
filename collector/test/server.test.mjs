@@ -57,6 +57,8 @@ async function start(opts = {}) {
       fork: async body => { calls.push(['fork', body]); return { ok: true }; },
       restore: async body => { calls.push(['restore', body]); return { ok: true }; },
       note: async body => { calls.push(['note', body]); return { ok: true, notes: [] }; },
+      helper: async body => { calls.push(['helper', body]); return { ok: true, helper: { on: true } }; },
+      name: async body => { calls.push(['name', body]); return { ok: true }; },
       end: async body => { calls.push(['end', body]); return { ok: true }; },
       restart: async body => { calls.push(['restart', body]); return { ok: true }; },
       plugin: async body => { calls.push(['plugin', body]); return { ok: true }; },
@@ -610,4 +612,22 @@ test('the dashboard and its API refuse to be shown in a frame; every reply says 
   assert.equal(css.headers['content-type'], 'text/css; charset=utf-8');
   assert.equal(css.body, ':root { --page: #fff; }');
   await srv.close();
+});
+
+test('the helper’s setting and a session’s name are changed only with the token and the page’s own Origin', async () => {
+  const { srv, port, calls } = await start();
+  try {
+    const origin = `http://127.0.0.1:${port}`;
+    const json = { 'content-type': 'application/json' };
+    for (const [path, body] of [['/api/actions/helper', '{"on":true,"uses":{"names":true}}'], ['/api/actions/name', '{"agentId":"s1","op":"rename","name":"x"}']]) {
+      assert.equal((await request(port, { method: 'POST', path, headers: { ...json, origin }, body })).status, 403);
+      assert.equal((await request(port, { method: 'POST', path, headers: { ...json, 'x-tracker-token': 'tok', origin: 'https://evil.example' }, body })).status, 403);
+    }
+    assert.deepEqual(calls, []);
+    await request(port, { method: 'POST', path: '/api/actions/helper', headers: { ...json, 'x-tracker-token': 'tok', origin }, body: '{"on":true,"uses":{"names":true}}' });
+    await request(port, { method: 'POST', path: '/api/actions/name', headers: { ...json, 'x-tracker-token': 'tok', origin }, body: '{"agentId":"s1","op":"suggest"}' });
+    assert.deepEqual(calls, [['helper', { on: true, uses: { names: true } }], ['name', { agentId: 's1', op: 'suggest' }]]);
+  } finally {
+    await srv.close();
+  }
 });
