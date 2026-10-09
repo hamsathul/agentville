@@ -1,5 +1,5 @@
 import { appendFileSync, closeSync, existsSync, mkdirSync, mkdtempSync, openSync, readFileSync, readSync, readdirSync, realpathSync, renameSync, rmSync, statSync, unlinkSync, watch, writeFileSync } from 'node:fs';
-import { randomBytes } from 'node:crypto';
+import { randomBytes, randomUUID } from 'node:crypto';
 import { cpus, homedir, tmpdir, totalmem } from 'node:os';
 import { basename, dirname, isAbsolute, join, relative, resolve, sep } from 'node:path';
 import { loadConfig, mergeConfig } from './config.mjs';
@@ -22,6 +22,7 @@ import { checkFiles, checkFolders, pruneUploads, saveFiles, typedPart, withAttac
 import { compactSummary, memoryFiles, scratchpadOf } from './sources/memory.mjs';
 import { EFFORTS, MODELS, MODE_FLAGS, SESSION_ID, claudeCommand, closeTerminalScript, forkCommand, listSessions, projectsOf, shellQuote, terminalScript } from './sources/sessions.mjs';
 import { appendRewind, cutTranscript, pruneForks, restorePoint } from './sources/fork.mjs';
+import { createNotes } from './sources/notes.mjs';
 import { parseMcpList, parsePluginDetails, projectServersOf, readOwnSkills, readRules, removeRule } from './sources/claude-setup.mjs';
 import { applySince, buildAgent, countStates, sortAgents } from './derive/agent.mjs';
 import { findCollisions } from './derive/collisions.mjs';
@@ -112,6 +113,7 @@ export async function startCollector({ root, claudeDir = join(homedir(), '.claud
   const messagesDir = join(stateDir, 'messages');
   const uploadsDir = join(stateDir, 'uploads');
   const forksDir = join(stateDir, 'forks'); // transcripts cut at a message, for a fork to start from
+  const notes = createNotes(join(stateDir, 'notes')); // your notes on each session, for later (or never)
   // Model and effort switches and side questions go to a session's mod as files; it writes back what came of them.
   const commandsDir = join(stateDir, 'commands'), resultsDir = join(stateDir, 'command-results');
   const asksDir = join(stateDir, 'btw'), asideAnswersDir = join(stateDir, 'asides');
@@ -335,6 +337,7 @@ export async function startCollector({ root, claudeDir = join(homedir(), '.claud
         childModels: rec?.childModels, offer: offers.get(base.id), beacon: beacons.get(base.id), repoOf: p => resolver.lookup(p), now, cfg, home,
         asides: asidesOf(base.id, asideAnswers.get(base.id) ?? [], now), setting: settingOf(settingResults.get(base.id)?.[0], now),
         shells: base.pid && base.kind !== 'codex' ? shellsOf(procs, base.pid, now, idx) : undefined,
+        notes: base.kind === 'codex' ? undefined : notes.summary(base.id),
       });
       agents.push(applySince(agent, prevAgents.get(agent.id), now));
       if (rec) { // deploys it ran itself (a script over ssh, rsync…), its subagents' too
@@ -472,6 +475,11 @@ export async function startCollector({ root, claudeDir = join(homedir(), '.claud
    * Your own messages to a session, newest first, for ↑ in its message box: as you typed them (no
    * attachment notes), without slash commands (a message doesn't run one), a repeat in a row once.
    */
+  /** A session's notes, for its sidebar: { notes }, or null for what is neither on the dashboard nor has notes. */
+  function getNotes(id) {
+    const known = snapshot?.agents.some(a => a.id === id && a.kind !== 'codex') || notes.summary(id);
+    return known ? { notes: notes.list(id), rev: notes.summary(id)?.rev ?? 0 } : null;
+  }
   async function getPrompts(id) {
     if (id.includes(':')) return null;
     const convo = await getConversation(id, 0);
@@ -733,7 +741,8 @@ export async function startCollector({ root, claudeDir = join(homedir(), '.claud
   /** Past sessions to resume (the last 30 days, or `all`) and the folders to start a new one in (only ones that still exist). */
   async function pastSessions({ all = false } = {}) {
     const live = new Set(snapshot?.agents.map(a => a.id) ?? []);
-    const sessions = listSessions({ claudeDir, cache: sessionCache, maxAgeDays: all ? Infinity : 30 }).map(s => ({ ...s, live: live.has(s.id) }));
+    const noted = notes.counts(); // sessions with notes you haven't used yet: a 📝 on their row
+    const sessions = listSessions({ claudeDir, cache: sessionCache, maxAgeDays: all ? Infinity : 30 }).map(s => ({ ...s, live: live.has(s.id), ...(noted.has(s.id) ? { notes: noted.get(s.id) } : {}) }));
     return { terminal: cfg.terminal === 'iTerm' ? 'iTerm' : 'Terminal', projects: projectsOf(sessions).filter(p => isDir(p.cwd)), sessions };
   }
   // ---- The ⚙ Claude Code dialog: plugins (with what each costs in context), MCP servers, permission rules ----
@@ -885,6 +894,23 @@ export async function startCollector({ root, claudeDir = join(homedir(), '.claud
       return confirmDelivery(file, { timeoutMs: deliveryTimeoutMs, failure: request.command === 'stop' ? "The session didn't pick it up. Press Esc in its terminal." : `The session didn't pick it up. Type /${request.command} ${request.args} in its terminal.` });
     },
     /** A side question (/btw): answered from the session's conversation without adding to it, even while it works. */
+    /**
+     * Your notes on a session: add, edit, delete, mark used (sent, or put in a message that was), or
+     * clear the used ones. Only for a session on the dashboard. Answers with all its notes.
+     */
+    async note(body) {
+      const agent = snapshot?.agents.find(a => a.id === body?.agentId);
+      if (!agent || agent.kind === 'codex') return { ok: false, error: 'That session is not on the dashboard.' };
+      const id = agent.id;
+      switch (body.op) {
+        case 'add': return notes.add(id, body.text);
+        case 'edit': return notes.edit(id, body.id, body.text);
+        case 'delete': return notes.remove(id, body.id);
+        case 'used': return notes.markUsed(id, body.ids);
+        case 'clear-used': return notes.clearUsed(id);
+        default: return { ok: false, error: 'That is not something a note can do.' };
+      }
+    },
     async aside(body) {
       const agent = snapshot?.agents.find(a => a.id === body?.agentId);
       if (!agent || agent.kind === 'codex') return { ok: false, error: 'That session was not found.' };
@@ -940,7 +966,10 @@ export async function startCollector({ root, claudeDir = join(homedir(), '.claud
       pruneForks(forksDir, Date.now());
       const cut = await cutTranscript(path, body.at, forksDir, basename(path, '.jsonl')); // the copy is named as the transcript
       if (cut.error) return { ok: false, error: cut.error };
-      return openTerminal(forkCommand(agent.cwd, cut.file, body.mode ?? 'default', { model: body.model ?? 'default', effort: body.effort, name: `${agent.name} (fork)`.slice(0, 80), prefillFile: cut.prefillFile }));
+      const forkId = randomUUID(); // chosen here, so the fork's notes can be ready for it
+      const opened = await openTerminal(forkCommand(agent.cwd, cut.file, body.mode ?? 'default', { model: body.model ?? 'default', effort: body.effort, name: `${agent.name} (fork)`.slice(0, 80), prefillFile: cut.prefillFile, sessionId: forkId }));
+      if (opened.ok) notes.copy(agent.id, forkId);
+      return opened;
     },
     /**
      * Restores a session to before one of your messages, as /rewind does: its conversation (the row
@@ -1143,7 +1172,7 @@ export async function startCollector({ root, claudeDir = join(homedir(), '.claud
     port: portOverride ?? cfg.port, token, webFile: join(root, 'web', 'index.html'),
     getSnapshot: () => snapshot,
     getFeed: (id, limit) => modelFor(id)?.history(limit) ?? null,
-    getConversation, getPrompts, getSubagent, claudePlugins, claudeMcp, claudeRules, fileTicket, rawFile, officeView, shellOutput, namedFiles,
+    getConversation, getPrompts, getNotes, getSubagent, claudePlugins, claudeMcp, claudeRules, fileTicket, rawFile, officeView, shellOutput, namedFiles,
     getTranscriptHtml, getDoc: readDoc, listFiles, readFile, repoTouched, actions, pastSessions, listDirs: dirsFor, log,
   });
   const port = await server.listen();
@@ -1182,5 +1211,5 @@ export async function startCollector({ root, claudeDir = join(homedir(), '.claud
     await server.close();
   }
 
-  return { port, getSnapshot: () => snapshot, reloadConfig, actions, pastSessions, listDirs: dirsFor, shellOutput, namedFiles, getConversation, getPrompts, claudePlugins, claudeMcp, claudeRules, fileTicket, rawFile, officeView, readDoc, listFiles, readFile, repoTouched, stop };
+  return { port, getSnapshot: () => snapshot, reloadConfig, actions, pastSessions, listDirs: dirsFor, shellOutput, namedFiles, getConversation, getPrompts, getNotes, claudePlugins, claudeMcp, claudeRules, fileTicket, rawFile, officeView, readDoc, listFiles, readFile, repoTouched, stop };
 }

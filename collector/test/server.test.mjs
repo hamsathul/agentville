@@ -27,6 +27,7 @@ async function start() {
     getFeed: id => (id === 's1' ? [{ at: 1, kind: 'prompt', text: 'hi' }] : null),
     getConversation: async (id, from) => (id === 's1' ? { total: 2, from, items: [{ at: 1, kind: 'prompt', body: 'hi' }, { at: 2, kind: 'reply', body: 'hello' }].slice(from) } : null),
     getPrompts: async id => (id === 's1' ? { prompts: ['and then?', 'hi'] } : null),
+    getNotes: id => (id === 's1' ? { notes: [{ id: 'n1', text: 'ask about the cache', at: 1 }] } : null),
     getTranscriptHtml: async id => (id === 's1' ? renderTranscriptPage('s1', [{ at: 1, kind: 'prompt', text: '<script>alert(1)</script>' }]) : null),
     listFiles: async id => (id === 's1' ? { root: '/w', git: true, files: ['a.ts'], status: {}, touched: {}, truncated: false } : { status: 404, error: 'That agent was not found.' }),
     readFile: async (id, path) => (id === 's1' && path === '/w/a.ts' ? { doc: { path, text: 'const a = 1;', mtimeMs: 1, size: 12 } } : { status: 403, error: 'That file is outside the agent\'s folder.' }),
@@ -41,6 +42,7 @@ async function start() {
       start: async body => { calls.push(['start', body]); return { ok: true }; },
       fork: async body => { calls.push(['fork', body]); return { ok: true }; },
       restore: async body => { calls.push(['restore', body]); return { ok: true }; },
+      note: async body => { calls.push(['note', body]); return { ok: true, notes: [] }; },
       end: async body => { calls.push(['end', body]); return { ok: true }; },
       restart: async body => { calls.push(['restart', body]); return { ok: true }; },
       plugin: async body => { calls.push(['plugin', body]); return { ok: true }; },
@@ -407,6 +409,27 @@ test("a session's own messages, for ↑ in its message box, need the token too",
     assert.deepEqual(JSON.parse((await request(port, { path: '/api/agent/s1/prompts', headers })).body), { prompts: ['and then?', 'hi'] });
     assert.equal((await request(port, { path: '/api/agent/nobody/prompts', headers })).status, 404);
     assert.equal((await request(port, { path: '/api/agent/s1%3Atoolu_1/prompts', headers })).status, 404, "a subagent's are not yours");
+  } finally {
+    await srv.close();
+  }
+});
+
+test("your notes on a session need the token to read, and the token and the page's own Origin to change", async () => {
+  const { srv, port, calls } = await start();
+  try {
+    const headers = { 'x-tracker-token': 'tok' };
+    assert.equal((await request(port, { path: '/api/agent/s1/notes' })).status, 403);
+    assert.deepEqual(JSON.parse((await request(port, { path: '/api/agent/s1/notes', headers })).body), { notes: [{ id: 'n1', text: 'ask about the cache', at: 1 }] });
+    assert.equal((await request(port, { path: '/api/agent/nobody/notes', headers })).status, 404);
+    assert.equal((await request(port, { path: '/api/agent/s1%3Atoolu_1/notes', headers })).status, 404, 'a subagent has none');
+    const origin = `http://127.0.0.1:${port}`;
+    const json = { 'content-type': 'application/json' };
+    const body = '{"agentId":"s1","op":"add","text":"later"}';
+    assert.equal((await request(port, { method: 'POST', path: '/api/actions/note', headers: { ...json, origin }, body })).status, 403);
+    assert.equal((await request(port, { method: 'POST', path: '/api/actions/note', headers: { ...json, ...headers, origin: 'https://evil.example' }, body })).status, 403);
+    assert.deepEqual(calls, []);
+    assert.deepEqual(JSON.parse((await request(port, { method: 'POST', path: '/api/actions/note', headers: { ...json, ...headers, origin }, body })).body), { ok: true, notes: [] });
+    assert.deepEqual(calls, [['note', { agentId: 's1', op: 'add', text: 'later' }]]);
   } finally {
     await srv.close();
   }

@@ -127,7 +127,7 @@ function renderSessions() {
     return `<div class="sess-row" data-sess-id="${esc(s.id)}"><div class="sess-main"><b>${esc(sessName(s))}</b>
       <span class="faint">${esc(about)}</span>
       <span class="faint">${esc(when)}${s.lastPrompt ? ` · “${esc(s.lastPrompt)}”` : ''}</span></div>
-      ${s.live ? '<span class="chip c-working live-dot" data-tip="Already open: find it in the list">running</span>' : `<button type="button" class="act mini" data-sess-resume="${esc(s.id)}">Resume</button>`}</div>`;
+      ${s.notes ? `<span class="chip c-plain" data-tip="${s.notes} note${s.notes === 1 ? '' : 's'} you haven’t used yet: they show under its message box once you resume it">📝 ${s.notes}</span>` : ''}${s.live ? '<span class="chip c-working live-dot" data-tip="Already open: find it in the list">running</span>' : `<button type="button" class="act mini" data-sess-resume="${esc(s.id)}">Resume</button>`}</div>`;
   };
   $('sess-body').innerHTML = `<div class="sec" style="margin-top:4px">Or a folder you worked in</div>${projects.map(projectRow).join('') || '<div class="empty">No folders match.</div>'}${more}
     <div class="sec">Resume</div>${sessions.map(sessionRow).join('') || '<div class="empty">No sessions match.</div>'}`;

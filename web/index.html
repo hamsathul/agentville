@@ -569,6 +569,18 @@ html[data-view="farm"] .banner.show { position: fixed; top: 10px; left: 50%; tra
 .workline .stop-turn { margin-left: auto; align-self: center; flex: none; }
 .workline .stop-turn:not(:disabled) { color: var(--crit); border-color: color-mix(in srgb, var(--crit) 45%, transparent); }
 .asides-box { margin-top: 10px; }
+.notes-box { margin-top: 10px; }
+.notes { list-style: none; margin: 0 0 8px; padding: 0; display: flex; flex-direction: column; gap: 6px; }
+.note { padding: 6px 8px 5px; border: 1px solid var(--line); border-radius: 8px; background: var(--panel2, var(--panel)); }
+.note-text { display: block; width: 100%; border: 0; background: none; padding: 0; color: var(--text); font: inherit; font-size: 13px; text-align: left; white-space: pre-wrap; overflow-wrap: anywhere; cursor: text; max-height: 9.5em; overflow: hidden; }
+.note.used .note-text { text-decoration: line-through; opacity: .55; }
+.note-acts { display: flex; align-items: center; gap: 6px; margin-top: 4px; font-size: 11.5px; }
+.note-edit, .note-add textarea { width: 100%; resize: vertical; padding: 6px 9px; border: 1px solid var(--line); border-radius: 8px; background: var(--page); color: var(--text); font: inherit; font-size: 13px; }
+.note-edit { min-height: 64px; }
+.note-add { display: flex; gap: 8px; align-items: flex-start; }
+.note-add textarea { flex: 1; min-width: 0; min-height: 32px; }
+.note-edit:focus, .note-add textarea:focus { outline: 2px solid var(--accent); outline-offset: -1px; }
+.notes-empty { font-size: 12px; margin-bottom: 6px; }
 .sec-fold { width: 100%; border: 0; background: none; padding: 0; font-family: inherit; cursor: pointer; text-align: left; }
 .sec-fold:hover, .sec-fold:hover .tw { color: var(--text); }
 .sec-fold .tw { margin-right: -4px; }

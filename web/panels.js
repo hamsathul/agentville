@@ -478,6 +478,63 @@ function stopHtml(a) {
   return ` <button type="button" class="act mini stop-turn" data-stop-turn="${esc(a.id)}" data-tip="${esc(tip)}"${can ? '' : ' disabled'}>■ Stop</button>`;
 }
 
+/* ---------- your notes on a session ---------- */
+// Things you may want to say to it later, or not: kept by the collector (state/notes), read when the
+// section shows and again when their rev in the snapshot moves on. Nothing goes to the session until
+// you use one: ↳ Use puts it in the message box (it counts as used once that message is sent), Send
+// now sends it as your own message.
+const notesCache = new Map(); // agentId → { rev, notes } or { rev, error }
+const notesLoading = new Set();
+const noteDrafts = new Map(); // agentId → the note being written
+const noteEdits = new Map(); // agentId → { id, text }: the note being edited
+const notesInDraft = new Map(); // agentId → ids of the notes put in its message box
+
+/** Reads the shown session's notes when they changed since they were last read. */
+function refreshNotes(a) {
+  if (!a || a.kind === 'codex' || !isOpen('notes') || notesLoading.has(a.id)) return;
+  const rev = a.notes?.rev ?? 0, got = notesCache.get(a.id);
+  if (!got && !rev) { notesCache.set(a.id, { rev: 0, notes: [] }); return; } // never had any: nothing to read
+  if (got && rev <= got.rev) return;
+  notesLoading.add(a.id);
+  void getJson(`/api/agent/${encodeURIComponent(a.id)}/notes`).then(r => {
+    notesLoading.delete(a.id);
+    notesCache.set(a.id, r.error ? { rev, error: r.error, notes: got?.notes } : { rev: Math.max(rev, r.rev ?? 0), notes: r.notes ?? [] });
+    requestRender();
+  });
+}
+/** What a change to the notes answered: all of them now, and their rev. */
+function tookNotes(agentId, r) {
+  if (!r?.ok || !Array.isArray(r.notes)) return;
+  notesCache.set(agentId, { rev: Math.max(r.rev ?? 0, notesCache.get(agentId)?.rev ?? 0), notes: r.notes });
+}
+
+function noteHtml(a, n, live) {
+  const ids = `data-agent="${esc(a.id)}"`;
+  const edit = noteEdits.get(a.id);
+  if (edit?.id === n.id) {
+    return `<li class="note editing"><textarea class="note-edit" data-note-edit="${esc(n.id)}" ${ids} rows="3">${esc(edit.text)}</textarea>
+      <div class="note-acts"><span class="faint">↩ saves · Esc cancels</span><span class="grow"></span><button type="button" class="act mini" data-note-cancel="${esc(n.id)}" ${ids}>Cancel</button><button type="button" class="act mini primary" data-note-save="${esc(n.id)}" ${ids}>Save</button></div></li>`;
+  }
+  const can = tip => (live ? ` data-tip="${tip}"` : ` disabled data-tip="${esc(modWhy(a))}"`);
+  return `<li class="note${n.usedAt ? ' used' : ''}"><button type="button" class="note-text" data-note-open="${esc(n.id)}" ${ids} data-tip="Click to edit">${esc(n.text)}</button>
+    <div class="note-acts"><span class="faint">${n.usedAt ? `used ${agoText(n.usedAt)}` : agoText(n.editedAt ?? n.at)}</span><span class="grow"></span><button type="button" class="act mini" data-note-use="${esc(n.id)}" ${ids}${can('Into the message box, to edit before you send it')}>↳ Use</button><button type="button" class="act mini" data-note-send="${esc(n.id)}" ${ids}${can('Send it now, as your own message')}>Send now</button><button type="button" class="act mini" data-note-delete="${esc(n.id)}" ${ids} aria-label="Delete this note" data-tip="Delete this note">✕</button></div></li>`;
+}
+
+/** The Notes section, under the message box: folds away like Side question, saying how many are unused. */
+function notesHtml(a) {
+  if (a.kind === 'codex') return '';
+  const open = isOpen('notes'), unused = a.notes?.unused ?? 0;
+  const head = `<button class="sec sec-fold" type="button" data-group="notes" aria-expanded="${open}" data-tip="${open ? 'Hide' : 'Show'} your notes on this session: what you may want to tell it later. Only you see them, and nothing goes to it until you use one"><span class="tw">${open ? '▾' : '▸'}</span>Notes${!open && unused ? `<span class="grp-n">${unused}</span>` : ''}</button>`;
+  if (!open) return `<div class="notes-box">${head}</div>`;
+  const got = notesCache.get(a.id), list = got?.notes ?? [];
+  const status = got?.error ? `<div class="msg-bad">Could not read them: ${esc(got.error)}</div>`
+    : !got ? '<div class="faint">Loading…</div>'
+    : !list.length ? '<div class="faint notes-empty">No notes yet. Write down what you may want to tell it later: notes stay here, even after the session ends.</div>' : '';
+  const clear = list.some(n => n.usedAt) ? `<button type="button" class="act mini" data-notes-clear data-agent="${esc(a.id)}" data-tip="Remove the notes you have used">Clear used</button>` : '';
+  return `<div class="notes-box">${head}${status}${list.length ? `<ul class="notes">${list.map(n => noteHtml(a, n, Boolean(a.mod?.live))).join('')}</ul>` : ''}
+    <div class="note-add"><textarea id="note-text" data-note-agent="${esc(a.id)}" rows="1" placeholder="A note for later… (↩ adds, ⇧↩ new line)">${esc(noteDrafts.get(a.id) ?? '')}</textarea><button type="button" class="act" id="note-add" data-agent="${esc(a.id)}">Add</button>${clear}</div></div>`;
+}
+
 /** Side questions (/btw): asked of the session from its conversation so far, answered without adding to it, even while it works. */
 function asideHtml(a) {
   if (a.kind === 'codex') return '';
@@ -547,7 +604,7 @@ async function sendMessage(agentId, button, quick = null) {
   if (!text && !attached.length) {
     msgStatus.set(agentId, { at: Date.now(), bad: true, text: 'Type a message or attach a file first.' });
     render();
-    return;
+    return false;
   }
   const agent = snap?.agents.find(a => a.id === agentId);
   if (button) {
@@ -561,7 +618,7 @@ async function sendMessage(agentId, button, quick = null) {
   } catch (err) {
     msgStatus.set(agentId, { at: Date.now(), bad: true, text: `Could not read a file: ${err?.message ?? err}` });
     render();
-    return;
+    return false;
   }
   const r = await post('/api/actions/message', { agentId, text, ...(files.length ? { files } : {}), ...(folders.length ? { folders } : {}) });
   if (r.ok && quick === null) {
@@ -569,6 +626,9 @@ async function sendMessage(agentId, button, quick = null) {
     resetRecall();
     for (const f of attached) if (f.url) URL.revokeObjectURL(f.url);
     msgFiles.delete(agentId);
+    const used = [...(notesInDraft.get(agentId) ?? [])]; // notes put in this message: used now
+    notesInDraft.delete(agentId);
+    if (used.length) tookNotes(agentId, await post('/api/actions/note', { agentId, op: 'used', ids: used }));
   }
   const counted = [[files.length, 'file'], [folders.length, 'folder']].filter(([n]) => n).map(([n, what]) => `${n} ${what}${n > 1 ? 's' : ''}`);
   const extra = counted.length ? ` with ${counted.join(' and ')}` : '';
@@ -578,4 +638,5 @@ async function sendMessage(agentId, button, quick = null) {
     text: r.ok ? (agent?.state === 'working' ? `Queued for ${agent.name}${extra}: it reads it when its current step ends.` : `✓ Sent to ${agent?.name ?? 'the session'}${extra}.`) : `Not sent: ${r.error}`,
   });
   render();
+  return Boolean(r.ok);
 }

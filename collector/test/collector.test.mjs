@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import { execFileSync } from 'node:child_process';
 import assert from 'node:assert/strict';
-import { appendFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, realpathSync, renameSync, symlinkSync, unlinkSync, utimesSync, writeFileSync } from 'node:fs';
+import { appendFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, realpathSync, renameSync, statSync, symlinkSync, unlinkSync, utimesSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { basename, dirname, join } from 'node:path';
 import { startCollector } from '../collector.mjs';
@@ -607,10 +607,14 @@ test("a session's conversation is forked at one of its messages into a new sessi
   try {
     const feed = handle.getSnapshot().agents.find(a => a.id === SID).feed;
     assert.deepEqual(feed.filter(f => f.kind === 'prompt' || f.kind === 'reply').map(f => f.uuid), ['r-2', 'p-2', 'r-1', 'p-1'], 'each message says where it is in the transcript');
+    assert.equal((await handle.actions.note({ agentId: SID, op: 'add', text: 'ask about the changelog' })).ok, true);
     assert.deepEqual(await handle.actions.fork({ agentId: SID, at: 'r-1', mode: 'plan', model: 'sonnet' }), { ok: true, terminal: 'iTerm' });
     const command = launched[0].at(-1);
     const copy = command.match(/--resume '([^']+)'/)[1];
-    assert.equal(command, `cd '${work}' && exec claude --resume '${copy}' --fork-session --name 'releaser (fork)' --permission-mode plan --model 'sonnet'`);
+    const forkId = command.match(/--session-id ([0-9a-f-]{36}) /)?.[1];
+    assert.equal(command, `cd '${work}' && exec claude --resume '${copy}' --fork-session --session-id ${forkId} --name 'releaser (fork)' --permission-mode plan --model 'sonnet'`);
+    assert.notEqual(forkId, SID);
+    assert.deepEqual(handle.getNotes(forkId).notes.map(n => n.text), ['ask about the changelog'], 'the fork has a copy of its notes');
     assert.ok(copy.startsWith(join(root, 'state', 'forks')), 'the copy is kept in the tracker\'s own state');
     assert.equal(readFileSync(copy, 'utf8'), `${lines.slice(0, 2).join('\n')}\n`, 'up to and including that reply');
     assert.equal(readFileSync(join(dir, `${SID}.jsonl`), 'utf8'), `${lines.join('\n')}\n`, 'the original is untouched');
@@ -621,6 +625,48 @@ test("a session's conversation is forked at one of its messages into a new sessi
       assert.equal((await handle.actions.fork(body)).ok, false, JSON.stringify(body));
     }
     assert.equal(launched.length, 2);
+  } finally {
+    await handle.stop();
+  }
+});
+
+test("your notes on a session: added, edited, used, deleted; counted in its snapshot and the resume list; refused for what isn't a session", async () => {
+  const root = mkdtempSync(join(tmpdir(), 'tracker-root-notes-'));
+  mkdirSync(join(root, 'web'));
+  writeFileSync(join(root, 'web', 'index.html'), '<html>__TRACKER_TOKEN__</html>');
+  writeFileSync(join(root, 'config.json'), JSON.stringify({ port: 0, deployRepos: {} }));
+  const work = realpathSync(mkdtempSync(join(tmpdir(), 'tracker-work-notes-')));
+  const claudeDir = mkdtempSync(join(tmpdir(), 'tracker-claude-notes-'));
+  const dir = join(claudeDir, 'projects', work.replace(/[^a-zA-Z0-9]/g, '-'));
+  mkdirSync(join(claudeDir, 'sessions'));
+  mkdirSync(dir, { recursive: true });
+  const SID = '33333333-aaaa-4bbb-8ccc-000000000001';
+  writeFileSync(join(dir, `${SID}.jsonl`), `${JSON.stringify({ type: 'user', uuid: 'p-1', timestamp: new Date().toISOString(), cwd: work, origin: { kind: 'human' }, message: { role: 'user', content: 'Hello' } })}\n`);
+  writeFileSync(join(claudeDir, 'sessions', `${process.pid}.json`), JSON.stringify({ pid: process.pid, sessionId: SID, cwd: work, name: 'noted', kind: 'interactive', status: 'idle' }));
+  const handle = await startCollector({ root, claudeDir, claudeBin: '/usr/bin/false', notify: () => {}, log: () => {} });
+  const agent = () => handle.getSnapshot().agents.find(a => a.id === SID);
+  const until = async ok => { for (let i = 0; i < 80; i++) { await handle.reloadConfig(); if (ok()) return true; await new Promise(r => setTimeout(r, 50)); } return false; };
+  try {
+    assert.equal(agent().notes, undefined, 'no notes, nothing in the snapshot');
+    const added = await handle.actions.note({ agentId: SID, op: 'add', text: 'ask about the cache' });
+    assert.equal(added.ok, true);
+    const id = added.notes[0].id;
+    await handle.actions.note({ agentId: SID, op: 'add', text: 'and the tests' });
+    assert.equal((await handle.actions.note({ agentId: SID, op: 'edit', id, text: 'ask about the cache, again' })).notes[0].text, 'ask about the cache, again');
+    assert.equal((await handle.actions.note({ agentId: SID, op: 'used', ids: [id] })).notes[0].usedAt > 0, true);
+    assert.ok(await until(() => agent().notes?.count === 2), 'the snapshot carries how many');
+    assert.deepEqual({ count: agent().notes.count, unused: agent().notes.unused }, { count: 2, unused: 1 });
+    assert.ok(agent().notes.rev > 0);
+    assert.equal(JSON.stringify(agent()).includes('and the tests'), false, 'the snapshot carries counts, never the text');
+    assert.deepEqual(handle.getNotes(SID).notes.map(n => n.text), ['ask about the cache, again', 'and the tests']);
+    assert.equal((await handle.pastSessions()).sessions.find(s => s.id === SID).notes, 1, 'the resume list counts the unused ones');
+    assert.equal(statSync(join(root, 'state', 'notes', `${SID}.json`)).mode & 0o777, 0o600);
+    assert.deepEqual((await handle.actions.note({ agentId: SID, op: 'clear-used' })).notes.map(n => n.text), ['and the tests']);
+    assert.equal((await handle.actions.note({ agentId: SID, op: 'delete', id: handle.getNotes(SID).notes[0].id })).notes.length, 0);
+    for (const body of [{ agentId: 'nobody', op: 'add', text: 'x' }, { agentId: SID, op: 'shout', text: 'x' }, { agentId: SID, op: 'add', text: '' }, { agentId: SID, op: 'add' }, null]) {
+      assert.equal((await handle.actions.note(body)).ok, false, JSON.stringify(body));
+    }
+    assert.equal(handle.getNotes('nobody'), null);
   } finally {
     await handle.stop();
   }

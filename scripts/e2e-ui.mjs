@@ -311,13 +311,34 @@ try {
   check(await until("document.getElementById('msg-text')?.value === 'Plan the next crop'"), `↑ in the message box brings back what you said to the session (got ${JSON.stringify(await js("document.getElementById('msg-text')?.value"))})`);
   await arrow('ArrowDown', 40);
   check(await until("document.getElementById('msg-text')?.value === ''"), '↓ goes back to what you were typing');
+  // Notes: written for later, used into the message box, sent from there; Send now; a fork gets a copy
+  await js("document.getElementById('note-text').focus()");
+  await send('Input.insertText', { text: 'Ask about the frost' });
+  await key('keyDown'); await key('keyUp');
+  check(await until("[...document.querySelectorAll('#center-body .note-text')].some(b => b.textContent === 'Ask about the frost') && document.getElementById('note-text')?.value === ''"), 'a note is added with Enter, and its box empties for the next');
+  await js("document.querySelector('#center-body [data-note-use]').click()");
+  check(await until("document.getElementById('msg-text')?.value === 'Ask about the frost'"), '↳ Use puts the note in the message box');
+  await js("document.getElementById('msg-text').focus()");
+  await key('keyDown'); await key('keyUp');
+  for (let i = 0; i < 40 && received.at(-1) !== 'Ask about the frost'; i++) await sleep(150);
+  check(received.at(-1) === 'Ask about the frost' && await until("!!document.querySelector('#center-body .note.used')"), `sent from the message box, the note is crossed out as used (got ${JSON.stringify(received.at(-1))})`);
+  await js("document.getElementById('note-text').focus()");
+  await send('Input.insertText', { text: 'Water the beans' });
+  await key('keyDown'); await key('keyUp');
+  await until("!!document.querySelector('#center-body .note:not(.used) [data-note-send]')");
+  await js("document.querySelector('#center-body .note:not(.used) [data-note-send]').click()");
+  for (let i = 0; i < 40 && received.at(-1) !== 'Water the beans'; i++) await sleep(150);
+  check(received.at(-1) === 'Water the beans' && await until("document.querySelectorAll('#center-body .note.used').length === 2"), 'Send now sends a note as your own message, and it is used too');
   await js("document.querySelector('#center-body [data-fork=\"ui-r1\"]').click()");
   check(await until("document.getElementById('fork-dlg').open && document.getElementById('fork-mode').options.length === 5 && document.getElementById('fork-model').value === 'haiku'"), "⑂ Fork on a reply asks in what mode, model and effort, the session's own to start with");
   await js("document.getElementById('fork-go').click()");
   const forked = await until("!document.getElementById('fork-dlg').open && /Forking ui-asker/.test(document.getElementById('notice').textContent)") ? launched.at(-1) : '';
   const copy = /--resume '([^']+)'/.exec(forked)?.[1] ?? '';
-  check(forked === `cd '${repo}' && exec claude --resume '${copy}' --fork-session --name 'ui-asker (fork)' --model 'haiku'` && readFileSync(copy, 'utf8').trim().split('\n').at(-1).includes('"ui-r1"'),
+  const forkId = /--session-id ([0-9a-f-]{36}) /.exec(forked)?.[1] ?? '';
+  check(forked === `cd '${repo}' && exec claude --resume '${copy}' --fork-session --session-id ${forkId} --name 'ui-asker (fork)' --model 'haiku'` && readFileSync(copy, 'utf8').trim().split('\n').at(-1).includes('"ui-r1"'),
     `confirmed, a terminal resumes a copy of the conversation cut at that reply as a new session (got ${forked})`);
+  const forkNotes = existsSync(join(state, 'notes', `${forkId}.json`)) ? JSON.parse(readFileSync(join(state, 'notes', `${forkId}.json`), 'utf8')).notes.map(n => n.text) : [];
+  check(forkNotes.join('|') === 'Ask about the frost|Water the beans', `the fork has a copy of the notes (got ${JSON.stringify(forkNotes)})`);
   check(await js("!document.querySelector('#center-body [data-restore=\"ui-r1\"]') && !!document.querySelector('#center-body [data-restore=\"ui-p1\"]')"), '↺ Restore is on your messages only');
   await js("document.querySelector('#center-body [data-restore=\"ui-p1\"]').click()");
   check(await until("document.getElementById('restore-dlg').open && document.getElementById('restore-what').value === 'both' && document.getElementById('restore-mode').options.length === 5 && !document.getElementById('restore-code-note').hidden"), '↺ Restore asks what to put back (the conversation and code to start with) and says what restoring code can undo');
@@ -331,15 +352,17 @@ try {
   await until("/messages since/.test(document.getElementById('convo-sub').textContent)");
   check(await js("document.activeElement?.id === 'convo-msg-text'"), 'the reply box keeps the focus once the conversation has loaded');
   await send('Input.insertText', { text: 'Sent from the conversation dialog' });
+  const sentBefore = received.length;
   await key('keyDown'); await key('keyUp');
-  for (let i = 0; i < 40 && received.length < 2; i++) await sleep(150);
-  check(received[1] === 'Sent from the conversation dialog', `the conversation dialog has the message box too: Enter sends from it (got ${JSON.stringify(received)})`);
+  for (let i = 0; i < 40 && received.length <= sentBefore; i++) await sleep(150);
+  check(received.at(-1) === 'Sent from the conversation dialog', `the conversation dialog has the message box too: Enter sends from it (got ${JSON.stringify(received)})`);
   await js("document.getElementById('convo').close()");
   await js("document.getElementById('msg-folder').click()");
   check(await until("/farm-repo/.test(document.querySelector('#center-body .thumb-folder')?.textContent ?? '')"), "📁 Folder attaches the folder picked in Finder's window");
+  const folderBefore = received.length;
   await js("document.getElementById('msg-send').click()");
-  for (let i = 0; i < 40 && received.length < 3; i++) await sleep(150);
-  check(received[2] === `Please look at the folder I attached. Look in it with your tools:\n${repo}`, `sent, the message carries its path (got ${JSON.stringify(received[2])})`);
+  for (let i = 0; i < 40 && received.length <= folderBefore; i++) await sleep(150);
+  check(received.at(-1) === `Please look at the folder I attached. Look in it with your tools:\n${repo}`, `sent, the message carries its path (got ${JSON.stringify(received.at(-1))})`);
   const theme = await js('document.documentElement.dataset.theme ?? "auto"');
   await js("document.getElementById('theme-toggle').click()");
   check((await js('document.documentElement.dataset.theme ?? "auto"')) !== theme, 'the theme button switches the theme');

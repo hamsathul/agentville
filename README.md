@@ -32,6 +32,7 @@ It listens on `127.0.0.1` only and reads what Claude Code already writes to disk
   - [Answering and messaging agents](#answering-and-messaging-agents)
   - [Stopping a turn (■ Stop)](#stopping-a-turn--stop)
   - [Side questions (/btw)](#side-questions-btw)
+  - [Notes for later](#notes-for-later)
   - [Model, effort and permission mode](#model-effort-and-permission-mode)
   - [Starting, resuming, forking, ending and restarting sessions](#starting-resuming-forking-ending-and-restarting-sessions)
   - [Going back to an earlier point (↺ Restore)](#going-back-to-an-earlier-point--restore)
@@ -71,6 +72,8 @@ It listens on `127.0.0.1` only and reads what Claude Code already writes to disk
   ↑ in the box brings back what you sent it before, as in its terminal.
 - Read a session's whole conversation, from its first message, in a dialog you can search.
 - Ask a session a side question (`/btw`) without interrupting or adding to its conversation.
+- Keep notes on a session: things you may want to tell it later, or not. Put one in the message
+  box to edit, or send it as it is. Notes stay after the session ends, and a fork gets a copy.
 
 **Steer your sessions**
 - Stop a session in the middle of its turn, as Esc does in its terminal: it stops what it was doing
@@ -310,6 +313,28 @@ Click the **Side question** heading to fold the whole section away, or to bring 
 the heading shows how many side questions the session has. The choice holds for every session,
 in the list and in the farm's sidebar, and is remembered.
 
+### Notes for later
+
+**Notes**, under the message box, is where you keep what you may want to tell a session later:
+a thought while it works, the next step, a question for when it is done. Nothing in a note goes to
+the session until you use it.
+
+- Write a note in the box and press **Add** (↩ adds, ⇧↩ starts a new line). Each note is its own
+  card, in the order you wrote them. Click a note's text to edit it (↩ saves, Esc cancels).
+- **↳ Use** puts the note at the end of the message box, to change before you send it. Once that
+  message is sent, the note counts as used. If you clear the box instead, it stays unused.
+- **Send now** sends the note as it is, as your own message (queued if the session is busy), and
+  marks it used.
+- A used note stays, crossed out, so you can see what you have already said. **Clear used** removes
+  them all; **✕** deletes one.
+- You can write notes for any session on the dashboard, even one that isn't listening for the
+  dashboard yet; **↳ Use** and **Send now** wait until it is.
+- Notes belong to the session and stay after it ends. Resume it, or restore it, and they are there
+  again; a fork gets a copy. In **＋ Session**, a past session with notes you haven't used shows 📝
+  and how many.
+- A session holds up to 200 notes of up to 4,000 characters each.
+- Like Side question, the heading folds the section away and, folded, says how many notes are unused.
+
 ### Model, effort and permission mode
 
 Each terminal session's bar shows its **permission mode**, its **model** (e.g. *Opus 5.5*) and its
@@ -351,7 +376,7 @@ before you updated, run `/reload-plugins` in it.
   - **Range**: the last 30 days, or **All time**. The list says how many it shows of how many, and
     the sort and range are kept for next time.
   - Each past session shows its folder, branch, model, length, and when it started and was last
-    active.
+    active, and 📝 with a count when it has notes you haven't used.
   - You pick the permission mode, model and effort. Model and effort apply to that session only
     (`--model`, `--effort`), not your defaults.
   - It opens a new Terminal or iTerm window (the `terminal` setting), and the window closes when
@@ -365,6 +390,7 @@ before you updated, run `/reload-plugins` in it.
   - You pick the permission mode, model and effort; they start as the original session's.
   - The new session is named after the original, with "(fork)". It is a session of its own: resume
     it later from ＋ Session like any other.
+  - It gets a copy of your notes on the original, which from then on are its own.
   - Forking from your very first message isn't possible: start a new session instead.
 - **End session** stops Claude cleanly after you confirm and closes its terminal window. You can
   resume the conversation later.
@@ -645,6 +671,10 @@ canvas, with its text drawn as HTML on top so it stays crisp.
   them. A Word document's page shows with no scripts at all.
 - Files you attach are kept under `state/uploads/` for 7 days. A folder you attach is sent as its
   path only.
+- Your notes on a session are kept under `state/notes/` (the folder and its files readable only by
+  you) until you delete them. They never leave your Mac, and nothing in one reaches the session
+  until you use or send it. The snapshot the page reads every few seconds carries only how many
+  there are; the text is read with the token when the section shows.
 - **↺ Restore** is the one thing that writes to Claude Code's own files. Once the session has ended,
   it adds one line to the end of its transcript (the line `/rewind` writes; nothing is removed), and
   with code, Claude Code itself puts files back from its snapshots. Your message for the prompt box

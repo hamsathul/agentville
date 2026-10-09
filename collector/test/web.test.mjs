@@ -1428,6 +1428,105 @@ test('where a session was restored shows in its conversation, in the side panel 
   assert.match(page.el('convo-body').innerHTML, /Plan it[\s\S]*class="restored-line"[^>]*>↺ Restored to before “Ship it”/);
 });
 
+// Your notes on a session: kept for later, used or not.
+const NOTES = '/api/agent/r1/notes';
+const note = (id, text, over = {}) => ({ id, text, at: 1, ...over });
+const notesPage = (notes, agent = {}) => {
+  const page = loadPage({ replies: { [NOTES]: { notes } } });
+  page.push(richSnapshot([richAgent({ mod: { live: true, version: '0.7.0' }, notes: notes.length ? { count: notes.length, unused: notes.filter(n => !n.usedAt).length, rev: 5 } : undefined, ...agent })]));
+  return page;
+};
+
+test('Notes: a session’s notes are read with the token and listed in the order written; one is added from its box', async () => {
+  const page = notesPage([note('n1', 'ask about the cache'), note('n2', 'then <b>the tests</b>')]);
+  await page.settle();
+  assert.deepEqual(page.gets.filter(g => g.path === NOTES).map(g => Boolean(g.token)), [true]);
+  const side = page.side();
+  assert.match(side, /data-group="notes"[^>]*>[\s\S]*Notes/);
+  assert.match(side, /ask about the cache[\s\S]*then &lt;b&gt;the tests&lt;\/b&gt;/, 'in the order written, as text');
+  page.push(richSnapshot([richAgent({ mod: { live: true, version: '0.7.0' }, notes: { count: 2, unused: 2, rev: 5 } })]));
+  await page.settle();
+  assert.equal(page.gets.filter(g => g.path === NOTES).length, 1, 'read again only when they change');
+  page.edit('input', { value: 'and the docs', dataset: { noteAgent: 'r1' } });
+  page.ctx.fetch = (orig => async (path, init) => (path === '/api/actions/note' ? (page.posts.push({ path, body: JSON.parse(init.body) }), { ok: true, json: async () => ({ ok: true, notes: [note('n1', 'ask about the cache'), note('n2', 'then the tests'), note('n3', 'and the docs')] }) }) : orig(path, init)))(page.ctx.fetch);
+  await page.clickButton('note-add', { agent: 'r1' });
+  await page.settle();
+  assert.deepEqual(page.posts.at(-1), { path: '/api/actions/note', body: { agentId: 'r1', op: 'add', text: 'and the docs' } });
+  assert.match(page.side(), /and the docs/);
+  assert.match(page.side(), /<textarea id="note-text"[^>]*><\/textarea>/, 'the box is empty again');
+});
+
+test('↳ Use puts a note in the message box; when that message is sent, the note is marked used', async () => {
+  const page = notesPage([note('n1', 'ask about the cache')]);
+  await page.settle();
+  page.edit('input', { value: 'Hi.', dataset: { msgAgent: 'r1' } });
+  await page.clickButton('note-use', { noteUse: 'n1', agent: 'r1' });
+  assert.match(page.side(), /<textarea id="msg-text"[^>]*>Hi\.\n\nask about the cache<\/textarea>/, 'after what was already typed');
+  await page.clickButton('msg-send', { agent: 'r1' });
+  await page.settle();
+  const posts = page.posts.map(x => [x.path, x.body]);
+  assert.deepEqual(posts.slice(-2), [['/api/actions/message', { agentId: 'r1', text: 'Hi.\n\nask about the cache' }], ['/api/actions/note', { agentId: 'r1', op: 'used', ids: ['n1'] }]]);
+});
+
+test('a note put in the message box stays unused when the box is cleared instead of sent', async () => {
+  const page = notesPage([note('n1', 'ask about the cache')]);
+  await page.settle();
+  await page.clickButton('note-use', { noteUse: 'n1', agent: 'r1' });
+  page.edit('input', { value: '', dataset: { msgAgent: 'r1' } });
+  page.edit('input', { value: 'something else', dataset: { msgAgent: 'r1' } });
+  await page.clickButton('msg-send', { agent: 'r1' });
+  await page.settle();
+  assert.equal(page.posts.some(x => x.body.op === 'used'), false);
+});
+
+test('Send now sends a note as your own message and marks it used; a session not listening can still have notes written', async () => {
+  const page = notesPage([note('n1', 'ask about the cache')]);
+  await page.settle();
+  await page.clickButton('note-send', { noteSend: 'n1', agent: 'r1' });
+  await page.settle();
+  assert.deepEqual(page.posts.map(x => [x.path, x.body]), [['/api/actions/message', { agentId: 'r1', text: 'ask about the cache' }], ['/api/actions/note', { agentId: 'r1', op: 'used', ids: ['n1'] }]]);
+  const off = notesPage([note('n1', 'ask about the cache')], { mod: undefined });
+  await off.settle();
+  const side = off.side();
+  assert.match(side, /data-note-use="n1"[^>]*disabled/);
+  assert.match(side, /data-note-send="n1"[^>]*disabled/);
+  assert.doesNotMatch(side, /id="note-text"[^>]*disabled/, 'writing a note needs nothing from the session');
+});
+
+test('a used note is crossed out until Clear used; ✕ deletes one; a note is edited in place, Enter saves and Esc cancels', async () => {
+  const page = notesPage([note('n1', 'ask about the cache', { usedAt: 2 }), note('n2', 'then the tests')]);
+  await page.settle();
+  assert.match(page.side(), /class="note used"[\s\S]*ask about the cache/);
+  await page.clickButton('notes-clear', { notesClear: '', agent: 'r1' });
+  assert.deepEqual(page.posts.at(-1).body, { agentId: 'r1', op: 'clear-used' });
+  await page.clickButton('note-del', { noteDelete: 'n2', agent: 'r1' });
+  assert.deepEqual(page.posts.at(-1).body, { agentId: 'r1', op: 'delete', id: 'n2' });
+  await page.clickButton('note-open', { noteOpen: 'n2', agent: 'r1' });
+  assert.match(page.side(), /<textarea class="note-edit" data-note-edit="n2" data-agent="r1"[^>]*>then the tests<\/textarea>/);
+  const box = { value: 'then the tests, all of them', dataset: { noteEdit: 'n2', agent: 'r1' } };
+  page.edit('input', box);
+  assert.equal(page.key('Enter', box), true);
+  await page.settle();
+  assert.deepEqual(page.posts.at(-1).body, { agentId: 'r1', op: 'edit', id: 'n2', text: 'then the tests, all of them' });
+  await page.clickButton('note-open', { noteOpen: 'n2', agent: 'r1' });
+  assert.equal(page.key('Escape', { value: 'x', dataset: { noteEdit: 'n2', agent: 'r1' } }), true);
+  assert.doesNotMatch(page.side(), /class="note-edit"/);
+});
+
+test('folded, Notes says how many are unused; a session with none has nothing to read; a Codex session has no notes', async () => {
+  const page = notesPage([note('n1', 'a'), note('n2', 'b', { usedAt: 2 })], {}, );
+  await page.settle();
+  await page.clickButton('notes-fold', { group: 'notes' });
+  assert.match(page.side(), /data-group="notes" aria-expanded="false"[^>]*>[\s\S]*?Notes<span class="grp-n">1<\/span>/);
+  const none = notesPage([]);
+  await none.settle();
+  assert.equal(none.gets.some(g => g.path === NOTES), false);
+  assert.match(none.side(), /No notes yet/);
+  const codex = loadPage();
+  codex.push(richSnapshot([richAgent({ kind: 'codex' })]));
+  assert.doesNotMatch(codex.side(), /data-group="notes"/);
+});
+
 // The sessions dialog: past sessions to resume, with search, filters and sorting.
 const H = 3_600_000;
 const pastSessions = () => {
@@ -1454,6 +1553,17 @@ const sessPage = async (opts = {}) => {
 const shownSessions = page => [...page.el('sess-body').innerHTML.matchAll(/class="sess-row" data-sess-id="([^"]+)"/g)].map(m => m[1]);
 const shownFolders = page => [...page.el('sess-body').innerHTML.matchAll(/data-sess-new="([^"]+)"/g)].map(m => m[1]);
 const pickIn = async (page, id, value) => { await page.change({ id, value }); await page.settle(); };
+
+test('the resume list marks a session that has notes you have not used yet', async () => {
+  const d = pastSessions();
+  d.sessions[0].notes = 2;
+  const page = loadPage({ replies: { '/api/sessions': d } });
+  await page.ctx.openSessions();
+  await page.settle();
+  const body = page.el('sess-body').innerHTML;
+  assert.match(body, /data-sess-id="a"[\s\S]*?data-tip="2 notes you haven’t used yet: they show under its message box once you resume it">📝 2<\/span>/);
+  assert.equal((body.match(/📝/g) ?? []).length, 1);
+});
 
 test('past sessions show their folder, branch, model, length and when they started, newest first, with a count', async () => {
   const page = await sessPage();
