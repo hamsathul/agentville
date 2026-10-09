@@ -84,6 +84,14 @@ export function withAttachments(text, paths, folders = []) {
   return text;
 }
 
+/** What you typed in a message `withAttachments` made: its notes taken off ('' when it was only files or folders). */
+export function typedPart(text) {
+  const t = String(text ?? '');
+  if (/^Please look at (?:the (?:files?|folders?)|what) I attached[.:]/.test(t)) return '';
+  const note = t.search(/\n\nI attached (?:a (?:file|folder)|\d+ (?:files|folders))\. (?:Open|Look in) (?:it|each) with /);
+  return note >= 0 ? t.slice(0, note) : t;
+}
+
 /** Removes attachments older than a week, and session folders left empty. */
 export function pruneUploads(dir, now, keepMs = KEEP_MS) {
   let sessions;

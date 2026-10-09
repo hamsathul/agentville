@@ -18,7 +18,7 @@ import { checkFolderFile, listFolder, parsePorcelain, readFolderFile } from './s
 import { listDirs, makeDir, startPlace } from './sources/folders.mjs';
 import { contentTypeOf, parseCsv, readXlsx, viewOf } from './sources/previews.mjs';
 import { repoFiles } from './derive/repo-files.mjs';
-import { checkFiles, checkFolders, pruneUploads, saveFiles, withAttachments } from './sources/uploads.mjs';
+import { checkFiles, checkFolders, pruneUploads, saveFiles, typedPart, withAttachments } from './sources/uploads.mjs';
 import { compactSummary, memoryFiles, scratchpadOf } from './sources/memory.mjs';
 import { EFFORTS, MODELS, MODE_FLAGS, SESSION_ID, claudeCommand, closeTerminalScript, listSessions, projectsOf, shellQuote, terminalScript } from './sources/sessions.mjs';
 import { parseMcpList, parsePluginDetails, projectServersOf, readOwnSkills, readRules, removeRule } from './sources/claude-setup.mjs';
@@ -459,6 +459,22 @@ export async function startCollector({ root, claudeDir = join(homedir(), '.claud
     convo.usedAt = now;
     await convo.update();
     return convo.messages(from);
+  }
+
+  /**
+   * Your own messages to a session, newest first, for ↑ in its message box: as you typed them (no
+   * attachment notes), without slash commands (a message doesn't run one), a repeat in a row once.
+   */
+  async function getPrompts(id) {
+    if (id.includes(':')) return null;
+    const convo = await getConversation(id, 0);
+    if (!convo) return null;
+    const typed = [];
+    for (const m of convo.items) {
+      const text = m.kind === 'prompt' ? typedPart(m.body).trim() : '';
+      if (text && !text.startsWith('/') && text !== typed.at(-1)) typed.push(text);
+    }
+    return { prompts: typed.reverse().slice(0, 200) };
   }
 
   async function getTranscriptHtml(id) {
@@ -1056,7 +1072,7 @@ export async function startCollector({ root, claudeDir = join(homedir(), '.claud
     port: portOverride ?? cfg.port, token, webFile: join(root, 'web', 'index.html'),
     getSnapshot: () => snapshot,
     getFeed: (id, limit) => modelFor(id)?.history(limit) ?? null,
-    getConversation, getSubagent, claudePlugins, claudeMcp, claudeRules, fileTicket, rawFile, officeView, shellOutput, namedFiles,
+    getConversation, getPrompts, getSubagent, claudePlugins, claudeMcp, claudeRules, fileTicket, rawFile, officeView, shellOutput, namedFiles,
     getTranscriptHtml, getDoc: readDoc, listFiles, readFile, repoTouched, actions, pastSessions, listDirs: dirsFor, log,
   });
   const port = await server.listen();
@@ -1094,5 +1110,5 @@ export async function startCollector({ root, claudeDir = join(homedir(), '.claud
     await server.close();
   }
 
-  return { port, getSnapshot: () => snapshot, reloadConfig, actions, pastSessions, listDirs: dirsFor, shellOutput, namedFiles, getConversation, claudePlugins, claudeMcp, claudeRules, fileTicket, rawFile, officeView, readDoc, listFiles, readFile, repoTouched, stop };
+  return { port, getSnapshot: () => snapshot, reloadConfig, actions, pastSessions, listDirs: dirsFor, shellOutput, namedFiles, getConversation, getPrompts, claudePlugins, claudeMcp, claudeRules, fileTicket, rawFile, officeView, readDoc, listFiles, readFile, repoTouched, stop };
 }

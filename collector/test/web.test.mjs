@@ -83,6 +83,8 @@ function loadPage({ stored = {}, storageThrows = false, files = {}, replies = {}
     openAgent: id => Promise.all((docListeners.click ?? []).map(fn => fn({ target: { closest: sel => (sel === '.row[data-id]' ? { dataset: { id } } : null) } }))),
     clickButton: (id, dataset) => { Object.assign(ctx.document.getElementById(id).dataset, dataset); return Promise.all((docListeners.click ?? []).map(fn => fn({ target: { closest: sel => (sel === 'button' ? ctx.document.getElementById(id) : null) } }))); },
     edit: (type, target) => (docListeners[type] ?? []).forEach(fn => fn({ target: { closest: () => null, ...target } })),
+    // a key pressed in an element (the element itself is the target): whether the page took it
+    key: (key, target, mods = {}) => { let taken = false; (docListeners.keydown ?? []).forEach(fn => fn({ key, ...mods, target, preventDefault() { taken = true; } })); return taken; },
     theme: () => ctx.document.documentElement.dataset.theme,
     stored,
   };
@@ -1295,6 +1297,49 @@ test('■ Stop on the working line cancels the running turn at once, as Esc does
   const idle = loadPage();
   idle.push(richSnapshot([richAgent({ pid: 4242, mod: { live: true, version: '0.7.0' }, state: 'yourTurn', turn: undefined })]));
   assert.doesNotMatch(idle.side(), /data-stop-turn/, 'nothing to stop between turns');
+});
+
+test('↑ in the message box brings back your earlier messages to that session, ↓ goes forward, past the newest your draft', async () => {
+  const P = '/api/agent/r1/prompts';
+  const page = loadPage({ replies: { [P]: { prompts: ['ship it', 'Fix the header\nand the footer'] } } });
+  page.push(richSnapshot([richAgent({ mod: { live: true, version: '0.7.0' } })]));
+  const box = Object.assign(page.el('msg-text'), { value: 'half typed', selectionStart: 0, selectionEnd: 0, dataset: { msgAgent: 'r1' }, closest: () => null,
+    setSelectionRange(a, b) { this.selectionStart = a; this.selectionEnd = b; } });
+  const caret = at => { box.selectionStart = box.selectionEnd = at; };
+  assert.equal(page.key('ArrowUp', box), true, 'the caret on the first line: ↑ is taken');
+  await page.settle();
+  assert.equal(box.value, 'ship it');
+  assert.deepEqual(page.gets.filter(g => g.path === P).map(g => Boolean(g.token)), [true], 'read once, with the token');
+  assert.equal(page.key('ArrowUp', box), true);
+  await page.settle();
+  assert.equal(box.value, 'Fix the header\nand the footer');
+  assert.equal(box.selectionStart, box.value.length, 'the caret at its end');
+  assert.equal(page.key('ArrowUp', box), false, 'not on the first line: the caret moves up as usual');
+  caret(0);
+  assert.equal(page.key('ArrowUp', box), false, 'the oldest: nothing further back');
+  assert.equal(page.key('ArrowDown', box), false, 'not on the last line: the caret moves down');
+  caret(box.value.length);
+  assert.equal(page.key('ArrowDown', box), true);
+  assert.equal(box.value, 'ship it');
+  assert.equal(page.key('ArrowDown', box), true);
+  assert.equal(box.value, 'half typed', 'past the newest: what you were typing');
+  assert.equal(page.key('ArrowDown', box), false, 'and no further');
+  caret(0);
+  assert.equal(page.key('ArrowUp', box, { shiftKey: true }), false, 'Shift+↑ selects, as usual');
+  // what you recall is what goes; editing it starts again from the newest, keeping your edit
+  page.key('ArrowUp', box);
+  await page.settle();
+  box.value = 'ship it today';
+  page.edit('input', { value: box.value, dataset: { msgAgent: 'r1' } });
+  caret(0);
+  page.key('ArrowUp', box);
+  await page.settle();
+  assert.equal(box.value, 'ship it');
+  caret(box.value.length);
+  page.key('ArrowDown', box);
+  assert.equal(box.value, 'ship it today');
+  await page.clickButton('msg-send', { agent: 'r1' });
+  assert.deepEqual(page.posts.at(-1), { path: '/api/actions/message', body: { agentId: 'r1', text: 'ship it today' } });
 });
 
 // The sessions dialog: past sessions to resume, with search, filters and sorting.

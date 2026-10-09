@@ -545,6 +545,13 @@ test("a session's whole conversation is read from its transcript, then only what
     appendFileSync(transcript, line(t + 2000, 'user', { content: 'and then?' }));
     assert.deepEqual((await handle.getConversation('sess-convo', 2)).items.map(m => m.body), ['and then?']);
     assert.equal(await handle.getConversation('nobody', 0), null);
+    // ↑ in the message box: your own messages, newest first, as typed (no attachment notes, no slash
+    // commands, a repeat in a row once, nothing for a message that was only files)
+    for (const [i, content] of ['and then?', 'Fix the header\n\nI attached a file. Open it with the Read tool:\n/u/1.png', '<command-name>/model</command-name>\n<command-args>sonnet</command-args>', 'Please look at the file I attached. Open it with the Read tool:\n/u/2.png', 'ship it', 'ship it'].entries()) {
+      appendFileSync(transcript, line(t + 3000 + i * 1000, 'user', { content }));
+    }
+    assert.deepEqual(await handle.getPrompts('sess-convo'), { prompts: ['ship it', 'Fix the header', 'and then?', 'first question'] });
+    assert.equal(await handle.getPrompts('nobody'), null);
   } finally {
     await handle.stop();
   }

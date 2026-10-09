@@ -304,6 +304,12 @@ try {
   for (let i = 0; i < 40 && !received.length; i++) await sleep(150);
   check(received[0] === 'First line\nsecond line', `Enter sends the message (got ${JSON.stringify(received)})`);
   check(await until("document.getElementById('msg-text')?.value === ''"), 'the message box clears once it is sent');
+  const arrow = async (name, code) => { for (const type of ['keyDown', 'keyUp']) await send('Input.dispatchKeyEvent', { type, key: name, code: name, windowsVirtualKeyCode: code }); };
+  await js("document.getElementById('msg-text').focus()"); // sending leaves the box (so the page can update): back in it
+  await arrow('ArrowUp', 38);
+  check(await until("document.getElementById('msg-text')?.value === 'Plan the next crop'"), `↑ in the message box brings back what you said to the session (got ${JSON.stringify(await js("document.getElementById('msg-text')?.value"))})`);
+  await arrow('ArrowDown', 40);
+  check(await until("document.getElementById('msg-text')?.value === ''"), '↓ goes back to what you were typing');
   await js("document.querySelector('#center-body [data-convo=\"ui-asker\"]').click()");
   await until("!!document.getElementById('convo-msg-text')");
   await js("document.getElementById('convo-msg-text').focus()"); // before the conversation has loaded

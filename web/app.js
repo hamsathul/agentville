@@ -583,9 +583,51 @@ document.addEventListener('drop', e => {
   const box = e.target?.closest?.('.compose[data-agent]');
   if (box) addFiles(box.dataset.agent, [...(e.dataTransfer?.files ?? [])]);
 });
+// ↑ / ↓ in the message box, as in a terminal: ↑ on its first line brings back your previous message
+// to that session (read from its transcript at the first ↑), again for the one before; ↓ on its last
+// line goes forward, and past the newest gives back what you were typing. Typing starts it afresh.
+const recall = { agentId: null, list: [], at: -1, draft: '' };
+function resetRecall() {
+  recall.agentId = null;
+  recall.list = [];
+  recall.at = -1;
+}
+function recallKey(e) {
+  const box = e.target, agentId = box.dataset?.msgAgent, older = e.key === 'ArrowUp';
+  if ((!older && e.key !== 'ArrowDown') || e.shiftKey || e.altKey || e.metaKey || e.ctrlKey || e.isComposing || !agentId) return;
+  const value = box.value ?? '';
+  if (box.selectionStart !== box.selectionEnd || (older ? value.slice(0, box.selectionStart) : value.slice(box.selectionEnd)).includes('\n')) return;
+  if (recall.agentId !== agentId) {
+    if (!older) return;
+    e.preventDefault();
+    Object.assign(recall, { agentId, list: [], at: -1, draft: value });
+    void (async () => {
+      const r = await fetch(`/api/agent/${encodeURIComponent(agentId)}/prompts`, { headers: { 'x-tracker-token': TOKEN } }).catch(() => null);
+      const got = r?.ok ? await r.json().catch(() => null) : null;
+      if (recall.agentId !== agentId || recall.at !== -1) return; // typed or sent meanwhile
+      recall.list = Array.isArray(got?.prompts) ? got.prompts.filter(t => typeof t === 'string') : [];
+      showRecalled(box, agentId, 0);
+    })();
+    return;
+  }
+  const at = recall.at + (older ? 1 : -1);
+  if (at < -1 || at >= recall.list.length) return;
+  e.preventDefault();
+  showRecalled(box, agentId, at);
+}
+function showRecalled(box, agentId, at) {
+  if (at >= recall.list.length) return;
+  const text = at === -1 ? recall.draft : recall.list[at];
+  if (at === -1) resetRecall(); else recall.at = at;
+  box.value = text;
+  msgDrafts.set(agentId, text);
+  box.setSelectionRange?.(text.length, text.length);
+}
+
 // Enter sends a message; Shift+Enter starts a new line (and Enter while an input method is composing is left alone).
 const sendKey = e => e.key === 'Enter' && !e.shiftKey && !e.altKey && !e.isComposing && e.keyCode !== 229;
 document.addEventListener('keydown', e => {
+  if (e.target?.id === 'msg-text' || e.target?.id === 'convo-msg-text') recallKey(e);
   if (sendKey(e) && (e.target?.id === 'msg-text' || e.target?.id === 'convo-msg-text')) {
     e.preventDefault();
     sendMessage(e.target.dataset.msgAgent, $(e.target.id.replace(/text$/, 'send')));
@@ -616,6 +658,7 @@ document.addEventListener('input', e => {
   }
   if (t?.dataset?.msgAgent !== undefined) {
     msgDrafts.set(t.dataset.msgAgent, t.value);
+    resetRecall(); // typing: the next ↑ starts from your newest message again, keeping this
     return;
   }
   if (t?.dataset?.asideAgent !== undefined) {

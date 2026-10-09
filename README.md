@@ -66,6 +66,7 @@ It listens on `127.0.0.1` only and reads what Claude Code already writes to disk
 **Respond without switching windows**
 - Answer an agent's question (with its options) or a permission prompt (**Allow** / **Deny**).
 - Message any session like a chat, with screenshots, PDFs or other files; it arrives as your own prompt.
+  ↑ in the box brings back what you sent it before, as in its terminal.
 - Read a session's whole conversation, from its first message, in a dialog you can search.
 - Ask a session a side question (`/btw`) without interrupting or adding to its conversation.
 
@@ -252,6 +253,13 @@ These need the mod in that session.
   it gets an "asks you" chip and a card, with one-click **Yes** / **No…** for yes/no questions.
 - **Messages.** Type in the box under **Now** and press Enter (Shift+Enter for a new line). It
   arrives as your own prompt; a busy agent reads it when its current step ends.
+- **↑ / ↓ recall what you sent**, as in the session's terminal. With the cursor on the box's first
+  line, ↑ brings back your last message to that session, then the one before. ↓ on the last line
+  goes forward again, and past the newest gives back what you were typing.
+  - It recalls what you typed in the session's terminal or sent from the dashboard, read from its
+    transcript.
+  - Slash commands aren't recalled, as a message doesn't run them. Neither are files: a message
+    comes back as its text.
 - **Attachments.** Paste (⌘V), drop on the box or use 📎 Attach: any file (screenshots, PDFs,
   Markdown, text…), up to 6 of 10 MB each. The agent opens them with its Read tool.
 - **📁 Folder** attaches a folder, picked in Finder's folder window. Nothing is uploaded: the
@@ -565,8 +573,8 @@ canvas, with its text drawn as HTML on top so it stays crisp.
 
 - Everything stays on your Mac. The collector listens on `127.0.0.1` only and sends nothing
   anywhere. The exception is `gh`, which asks GitHub about your own repos.
-- File contents, folder listings, past sessions, whole conversations and field close-ups are
-  served only with a per-install token that the page carries. Every action (answer, message,
+- File contents, folder listings, past sessions, whole conversations (and your messages in them,
+  for ↑) and field close-ups are served only with a per-install token that the page carries. Every action (answer, message,
   start, end, switch…) also needs a same-origin request.
 - The explorer shows what git shows. Ignored files (`node_modules`, `.env`, build output) and
   files that look like secrets (`.env*`, keys) are neither listed nor served.

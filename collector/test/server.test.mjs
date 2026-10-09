@@ -26,6 +26,7 @@ async function start() {
     getSnapshot: () => ({ generatedAt: 1, agents: [], collisions: [] }),
     getFeed: id => (id === 's1' ? [{ at: 1, kind: 'prompt', text: 'hi' }] : null),
     getConversation: async (id, from) => (id === 's1' ? { total: 2, from, items: [{ at: 1, kind: 'prompt', body: 'hi' }, { at: 2, kind: 'reply', body: 'hello' }].slice(from) } : null),
+    getPrompts: async id => (id === 's1' ? { prompts: ['and then?', 'hi'] } : null),
     getTranscriptHtml: async id => (id === 's1' ? renderTranscriptPage('s1', [{ at: 1, kind: 'prompt', text: '<script>alert(1)</script>' }]) : null),
     listFiles: async id => (id === 's1' ? { root: '/w', git: true, files: ['a.ts'], status: {}, touched: {}, truncated: false } : { status: 404, error: 'That agent was not found.' }),
     readFile: async (id, path) => (id === 's1' && path === '/w/a.ts' ? { doc: { path, text: 'const a = 1;', mtimeMs: 1, size: 12 } } : { status: 403, error: 'That file is outside the agent\'s folder.' }),
@@ -391,6 +392,19 @@ test("a subagent's prompt, steps and result need the token", async () => {
     assert.equal((await request(port, { path: '/api/agent/s1%3AtA/subagent', headers: { 'x-tracker-token': 'tok' } })).status, 200, 'its id encoded, as the page sends it');
     assert.equal((await request(port, { path: '/api/agent/s1:nope/subagent', headers: { 'x-tracker-token': 'tok' } })).status, 404);
     assert.equal((await request(port, { path: '/api/agent/s1%2F..%2Fx/subagent', headers: { 'x-tracker-token': 'tok' } })).status, 404, 'nothing but an id');
+  } finally {
+    await srv.close();
+  }
+});
+
+test("a session's own messages, for ↑ in its message box, need the token too", async () => {
+  const { srv, port } = await start();
+  try {
+    assert.equal((await request(port, { path: '/api/agent/s1/prompts' })).status, 403);
+    const headers = { 'x-tracker-token': 'tok' };
+    assert.deepEqual(JSON.parse((await request(port, { path: '/api/agent/s1/prompts', headers })).body), { prompts: ['and then?', 'hi'] });
+    assert.equal((await request(port, { path: '/api/agent/nobody/prompts', headers })).status, 404);
+    assert.equal((await request(port, { path: '/api/agent/s1%3Atoolu_1/prompts', headers })).status, 404, "a subagent's are not yours");
   } finally {
     await srv.close();
   }

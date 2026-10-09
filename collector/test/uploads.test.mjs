@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, utimesSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { checkFiles, checkFolders, pruneUploads, safeName, saveFiles, withAttachments } from '../sources/uploads.mjs';
+import { checkFiles, checkFolders, pruneUploads, safeName, saveFiles, typedPart, withAttachments } from '../sources/uploads.mjs';
 
 const PNG = Buffer.from('89504e470d0a1a0a0000000d4948445200000001000000010806000000', 'hex');
 const JPEG = Buffer.from([0xff, 0xd8, 0xff, 0xe0, 0, 16]);
@@ -72,4 +72,14 @@ test('attachments older than a week are cleared away', () => {
   assert.equal(existsSync(join(dir, 's1', 'old.png')), false);
   assert.equal(existsSync(join(dir, 's1', 'new.png')), true);
   pruneUploads('/nonexistent/uploads', now);
+});
+
+test('what you typed in a message is told apart from the attachment notes added to it', () => {
+  for (const [text, files, folders] of [['Fix this', ['/u/1.png'], []], ['See this\nand that', [], ['/w/site']], ['Both', ['/u/1.png', '/u/2.pdf'], ['/w/a', '/w/b']], ['Plain', [], []]]) {
+    assert.equal(typedPart(withAttachments(text, files, folders)), text, text);
+  }
+  for (const [files, folders] of [[['/u/1.png'], []], [['/u/1.png', '/u/2.pdf'], []], [[], ['/w/a']], [['/u/1.png'], ['/w/a']]]) {
+    assert.equal(typedPart(withAttachments('', files, folders)), '', 'only files: nothing typed');
+  }
+  assert.equal(typedPart('I attached a file earlier, did you see it?'), 'I attached a file earlier, did you see it?', 'words of your own are kept');
 });

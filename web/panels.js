@@ -310,8 +310,8 @@ function composeHtml(a, ids = 'msg') {
   if (a.kind === 'codex') return '';
   const live = Boolean(a.mod?.live);
   const hint = !live ? "This session isn't listening for dashboard messages yet. Send it anything in its terminal once, or start a new session."
-    : a.state === 'working' ? `${esc(a.name)} is busy: your message waits until its current step ends. ↩ sends, ⇧↩ new line.`
-    : 'Sent as your own message. Paste or drop files on the box. ↩ sends, ⇧↩ new line.';
+    : a.state === 'working' ? `${esc(a.name)} is busy: your message waits until its current step ends. ↩ sends, ⇧↩ new line, ↑ your earlier messages.`
+    : 'Sent as your own message. Paste or drop files on the box. ↩ sends, ⇧↩ new line, ↑ your earlier messages.';
   const sent = msgStatus.get(a.id);
   const status = sent && Date.now() - sent.at < 20_000
     ? `<span id="${ids}-status" class="${sent.bad ? 'msg-bad' : 'msg-ok'}">${esc(sent.text)}</span>`
@@ -545,6 +545,7 @@ async function sendMessage(agentId, button, quick = null) {
   const r = await post('/api/actions/message', { agentId, text, ...(files.length ? { files } : {}), ...(folders.length ? { folders } : {}) });
   if (r.ok && quick === null) {
     msgDrafts.delete(agentId);
+    resetRecall();
     for (const f of attached) if (f.url) URL.revokeObjectURL(f.url);
     msgFiles.delete(agentId);
   }

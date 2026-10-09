@@ -59,7 +59,7 @@ function clampInt(value, min, max, fallback) {
   return Number.isFinite(n) ? Math.min(max, Math.max(min, n)) : fallback;
 }
 
-export function createTrackerServer({ port, token, webFile, getSnapshot, getFeed, getConversation, getSubagent, claudePlugins, claudeMcp, claudeRules, fileTicket, rawFile, officeView, listDirs, shellOutput, namedFiles, getTranscriptHtml, getDoc, listFiles, readFile, repoTouched, actions, pastSessions, log = () => {} }) {
+export function createTrackerServer({ port, token, webFile, getSnapshot, getFeed, getConversation, getPrompts, getSubagent, claudePlugins, claudeMcp, claudeRules, fileTicket, rawFile, officeView, listDirs, shellOutput, namedFiles, getTranscriptHtml, getDoc, listFiles, readFile, repoTouched, actions, pastSessions, log = () => {} }) {
   const clients = new Set();
   let server;
   const actualPort = () => server.address()?.port ?? port;
@@ -104,7 +104,7 @@ export function createTrackerServer({ port, token, webFile, getSnapshot, getFeed
         }
         // A session's whole conversation, or a subagent's prompt, steps and result: token only, like files.
         // The id comes encoded from the page (a subagent's is session:call), so it is decoded, then checked.
-        if ((m = path.match(/^\/api\/agent\/([^/]+)\/(conversation|subagent)$/))) {
+        if ((m = path.match(/^\/api\/agent\/([^/]+)\/(conversation|subagent|prompts)$/))) {
           if (req.headers['x-tracker-token'] !== token) return sendJson(res, 403, { error: 'forbidden' });
           let id = '';
           try { id = decodeURIComponent(m[1]); } catch { /* not an id */ }
@@ -112,6 +112,10 @@ export function createTrackerServer({ port, token, webFile, getSnapshot, getFeed
           if (m[2] === 'subagent') {
             const sub = id.includes(':') ? getSubagent(id) : null;
             return sub ? sendJson(res, 200, sub) : sendJson(res, 404, { error: 'That subagent is not known.' });
+          }
+          if (m[2] === 'prompts') { // your own messages to it, newest first, for ↑ in its message box
+            const got = id.includes(':') ? null : await getPrompts(id);
+            return got ? sendJson(res, 200, got) : sendJson(res, 404, { error: 'That session has no transcript to read.' });
           }
           const convo = await getConversation(id, clampInt(url.searchParams.get('from'), 0, 1_000_000, 0));
           return convo ? sendJson(res, 200, convo) : sendJson(res, 404, { error: 'That session has no transcript to read.' });
