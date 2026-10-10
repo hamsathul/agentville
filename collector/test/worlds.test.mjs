@@ -1102,3 +1102,60 @@ test('the test page: private decides, whatever the can-see switch; onReady once'
   off.from({ type: 'loaded' });
   assert.equal(off.posted.find(m => m.type === 'scene').scene.private, false, 'one of yours, shown in full because the stop says so');
 });
+
+test('cast from a world: library kinds, names of 30 or fewer made plain, 12 at most, a kind once', async () => {
+  const W = (await page()).worlds;
+  const check = m => W.checkMessage(m, { scene: { agents: [], repos: [] }, private: true, sentPaths: new Map(), inFlight: 0 });
+  assert.deepEqual(plain(check({ type: 'cast', animals: [{ kind: 'cow', name: 'Cow' }, { kind: 'cow', name: 'Again' }, { kind: 'dragon', name: 'D' }, { kind: 'cat', name: 'x'.repeat(31) }, { kind: 'duck', name: 'Ducks‮' }] })), { kind: 'cast', animals: [{ kind: 'cow', name: 'Cow' }, { kind: 'duck', name: 'Ducks' }] });
+  assert.equal(check({ type: 'cast', animals: Array.from({ length: 13 }, () => ({ kind: 'cat', name: 'Cat' })) }), null);
+  assert.equal(check({ type: 'cast', animals: 'cow' }), null);
+});
+
+test('namelessLines drops names (any case, a part of 4 or more, a branch), and short names only as whole words', async () => {
+  const W = (await page()).worlds;
+  const snap = { agents: [{ name: 'deploy-bot' }, { name: 'ui' }], repos: [{ name: 'api', branch: 'feature/login-fix' }] };
+  const lines = ['DEPLOY-BOT broke it', 'the deploy went fine', 'ui is waiting', 'quiet out here', 'the API is down', 'rapid grazing', 'login again?', 'moo.'].map(text => ({ kind: 'cow', when: 'idle', text }));
+  assert.deepEqual(plain(W.namelessLines(lines, snap)).map(l => l.text), ['quiet out here', 'rapid grazing', 'moo.']);
+});
+
+test('chatterFor: the batch for this world’s kinds, rechecked; private worlds get the nameless ones', async () => {
+  const W = (await page()).worlds;
+  const snap = { agents: [{ name: 'deploy-bot' }], repos: [], chatter: { at: 5, lines: [
+    { kind: 'cow', when: 'idle', text: 'deploy-bot again' }, { kind: 'cow', when: 'idle', text: 'moo' }, { kind: 'cat', when: 'idle', text: 'not this world' },
+    { kind: 'cow', when: 'dance', text: 'no' }, { kind: 'cow', when: 'idle', text: 'x'.repeat(41) }, { kind: 'cow', when: 'idle', text: 3 },
+  ] } };
+  const cast = [{ kind: 'cow', name: 'Cow' }];
+  assert.deepEqual(plain(W.chatterFor(snap, cast, false)).map(l => l.text), ['deploy-bot again', 'moo']);
+  assert.deepEqual(plain(W.chatterFor(snap, cast, true)).map(l => l.text), ['moo']);
+  assert.deepEqual(plain(W.chatterFor({ ...snap, chatter: null }, cast, false)), []);
+  assert.deepEqual(plain(W.chatterFor(snap, null, false)), [], 'no cast yet: nothing');
+});
+
+test('the page posts the world’s cast while Animal lines is ticked, and sends the world the helper’s batch (and an empty one when it goes)', async () => {
+  const p = await page();
+  const lines = [{ kind: 'cow', when: 'idle', text: 'moo from the helper' }, { kind: 'cat', when: 'idle', text: 'not on the farm' }];
+  p.farm.update({ ...snap, helper: { on: false, uses: { names: false, lines: false } }, chatter: null });
+  p.from({ type: 'loaded' });
+  p.from({ type: 'ready' });
+  p.from({ type: 'cast', animals: [{ kind: 'cow', name: 'Cow' }] });
+  await p.settle();
+  assert.equal(p.fetches.filter(f => f[0] === '/api/actions/animals').length, 0, 'unticked: the cast stays on the page');
+  assert.equal(p.posted.some(m => m.type === 'chatter'), false, 'no batch: nothing sent');
+  p.farm.update({ ...snap, helper: { on: true, uses: { names: false, lines: true } }, chatter: null });
+  await p.settle();
+  assert.deepEqual(p.fetches.filter(f => f[0] === '/api/actions/animals'), [['/api/actions/animals', 'tok']], 'ticked: the cast goes, with the token');
+  p.farm.update({ ...snap, helper: { on: true, uses: { names: false, lines: true } }, chatter: { at: 7, lines } });
+  assert.deepEqual(plain(p.posted.filter(m => m.type === 'chatter')), [{ type: 'chatter', lines: [lines[0]] }], 'the batch, for this world’s kinds');
+  p.farm.update({ ...snap, helper: { on: true, uses: { names: false, lines: true } }, chatter: { at: 7, lines } });
+  assert.equal(p.posted.filter(m => m.type === 'chatter').length, 1, 'the same batch is not sent again');
+  p.farm.update({ ...snap, helper: { on: true, uses: { names: false, lines: false } }, chatter: null });
+  assert.deepEqual(plain(p.posted.filter(m => m.type === 'chatter').at(-1)), { type: 'chatter', lines: [] }, 'gone: the world drops its lines');
+});
+
+test("the page's copies of the creature kinds and situations match the collector's (drift fails here)", async () => {
+  const src = readFileSync(fileURLToPath(new URL('../../web/worlds.js', import.meta.url)), 'utf8');
+  const listOf = name => JSON.parse(src.match(new RegExp(`const ${name} = (\\[[^\\]]*\\])`))[1].replaceAll("'", '"'));
+  const { CREATURE_KINDS, SITUATIONS } = await import('../sources/lines.mjs');
+  assert.deepEqual(listOf('CREATURE_KINDS'), CREATURE_KINDS);
+  assert.deepEqual(listOf('SITUATIONS'), SITUATIONS);
+});

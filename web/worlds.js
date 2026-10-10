@@ -9,6 +9,11 @@
   const NAV = new Set(['list', 'session', 'setup', 'side', 'theme', 'worlds']);
   const STATES = new Set(['waiting', 'working', 'turn', 'idle', 'stale']);
   const PREF_NAME = /^[a-z][a-z0-9-]{0,31}$/;
+  // The creature library's kinds (sdk/creatures.js) and the situations the helper writes for (collector/sources/lines.mjs):
+  // a world's cast names only these. Copies: worlds.test.mjs fails when they drift.
+  const CREATURE_KINDS = ['cow', 'goat', 'sheepdog', 'ostrich', 'lion', 'tiger', 'duck', 'cat', 'dog', 'pigeon', 'mouse', 'fish'];
+  const SITUATIONS = ['idle', 'deployFailed', 'deployOk', 'harvest', 'merged', 'arrive'];
+  const CONTROL = /[\x00-\x1f\x7f-\x9f]/g;
   const PREF_MAX = 16_384, DIARY_MAX = 20, IN_FLIGHT_MAX = 4, ID_MAX = 200, PATH_MAX = 4096;
   // A world keeps at most 64 settings, 64 KB in all (names and values, what is saved already included):
   // it can't fill the page's storage, after which the page's own settings would stop saving.
@@ -112,8 +117,42 @@
         if (m.kind === 'repoTouched' && repos.some(r => r.key === m.repo)) return { kind: 'request', id: m.id, what: 'repoTouched', repo: m.repo };
         return refuse('That is not on the dashboard.');
       }
+      case 'cast': { // the world's animals, for the helper's lines (kinds from the library, names only)
+        if (!Array.isArray(m.animals) || m.animals.length > 12) return null;
+        const out = new Map();
+        for (const c of m.animals) if (c && CREATURE_KINDS.includes(c.kind) && typeof c.name === 'string' && c.name.length <= 30 && !out.has(c.kind)) out.set(c.kind, { kind: c.kind, name: noBidi(c.name).replace(CONTROL, '').trim() || c.kind });
+        return { kind: 'cast', animals: [...out.values()] };
+      }
       default: return null;
     }
+  }
+
+  /** The names a private world may not see in a line: agents', repos' and branches', and their parts of 4 or more. */
+  function namesIn(snap) {
+    const long = new Set(), short = new Set();
+    const add = v => {
+      const s = String(v ?? '').toLowerCase().trim();
+      if (!s) return;
+      (s.length >= 4 ? long : short).add(s);
+      for (const part of s.split(/[-_/. ]+/)) if (part.length >= 4) long.add(part);
+    };
+    for (const a of snap?.agents ?? []) add(a.name);
+    for (const r of snap?.repos ?? []) { add(r.name); add(r.branch); }
+    return { long: [...long], short: [...short] };
+  }
+  /** The lines with no name in them (a private world's): a long name anywhere, a short one as a whole word, any case. */
+  function namelessLines(lines, snap) {
+    const { long, short } = namesIn(snap);
+    const word = new RegExp(short.length ? `(^|[^\\p{L}\\p{N}])(${short.map(s => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('|')})(?=$|[^\\p{L}\\p{N}])` : '(?!)', 'u');
+    return lines.filter(l => { const t = l.text.toLowerCase(); return !long.some(n => t.includes(n)) && !word.test(t); });
+  }
+  /** What a world gets of the helper's latest batch: its kinds' lines, checked again; nameless ones for a private world. */
+  function chatterFor(snap, cast, priv) {
+    const kinds = new Set((cast ?? []).map(c => c.kind));
+    const lines = (Array.isArray(snap?.chatter?.lines) ? snap.chatter.lines : []).slice(0, 40)
+      .filter(l => l && kinds.has(l.kind) && SITUATIONS.includes(l.when) && typeof l.text === 'string' && l.text.length >= 1 && l.text.length <= 40)
+      .map(l => ({ kind: l.kind, when: l.when, text: l.text }));
+    return priv ? namelessLines(lines, snap) : lines;
   }
 
   /** The diary in the page's sidebar: newest first, as text (a world never writes the page's HTML). */
@@ -144,6 +183,7 @@
   let host = null, frame = null, opts = {}, world = 'farm', scene = null, selectedId = null, loaded = false;
   let diary = [], timer = 0, lastSettings = '', inFlight = 0, generation = 0;
   let sent = null; // the scene the world was last given (private, or not)
+  let cast = null, castTimer = 0, lastSnap = null, chatterAt = null; // the world's animals (its cast message), the snapshot last seen, the batch last sent
   let port = null; // the MessageChannel port to this frame: made on `loaded`, one end handed to the bridge in `start`
   let heardLoaded = false; // the frame's `loaded`, heard: once per frame (every load builds a new one)
   let ready = false, loadsLeft = 0, startTimer = 0, lastError = null, strip = null, failed = false;
@@ -245,6 +285,7 @@
         measureSaved();
         sendScene();
         post({ type: 'select', id: selectedId });
+        sendChatter(true);
         // The page decides who gets the way back, not the frame: every world of yours (its HUD, if any, is
         // its own doing), and a built-in one only when it draws itself (the farm's buttons are already there).
         if (world.startsWith('u/') || act.raw) showCorner();
@@ -288,6 +329,7 @@
         break;
       }
       case 'diary': showDiary(act.entries); break;
+      case 'cast': cast = act.animals; clearInterval(castTimer); castTimer = setInterval(postCast, 300_000); void postCast(); sendChatter(true); break;
       case 'refuse': post({ type: 'reply', id: act.id, ok: false, status: 403, error: act.error }); break;
       case 'request': {
         const mine = generation;
@@ -351,6 +393,7 @@
     world = key;
     loaded = false;
     heardLoaded = false;
+    cast = null; clearInterval(castTimer); chatterAt = null; // a new frame says its animals again
     generation++;
     closePort();
     sent = null; // nothing is given to the new frame until it says `loaded`
@@ -557,8 +600,24 @@
     }
   }
   function update(snap) {
+    const linesWas = Boolean(lastSnap?.helper?.on && lastSnap?.helper?.uses?.lines);
+    lastSnap = snap;
     scene = window.AgentvilleScene.toScene(snap);
-    if (loaded) sendScene();
+    if (loaded) { sendScene(); sendChatter(); }
+    if (!linesWas && snap?.helper?.on && snap?.helper?.uses?.lines) void postCast(); // ticked just now: say the animals at once
+  }
+  /** The world's animals to the collector, for Animal lines: when the world says them, then every 5 minutes, while it's ticked. */
+  async function postCast() {
+    if (!cast?.length || !lastSnap?.helper?.on || !lastSnap?.helper?.uses?.lines || document.hidden) return;
+    try { await fetch('/api/actions/animals', { method: 'POST', headers: { 'x-tracker-token': token, 'content-type': 'application/json' }, body: JSON.stringify({ cast }) }); } catch { /* the next one, in 5 minutes */ }
+  }
+  /** The helper's latest batch to the world when it changes; an empty one once it's gone (never before a batch was sent). */
+  function sendChatter(force = false) {
+    const at = lastSnap?.chatter?.at ?? null;
+    if (at === null) { if (chatterAt !== null) post({ type: 'chatter', lines: [] }); chatterAt = null; return; }
+    if (!force && at === chatterAt) return;
+    chatterAt = at;
+    post({ type: 'chatter', lines: chatterFor(lastSnap, cast, isPrivate(world)) });
   }
   /** The newest scene to the world: the whole of it, or (one of your worlds, not allowed) without words and paths. */
   function sendScene() {
@@ -592,6 +651,7 @@
     closePort();
     loaded = false;
     heardLoaded = false;
+    cast = null; clearInterval(castTimer); chatterAt = null;
     clearTimeout(startTimer);
     resetStrip();
     failed = false;
@@ -635,5 +695,5 @@
   function clickGuardBlocks(detail) { return clickGuarded || (detail > 0 && guardPointerAt < guardChangedAt); }
 
   window.TrackerFarm = { mount, update, select, unmount, hide, current, openList, worldsChanged, armClickGuard, clickGuardPointerDown, clickGuardKeyDown, clickGuardBlocks, colorOf: id => window.AgentvilleScene.colorOf(id), toScene: snap => window.AgentvilleScene.toScene(snap) };
-  window.AgentvilleWorlds = { checkMessage, loadPrefs, renderDiary, prefKey, choose, setCanSee };
+  window.AgentvilleWorlds = { checkMessage, loadPrefs, renderDiary, prefKey, choose, setCanSee, namelessLines, chatterFor };
 })();
