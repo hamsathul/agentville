@@ -980,6 +980,19 @@ try {
     await until("document.getElementById('restore-dlg').open", 3000); await raise(); await hold(2800);
     await click(q('[data-restore-cancel]'), 500); await hold(400);
     await click(q('[data-convo-close]'), 500); await hold(500);
+    await scene('💬 All chats: every conversation in one timeline', "Your messages, the agents' replies and what they say to each other, oldest first. Each agent's steps fold into one line.");
+    await menu('[data-farm-nav="chats"]');
+    await until("document.getElementById('chats').open", 4000); await raise(); await hold(1800);
+    await point(q('#chats-body'), 600); await js("document.getElementById('chats-body').scrollBy({ top: -360, behavior: 'smooth' })"); await hold(1500); // back a little, to read
+    await click(q('#chats-body .ch-run-btn'), 600); await hold(1800);
+    await scene('Pick whose messages to show', 'A chip for each agent, with how many of its messages are new. ⚠ Needs you shows the ones waiting on you, to answer them here.');
+    await click(q(`#chats-chips [data-chats-chip="${byId['demo-checkout'].id}"]`), 600); await hold(1800);
+    await click(q('#chats-chips [data-chats-needs]'), 600); await hold(2400);
+    await click(q('#chats-chips [data-chats-chip=""]'), 600); await hold(900);
+    await scene('Write to any of them from here', 'The box writes to the agent in To: the one whose message you clicked last. It is that agent\'s own box.');
+    await click(`[...document.querySelectorAll('#chats-body .bub[data-chats-agent="${byId['demo-orders'].id}"]')].at(-1)`, 600); await hold(700);
+    await point(q('#chats-to'), 600); await hold(2000);
+    await click(q('[data-chats-close]'), 500); await hold(500);
   }
 
   // ----- 11. the list view -----

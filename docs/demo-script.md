@@ -44,7 +44,7 @@ own; the opening is at the start of chapter 1's.
 | 2.3 | Season: spring, summer, autumn, winter, then live | The season follows your 5-hour limit | Spring while it is fresh, winter when it is nearly used up. Or hold a season with the Season switch. |
 | 2.4 | Zoom in, drag, the minimap, back to 100%, Help | Zoom in and look around | Drag the view, and use the minimap while you are zoomed in. Help explains every symbol on the farm. |
 
-## 3. The animals (50 s)
+## 3. The animals (48 s)
 
 | # | On screen | Caption | Under it |
 |---|---|---|---|
@@ -53,7 +53,7 @@ own; the opening is at the start of chapter 1's.
 | 3.3 | The pond's menu: bread for the ducks | The ducks on the pond | Click the pond to feed them bread, or quack back. |
 | 3.4 | The animals say Haiku's fresh lines in their bubbles | With ✨ Helper's Animal lines on, Haiku writes what they say | Fresh lines about what is happening on the farm, never naming anyone, written through one of your own sessions. |
 
-## 4. The sidebar (46 s)
+## 4. The sidebar (44 s)
 
 | # | On screen | Caption | Under it |
 |---|---|---|---|
@@ -79,7 +79,7 @@ own; the opening is at the start of chapter 1's.
 | 6.1 | Menu → Broadcast: the agents at work picked, a message typed | 📣 Broadcast one message to several agents | Tick the ones you want, or pick a group: all of them, those that need you, or those at work. |
 | 6.2 | Sent: a line for each, sent or waiting for its turn to end | Each gets it as its own box would send it | An agent in the middle of a turn gets it when the turn ends, and the list says which. |
 
-## 7. Naming and steering (74 s)
+## 7. Naming and steering (73 s)
 
 | # | On screen | Caption | Under it |
 |---|---|---|---|
@@ -112,13 +112,16 @@ own; the opening is at the start of chapter 1's.
 | 9.6 | The brief (Word), then the forecast (Excel) and its second sheet | Word and Excel files | A Word document shows as a page or as text. A workbook shows as tables, with a tab for each sheet. |
 | 9.7 | The cards folded away; asked for a screenshot, ⚡ sent now; the thumbnail under its reply opens | Ask it for a screenshot | When its reply names the file, a thumbnail shows under it. Click it to open the picture. |
 
-## 10. The conversation (23 s)
+## 10. The conversation (48 s)
 
 | # | On screen | Caption | Under it |
 |---|---|---|---|
 | 10.1 | ⤢ Read the whole conversation; a search for "retry" | Read the whole conversation | From its first message, with search: Enter jumps to the next match. |
 | 10.2 | In the conversation, ⑂ Fork on the reply it found: its dialog | Fork from any reply | A new session starts from that point of the conversation, in the mode, model, effort and account you choose. |
 | 10.3 | ↺ Restore on its first prompt: its dialog; the conversation closed | Or go back to before one of your messages | ↺ Restore rewinds the conversation, the code it changed since, or both, as /rewind does. |
+| 10.4 | Menu → Chats: every agent's messages and folded steps; back a little; a folded run opened | 💬 All chats: every conversation in one timeline | Your messages, the agents' replies and what they say to each other, oldest first. Each agent's steps fold into one line. |
+| 10.5 | checkout-api's chip, then ⚠ Needs you (their cards), then All | Pick whose messages to show | A chip for each agent, with how many of its messages are new. ⚠ Needs you shows the ones waiting on you, to answer them here. |
+| 10.6 | orders-db's message clicked: To is orders-db; closed | Write to any of them from here | The box writes to the agent in To: the one whose message you clicked last. It is that agent's own box. |
 
 ## 11. The list view (40 s)
 
@@ -139,7 +142,7 @@ own; the opening is at the start of chapter 1's.
 | 12.2 | `~/code/new-shop`: Create it, confirmed; the work account; New | The folder does not have to exist yet | Create it makes it after asking. New starts the session there, in the mode, model, effort and account you pick. |
 | 12.3 | Past sessions: a search, filtered by model, sorted by length | Search your past sessions | Filter them by folder, model, branch, account or whether they run, sort them, and resume one. |
 
-## 13. Claude Code itself (20 s)
+## 13. Claude Code itself (19 s)
 
 | # | On screen | Caption | Under it |
 |---|---|---|---|
@@ -148,7 +151,7 @@ own; the opening is at the start of chapter 1's.
 | 13.3 | MCP servers | Check your MCP servers | Yours, claude.ai's connectors and each plugin's, with Sign in where one needs it. |
 | 13.4 | Permission rules | Permission rules | What runs without asking, and the settings file each rule is in. Remove one in a click. |
 
-## 14. Other worlds (44 s)
+## 14. Other worlds (43 s)
 
 | # | On screen | Caption | Under it |
 |---|---|---|---|
@@ -158,7 +161,7 @@ own; the opening is at the start of chapter 1's.
 | 14.4 | The robot dog, the robot vacuum, the cat | A robot dog, a robot vacuum and a cat live here | Just for fun, like the animals on the farm. |
 | 14.5 | The list of worlds again: your folder; back to the farm | Or make a world of your own | npm run new-world starts one, with a guide written for Claude Code. Yours runs sandboxed, and sees no words until you let it. |
 
-## 15. Notifications, privacy and the theme (41 s)
+## 15. Notifications, privacy and the theme (40 s)
 
 | # | On screen | Caption | Under it |
 |---|---|---|---|
