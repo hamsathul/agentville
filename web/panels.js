@@ -17,7 +17,7 @@ function kpisHtml() {
   return tiles.map(([k, icon, label, val, sub, hot]) => `<div class="kpi ${k}${hot ? ' hot' : ''}"><span>${icon}</span><span class="kpi-label">${label}</span><b class="val">${val}</b><span class="sub">${sub}</span></div>`).join('');
 }
 
-/** The agents' share of this Mac, in the top bar: memory by agent, and CPU as a share of all cores. */
+/** The agents' share of this computer, in the top bar: memory by agent, and CPU as a share of all cores. */
 // The plan's rate-limit windows, as Claude Code names them, in plain words.
 const WINDOW_NAMES = { five_hour: '5-hour', seven_day: 'week', seven_day_opus: 'week · Opus', seven_day_sonnet: 'week · Sonnet', spend_limit: 'spend' };
 const windowName = kind => WINDOW_NAMES[kind] ?? String(kind).replace(/_/g, ' ');

@@ -236,7 +236,7 @@ async function browseForFolder(button) {
   const d = sessDir.data;
   button.disabled = true;
   $('sess-dir-note').className = 'faint dir-note';
-  $('sess-dir-note').textContent = 'Pick a folder in the Finder window…';
+  $('sess-dir-note').textContent = `Pick a folder in the ${fileManager()} window…`;
   const r = await post('/api/actions/choose-folder', { start: d?.exists ? d.path : d?.dir, prompt: 'Start a new Claude Code session in:' });
   button.disabled = false;
   if (r.ok) return setDir(`${tildeOf(r.path, r.home).replace(/\/$/, '')}/`);

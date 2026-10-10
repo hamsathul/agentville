@@ -3083,3 +3083,14 @@ test('the top bar names the system: OS and version, Node, and the session comman
   page.push(snap);
   assert.doesNotMatch(page.el('hstats').innerHTML, />System</);
 });
+
+test('on Windows the file buttons and notes say File Explorer, not Finder; without a system they keep saying Finder', () => {
+  const page = loadPage();
+  const snap = richSnapshot([richAgent()]);
+  snap.machine.system = { platform: 'win', os: 'Windows 11 Pro 10.0.26200', node: '24.11.1', claude: null };
+  page.push(snap);
+  assert.equal(page.ctx.fileManager(), 'File Explorer');
+  const noSystem = loadPage();
+  noSystem.push(richSnapshot([richAgent()]));
+  assert.equal(noSystem.ctx.fileManager(), 'Finder');
+});

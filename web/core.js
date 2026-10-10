@@ -3,6 +3,8 @@
 const GROUPS = [['waiting', 'Waiting on you'], ['working', 'Working'], ['yourTurn', 'Your turn'], ['idle', 'Idle'], ['stale', 'Stale · 24h+ quiet']];
 const STATE_CHIP = { waiting: '❓ Waiting on you', working: '▶ Working', yourTurn: '↩ Your turn', stale: '◌ Stale', idle: '◌ Idle' };
 let snap = null;
+/** The system's file manager, for the button and note labels (the collector's start-up check says which system this is). */
+function fileManager() { return snap?.machine?.system?.platform === 'win' ? 'File Explorer' : 'Finder'; }
 const drafts = new Map(); // toolUseId → { picks: Map<question index, Set<label>>, other: Map<question index, text> }
 const msgDrafts = new Map(); // agent id → half-typed chat message
 const asideDrafts = new Map(); // agent id → half-typed side question

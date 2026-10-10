@@ -224,8 +224,8 @@ function panelHud({ still, zoom = 1, saysOn = true, skyMode = 'live', seasonMode
               ${kpi(null, '⚠', 'k-collide', 'collisions', c.collisions, c.collisions ? 'two in one repo' : 'none', c.collisions > 0, 'Two agents writing one repo')}
             </div>
             <div class="px-gauges">
-              <span class="px-gauge" title="Memory used by the agents, of this Mac's">${label('RAM')}${bar(ramRatio, tone(ramRatio))}${w(gb(ch.ram?.usedMb ?? 0))}${ch.ram?.totalMb ? dim(`of ${gb(ch.ram.totalMb)}`) : ''}</span>
-              <span class="px-gauge" title="${esc(`CPU used by the agents: ${Math.round(ch.cpu?.used ?? 0)}% of one core, ${ch.cpu?.cores ?? 1} cores`)}">${label('CPU')}${bar(cpuRatio, tone(cpuRatio))}${w(`${Math.round(cpuRatio * 100)}%`)}${dim('of this Mac')}</span>
+              <span class="px-gauge" title="Memory used by the agents, of this computer's">${label('RAM')}${bar(ramRatio, tone(ramRatio))}${w(gb(ch.ram?.usedMb ?? 0))}${ch.ram?.totalMb ? dim(`of ${gb(ch.ram.totalMb)}`) : ''}</span>
+              <span class="px-gauge" title="${esc(`CPU used by the agents: ${Math.round(ch.cpu?.used ?? 0)}% of one core, ${ch.cpu?.cores ?? 1} cores`)}">${label('CPU')}${bar(cpuRatio, tone(cpuRatio))}${w(`${Math.round(cpuRatio * 100)}%`)}${dim('of this computer')}</span>
               ${accs.length > 1 ? accs.map((a, i) => { // with two or more Claude accounts: each one's week, and its 5 hours beside it; one with no name is "account N", as the private scene names it
                 const ws = a.plan?.windows ?? [], f5 = pctOf(ws.find(x => x.kind === 'five_hour')), wk = pctOf(ws.find(x => x.kind === 'seven_day')), name = typeof a.name === 'string' && a.name ? a.name : `account ${i + 1}`;
                 const num = /^account (\d+)$/.exec(name)?.[1]; // a numbered one (the private scene's) reads ACC N: cut to six letters, two would both be ACCOUN
@@ -339,7 +339,7 @@ function withDefaults(h) {
     // each field's name under its bed (a world that gives its own layout() gets these under its own beds)
     labels: lab => { for (const s of out.layout().ST) lab(s.cx, s.rowTop + 50, pxt(cutMid(fields.find(f => f.key === s.key)?.name ?? '', 16)), 'zone'); },
     fieldAt: () => null, buildingAt: () => null, buildingTip: () => '', dialog: () => null, boardSessions: () => [],
-    help: () => `<div class="px-key"><b>${esc(nouns.agents)}</b><span>one for each agent working on this Mac</span><b>${esc(nouns.repos)}</b><span>one for each repo an agent works in</span></div>`,
+    help: () => `<div class="px-key"><b>${esc(nouns.agents)}</b><span>one for each agent working on this computer</span><b>${esc(nouns.repos)}</b><span>one for each repo an agent works in</span></div>`,
     ...h, grid, nouns, seasonNames, boardTitle,
     // the fields are always recorded here (the default labels read them), whoever's setScene runs
     setScene(next) { fields = next.fields; return ownSetScene ? ownSetScene.call(h, next) : []; },
