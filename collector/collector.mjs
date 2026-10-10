@@ -1525,13 +1525,13 @@ export async function startCollector({ root, system = null, claudeDir = join(hom
       const ok = await checkFolderFile(root, body.path);
       if (ok.error) return { ok: false, error: ok.error };
       const r = await revealFile(ok.real);
-      return r.code === 0 ? { ok: true } : { ok: false, error: 'Finder could not show it.' };
+      return r.code === 0 ? { ok: true } : { ok: false, error: `${platform.fileManager} could not show it.` };
     },
     /** Your worlds folder in Finder, made first so there is one to show. */
     async revealWorlds() {
       try { mkdirSync(worldsDir, { recursive: true }); } catch (err) { return { ok: false, error: `Could not make ${worldsDir}: ${err.message}` }; }
       const r = await openFolder(worldsDir); // Finder, by name: a worldsDir that names an app is shown, never launched
-      if (r.code !== 0) return { ok: false, error: 'Finder could not show the worlds folder.' };
+      if (r.code !== 0) return { ok: false, error: `${platform.fileManager} could not show the worlds folder.` };
       return { ok: true, path: worldsDir };
     },
     /** Turns an installed plugin on or off, updates or uninstalls it (claude plugin …). */

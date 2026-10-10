@@ -109,6 +109,7 @@ export function isClaudeCommand(command) {
   return /^node(\.exe)?$/.test(program) && /[\x5c/]@anthropic-ai[\x5c/]claude-code[\x5c/]cli\.js\b/i.test(m[3] ?? '');
 }
 export const name = 'win';
+export const fileManager = 'File Explorer'; // named in the texts the dashboard shows
 
 // Windows' own folder window (it has New Folder), in front of the browser. Start folder and prompt arrive in the environment.
 export const CHOOSE_FOLDER_SCRIPT = [

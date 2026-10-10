@@ -30,3 +30,10 @@ test('the Windows notification script is valid PowerShell (parsed by the real pa
   assert.equal(r.code, 0, r.stdout + r.stderr);
   assert.match(r.stdout, /parsed ok/);
 });
+
+// The file manager is named in the error texts the dashboard shows ("... could not show it").
+test('each platform names its file manager; the reveal errors use it, not Finder on Windows', async () => {
+  const { platformFor } = await import('../platform/index.mjs');
+  assert.equal(platformFor('darwin').fileManager, 'Finder');
+  assert.equal(platformFor('win32').fileManager, 'File Explorer');
+});

@@ -8,6 +8,7 @@ import { tmpdir } from 'node:os';
 import { basename, dirname, join } from 'node:path';
 import { startCollector } from '../collector.mjs';
 import { parsePs } from '../sources/ps.mjs';
+import { platformFor } from '../platform/index.mjs';
 
 test('collector serves a waiting agent from a fixture ~/.claude and survives a bad config edit', async () => {
   const root = mkdtempSync(join(tmpdir(), 'tracker-root-'));
@@ -1190,7 +1191,7 @@ test('Open the worlds folder makes the folder, opens it in Finder only, and says
     code = 1;
     const failed = await handle.actions.revealWorlds();
     assert.equal(failed.ok, false);
-    assert.match(failed.error, /Finder/);
+    assert.match(failed.error, new RegExp(platformFor().fileManager));
   } finally {
     await handle.stop();
   }

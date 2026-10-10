@@ -34,3 +34,4 @@ export const revealFile = (real, runner = run) => runner('open', ['-R', real], {
 
 export const isClaudeCommand = command => /(^|\/|\s)claude(\s|$)/.test(command ?? '');
 export const name = 'mac';
+export const fileManager = 'Finder'; // named in the texts the dashboard shows
