@@ -4,7 +4,9 @@
 // the buildings at the back, the track, the left side's tents, and where every soldier stands. Its
 // positions: fortified as the context fills, what each repo's state puts round them, their signs, and
 // the news setScene tells (Advanced!, Supplies in!, a deploy failing or going through). Its limits: the
-// alert level (the 5-hour limit), the fuel depots (the week, one for each Claude account), and night.
+// alert level (the 5-hour limit), the fuel depots (the week, one for each Claude account), and night. What
+// soldiers hold (the world's props kit, in drill words), what is on and over them, their drones and the K9,
+// the drone pad, the jeeps from the vehicle park, and the dispatch riders.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
@@ -361,7 +363,7 @@ test('the log lines and pop-ups in drill words: to HQ, reporting back, in reserv
   assert.equal(line('i0'), 'eats at the mess tent (idle)');
   assert.match(line('n0'), /^sleeps on a cot until it wakes up by itself at \d/);
   assert.equal(line('f0'), 'drills on the drill ground (no repo)');
-  assert.equal(line('b0'), 'editing at the shop position');
+  assert.equal(line('b0'), 'digging in at the shop position', "at a position: its step in drill words (the world's kit's verb)");
   const pops = id => { const out = []; h.onMove(f(id), h.slots(f(id)).zone, 'somewhere', t => out.push(t)); return out; };
   assert.deepEqual(pops('t0'), ['Done!']);
   assert.deepEqual(pops('w0'), ['Needs you!']);
@@ -369,7 +371,7 @@ test('the log lines and pop-ups in drill words: to HQ, reporting back, in reserv
   assert.deepEqual(pops('n0'), ['…zzz']);
   assert.deepEqual(pops('i0'), []);
   const tip = h.tip(f('b0'));
-  for (const part of ['b0', 'editing at the shop position', '% context left', '$0.40 so far']) assert.ok(tip.includes(part), `the tip has "${part}": ${tip}`);
+  for (const part of ['b0', 'digging in at the shop position', '% context left', '$0.40 so far']) assert.ok(tip.includes(part), `the tip has "${part}": ${tip}`);
 });
 
 test("the private scene: what a person reads has no undefined, NaN or [object], no farm or factory word, and none of the snapshot's real names, titles, branches or services", () => {
@@ -1141,4 +1143,339 @@ test('no plan reading: the alert is ready, the depot says there is no reading, a
   assert.equal(seen.hud.seasonMode, 'winter', '… held at max');
   assert.ok(dom.calls.rects.some(r => r[0] === ink('#ff6b6b') && inBox([124, 12, 19, 12])(r)), 'held at max: the beacon lit on the alert board');
   assert.ok(!M.drumsOf(M.DEPOT_X[0]).some(([x, y]) => dom.calls.rects.some(r => r[0] === ink(M.FUEL) && inBox([x, y, 4, 8])(r))), 'no drum full');
+});
+
+/* ---------- what soldiers hold, their details, and what moves: props, drones and the K9, the drone pad, jeeps, dispatch riders ---------- */
+
+// The spec's table (§5): each step and the prop a soldier holds for it; plan mode is the kit's blueprint.
+const HELD = {
+  read: 'manual', search: 'binoculars', web: 'radioSet', edit: 'shovel', write: 'sandbag', test: 'mineDetector', lint: 'brush', build: 'toolbox',
+  install: 'crateDolly', commit: 'stampedCrate', push: 'wheelbarrow', deploy: 'flarePistol', pull: 'mailSack', serve: 'fieldGenerator', delete: 'spade',
+  agent: 'whistle', plan: 'mapCase', ask: 'messageCard', shell: 'fieldPhone', other: 'fieldPhone', planMode: 'blueprint',
+};
+const FAMILY_PIN = { opus: '#8a5fc0', sonnet: '#3d7be0', haiku: '#2fa57a', fable: '#f08a24' }; // the farm's pins: purple Opus, blue Sonnet, green Haiku, orange Fable
+/** What a prop draws at a few moments, as the props kit's test records it: its fills, with their colours. */
+function propDrawing({ ctx }, kit, prop, moments = [0.1, 0.4, 0.7]) {
+  const PXG = vm.runInContext('PXG', ctx), rpAt = vm.runInContext('rpAt', ctx);
+  return moments.map(T => {
+    const rects = [];
+    PXG.ctx = { set fillStyle(c) { this.c = c; }, get fillStyle() { return this.c; }, fillRect(x, y, w, h) { if (w > 0 && h > 0) rects.push([this.c, x, y, w, h]); }, globalAlpha: 1 };
+    PXG.T = T; PXG.k = 1; PXG.lights = [];
+    kit.draw(prop, rpAt(0, 0), T);
+    return rects;
+  });
+}
+/** Fills entirely inside [x, y, w, h]. */
+const inRect = (x0, y0, w, h) => r => r[1] >= x0 && r[2] >= y0 && r[1] + r[3] <= x0 + w && r[2] + r[4] <= y0 + h;
+/** A colour, roughly: grey, red, amber, green, blue or other. */
+function hue(c) {
+  const [r, g, b] = [1, 3, 5].map(i => parseInt(String(c).slice(i, i + 2), 16));
+  if (Math.max(r, g, b) - Math.min(r, g, b) < 60) return 'grey';
+  if (r > 180 && g < 140 && b < 140) return 'red';
+  if (r > 200 && g > 120 && b < 100) return 'amber';
+  if (g > r && g > b) return 'green';
+  if (b > r && b >= g) return 'blue';
+  return 'other';
+}
+const OX = 193, OY = 128; // a soldier standing at (200, 144): its sprite's top left
+const SOLDIER = { id: 's', name: 's', state: 'working', shirt: '#4a7bd0', kids: [], family: null, cost: null, mode: 'default', fast: false, hot: false, tasks: null, thinking: false, color: 0, step: null, tool: null };
+/** The field exercise, its canvas keeping its fills, and a soldier drawn with its details (drawChar, then drawFx) at T: standing at (200, 144), or as `body` says. */
+function soldiers() {
+  const all = positions(), { h, dom, PXG, M } = all;
+  const fills = draw => { dom.calls.rects.length = 0; dom.calls.images.length = 0; draw(); return dom.calls.rects.map(r => [...r]); };
+  const soldier = (over, body) => ({ f: { ...SOLDIER, look: M.lookOf({ id: over.id ?? 's' }), ...over }, b: { x: 200, y: 144, walk: false, face: 'down', zone: 'st:x', kids: [], ...body } });
+  const drawn = (over = {}, body = {}, T = 1) => {
+    const { f, b } = soldier(over, body);
+    PXG.T = T;
+    h.drawChar(f, b); // its sprites, made once
+    return fills(() => { h.drawChar(f, b); h.drawFx(f, b); });
+  };
+  /** The pictures drawChar puts down for a soldier: [x, y, w, h] each. */
+  const pictures = (over = {}, body = {}) => { const { f, b } = soldier(over, body); h.drawChar(f, b); fills(() => h.drawChar(f, b)); return dom.calls.images.map(i => [...i]); };
+  return { ...all, fills, drawn, pictures };
+}
+
+test("the field exercise's kit: each step of the spec's table holds its prop, in drill words; a soldier's tip and log line say them", () => {
+  const { M, window } = load();
+  for (const [step, prop] of Object.entries(HELD)) assert.equal(M.props.steps[step].prop, prop, step);
+  assert.equal(M.props.steps.mcp.prop, 'plug', "an MCP call keeps the kit's plug (its jeep is what shows it)");
+  assert.equal(M.props.steps.skill.prop, 'scroll', "a skill keeps the kit's scroll");
+  const kit = { ...window.Agentville.props.STEPS, planMode: window.Agentville.props.PLAN_MODE };
+  for (const [step, a] of Object.entries(M.props.steps)) {
+    assert.ok(typeof a.verb === 'string' && a.verb.length > 3, step);
+    assert.notEqual(a.verb, kit[step]?.verb, `${step}: drill words, not the kit's (${a.verb})`);
+    assert.doesNotMatch(readOf(a.verb), FARM_OR_FACTORY, step);
+    assert.equal(a.spot, kit[step].spot, `${step}: where it stands at its position, the kit's`);
+  }
+  assert.equal(M.props.doing({ state: 'working', step: 'edit' }).prop, 'shovel');
+  assert.equal(M.props.doing({ state: 'working', mode: 'plan', step: 'edit' }).prop, 'blueprint', "plan mode: the kit's blueprint");
+  const h = window.hooks;
+  const scene = M.militaryScene(window.AgentvilleScene.toScene({ generatedAt: TOUR_NOW, collisions: [], agents: [
+    person('a', { now: { tool: 'Grep', summary: 'x', step: 'search', startedAt: TOUR_NOW } }),
+    person('b', { cwd: '/Users/you/elsewhere', now: { tool: 'Bash', summary: 'npm test', step: 'test', startedAt: TOUR_NOW } }),
+  ], repos: [{ path: SHOP, name: 'shop', branch: 'main', agentIds: ['a'] }] }));
+  h.relayout(h.grid.layoutFor(scene.fields));
+  h.setScene(scene);
+  const [a, b] = scene.farmers;
+  assert.equal(h.zoneText(a, h.slots(a).zone), `${M.props.steps.search.verb} at the shop position`);
+  assert.ok(h.tip(a).includes(`${M.props.steps.search.verb} at the shop position`), h.tip(a));
+  assert.ok(h.tip(b).includes(`${M.props.steps.test.verb} on the drill ground`), h.tip(b));
+});
+
+test("every prop a soldier holds draws at three moments, no two alike, each of its own moves; the signal flare goes straight up out of a fat orange launcher and bursts over its head", () => {
+  const loaded = load(), { M, ctx } = loaded, ink = vm.runInContext('ink', ctx);
+  const used = [...new Set(Object.values(M.props.steps).map(a => a.prop))];
+  for (const own of M.MILITARY_PROPS) {
+    assert.ok(used.includes(own), `${own} is held for a step`);
+    assert.ok(!loaded.window.Agentville.props.PROPS.includes(own), `${own}: the world's own, not the kit's drawn another way`);
+  }
+  const seen = new Map();
+  for (const prop of used) {
+    const d = propDrawing(loaded, M.props, prop);
+    assert.ok(d.every(r => r.length > 0), `${prop} draws at every moment`);
+    const sig = JSON.stringify(d);
+    assert.ok(!seen.has(sig), `${prop} looks like ${seen.get(sig)}`);
+    seen.set(sig, prop);
+    if (M.MILITARY_PROPS.includes(prop)) assert.ok(new Set(d.map(r => JSON.stringify(r))).size > 1, `${prop} moves`);
+  }
+  // the deploy's flare: a fat orange launcher held up beside its head at every moment, its flare going straight up out of it and bursting high over its head
+  const flare = propDrawing(loaded, M.props, 'flarePistol', Array.from({ length: 40 }, (_, i) => i / 20));
+  const launcher = rects => rects.filter(r => r[0] === ink('#f08a24') && inRect(10, 2, 7, 11)(r));
+  assert.ok(flare.every(rects => launcher(rects).length > 0), 'a fat orange launcher at every moment');
+  const over = flare.map(rects => rects.filter(r => r[2] + r[4] <= 0)); // what is over its head (row 0 is its headgear's top)
+  assert.ok(over.filter(o => o.length).length >= 10, 'a flare in the air much of the time');
+  assert.ok(Math.min(...over.flat().map(r => r[2])) <= -10, 'going high over its head');
+  assert.ok(over.flat().every(r => r[1] >= 8 && r[1] + r[3] <= 19), 'straight up, over the launcher: never off to the side');
+  assert.ok(over.flat().some(r => hue(r[0]) === 'green'), 'bursting green: a signal');
+});
+
+test("chevrons on its sleeve for what it has cost: one from $1, two from $10, three from $50; none below $1 or with no cost", () => {
+  const { M, drawn } = soldiers();
+  assert.deepEqual([null, undefined, Number.NaN, 0, 0.99, 1, 9.99, 10, 49.99, 50, 400].map(M.chevronsOf), [0, 0, 0, 0, 0, 1, 1, 2, 2, 3, 3]);
+  const sleeve = rects => rects.filter(inRect(OX - 2, OY + 7, 6, 8)); // its left sleeve as you look at it, from the shoulder down
+  const chevrons = (cost, body) => new Set(sleeve(drawn({ cost }, body)).map(r => r[2])).size; // a stripe a row
+  assert.deepEqual([null, 0.5, 1, 5, 10, 20, 50, 80].map(cost => chevrons(cost)), [0, 0, 1, 1, 2, 2, 3, 3], 'read back from the paint: one, two, three chevrons');
+  const stripes = sleeve(drawn({ cost: 80 }));
+  assert.ok(stripes.every(r => hue(r[0]) === 'amber' && r[3] <= 3), 'gold stripes across its arm');
+  assert.ok(stripes.every((r, i) => i === 0 || r[0] !== stripes[i - 1][0]), 'gold and brass by turns, so each one shows');
+  assert.equal(chevrons(80, { walk: true, face: 'up' }), 3, 'from behind too');
+});
+
+test("on a soldier: its model's pin on its headgear (the farm's colours), a hazard armband for bypass permissions, speed lines in fast mode", () => {
+  const { drawn, ctx } = soldiers(), ink = vm.runInContext('ink', ctx);
+  const head = rects => rects.filter(inRect(OX + 2, OY, 10, 5));
+  for (const [family, colour] of Object.entries(FAMILY_PIN)) {
+    assert.ok(head(drawn({ family })).some(r => r[0] === ink(colour)), `${family}: a ${colour} pin on its headgear`);
+    assert.ok(head(drawn({ family }, { walk: true, face: 'right' })).some(r => r[0] === ink(colour)), `${family}: seen from the side too`);
+  }
+  assert.equal(head(drawn()).length, 0, 'no model known: no pin');
+  assert.equal(head(drawn({ family: 'opus' }, { walk: true, face: 'up' })).length, 0, 'from behind: none');
+  const arm = rects => rects.filter(inRect(OX + 10, OY + 6, 5, 7)); // its right arm as you look at it
+  const band = arm(drawn({ mode: 'bypassPermissions' })).map(r => r[0]);
+  assert.ok(band.includes(ink('#ffd43b')) && band.includes(ink('#2a1d14')), 'bypass permissions: a yellow and black hazard armband');
+  assert.equal(arm(drawn()).length, 0, 'none without');
+  const raised = arm(drawn({ mode: 'bypassPermissions', state: 'waiting' }));
+  assert.ok(raised.length > 0 && Math.max(...raised.map(r => r[2] + r[4])) <= OY + 10, 'on its raised arm while it waves');
+  const beside = rects => rects.filter(r => r[2] >= OY && r[2] < OY + 16 && (r[1] + r[3] <= OX || r[1] >= OX + 14));
+  assert.equal(beside(drawn()).length, 0, 'nothing beside a plain soldier');
+  assert.ok(beside(drawn({ fast: true })).length >= 2, 'fast mode: speed lines beside it');
+  assert.ok(beside(drawn({ fast: true }, { walk: true, face: 'right' })).length >= 2, '… and behind it as it goes');
+});
+
+test('over and beside a soldier: a radio on its back while it thinks (its aerial blinking), a clipboard for its task list, sweat drops for a hot CPU; idle, eyes shut and eating; stale, greyed a little', () => {
+  const { drawn, pictures, ctx } = soldiers(), ink = vm.runInContext('ink', ctx);
+  const above = rects => rects.filter(r => r[2] + r[4] <= OY && Math.abs(r[1] - 200) < 24);
+  assert.equal(above(drawn()).length, 0, 'nothing over a plain soldier');
+  const aerial = T => above(drawn({ thinking: true }, {}, T));
+  assert.ok(aerial(1).length > 0, "thinking: its radio's aerial up over its headgear");
+  assert.ok(new Set([0, 0.13, 0.26, 0.39, 0.52].map(T => JSON.stringify(aerial(T)))).size > 1, 'blinking');
+  const shoulders = rects => rects.filter(inRect(OX - 1, OY + 4, 16, 10)).filter(r => hue(r[0]) !== 'red');
+  assert.ok(shoulders(drawn({ thinking: true })).length > shoulders(drawn()).length, 'its radio pack showing round its shoulders');
+  assert.equal(above(drawn({ thinking: true }, { walk: true, face: 'left' }, 1)).length, 0, 'not while it walks');
+  const left = rects => rects.filter(r => r[1] + r[3] <= OX && r[2] < OY + 16);
+  assert.equal(left(drawn()).length, 0);
+  const ticks = done => left(drawn({ tasks: { done, total: 3 } })).filter(r => r[0] === ink('#2fa57a')).length;
+  assert.ok(left(drawn({ tasks: { done: 0, total: 3 } })).length > 0 && ticks(1) > ticks(0) && ticks(3) > ticks(1), `a clipboard beside it, ticked as tasks are done (${ticks(0)}, ${ticks(1)}, ${ticks(3)})`);
+  const drops = T => drawn({ hot: true }, {}, T).filter(r => hue(r[0]) === 'blue');
+  assert.equal(drawn().filter(r => hue(r[0]) === 'blue').length, 0);
+  assert.ok(drops(1).length >= 2, 'a hot CPU: sweat drops');
+  assert.notDeepEqual(drops(1), drops(1.2), 'flying off');
+  const idle = T => drawn({ state: 'idle' }, { zone: 'charge' }, T);
+  for (const [x, y] of [[5, 6], [8, 6]]) assert.ok(idle(1).some(r => r[0] === ink('#8a5a3a') && r[1] === OX + x && r[2] === OY + y), `idle: eyes shut (${x},${y})`);
+  const spoon = T => idle(T).filter(r => r[0] === ink('#c3cbd2'));
+  assert.ok(spoon(0.2).length > 0 && JSON.stringify(spoon(0.2)) !== JSON.stringify(spoon(1.1)), 'eating: a spoon from its plate to its mouth');
+  assert.ok([0.2, 1.1].some(T => spoon(T).some(r => r[2] <= OY + 8)), 'up to its mouth');
+  const here = list => list.filter(([x, y, w, hh]) => x === OX && y === OY && w === 14 && hh === 16).length;
+  assert.equal(here(pictures()), 1, 'a soldier: its sprite');
+  assert.equal(here(pictures({ state: 'stale' })), 2, 'in reserve: its sprite, greyed a little (a grey veil over it)');
+});
+
+test("waiting on you: the red ! bubble and a ring at its feet; a plan to approve: a rolled map carried to HQ, and the plan bubble; your turn: a dispatch envelope, with a ✓ (a ? for a question)", () => {
+  const { drawn, ctx } = soldiers(), ink = vm.runInContext('ink', ctx);
+  const hq = { x: 170, y: 80, zone: 'desk' }, colours = rects => new Set(rects.map(r => r[0]));
+  const bang = rects => rects.some(r => r[0] === ink('#d03b3b') && r[3] === 1 && r[4] === 3); // the !'s red stroke, in its bubble
+  const waiting = drawn({ state: 'waiting' }, hq);
+  assert.ok(bang(waiting), 'the red ! bubble');
+  assert.ok(waiting.some(r => r[0] === ink('#e04a3a') && r[2] >= 80 && r[2] <= 82 && r[3] >= 9), 'a red ring at its feet');
+  const map = rects => rects.filter(r => r[0] === ink('#9ed36a') && inRect(160, 70, 20, 10)(r)); // the map's green, showing at the roll's ends
+  assert.equal(map(waiting).length, 0, 'a permission: no map');
+  const plan = drawn({ state: 'waiting', planAsk: true }, hq);
+  assert.ok(map(plan).length >= 2, 'a plan to approve: a rolled map carried (its green inside at both ends)');
+  assert.ok(colours(plan).has(ink('#c9a24a')) && !bang(plan), "the engine's plan bubble, not the !");
+  const turnAt = { x: 230, y: 80, zone: 'turn' }, front = inRect(223, 70, 14, 8);
+  const turn = drawn({ state: 'turn' }, turnAt);
+  assert.ok(turn.filter(front).some(r => r[0] === ink('#e8d8b0')), 'your turn: a dispatch envelope held in front');
+  assert.ok(turn.filter(front).some(r => r[0] === ink('#e04a3a')), 'its red seal');
+  assert.ok(colours(turn).has(ink('#0ca30c')), 'a ✓ bubble');
+  assert.ok(colours(drawn({ state: 'turn', question: 'Ship it?' }, turnAt)).has(ink('#c98500')), 'a ? for a question');
+  assert.ok(!colours(drawn({ state: 'turn' }, { ...turnAt, walk: true, face: 'up' })).has(ink('#0ca30c')), 'on its way back: no bubble yet');
+});
+
+test('drones: each running subagent hovers by its soldier, four at most; an Explore one is the K9 (the library dog, its kind taken), trotting about its soldier on the ground; messages are the engine\'s pigeon', () => {
+  const { h, drawn, window, M, ctx } = soldiers(), ink = vm.runInContext('ink', ctx);
+  const running = n => [{ id: 'x', kind: 'subagent', state: 'running', agentType: 'Explore', startedAt: TOUR_NOW }, ...Array.from({ length: n - 1 }, (_, i) => ({ id: `c${i}`, kind: 'subagent', state: 'running', startedAt: TOUR_NOW }))];
+  const six = M.militaryScene(window.AgentvilleScene.toScene({ generatedAt: TOUR_NOW, collisions: [], repos: [], agents: [person('p', { children: running(6) })] }));
+  assert.equal(six.farmers[0].kids.length, 4, 'six running: four follow their soldier');
+  assert.equal(six.henhouse.roosting, 2, '… the other two are counted at the drone pad');
+  assert.deepEqual(plain(six.farmers[0].kids.map(k => k.dog)), [true, false, false, false], 'the Explore one is the dog');
+  const b = { x: 200, y: 144 };
+  const at = (k, T, dog = false) => plain(h.follow(b, k, T, { id: `c${k}`, dog }));
+  const spots = [0, 1, 2, 3].map(k => at(k, 1));
+  for (const [x, y] of spots) assert.ok(Math.abs(x - 200) <= 20 && y < 144 - 8 && y > 144 - 40, `${x},${y}: hovering by its soldier`);
+  for (let i = 0; i < 4; i++) for (let j = i + 1; j < 4; j++) assert.ok(Math.hypot(spots[i][0] - spots[j][0], spots[i][1] - spots[j][1]) >= 8, `drones ${i} and ${j} apart`);
+  assert.notDeepEqual(at(0, 1), at(0, 1.4), 'they bob');
+  const dog = [0, 1, 2, 3, 4, 5, 6, 7].map(T => at(0, T, true));
+  assert.ok(dog.every(([, y]) => y >= 144 && y <= 150), `the K9 on the ground at its soldier's feet (${dog.map(d => Math.round(d[1]))})`);
+  const xs = dog.map(([x]) => x - 200);
+  assert.ok(Math.min(...xs) < -8 && Math.max(...xs) > 8, `trotting about it (${xs.map(Math.round)})`);
+  const kids = [{ x: 186, y: 132 }, { x: 214, y: 148 }];
+  const two = drawn({ kids: [{ id: 'c1', dog: false }, { id: 'c2', dog: true }] }, { kids });
+  assert.ok(two.some(r => r[0] === '#4a7bd0' && Math.abs(r[1] - 186) <= 3 && Math.abs(r[2] - 132) <= 2), "a drone at 186,132, a band in its soldier's colour (exact)");
+  const coat = two.filter(r => r[0] === ink('#a8703c'));
+  assert.ok(coat.length > 0 && coat.every(r => Math.abs(r[1] - 214) <= 8 && r[2] >= 148 - 9 && r[2] <= 148), "the K9 at 214,148, in the library dog's coat");
+  assert.equal(drawn({ kids: [{ id: 'c1', dog: false }, { id: 'c2', dog: false }] }, { kids }).filter(r => r[0] === ink('#a8703c')).length, 0, 'no Explore one: no dog');
+  assert.ok(JSON.parse(web('worlds/military/world.json')).taken.includes('dog'), "the dog's kind is taken: no mascot is one");
+  assert.equal(h.flight, undefined, "messages between agents: the engine's carrier pigeon (no flight hook)");
+});
+
+test('the drone pad: finished subagents docked on its deck, up to six; more running than their soldiers lead circle over it (drawn last, over the sky: top), with +N', () => {
+  const { h, sceneOf, fills, PXG } = soldiers();
+  const kids = (done, running) => [...Array.from({ length: done }, (_, i) => ({ id: `d${i}`, kind: 'subagent', state: 'done', startedAt: TOUR_NOW })), ...Array.from({ length: running }, (_, i) => ({ id: `r${i}`, kind: 'subagent', state: 'running', startedAt: TOUR_NOW }))];
+  const scene = (done, running) => { const s = sceneOf(position({}, [person('p', { children: kids(done, running) })])); h.relayout(h.grid.layoutFor(s.fields)); h.setScene(s); };
+  const DECK = [96, 42, 31, 10];
+  const docked = done => { scene(done, 0); PXG.T = 1; return fills(() => h.ground()).filter(inRect(...DECK)).length; };
+  const [none, one, three, six] = [0, 1, 3, 6].map(docked);
+  assert.ok(none < one && one < three && three < six, `a drone a berth (${none}, ${one}, ${three}, ${six})`);
+  assert.equal(docked(9), six, 'six at most');
+  const over = rects => rects.filter(inRect(92, 10, 40, 30));
+  scene(0, 4);
+  assert.equal(over(fills(() => h.top())).length, 0, 'four running: their soldier leads them all');
+  assert.equal(h.movers(() => null).filter(m => /\+\d/.test(m.html)).length, 0);
+  scene(0, 6);
+  const circling = [1, 1.5, 2].map(T => { PXG.T = T; return over(fills(() => h.top())); });
+  assert.ok(circling.every(c => c.length > 0), 'six running: two circle over the pad');
+  assert.notDeepEqual(circling[0], circling[2], 'circling');
+  assert.equal(over(fills(() => h.ground())).filter(r => r[2] < 40).length, 0, 'drawn over the sky (top), not on the ground');
+  const sign = h.movers(() => null).find(m => m.html.includes('+2'));
+  assert.ok(sign && Math.abs(sign.x - 111) <= 16 && sign.y < 30, 'with +2 over it');
+  assert.match(sign.title, /2 more subagents/);
+  assert.doesNotMatch(readOf(sign.title), FARM_OR_FACTORY);
+});
+
+test("a jeep's way: along the vehicle park's row to the left side's path, up or down it, and along the soldier's row; and back", () => {
+  const { M } = load();
+  assert.deepEqual(plain(M.jeepRoute([14, 288], [187, 144])), [[116, 288], [116, 144], [187, 144]], 'from the park to a position in the first row');
+  assert.deepEqual(plain(M.jeepRoute([187, 144], [14, 288])), [[116, 144], [116, 288], [14, 288]], 'and back');
+  assert.deepEqual(plain(M.jeepRoute([14, 288], [47, 222])), [[116, 288], [116, 222], [47, 222]], 'to the drill ground');
+  assert.deepEqual(plain(M.jeepRoute([150, 144], [300, 144])), [[300, 144]], 'along a row');
+  assert.deepEqual(plain(M.jeepRoute([116, 200], [47, 204])), [[116, 204], [47, 204]], 'from the path');
+});
+
+test('a jeep stays with its soldier while the call goes on, and a few seconds after it has got there, then heads back', () => {
+  const { M } = load();
+  const home = [14, 288], soldier = [213, 144], c = {};
+  assert.deepEqual(plain(M.jeepGoal(c, soldier, home, 0)), soldier, 'called: it goes');
+  assert.deepEqual(plain(M.jeepGoal(c, null, home, 1000)), soldier, 'a short call ended on the way: it still gets there');
+  c.arrivedAt = 3000;
+  assert.deepEqual(plain(M.jeepGoal(c, null, home, 5000)), soldier, 'there: it waits a moment');
+  assert.deepEqual(plain(M.jeepGoal(c, null, home, 7000)), home, 'then back to the park');
+  const busy = {};
+  M.jeepGoal(busy, soldier, home, 0);
+  assert.deepEqual(plain(M.jeepGoal(busy, soldier, home, 60_000)), soldier, 'a long call: it stays');
+});
+
+test('jeeps: one in the vehicle park for each MCP server called lately; the one a soldier calls drives over and waits beside it, with its name; drawn still, it is already there', () => {
+  const { h, sceneOf, M, fills, ctx } = soldiers(), ink = vm.runInContext('ink', ctx);
+  const caller = person('m', { now: { tool: 'mcp__tickets__search', summary: 'open tickets', step: 'mcp', service: 'tickets', startedAt: Date.now() - 2000 }, mcp: [{ server: 'tickets', at: Date.now() - 2000 }, { server: 'gmail', at: Date.now() - 60_000 }] });
+  const scene = sceneOf(position({}, [caller]));
+  h.relayout(h.grid.layoutFor(scene.fields));
+  h.setScene(scene);
+  const [x, y] = h.slots(scene.farmers[0]).at([]), posOf = id => (id === 'm' ? { x, y, tx: x, ty: y, walk: false } : null);
+  const PLACES_DRAWN = 7; // the mess table, a crate before each of the four in reserve, a blanket over each of the two cots
+  const jeeps = () => h.items().slice(PLACES_DRAWN), ys = () => jeeps().map(it => it[0]), home = new Set(M.PARK.map(p => p[1]));
+  h.tick(0.03, posOf);
+  assert.equal(ys().length, 2, 'two jeeps, one for each server');
+  assert.ok(ys().every(v => home.has(v)), 'in the vehicle park');
+  assert.ok(fills(() => jeeps().forEach(([, draw]) => draw())).some(r => r[0] === ink('#6b7a35')), 'olive');
+  assert.deepEqual(plain(h.movers(posOf).filter(m => m.key.startsWith('mcp:')).map(m => m.key)), ['mcp:tickets'], 'the one called sets off, with its name');
+  for (let i = 0; i < 400; i++) h.tick(0.05, posOf);
+  const label = h.movers(posOf).find(m => m.key === 'mcp:tickets');
+  assert.ok(label?.html.includes('tickets'), 'its name on it');
+  assert.ok(Math.abs(label.x - x) >= 8 && Math.abs(label.x - x) <= 14 && Math.abs(label.y - (y - 12)) <= 2, `it waits beside the soldier (${label.x},${label.y} by ${x},${y})`);
+  assert.ok(ys().includes(y) && ys().some(v => home.has(v)), 'one beside the soldier, drawn among the soldiers by where it stands; the other still in the park');
+  assert.match(label.title, /tickets/);
+  assert.doesNotMatch(readOf(label.title), FARM_OR_FACTORY);
+  const still = soldiers();
+  still.h.relayout(still.h.grid.layoutFor(scene.fields));
+  still.h.setScene(scene);
+  still.h.tick(0, posOf, true);
+  const snapped = still.h.movers(posOf).find(m => m.key === 'mcp:tickets');
+  assert.ok(snapped && Math.abs(snapped.x - x) <= 14 && Math.abs(snapped.y - (y - 12)) <= 2, 'motion off: it stands beside the soldier at once');
+});
+
+test('a web call: a dispatch rider on a motorbike rides out of the motor pool gate along the track to its soldier and back, its errand on it; none for a browser (its jeep goes)', () => {
+  const { h, sceneOf, fills, PXG, M } = soldiers();
+  const caller = tool => person('w', { now: { tool, summary: 'the docs', step: 'web', service: tool === 'WebFetch' ? 'docs.example.com' : 'playwright', startedAt: Date.now() - 2000 } });
+  const withCall = sceneOf(position({}, [caller('WebFetch')])), without = sceneOf(position({}, [person('w')]));
+  h.relayout(h.grid.layoutFor(withCall.fields));
+  const [x, y] = h.slots(withCall.farmers[0]).at([]), posOf = () => ({ x, y, tx: x, ty: y, walk: false });
+  const PLACES_DRAWN = 7;
+  h.setScene(without);
+  h.tick(0, posOf, true);
+  assert.equal(h.items().length, PLACES_DRAWN, 'no web call: no rider');
+  h.setScene(withCall);
+  h.tick(0, posOf, true);
+  const seen = Array.from({ length: 80 }, (_, i) => i / 10).map(T => {
+    PXG.T = T;
+    const riders = h.items().slice(PLACES_DRAWN), xs = fills(() => riders.forEach(([, draw]) => draw())).flatMap(r => [r[1], r[1] + r[3]]);
+    return { n: riders.length, y: riders[0]?.[0], mid: (Math.min(...xs) + Math.max(...xs)) / 2 };
+  });
+  assert.ok(seen.every(s => s.n === 1 && s.y === M.RIDER_Y), 'a rider on the track, drawn among the soldiers by where it rides');
+  assert.ok(seen.some(s => Math.abs(s.mid - 62) <= 8), 'at the motor pool gate');
+  assert.ok(seen.filter(s => Math.abs(s.mid - x) <= 8).length >= 15, 'at its soldier a while');
+  assert.ok(seen.some(s => s.mid > 70 && s.mid < x - 10), 'on the way');
+  PXG.T = 3;
+  const label = h.movers(posOf).find(m => m.key.startsWith('rider:'));
+  assert.ok(label?.html.includes('docs.example.com'), 'its errand on it');
+  assert.ok(label.y < M.RIDER_Y - 8, 'over the rider');
+  assert.doesNotMatch(readOf(label.title), FARM_OR_FACTORY);
+  h.setScene(sceneOf(position({}, [caller('mcp__playwright__browser_click')])));
+  h.tick(0, posOf, true);
+  assert.ok(!h.movers(posOf).some(m => m.key.startsWith('rider:')) && !h.items().some(it => it[0] === M.RIDER_Y), "a browser's web step: no rider");
+  assert.ok(h.movers(posOf).some(m => m.key === 'mcp:playwright'), '… its jeep goes');
+});
+
+test('asleep on a cot until it wakes by itself: a zzz over it (and nothing in its hands), and over its cot when it wakes', () => {
+  const { h, drawn, sceneOf, ctx } = soldiers(), ink = vm.runInContext('ink', ctx);
+  const [x, y] = placeOf(h, 'nap', 0), cot = { x, y, zone: 'nap' }, wakeAt = Date.now() + 20 * 60_000;
+  const asleep = drawn({ state: 'turn', nap: true, wakeAt }, cot);
+  assert.ok(asleep.some(r => r[0] === ink('#e6eef5') && r[2] + r[4] <= y - 16), 'a zzz over its head');
+  assert.ok(!asleep.some(r => r[0] === ink('#e8d8b0')), 'no dispatch in its hands: it is asleep');
+  const scene = sceneOf({ generatedAt: Date.now(), collisions: [], repos: [], agents: [person('n', { state: 'yourTurn', now: null, wakeAt })] });
+  h.setScene(scene);
+  const label = h.movers(id => (id === 'n' ? { ...cot, walk: false } : null)).find(m => m.key === 'nap:n');
+  assert.ok(label && label.x === x && label.y < y - 16, 'over its cot');
+  assert.match(label.html, /wakes in 20m/);
+  assert.match(label.title, /n wakes up by itself at \d/);
+  assert.equal(h.movers(id => (id === 'n' ? { ...cot, walk: true } : null)).filter(m => m.key === 'nap:n').length, 0, 'not while it walks there');
 });

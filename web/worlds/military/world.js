@@ -6,7 +6,7 @@
 // only world.js).
 (() => {
   'use strict';
-  const { lookFor, rows: personRows, sprite: personSprite } = window.Agentville.people;
+  const { lookFor, rows: personRows, sprite: personSprite, hashOf } = window.Agentville.people;
 
   /* ---------- the scene: what the base draws, from the snapshot ---------- */
 
@@ -952,16 +952,348 @@
     PXG.lights?.push([x, y, Math.round(30 * fade * strength), null]);
   }
 
-  /* ---------- the props: what a soldier holds for each step (sdk/props.js) ---------- */
+  /* ---------- the props and movers: what soldiers hold, what is on and over them, drones, jeeps, dispatch riders ---------- */
 
-  // The props kit's set: each step's prop, what the soldier is doing (its tip and the field log's line), and where
-  // it stands at its position (left for looking things up, right for working, the middle for the rest).
-  const props = window.Agentville.props.kit();
+  // What a soldier holds for each step, drawn round its 14 × 16 sprite (rp paints in its pixels: the soldier spans
+  // x 1–12 and rows 0–15, its hands at x 2 and 11 on row 12, its mouth on row 7); what it works with stands on the
+  // ground at its right, on row 15. The field exercise's own props, through the props kit; the kit's for the rest
+  // (a plug for an MCP call, whose jeep is what shows it, a scroll for a skill, and plan mode's blueprint). A
+  // drill's kit: nothing is a weapon, and the signal flare goes straight up, never at anyone.
+  const HAND = '#e0a878', EARTH = '#7a5230', EARTH_LIGHT = '#86603a', TIN = '#9aa4ad', SHINE = '#c3cbd2';
+  const MILITARY_PROPS = {
+    manual(rp, T) { // reading: the field manual open in both hands, its olive cover round it, a page turning
+      const turn = Math.floor(T * 1.5) % 4;
+      rp(2, 10, 10, 4, OLIVE[0]); rp(3, 10, 8, 3, '#f4ecd8'); rp(7, 10, 1, 3, SHINE); // its cover, its pages, the spine
+      rp(4, 11, 2, 1, TIN); rp(8, 12, 2, 1, TIN); // its print
+      if (turn === 1) rp(8, 9, 3, 1, '#ffffff'); else if (turn === 2) rp(6, 9, 3, 1, '#ffffff'); // a page lifting, turning over
+      rp(2, 12, 1, 1, HAND); rp(11, 12, 1, 1, HAND);
+    },
+    binoculars(rp, T) { // searching: binoculars to its eyes, sweeping slowly across
+      const dx = Math.round(Math.sin(T * 1.6));
+      rp(3 + dx, 5, 3, 3, DARK); rp(8 + dx, 5, 3, 3, DARK); rp(6 + dx, 6, 2, 1, STEEL); // the two barrels, the bridge
+      rp(3 + dx, 5, 3, 1, OLIVE[1]); rp(8 + dx, 5, 3, 1, OLIVE[1]); // their olive tops
+      rp(4 + dx, 6, 1, 1, '#a9dcf7'); rp(9 + dx, 6, 1, 1, blink(2) ? '#ffffff' : '#a9dcf7'); // the lenses, a glint
+      rp(3 + dx, 8, 1, 1, HAND); rp(10 + dx, 8, 1, 1, HAND);
+    },
+    radioSet(rp, T) { // the web: a field radio set on the ground beside it, its aerial up and sending, the handset at its ear
+      rp(14, 9, 7, 6, OLIVE[0]); rp(15, 10, 5, 4, OLIVE[1]); rp(15, 10, 5, 1, OLIVE[2]); // the set
+      rp(16, 12, 2, 1, DARK); rp(19, 12, 1, 1, blink(3) ? '#ffd43b' : '#c8681a'); // its dial, its lamp
+      rp(19, 2, 1, 7, SHINE); rp(19, 1, 1, 1, RED); // its aerial, the tip
+      for (let k = 1, n = Math.floor(T * 4) % 4; k <= n; k++) { rp(19 + 2 * k, 2 - k, 1, 2 * k - 1, '#5ab4ff'); rp(19 - 2 * k, 2 - k, 1, 2 * k - 1, '#5ab4ff'); } // its waves going out
+      rp(10, 5, 2, 3, DARK); rp(12, 8, 1, 1, DARK); rp(13, 9, 1, 1, DARK); // the handset at its ear, its cord
+    },
+    shovel(rp) { // editing: digging in with a long shovel, a heap of earth beside it
+      rp(18, 13, 5, 3, EARTH); rp(19, 12, 3, 1, EARTH_LIGHT); // the heap
+      if (blink(2.5)) { rp(10, 7, 2, 1, WOOD[1]); line(rp, 12, 8, 15, 12, WOOD[3]); rp(15, 13, 3, 3, TIN); rp(15, 13, 3, 1, SHINE); } // the blade driven in
+      else { rp(10, 11, 2, 1, WOOD[1]); line(rp, 12, 10, 15, 7, WOOD[3]); rp(16, 4, 3, 3, TIN); rp(16, 4, 3, 1, SHINE); rp(18, 2, 2, 2, EARTH); } // lifted, a clod thrown onto the heap
+    },
+    sandbag(rp, T) { // a new file: filling a fresh sandbag from a scoop; full, it is tied off
+      const n = Math.floor(T * 2) % 4;
+      rp(14, 9, 6, 6, CANVAS_LIGHT); rp(14, 9, 1, 6, CANVAS_SHADE); rp(19, 9, 1, 6, CANVAS_SHADE); rp(14, 14, 6, 1, CANVAS_DARK); // the bag, open
+      rp(15, 13 - n, 4, n + 1, SAND_EDGE); // the sand in it
+      if (n === 3) { rp(15, 8, 4, 1, WOOD[1]); return; } // full: tied off
+      rp(11, 8, 1, 2, WOOD[2]); rp(12, 7, 4, 1, TIN); rp(15, 6, 2, 1, TIN); rp(16, 8 + (Math.floor(T * 8) % 2), 1, 1, SAND_EDGE); // the scoop tipped over it, sand pouring
+    },
+    mineDetector(rp, T) { // tests: a mine detector swept to and fro over the practice range, headphones on; over the training marker, its light shows green
+      const sx = Math.round(Math.sin(T * 2.4) * 3), hx = 18 + sx;
+      rp(2, 5, 2, 2, DARK); rp(10, 5, 2, 2, DARK); // its headphones
+      rp(17, 15, 3, 1, '#ffd43b'); rp(18, 15, 1, 1, K); // a training marker, half buried
+      line(rp, 11, 11, hx - 1, 14, STEEL); rp(12, 10, 2, 2, OLIVE[1]); rp(12, 10, 1, 1, Math.abs(sx) <= 1 ? '#6cc04a' : '#2f6b2f'); // its pole, its control box and light
+      rp(hx - 2, 14, 5, 1, DARK); rp(hx - 1, 13, 3, 1, OLIVE[2]); // its search head
+    },
+    brush(rp) { // lint: cleaning its kit, brushing a helmet on the ground till it shines
+      rp(13, 14, 3, 2, TIN); rp(13, 14, 3, 1, '#e6eef5'); // the cleaning kit's tin
+      rp(17, 12, 5, 3, OLIVE[1]); rp(18, 11, 3, 1, OLIVE[1]); rp(18, 11, 2, 1, OLIVE[2]); rp(16, 14, 7, 1, OLIVE[0]); // the helmet
+      const bx = 16 + blink(3) * 3;
+      rp(12, 10, bx - 12, 1, WOOD[2]); rp(bx, 9, 3, 2, WOOD[3]); rp(bx, 11, 3, 1, '#e9c46a'); // the brush, to and fro over it
+      if (blink(2)) rp(21, 12, 1, 1, '#ffffff'); // a shine
+    },
+    toolbox(rp) { // a build: its red toolbox open on the ground, a spanner in its hand, turning
+      rp(14, 11, 8, 4, RED_DARK); rp(14, 11, 8, 1, RED); rp(16, 9, 4, 1, DARK); rp(16, 10, 1, 1, DARK); rp(19, 10, 1, 1, DARK); // the box, its handle
+      rp(15, 10, 1, 1, SHINE); rp(20, 9, 1, 2, '#ffd43b'); // a spanner and a screwdriver sticking out
+      if (blink(3)) { rp(12, 5, 1, 6, SHINE); rp(11, 4, 1, 1, SHINE); rp(13, 4, 1, 1, SHINE); } // raised
+      else { line(rp, 12, 10, 15, 8, SHINE); rp(16, 7, 1, 1, SHINE); rp(16, 9, 1, 1, SHINE); rp(17, 8, 1, 1, '#ffd43b'); } // turning, a glint
+    },
+    crateDolly(rp) { // installing: a supply crate wheeled in on a dolly, rocking as it rolls; an arrow: in
+      const tilt = blink(4);
+      rp(12, 6, 1, 9, STEEL); rp(12, 14, 6, 1, STEEL); // the dolly's upright, its toe plate
+      rp(13, 8 + tilt, 5, 6 - tilt, OLIVE[1]); rp(13, 8 + tilt, 5, 1, OLIVE[2]); rp(14, 10 + tilt, 3, 1, '#ffffff'); // the crate, its stencil
+      rp(11, 15, 3, 1, DARK); rp(12 - blink(6), 15, 1, 1, TIN); // its wheel, turning
+      rp(20, 4, 1, 4, '#2fa57a'); rp(19, 7, 3, 1, '#2fa57a'); rp(20, 8, 1, 1, '#2fa57a'); // an arrow down: in
+    },
+    stampedCrate(rp) { // a commit: a stamp brought down on a supply crate, leaving its red mark
+      const up = blink(2);
+      rp(14, 10, 7, 5, WOOD[1]); rp(15, 11, 5, 3, WOOD[4]); rp(15, 12, 5, 1, WOOD[3]); // the crate, its slats
+      rp(15, 7 - up * 3, 4, 2, '#9c3b30'); rp(16, 4 - up * 3, 2, 3, WOOD[2]); // the stamp on its handle
+      if (!up) { rp(16, 12, 3, 1, RED); rp(17, 11, 1, 1, RED); } // its mark
+    },
+    wheelbarrow(rp) { // a push: a wheelbarrow of sandbags pushed off, its wheel turning; an arrow: up, to the remote
+      const bump = blink(4);
+      rp(11, 11, 3, 1, WOOD[2]); // its handles, from its hands
+      rp(14, 10 - bump, 7, 3, OLIVE[1]); rp(14, 10 - bump, 7, 1, OLIVE[2]); rp(15, 13 - bump, 5, 1, OLIVE[0]); // its tray
+      rp(15, 8 - bump, 3, 2, CANVAS); rp(18, 8 - bump, 2, 2, CANVAS_LIGHT); // sandbags in it
+      rp(19, 13, 3, 3, DARK); rp(20, 14, 1, 1, blink(6) ? TIN : DARK); rp(14, 13, 1, 3, WOOD[1]); // its wheel, its leg
+      rp(23, 4, 1, 5, '#2fa57a'); rp(22, 4, 3, 1, '#2fa57a'); rp(23, 3, 1, 1, '#2fa57a'); // an arrow up
+    },
+    flarePistol(rp, T) { // a deploy: a fat orange flare launcher held straight up beside its head, a signal flare shooting up out of it and bursting green high over its head
+      rp(11, 3, 5, 1, '#c8681a'); // its wide mouth
+      rp(12, 4, 3, 7, '#f08a24'); rp(12, 4, 1, 7, '#ffd43b'); rp(14, 4, 1, 7, '#c8681a'); rp(12, 6, 3, 1, '#ffffff'); // the fat tube, lit on its left, a white band
+      rp(12, 11, 3, 1, '#9c3b30'); rp(11, 10, 1, 2, HAND); rp(15, 10, 1, 2, HAND); // its foot, held in both hands
+      const p = (T * 0.7) % 1;
+      if (p < 0.12) { rp(12, 1, 3, 2, '#e6eef5'); rp(13, 0, 1, 1, '#ffffff'); } // just fired: a puff at its mouth
+      if (p < 0.5) { const y = 1 - Math.round((p / 0.5) * 14); rp(13, y, 1, 2, '#ffffff'); rp(13, y + 2, 1, 1, '#9ed36a'); rp(13, y + 4, 1, 1, '#ffd43b'); } // the flare going up, sparks trailing
+      else if (p < 0.85) { // its green star, bursting
+        const r = 2 + Math.round(((p - 0.5) / 0.35) * 2);
+        rp(12, -14, 3, 3, '#6cc04a'); rp(13, -13, 1, 1, '#ffffff');
+        for (const [dx, dy] of [[-1, 0], [1, 0], [0, -1], [0, 1]]) rp(13 + dx * r, -13 + dy * r, 1, 1, '#c6e89a');
+      }
+    },
+    mailSack(rp, T) { // a pull: a mail sack held by its neck, letters dropping in
+      const dy = Math.floor(T * 3) % 4;
+      rp(13, 9, 6, 6, CANVAS_LIGHT); rp(14, 8, 4, 1, CANVAS_LIGHT); rp(17, 9, 2, 6, CANVAS_SHADE); rp(13, 14, 6, 1, CANVAS_DARK); // the sack
+      rp(13, 11, 6, 1, RED); rp(13, 12, 6, 1, '#3d7be0'); rp(15, 7, 2, 1, WOOD[1]); // the mail's stripes, its neck tied
+      if (dy < 3) { rp(14, 1 + dy * 2, 4, 3, '#f4ecd8'); rp(15, 2 + dy * 2, 2, 1, RED); } // a letter dropping in, sealed
+    },
+    fieldGenerator(rp, T) { // a server: a field generator on the ground beside it, humming (it shakes), its lamp blinking, a wisp from its exhaust
+      const j = blink(12);
+      rp(14, 15, 9, 1, WOOD[1]); // its skids
+      rp(14 + j, 9, 8, 6, OLIVE[0]); rp(15 + j, 10, 6, 4, OLIVE[1]); rp(15 + j, 10, 6, 1, OLIVE[2]); // its case
+      for (let i = 0; i < 3; i++) rp(16 + i * 2 + j, 12, 1, 2, OLIVE[0]); // its grille
+      rp(20 + j, 11, 1, 1, blink(2) ? '#6cc04a' : '#2f6b2f'); rp(15 + j, 7, 2, 2, STEEL); // its lamp, its exhaust
+      if (Math.floor(T * 1.5) % 2) rp(15, 4, 2, 2, SHINE); // a wisp
+    },
+    spade(rp) { // deleting: clearing a heap away with a short sapper's spade, clods flying off it
+      rp(16, 13, 5, 3, EARTH_LIGHT); rp(17, 12, 3, 1, EARTH); // the heap
+      if (blink(3)) { rp(12, 5, 1, 5, WOOD[2]); rp(11, 2, 3, 3, TIN); rp(12, 1, 1, 1, TIN); rp(11, 2, 3, 1, SHINE); } // raised, its pointed blade up
+      else { line(rp, 12, 10, 14, 12, WOOD[2]); rp(15, 12, 2, 2, TIN); rp(16, 14, 1, 1, TIN); rp(19, 10, 1, 1, EARTH); rp(21, 8, 1, 1, EARTH); rp(20, 11, 1, 1, EARTH_LIGHT); } // chopping in, clods flying
+    },
+    whistle(rp, T) { // calling helpers: blowing its whistle for its drones, the call going out
+      rp(7, 7, 3, 1, SHINE); rp(10, 7, 1, 1, TIN); rp(8, 8, 1, 2, '#ffd43b'); // the whistle at its mouth, its lanyard
+      for (let k = 1, n = 1 + (Math.floor(T * 4) % 3); k <= n; k++) { const x = 11 + 2 * k; rp(x, 7 - k, 1, 1, '#ffffff'); rp(x + 1, 8 - k, 1, 2 * k - 1, '#ffffff'); rp(x, 7 + k, 1, 1, '#ffffff'); } // its call going out
+    },
+    mapCase(rp, T) { // planning: an open map case in its hands, a route marked in red across the map as it goes
+      rp(1, 9, 12, 5, WOOD[1]); rp(2, 10, 10, 3, '#9ed36a'); rp(5, 10, 1, 3, '#5ab4ff'); rp(9, 10, 2, 2, '#6b8f4a'); // the case, the map: a river, a wood
+      const n = Math.floor(T * 2.5) % 5;
+      for (let i = 0; i < n; i++) rp(2 + i * 2, 12 - (i % 2), 1, 1, RED); // the route, marked as it goes
+      rp(2 + n * 2, 7, 1, 3, '#f0b429'); rp(2 + n * 2, 10, 1, 1, K); // the pencil
+    },
+    messageCard(rp) { // asking: holding up a message card, a red stripe along its top, a big question mark
+      rp(13, 4, 7, 9, '#e8d8b0'); rp(13, 4, 7, 2, RED); // the card, its stripe
+      rp(15, 7, 3, 1, K); rp(17, 8, 1, 1, K); rp(16, 9, 1, 1, K); rp(16, 11, 1, 1, blink(2) ? K : '#c9b48a'); // ?
+      rp(12, 11, 2, 1, HAND);
+    },
+    fieldPhone(rp) { // a command: the field telephone in its wooden case on the ground, its crank turned to ring through, the handset at its ear
+      const up = blink(4);
+      rp(14, 10, 7, 5, WOOD[1]); rp(15, 11, 5, 3, WOOD[3]); rp(15, 11, 5, 1, WOOD[4]); rp(16, 12, 3, 1, DARK); // its case
+      rp(21, 12, 1, 1, STEEL); if (up) { rp(22, 10, 1, 2, STEEL); rp(22, 9, 1, 1, K); } else { rp(22, 13, 1, 2, STEEL); rp(22, 15, 1, 1, K); } // its crank, turning
+      if (up) { rp(17, 7, 1, 1, '#ffd43b'); rp(19, 8, 1, 1, '#ffd43b'); } // ringing
+      rp(10, 5, 2, 3, K); rp(12, 8, 1, 1, K); rp(13, 9, 1, 1, K); // the handset at its ear, its cord
+    },
+  };
+  // Each step's prop, and what the soldier is doing (its tip and the field log's line), in drill words; where it
+  // stands at its position stays the kit's (left for looking things up, right for working, the middle for the rest).
+  const props = window.Agentville.props.kit({
+    steps: {
+      read: { prop: 'manual', verb: 'reading the field manual' },
+      search: { prop: 'binoculars', verb: 'scanning with binoculars' },
+      web: { prop: 'radioSet', verb: 'on the radio set' },
+      mcp: { verb: 'calling up a jeep' },
+      skill: { verb: 'following standing orders' },
+      edit: { prop: 'shovel', verb: 'digging in' },
+      write: { prop: 'sandbag', verb: 'filling a sandbag' },
+      test: { prop: 'mineDetector', verb: 'sweeping the practice range' },
+      lint: { prop: 'brush', verb: 'cleaning its kit' },
+      build: { prop: 'toolbox', verb: 'fixing up with the toolbox' },
+      install: { prop: 'crateDolly', verb: 'wheeling in supplies' },
+      commit: { prop: 'stampedCrate', verb: 'stamping a supply crate' },
+      push: { prop: 'wheelbarrow', verb: 'barrowing supplies out' },
+      deploy: { prop: 'flarePistol', verb: 'sending up a signal flare' },
+      pull: { prop: 'mailSack', verb: 'collecting the mail sack' },
+      serve: { prop: 'fieldGenerator', verb: 'running the field generator' },
+      delete: { prop: 'spade', verb: "clearing with a sapper's spade" },
+      agent: { prop: 'whistle', verb: 'whistling up its drones' },
+      plan: { prop: 'mapCase', verb: 'plotting a route' },
+      ask: { prop: 'messageCard', verb: 'holding up a message card' },
+      shell: { prop: 'fieldPhone', verb: 'on the field telephone' },
+      other: { prop: 'fieldPhone', verb: 'working the field telephone' },
+      planMode: { verb: 'drawing up the plan of manoeuvres (plan mode)' },
+    },
+    props: MILITARY_PROPS,
+  });
+
+  // On a soldier, drawn with it (drawChar): its model's pin on its headgear, its chevrons, a hazard armband; behind
+  // it while it thinks, a radio pack; in reserve, greyed a little.
+  const FAMILY_PIN = { opus: '#8a5fc0', sonnet: '#3d7be0', haiku: '#2fa57a', fable: '#f08a24' }; // the farm's pins: purple Opus, blue Sonnet, green Haiku, orange Fable
+  /** How many chevrons a soldier wears for what it has cost: one from $1, two from $10, three from $50 (the farm's and the factory's thresholds); none below $1, or with no cost. */
+  const chevronsOf = cost => (cost >= 50 ? 3 : cost >= 10 ? 2 : cost >= 1 ? 1 : 0);
+  const GOLD = ['#ffd43b', '#c9a24a']; // the chevrons' gold and brass, by turns, so each shows
+  /**
+   * Its chevrons on its sleeve (on the left as you look at it, from the front or behind): a stripe each across the
+   * arm, gold and brass by turns; one or two on the sleeve, a third up to the shoulder. (A soldier's arm is two
+   * pixels wide: stripes, not Vs, are what show and count at its size.)
+   */
+  function chevrons(rp, n) {
+    for (let i = 0; i < n; i++) rp(1, (n < 3 ? 10 : 9) + i, 2, 1, GOLD[i % 2]);
+  }
+  // The pin's column on the headgear's front in each view (none from behind); its rows are the headgear's front, 3–4.
+  const PIN_X = { down: 7, right: 8, left: 4 };
+  /** Its model's pin on its headgear: a 2 × 2 badge in the model's colour, a glint on it. */
+  function headgearPin(rp, view, colour) {
+    if (PIN_X[view] == null || !colour) return;
+    rp(PIN_X[view], 3, 2, 2, colour); rp(PIN_X[view], 3, 1, 1, '#ffffff');
+  }
+  /** Bypass permissions: a yellow and black hazard band round its upper arm (on the right as you look at it; raised, while it waves). */
+  function armband(rp, waving) {
+    const [x, y] = waving ? [12, 7] : [11, 10];
+    for (let i = 0; i < 3; i++) for (let j = 0; j < 2; j++) rp(x + i, y + j, 1, 1, (i + j) % 2 ? K : '#ffd43b');
+  }
+  /** Thinking: a radio pack on its back (drawn before it, so it shows round its shoulders), its aerial up past its headgear, the tip blinking as it sends. */
+  function radioPack(rp, T) {
+    rp(1, 6, 12, 7, OLIVE[0]); rp(1, 6, 12, 1, OLIVE[1]); // the pack
+    rp(12, -5, 1, 11, SHINE); // its aerial
+    const on = blink(3);
+    rp(12, -6, 1, 1, on ? RED_LIGHT : '#9c3b30');
+    if (on) { rp(10, -7, 1, 1, '#ffffff'); rp(14, -7, 1, 1, '#ffffff'); } // sending
+  }
+  // Every letter of a soldier grey: its veil in reserve, laid over it half seen.
+  const VEIL = Object.fromEntries([...'khwbrsgpCcoOPLlVvUuXxJjNeE'].map(k => [k, TIN]));
+  /** In reserve: its sprite greyed a little, a grey veil of its shape over it. */
+  function greyVeil(look, opts, ox, oy) {
+    PXG.ctx.globalAlpha = 0.4;
+    PXG.ctx.drawImage(personSprite(look, TIN, { ...opts, palette: VEIL }), ox, oy, 14 * SC, 16 * SC);
+    PXG.ctx.globalAlpha = 1;
+  }
+
+  // Over and beside a soldier (drawFx).
+  /** Fast mode: speed lines streaming off it: behind it as it goes (on its left, unless it goes left). */
+  function speedLines(rp, b, T) {
+    const right = b.walk && b.face === 'left';
+    for (const [y, n] of [[4, 3], [8, 2], [12, 3]]) { const w = n + ((Math.floor(T * 10) + y) % 2); rp(right ? 15 : -1 - w, y, w, 1, '#ffffff'); }
+  }
+  /** A hot CPU: sweat drops flying off its brow either side, and one running down its cheek. */
+  function sweat(rp, T) {
+    for (const [k, side] of [[0, -1], [1, 1]]) {
+      const p = (T * 1.8 + k / 2) % 1;
+      rp((side < 0 ? 2 : 11) + side * Math.round(p * 3), 3 + Math.round(p * 4 + p * p * 4), 1, 2, '#5ab4ff');
+    }
+    rp(9, 6 + (Math.floor(T * 3) % 2), 1, 1, '#a9dcf7');
+  }
+  /** Its task list: a clipboard on a stake beside it, a tick for each done (on three rows), a bar for how far it has got. */
+  function clipboard(rp, t) {
+    const rows = Math.min(3, t.total), done = Math.max(0, Math.min(t.done, t.total)), ticked = Math.round((done / t.total) * rows);
+    rp(-6, 11, 1, 5, WOOD[1]); // its stake
+    rp(-10, 2, 8, 10, WOOD[2]); rp(-9, 4, 6, 7, '#f4ecd8'); rp(-8, 1, 4, 2, TIN); // the board, its sheet, its clip
+    for (let r = 0; r < rows; r++) { rp(-8, 5 + r * 2, 1, 1, r < ticked ? '#2fa57a' : SHINE); rp(-6, 5 + r * 2, 2, 1, '#c9b48a'); }
+    rp(-9, 10, Math.max(done ? 1 : 0, Math.round((6 * done) / t.total)), 1, '#6cc04a');
+  }
+  /** Idle: eating at the mess table, a spoon from its plate to its mouth and back (its eyes shut: it's good). */
+  function eating(rp) {
+    if (blink(1.2)) { rp(7, 7, 2, 1, SHINE); rp(7, 7, 1, 1, '#c8681a'); line(rp, 9, 8, 11, 11, SHINE); } // up to its mouth, stew on it
+    else { rp(11, 9, 1, 3, SHINE); rp(10, 12, 2, 1, SHINE); } // down to its plate
+  }
+  /** A plan for you: a rolled map carried in both arms, the map's green showing at its ends, tied with red. */
+  function rolledMap(rp) {
+    rp(0, 11, 14, 2, '#f4ecd8'); rp(0, 11, 14, 1, '#ffffff'); rp(0, 11, 1, 2, '#9ed36a'); rp(13, 11, 1, 2, '#9ed36a'); rp(6, 11, 1, 2, RED);
+  }
+  /** Your turn: the dispatch it brings back, held in front: a buff envelope, its flap, a red seal. */
+  function dispatch(rp) {
+    rp(3, 9, 8, 5, '#e8d8b0'); rp(3, 9, 8, 1, '#c9b48a'); rp(4, 10, 1, 1, '#c9b48a'); rp(9, 10, 1, 1, '#c9b48a'); rp(5, 11, 1, 1, '#c9b48a'); rp(8, 11, 1, 1, '#c9b48a');
+    rp(6, 11, 2, 2, RED); rp(2, 11, 1, 2, HAND); rp(11, 11, 1, 2, HAND);
+  }
+
+  // The drones: subagents. A small quadcopter hovers by its soldier for each running one (follow), and an Explore
+  // one is the K9: the library's dog in a harness, trotting about its soldier. Finished ones sit docked on the drone
+  // pad's deck; the running ones no soldier can lead circle over it (top: they rise past the hedge into the sky).
+  /** A small quadcopter at (x, y), its middle, seen from the front: a rotor whirring at each end of its arms, an olive body, a band in its soldier's colour, a light under it. */
+  function drone(x, y, band, T, k = 0) {
+    const spin = Math.floor(T * 16 + k) % 2;
+    for (const r of [x - 4, x + 4]) { px(r - 2, y - 3, 5, 1, spin ? SHINE : TIN); px(r, y - 3, 1, 1, DARK); } // its rotors, a blur
+    px(x - 4, y - 2, 9, 1, DARK); // its arms
+    px(x - 2, y - 1, 5, 3, OLIVE[0]); px(x - 1, y - 1, 3, 1, OLIVE[2]); exact(x - 1, y, 3, 1, /^#[0-9a-f]{6}$/i.test(band ?? '') ? band : '#ffd43b'); // its body, its band
+    px(x, y + 2, 1, 1, blink(3) ? '#6cc04a' : '#2fa57a'); // its light
+  }
+  /** An Explore subagent: the K9, the library's dog in an olive harness with a yellow patch, trotting about its soldier and stopping to sniff at each turn. */
+  function k9(x, y, T, k) {
+    const s = Math.sin(T * 0.8 + k), p = creaturePainter(x, y, s > 0 ? -1 : 1);
+    CREATURES.dog.draw(p, Math.abs(s) > 0.35 ? 'walk' : 'stand', T);
+    p(-1, -6, 3, 3, OLIVE[0]); p(-1, -6, 3, 1, OLIVE[1]); p(0, -5, 1, 1, '#ffd43b'); // its harness
+  }
+  const PAD_BERTHS = [[98, 43], [107, 43], [116, 43], [98, 47], [107, 47], [116, 47]]; // the drone pad's six berths on its deck: a docked drone's top left
+  const PAD_SKY = [111, 26]; // where drones circle over the pad
+  /** A finished subagent's drone, docked on the pad at (x, y), its top left: its rotors folded along its arms (pale on the steel deck), charging. */
+  function dockedDrone(x, y) {
+    px(x, y, 7, 1, SHINE); px(x + 1, y + 1, 5, 2, OLIVE[1]); px(x + 2, y + 1, 3, 1, OLIVE[2]); px(x + 3, y + 2, 1, 1, blink(1) ? '#ffd43b' : '#f0b429');
+  }
+
+  // The jeeps: one for each MCP server called in the last hour (the scene's carts, six at most), each in its own
+  // place in the vehicle park (PARK). While a soldier calls its server, its jeep drives over and waits beside it until
+  // the call is done and a moment after (the farm's carts' rule), then drives back.
+  const JEEP_SPEED = 55, JEEP_STAY_MS = 3000;
+  const JEEP_LOADS = ['#c9a46a', '#e04a3a', '#3d7be0', '#6cc04a', '#8a5fc0', '#f0b429']; // a crate in the back in each server's colour
+  /** A jeep's way between two places: along its row to the left side's path, up or down it, then along the other row. */
+  function jeepRoute([x, y], [tx, ty]) {
+    if (Math.abs(y - ty) < 0.5) return [[tx, ty]];
+    const pts = [[CORR[0], y], [CORR[0], ty], [tx, ty]];
+    return pts.filter((p, i) => { const q = i ? pts[i - 1] : [x, y]; return p[0] !== q[0] || p[1] !== q[1]; });
+  }
+  /**
+   * Where a jeep heads: beside the soldier calling it; once there it stays while the call goes on and a few
+   * seconds after (so a short call is seen, and a run of them keeps it there), then back to the park. `c` is its
+   * memory: { goal, arrivedAt, lastBusy }.
+   */
+  function jeepGoal(c, busyAt, home, now) {
+    if (busyAt) {
+      if (!c.goal || c.goal[0] !== busyAt[0] || c.goal[1] !== busyAt[1]) { c.goal = busyAt; c.arrivedAt = null; }
+      c.lastBusy = now;
+      return c.goal;
+    }
+    if (c.goal && (c.arrivedAt == null || now - Math.max(c.lastBusy ?? 0, c.arrivedAt) < JEEP_STAY_MS)) return c.goal;
+    c.goal = null;
+    return home;
+  }
+  /** A painter for something seen from the side at (x, y), its feet, facing `dir` (1 right, −1 left): (dx, dy, w, h, c) as facing right, mirrored round x. */
+  const sideOn = (x, y, dir) => (dx, dy, w, h, c) => px(dir > 0 ? x + dx : x - dx - w + 1, y + dy, w, h, c);
+  /** A jeep at (x, y), its wheels on the ground, facing `dir`: an olive tub and bonnet, a white star, its windscreen, a crate in the back in its server's colour; moving, its wheels turn. */
+  function drawJeep(x, y, dir, moving, load) {
+    const m = sideOn(x, y, dir), turn = moving ? blink(8) : 0;
+    px(x - 7, y + 1, 14, 1, SHADE); // its shadow
+    m(-6, -6, 7, 4, OLIVE[1]); m(-6, -6, 7, 1, OLIVE[2]); m(1, -5, 6, 3, OLIVE[1]); m(1, -5, 6, 1, OLIVE[2]); m(-6, -3, 13, 1, OLIVE[0]); // its tub, its bonnet
+    m(-7, -5, 1, 3, DARK); m(1, -9, 1, 4, DARK); m(2, -8, 1, 2, '#a9dcf7'); // its spare wheel, its windscreen
+    m(3, -4, 1, 1, '#ffffff'); m(4, -5, 1, 3, '#ffffff'); m(5, -4, 1, 1, '#ffffff'); m(6, -4, 1, 1, '#ffe8a3'); // a white star, its headlight
+    m(-5, -8, 4, 2, load); m(-5, -8, 4, 1, '#fff4d6'); // a crate in the back
+    for (const wx of [-5, 3]) { m(wx, -2, 3, 3, K); m(wx + 1, -1, 1, 1, turn ? SHINE : STEEL); } // its wheels
+  }
+
+  // The dispatch riders: a web call going on (not a browser's: its jeep goes). Its rider rides out of the motor pool
+  // gate along the track to the soldier, waits there a moment, and rides back: 8 s a round, each on its own beat.
+  const RIDER_Y = 88; // where riders ride: the track's front, in front of HQ's queue
+  /** Where a soldier's dispatch rider is (b: where the soldier is): { x, dir, moving } on the track, or null with no web call going on. */
+  function riderAt(f, b, T) {
+    if (!b || f.state !== 'working' || !f.service || f.step !== 'web' || String(f.tool ?? '').startsWith('mcp__')) return null;
+    const ph = (T / 8 + (hashOf(f.id) % 97) / 97) % 1, to = Math.max(12, Math.min(W - 12, Math.round(Number.isFinite(b.tx) ? b.tx : b.x)));
+    const d = to - GATE[0], out = d < 0 ? -1 : 1, ease = s => (s < 0.5 ? 2 * s * s : 1 - (-2 * s + 2) ** 2 / 2);
+    if (ph < 0.35) return { x: GATE[0] + d * ease(ph / 0.35), dir: out, moving: true };
+    if (ph < 0.65) return { x: to, dir: out, moving: false };
+    return { x: to - d * ease((ph - 0.65) / 0.35), dir: -out, moving: true };
+  }
+  /** A dispatch rider on its motorbike at (x, y), facing `dir`: olive, a satchel of dispatches on the back, the rider in khaki and an olive helmet; a puff of exhaust as it rides. */
+  function motorbike(x, y, dir, moving) {
+    const m = sideOn(x, y, dir);
+    px(x - 6, y + 1, 12, 1, SHADE); // its shadow
+    for (const wx of [-5, 3]) { m(wx, -2, 3, 3, K); m(wx + 1, -1, 1, 1, moving && blink(8) ? SHINE : STEEL); } // its wheels
+    m(-3, -4, 7, 2, OLIVE[1]); m(-1, -5, 3, 1, OLIVE[2]); m(4, -6, 1, 3, DARK); m(5, -4, 1, 1, '#ffe8a3'); // its frame and tank, its forks, its headlight
+    m(-5, -6, 3, 3, CANVAS); m(-5, -5, 3, 1, RED); // the satchel of dispatches
+    m(-1, -10, 3, 5, '#a08a5a'); m(2, -8, 2, 1, '#a08a5a'); m(0, -5, 2, 2, '#8e7a4e'); // the rider: body, arm to the handlebar, leg
+    m(-1, -12, 3, 2, HAND); m(1, -12, 1, 1, K); m(-1, -14, 3, 2, OLIVE[0]); m(-2, -13, 1, 1, OLIVE[0]); // its face, an eye, its helmet
+    if (moving && blink(6)) px(dir > 0 ? x - 9 : x + 7, y - 2, 2, 1, SHINE); // exhaust
+  }
 
   /* ---------- the hooks ---------- */
 
   /** A time of day, short: 14:05. */
   const clock = at => new Date(at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+  /** How long until a time, in short: 12m, 2h. */
+  const until = at => { const m = Math.max(0, (at - Date.now()) / 60_000); return m < 1 ? 'a moment' : m < 60 ? `${Math.round(m)}m` : `${Math.round(m / 60)}h`; };
 
   function makeMilitary() {
     let L = MILITARY_GRID.layoutFor([]);
@@ -976,6 +1308,42 @@
     let where = () => null; // where each soldier is (the engine's, given to tick): for their headgear lamps at night
     const stOf = k => L.ST.find(s => s.key === k);
     const fieldByKey = k => scene.fields.find(f => f.key === k);
+    const parkOf = new Map(), jeeps = new Map(); // server → its place in the vehicle park; server → its jeep: { x, y, path, to, dir, moving, goal, arrivedAt, lastBusy }
+    /** The jeeps there are now (the scene's carts), each keeping its place in the park while its server has one. */
+    function placeJeeps() {
+      const list = scene.carts ?? [];
+      for (const k of [...parkOf.keys()]) if (!list.some(c => c.server === k)) { parkOf.delete(k); jeeps.delete(k); }
+      for (const c of list) if (!parkOf.has(c.server)) { const used = new Set(parkOf.values()); parkOf.set(c.server, PARK.findIndex((_, i) => !used.has(i))); }
+      return list.filter(c => parkOf.get(c.server) >= 0); // the scene gives six at most, one a place
+    }
+    /** Beside a soldier (on the side away from the base's right edge): where it is going rather than where it is, so the jeep does not chase it step by step. */
+    const besideOf = b => { const x = Number.isFinite(b.tx) ? b.tx : b.x, y = Number.isFinite(b.ty) ? b.ty : b.y; return [Math.round(x + (x > 360 ? -13 : 13)), Math.round(y)]; };
+    /** Each frame: each jeep drives towards where jeepGoal sends it (or is put there, drawn still). */
+    function moveJeeps(dt, posOf, snap) {
+      const now = Date.now();
+      for (const c of placeJeeps()) {
+        const home = PARK[parkOf.get(c.server)];
+        let s = jeeps.get(c.server);
+        if (!s) jeeps.set(c.server, (s = { x: home[0], y: home[1], path: [], to: home, dir: 1 }));
+        const b = c.busy ? posOf(c.busy) : null;
+        const goal = jeepGoal(s, b ? besideOf(b) : null, home, now);
+        if (goal[0] !== s.to[0] || goal[1] !== s.to[1]) { s.to = goal; s.path = jeepRoute([s.x, s.y], goal); }
+        if (snap) { // no motion: it stands where it is going, facing the soldier (or the path, in the park)
+          [s.x, s.y] = goal;
+          s.path = [];
+          s.dir = b && s.goal ? (goal[0] > (Number.isFinite(b.tx) ? b.tx : b.x) ? -1 : 1) : 1;
+        }
+        if (s.path.length) {
+          const [qx, qy] = s.path[0], dx = qx - s.x, dy = qy - s.y, d = Math.hypot(dx, dy), sp = JEEP_SPEED * dt;
+          if (Math.abs(dx) > 0.1) s.dir = Math.sign(dx);
+          if (d <= sp) { s.x = qx; s.y = qy; s.path.shift(); } else { s.x += (dx / d) * sp; s.y += (dy / d) * sp; }
+        } else if (s.goal && s.arrivedAt == null) s.arrivedAt = now; // there: it waits (jeepGoal says how long)
+        else if (!s.goal) s.dir = 1; // back in its place, facing the path
+        s.moving = s.path.length > 0;
+      }
+    }
+    /** The dispatch riders out now, one for each soldier on a web call (where it is: the engine's, from tick). */
+    const riders = () => scene.farmers.map(f => riderAt(f, where(f.id), PXG.T)).filter(Boolean);
     /** Each position shown, with its repo and what its soldiers bring: [{ s, f, color: whose flag it raises, jobs: background commands running }]. */
     const shownPositions = () => L.ST.flatMap(s => {
       const f = fieldByKey(s.key);
@@ -1051,6 +1419,10 @@
       layout: () => L,
       relayout(ground) { L = ground; return L; },
       spawn: () => GATE,
+      /** Where its k-th running subagent's drone hovers: by its head, two a side; the K9 (an Explore one) trots to and fro at its feet. */
+      follow: (b, k, T, kid) => (kid?.dog
+        ? [b.x + Math.cos(T * 0.8 + k) * 20, b.y + 3 + Math.sin(T * 1.6 + k) * 2]
+        : [b.x + (k % 2 ? 13 : -13) + Math.sin(T * 1.3 + k) * 1.5, b.y - 12 - (k > 1 ? 11 : 0) + Math.sin(T * 3 + k * 1.7) * 1.5]),
       /** The alert level, live: the engine shows it (or the level the Alert switch holds) as PXG.season. */
       season: () => alert,
       /** How fast a soldier walks: strolling at calm, faster when high, at the double at max; fast mode faster still. */
@@ -1105,23 +1477,36 @@
         return `${props.doing(f)?.verb ?? 'working'} at the ${fieldByKey(f.field)?.name ?? ''} position`;
       },
       bg(fill, season, ext) { drawBase(fill, L, ext); },
-      /** Each frame, on the ground: the motor pool's barrier (lifted while a soldier comes through), the limits (the alert board, the fuel depots), the crates on the quartermaster's pallet and those carried in, the positions. */
+      /** Each frame, on the ground: the motor pool's barrier (lifted while a soldier comes through), the limits (the alert board, the fuel depots), the drones docked on the pad, the crates on the quartermaster's pallet and those carried in, the positions. */
       ground() {
         barrier(gateLift);
         drawLimits();
+        PAD_BERTHS.slice(0, Math.min(6, scene.henhouse?.eggs ?? 0)).forEach(([x, y]) => dockedDrone(x, y)); // subagents that finished lately
         for (const c of depotCrates(scene.fields)) supplyCrate(c);
         for (const c of carried) carriedCrate(c.t);
         drawPositions();
       },
-      /** Drawn among the soldiers, by how far down they stand: the mess table in front of the idle ones, a crate before each in reserve, a blanket over each cot. */
-      items: () => [[MESS[0][1] + 1, messTable], ...RESERVE.map(([x, y]) => [y + 1, () => seatCrate(x, y)]), ...COTS.map(([x, y]) => [y + 1, () => blanket(x, y)])],
       /**
-       * Each frame: is a soldier coming through the motor pool gate (walking by it)? The barrier lifts, and comes down
-       * slowly after. Flags are carried up-field and crates into the depot, until they're gone. Still, the barrier is
-       * down and nothing is carried. Where the soldiers are is kept, for their headgear lamps at night (lights).
+       * Drawn among the soldiers, by how far down they stand: the mess table in front of the idle ones, a crate before
+       * each in reserve, a blanket over each cot; the jeeps, and the dispatch riders on the track.
+       */
+      items: () => [
+        [MESS[0][1] + 1, messTable], ...RESERVE.map(([x, y]) => [y + 1, () => seatCrate(x, y)]), ...COTS.map(([x, y]) => [y + 1, () => blanket(x, y)]),
+        ...placeJeeps().map(c => {
+          const s = jeeps.get(c.server), [hx, hy] = PARK[parkOf.get(c.server)], x = Math.round(s?.x ?? hx), y = Math.round(s?.y ?? hy);
+          return [y, () => drawJeep(x, y, s?.dir ?? 1, s?.moving, JEEP_LOADS[hashOf(c.server) % JEEP_LOADS.length])];
+        }),
+        ...riders().map(r => [RIDER_Y, () => motorbike(Math.round(r.x), RIDER_Y, r.dir, r.moving)]),
+      ],
+      /**
+       * Each frame: the jeeps drive on. Is a soldier coming through the motor pool gate (walking by it)? The barrier
+       * lifts, and comes down slowly after. Flags are carried up-field and crates into the depot, until they're gone.
+       * Still, the barrier is down, nothing is carried, and a jeep stands where it is going. Where the soldiers are is
+       * kept, for their headgear lamps at night (lights) and their dispatch riders (items).
        */
       tick(dt, posOf, snap = false) {
         where = posOf;
+        moveJeeps(dt, posOf, snap);
         const coming = !snap && scene.farmers.some(f => { const b = posOf(f.id); return b?.walk && Math.abs(b.x - GATE[0]) < 24 && Math.abs(b.y - GATE[1]) < 4; });
         gateLift = snap ? 0 : coming ? Math.min(1, gateLift + dt * 5) : Math.max(0, gateLift - dt * 1.5);
         if (snap) { advancing.length = 0; carried.length = 0; return; }
@@ -1136,12 +1521,15 @@
         drawSkyline(coloursOf(scene.farmers), scene.farmers.some(f => f.state === 'waiting'), PXG.T, shown());
       },
       /**
-       * Over everything, the sky too: the alert board's beacon (spinning at max); at night, the searchlights' beams
-       * sweeping the sky, and now and then the illumination flare drifting down over the field.
+       * Over everything, the sky too: the alert board's beacon (spinning at max); the drones circling over the pad (more
+       * running than their soldiers lead); at night, the searchlights' beams sweeping the sky, and now and then the
+       * illumination flare drifting down over the field.
        */
       top() {
         const T = PXG.T, k = nightOf(dark);
         alertBeacon(shown() === 'winter', T);
+        const more = Math.min(3, scene.henhouse?.roosting ?? 0);
+        for (let i = 0; i < more; i++) { const a = T * 1.4 + (i * 2 * Math.PI) / 3; drone(Math.round(PAD_SKY[0] + Math.cos(a) * 12), Math.round(PAD_SKY[1] + Math.sin(a) * 4), '#ffd43b', T, i); }
         if (k <= 0) return;
         SEARCHLIGHTS.forEach(([x, y], i) => searchBeam(x, y, beamAngle(i, T), k));
         const fl = flareAt(T);
@@ -1255,12 +1643,68 @@
         plus(116, MESS[0][1] - 4, overflow.charge, 'idle'); plus(116, RESERVE[0][1] - 4, overflow.storage, 'stale'); plus(116, DRILL[0][1] - 4, overflow.floor, 'working'); plus(116, COTS[0][1] - 4, overflow.nap, 'asleep');
         if (more > 0) lab(350, L.GRID.y1 + 5, `<button type="button" class="px-more" data-farm-more>${pxt(`+${more} more position${more === 1 ? '' : 's'}`, '#fff3d6', '#4e3626')}</button>`, 'wood');
       },
-      /** A soldier: walking, it faces where it goes; waiting on you, it waves; its eyes as the farm's. */
+      /**
+       * A soldier: walking, it faces where it goes; waiting on you, it waves. On it: a radio pack on its back while it
+       * thinks (drawn first: behind it), a grey veil in reserve, its model's pin on its headgear, its chevrons, a
+       * hazard armband for bypass permissions, and its eyes, as the farm's.
+       */
       drawChar(f, b) {
         const [ox, oy] = pixelOrigin(b, 16), rp = rpAt(ox, oy), look = f.look ?? lookOf(f);
-        const view = b.walk ? b.face ?? 'down' : 'down';
-        PXG.ctx.drawImage(soldierSprite(look, f.shirt, { view, legs: legFrame(b), wave: f.state === 'waiting' }), ox, oy, 14 * SC, 16 * SC);
+        const view = b.walk ? b.face ?? 'down' : 'down', opts = { view, legs: legFrame(b), wave: f.state === 'waiting' };
+        if (f.thinking && !b.walk) radioPack(rp, PXG.T);
+        PXG.ctx.drawImage(soldierSprite(look, f.shirt, opts), ox, oy, 14 * SC, 16 * SC);
+        if (f.state === 'stale') greyVeil(look, opts, ox, oy);
+        headgearPin(rp, view, FAMILY_PIN[f.family]);
+        if (view === 'down' || view === 'up') chevrons(rp, chevronsOf(f.cost));
+        if (f.mode === 'bypassPermissions' && view === 'down') armband(rp, opts.wave);
         if (view !== 'up') eyes(f, b, rp, view);
+      },
+      /**
+       * Over and beside a soldier: speed lines (fast mode) and sweat (a hot CPU); asleep on a cot, a zzz. Working: what
+       * it holds for its step, its task list's clipboard. Its drones and the K9. Waiting on you: the ! bubble (a plan's,
+       * with the rolled map it carries) and a ring at its feet; your turn: the dispatch it brings back, and a ✓ (a ?
+       * for a question); idle: eating.
+       */
+      drawFx(f, b) {
+        const [ox, oy] = pixelOrigin(b, 16), rp = rpAt(ox, oy), T = PXG.T, still = !b.walk;
+        if (f.fast && f.state !== 'stale') speedLines(rp, b, T);
+        if (f.hot && f.state !== 'stale') sweat(rp, T);
+        if (b.zone === 'nap' && still) { // asleep on its cot until it wakes by itself: zzz
+          const zy = -4 - Math.floor((T * 2) % 4);
+          PXG.ctx.globalAlpha = 0.85; rp(10, zy, 3, 1, '#e6eef5'); rp(11, zy + 1, 1, 1, '#e6eef5'); rp(10, zy + 2, 3, 1, '#e6eef5'); PXG.ctx.globalAlpha = 1;
+          return;
+        }
+        if (f.state === 'working' && still) { const act = props.doing(f); if (act) props.draw(act.prop, rp, T, act.flag); }
+        if (f.tasks?.total && f.state === 'working' && still) clipboard(rp, f.tasks);
+        b.kids.forEach((d, k) => { const x = Math.round(d.x), y = Math.round(d.y); if (f.kids[k]?.dog) k9(x, y, T, k); else drone(x, y, f.shirt, T, k); });
+        if (f.state === 'waiting') {
+          if (f.planAsk) rolledMap(rp);
+          bubble(rp, 12, -7 - blink(3), f.planAsk ? 'plan' : '!');
+          const x = Math.round(b.x), y = Math.round(b.y); // a ring at its feet that pulses: it needs you
+          PXG.ctx.globalAlpha = 0.45 + 0.35 * Math.sin(T * 5);
+          px(x - 6, y + 2, 13, 1, RED); px(x - 8, y + 1, 2, 1, RED); px(x + 7, y + 1, 2, 1, RED); px(x - 8, y - 1, 1, 2, RED); px(x + 8, y - 1, 1, 2, RED);
+          PXG.ctx.globalAlpha = 1;
+        }
+        if (f.state === 'turn') { dispatch(rp); if (still) bubble(rp, 12, -7 - (f.question ? blink(3) : 0), f.question ? '?' : 'v'); }
+        if (f.state === 'idle' && still) eating(rp);
+      },
+      /** Labels that move with what they name: a jeep out of the park (its server), a dispatch rider (its errand), a cot's wake-up time; and +N over the drone pad. */
+      movers(posOf) {
+        const out = [];
+        for (const c of scene.carts ?? []) {
+          const s = jeeps.get(c.server);
+          if (!s || (!s.goal && !s.moving)) continue; // in its place in the park
+          const who = c.busy ? scene.farmers.find(f => f.id === c.busy) : null;
+          out.push({ key: `mcp:${c.server}`, x: s.x, y: s.y - 12, html: pxt(cutMid(c.server, 16), '#5a3a1a', null), title: `${c.server}, an MCP server${who ? `: ${who.name} is calling it` : ''}` });
+        }
+        for (const f of scene.farmers) {
+          const b = posOf(f.id), r = riderAt(f, b, PXG.T);
+          if (r) out.push({ key: `rider:${f.id}`, x: r.x, y: RIDER_Y - 15, html: pxt(clip(f.service, 18), '#5a3a1a', null), title: `${f.name}: ${f.summary || f.service}` });
+          if (f.nap && f.wakeAt && b?.zone === 'nap' && !b.walk) out.push({ key: `nap:${f.id}`, x: b.x, y: b.y - 26, html: pxt(`wakes in ${until(f.wakeAt)}`, '#5a3a1a', null), title: `${f.name} wakes up by itself at ${clock(f.wakeAt)}` });
+        }
+        const more = scene.henhouse?.roosting ?? 0;
+        if (more > 0) out.push({ key: 'pad:more', x: PAD_SKY[0], y: 18, html: pxt(`+${more}`, '#5a3a1a', null), title: `${more} more subagent${more === 1 ? '' : 's'} running than their soldiers can lead` });
+        return out;
       },
     };
   }
@@ -1271,14 +1715,14 @@
       <b>The HQ tent</b><span>at the back, in the middle: soldiers waiting on you queue at its left under a red pennant, “awaiting orders”, waving a red “!”; when it's your turn they report back at its right with a dispatch (a “?” is a question for you). A rolled map at HQ = a plan for you to approve. The stats panel's “needs you” button opens the first one</span>
       <b>Positions</b><span>one position per repo on the exercise field, inside the range's rope, fortified as the session's context fills: marker stakes, a sandbag ring, a low wall, a lookout post, then the flag raised when it is nearly full. Empty positions are trampled grass until a repo needs one, up to 18. A blue pennant on its sign = a branch other than main; a camouflage net = a worktree, beside its repo's position; a mown patch with a sign = one project's repos</span>
       <b>Advanced!</b><span>when a session's conversation is compacted, the line advances: the flag is carried forward with a cheer, and the position starts again from its stakes</span>
-      <b>Kit</b><span>what a working soldier holds is its current step: field manual = reading, binoculars = searching, a radio set = the web, shovel = editing, sandbag = a new file, mine detector on the practice range = running tests, brush = lint or format, toolbox = a build, a crate on a dolly = installing, stamped crate = a commit, wheelbarrow = a push, signal flare pistol = a deploy, mail sack = a pull, field generator = a server, sapper's spade = deleting, whistle = calling subagents, map case = planning, a message card = a question for you, field telephone = any other command, blueprint = plan mode</span>
+      <b>Kit</b><span>what a working soldier holds is its current step: field manual = reading, binoculars = searching, a radio set = the web, shovel = editing, sandbag = a new file, mine detector on the practice range = running tests, brush = lint or format, toolbox = a build, a crate on a dolly = installing, stamped crate = a commit, wheelbarrow = a push, a signal flare going up from its launcher = a deploy, mail sack = a pull, field generator = a server, sapper's spade = deleting, whistle = calling subagents, map case = planning, a message card = a question for you, field telephone = any other command, a plug = an MCP call (its jeep comes over), a scroll = standing orders (a skill), blueprint = plan mode</span>
       <b>On a soldier</b><span>a field jacket in its agent's colour in the list, its headgear (a helmet, a beret or a cap) picked by its agent, so the same agent is always the same soldier. The chevrons on its sleeve = what it has cost (one from $1, two from $10, three from $50); the pin on its headgear = its model (purple Opus, blue Sonnet, green Haiku, orange Fable); a radio on its back, the aerial blinking = thinking between steps; a clipboard = its task list (its name says how many, e.g. 3/7); sweat drops = a hot CPU; a yellow and black armband = bypass permissions (no checks); speed lines = fast mode. Codex soldiers have a slate-grey stripe down the jacket</span>
       <b>Drones</b><span>small drones hovering by a soldier = its subagents, up to four (a K9 dog sniffing about = an Explore subagent). The drone pad holds the ones that finished lately; drones circling over it, with a +N, = more running than their soldiers can lead</span>
-      <b>Jeeps, dispatch riders</b><span>a jeep waits in the vehicle park on the left for each MCP server (Gmail, playwright, Chrome…) your soldiers called in the last hour; while a soldier calls it, it drives over with the server's name and waits beside it until the call is done. A dispatch rider on a motorbike rides the track to a soldier and back for each web call going on</span>
+      <b>Jeeps, dispatch riders</b><span>a jeep waits in the vehicle park on the left for each MCP server (Gmail, playwright, Chrome…) your soldiers called in the last hour; while a soldier calls it, it drives over with the server's name and waits beside it until the call is done. A dispatch rider on a motorbike rides out of the motor pool along the track to a soldier and back for each web call going on, with where it goes</span>
       <b>By a position</b><span>loose sandbags = uncommitted files, supply crates = unpushed commits, a mail sack at its post = behind the remote; a field generator humming by the post = a background command still running</span>
       <b>Deploys</b><span>the repo's last deploy, from GitHub Actions or a deploy an agent ran itself (a deploy script over ssh, rsync, vercel…), whichever is newer: a green flare = deployed; a practice charge, a big grey puff and a scorched patch, nobody hurt = deploy failed (hover its sign for why; the close-up links to the run); red range flags flapping, with distant practice thumps = deploying; a “HOLD” board = Actions didn't run (billing, a spending limit). Yellow caution tape round a position = two agents writing one repo, pulsing faster when it's serious</span>
       <b>The quartermaster's depot</b><span>a supply crate on its pallet for each open pull request, its tag the checks (green pass, red failed, amber running, grey draft); “Supplies in!” = one merged, carried in</span>
-      <b>Mess, reserve, cots, drill ground</b><span>idle soldiers eat at the mess tent on the left (eyes shut); stale ones sit on crates by the reserve tents, in reserve; a soldier asleep on a cot under the little clock = a session that wakes up by itself (/loop, a scheduled wake-up), with when; soldiers working outside any repo drill on the drill ground. When more come than a place holds, a +N says how many more</span>
+      <b>Mess, reserve, cots, drill ground</b><span>idle soldiers eat at the mess tent on the left (eyes shut); stale ones sit on crates by the reserve tents, greyed a little, in reserve; a soldier asleep on a cot under the little clock = a session that wakes up by itself (/loop, a scheduled wake-up), with when; soldiers working outside any repo drill on the drill ground. When more come than a place holds, a +N says how many more</span>
       <b>Buildings</b><span>click the motor pool gate to start or resume a session (a truck brings the new soldier in, and it jumps down), the HQ tent for who is waiting on you, the fuel depot for your plan's usage (a depot for each Claude account, when you have two), the drone pad for subagents, the briefing board for CLAUDE.md and memory, the quartermaster's depot for pull requests</span>
       <b>Fuel depot</b><span>its drums are what is left of your plan's weekly limit: they empty as the week is used (the % on hover, and when it resets); its lamp turns amber from 70% and blinks red from 90%. With two Claude accounts, each has a fuel depot (the second left of the motor pool gate), its name and week on the tag at its foot; the alert level follows the first account's 5-hour limit</span>
       <b>Alert</b><span>the alert level follows your plan's 5-hour limit, on the alert board by HQ: calm while it is fresh (green, the flags hanging limp), then ready (yellow, the flags flying), high (amber, the base's lights warm, soldiers walking faster) and max (a red beacon spinning, the flags snapping, soldiers at the double) when it is nearly used up; a new window brings it back to calm. The Alert switch holds one instead (each click moves it on, then back to live): the panel then shows the level with a 📌 and your real 5-hour use</span>
@@ -1300,5 +1744,6 @@
   window.AgentvilleMilitary = {
     OUTFIT, lookOf, soldierSprite, militaryScene, makeMilitary, props, BUILDINGS, MILITARY_GRID, DEPOT_X, PARK, SKY_Y, depotCrates,
     depotOf, depotsOf, drumsOf, FUEL, LANTERNS, SEARCHLIGHTS, BEACON, BEAM, FLARE, flareAt,
+    MILITARY_PROPS: Object.keys(MILITARY_PROPS), chevronsOf, jeepRoute, jeepGoal, RIDER_Y,
   };
 })();
