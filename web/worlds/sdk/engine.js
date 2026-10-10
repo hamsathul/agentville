@@ -301,6 +301,7 @@ window.Agentville.world = hooks => {
     },
     scene(s) { view.update(th.fromScene(s)); field.refresh(); },
     select(id) { view.select(id ?? null); },
+    chatter(lines) { view?.chatter(lines); },
   }, { engine: true }); // its HUD has the dashboard's buttons: the page adds no corner control
 };
 
@@ -364,6 +365,7 @@ function makePixelView(th, prefs) {
   const animalSays = new Map(); // creature id → its bubble element
   let stillAt = 0; // when the animals were last drawn still: their lines keep time with motion off
   if (typeof window !== 'undefined' && window.Agentville) window.Agentville.animalsNow = () => (kit ? kit.list() : []); // read-only: where they are (the browser test)
+  if (typeof window !== 'undefined' && window.Agentville) window.Agentville.freshLinesNow = () => (kit ? kit.freshLines() : []); // read-only: the helper's lines not said yet (the browser check)
   const errands = typeof makeErrands === 'function' ? makeErrands() : null; // farmers borrowed by animals (sdk/animals.js)
   const idleSince = new Map(); // farmer id → when it was first seen idle (frame time): play waits for 3 minutes
   let nextPlay = 45;
@@ -1070,6 +1072,7 @@ function makePixelView(th, prefs) {
       prefs.set('animals', animalsOn ? 'on' : 'off');
       closeMenu();
       if (!animalsOn) kit?.stopGags(crew); // hidden: the hats back, the farmers let go
+      if (kit) opts.onCast?.(animalsOn ? kit.cast() : []); // no lines are written for animals you can't see
       if (!animalsOn && errands) { errands.clear(); sync(false); } // hidden: no farmer walks to an animal you can't see
       renderHud();
       draw();
@@ -1232,8 +1235,10 @@ function makePixelView(th, prefs) {
       renderHud();
       timer = setInterval(() => { if (!document.hidden) { renderLog(); renderHud(); if (still && animalsShown() && kit.bubbles().length) redrawStill(); } }, 1000); // still: an animal's line goes after its few seconds
       startLoop();
+      if (kit) opts.onCast?.(animalsShown() ? kit.cast() : []); // the page learns which animals to ask the helper's lines for (none while hidden)
     },
     update(next) { apply(next); },
+    chatter(lines) { kit?.chatter(lines); },
     select(id) {
       selectedId = id;
       if (!id && follow) follow = false;

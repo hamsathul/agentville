@@ -840,9 +840,9 @@ function openHelper() {
   $('helper-dlg').showModal();
 }
 async function saveHelper(on) {
-  const names = Boolean($('helper-names').checked), dailyLimit = Number($('helper-limit').value);
-  if (on && !names) { notice('Tick at least one use to switch the helper on.'); return; }
-  const r = await post('/api/actions/helper', { on, uses: { names }, dailyLimit });
+  const names = Boolean($('helper-names').checked), lines = Boolean($('helper-lines').checked), dailyLimit = Number($('helper-limit').value);
+  if (on && !names && !lines) { notice('Tick at least one use to switch the helper on.'); return; }
+  const r = await post('/api/actions/helper', { on, uses: { names, lines }, dailyLimit });
   if (!r.ok) { notice(`Helper: ${r.error}`); return; }
   $('helper-dlg').close();
   notice(on ? '✨ The helper is on.' : 'The helper is off: nothing calls Haiku.');

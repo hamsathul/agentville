@@ -15,7 +15,7 @@ function make(start = '2026-10-09T10:00:00') {
 test('the helper starts off, with names unticked and a limit of 200; nothing may be called', () => {
   const { helper } = make();
   const h = helper();
-  assert.deepEqual(h.view(), { on: false, uses: { names: false }, dailyLimit: 200, today: 0 });
+  assert.deepEqual(h.view(), { on: false, uses: { names: false, lines: false }, dailyLimit: 200, today: 0 });
   assert.match(h.canCall('names').error, /off/);
 });
 
@@ -25,7 +25,7 @@ test('switching on records consent, needs a use ticked, and takes a limit of 1 t
   assert.match(h.update({ on: true, uses: { names: false } }).error, /Tick at least one/);
   for (const dailyLimit of [0, 2001, 1.5, '50']) assert.equal(h.update({ on: true, uses: { names: true }, dailyLimit }).ok, false, String(dailyLimit));
   const r = h.update({ on: true, uses: { names: true }, dailyLimit: 50 });
-  assert.deepEqual(r, { ok: true, helper: { on: true, uses: { names: true }, dailyLimit: 50, today: 0 } });
+  assert.deepEqual(r, { ok: true, helper: { on: true, uses: { names: true, lines: false }, dailyLimit: 50, today: 0 } });
   assert.equal(h.settings().consentedAt, at('2026-10-09T10:00:00'));
   assert.deepEqual(h.canCall('names'), { ok: true });
   assert.equal(statSync(join(dir, 'helper.json')).mode & 0o777, 0o600);
@@ -88,7 +88,7 @@ test('a damaged helper.json or names.json never stops the collector: the default
     writeFileSync(join(dir, 'helper.json'), bad);
     writeFileSync(join(dir, 'names.json'), bad);
     const h = helper();
-    assert.deepEqual(h.view(), { on: false, uses: { names: false }, dailyLimit: 200, today: 0 }, bad);
+    assert.deepEqual(h.view(), { on: false, uses: { names: false, lines: false }, dailyLimit: 200, today: 0 }, bad);
     assert.equal(h.outcome('s1'), undefined, bad);
     assert.match(h.canCall('names').error, /off/, bad);
   }
@@ -101,4 +101,14 @@ test('a good answer clears the last error', () => {
   h.ok();
   assert.equal(h.view().lastError, undefined);
   assert.equal(helper().view().lastError, undefined, 'and stays cleared after a restart');
+});
+
+test('the helper has a second use, Animal lines: off by default, ticked on its own, saved', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'helper-lines-'));
+  const h = createHelper(dir);
+  assert.deepEqual(h.view().uses, { names: false, lines: false });
+  assert.deepEqual(h.update({ on: true, uses: { lines: true } }).helper.uses, { names: false, lines: true });
+  assert.equal(h.canCall('lines').ok, true);
+  assert.equal(h.canCall('names').ok, false);
+  assert.deepEqual(createHelper(dir).view().uses, { names: false, lines: true }, 'saved');
 });

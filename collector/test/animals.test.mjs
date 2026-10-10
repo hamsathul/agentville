@@ -639,3 +639,45 @@ test('errands: a gag’s errand is let go by release; one you asked for is not, 
   assert.equal(e.has('a'), false);
   assert.equal(e.has('b'), true, 'your errand stays');
 });
+
+test('chatter: an animal says the helper’s fresh line first, each once, then its fixed lines; actions keep theirs; an empty batch clears', () => {
+  const k = load();
+  const a = k.makeAnimals([{ kind: 'cow', actions: [{ label: 'Pet', line: 'petted' }, { label: 'Feed' }], lines: { idle: ['MOO.'], petted: ['moo ♥'] } }, { kind: 'cat', lines: { idle: ['mrrp'] }, actions: [{ label: 'Pet' }, { label: 'Feed' }] }], { random: k.seededRandom(1) });
+  a.place({ roam: [YARD], avoid: [] });
+  a.chatter([{ kind: 'cow', when: 'idle', text: 'fresh one' }, { kind: 'cow', when: 'idle', text: 'fresh two' }, { kind: 'cow', when: 'petted', text: 'not for actions' }, { kind: 'dog', when: 'idle', text: 'no dog here' }, { kind: 'cow', when: 'idle', text: 'x'.repeat(41) }, { kind: 'cow', when: 'deployFailed', text: 'not my fault' }]);
+  assert.deepEqual(plain(a.freshLines()).sort(), ['fresh one', 'fresh two', 'not my fault'].sort());
+  const said = [];
+  for (let i = 0; i < 4000 && said.filter(t => t.startsWith('fresh')).length < 2; i++) { a.tick(0.1); for (const b of a.bubbles()) if (b.id.startsWith('cow') && !said.includes(b.text)) said.push(b.text); }
+  assert.deepEqual(said.slice(0, 2), ['fresh one', 'fresh two'], 'fresh first, in order, each once');
+  for (let i = 0; i < 100 && a.bubbles().length; i++) a.tick(0.1); // the last line goes (4 s): one line at a time per animal
+  a.perform('cow-0', 0, null);
+  assert.equal(plain(a.bubbles()).find(b => b.id === 'cow-0')?.text, 'moo ♥', 'an action keeps its own line');
+  for (let i = 0; i < 100 && a.bubbles().length; i++) a.tick(0.1);
+  a.react('deployFailed', [50, 150]);
+  assert.ok(plain(a.bubbles()).some(b => b.text === 'not my fault'), 'a reaction says the fresh line for it');
+  assert.equal(a.freshLines().includes('not my fault'), false, 'once');
+  a.chatter([]);
+  assert.deepEqual(plain(a.freshLines()), []);
+});
+
+test('cast(): the kinds a world has, each once, with its name', () => {
+  const k = load();
+  const a = k.makeAnimals([{ kind: 'cow', count: 2, name: 'Cow' }, { kind: 'duck', count: 3, name: 'Ducks', home: POND }], { random: k.seededRandom(1) });
+  assert.deepEqual(plain(a.cast()), [{ kind: 'cow', name: 'Cow' }, { kind: 'duck', name: 'Ducks' }]);
+});
+
+test('a creature with no fixed idle lines still says the helper’s fresh ones; a gag keeps its fixed line', () => {
+  const k = load();
+  const a = k.makeAnimals([{ kind: 'cat', actions: [{ label: 'Pet' }, { label: 'Feed' }] }], { random: k.seededRandom(2) });
+  a.place({ roam: [YARD], avoid: [] });
+  a.chatter([{ kind: 'cat', when: 'idle', text: 'fresh mrrp' }]);
+  let said = false;
+  for (let i = 0; i < 1000 && !said; i++) { a.tick(0.1); said = plain(a.bubbles()).some(b => b.text === 'fresh mrrp'); }
+  assert.ok(said, 'no fixed idle line needed');
+  const g = k.makeAnimals({ cast: [{ kind: 'cat', lines: { idle: ['mrrp.'] }, actions: [{ label: 'Pet' }, { label: 'Feed' }] }], gags: [{ id: 'pounce', needs: { cat: 1 }, steps: [{ say: 'cat', line: 'idle' }, { wait: 100 }] }] }, { random: k.seededRandom(2) });
+  g.place({ roam: [YARD], avoid: [] });
+  g.chatter([{ kind: 'cat', when: 'idle', text: 'fresh mrrp' }]);
+  let gagSaid = null;
+  for (let i = 0; i < 1500 && !gagSaid; i++) { g.tick(0.1, { crew: fakeCrew([]) }); if (g.gagNow()) gagSaid = plain(g.bubbles())[0]?.text ?? null; }
+  assert.equal(gagSaid, 'mrrp.', 'the gag says its fixed line');
+});

@@ -1589,7 +1589,7 @@ test('✨ Helper says how it calls Haiku and what names send; switching on needs
   page.el('helper-names').checked = true;
   await page.clickButton('helper-on', { helperOn: '' });
   await page.settle();
-  assert.deepEqual(page.posts.at(-1), { path: '/api/actions/helper', body: { on: true, uses: { names: true }, dailyLimit: 50 } });
+  assert.deepEqual(page.posts.at(-1), { path: '/api/actions/helper', body: { on: true, uses: { names: true, lines: false }, dailyLimit: 50 } });
   assert.equal(page.el('helper-dlg').open, false);
 });
 
@@ -1616,7 +1616,7 @@ test('switched on, ✨ Helper shows today’s count and the last error, and swit
   page.el('helper-limit').value = '200';
   await page.clickButton('helper-off', { helperOff: '' });
   await page.settle();
-  assert.deepEqual(page.posts.at(-1).body, { on: false, uses: { names: true }, dailyLimit: 200 });
+  assert.deepEqual(page.posts.at(-1).body, { on: false, uses: { names: true, lines: false }, dailyLimit: 200 });
 });
 
 test('a name offer under the session’s name: ✓ Rename sends it, ✎ Edit renames what you type, ✕ dismisses', async () => {
@@ -2542,4 +2542,24 @@ test("the click guard holds a dialog a world raised, whoever handles its buttons
   f.setBlocks(false);
   await page.clickButton('turn-off', { pluginOp: 'disable', plugin: 'crops@farm-market' });
   assert.deepEqual(page.posts.filter(x => x.path === '/api/actions/plugin').map(x => x.body), [{ id: 'crops@farm-market', op: 'disable' }], 'once the guard lifts, Turn off works');
+});
+
+test('✨ Helper has an Animal lines box that says what it sends; ticked alone it switches on; it says when no session can run it', async () => {
+  const page = loadPage({ replies: { '/api/actions/helper': { ok: true, helper: { on: true, uses: { names: false, lines: true }, dailyLimit: 200, today: 0 } } } });
+  page.push(helperSnap({ on: false, uses: { names: false, lines: false }, dailyLimit: 200, today: 0 }));
+  await page.clickButton('helper-open');
+  const body = page.el('helper-body').innerHTML;
+  assert.match(body, /<input type="checkbox" id="helper-lines"(?![^>]*checked)/);
+  assert.match(body, /Animal lines\.[\s\S]*agent and repo names[\s\S]*never code, file paths or conversation text[\s\S]*only lines without names/);
+  assert.match(body, /names the dashboard shows, which Claude Code may take from a conversation's title/);
+  page.el('helper-names').checked = false;
+  page.el('helper-lines').checked = true;
+  page.el('helper-limit').value = '200';
+  await page.clickButton('helper-on', { helperOn: '' });
+  await page.settle();
+  assert.deepEqual(page.posts.at(-1), { path: '/api/actions/helper', body: { on: true, uses: { names: false, lines: true }, dailyLimit: 200 } });
+  const blocked = loadPage();
+  blocked.push(helperSnap({ on: true, uses: { names: false, lines: true }, dailyLimit: 200, today: 0, linesBlocked: 'no-session' }));
+  await blocked.clickButton('helper-open');
+  assert.match(blocked.el('helper-body').innerHTML, /Animal lines need a session with mod 0\.9\.0: run \/reload-plugins in one\./);
 });

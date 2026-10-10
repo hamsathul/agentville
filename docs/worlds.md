@@ -920,6 +920,21 @@ checklist"). It runs the world's own code, so a world can make its own checks pa
 a world, it doesn't vouch for one. Keeping `roam`, `perches` and `spots` clear of data is yours to see
 on the test page.
 
+### The helper's lines
+
+With ✨ Helper's **Animal lines** ticked (off by default), Haiku writes fresh lines for the animals on
+screen, from the dashboard's facts (names, states, what just happened), and the page sends them to the
+world as `chatter` ("Messages"). The kit says them first, each once:
+
+- for `idle` (now and then) and for the five reactions (`deployFailed`, `deployOk`, `harvest`,
+  `merged`, `arrive`), as `lines` keys of the same names;
+- never for actions you click, gags or play: those keep your fixed lines.
+
+A creature needs no fixed line for a situation to get a fresh one, but give it fixed lines for each:
+they are what it says with the helper off, and between batches. The engine tells the page the world's
+animals (`cast`) when it starts; a world does nothing for any of this. A world of yours that can't see
+what agents say gets only lines with no names in them.
+
 ## The starter world
 
 `web/worlds/starter/` is a plain world with everything a world needs, short enough to read at once
@@ -1298,6 +1313,7 @@ gaps").
 | `settings { settings }` | The page's settings, when they change (they are looked at every second): `{ still, theme, nav: { theme, side, live }, bell }`. `still`: stand still (reduced motion, or the world's own Motion switch). `theme`: `auto`, `light` or `dark`; the bridge sets it on the frame, so `base.css`'s colours follow the dashboard. `nav`: the state of the top bar's buttons (`live`: connected to the collector). `bell`: the page's bell is on |
 | `scene { scene }` | Every snapshot, as the scene above (none while the page shows its list view). Until the world has drawn once after `start`, the bridge keeps only the newest and hands it over then |
 | `select { id }` | The agent shown in the page's sidebar, or `null` |
+| `chatter { lines }` | The ✨ Helper's latest animal lines for this world ("Creatures", "The helper's lines"): at most 40 `{ kind, when, text }`, each `kind` one of the world's `cast`, `when` one of `idle`, `deployFailed`, `deployOk`, `harvest`, `merged`, `arrive`, `text` plain, 1 to 40 characters. A world that can't see what agents say gets only lines with no agent, repo or branch name in them, nor any name the collector sent (an agent gone since, a name before a rename). An empty list when the helper's lines are gone. Like `scene`, the bridge holds the newest until the world has drawn once |
 | `reply { id, ok, status, data?, error? }` | The answer to a `request`: `{ ok: true, status, data }`; `{ ok: false, status, error }` for an error from the collector (its own words, if any); `status: 0` with the reason when the request itself failed; `status: 403` with why when the page refused it |
 
 **From the frame to the page**
@@ -1317,6 +1333,7 @@ gaps").
 | `bell { on }` | Turns the page's bell on or off (`on` must be `true` or `false`) |
 | `motion { still }` | The world stood still, or moves again (`true` or `false`); the page keeps it for `settings` |
 | `diary { entries }` | Shows the world's diary in the sidebar: at most 20 entries `{ at, state, who, text }`, in the order given (the farm puts the newest first), with `state` one of the agents' states and `at` a time. `who` is cut to 80 characters and `text` to 300, and both are shown as text, never as HTML. One bad entry drops the whole message. Drawn at most every quarter second: the newest entries are drawn when their turn comes |
+| `cast { animals }` | The world's animals, for the ✨ Helper's lines: at most 12 `{ kind, name }`, each `kind` one of the creature library's, each `name` 30 characters or fewer (others are dropped). The engine sends it when a world with animals starts. While ✨ Helper's Animal lines is ticked, the page tells the collector which kinds are on screen, then every 5 minutes. Only the kinds reach Haiku (its names for them stay on the page), and nothing else changes: not what is sent (the dashboard's facts) nor how often. The page takes one `cast` per second at most, and none while the world is out of sight. The engine sends an empty one while the Animals switch is off |
 | `store { key, value }` | Saves one of the world's settings in the page's storage, as `tracker-world:<world>:<key>`. Names match `^[a-z][a-z0-9-]{0,31}$`; values are strings of 16384 characters at most. A world keeps at most 64 settings, 64 KB in all (names and values, what it saved before included): a `store` past either is refused (the page says so once, in its console). `migrated` is the page's own |
 | `request { id, kind, agentId? \| repo? }` | Reads one of two things with the token and answers with `reply`: `agentFiles` (an agent's files and memory; `agentId` must be in the scene) or `repoTouched` (the files agents touched in a repo; `repo` must be a repo's `key` in the scene). At most four are answered at a time, counting any still running for a frame this one replaced: a fifth is refused at once (the bridge keeps a world under that: see below). One the collector hasn't answered in 30 seconds is cut off (`status: 0`). One that can't be done is refused, and still answered |
 

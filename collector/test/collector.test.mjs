@@ -1236,10 +1236,10 @@ test('the helper: off by default; on, it asks a new default-named session’s mo
   const until = async (ok, ms = 4000) => { for (let i = 0; i < ms / 50; i++) { await handle.reloadConfig(); if (ok()) return true; await new Promise(r => setTimeout(r, 50)); } return false; };
   let fresh, third;
   try {
-    assert.deepEqual(handle.getSnapshot().helper, { on: false, uses: { names: false }, dailyLimit: 200, today: 0 });
+    assert.deepEqual(handle.getSnapshot().helper, { on: false, uses: { names: false, lines: false }, dailyLimit: 200, today: 0 });
     assert.equal(agent('old-one').defaultName, true);
     assert.match((await handle.actions.name({ agentId: 'old-one', op: 'suggest' })).error, /off/);
-    assert.deepEqual(await handle.actions.helper({ on: true, uses: { names: true }, dailyLimit: 10 }), { ok: true, helper: { on: true, uses: { names: true }, dailyLimit: 10, today: 0 } });
+    assert.deepEqual(await handle.actions.helper({ on: true, uses: { names: true }, dailyLimit: 10 }), { ok: true, helper: { on: true, uses: { names: true, lines: false }, dailyLimit: 10, today: 0 } });
     await new Promise(r => setTimeout(r, 400));
     await handle.reloadConfig();
     assert.deepEqual(taken, [], 'no burst: a session started before you switched on is not asked by itself');
@@ -1361,6 +1361,117 @@ test('the collector starts and runs with a damaged helper.json or names.json', a
     assert.equal(handle.getSnapshot().helper.on, false);
     assert.ok(handle.getSnapshot().agents.some(a => a.id === 'odd'), 'the dashboard still shows its sessions');
   } finally {
+    await handle.stop();
+  }
+});
+
+test('Animal lines: a live cast and a 0.9.0 session get a batch; the reply’s good rows become chatter; unticking withdraws and clears; no session is said', async () => {
+  const root = mkdtempSync(join(tmpdir(), 'tracker-root-lines-'));
+  mkdirSync(join(root, 'web'));
+  writeFileSync(join(root, 'web', 'index.html'), '<html></html>');
+  writeFileSync(join(root, 'config.json'), JSON.stringify({ port: 0, deployRepos: {} }));
+  const claudeDir = mkdtempSync(join(tmpdir(), 'tracker-claude-lines-'));
+  mkdirSync(join(claudeDir, 'sessions'));
+  mkdirSync(join(claudeDir, 'projects', '-w'), { recursive: true });
+  const proc = spawn('sleep', ['60']);
+  writeFileSync(join(claudeDir, 'sessions', `${proc.pid}.json`), JSON.stringify({ pid: proc.pid, sessionId: 'helper-one', cwd: '/w', name: 'helper-one', nameSource: 'user', status: 'idle', startedAt: Date.now() }));
+  writeFileSync(join(claudeDir, 'projects', '-w', 'helper-one.jsonl'), JSON.stringify({ type: 'user', timestamp: new Date().toISOString(), message: { content: 'hello' } }) + '\n');
+  mkdirSync(join(root, 'state', 'mods'), { recursive: true });
+  let version = '0.8.0', reply = { ok: true, text: 'Lines:\ncow|idle|MOO. all good here\ncow|idle|' + 'x'.repeat(41) + '\ndragon|idle|rawr' };
+  const asked = [];
+  const fakeMod = setInterval(() => {
+    writeFileSync(join(root, 'state', 'mods', 'helper-one.json'), JSON.stringify({ sessionId: 'helper-one', version, at: Date.now() }));
+    const inbox = join(root, 'state', 'helper', 'helper-one');
+    if (!existsSync(inbox)) return;
+    for (const name of readdirSync(inbox).filter(n => n.endsWith('.json'))) {
+      const req = JSON.parse(readFileSync(join(inbox, name), 'utf8'));
+      unlinkSync(join(inbox, name));
+      asked.push(req);
+      if (reply === 'silent') continue;
+      mkdirSync(join(root, 'state', 'helper-replies'), { recursive: true });
+      setTimeout(() => writeFileSync(join(root, 'state', 'helper-replies', `helper-one.${req.id}.json`), JSON.stringify({ id: req.id, sessionId: 'helper-one', kind: req.kind, ...reply, at: Date.now() })), 50);
+    }
+  }, 40);
+  const handle = await startCollector({ root, claudeDir, claudeBin: '/usr/bin/false', notify: () => {}, log: () => {}, helperTimeoutMs: 600, linesGapMs: 200, linesIdleMs: 400 });
+  const snap = () => handle.getSnapshot();
+  const until = async (ok, ms = 4000) => { for (let i = 0; i < ms / 50; i++) { await handle.reloadConfig(); if (ok()) return true; await new Promise(r => setTimeout(r, 50)); } return false; };
+  try {
+    assert.equal(snap().chatter, null);
+    assert.deepEqual(snap().helper.uses, { names: false, lines: false });
+    assert.deepEqual(await handle.actions.animals({ cast: 'cow' }), { ok: false, error: 'That is not a cast of animals.' });
+    assert.deepEqual(await handle.actions.animals({ cast: [{ kind: 'cow', name: 'Cow' }] }), { ok: true });
+    await new Promise(r => setTimeout(r, 300));
+    await handle.reloadConfig();
+    assert.deepEqual(asked, [], 'off: nothing asked');
+    await handle.actions.helper({ on: true, uses: { lines: true } });
+    assert.ok(await until(() => snap().helper.linesBlocked === 'no-session'), 'mod 0.8.0: no session can run it, and the snapshot says so');
+    assert.deepEqual(asked, []);
+    version = '0.9.0';
+    assert.ok(await until(() => snap().chatter?.lines?.length === 1), 'a batch, its good rows kept');
+    assert.deepEqual(snap().chatter.lines, [{ kind: 'cow', when: 'idle', text: 'MOO. all good here' }]);
+    assert.equal(snap().helper.linesBlocked, undefined);
+    assert.equal(asked[0].kind, 'lines');
+    assert.deepEqual(asked[0].cast, [{ kind: 'cow' }], 'kinds only: the world’s own names for its animals stay on the page');
+    assert.deepEqual(Object.keys(asked[0]).sort(), ['agents', 'at', 'cast', 'counts', 'events', 'id', 'kind']);
+    assert.equal(JSON.stringify(asked[0]).includes('/w'), false, 'no path in a request');
+    assert.equal(snap().helper.today >= 1, true, 'counted');
+    reply = { ok: false, error: 'model_not_found' };
+    assert.ok(await until(() => snap().helper.lastError === 'model_not_found'), 'a failed batch: the error is said');
+    assert.equal(snap().chatter.lines.length, 1, '…and the last good batch stays');
+    reply = 'silent';
+    const before = asked.length;
+    assert.ok(await until(() => asked.length > before));
+    assert.equal((await handle.actions.helper({ uses: { names: true, lines: false } })).ok, true); // names kept ticked: the helper stays on
+    await handle.reloadConfig();
+    assert.equal(snap().chatter, null, 'unticked: chatter cleared');
+    assert.equal(existsSync(join(root, 'state', 'helper', 'helper-one')) && readdirSync(join(root, 'state', 'helper', 'helper-one')).some(n => n.endsWith('.json')), false, 'nothing waiting');
+  } finally {
+    clearInterval(fakeMod);
+    proc.kill();
+    await handle.stop();
+  }
+});
+
+test('Animal lines ticked again: a batch goes out at once, not after the 30-minute wait', async () => {
+  const root = mkdtempSync(join(tmpdir(), 'tracker-root-relines-'));
+  mkdirSync(join(root, 'web'));
+  writeFileSync(join(root, 'web', 'index.html'), '<html></html>');
+  writeFileSync(join(root, 'config.json'), JSON.stringify({ port: 0, deployRepos: {} }));
+  const claudeDir = mkdtempSync(join(tmpdir(), 'tracker-claude-relines-'));
+  mkdirSync(join(claudeDir, 'sessions'));
+  mkdirSync(join(claudeDir, 'projects', '-w'), { recursive: true });
+  const proc = spawn('sleep', ['60']);
+  writeFileSync(join(claudeDir, 'sessions', `${proc.pid}.json`), JSON.stringify({ pid: proc.pid, sessionId: 'helper-two', cwd: '/w', name: 'helper-two', nameSource: 'user', status: 'idle', startedAt: Date.now() }));
+  writeFileSync(join(claudeDir, 'projects', '-w', 'helper-two.jsonl'), JSON.stringify({ type: 'user', timestamp: new Date().toISOString(), message: { content: 'hello' } }) + '\n');
+  mkdirSync(join(root, 'state', 'mods'), { recursive: true });
+  let n = 0;
+  const fakeMod = setInterval(() => {
+    writeFileSync(join(root, 'state', 'mods', 'helper-two.json'), JSON.stringify({ sessionId: 'helper-two', version: '0.9.0', at: Date.now() }));
+    const inbox = join(root, 'state', 'helper', 'helper-two');
+    if (!existsSync(inbox)) return;
+    for (const name of readdirSync(inbox).filter(x => x.endsWith('.json'))) {
+      const req = JSON.parse(readFileSync(join(inbox, name), 'utf8'));
+      unlinkSync(join(inbox, name));
+      n += 1;
+      mkdirSync(join(root, 'state', 'helper-replies'), { recursive: true });
+      writeFileSync(join(root, 'state', 'helper-replies', `helper-two.${req.id}.json`), JSON.stringify({ id: req.id, sessionId: 'helper-two', kind: req.kind, ok: true, text: `cow|idle|batch ${n}`, at: Date.now() }));
+    }
+  }, 40);
+  const handle = await startCollector({ root, claudeDir, claudeBin: '/usr/bin/false', notify: () => {}, log: () => {}, linesGapMs: 300_000, linesIdleMs: 1_800_000 });
+  const snap = () => handle.getSnapshot();
+  const until = async (ok, ms = 4000) => { for (let i = 0; i < ms / 50; i++) { await handle.reloadConfig(); if (ok()) return true; await new Promise(r => setTimeout(r, 50)); } return false; };
+  try {
+    await handle.actions.animals({ cast: [{ kind: 'cow', name: 'Cow' }] });
+    await handle.actions.helper({ on: true, uses: { names: true, lines: true } });
+    assert.ok(await until(() => snap().chatter?.lines?.[0]?.text === 'batch 1'), 'the first batch');
+    await handle.actions.helper({ uses: { names: true, lines: false } });
+    await handle.reloadConfig();
+    assert.equal(snap().chatter, null);
+    await handle.actions.helper({ uses: { names: true, lines: true } });
+    assert.ok(await until(() => snap().chatter?.lines?.[0]?.text === 'batch 2', 3000), 'ticked again: a batch at once');
+  } finally {
+    clearInterval(fakeMod);
+    proc.kill();
     await handle.stop();
   }
 });
