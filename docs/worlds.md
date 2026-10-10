@@ -348,7 +348,7 @@ A hook you give always wins over its default.
 | `onMove` | `(agent, zone, prevZone, pop)` | nothing; `pop(text, cls)` shows a pop-up over the agent |
 | `speed` | `(agent)` | `40`: walking speed |
 | `zoneText` | `(agent, zone)` | `'moves'`: the log line when an agent changes zone |
-| `hud` | `(state)` | the dashboard's buttons: list, world, sidebar, sky, season (in a world with seasons), motion, help, zoom. `state` is `{ still, zoom, saysOn, skyMode, seasonMode, seasonNames, seasons, follow, canFollow, restingHidden, bell, nav, panelOpen, animals }` (`animals`: `true` or `false` for a world with animals, its Animals switch with `data-farm-animals`; `null` for one without. `seasons`: `true` for a world with seasons, whose Season switch is a button with `data-farm-season`, right after the Sky's `data-farm-sky`, saying `seasonMode`: `'live'`, `'spring'`, `'summer'`, `'autumn'` or `'winter'`; the engine moves it on when it is clicked). Your own should keep List and World: an engine world gets no corner control from the page |
+| `hud` | `(state)` | the dashboard's buttons: list, world, sidebar, sky, season (in a world with seasons), motion, help, zoom. `state` is `{ still, zoom, saysOn, skyMode, seasonMode, seasonNames, seasons, follow, canFollow, restingHidden, bell, nav, panelOpen, animals }` (`animals`: `true` or `false` for a world with animals, its Animals switch with `data-farm-animals`; `null` for one without. `seasons`: `true` for a world with seasons, whose Season switch is a button with `data-farm-season`, right after the Sky's `data-farm-sky`, saying `seasonMode`: `'live'`, `'spring'`, `'summer'`, `'autumn'` or `'winter'`; the engine moves it on when it is clicked). Your own should keep List and World: an engine world gets no corner control from the page. Or use `panelHud(params, words)`, the farm's panel and buttons in your own words (see the factory, and "`panelHud(params, words)`", below) |
 | `ground`, `shadows(body)`, `top`, `drawFx(agent, body)` | | nothing: drawn under the agents, under each agent, over everything, and over each agent |
 | `season` | `()` | `'summer'`, and no seasons. A world that gives its own has seasons ("Seasons", below): it returns the live season (`'spring'`, `'summer'`, `'autumn'` or `'winter'`), and the HUD gets the Season switch |
 | `seasonNames` | | a field, not a function: `{ switch, spring, summer, autumn, winter }`, what the world calls its Season switch and its four levels ("Seasons", below). Any you leave out keep today's word (`'Season'`, `'spring'`…). The default HUD's button reads `Heat: warm` with them; `hud(state)` gets the object as `state.seasonNames`. The setting still saves `live`, `spring`, `summer`, `autumn` or `winter`, and `PXG.season` holds those too |
@@ -488,6 +488,52 @@ world's `fromScene` can call it and add its own looks (the farm adds each farmer
 field's crop, fence, soil, pennant and weather).
 
 The field close-up (a field's files) is still drawn as the farm draws it.
+
+### `panelHud(params, words)`
+
+The farm's panel and buttons, for any world, in its own words: top left, the stats panel (what the
+sessions cost, how often they were compacted, the season, the counts and the meters, the "needs you"
+button); top right, the dashboard's buttons (List, World, Session, Claude Code, Sidebar, Theme); along
+the bottom, the switches and zoom. It returns the HTML, so a world's `hud` can be just a call to it:
+
+```js
+// Among your hooks: `scene` is the scene your setScene keeps, `liveSeason` your own season() ("Seasons").
+hud: p => panelHud({ ...p, scene, season: liveSeason() }, { place: 'workshop', agent: 'tinker', agents: 'tinkers', compactedWord: 'tidied' }),
+```
+
+`params` is the `state` the `hud` hook gets, plus:
+
+- `scene`: the engine's scene (`engineScene`'s, or your `fromScene`'s): its `farmers`, `plan` and `chrome`;
+- `season`: the live season (`'spring'` … `'winter'`), shown on the panel by its `seasonNames` word;
+- `iconImg(name)`: HTML for one of your icons (`''` for none, the default). The names it is asked
+  for: `list`, `world`, `plus`, `gear`, `side`, `day`, `live`, `night`, `follow`, `resting`,
+  `bubbles`, `animals`, `pause`, `play`, `bell`, `help`, and whatever `seasonIcon` returns;
+- `seasonIcon(level)`: the icon's name for a season (default: the season itself);
+- `seasonTip(mode)`: the panel's season tooltip, `mode` being `'live'` or the season held (default: none).
+
+In a world without seasons (`seasons` false) the panel shows no season and there is no Season switch.
+With seasons, the Season switch reads `seasonNames.switch` and the level's name, and a held level
+shows on the panel with a 📌 and the real 5-hour use.
+
+`words` are the world's words and colours. Any it leaves out are plain ones in its `place`, `agent`
+and `agents` (`'world'`, `'agent'`, `'agents'`), with the farm's colours:
+
+| Word | What it is | The farm's |
+|---|---|---|
+| `place`, `agent`, `agents` | the nouns the plain words below are made from | `farm`, `farmer`, `farmers` |
+| `costTip`, `costIcon` | the cost's tooltip, and the class of its icon | "What the sessions on the farm have cost so far (each one's purse; from the mod)", `coin` |
+| `compactedWord`, `compactedTip`, `compactedIcon` | the word after the number of compactions ("3 harvested"), its tooltip, its icon's class | `harvested`, "Harvests: each time a session's conversation was compacted", `basket` |
+| `textColor`, `shadowColor`, `dimColor`, `labelColor`, `brandColor` | the panel's numbers and their shadow, its dim and label text, the AGENTVILLE mark | `#fff3d6`, `#2a1d14`, `#c9b48a`, `#a9c79a`, `#ffe8a3` |
+| `toolColor`, `toolStateColor` | the buttons' names and their states (on, off…) | `#4e3626`, `#8b5a2b` |
+| `sideTip` | the Sidebar button's tooltip | "Show the selected farmer's answer box, activity and files beside the farm" |
+| `followTip`, `followFirstTip` | Follow's tooltip, with someone picked and with nobody | "Keep the farmer you picked in the middle of the view…", "Pick a farmer first, then Follow keeps it in view" |
+| `restingTip`, `bubblesTip`, `animalsTip`, `skyTip`, `seasonSwitchTip`, `motionTip`, `helpTip` | the Resting, Bubbles, Animals, Sky, Season, Motion and Help switches' tooltips | "Idle farmers (under the tree) and stale ones (scarecrows)…", "…what each farmer last said…", "Animals on the farm, just for fun…", "The light: live follows your clock…", "The season: live follows your plan's 5-hour limit…", "Walking and animation on the farm", "How to read the farm" |
+| `zoomTip`, `zoomAllTip` | the zoom bar's tooltip, and its % button's | "Zoom the farm inside its frame…", "Show the whole farm" |
+
+A word is text: HTML in it is shown as it is written, never run. A word that isn't a string gets the
+plain one. The rest stays the engine's in any world: the count cards, the meters, the dashboard's buttons,
+the Bell, and the `data-farm-*` attributes the engine's clicks find the buttons by. Its stylesheet's
+`coin` and `basket` are the two icon classes a world can name without CSS of its own.
 
 ## The people kit
 

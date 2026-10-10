@@ -44,7 +44,7 @@ function load() {
   const dom = stubDom();
   const window = { Agentville: { raw: h => { window.registered = h; } } };
   const ctx = vm.createContext({ window, document: dom.document, console, Math, Date, JSON, Map, Set, Intl, ...dom.globals });
-  vm.runInContext(`${code}\n;window.sdk = { makeGrid, withDefaults, engineScene, makePixelView, ACTIVE, defaultHud, PXG };`, ctx);
+  vm.runInContext(`${code}\n;window.sdk = { makeGrid, withDefaults, engineScene, makePixelView, ACTIVE, defaultHud, panelHud, PXG };`, ctx);
   return { window, dom, sdk: window.sdk };
 }
 const twoAgents = window => window.AgentvilleScene.toScene({ generatedAt: NOW, collisions: [], agents: [
@@ -309,4 +309,47 @@ test('a season name holding HTML is escaped in the default HUD', () => {
   const html = sdk.defaultHud({ seasons: true, seasonMode: 'live', seasonNames: names });
   assert.ok(!html.includes('<b>x'));
   assert.match(html, /&lt;b&gt;x&lt;\/b&gt;: live/);
+});
+
+// panelHud: the farm's panel and buttons, for any world, in its words. The engine's clicks find the buttons by these.
+const PANEL_ATTRS = ['data-farm-panel', 'data-farm-state="waiting"', 'data-farm-state="working"', 'data-farm-need', 'data-farm-nav="list"', 'data-farm-nav="worlds"', 'data-farm-nav="session"', 'data-farm-nav="setup"', 'data-farm-nav="side"', 'data-farm-nav="theme"',
+  'data-farm-follow', 'data-farm-resting', 'data-farm-bubbles', 'data-farm-animals', 'data-farm-sky', 'data-farm-season', 'data-farm-motion', 'data-farm-bell', 'data-farm-help', 'data-farm-zoom="-1"', 'data-farm-zoom="0"', 'data-farm-zoom="1"'];
+const panelOf = (sdk, seasonMode, words) => sdk.panelHud({
+  seasonMode, seasons: true, animals: true, seasonNames: { switch: 'Heat', spring: 'cool', summer: 'warm', autumn: 'hot', winter: 'steaming' },
+  scene: { plan: { windows: [{ kind: 'five_hour', percentUsed: 30 }] }, chrome: { counts: { waiting: 1, working: 1 } }, farmers: [{ id: 'a', state: 'waiting', cost: 2, compactions: 3 }, { id: 'b', state: 'working' }] },
+  season: 'summer', iconImg: name => `<i data-icon="${name}"></i>`, seasonIcon: s => `heat-${s}`, seasonTip: mode => `the heat, ${mode}`,
+}, words);
+
+test("panelHud in a factory's words: no farm word anywhere a person reads, and every data-farm-* button kept", () => {
+  const { sdk } = load();
+  for (const mode of ['live', 'winter']) {
+    const html = panelOf(sdk, mode, { place: 'factory', agents: 'robots', compactedWord: 'built' });
+    assert.match(html, /3 built/);
+    const read = html.replace(/data-farm-[\w-]+/g, ''); // what a person reads: the attributes the engine clicks by aside
+    assert.doesNotMatch(read, /farm/i, mode);
+    assert.doesNotMatch(read, /harvest/i, mode);
+    for (const attr of PANEL_ATTRS) assert.ok(html.includes(attr), `${mode}: ${attr}`);
+  }
+  // the world's names for its switch and levels, on the switch and the panel's line (its words as a screen reader reads them)
+  const season = html => { const [, title, inner] = /class="px-season" title="([^"]*)">([\s\S]*?)<\/span><\/div>/.exec(html); return { title, icon: /data-icon="([^"]*)"/.exec(inner)[1], text: [...inner.matchAll(/class="px-sr">([^<]*)</g)].map(m => m[1]).join(' ') }; };
+  const live = panelOf(sdk, 'live', {}), held = panelOf(sdk, 'winter', {});
+  assert.match(live, /class="px-sr">Heat: live</);
+  assert.deepEqual({ ...season(live) }, { title: 'the heat, live', icon: 'heat-summer', text: 'warm' });
+  assert.match(held, /class="px-sr">Heat: steaming</);
+  assert.deepEqual({ ...season(held) }, { title: 'the heat, winter', icon: 'heat-winter', text: 'steaming · 5-hour 30%' });
+  assert.match(held, /📌/);
+});
+
+test('panelHud in a world without seasons: no season on the panel, no Season switch; given only its scene, it still draws', () => {
+  const { sdk } = load();
+  const html = sdk.panelHud({ seasons: false, scene: { farmers: [] } });
+  assert.ok(!html.includes('px-season') && !html.includes('data-farm-season'));
+  for (const attr of PANEL_ATTRS.filter(a => !['data-farm-season', 'data-farm-animals', 'data-farm-need', 'data-farm-state="waiting"', 'data-farm-state="working"'].includes(a))) assert.ok(html.includes(attr), attr);
+});
+
+test("panelHud: a world's words holding HTML or quotes stay text", () => {
+  const { sdk } = load();
+  const html = panelOf(sdk, 'live', { costTip: 'a "quoted" <b>tip</b>', helpTip: 'help" onclick="x', compactedWord: '<i>made</i>', costIcon: 'coin" onclick="x' });
+  assert.ok(!html.includes('<b>tip') && !html.includes('<i>made') && !html.includes('" onclick'), 'escaped');
+  assert.match(html, /title="a &quot;quoted&quot; &lt;b&gt;tip&lt;\/b&gt;"/);
 });
