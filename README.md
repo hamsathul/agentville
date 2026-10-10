@@ -1117,7 +1117,8 @@ The mod also does the dashboard's work inside the session:
 | `permissionDashboardSec` | How long a permission prompt is offered on the dashboard before the terminal asks (15; 0 = terminal only) |
 | `permissionGuessSec` | A tool call with no result for this long, with an idle process, counts as "probably a permission prompt" (20) |
 | `memoryAlertGb`, `cpuAlertPct`, `cpuAlertSustainSec` | When an agent counts as running hot (2 GB; 90% for 120 s) |
-| `notify` | Each notification on or off: `waiting`, `collision`, `yourTurn`, `memory`, `cpu` |
+| `notify` | Each notification on or off: `waiting`, `collision`, `yourTurn`, `memory`, `cpu` (on Windows `memory` and `cpu` start off) |
+| `notifyMaxPerMin` | Most pop-ups raised in one minute; the rest become one "N more alerts" pop-up (0 = no limit; 3 on Windows, 0 on macOS) |
 | `modToasts` | Toasts inside Claude Code sessions (on) |
 | `deployRepos` | Checkout path → `owner/repo` whose latest GitHub Actions run is shown, e.g. `{ "/Users/you/code/api": "you/api" }` |
 | `worldsDir` | Your own worlds, a folder each; `null` means `~/.agentville/worlds` (a leading `~` is your home; a relative one is under your home) |

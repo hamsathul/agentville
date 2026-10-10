@@ -15,6 +15,7 @@ export const DEFAULTS = Object.freeze({
   cpuAlertPct: 90,
   cpuAlertSustainSec: 120,
   notify: Object.freeze({ waiting: true, collision: true, yourTurn: true, memory: true, cpu: true }),
+  notifyMaxPerMin: 0, // most pop-ups raised in one minute; the rest become one summary (0: no limit)
   modToasts: true,
   deployRepos: Object.freeze({}),
   worldsDir: null, // your own worlds, a folder each (null: ~/.agentville/worlds)
@@ -22,11 +23,17 @@ export const DEFAULTS = Object.freeze({
   accounts: Object.freeze({}), // your Claude accounts' names: { "~/.claude": "work", "~/.claude-home": "home" }
 });
 
-export function mergeConfig(user) {
+// Windows pop-ups are PowerShell toasts, and with a dozen sessions the memory and cpu alerts and bursts of
+// "needs you" were constant. There memory and cpu start off and one minute raises at most three; config.json wins.
+const WINDOWS_QUIET = Object.freeze({ notify: { memory: false, cpu: false }, notifyMaxPerMin: 3 });
+
+export function mergeConfig(user, platform = process.platform) {
+  const quiet = platform === 'win32' ? WINDOWS_QUIET : { notify: {}, notifyMaxPerMin: DEFAULTS.notifyMaxPerMin };
   return {
     ...DEFAULTS,
+    notifyMaxPerMin: quiet.notifyMaxPerMin,
     ...user,
-    notify: { ...DEFAULTS.notify, ...(user.notify ?? {}) },
+    notify: { ...DEFAULTS.notify, ...quiet.notify, ...(user.notify ?? {}) },
     deployRepos: { ...(user.deployRepos ?? DEFAULTS.deployRepos) },
     accounts: user.accounts && typeof user.accounts === 'object' && !Array.isArray(user.accounts) ? { ...user.accounts } : {},
   };

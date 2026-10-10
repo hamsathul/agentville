@@ -13,6 +13,7 @@
   "cpuAlertPct": 90,
   "cpuAlertSustainSec": 120,
   "notify": { "waiting": true, "collision": true, "yourTurn": true, "memory": true, "cpu": true },
+  "notifyMaxPerMin": 0,
   "modToasts": true,
   "deployRepos": {},
   "worldsDir": null,

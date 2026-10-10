@@ -100,3 +100,41 @@ test('a collision alerts once, and again after it clears and comes back', () => 
   assert.equal(sent.length, 2);
   assert.deepEqual(sent[0], ['Collision in backend', '2 agents writing · git command']);
 });
+
+// Windows: with a dozen sessions running, the memory and cpu alerts and a burst of "needs you" pop-ups were
+// constant PowerShell toasts. The Windows defaults leave memory and cpu off and cap how many toasts one minute can raise.
+test('Windows defaults turn memory and cpu alerts off; macOS defaults are unchanged', async () => {
+  const { mergeConfig } = await import('../config.mjs');
+  const win = mergeConfig({}, 'win32');
+  assert.equal(win.notify.memory, false);
+  assert.equal(win.notify.cpu, false);
+  assert.equal(win.notify.waiting, true);
+  assert.equal(win.notifyMaxPerMin, 3);
+  const mac = mergeConfig({}, 'darwin');
+  assert.deepEqual(mac.notify, { waiting: true, collision: true, yourTurn: true, memory: true, cpu: true });
+  assert.equal(mac.notifyMaxPerMin, 0);
+  // the owner's own config.json still wins
+  const own = mergeConfig({ notify: { cpu: true }, notifyMaxPerMin: 10 }, 'win32');
+  assert.equal(own.notify.cpu, true);
+  assert.equal(own.notifyMaxPerMin, 10);
+});
+
+test('past the per-minute cap the extra alerts become one summary toast, not a flood', () => {
+  const cfg = { ...DEFAULTS, notify: { ...DEFAULTS.notify }, notifyMaxPerMin: 3 };
+  const { e, sent } = engine(cfg);
+  const agents = Array.from({ length: 8 }, (_, i) => agent({ id: `a${i}`, name: `app${i}`, state: 'waiting', stateSince: 20_000 }));
+  e.process(snap(agents), 20_000, NONE);
+  assert.equal(sent.length, 4); // 3 individual + 1 summary
+  assert.deepEqual(sent[3], ['5 more alerts', 'See the dashboard']);
+  // a minute later the cap resets
+  e.process(snap([agent({ id: 'z', name: 'later', state: 'waiting', stateSince: 90_000 })]), 90_000, NONE);
+  assert.equal(sent.length, 5);
+  assert.equal(sent[4][0], 'later needs you');
+});
+
+test('a cap of 0 means no limit', () => {
+  const { e, sent } = engine({ ...DEFAULTS, notify: { ...DEFAULTS.notify }, notifyMaxPerMin: 0 });
+  const agents = Array.from({ length: 8 }, (_, i) => agent({ id: `a${i}`, state: 'waiting', stateSince: 20_000 }));
+  e.process(snap(agents), 20_000, NONE);
+  assert.equal(sent.length, 8);
+});

@@ -20,10 +20,17 @@ export class AlertEngine {
     this.startedAt = startedAt;
     this.warmupMs = warmupMs;
     this.fired = new Map();
+    this.sentAt = []; // when the recent pop-ups went out, for notifyMaxPerMin
   }
 
   setConfig(cfg) {
     this.cfg = cfg;
+  }
+
+  overCap(now) {
+    const max = this.cfg.notifyMaxPerMin ?? 0;
+    this.sentAt = this.sentAt.filter(t => now - t < 60_000);
+    return max > 0 && this.sentAt.length >= max;
   }
 
   process(snapshot, now, cpuHistories = new Map()) {
@@ -58,14 +65,18 @@ export class AlertEngine {
 
     const isWarm = now - this.startedAt >= this.warmupMs;
     const raised = [];
+    let suppressed = 0;
     for (const w of want) {
       holding.add(w.key);
       if (this.fired.has(w.key)) continue;
       this.fired.set(w.key, { family: w.family, at: now });
       if (!isWarm || cfg.notify[w.family] === false) continue;
       raised.push(w);
+      if (this.overCap(now)) { suppressed++; continue; }
+      this.sentAt.push(now);
       this.notify(w.title, w.message);
     }
+    if (suppressed > 0) this.notify(`${suppressed} more alert${suppressed === 1 ? '' : 's'}`, 'See the dashboard');
     for (const [key, f] of this.fired) {
       const isExpired = STICKY.has(f.family) ? now - f.at > STICKY_TTL_MS : !holding.has(key);
       if (isExpired) this.fired.delete(key);
