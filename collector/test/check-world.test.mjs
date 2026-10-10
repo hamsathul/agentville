@@ -260,6 +260,7 @@ test('creature rules: count is a whole number from 1 to 12', () => {
 test("creature rules: looks are the kind's own (a pointer: an unknown one is drawn as the first)", () => {
   const duck = looks => ({ kind: 'duck', count: 2, looks, actions: [{ label: 'Feed bread', gather: true }, { label: 'Quack back' }] });
   assert.deepEqual(rules(duck(['drake', 'hen'])), { problems: [], pointers: [] });
+  assert.deepEqual(rules({ kind: 'goat', count: 1, looks: ['mascot', 'dress'], actions: [{ label: 'Feed' }, { label: 'Pat' }] }).pointers, ['goat: look "dress" isn\'t one of the goat\'s (mascot): drawn as the plain goat']);
   assert.deepEqual(rules(duck(['drake', 'hne'])), { problems: [], pointers: ['duck: look "hne" isn\'t one of the duck\'s (drake, hen, duckling): drawn as the drake'] });
   assert.deepEqual(rules(cat({ looks: ['tabby'] })).pointers, ['cat: look "tabby": the cat has no looks']);
   assert.deepEqual(rules(cat({ look: 'tabby' })).pointers, ['cat: look "tabby": the cat has no looks'], 'a single look too');

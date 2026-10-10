@@ -121,6 +121,9 @@ test("the field jacket: 14 letters by 16 rows in every view and step, left mirro
     assert.ok(torso.filter(row => row.includes('C')).length >= 3, `${view}: the jacket is C`);
     assert.ok(torso.some(row => row.includes('c')), `${view}: shaded pockets or sides`);
   }
+  const front = plain(people.rows(farmLook({ top: 'jacket', bottom: 'trousers' }), 'down'))[12];
+  assert.ok(front.includes('k') && front.includes('e'), `the belt and buckle on the last torso row: ${front}`);
+  assert.ok(!plain(people.rows(farmLook({ top: 'jacket', bottom: 'trousers' }), 'up'))[12].includes('e'), 'no buckle at the back');
   const mirrored = plain(people.rows(farmLook({ top: 'jacket' }), 'right', 'a')).map(r => [...r].reverse().join(''));
   assert.deepEqual(plain(people.rows(farmLook({ top: 'jacket' }), 'left', 'a')), mirrored);
   assert.notDeepEqual(plain(people.rows(farmLook({ top: 'jacket' }), 'down')), plain(people.rows(farmLook({ top: 'shirt' }), 'down')), 'not the shirt');

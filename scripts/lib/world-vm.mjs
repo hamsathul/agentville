@@ -32,6 +32,7 @@ const FX = ['hearts', 'crumbs', 'dust'];
 const POSES = ['stand', 'walk', 'run', 'eat', 'sleep', 'happy', 'yawn', 'startled', 'stretch', 'roll'];
 const POSES_OF = { duck: [...POSES, 'swim', 'dabble', 'slide'], ostrich: [...POSES, 'hide'] };
 const LOOKS_OF = { duck: ['drake', 'hen', 'duckling'], goat: ['mascot'] };
+const PLAIN_LOOK = { goat: 'plain goat' }; // what an unknown look is drawn as, where it isn't the first look
 const LINE_MAX = 40, COUNT_MAX = 12, ACTIONS = [2, 4];
 // The habits a creature may have, and what it may do when something happens (animals.js, HABITS and react).
 const HABITS = ['climb', 'circles', 'hide', 'yawn', 'stretch', 'chaseTail', 'pounce', 'fetch', 'roll', 'laps'];
@@ -63,7 +64,7 @@ export function creatureProblems(value, { kinds, taken = [], gagProblem = null, 
     if ((c.looks != null || c.look != null) && known) {
       const own = LOOKS_OF[c.kind] ?? [];
       if (c.looks != null && !Array.isArray(c.looks)) say('looks is a list, one look per creature');
-      else for (const l of new Set([...(c.looks ?? []), ...(c.look != null ? [c.look] : [])])) if (!own.includes(l)) point(own.length ? `look ${JSON.stringify(l)} isn't one of the ${c.kind}'s (${own.join(', ')}): drawn as the ${own[0]}` : `look ${JSON.stringify(l)}: the ${c.kind} has no looks`);
+      else for (const l of new Set([...(c.looks ?? []), ...(c.look != null ? [c.look] : [])])) if (!own.includes(l)) point(own.length ? `look ${JSON.stringify(l)} isn't one of the ${c.kind}'s (${own.join(', ')}): drawn as the ${PLAIN_LOOK[c.kind] ?? own[0]}` : `look ${JSON.stringify(l)}: the ${c.kind} has no looks`);
     }
     const lines = isObj(c.lines) ? c.lines : {};
     if (c.lines != null && !isObj(c.lines)) say('lines is { idle: [...], <key>: [...] }');

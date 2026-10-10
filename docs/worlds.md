@@ -663,7 +663,7 @@ every hat but `none` also has a highlight in a lighter shade of the hat colour.
 | top | `uniform` | an olive uniform with a shoulder patch | fixed (olive, dark green); the collar and the patch are the agent's colour |
 | top | `spacesuit` | a white suit with a chest panel, gloves and a pack on the back | fixed (white, grey gloves and pack); the panel is the agent's colour, with one yellow light |
 | top | `suit` | a dark jacket with the shirt down the front | fixed (dark); the shirt is the agent's colour |
-| top | `jacket` | a field jacket: chest pockets and a belt with a buckle | the agent's colour; the pockets are its shade, the belt dark with a metal buckle |
+| top | `jacket` | a field jacket: chest pockets and a belt with a buckle | the agent's colour; the pockets are its shade, the belt dark with a metal buckle (the back view has no buckle) |
 | bottom | `overalls` | a bib over the top, and the hips and legs | the bottom colour (the bib too) |
 | bottom | `trousers` | trousers | the bottom colour |
 | bottom | `skirt` | a skirt, the legs bare | the bottom colour |
