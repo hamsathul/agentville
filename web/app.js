@@ -61,6 +61,7 @@ function render() {
   void followConversation(); // the conversation dialog, if open, takes the new messages
   renderConvoCompose(); // and its message box
   renderBroadcast(); // the agents to broadcast to, if that dialog is open
+  renderChats(); // 💬 All chats, if open: its chips and timeline
   if (view === 'farm') {
     // The farm draws the agents; the list and the centre are not drawn (so their ids don't exist twice).
     // The sidebar (web/sidebar.js) shows the selected farmer, the others that need you, and its tabs.
