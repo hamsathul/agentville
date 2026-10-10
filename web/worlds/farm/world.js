@@ -305,56 +305,58 @@
     if (frost) for (let k = 0; k < 4; k++) f(x0 + 2, y0 + 3 + k * 8, 68, 1, '#f4f8fb'); // frost on bare soil
   }
   function hay(f, x, y) { f(x - 5, y - 4, 10, 6, '#c9a24a'); f(x - 5, y - 4, 10, 1, '#f4d58d'); f(x - 2, y - 4, 1, 6, '#a8703c'); f(x + 2, y - 4, 1, 6, '#a8703c'); f(x - 4, y + 2, 10, 1, '#3f7d3a'); }
-  /** The barn: a red front gable with white trim, its roof behind, a big door with a white X. */
+  /** The barn: black board-and-batten under a metal roof, a clerestory window, a six-pane glass door with a light either side. */
   function barn(f, X, Y, S) {
-    const W2 = 52, red = '#b23a2e', plank = '#9c3b30', trim = '#f4ecd8';
-    f(X + W2, Y + 18, 4, 50, S.shadow); f(X + 3, Y + 66, W2, 3, S.shadow); // shadow
-    shingles(f, X - 1, Y, W2 + 2, 22, 0, ['#2a1d14', '#5a1f19', '#6b2a22', '#9c3b30']); // the roof going back
-    f(X + 25, Y, 2, 22, '#5a1f19');
-    for (let j = 0; j <= 14; j++) { const half = Math.round((j * 25) / 14), y = Y + 10 + j; f(X + 26 - half, y, half * 2, 1, red); f(X + 25 - half, y, 2, 1, trim); f(X + 25 + half, y, 2, 1, trim); } // the gable
-    f(X + 1, Y + 24, W2 - 2, 42, red);
-    for (let x = X + 4; x < X + W2 - 2; x += 4) f(x, Y + 26, 1, 40, plank);
-    f(X + 1, Y + 24, W2 - 2, 2, trim); f(X + 1, Y + 24, 2, 42, trim); f(X + W2 - 3, Y + 24, 2, 42, trim); f(X + W2 - 1, Y + 24, 1, 42, '#5a1f19');
-    f(X + 21, Y + 13, 10, 8, trim); f(X + 22, Y + 14, 8, 6, '#5a1f19'); f(X + 23, Y + 18, 6, 2, '#e9c46a'); // the hay loft
-    const dx = X + 14, dy = Y + 38;
-    f(dx - 2, dy - 2, 28, 30, trim); f(dx, dy, 24, 28, '#6b2a22');
-    for (const lx of [dx, dx + 12]) for (let t = 0; t < 28; t++) { const k = Math.round((t * 11) / 27); f(lx + k, dy + t, 1, 1, trim); f(lx + 11 - k, dy + t, 1, 1, trim); } // the X braces
-    f(dx + 11, dy, 2, 28, trim); f(dx, dy, 24, 1, '#5a1f19');
-    f(X + 24, Y + 31, 4, 3, '#3a3a40'); f(X + 25, Y + 33, 2, 1, '#ffd43b'); // the lamp
-    if (S.snow) { f(X - 1, Y, W2 + 2, 3, '#ffffff'); for (let j = 0; j <= 14; j += 2) f(X + 24 - Math.round((j * 25) / 14), Y + 9 + j, 3, 1, '#ffffff'); }
+    const cx = X + 27, black = '#26262b', batten = '#34343b', glass = '#a9cde6', steel = '#121215', h = y => 1 + Math.round(((y - Y - 4) * 27) / 20);
+    f(cx + 29, Y + 22, 4, 46, S.shadow); f(cx - 23, Y + 67, 54, 3, S.shadow); // shadow
+    for (let y = Y + 3; y <= Y + 24; y++) { const hh = h(Math.max(Y + 4, y)); f(cx - hh - 2, y, hh * 2 + 5, 1, y < Y + 5 ? '#c3cbd2' : '#9aa1a9'); } // the metal roof's edge
+    for (let y = Y + 5; y <= Y + 24; y++) { const hh = h(y); f(cx - hh, y, hh * 2 + 1, 1, black); }
+    f(cx - 27, Y + 25, 55, 42, black); for (let x = cx - 26; x < cx + 28; x += 4) f(x, Y + 25, 1, 42, batten);
+    for (let y = Y + 9; y <= Y + 24; y++) { const hh = h(y) - 2; for (let x = cx - 26; x < cx + 28; x += 4) if (Math.abs(x - cx) < hh) f(x, y, 1, 1, batten); }
+    f(cx - 10, Y + 14, 21, 6, steel); f(cx - 9, Y + 15, 19, 4, glass); f(cx - 3, Y + 15, 1, 4, steel); f(cx + 3, Y + 15, 1, 4, steel); // the clerestory
+    f(cx - 16, Y + 32, 33, 35, steel); // the glass door: six panes in a steel frame
+    for (let i = 0; i < 3; i++) for (let j = 0; j < 2; j++) { const x = cx - 15 + i * 11, y = Y + 33 + j * 17; f(x, y, 9, 16, glass); for (let t = 0; t < 6; t++) f(x + 1 + t, y + 9 - t, 1, 1, '#d6ecf8'); }
+    for (const sx of [cx - 21, cx + 20]) { f(sx, Y + 35, 2, 3, steel); f(sx, Y + 38, 2, 1, '#ffe6a6'); } // the wall lights
+    if (S.snow) { for (let y = Y + 3; y <= Y + 24; y++) { const hh = h(Math.max(Y + 4, y)); f(cx - hh - 2, y, 3, 1, '#ffffff'); f(cx + hh, y, 3, 1, '#ffffff'); } f(cx - 2, Y + 2, 5, 2, '#ffffff'); }
   }
-  /** The silo: a metal cylinder with a red dome; the grain gauge in its front is drawn every frame. */
+  /** The silo: a matte black tower under a metal dome, with a catwalk; the grain gauge in its window is drawn every frame. */
   function silo(f, X, Y, S) {
     f(X + 20, Y + 16, 4, 58, S.shadow); f(X + 2, Y + 74, 20, 2, S.shadow);
-    f(X - 1, Y + 10, 22, 64, '#3a3a40'); f(X, Y + 10, 20, 64, '#9aa4ad'); f(X, Y + 10, 4, 64, '#c3cbd2'); f(X + 1, Y + 10, 1, 64, '#e6eef5'); f(X + 15, Y + 10, 5, 64, '#8a8f96'); f(X + 18, Y + 10, 2, 64, '#5f6b7a');
-    for (let y = Y + 16; y < Y + 72; y += 9) f(X, y, 20, 1, '#5f6b7a');
-    for (let j = 0; j < 11; j++) { const half = Math.round(10 * Math.sqrt(1 - ((10 - j) / 10.5) ** 2)); f(X + 10 - half - 1, Y + j, half * 2 + 2, 1, '#5a1f19'); f(X + 10 - half, Y + j, half * 2, 1, j < 3 ? '#e04a3a' : '#b23a2e'); f(X + 10 + half - 4, Y + j, Math.min(4, half), 1, '#9c3b30'); }
-    if (S.snow) f(X + 3, Y, 14, 3, '#ffffff');
-    f(X + 6, Y + 20, 8, 48, '#3a3a40'); f(X + 5, Y + 19, 10, 1, '#5f6b7a'); // the gauge's window
-    f(X + 2, Y + 70, 16, 4, '#5f6b7a');
+    for (let j = 0; j < 11; j++) { const half = Math.round(10 * Math.sqrt(1 - ((10 - j) / 10.5) ** 2)); f(X + 10 - half - 1, Y + j, half * 2 + 2, 1, '#5f6b7a'); f(X + 10 - half, Y + j, half * 2, 1, j < 3 ? '#e6eef5' : '#aab2ba'); f(X + 10 + half - 4, Y + j, Math.min(4, half), 1, '#8a939c'); }
+    f(X - 1, Y + 10, 22, 64, '#121215'); f(X, Y + 10, 20, 64, '#26262b'); f(X + 1, Y + 10, 2, 64, '#3a3a42');
+    for (let x = X + 5; x < X + 20; x += 5) f(x, Y + 10, 1, 64, '#1d1d21');
+    f(X - 3, Y + 9, 26, 1, '#121215'); f(X - 3, Y + 12, 26, 1, '#121215'); f(X - 3, Y + 9, 1, 4, '#121215'); f(X + 22, Y + 9, 1, 4, '#121215'); // the catwalk
+    f(X + 5, Y + 19, 10, 50, '#121215'); f(X + 6, Y + 20, 8, 48, '#3a3f45'); // the gauge's window
+    f(X - 2, Y + 70, 24, 4, '#8d8f92'); f(X - 2, Y + 70, 24, 1, '#b9bbc0'); // its plinth
+    if (S.snow) { f(X + 3, Y, 14, 3, '#ffffff'); f(X - 3, Y + 8, 26, 1, '#ffffff'); }
   }
-  /** The farmhouse, top middle: a shingled roof, cream walls, lit windows, the porch in front. */
+  /** The string of lights under the farmhouse's eave: how low its wire hangs at x, sagging between hooks and following the roof. */
+  const eaveWire = (X, Y, W2, x) => Y + 20 + Math.round(3 * Math.sin((((x - X + 4) % 17) / 17) * Math.PI)) + Math.round(((x - X) * 8) / (W2 + 16));
+  /** Where each bulb hangs, just under the wire (drawn, and lit at night). */
+  const eaveBulbs = (X, Y, W2) => Array.from({ length: Math.ceil(W2 / 8) }, (_, i) => [X + i * 8, eaveWire(X, Y, W2, X + i * 8) + 1]);
+  /** The farmhouse, top middle: timber under one sloping roof, glass walls and a glass door, string lights, the deck (your porch) in front. */
   function house(f, X, Y, S, PORCH_Y) {
-    const W2 = 136, wallY = Y + 32;
-    f(X + W2, Y + 10, 4, PORCH_Y - Y - 2, S.shadow); f(X + 2, PORCH_Y + 4, W2, 2, S.shadow); // shadow
-    shingles(f, X, Y, W2, 30, 9, ['#2a1d14', '#5a1f19', '#9c3b30', '#b23a2e']);
-    f(X + 104, Y + 4, 10, 16, '#5a1f19'); f(X + 105, Y + 4, 8, 15, '#9c3b30'); f(X + 105, Y + 4, 2, 15, '#b23a2e'); for (let y = Y + 7; y < Y + 18; y += 3) f(X + 105, y, 8, 1, '#6b2a22'); f(X + 103, Y + 2, 12, 3, '#3a3a40'); f(X + 114, Y + 8, 2, 12, '#6b2a22'); // the chimney
-    if (S.snow) for (let j = 0; j < 8; j++) { const d = Math.round(((29 - j) * 9) / 29); f(X + d, Y + j, W2 - 2 * d, 1, j < 6 ? '#ffffff' : '#e6eef5'); }
-    f(X + 4, wallY, W2 - 8, PORCH_Y - wallY - 10, '#e8d8b0');
-    for (let y = wallY + 3; y < PORCH_Y - 10; y += 3) f(X + 4, y, W2 - 8, 1, '#d4c294');
-    f(X + 4, wallY, W2 - 8, 2, '#c9b48a'); f(X + 4, wallY, 2, PORCH_Y - wallY - 10, '#f4ecd8'); f(X + W2 - 6, wallY, 2, PORCH_Y - wallY - 10, '#c9b48a');
-    for (const wx of [X + 16, X + 100]) { // windows, shutters, a flower box
-      f(wx - 4, wallY + 4, 3, 14, '#2f6b2f'); f(wx + 21, wallY + 4, 3, 14, '#2f6b2f');
-      f(wx - 1, wallY + 3, 22, 16, '#6b4320'); f(wx, wallY + 4, 20, 14, '#5ab4ff'); f(wx + 1, wallY + 5, 7, 2, '#a9dcf7'); f(wx + 10, wallY + 4, 1, 14, '#6b4320'); f(wx, wallY + 10, 20, 1, '#6b4320');
-      f(wx - 1, wallY + 19, 22, 3, '#8b5a2b'); for (let i = 0; i < 5; i++) f(wx + 1 + i * 4, wallY + 18, 2, 1, S.flowers[i % Math.max(1, S.flowers.length)] ?? '#6b8f4a');
+    const W2 = 136, wood = '#c8a271', woodD = '#b08a5a', frame = '#1d1d21', glass = '#a9cde6';
+    f(X + W2 + 6, Y + 14, 4, PORCH_Y - Y - 6, S.shadow); f(X + 2, PORCH_Y + 6, W2, 2, S.shadow); // shadow
+    f(X + 112, Y - 2, 4, 18, '#8a8f96'); f(X + 111, Y - 4, 6, 2, '#5f6b7a'); f(X + 112, Y - 2, 1, 18, '#c3cbd2'); // the steel flue
+    if (S.snow) f(X + 111, Y - 5, 6, 1, '#ffffff');
+    f(X + 4, Y + 14, W2 - 8, PORCH_Y - 10 - (Y + 14), wood); for (let y = Y + 16; y < PORCH_Y - 10; y += 3) f(X + 4, y, W2 - 8, 1, woodD);
+    for (let x = X - 8; x < X + W2 + 8; x++) { const top = Y + 10 + Math.round(((x - X + 8) * 8) / (W2 + 16)); f(x, top, 1, 5, '#2a2a2e'); f(x, top + 5, 1, 1, '#3f3f45'); if (S.snow) f(x, top - 2, 1, 2, '#ffffff'); } // one sloping roof
+    for (const gx of [X + 10, X + 84]) { // the glass walls, over a timber skirt (lit at night above the heads of farmers on the porch)
+      const gy = Y + 26, gh = 20;
+      f(gx - 1, gy - 1, 43, gh + 2, frame); f(gx, gy, 42, gh, glass);
+      for (let x = gx + 10; x < gx + 42; x += 11) f(x, gy, 1, gh, frame);
+      for (let t = 0; t < 12; t++) { f(gx + 3 + t, gy + 15 - t, 1, 1, '#d6ecf8'); f(gx + 24 + t, gy + 15 - t, 1, 1, '#d6ecf8'); }
     }
-    f(X + 59, wallY + 3, 18, PORCH_Y - wallY - 13, '#6b4320'); f(X + 61, wallY + 5, 14, PORCH_Y - wallY - 15, '#8b5a2b'); f(X + 63, wallY + 7, 4, 6, '#7a5230'); f(X + 69, wallY + 7, 4, 6, '#7a5230'); f(X + 72, wallY + 14, 2, 2, '#f0b429'); // the door
-    f(X + 80, wallY + 6, 4, 4, '#3a3a40'); f(X + 81, wallY + 7, 2, 2, '#ffd43b'); // the porch lamp
-    // the porch: planks seen from above, its front edge, the steps down to the lane
-    f(X - 4, PORCH_Y - 10, W2 + 8, 12, '#a8703c'); f(X - 4, PORCH_Y - 10, W2 + 8, 1, '#6b4320');
-    for (let x = X - 1; x < X + W2 + 4; x += 6) f(x, PORCH_Y - 9, 1, 11, '#8b5a2b');
-    f(X - 4, PORCH_Y + 1, W2 + 8, 1, '#c98d4f'); f(X - 4, PORCH_Y + 2, W2 + 8, 3, '#6b4320'); f(X - 4, PORCH_Y + 5, W2 + 8, 1, '#2a1d14');
-    f(X + 58, PORCH_Y + 5, 20, 3, '#8b5a2b'); f(X + 58, PORCH_Y + 5, 20, 1, '#c98d4f'); f(X + 58, PORCH_Y + 8, 20, 1, '#4e3626');
+    f(X + 57, Y + 24, 22, PORCH_Y - 10 - Y - 24, frame); f(X + 59, Y + 26, 18, PORCH_Y - 10 - Y - 26, glass); f(X + 68, Y + 26, 1, PORCH_Y - 10 - Y - 26, frame); f(X + 66, Y + 38, 1, 6, '#c3cbd2'); // the glass door
+    for (let x = X - 4; x < X + W2 + 4; x++) f(x, eaveWire(X, Y, W2, x), 1, 1, '#3f3f45'); // the string
+    for (const [bx, by] of eaveBulbs(X, Y, W2)) f(bx, by, 2, 2, '#ffe08a');
+    // the deck: wide boards, a slim steel railing open at the steps, a planter of grasses at each end
+    f(X - 5, PORCH_Y - 10, W2 + 10, 12, '#8d7e6e'); for (let y = PORCH_Y - 8; y < PORCH_Y + 2; y += 3) f(X - 5, y, W2 + 10, 1, '#776a5c'); f(X - 5, PORCH_Y - 10, W2 + 10, 1, '#5e5348');
+    f(X - 5, PORCH_Y + 2, W2 + 10, 3, '#5e5348'); f(X - 5, PORCH_Y + 5, W2 + 10, 1, '#2a2a2e');
+    for (const [a, b] of [[X - 5, X + 56], [X + 80, X + W2 + 5]]) { f(a, PORCH_Y - 7, b - a, 1, frame); for (let x = a; x < b; x += 12) f(x, PORCH_Y - 7, 1, 8, frame); f(b - 1, PORCH_Y - 7, 1, 8, frame); }
+    f(X + 56, PORCH_Y + 5, 24, 3, '#8d7e6e'); f(X + 56, PORCH_Y + 8, 24, 1, '#5e5348'); // the steps
+    for (const px of [X - 4, X + W2 - 4]) { f(px, PORCH_Y - 5, 9, 5, '#3f3f45'); for (let i = 0; i < 4; i++) f(px + 1 + i * 2, PORCH_Y - 9 + (i % 2), 1, 4, S.snow ? '#e6eef5' : '#7fbf5a'); }
   }
   /** The henhouse and its run: a little coop, a ramp, a fence; hens and eggs are drawn every frame. */
   function henhouse(f, X, Y, S) {
@@ -1090,8 +1092,19 @@
         PXG.ctx.globalAlpha = 1;
       },
       /** Lights that glow at night: [x, y, reach, the lit shape]. */
+      /** At night: the barn's glass door and the house's glass glow from inside, a pane at a time (their frames stay dark), with the barn's wall lights and the bulbs under the eave. */
       lights() {
-        return [[62, 54, 11, [61, 47, 2, 1]], [158, 56, 16, [148, 46, 20, 14, true]], [242, 56, 16, [232, 46, 20, 14, true]], [213, 66, 20, [213, 49, 2, 2]]];
+        const pane = ([x, y, w, h]) => [x + (w >> 1), y + (h >> 1), 0, [x, y, w, h]];
+        // lit panes stay above the heads of the farmers on the porch and at the barn door: the night paints them over whatever stands in front
+        const barnPanes = [48, 59, 70].map(x => [x, 47, 9, 16]); // the door's upper row; its lower row glows from the light around it
+        const clerestory = [[54, 29, 6, 4], [61, 29, 5, 4], [67, 29, 6, 4]];
+        const glass = [[142, 10], [153, 10], [164, 10], [175, 9], [216, 10], [227, 10], [238, 10], [249, 9]].map(([x, w]) => [x, 36, w, 20]).concat([[191, 36, 9, 18], [201, 36, 8, 18]]);
+        return [
+          [63, 62, 22, null], [63, 31, 9, null], [163, 52, 22, null], [200, 52, 14, null], [237, 52, 22, null],
+          ...[...barnPanes, ...clerestory, ...glass].map(pane),
+          [43, 53, 8, [42, 52, 2, 1]], [84, 53, 8, [83, 52, 2, 1]],
+          ...eaveBulbs(132, 10, 136).map(([x, y]) => [x + 1, y + 1, 3, [x, y, 2, 2]]),
+        ];
       },
       /** By day, butterflies and birds, and cloud shadows drift over the farm; at night, fireflies over the yard. */
       weather(sky) {

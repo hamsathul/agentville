@@ -382,6 +382,39 @@ test("the silo's grain is the week's usage, with a lamp that warns near the limi
   assert.equal(siloOf(planWith(10, 140)).fill, 1);
 });
 
+test('the farm is a modern farmstead: a black barn with a glass door, a timber house with glass walls and a deck, a black tower silo; the door, the gauge, the porch spots and the lights stay where they work', () => {
+  const window = { Agentville: { raw: () => {} } };
+  vm.runInNewContext(code, { window, console, Math, Date, JSON, Map, Set });
+  const th = window.AgentvilleFarm.makeFarm();
+  th.setScene({ plan: planWith(42), chrome: {}, fields: [], farmers: [], carts: [], mail: [], henhouse: { eggs: 0, roosting: 0 } });
+  const rects = [];
+  th.bg((x, y, w, h, c) => rects.push([x, y, w, h, c]), 'summer', { x0: 0, x1: 400, y0: 0, y1: 300 });
+  const drew = (x, y, w, h, c) => rects.some(r => r.join() === [x, y, w, h, c].join());
+  // the barn: a six-pane glass door, where new farmers still walk out
+  const panes = [48, 59, 70].flatMap(x => [47, 64].map(y => [x, y, 9, 16]));
+  for (const p of panes) assert.ok(drew(...p, '#a9cde6'), `a glass pane in the barn door at ${p}`);
+  const [doorX] = th.spawn();
+  assert.ok(doorX > 48 && doorX < 79, `new farmers walk out of the glass door (${doorX})`);
+  // the silo: a black tower, its gauge window where the week's grain is drawn each frame
+  assert.ok(drew(92, 16, 20, 64, '#26262b'), 'black steel');
+  assert.ok(drew(98, 26, 8, 48, '#3a3f45'), "the gauge window, where the week's grain shows");
+  // the house: glass walls either side of a glass door, string lights, planters clear of the six porch spots
+  assert.ok(drew(142, 36, 42, 20, '#a9cde6') && drew(216, 36, 42, 20, '#a9cde6') && drew(191, 36, 18, 32, '#a9cde6'), 'glass walls over a timber skirt, and a glass door');
+  assert.ok(rects.filter(r => r[4] === '#ffe08a').length >= 15, 'string lights along the eave');
+  const planters = rects.filter(r => r[4] === '#3f3f45' && r[1] >= 60), spots = [142, 166, 190, 210, 234, 258];
+  assert.equal(planters.length, 2, 'a planter at each end of the deck');
+  for (const r of planters) assert.ok(spots.every(x => r[0] + r[2] <= x - 4 || r[0] >= x + 5), `the planter at ${r} keeps clear of the porch spots`);
+  // at night: every light is on a building; panes light up one by one (their frames stay dark), and only above the heads of
+  // the farmers on the porch and at the barn door (the engine paints lit panes over whatever stands in front)
+  const lights = th.lights(), boxes = [[36, 12, 92, 82], [88, 0, 118, 82], [122, 0, 278, 92]];
+  for (const [, , , core] of lights) if (core) assert.ok(boxes.some(([x0, y0, x1, y1]) => core[0] >= x0 && core[1] >= y0 && core[0] + core[2] <= x1 && core[1] + core[3] <= y1), `a light on a building (${core})`);
+  const lit = p => lights.some(([, , , c]) => c && [0, 1, 2, 3].every(i => c[i] === p[i]));
+  for (const p of panes.filter(([, y]) => y === 47)) assert.ok(lit(p), `the barn door's upper pane ${p} lights at night`);
+  for (const p of [[142, 36, 10, 20], [153, 36, 10, 20], [164, 36, 10, 20], [175, 36, 9, 20], [216, 36, 10, 20], [227, 36, 10, 20], [238, 36, 10, 20], [249, 36, 9, 20], [191, 36, 9, 18], [201, 36, 8, 18]]) assert.ok(lit(p), `the house's glass ${p} lights at night`);
+  for (const [, , , c] of lights) if (c) assert.ok(c[1] + c[3] <= (c[0] >= 122 ? 58 : 63), `the light at ${c} stays above the heads of farmers on the porch (from y 62) and at the barn door (from y 71)`);
+  assert.ok(!lights.some(([x, y]) => x === 213 && y === 66), "today's porch lamp is gone with the porch");
+});
+
 test('the henhouse: eggs for subagents that finished lately, a sign for running ones no farmer can lead', () => {
   const { toScene } = load();
   const kids = (running, done) => [...Array.from({ length: running }, (_, i) => ({ id: `r${i}`, state: 'running' })), ...Array.from({ length: done }, (_, i) => ({ id: `d${i}`, state: 'done' }))];
