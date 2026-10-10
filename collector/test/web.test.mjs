@@ -3282,11 +3282,11 @@ test("💬 All chats says when it couldn't read them, with Try again; on an empt
 });
 
 test('while open, 💬 All chats reads what is new when an agent does something, only since its newest, and adds each item once', async () => {
-  const page = await chatsPage({ items: [said(1, 'r1', 'busy-one', 'reply', 'First.')], replies: {
+  const page = await chatsPage({ snap: crowd({ lastActivityAt: T + 1000 }), items: [said(1, 'r1', 'busy-one', 'reply', 'First.')], replies: {
     [`/api/timeline?since=${T + 1000}`]: tl([said(1, 'r1', 'busy-one', 'reply', 'First.'), said(2, 'r1', 'busy-one', 'reply', 'Second.')]),
   } });
   const reads = () => page.gets.filter(g => g.path.startsWith('/api/timeline')).map(g => g.path);
-  page.push(crowd()); // nothing moved
+  page.push(crowd({ lastActivityAt: T + 1000 })); // nothing moved
   await page.settle();
   assert.deepEqual(reads(), ['/api/timeline?since=0']);
   page.push(crowd({ lastActivityAt: T + 2000 }));
@@ -3301,7 +3301,7 @@ test('while open, 💬 All chats reads what is new when an agent does something,
 });
 
 test('scrolled up to read, new messages leave you where you are and ↓ N new takes you down; at the bottom it follows', async () => {
-  const page = await chatsPage({ items: [said(1, 'r1', 'busy-one', 'reply', 'First.')], replies: {
+  const page = await chatsPage({ snap: crowd({ lastActivityAt: T + 1000 }), items: [said(1, 'r1', 'busy-one', 'reply', 'First.')], replies: {
     [`/api/timeline?since=${T + 1000}`]: tl([said(2, 'r1', 'busy-one', 'reply', 'Second.'), said(3, 'q1', 'asker', 'reply', 'Third.')]),
     [`/api/timeline?since=${T + 3000}`]: tl([said(4, 'r1', 'busy-one', 'reply', 'Fourth.')]),
   } });
@@ -3393,4 +3393,24 @@ test('a read that lands while you type in 💬 All chats waits: the box is not d
   page.fire('focusout');
   await page.settle();
   assert.match(chatsBody(page), /Second\./, 'out of the box, it catches up');
+});
+
+test('a restore reaches an open 💬 All chats even when another agent spoke after it: an agent that moved is read from where it was', async () => {
+  const snap = crowd({ lastActivityAt: T + 5000 });
+  snap.agents.find(a => a.id === 'q1').lastActivityAt = T + 8000;
+  const page = await chatsPage({ snap, items: [
+    said(1, 'r1', 'busy-one', 'prompt', 'Plan it'), said(3, 'r1', 'busy-one', 'prompt', 'Ship it'), said(5, 'r1', 'busy-one', 'reply', 'Shipped.'),
+    said(8, 'q1', 'asker', 'reply', 'Pick one.'),
+  ], replies: {
+    [`/api/timeline?since=${T + 5000}`]: tl([{ at: T + 5000, agent: 'r1', name: 'busy-one', kind: 'restored', text: 'Ship it', back: T + 3000 }, said(8, 'q1', 'asker', 'reply', 'Pick one.'), said(9, 'r1', 'busy-one', 'prompt', 'Ship it to staging')]),
+  } });
+  const moved = crowd({ lastActivityAt: T + 9000 }); // busy-one was restored, then resumed with your message
+  moved.agents.find(a => a.id === 'q1').lastActivityAt = T + 8000;
+  page.push(moved);
+  await page.settle();
+  assert.ok(page.gets.some(g => g.path === `/api/timeline?since=${T + 5000}`), "read from where busy-one was, not from the newest item (asker's, later)");
+  const body = chatsBody(page);
+  assert.match(body, /went back to an earlier message/);
+  assert.match(body, /class="bub agent ch-taken"[^>]*>[\s\S]*?Shipped\./);
+  assert.match(body, /Ship it to staging/);
 });

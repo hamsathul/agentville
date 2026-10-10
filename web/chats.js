@@ -234,11 +234,14 @@ async function chatsFollow(force = false) {
     if (!chats.timer) chats.timer = setTimeout(() => { if (chats) chats.timer = 0; void chatsFollow(true); }, wait);
     return;
   }
-  const mine = chats;
+  const mine = chats, was = chats.seen;
   chats.seen = chatsActivity();
   chats.loading = true;
   chats.fetchedAt = Date.now();
-  const r = await chatsFetch(chats.items.at(-1)?.at ?? 0);
+  // From the newest item, or from where an agent that moved was, if earlier: a restore's line is dated
+  // by the session's last activity before it, which may be older than what another agent said since.
+  const from = [...chats.seen].filter(([id, at]) => was.get(id) !== at).map(([id]) => was.get(id) ?? 0);
+  const r = await chatsFetch(Math.min(chats.items.at(-1)?.at ?? 0, ...from));
   if (chats !== mine) return; // shut meanwhile
   chatsTake(r);
   requestRender(); // drawn as the page is: not under a box you type in, a selection or a press
