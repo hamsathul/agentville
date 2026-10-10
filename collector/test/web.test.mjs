@@ -2991,3 +2991,17 @@ test('an edit the turn beat (the message went out meanwhile) is not lost: it lan
   assert.match(page.el('notice').textContent, /had already gone out: your change is in the message box/);
   assert.doesNotMatch(page.side(), /class="held-edit"/, 'the edit box is gone');
 });
+
+test("📣 Broadcast says which agents' copies wait for their turn to end (the collector held them), not 'queued'", async () => {
+  const page = loadPage({ replies: { '/api/actions/message': { ok: true, held: true, count: 1 } } });
+  page.push(crowd());
+  await page.click('broadcast-open');
+  await page.clickButton('pick-all', { bcPick: 'all' });
+  page.el('bc-text').value = 'Wrap up.';
+  await page.clickButton('bc-send', {});
+  await page.settle();
+  const results = page.el('bc-results').innerHTML;
+  assert.match(results, /waits for its turn to end: remove or edit it under its message box/);
+  assert.doesNotMatch(results, /queued: it reads it/);
+  assert.match(page.el('bc-status').textContent, /Sent to 4 agents \(4 wait for their turn to end\)/);
+});

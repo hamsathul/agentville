@@ -1,5 +1,5 @@
 // Broadcast: one message to several agents at once (every one that can take it, or the ones you tick),
-// each getting it as your own message, as its message box would send it (queued while it is busy).
+// each getting it as your own message, as its message box would send it (held until its turn ends while it is busy).
 // Opened from the list view's 📣 Broadcast and the farm's Menu (a world's nav { what: 'broadcast' },
 // which arms the click guard, so Send ignores clicks for a moment). Text only: files and folders go to
 // one agent at a time, from its own box.
@@ -54,9 +54,10 @@ async function sendBroadcast(button) {
   const sent = await Promise.all(to.map(async a => ({ a, r: await post('/api/actions/message', { agentId: a.id, text }) })));
   const failed = sent.filter(x => !x.r.ok);
   $('bc-results').innerHTML = sent.map(({ a, r }) => `<div class="${r.ok ? 'msg-ok' : 'msg-bad'}">${r.ok ? '✓' : '✗'} ${esc(a.name)}${r.ok
-    ? (a.state === 'working' ? ' <span class="faint">queued: it reads it when its current step ends</span>' : '')
+    ? (r.held ? ' <span class="faint">waits for its turn to end: remove or edit it under its message box</span>' : '')
     : `: ${esc(r.error ?? 'not sent')}`}</div>`).join('');
-  $('bc-status').textContent = failed.length ? `Sent to ${sent.length - failed.length} of ${sent.length}.` : `Sent to ${sent.length} agent${sent.length === 1 ? '' : 's'}.`;
+  const waiting = sent.filter(x => x.r.ok && x.r.held).length, wait = waiting ? ` (${waiting} wait${waiting === 1 ? 's' : ''} for ${waiting === 1 ? 'its' : 'their'} turn to end)` : '';
+  $('bc-status').textContent = failed.length ? `Sent to ${sent.length - failed.length} of ${sent.length}${wait}.` : `Sent to ${sent.length} agent${sent.length === 1 ? '' : 's'}${wait}.`;
   if (!failed.length) $('bc-text').value = '';
   button.disabled = false;
   renderBroadcast();

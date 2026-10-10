@@ -336,8 +336,9 @@ These need the mod in that session.
 agent you tick:
 - The list has every agent, those that need you first. Tick them one by one, or pick **All**, **Need
   you**, **Working**, **Your turn & idle** or **None**.
-- Each one gets it as your own message, as its own message box would send it: a busy one reads it
-  when its current step ends.
+- Each one gets it as your own message, as its own message box would send it: a busy one's copy waits
+  for its turn to end, under its message box, where you can remove, edit or send it now (see
+  "Messages to a working session wait"). The line under the box says which wait.
 - A session that isn't listening for the dashboard yet (send it anything in its terminal once), and
   Codex, can't be ticked; the list says why.
 - **⌘↩** sends (a plain ↩ is a new line, so one key can't reach several agents by accident). Under the
@@ -384,8 +385,8 @@ the session until you use it.
   card, in the order you wrote them. Click a note's text to edit it (↩ saves, Esc cancels).
 - **↳ Use** puts the note at the end of the message box, to change before you send it. Once that
   message is sent, the note counts as used. If you clear the box instead, it stays unused.
-- **Send now** sends the note as it is, as your own message (queued if the session is busy), and
-  marks it used.
+- **Send now** sends the note as it is, as your own message, at once even if the session is busy (it
+  reads it at its next step), and marks it used.
 - A used note stays, crossed out, so you can see what you have already said. **Clear used** removes
   them all; **✕** deletes one.
 - You can write notes for any session on the dashboard, even one that isn't listening for the
