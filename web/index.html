@@ -321,6 +321,10 @@ dialog.chats-dlg[open] { display: flex; flex-direction: column; }
 .ch-steps { margin: 2px 0 4px 12px; font-size: 11.5px; color: var(--muted); }
 .ch-steps time { color: var(--faint); margin-right: 6px; }
 .ch-down { align-self: center; margin: 6px 0 0; }
+.ch-ask { max-width: 88%; }
+.ch-to { display: flex; align-items: center; gap: 8px; margin-top: 8px; font-size: 12px; }
+.ch-to select { padding: 3px 6px; border: 1px solid var(--line); border-radius: 6px; background: var(--page); color: var(--text); font: inherit; }
+.bub[data-chats-agent] { cursor: pointer; }
 /* the conversation dialog (⤢ Read all): the whole conversation, with search */
 dialog.convo-dlg { width: min(860px, calc(100vw - 32px)); height: min(86vh, 900px); max-width: none; padding: 14px 16px 12px; }
 dialog.convo-dlg[open] { display: flex; flex-direction: column; }
@@ -787,6 +791,9 @@ html[data-guard="on"] .app .act, html[data-guard="on"] dialog[open] .act { opaci
   <div id="chats-chips" class="ch-chips" role="group" aria-label="Whose messages to show"></div>
   <div id="chats-body" class="chat ch-body"></div>
   <button type="button" id="chats-down" class="act mini ch-down" hidden></button>
+  <div class="ch-to"><label for="chats-to" class="faint">To</label><select id="chats-to"></select></div>
+  <div id="chats-compose"></div>
+  <input type="file" id="chats-file-picker" multiple hidden>
 </dialog>
 <dialog id="file-dlg" class="file-dlg" aria-label="File"><div id="file-dlg-body" class="center-body viewing"></div></dialog>
 <dialog id="convo" class="convo-dlg" aria-labelledby="convo-title">

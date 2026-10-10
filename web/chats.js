@@ -12,6 +12,7 @@ let chats = null; // while open: what it holds (chatsState)
 const chatsPicked = new Set(); // the agents whose chips are picked; none picked shows everyone
 const chatsOpenRuns = new Set(); // runs of steps opened with ▸
 const chatsOpenLong = new Set(); // long messages opened with Show more
+let chatsTo = null; // who the box writes to, once you pick (a message clicked, the To list, a card's Reply…)
 
 /** Every agent's last activity, to tell when one has done something since. */
 const chatsActivity = () => new Map((snap?.agents ?? []).map(a => [a.id, a.lastActivityAt ?? 0]));
@@ -45,6 +46,8 @@ function closeChats() {
   chatsPicked.clear();
   chatsOpenRuns.clear();
   chatsOpenLong.clear();
+  chatsTo = null;
+  $('chats-compose').innerHTML = '';
   $('chats-body').innerHTML = '';
   if ($('chats').open) $('chats').close();
 }
@@ -172,12 +175,14 @@ function chatsView() {
     entries.push({ at: i.at, item: i });
   }
   for (const [id, run] of runs) entries.push({ at: run.steps.at(-1).at, run, live: agents.get(id)?.state === 'working' });
+  for (const a of agents.values()) if (a.kind !== 'codex' && needsYou(a) && shows(a.id)) entries.push({ at: a.stateSince || Date.now(), ask: a }); // the agents that need you, answered here
   entries.sort((x, y) => x.at - y.at);
   const look = chats.look, firstNew = look ? entries.find(e => !e.ask && e.at > look) : null;
   let html = `<div class="ch-line faint">${chats.truncated ? 'Older messages not shown: they are' : 'Older messages are'} in each agent's ⤢ Read all</div>`, said = 0;
   for (const e of entries) {
     if (e === firstNew) html += `<div class="ch-new" id="chats-new">new since you last looked · ${esc(convoWhen(look))}</div>`;
-    if (e.run) html += chatsRunHtml(e.run, e.live, agents.get(e.run.agent));
+    if (e.ask) html += `<div class="ch-ask">${chatsCardHtml(e.ask)}</div>`;
+    else if (e.run) html += chatsRunHtml(e.run, e.live, agents.get(e.run.agent));
     else {
       html += chatsItemHtml(e.item, taken(e.item));
       if (chSaid(e.item)) said++;
@@ -212,6 +217,7 @@ function drawChats() {
   }
   $('chats-down').hidden = !chats.unseen;
   $('chats-down').textContent = `↓ ${chats.unseen} new`;
+  renderChatsCompose();
 }
 
 /** Whether any agent has done something (or come or gone) since the last read. */
@@ -238,6 +244,48 @@ async function chatsFollow(force = false) {
   drawChats();
 }
 
+/** The sidebar's card for an agent that needs you, its buttons marked as the modal's: handled here, once. */
+const chatsCardHtml = a => fsCardHtml(a).replaceAll('<button type="button"', '<button type="button" data-chats-card');
+
+function chatsSetTo(id) {
+  chatsTo = id;
+  renderChatsCompose();
+}
+/** Who the box writes to: the one you picked; else the agent that has waited on you longest; else whoever spoke last. */
+function chatsTarget(choices) {
+  const picked = choices.find(a => a.id === chatsTo);
+  if (picked) return picked;
+  const last = [...(chats?.items ?? [])].reverse().find(i => chSaid(i) && choices.some(a => a.id === chSpeaker(i)));
+  return choices.find(needsYou) ?? choices.find(a => a.id === (last && chSpeaker(last))) ?? choices[0] ?? null;
+}
+/** The To list, and that agent's own message box (the side panel's, with the modal's ids). */
+function renderChatsCompose() {
+  if (!chats || !$('chats').open) return;
+  const choices = fsOrder().filter(a => a.kind !== 'codex');
+  const to = chatsTarget(choices);
+  $('chats-to').innerHTML = choices.map(a => `<option value="${esc(a.id)}"${a.id === to?.id ? ' selected' : ''}>${esc(a.name)}</option>`).join('');
+  $('chats-compose').innerHTML = to ? composeHtml(to, 'chats-msg') : '';
+}
+/** A card's Open ›: shuts the modal and shows that agent (the sidebar on a world, the centre in the list). */
+function chatsOpenAgent(id) {
+  closeChats();
+  if (view === 'farm') {
+    if (!farmSide) setFarmSide(true);
+    fsPick(id);
+  } else {
+    selected = id;
+    openChildren.clear();
+    render();
+  }
+}
+/** A card's Reply… or No…: the box writes to that agent, the words started. */
+function chatsDraft(agentId, text) {
+  chatsSetTo(agentId);
+  msgDrafts.set(agentId, `${text}${msgDrafts.get(agentId) ?? ''}`);
+  renderChatsCompose();
+  $('chats-msg-text')?.focus?.();
+}
+
 /** On each render (app.js): what is new is read in, and it is redrawn, while open. */
 function renderChats() {
   if (!chats || !$('chats').open) return;
@@ -249,12 +297,23 @@ function chatsScrolled() {
   if (chats?.unseen && chNearBottom($('chats-body'))) { chats.unseen = 0; $('chats-down').hidden = true; }
 }
 
-document.addEventListener('click', e => {
+document.addEventListener('click', async e => {
+  const item = e.target?.closest?.('[data-chats-agent]');
+  if (item && chats && !e.target?.closest?.('button, a')) { chatsSetTo(item.dataset.chatsAgent); return; } // a message clicked: write to its agent
   const el = e.target?.closest?.('button');
   if (!el) return;
   const d = el.dataset ?? {};
   if (el.id === 'chats-open') { void openChats(); return; }
   if (!chats) return;
+  if (d.chatsCard !== undefined) { // a card's button: answered here, so the sidebar's and the list's handlers don't answer it again
+    e.stopImmediatePropagation?.();
+    if (d.permit) await fsPermit(el);
+    else if (d.fsAnswer !== undefined) await fsAnswer(el);
+    else if (d.pickAgent) chatsOpenAgent(d.pickAgent);
+    else if (d.quickReply !== undefined) await sendMessage(d.agent, el, d.quickReply);
+    else if (d.quickDraft !== undefined) chatsDraft(d.agent, d.quickDraft);
+    return;
+  }
   if (d.chatsClose !== undefined) { closeChats(); return; }
   if (d.chatsChip !== undefined || d.chatsNeeds !== undefined) {
     if (d.chatsNeeds !== undefined) { chatsPicked.clear(); for (const a of snap?.agents ?? []) if (needsYou(a)) chatsPicked.add(a.id); }
@@ -280,6 +339,7 @@ document.addEventListener('click', e => {
     drawChats();
   }
 });
+document.addEventListener('change', e => { if (e.target?.id === 'chats-to' && chats) chatsSetTo(e.target.value); });
 $('chats')?.addEventListener?.('close', () => { if (chats && !$('chats').open) closeChats(); }); // Esc
 $('chats')?.addEventListener?.('click', e => { if (e.target === $('chats')) closeChats(); }); // the backdrop
 $('chats-body')?.addEventListener?.('scroll', chatsScrolled);

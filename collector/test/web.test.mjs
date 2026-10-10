@@ -3321,3 +3321,39 @@ test('scrolled up to read, new messages leave you where you are and ↓ N new ta
   assert.equal(box.scrollTop, 900, 'at the bottom: it follows the newest');
   assert.equal(page.el('chats-down').hidden, true);
 });
+
+test("in 💬 All chats, an agent that needs you is the sidebar's card; Allow is sent once from the modal, in the list and on the farm", async () => {
+  for (const farm of [false, true]) {
+    const f = fakeFarm();
+    const page = await chatsPage(farm ? { farm: f.farm, stored: { 'tracker-view': 'farm', 'tracker-farm-side': 'open' } } : {});
+    const body = chatsBody(page);
+    assert.match(body, /class="ch-ask"><div class="fs-card perm">[\s\S]*data-chats-card class="act primary" data-permit="allow" data-agent="p1" data-tool="toolu_P1"/);
+    assert.match(body, /data-chats-card class="act" data-fs-answer="Red" data-agent="q1"/);
+    page.el('allow').className = 'act primary';
+    await page.clickButton('allow', { chatsCard: '', permit: 'allow', agent: 'p1', tool: 'toolu_P1' });
+    await page.settle();
+    assert.deepEqual(page.posts.map(p => [p.path, p.body.agentId, p.body.decision]), [['/api/actions/permit', 'p1', 'allow']], `once (${farm ? 'farm' : 'list'})`);
+  }
+});
+
+test("a card's Open › shuts 💬 All chats and shows that agent", async () => {
+  const page = await chatsPage();
+  await page.clickButton('open-q1', { chatsCard: '', pickAgent: 'q1' });
+  assert.equal(page.el('chats').open, false);
+  assert.match(page.side(), /asker/);
+});
+
+test("💬 All chats' box writes to the agent waiting on you longest, or the one you pick, and sends as its own box does; a card's No… starts the words, once", async () => {
+  const page = await chatsPage({ items: [said(9, 'r1', 'busy-one', 'reply', 'Done.')] });
+  assert.match(page.el('chats-to').innerHTML, /<option value="q1" selected>asker</, 'asker has waited longest');
+  assert.match(page.el('chats-compose').innerHTML, /id="chats-msg-text" data-msg-agent="q1"/);
+  await page.change({ id: 'chats-to', value: 'r1' });
+  assert.match(page.el('chats-compose').innerHTML, /id="chats-msg-text" data-msg-agent="r1"/);
+  page.edit('input', { id: 'chats-msg-text', value: 'Ship it.', dataset: { msgAgent: 'r1' } });
+  await page.clickButton('chats-msg-send', { agent: 'r1' });
+  await page.settle();
+  assert.deepEqual(page.posts.map(p => [p.path, p.body.agentId, p.body.text]), [['/api/actions/message', 'r1', 'Ship it.']]);
+  await page.clickButton('no-t1', { chatsCard: '', quickDraft: 'No, ', agent: 't1' });
+  assert.match(page.el('chats-to').innerHTML, /<option value="t1" selected>pusher</);
+  assert.match(page.el('chats-compose').innerHTML, /data-msg-agent="t1"[^>]*>No, <\/textarea>/);
+});
