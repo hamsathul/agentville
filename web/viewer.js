@@ -331,7 +331,7 @@ async function sendReaderReply() {
     $('reader-text').value = '';
   }
   $('reader-status').textContent = r.ok
-    ? (agent?.state === 'working' ? `Queued for ${agent.name}: it reads it when its current step ends.` : `✓ Sent to ${agent?.name ?? 'the session'}.`)
+    ? (r.held ? `Waiting for ${agent?.name ?? 'the session'} to finish: it goes out when this turn ends (remove or edit it under its message box).` : `✓ Sent to ${agent?.name ?? 'the session'}.`)
     : `Not sent: ${r.error}`;
 }
 

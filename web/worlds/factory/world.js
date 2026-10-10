@@ -186,8 +186,8 @@
   const FACTORY_GRID = makeGrid({
     cols: 3, colW: COLW, rowH: ROWH, cx0: 174, top0: 100,
     slot: (cx, rowTop) => ({ lane: rowTop + 44, x0: cx - 36, y0: rowTop + 12 }),
-    // the world's foot: the conveyor (fence.y1 + 12), then a strip of bare floor, which is what the switches along the
-    // frame's bottom lie over when the frame is short and wide (the engine fits the world beside the panel there)
+    // the world's foot: the conveyor (fence.y1 + 12), then a strip of bare floor (the switches lay over it when they ran
+    // along the frame's bottom; they are in the Menu now)
     fence: rows => ({ x0: 128, x1: 396, y0: 96, y1: 104 + rows * ROWH }), height: fence => fence.y1 + 48,
   });
   // The power-cell banks (24 wide, their shadow 2 more): the first account's where it always stood; a second
@@ -1304,6 +1304,8 @@
     side: ['kkkkkkkkk', 'k...kyyyk', 'k...kyyyk', 'k...kyyyk', 'k...kyyyk', 'k...kyyyk', 'kkkkkkkkk', '.........', '.........'],
     bell: ['....k....', '...kyk...', '..kyyyk..', '..kyyyk..', '..kyyyk..', '.kyyyyyk.', 'kkkkkkkkk', '...kyk...', '....k....'],
     animals: ['.k.k.k...', '.k.k.k...', '.........', 'k.kkk.k..', '.kkkkk...', '.kkkkk...', '..kkk....', '.........', '.........'],
+    menu: ['.........', 'kkkkkkkkk', 'kkkkkkkkk', '.........', 'kkkkkkkkk', 'kkkkkkkkk', '.........', 'kkkkkkkkk', 'kkkkkkkkk'],
+    broadcast: ['.......k.', '.....kkk.', 'k..kkyyk.', 'kkkyyyyk.', 'kkyyyyyk.', 'kkkyyyyk.', 'k..kkyyk.', '....k.kk.', '....kk...'],
     cool: ['...PPP...', '...PwPP..', '...PwP...', '...PwPP..', '...PwP...', '...PBPP..', '..PBBBP..', '..PBBBP..', '...PPP...'],
     warm: ['...PPP...', '...PwPP..', '...PwP...', '...PyPP..', '...PyP...', '...PyPP..', '..PyyyP..', '..PyyyP..', '...PPP...'],
     hot: ['...PPP...', '...PwPP..', '...PoP...', '...PoPP..', '...PoP...', '...PoPP..', '..PoooP..', '..PoooP..', '...PPP...'],
@@ -1338,6 +1340,7 @@
     helpTip: 'How to read the factory',
     zoomTip: 'Zoom the factory inside its frame (or ⌘/Ctrl + scroll, or pinch); drag to move around when zoomed in',
     zoomAllTip: 'Show the whole factory',
+    menuTip: "The dashboard's buttons, the factory's switches, the bell, help and zoom", menuHead: 'ON THE FLOOR',
   };
   // The panel's glass: a screen's navy, as a robot's visor is, in place of the farm's green (only its colours: its size
   // and place stay the engine's). The buttons keep their cream and wood, as the floor's signs are.
@@ -1492,8 +1495,8 @@
       boardTitle: 'The manuals shelf: what your projects remember', // the engine opens it (the 'board' building)
       /**
        * The dashboard's panel and buttons, the farm's (the engine's panelHud) in the factory's words: top left, the
-       * panel (what the sessions cost, the robots built, the floor heat, the counts and meters); top right, the
-       * dashboard's buttons; along the bottom, the switches (Heat among them, a thermometer) and zoom.
+       * panel (what the sessions cost, the robots built, the floor heat, the counts and meters); top right, one Menu
+       * holding the dashboard's buttons, the factory's switches (Heat among them, a thermometer), the bell, help and zoom.
        */
       hud: p => panelHud({ ...p, scene, season: heat, iconImg, seasonIcon, seasonTip }, FACTORY_WORDS),
       /**

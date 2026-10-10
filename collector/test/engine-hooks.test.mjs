@@ -44,7 +44,7 @@ function load() {
   const dom = stubDom();
   const window = { Agentville: { raw: h => { window.registered = h; } } };
   const ctx = vm.createContext({ window, document: dom.document, console, Math, Date, JSON, Map, Set, Intl, ...dom.globals });
-  vm.runInContext(`${code}\n;window.sdk = { makeGrid, withDefaults, engineScene, makePixelView, makeField, ACTIVE, defaultHud, panelHud, PXG, fitClear };`, ctx);
+  vm.runInContext(`${code}\n;window.sdk = { makeGrid, withDefaults, engineScene, makePixelView, makeField, ACTIVE, defaultHud, panelHud, PXG, fitClear, holdHud };`, ctx);
   return { window, dom, sdk: window.sdk };
 }
 const twoAgents = window => window.AgentvilleScene.toScene({ generatedAt: NOW, collisions: [], agents: [
@@ -147,6 +147,23 @@ function mounted(world, prefsOf = {}, saved = []) {
   view.update(sdk.engineScene(twoAgents(window)));
   return { sdk, hud: () => String(els['.px-hud'].innerHTML), click: attr => click({ target: { closest: sel => (sel === `[${attr}]` ? {} : null) }, stopPropagation() {} }) };
 }
+
+test("the default HUD is one Menu at the top right: its button opens and shuts it, and it holds the dashboard's buttons (Broadcast too), the switches and zoom", () => {
+  const w = mounted(fourHooks());
+  const at = s => w.hud().indexOf(s);
+  assert.match(w.hud(), /^<div class="px-nav"><button type="button" data-farm-menu aria-expanded="false"/);
+  assert.match(w.hud(), /class="px-menu" role="group" aria-label="Menu" hidden>/);
+  for (const attr of ['data-farm-nav="list"', 'data-farm-nav="worlds"', 'data-farm-nav="side"', 'data-farm-nav="broadcast"', 'data-farm-sky', 'data-farm-motion', 'data-farm-help', 'data-farm-zoom="1"']) assert.ok(at(attr) > at('class="px-menu"'), `${attr} is in the menu`);
+  assert.doesNotMatch(w.hud(), /px-tools/, 'no row of switches along the bottom: the world has its foot back');
+  w.click('data-farm-menu');
+  assert.match(w.hud(), /data-farm-menu aria-expanded="true"/);
+  assert.doesNotMatch(w.hud(), /class="px-menu"[^>]*hidden/);
+  w.click('data-farm-menu');
+  assert.match(w.hud(), /class="px-menu"[^>]*hidden/);
+  w.click('data-farm-menu');
+  w.click('data-farm-sky'); // in the harness a click is never inside the menu: one elsewhere shuts it
+  assert.match(w.hud(), /class="px-menu"[^>]*hidden/);
+});
 
 test('a world with its own season hook gets the Season switch in the default HUD, after Sky; one without gets none', () => {
   const hud = mounted(fourHooks({ season: () => 'autumn' })).hud();
@@ -396,7 +413,7 @@ test('a season name holding HTML is escaped in the default HUD', () => {
 });
 
 // panelHud: the farm's panel and buttons, for any world, in its words. The engine's clicks find the buttons by these.
-const PANEL_ATTRS = ['data-farm-panel', 'data-farm-state="waiting"', 'data-farm-state="working"', 'data-farm-need', 'data-farm-nav="list"', 'data-farm-nav="worlds"', 'data-farm-nav="session"', 'data-farm-nav="setup"', 'data-farm-nav="side"', 'data-farm-nav="theme"',
+const PANEL_ATTRS = ['data-farm-panel', 'data-farm-state="waiting"', 'data-farm-state="working"', 'data-farm-need', 'data-farm-menu', 'data-farm-nav="list"', 'data-farm-nav="worlds"', 'data-farm-nav="session"', 'data-farm-nav="setup"', 'data-farm-nav="side"', 'data-farm-nav="broadcast"', 'data-farm-nav="theme"',
   'data-farm-follow', 'data-farm-resting', 'data-farm-bubbles', 'data-farm-animals', 'data-farm-sky', 'data-farm-season', 'data-farm-motion', 'data-farm-bell', 'data-farm-help', 'data-farm-zoom="-1"', 'data-farm-zoom="0"', 'data-farm-zoom="1"'];
 const panelOf = (sdk, seasonMode, words) => sdk.panelHud({
   seasonMode, seasons: true, animals: true, seasonNames: { switch: 'Heat', spring: 'cool', summer: 'warm', autumn: 'hot', winter: 'steaming' },
@@ -429,6 +446,22 @@ test('panelHud in a world without seasons: no season on the panel, no Season swi
   const html = sdk.panelHud({ seasons: false, scene: { farmers: [] } });
   assert.ok(!html.includes('px-season') && !html.includes('data-farm-season'));
   for (const attr of PANEL_ATTRS.filter(a => !['data-farm-season', 'data-farm-animals', 'data-farm-need', 'data-farm-state="waiting"', 'data-farm-state="working"'].includes(a))) assert.ok(html.includes(attr), attr);
+});
+
+test("panelHud's Menu: one button top right, the menu under it shut unless menuOpen; its heading over the world's switches is the world's (plain: IN THE <PLACE>)", () => {
+  const { sdk } = load();
+  const heads = html => [...html.matchAll(/<div class="px-menu-h">[\s\S]*?class="px-sr">([^<]*)</g)].map(m => m[1]);
+  const menuTitle = html => /data-farm-menu aria-expanded="\w+" title="([^"]*)"/.exec(html)[1];
+  const plain = panelOf(sdk, 'live', {}), workshop = panelOf(sdk, 'live', { place: 'workshop' }), own = panelOf(sdk, 'live', { menuHead: 'ON THE BENCH', menuTip: 'Every <b>button</b>' });
+  assert.deepEqual([heads(plain), menuTitle(plain)], [['DASHBOARD', 'IN THE WORLD'], "The dashboard's buttons, the world's switches, the bell, help and zoom"]);
+  assert.deepEqual([heads(workshop), menuTitle(workshop)], [['DASHBOARD', 'IN THE WORKSHOP'], "The dashboard's buttons, the workshop's switches, the bell, help and zoom"]);
+  assert.deepEqual([heads(own), menuTitle(own)], [['DASHBOARD', 'ON THE BENCH'], 'Every &lt;b&gt;button&lt;/b&gt;'], "the world's own, its tooltip as text");
+  assert.match(plain, /^ *<div class="px-nav">\n *<button type="button" data-farm-menu aria-expanded="false"/m, 'the Menu button first in the top right');
+  assert.match(plain, /class="px-menu" role="group" aria-label="Menu" hidden>/);
+  assert.doesNotMatch(plain, /px-tools/, 'nothing along the bottom');
+  const open = sdk.panelHud({ menuOpen: true, scene: { farmers: [] } });
+  assert.match(open, /data-farm-menu aria-expanded="true"/);
+  assert.doesNotMatch(open, /class="px-menu"[^>]*hidden/);
 });
 
 test("panelHud: a world's words holding HTML or quotes stay text", () => {
@@ -596,4 +629,19 @@ test('below the panel, the world keeps clear of the switches along the bottom to
   const beside = Math.min((fw - 2 - panel.w) / W, (fh - 2) / H), below = Math.min((fw - 2) / W, (fh - 2 - panel.h - tools) / H);
   assert.ok(fit >= Math.max(beside, below) * 0.99, `no smaller than it needs to be (${fit})`);
   assert.deepEqual(sdk.fitClear(1437, 898, W, H, { w: 374, h: 431 }, tools), sdk.fitClear(1437, 898, W, H, { w: 374, h: 431 }), 'beside the panel, the switches lie over the forest at its foot, as they always have');
+});
+
+// The panel's width follows its text (a CPU figure, an error line): the farm was fitted again at each
+// change, so it grew and shrank as the numbers moved. It is fitted to what the panel needs at most.
+test("the farm keeps its size while the panel's numbers change: it moves only when the panel outgrows what was kept for it", () => {
+  const { sdk } = load();
+  const first = sdk.holdHud(null, { w: 342, h: 453, tools: 30 });
+  assert.ok(first.w >= 342 + 24 && first.h === 453 && first.tools === 30, `room kept beside the panel for a longer figure (${JSON.stringify(first)})`);
+  for (const now of [{ w: 350, h: 453, tools: 30 }, { w: 342, h: 420, tools: 30 }, { w: 360, h: 453, tools: 30 }]) {
+    assert.equal(sdk.holdHud(first, now), first, `a panel within what was kept changes nothing (${JSON.stringify(now)})`);
+  }
+  const grown = sdk.holdHud(first, { w: 484, h: 470, tools: 30 });
+  assert.ok(grown !== first && grown.w >= 484 && grown.h >= 470, `a panel that outgrows it (an error line) is kept clear of (${JSON.stringify(grown)})`);
+  assert.equal(sdk.holdHud(grown, { w: 342, h: 453, tools: 30 }), grown, 'and the farm does not grow back when the line goes: only a new fit (the frame resized, the panel folded) measures afresh');
+  assert.deepEqual(plain(sdk.holdHud(null, { w: 0, h: 0, tools: 30 })), { w: 0, h: 0, tools: 30 }, 'no panel: nothing kept for one');
 });

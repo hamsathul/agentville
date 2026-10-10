@@ -210,10 +210,11 @@ test('a chat message is handed to the session through its mod, with delivery con
     assert.equal(handle.getSnapshot().agents.find(a => a.id === 'sess-msg').mod.live, true);
     assert.match((await handle.actions.message({ agentId: 'sess-msg', text: '   ' })).error, /Type a message/);
     assert.match((await handle.actions.message({ agentId: 'nope', text: 'hi' })).error, /not found/);
-    assert.deepEqual(await handle.actions.message({ agentId: 'sess-msg', text: 'Please also update the README.' }), { ok: true });
+    // its transcript ends on a prompt with no reply (mid-turn): `now` sends at once instead of holding it
+    assert.deepEqual(await handle.actions.message({ agentId: 'sess-msg', text: 'Please also update the README.', now: true }), { ok: true });
     assert.deepEqual(received, ['Please also update the README.']);
     modAlive = false;
-    const undelivered = await handle.actions.message({ agentId: 'sess-msg', text: 'second' });
+    const undelivered = await handle.actions.message({ agentId: 'sess-msg', text: 'second', now: true });
     assert.equal(undelivered.ok, false);
     assert.equal(existsSync(inbox) && readdirSync(inbox).length, 0);
     writeFileSync(join(root, 'state', 'mods', 'sess-msg.json'), JSON.stringify({ sessionId: 'sess-msg', version: '0.3.0', at: Date.now() - 60_000 }));
@@ -341,13 +342,13 @@ test('files sent with a message are saved for the agent, and the message tells i
   const handle = await startCollector({ root, claudeDir, claudeBin: '/usr/bin/false', notify: () => {}, log: () => {}, deliveryTimeoutMs: 1000 });
   try {
     assert.match((await handle.actions.message({ agentId: 'sess-shot', text: 'x', files: [{ name: 'gone.md', data: '' }] })).error, /gone\.md is empty/);
-    assert.deepEqual(await handle.actions.message({ agentId: 'sess-shot', text: '', files: [{ name: 'shot.png', data: png }, { name: 'notes.md', data: 'IyBOb3Rlcw==' }] }), { ok: true });
+    assert.deepEqual(await handle.actions.message({ agentId: 'sess-shot', text: '', files: [{ name: 'shot.png', data: png }, { name: 'notes.md', data: 'IyBOb3Rlcw==' }], now: true }), { ok: true });
     const saved = readdirSync(join(root, 'state', 'uploads', 'sess-shot')).sort();
     assert.equal(saved.length, 2);
     assert.equal(received.length, 1);
     assert.match(received[0], /^Please look at the files I attached\. Open each with the Read tool:\n/);
     for (const name of saved) assert.ok(received[0].includes(join(root, 'state', 'uploads', 'sess-shot', name)));
-    assert.deepEqual(await handle.actions.message({ agentId: 'sess-shot', text: '', folders: [root] }), { ok: true }, 'a folder alone is a message');
+    assert.deepEqual(await handle.actions.message({ agentId: 'sess-shot', text: '', folders: [root], now: true }), { ok: true }, 'a folder alone is a message');
     assert.equal(received[1], `Please look at the folder I attached. Look in it with your tools:\n${root}`);
     assert.match((await handle.actions.message({ agentId: 'sess-shot', text: 'x', folders: [join(root, 'gone')] })).error, /not a folder/);
   } finally {

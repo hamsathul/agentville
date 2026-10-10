@@ -143,26 +143,33 @@ function engineScene(s) {
   };
 }
 
-/** The HUD a world gets unless it draws its own: the dashboard's buttons, the sky (and the season, in a world with seasons), help and zoom. */
-const SEASON_DEFAULTS = { switch: 'Season', spring: 'spring', summer: 'summer', autumn: 'autumn', winter: 'winter' };
-function defaultHud({ zoom = 1, skyMode = 'live', seasonMode = 'live', seasons = false, still = false, nav = {}, animals = null, seasonNames = SEASON_DEFAULTS }) {
+const SEASON_DEFAULTS = { switch: 'Season', spring: 'spring', summer: 'summer', autumn: 'autumn', winter: 'winter' }; // a world's seasonNames, unless it gives its own
+/**
+ * The HUD a world gets unless it draws its own: a Menu at the top right holding the dashboard's buttons,
+ * then the sky (and the season, in a world with seasons), motion, animals, help and zoom.
+ */
+function defaultHud({ zoom = 1, skyMode = 'live', seasonMode = 'live', seasons = false, still = false, nav = {}, animals = null, menuOpen = false, seasonNames = SEASON_DEFAULTS }) {
   const btn = (attr, label, title, pressed) => `<button type="button" ${attr} title="${esc(title)}"${pressed === undefined ? '' : ` aria-pressed="${pressed}"`}>${pxImg(label, '#4e3626', null)}<span class="px-sr">${esc(label)}</span></button>`;
-  return `<div class="px-nav">${btn('data-farm-nav="list"', 'List', 'The list of agents')}${btn('data-farm-nav="worlds"', 'World', 'Choose a world')}${btn('data-farm-nav="side"', 'Sidebar', 'The selected agent beside the map', Boolean(nav.side))}</div>
-    <div class="px-tools">${btn('data-farm-sky', `Sky: ${skyMode}`, 'Live follows your clock; or day, or night')}${seasons ? btn('data-farm-season', `${seasonNames.switch}: ${seasonMode === 'live' ? 'live' : seasonNames[seasonMode]}`, "Live follows this world's own seasons; or hold one: spring, summer, autumn or winter") : ''}${btn('data-farm-motion', `Motion: ${still ? 'off' : 'on'}`, 'Walking and animation')}${animals === null ? '' : btn('data-farm-animals', `Animals: ${animals ? 'on' : 'off'}`, 'Animals that live here, just for fun: click one to pet or feed it', animals)}${btn('data-farm-help', 'Help', 'How to read this world')}
-      <span class="px-zoombar">${btn('data-farm-zoom="-1"', '-', 'Zoom out')}${btn('data-farm-zoom="0"', `${Math.round(zoom * 100)}%`, 'The whole world')}${btn('data-farm-zoom="1"', '+', 'Zoom in')}</span></div>`;
+  return `<div class="px-nav">${btn(`data-farm-menu aria-expanded="${menuOpen}"`, 'Menu', "The dashboard's buttons, the switches and zoom")}
+    <div class="px-menu" role="group" aria-label="Menu"${menuOpen ? '' : ' hidden'}>
+      <div class="px-menu-grid">${btn('data-farm-nav="list"', 'List', 'The list of agents')}${btn('data-farm-nav="worlds"', 'World', 'Choose a world')}${btn('data-farm-nav="side"', 'Sidebar', 'The selected agent beside the map', Boolean(nav.side))}${btn('data-farm-nav="broadcast"', 'Broadcast', 'Message several agents at once')}</div>
+      ${btn('data-farm-sky', `Sky: ${skyMode}`, 'Live follows your clock; or day, or night')}${seasons ? btn('data-farm-season', `${seasonNames.switch}: ${seasonMode === 'live' ? 'live' : seasonNames[seasonMode]}`, "Live follows this world's own seasons; or hold one: spring, summer, autumn or winter") : ''}${btn('data-farm-motion', `Motion: ${still ? 'off' : 'on'}`, 'Walking and animation')}${animals === null ? '' : btn('data-farm-animals', `Animals: ${animals ? 'on' : 'off'}`, 'Animals that live here, just for fun: click one to pet or feed it', animals)}${btn('data-farm-help', 'Help', 'How to read this world')}
+      <span class="px-zoombar">${btn('data-farm-zoom="-1"', '-', 'Zoom out')}${btn('data-farm-zoom="0"', `${Math.round(zoom * 100)}%`, 'The whole world')}${btn('data-farm-zoom="1"', '+', 'Zoom in')}</span>
+    </div></div>`;
 }
 
 /**
  * The farm's panel and buttons, for any world, in its own words: top left, the panel with what the
  * dashboard's top bar and count cards say (cost, compactions, the season, the counts, the meters); top
- * right, the dashboard's own buttons; along the bottom, the switches and zoom. A world's hud can be
+ * right, one Menu holding the dashboard's own buttons, the world's switches, the bell, help and zoom
+ * (open with `menuOpen`; the engine opens and shuts it). A world's hud can be
  * `p => panelHud({ ...p, scene, season, iconImg, seasonIcon, seasonTip }, WORDS)`: `params` is the hud's
  * state plus the world's engine `scene`, its live `season`, and its `iconImg(name)` (HTML for an icon),
  * `seasonIcon(level)` (the icon's name) and `seasonTip(mode)` (the season's tooltip). `words` are the
  * world's words and colours; any it leaves out are plain ones in its `place`, `agent` and `agents`
  * (docs/worlds.md, "panelHud"). The buttons keep their data-farm-* attributes: the engine's clicks read them.
  */
-function panelHud({ still, zoom = 1, saysOn = true, skyMode = 'live', seasonMode = 'live', seasons = true, seasonNames, follow = false, canFollow = false, restingHidden = null, bell = false, nav = {}, panelOpen = true, animals = null,
+function panelHud({ still, zoom = 1, saysOn = true, skyMode = 'live', seasonMode = 'live', seasons = true, seasonNames, follow = false, canFollow = false, restingHidden = null, bell = false, nav = {}, panelOpen = true, animals = null, menuOpen = false,
   scene = { farmers: [] }, season = 'summer', iconImg = () => '', seasonIcon = s => s, seasonTip = () => '' }, words = {}) {
   const names = { ...SEASON_DEFAULTS, ...seasonNames }, named = s => (Object.hasOwn(names, s) ? names[s] : s);
   const { place = 'world', agent = 'agent', agents = 'agents' } = words;
@@ -182,6 +189,8 @@ function panelHud({ still, zoom = 1, saysOn = true, skyMode = 'live', seasonMode
     helpTip: `How to read the ${place}`,
     zoomTip: `Zoom the ${place} inside its frame (or ⌘/Ctrl + scroll, or pinch); drag to move around when zoomed in`,
     zoomAllTip: `Show the whole ${place}`,
+    menuTip: `The dashboard's buttons, the ${place}'s switches, the bell, help and zoom`,
+    menuHead: `IN THE ${String(place).toUpperCase()}`,
     ...Object.fromEntries(Object.entries(words).filter(([, v]) => typeof v === 'string')),
   };
   // In an attribute: & < > " escaped, an apostrophe left as it is (the farm's tooltips have them).
@@ -199,7 +208,8 @@ function panelHud({ still, zoom = 1, saysOn = true, skyMode = 'live', seasonMode
   const ramRatio = ch.ram?.totalMb ? ch.ram.usedMb / ch.ram.totalMb : 0, cpuRatio = (ch.cpu?.used ?? 0) / ((ch.cpu?.cores || 1) * 100);
   const windows = scene.plan?.windows ?? [], win = kind => windows.find(x => x.kind === kind), pctOf = x => (x ? (x.reset ? 0 : Math.round(x.percentUsed)) : null);
   const five = pctOf(win('five_hour')), week = pctOf(win('seven_day')), accs = scene.accounts ?? [];
-  const tool = (attrs, icon, name, state, title, disabled = false) => `<button type="button" ${attrs}${disabled ? ' disabled' : ''} title="${esc(title)}">${iconImg(icon)}${pxImg(name, words.toolColor, null)}${state ? pxImg(state, words.toolStateColor, null) : ''}<span class="px-sr">${esc(state ? `${name}: ${state}` : name)}</span></button>`;
+  const tool = (attrs, icon, name, state, title, disabled = false) => `<button type="button" ${attrs}${disabled ? ' disabled' : ''} title="${esc(title)}">${iconImg(icon)}${pxImg(name, words.toolColor, null)}${state ? `<span class="px-mi-s">${pxImg(state, words.toolStateColor, null)}</span>` : ''}<span class="px-sr">${esc(state ? `${name}: ${state}` : name)}</span></button>`;
+  const head = text => `<div class="px-menu-h">${pxt(text, words.toolStateColor, null)}</div>`; // a heading in the menu
   const navBtn = (what, icon, name, title, pressed) => `<button type="button" data-farm-nav="${what}" title="${esc(title)}"${pressed === undefined ? '' : ` aria-pressed="${pressed}"`}>${iconImg(icon)}${pxImg(name, words.toolColor, null)}<span class="px-sr">${esc(name)}</span></button>`;
   return `<div class="px-stats${panelOpen ? '' : ' folded'}">
             <button type="button" class="px-brand" data-farm-panel title="${panelOpen ? 'Fold this panel away' : 'Show the counts and meters'}" aria-expanded="${panelOpen}">${brand}${pxt('AGENTVILLE', words.brandColor, words.shadowColor)}<i class="px-live${nav.live === false ? ' off' : ''}" title="${nav.live === false ? 'Disconnected from the collector: retrying' : 'Live'}"></i>${pxt(panelOpen ? '-' : '+', words.dimColor, null)}</button>
@@ -224,14 +234,19 @@ function panelHud({ still, zoom = 1, saysOn = true, skyMode = 'live', seasonMode
             ${need ? `<button type="button" class="px-need" data-farm-need title="Open the first agent that needs you">${pxt(`${need} need${need > 1 ? '' : 's'} you`, '#ffffff', '#5a1f19')}</button>` : ''}
           </div>
           <div class="px-nav">
-            ${navBtn('list', 'list', 'LIST', 'Back to the list view')}
-            ${navBtn('worlds', 'world', 'WORLD', 'Choose a world')}
-            ${navBtn('session', 'plus', 'SESSION', 'Start a new Claude Code session in a folder, or resume a past one')}
-            ${navBtn('setup', 'gear', 'CLAUDE CODE', 'Your Claude Code setup: plugins and skills (and what each costs in context), MCP servers, permission rules')}
-            ${navBtn('side', 'side', 'SIDEBAR', words.sideTip, Boolean(nav.side))}
-            ${navBtn('theme', nav.theme === 'light' ? 'day' : nav.theme === 'auto' ? 'live' : 'night', String(nav.theme ?? 'dark').toUpperCase(), 'Theme: dark, light, or auto (as macOS is): click to change')}
-          </div>
-          <div class="px-tools">
+            <button type="button" data-farm-menu aria-expanded="${menuOpen}" title="${attr(words.menuTip)}">${iconImg('menu')}${pxImg('MENU', words.toolColor, null)}<span class="px-sr">Menu</span></button>
+            <div class="px-menu" role="group" aria-label="Menu"${menuOpen ? '' : ' hidden'}>
+              ${head('DASHBOARD')}
+              <div class="px-menu-grid">
+                ${navBtn('list', 'list', 'LIST', 'Back to the list view')}
+                ${navBtn('worlds', 'world', 'WORLD', 'Choose a world')}
+                ${navBtn('session', 'plus', 'SESSION', 'Start a new Claude Code session in a folder, or resume a past one')}
+                ${navBtn('setup', 'gear', 'CLAUDE CODE', 'Your Claude Code setup: plugins and skills (and what each costs in context), MCP servers, permission rules')}
+                ${navBtn('side', 'side', 'SIDEBAR', words.sideTip, Boolean(nav.side))}
+                ${navBtn('broadcast', 'broadcast', 'BROADCAST', 'Message several agents at once: all of them, or the ones you pick')}
+                ${navBtn('theme', nav.theme === 'light' ? 'day' : nav.theme === 'auto' ? 'live' : 'night', String(nav.theme ?? 'dark').toUpperCase(), 'Theme: dark, light, or auto (as macOS is): click to change')}
+              </div>
+              ${head(words.menuHead)}
               ${tool('data-farm-follow', 'follow', 'Follow', follow ? 'on' : 'off', canFollow ? words.followTip : words.followFirstTip, !canFollow)}
               ${tool('data-farm-resting', 'resting', 'Resting', restingHidden === null ? 'shown' : `hidden (${restingHidden})`, words.restingTip)}
               ${tool('data-farm-bubbles', 'bubbles', 'Bubbles', saysOn ? 'on' : 'off', words.bubblesTip)}
@@ -239,9 +254,11 @@ function panelHud({ still, zoom = 1, saysOn = true, skyMode = 'live', seasonMode
               ${tool('data-farm-sky', skyMode, 'Sky', skyMode, words.skyTip)}
               ${seasons ? tool('data-farm-season', seasonIcon(seasonMode === 'live' ? season : seasonMode), names.switch, seasonMode === 'live' ? 'live' : named(seasonMode), words.seasonSwitchTip) : ''}
               ${tool('class="px-motion" data-farm-motion', still ? 'pause' : 'play', 'Motion', still ? 'off' : 'on', words.motionTip)}
+              <div class="px-menu-sep"></div>
               ${tool('data-farm-bell', 'bell', 'Bell', bell ? 'on' : 'off', 'A chime, and a desktop notice when the page is in the background, whenever an agent starts waiting on you (in the list view too)')}
               ${tool(`class="px-info" data-farm-help aria-label="${attr(words.helpTip)}"`, 'help', 'Help', '', words.helpTip)}
-              <span class="px-zoombar" title="${attr(words.zoomTip)}"><button type="button" data-farm-zoom="-1" aria-label="Zoom out">${pxt('-', words.toolColor, null)}</button><button type="button" data-farm-zoom="0" title="${attr(words.zoomAllTip)}">${pxt(`${Math.round(zoom * 100)}%`, words.toolColor, null)}</button><button type="button" data-farm-zoom="1" aria-label="Zoom in">${pxt('+', words.toolColor, null)}</button></span>
+              <div class="px-menu-zoom">${pxt('ZOOM', words.toolStateColor, null)}<span class="px-zoombar" title="${attr(words.zoomTip)}"><button type="button" data-farm-zoom="-1" aria-label="Zoom out">${pxt('-', words.toolColor, null)}</button><button type="button" data-farm-zoom="0" title="${attr(words.zoomAllTip)}">${pxt(`${Math.round(zoom * 100)}%`, words.toolColor, null)}</button><button type="button" data-farm-zoom="1" aria-label="Zoom in">${pxt('+', words.toolColor, null)}</button></span></div>
+            </div>
           </div>`;
 }
 
@@ -266,6 +283,18 @@ function fitClear(fw, fh, W, H, panel, tools = 0) {
   const l = Math.floor(isBelow ? spareW / 2 : spareW <= 0 ? 0 : spareW >= left ? left + (spareW - left) / 2 : spareW);
   const t = isBelow ? Math.min(spareH, Math.ceil(top + Math.max(0, spareH - top - foot) / 2)) : Math.floor(spareH / 2);
   return { fit, pad: { l, r: Math.floor(spareW) - l, t, b: spareH - t } };
+}
+
+/**
+ * What the world is fitted clear of: the panel and the switches as they stand (`now`: { w, h, tools },
+ * CSS pixels) against what was kept before (null on a new fit). The same object while `now` fits inside
+ * it, so the world keeps its size as the panel's figures come and go; more when the panel outgrows it
+ * (an error line, an account's row). Beside the panel, room is kept for a longer figure.
+ */
+function holdHud(kept, now) {
+  if (kept && now.w <= kept.w && now.h <= kept.h && now.tools <= kept.tools) return kept;
+  const room = w => (w ? w + 24 : 0);
+  return kept ? { w: Math.max(kept.w, room(now.w)), h: Math.max(kept.h, now.h), tools: Math.max(kept.tools, now.tools) } : { w: room(now.w), h: now.h, tools: now.tools };
 }
 
 const BOARD_TITLE = 'The notice board: what your projects remember';
@@ -369,6 +398,7 @@ function makePixelView(th, prefs) {
   let follow = false; // keep the picked farmer in the middle of the view
   let restingShown = prefs.get('resting') !== 'hidden'; // idle and stale farmers on the farm, or not
   let bellOn = prefs.get('bell') === 'on';
+  let hudMenu = false; // the HUD's Menu (the dashboard's buttons, the switches and zoom): open or shut
   let panelOpen = prefs.get('panel') !== 'folded'; // the farm's panel: counts and meters, or folded to its title // a chime and a desktop notice when an agent starts waiting (the page rings it)
   const moverEls = new Map(); // labels that move: key → element
   let dlg = null, mini = null; // the buildings' dialog; the minimap shown while zoomed in
@@ -376,7 +406,8 @@ function makePixelView(th, prefs) {
   const resting = f => f.state === 'idle' || f.state === 'stale';
   let glide = null; // a zoom easing in: { from: scale, start, ox, oy }
   let pad = { l: 0, r: 0, t: 0, b: 0 }; // the frame's spare room, in world pixels: more forest all round
-  let hudKey = ''; // the panel's size and the switches' height the farm was last fitted clear of
+  let hudKept = null; // the panel's size and the switches' height the farm is fitted clear of (holdHud); null: measure afresh
+  let refit = 0; // a fit waiting for the next frame: the panel outgrew what was kept for it
   const extOf = () => ({ x0: -pad.l, x1: th.W + pad.r, y0: -pad.t, y1: th.layout().H + pad.b });
   const skyNow = () => skyAt(skyMode === 'day' ? new Date(2000, 0, 1, 12) : skyMode === 'night' ? new Date(2000, 0, 1, 23) : new Date());
   let wheel = 0;
@@ -455,7 +486,11 @@ function makePixelView(th, prefs) {
     if (r.fx === 'crumbs') for (let k = 0; k < 12; k++) addPart({ x: x + rand(-8, 8), y: y - 2, vx: rand(-14, 14), vy: rand(-22, -8), g: 70, life: 0.8, max: 0.8, size: 1, color: '#e9c46a' });
     if (r.fx === 'dust') for (let k = 0; k < 8; k++) addPart({ x: x + rand(-4, 4), y: y - 1, vx: rand(-18, 18), vy: rand(-12, -4), g: 30, life: 0.5, max: 0.5, size: rand(1, 2), color: '#c9a46a', alpha: 0.7 });
   }
-  function onMenuKey(e) { if (e.key === 'Escape' && menuFor) closeMenu(); }
+  function onMenuKey(e) {
+    if (e.key !== 'Escape') return;
+    if (menuFor) closeMenu();
+    else if (hudMenu) { hudMenu = false; renderHud(); hudEl?.querySelector('[data-farm-menu]')?.focus?.(); } // the HUD's Menu: shut, back on its button
+  }
 
   function targets() {
     const out = new Map(), count = {}, used = new Map(), over = { desk: 0, turn: 0, storage: 0, charge: 0, meadow: 0 };
@@ -496,15 +531,16 @@ function makePixelView(th, prefs) {
     setTimeout(() => el.remove(), 1700);
   }
   function renderHud() {
-    if (hudEl) hudEl.innerHTML = th.hud({ still, zoom, saysOn, skyMode, seasonMode, seasons: th.hasSeasons, follow, canFollow: Boolean(selectedId && bots.has(selectedId)), restingHidden: restingShown ? null : scene.farmers.filter(resting).length, bell: bellOn, nav: opts.navState?.() ?? {}, panelOpen, animals: kit ? animalsOn : null, seasonNames: th.seasonNames });
+    if (hudEl) hudEl.innerHTML = th.hud({ still, zoom, saysOn, skyMode, seasonMode, seasons: th.hasSeasons, follow, canFollow: Boolean(selectedId && bots.has(selectedId)), restingHidden: restingShown ? null : scene.farmers.filter(resting).length, bell: bellOn, nav: opts.navState?.() ?? {}, panelOpen, animals: kit ? animalsOn : null, menuOpen: hudMenu, seasonNames: th.seasonNames });
     placeMini();
-    // a panel that grew (an account's row) or shrank, or switches on more rows: the farm moves clear of them
-    if (canvas && hudSize() !== hudKey) resize();
+    // a panel that outgrew what was kept for it: the farm moves clear of it on the next frame, not in
+    // the middle of whatever drew the HUD (a farmer's move, say)
+    if (canvas && !refit && holdHud(hudKept, hudNow()) !== hudKept) refit = requestAnimationFrame(() => { refit = 0; resize(); });
   }
   /** The panel over the frame's top left (a world's .px-stats; 0 × 0 when there is none) and the switches' height, as they stand. */
-  function hudSize() {
-    const el = hudEl?.querySelector('.px-stats'), tools = hudEl?.querySelector('.px-tools');
-    return `${el?.offsetWidth ?? 0},${el?.offsetWidth ? el.offsetHeight : 0},${tools?.offsetHeight ?? 0}`;
+  function hudNow() {
+    const el = hudEl?.querySelector('.px-stats'), tools = hudEl?.querySelector('.px-tools'), w = el?.offsetWidth ?? 0;
+    return { w, h: w ? el.offsetHeight : 0, tools: tools?.offsetHeight ?? 0 };
   }
   /** The minimap sits just above the switches, which take more rows in a narrow frame (the sidebar open). */
   function placeMini() {
@@ -974,8 +1010,8 @@ function makePixelView(th, prefs) {
     // over the frame's top left (its 10px margin and a 6px gap): the farm sits clear of it.
     const fw = viewEl?.offsetWidth || th.W, fh = viewEl?.offsetHeight || 0;
     const was = `${pad.l},${pad.r},${pad.t},${pad.b}`;
-    hudKey = hudSize();
-    const [pw, ph, tools] = hudKey.split(',').map(Number);
+    hudKept = holdHud(hudKept, hudNow());
+    const { w: pw, h: ph, tools } = hudKept;
     let fit;
     ({ fit, pad } = fitClear(fw, fh, th.W, H, pw ? { w: pw + 16, h: ph + 16 } : null, tools ? tools + 12 : 0)); // the switches: 8px off the bottom, a 4px gap
     const EW = th.W + pad.l + pad.r, EH = H + pad.t + pad.b;
@@ -1043,6 +1079,18 @@ function makePixelView(th, prefs) {
     const whoBtn = e.target.closest?.('[data-animal-who]');
     if (whoBtn && menuFor) { e.stopPropagation(); menuFor.doer = whoBtn.dataset.animalWho; renderMenu(); return; }
     if (menuEl && !menuEl.contains(e.target)) closeMenu(); // a click anywhere else closes it (and does what it does)
+    // The HUD's Menu: its button opens and shuts it; a click anywhere else shuts it (and does what it does).
+    // In it, the switches and zoom leave it open, to change several; a button that takes you elsewhere or
+    // raises a dialog (List, a session, Help…) shuts it first. Theme stays, to go round its three.
+    if (e.target.closest?.('[data-farm-menu]')) {
+      e.stopPropagation();
+      hudMenu = !hudMenu;
+      renderHud();
+      if (hudMenu) hudEl?.querySelector('.px-menu button:not(:disabled)')?.focus?.();
+      return;
+    }
+    if (hudMenu && !e.target.closest?.('.px-menu')) { hudMenu = false; renderHud(); }
+    if (hudMenu && e.target.closest?.('[data-farm-help], [data-farm-nav]:not([data-farm-nav="theme"])')) hudMenu = false;
     const tag = e.target.closest?.('[data-farmer]');
     if (tag) { e.stopPropagation(); opts.onPickAgent?.(tag.dataset.farmer); return; }
     if (e.target.closest?.('[data-farm-more]')) { e.stopPropagation(); opts.onShowRepos?.(); return; }
@@ -1063,7 +1111,7 @@ function makePixelView(th, prefs) {
     if (mem) { e.stopPropagation(); dlg?.close(); opts.onOpenDoc?.(mem.dataset.farmMem, mem.dataset.path); return; }
     if (e.target.closest?.('[data-farm-dlg-close]') || (dlg && e.target === dlg)) { e.stopPropagation(); dlg.close(); return; }
     if (dlg?.contains(e.target)) return;
-    if (e.target.closest?.('[data-farm-panel]')) { e.stopPropagation(); panelOpen = !panelOpen; prefs.set('panel', panelOpen ? 'open' : 'folded'); renderHud(); resize(); return; }
+    if (e.target.closest?.('[data-farm-panel]')) { e.stopPropagation(); panelOpen = !panelOpen; prefs.set('panel', panelOpen ? 'open' : 'folded'); renderHud(); hudKept = null; resize(); return; }
     const navBtn = e.target.closest?.('[data-farm-nav]');
     if (navBtn) { e.stopPropagation(); opts.onNav?.(navBtn.dataset.farmNav); renderHud(); return; } // the dashboard's own buttons
     const stateBtn = e.target.closest?.('[data-farm-state]');
@@ -1147,7 +1195,7 @@ function makePixelView(th, prefs) {
     const say = e.target.closest?.('[data-say]');
     if (say) { e.stopPropagation(); opts.onPickAgent?.(say.dataset.say, { from: 'say' }); return; }
     const help = host.querySelector('.px-help');
-    if (e.target.closest?.('[data-farm-help]')) { e.stopPropagation(); help.showModal(); return; }
+    if (e.target.closest?.('[data-farm-help]')) { e.stopPropagation(); renderHud(); help.showModal(); return; }
     if (e.target.closest?.('[data-farm-help-close]') || e.target === help) { e.stopPropagation(); help.close(); return; } // × or a click on the backdrop
     if (help?.contains(e.target)) return;
     if (e.target !== canvas) return;
@@ -1253,10 +1301,11 @@ function makePixelView(th, prefs) {
       settle(groundFor(scene.fields));
       renderHud(); // before the first fit: the panel's and switches' size place the farm
       bg = buildBg();
+      hudKept = null;
       resize();
       placed = false;
       if (got) restorePlace(); // else when the first scene has been applied and the canvas has its size
-      ro = new ResizeObserver(() => resize());
+      ro = new ResizeObserver(() => { hudKept = null; resize(); }); // a new frame size: the panel measured afresh
       ro.observe(host);
       host.addEventListener('click', onClick);
       viewEl.addEventListener('wheel', onWheel, { passive: false });

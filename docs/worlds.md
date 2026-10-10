@@ -35,7 +35,7 @@ Keys: a built-in world is named by its folder in `web/worlds/` (the farm is `far
 | World | Key | What it is |
 |---|---|---|
 | 🌾 **Farm** | `farm` | Built in, and the default: every agent a farmer, every repo a field, with animals of its own. The README's "The farm" says what each thing on it means |
-| 🤖 **Robot factory** | `factory` | Built in: a bright workshop where every agent is a robot put together from parts picked by its id, and every repo an assembly bay where a robot is built as the context fills. It shows everything the farm shows, its own way: the 5-hour limit is floor heat (its Season switch is **Heat**: `seasonNames`), a message is a capsule through pneumatic tubes (its own `flight`), and its panel is the farm's (`panelHud`) in its words. A robot dog, a robot vacuum and a cat live there. The README's "The robot factory" says what each thing means; `web/worlds/factory/world.js` is the second full example after the farm |
+| 🤖 **Robot factory** | `factory` | Built in: a bright workshop where every agent is a robot put together from parts picked by its id, and every repo an assembly bay where a robot is built as the context fills. It shows everything the farm shows, its own way: the 5-hour limit is floor heat (its Season switch is **Heat**: `seasonNames`), a message is a capsule through pneumatic tubes (its own `flight`), and its panel and Menu are the farm's (`panelHud`) in its words. A robot dog, a robot vacuum and a cat live there. The README's "The robot factory" says what each thing means; `web/worlds/factory/world.js` is the second full example after the farm |
 | 🌱 **Starter** | `starter` | The template `npm run new-world` copies: plain, short, and not in the list of worlds (see "The starter world"). It can still be framed, so the test page and `check-world` run it |
 
 ![The farm: every agent a farmer, every repo a field](farm.png)
@@ -359,7 +359,7 @@ A hook you give always wins over its default.
 | `onMove` | `(agent, zone, prevZone, pop)` | nothing; `pop(text, cls)` shows a pop-up over the agent |
 | `speed` | `(agent)` | `40`: walking speed |
 | `zoneText` | `(agent, zone)` | `'moves'`: the log line when an agent changes zone |
-| `hud` | `(state)` | the dashboard's buttons: list, world, sidebar, sky, season (in a world with seasons), motion, help, zoom. `state` is `{ still, zoom, saysOn, skyMode, seasonMode, seasonNames, seasons, follow, canFollow, restingHidden, bell, nav, panelOpen, animals }` (`animals`: `true` or `false` for a world with animals, its Animals switch with `data-farm-animals`; `null` for one without. `seasons`: `true` for a world with seasons, whose Season switch is a button with `data-farm-season`, right after the Sky's `data-farm-sky`, saying `seasonMode`: `'live'`, `'spring'`, `'summer'`, `'autumn'` or `'winter'`; the engine moves it on when it is clicked). Your own should keep List and World: an engine world gets no corner control from the page. Or use `panelHud(params, words)`, the farm's panel and buttons in your own words (see the factory, and "`panelHud(params, words)`", below). A panel at the top left with the class `px-stats` (panelHud's, as the farm's, or your own) never covers the world: at 100% the engine fits the world beside it, or below it (and then above the `px-tools` switches) when that leaves it bigger, and fits it again when the panel folds or grows |
+| `hud` | `(state)` | one **Menu** button at the top right (`data-farm-menu`), and under it the menu (`.px-menu`, `hidden` while shut): the dashboard's buttons (list, world, sidebar, broadcast), then sky, season (in a world with seasons), motion, animals, help and zoom. The engine opens and shuts the menu: its button, Esc, or a click anywhere else; inside it, a switch or zoom leaves it open and a button that takes you elsewhere (`data-farm-nav` but `theme`, help) shuts it. `state` is `{ still, zoom, saysOn, skyMode, seasonMode, seasonNames, seasons, follow, canFollow, restingHidden, bell, nav, panelOpen, animals, menuOpen }` (`menuOpen`: draw your own menu open, as `menuOpen ? '' : ' hidden'` on it; a HUD of your own may also lay its buttons out without one. `animals`: `true` or `false` for a world with animals, its Animals switch with `data-farm-animals`; `null` for one without. `seasons`: `true` for a world with seasons, whose Season switch is a button with `data-farm-season`, right after the Sky's `data-farm-sky`, saying `seasonMode`: `'live'`, `'spring'`, `'summer'`, `'autumn'` or `'winter'`; the engine moves it on when it is clicked). Your own should keep List and World: an engine world gets no corner control from the page. Or use `panelHud(params, words)`, the farm's panel and Menu in your own words (see the factory, and "`panelHud(params, words)`", below). A panel at the top left with the class `px-stats` (panelHud's, as the farm's, or your own) never covers the world: at 100% the engine fits the world beside it, or below it (and then above a row of `px-tools` switches, if your HUD has one: the default and panelHud's have none) when that leaves it bigger. It fits it again when the panel folds or unfolds, the frame changes size, or the panel outgrows the room kept for it (an error line, say), never as its figures change |
 | `ground`, `shadows(body)`, `top`, `drawFx(agent, body)` | | nothing: drawn under the agents, under each agent, over everything, and over each agent |
 | `season` | `()` | `'summer'`, and no seasons. A world that gives its own has seasons ("Seasons", below): it returns the live season (`'spring'`, `'summer'`, `'autumn'` or `'winter'`), and the HUD gets the Season switch |
 | `seasonNames` | | a field, not a function: `{ switch, spring, summer, autumn, winter }`, what the world calls its Season switch and its four levels ("Seasons", below). Any you leave out keep today's word (`'Season'`, `'spring'`…). The default HUD's button reads `Heat: warm` with them; `hud(state)` gets the object as `state.seasonNames`. The setting still saves `live`, `spring`, `summer`, `autumn` or `winter`, and `PXG.season` holds those too |
@@ -510,15 +510,18 @@ keeps the farm's words, as its pictures are the farm's.
 
 The farm's panel and buttons, for any world, in its own words: top left, the stats panel (what the
 sessions cost, how often they were compacted, the season, the counts and the meters, the "needs you"
-button); top right, the dashboard's buttons (List, World, Session, Claude Code, Sidebar, Theme); along
-the bottom, the switches and zoom. It returns the HTML, so a world's `hud` can be just a call to it:
+button); top right, one **Menu** button, and under it the menu: the dashboard's buttons (List, World,
+Session, Claude Code, Sidebar, Broadcast, Theme) under DASHBOARD, then your world's switches (Follow,
+Resting, Bubbles, Animals, Sky, Season, Motion) under a heading of yours (`menuHead`), then Bell, Help
+and zoom. Nothing lies along the bottom. The engine opens and shuts the menu, as for any `hud` (above):
+its button, Esc, or a click anywhere else. It returns the HTML, so a world's `hud` can be just a call to it:
 
 ```js
 // Among your hooks: `scene` is the scene your setScene keeps, `liveSeason` your own season() ("Seasons").
 hud: p => panelHud({ ...p, scene, season: liveSeason() }, { place: 'workshop', agent: 'tinker', agents: 'tinkers', compactedWord: 'tidied' }),
 ```
 
-`params` is the `state` the `hud` hook gets, plus:
+`params` is the `state` the `hud` hook gets (its `menuOpen` draws the menu open), plus:
 
 - `scene`: the engine's scene (`engineScene`'s, or your `fromScene`'s): its `farmers`, `plan`, `accounts`
   and `chrome`. With two or more `accounts`, the meters show one for each account (its name, cut to 6, in
@@ -527,8 +530,8 @@ hud: p => panelHud({ ...p, scene, season: liveSeason() }, { place: 'workshop', a
   `accounts` in a scene of your own, or the panel shows the first account's plan only;
 - `season`: the live season (`'spring'` … `'winter'`), shown on the panel by its `seasonNames` word;
 - `iconImg(name)`: HTML for one of your icons (`''` for none, the default). The names it is asked
-  for: `list`, `world`, `plus`, `gear`, `side`, `day`, `live`, `night`, `follow`, `resting`,
-  `bubbles`, `animals`, `pause`, `play`, `bell`, `help`, and whatever `seasonIcon` returns;
+  for: `menu`, `list`, `world`, `plus`, `gear`, `side`, `broadcast`, `day`, `live`, `night`, `follow`,
+  `resting`, `bubbles`, `animals`, `pause`, `play`, `bell`, `help`, and whatever `seasonIcon` returns;
 - `seasonIcon(level)`: the icon's name for a season (default: the season itself);
 - `seasonTip(mode)`: the panel's season tooltip, `mode` being `'live'` or the season held (default: none).
 
@@ -545,7 +548,8 @@ and `agents` (`'world'`, `'agent'`, `'agents'`), with the farm's colours:
 | `costTip`, `costIcon` | the cost's tooltip, and the class of its icon | "What the sessions on the farm have cost so far (each one's purse; from the mod)", `coin` |
 | `compactedWord`, `compactedTip`, `compactedIcon` | the word after the number of compactions ("3 harvested"), its tooltip, its icon's class | `harvested`, "Harvests: each time a session's conversation was compacted", `basket` |
 | `textColor`, `shadowColor`, `dimColor`, `labelColor`, `brandColor` | the panel's numbers and their shadow, its dim and label text, the AGENTVILLE mark | `#fff3d6`, `#2a1d14`, `#c9b48a`, `#a9c79a`, `#ffe8a3` |
-| `toolColor`, `toolStateColor` | the buttons' names and their states (on, off…) | `#4e3626`, `#8b5a2b` |
+| `toolColor`, `toolStateColor` | the buttons' names (MENU's too), and their states (on, off…) and the menu's headings and ZOOM | `#4e3626`, `#8b5a2b` |
+| `menuTip`, `menuHead` | the Menu button's tooltip, and the menu's heading over your world's switches (plain: `IN THE <PLACE>`) | "The dashboard's buttons, the farm's switches, the bell, help and zoom", `ON THE FARM` |
 | `sideTip` | the Sidebar button's tooltip | "Show the selected farmer's answer box, activity and files beside the farm" |
 | `followTip`, `followFirstTip` | Follow's tooltip, with someone picked and with nobody | "Keep the farmer you picked in the middle of the view…", "Pick a farmer first, then Follow keeps it in view" |
 | `restingTip`, `bubblesTip`, `animalsTip`, `skyTip`, `seasonSwitchTip`, `motionTip`, `helpTip` | the Resting, Bubbles, Animals, Sky, Season, Motion and Help switches' tooltips | "Idle farmers (under the tree) and stale ones (scarecrows)…", "…what each farmer last said…", "Animals on the farm, just for fun…", "The light: live follows your clock…", "The season: live follows your plan's 5-hour limit…", "Walking and animation on the farm", "How to read the farm" |
@@ -553,12 +557,13 @@ and `agents` (`'world'`, `'agent'`, `'agents'`), with the farm's colours:
 
 A word is text: HTML in it is shown as it is written, never run. A word that isn't a string gets the
 plain one. The rest stays the engine's in any world: the count cards, the meters, the dashboard's buttons,
-the Bell, and the `data-farm-*` attributes the engine's clicks find the buttons by. Its stylesheet's
+the MENU and DASHBOARD words, the Bell, and the `data-farm-*` attributes the engine's clicks find the buttons by. Its stylesheet's
 `coin` and `basket` are the two icon classes a world can name without CSS of its own.
 
 The factory's `hud` is `p => panelHud({ ...p, scene, season: heat, iconImg, seasonIcon, seasonTip }, FACTORY_WORDS)`:
-its words are robots and `built` for compactions, its tooltips say floor heat, its `seasonIcon` gives
-a thermometer for each level, and its `seasonTip` explains the heat, live or held. Its `world.js` also
+its words are robots and `built` for compactions, its tooltips say floor heat, its menu's heading is
+`ON THE FLOOR`, its `seasonIcon` gives a thermometer for each level, and its `seasonTip` explains the
+heat, live or held. Its `world.js` also
 gives the panel a navy glass in place of the farm's green, with a style of its own in its frame (the
 frame allows inline styles). A world may recolour the panel the same way, at the top of its function:
 
@@ -1372,7 +1377,7 @@ gaps").
 | `openLink { url }` | Opens it in a new tab. Only `https://github.com/` links, 2048 characters at most |
 | `startSession` | Opens Start or resume a session |
 | `showRepos` | Shows the repos in the list view |
-| `nav { what }` | Presses one of the top bar's buttons: `list`, `session`, `setup`, `side` or `theme` (`worlds` opens the list of worlds) |
+| `nav { what }` | Presses one of the top bar's buttons: `list`, `session`, `setup`, `side`, `broadcast` (📣 Broadcast: one message to the agents you tick, in the page, where you write it) or `theme` (`worlds` opens the list of worlds) |
 | `bell { on }` | Turns the page's bell on or off (`on` must be `true` or `false`) |
 | `motion { still }` | The world stood still, or moves again (`true` or `false`); the page keeps it for `settings` |
 | `diary { entries }` | Shows the world's diary in the sidebar: at most 20 entries `{ at, state, who, text }`, in the order given (the farm puts the newest first), with `state` one of the agents' states and `at` a time. `who` is cut to 80 characters and `text` to 300, and both are shown as text, never as HTML. One bad entry drops the whole message. Drawn at most every quarter second: the newest entries are drawn when their turn comes |
@@ -1421,7 +1426,7 @@ to the list view (as `nav { what: 'list' }`) — whenever a world might draw non
 page decides who gets it, not the world's own report: **every world of yours** (`u/<name>`), engine
 or not, and a **built-in** world only when it draws itself with `Agentville.raw`. Nothing the world
 draws can cover it, and it goes with the frame (another world, a reload, a panel). It sits top left,
-clear of the engine's HUD buttons (top right), so an engine world of yours shows both. Drawing your
+clear of the engine's Menu (top right), so an engine world of yours shows both. Drawing your
 own List and World buttons is optional for a raw world; a world that gives its own `hud` should keep
 a List and a World button (`data-farm-nav="list"` and `data-farm-nav="worlds"`, as the farm's do),
 since the page adds no corner to a built-in engine world. (The engine registers through the bridge as

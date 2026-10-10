@@ -272,6 +272,24 @@ dialog.setup-dlg[open] { display: flex; flex-direction: column; }
 dialog.file-dlg { width: min(960px, calc(100vw - 32px)); height: min(88vh, 960px); max-width: none; padding: 0; overflow: hidden; }
 dialog.file-dlg[open] { display: flex; }
 #file-dlg-body { flex: 1; height: auto; }
+/* 📣 Broadcast: one message to the agents you tick */
+dialog.broadcast-dlg { width: min(640px, calc(100vw - 32px)); max-width: none; padding: 14px 16px 12px; }
+.bc-about { margin: 6px 0 10px; font-size: 12.5px; line-height: 1.45; }
+.bc-picks { display: flex; align-items: center; flex-wrap: wrap; gap: 6px; font-size: 12px; }
+.bc-picks .act { margin: 0; }
+.bc-list { max-height: min(42vh, 380px); overflow: auto; margin: 8px 0 10px; border: 1px solid var(--line); border-radius: 8px; background: var(--page); }
+.bc-row { display: flex; align-items: center; gap: 9px; min-height: 44px; padding: 5px 10px; border-top: 1px solid var(--line); cursor: pointer; }
+.bc-row:first-child { border-top: 0; }
+.bc-row:hover { background: var(--panel-2); }
+.bc-row.off { cursor: default; opacity: .6; }
+.bc-row input { flex: none; width: 16px; height: 16px; margin: 0; }
+.bc-main { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+.bc-main > * { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.bc-main span { font-size: 12px; color: var(--muted); }
+.bc-label { display: block; margin-bottom: 4px; font-size: 12px; font-weight: 600; color: var(--muted); }
+#bc-text { display: block; width: 100%; min-height: 84px; resize: vertical; padding: 8px 10px; border: 1px solid var(--line); border-radius: 10px; background: var(--page); color: var(--text); font: inherit; }
+#bc-text:focus { outline: 2px solid var(--accent); outline-offset: -1px; }
+.bc-results { display: grid; gap: 2px; margin-top: 6px; font-size: 12.5px; }
 /* the conversation dialog (⤢ Read all): the whole conversation, with search */
 dialog.convo-dlg { width: min(860px, calc(100vw - 32px)); height: min(86vh, 900px); max-width: none; padding: 14px 16px 12px; }
 dialog.convo-dlg[open] { display: flex; flex-direction: column; }
@@ -554,6 +572,13 @@ html[data-view="farm"] .banner.show { position: fixed; top: 10px; left: 50%; tra
 .workline .stop-turn:not(:disabled) { color: var(--crit); border-color: color-mix(in srgb, var(--crit) 45%, transparent); }
 .asides-box { margin-top: 10px; }
 .notes-box { margin-top: 10px; }
+.held-box { margin-top: 10px; } /* messages waiting for the session's turn to end */
+.held { padding: 6px 8px 5px; border: 1px dashed var(--line); border-radius: 8px; background: var(--panel2, var(--panel)); }
+.held-text { display: block; white-space: pre-wrap; overflow-wrap: anywhere; }
+.held-files { display: block; font-size: 11.5px; margin-top: 2px; }
+.held-edit { width: 100%; box-sizing: border-box; font: inherit; }
+.held-how { display: flex; align-items: center; gap: 6px; font-size: 12px; }
+.held-failed { font-size: 12px; margin: 2px 0 6px; }
 .notes { list-style: none; margin: 0 0 8px; padding: 0; display: flex; flex-direction: column; gap: 6px; }
 .note { padding: 6px 8px 5px; border: 1px solid var(--line); border-radius: 8px; background: var(--panel2, var(--panel)); }
 .note-text { display: block; width: 100%; border: 0; background: none; padding: 0; color: var(--text); font: inherit; font-size: 13px; text-align: left; white-space: pre-wrap; overflow-wrap: anywhere; cursor: text; max-height: 9.5em; overflow: hidden; }
@@ -617,6 +642,7 @@ html[data-guard="on"] .app .act, html[data-guard="on"] dialog[open] .act { opaci
   <span id="meta" class="faint"></span>
   <span class="seg" role="group" aria-label="View"><button type="button" id="view-list" aria-pressed="true">☰ List</button><button type="button" id="view-farm" aria-pressed="false">🌾 Farm</button><button type="button" id="view-worlds" aria-label="Choose a world" data-tip="Choose another world">▾</button></span>
   <button class="act" id="sessions-open" type="button" style="margin:0" data-tip="Start a new Claude Code session in a folder, or resume a past one">＋ Session</button>
+  <button class="act" id="broadcast-open" type="button" style="margin:0" data-tip="Message several agents at once: all of them, or the ones you pick">📣 Broadcast</button>
   <button class="act" id="helper-open" type="button" style="margin:0" data-tip="✨ Helper: small writing jobs for the dashboard with Haiku, through your own Claude Code (off until you switch it on)">✨ Helper</button>
   <button class="act" id="setup-open" type="button" style="margin:0" data-tip="Your Claude Code setup: plugins and skills (and what each costs in context), MCP servers, permission rules">⚙ Claude Code</button>
   <button class="act" id="side-toggle" type="button" style="margin:0" aria-pressed="false" hidden data-tip="Show the selected farmer's answer box, activity and files beside the farm">◨ Sidebar</button>
@@ -703,6 +729,16 @@ html[data-guard="on"] .app .act, html[data-guard="on"] dialog[open] .act { opaci
   <div id="sess-body"></div>
   <p id="sess-status" class="faint" role="status"></p>
 </dialog>
+<dialog id="broadcast" class="broadcast-dlg" aria-labelledby="bc-title">
+  <div class="sess-head"><h3 id="bc-title">📣 Message several agents</h3><span class="grow"></span><button type="button" class="act mini" data-bc-close aria-label="Close">×</button></div>
+  <p class="faint bc-about">Each one you tick gets it as your own message, as its message box would send it (a busy one reads it when its current step ends). Text only: send files from an agent's own box.</p>
+  <div class="bc-picks" role="group" aria-label="Pick"><span class="faint">Pick:</span><button type="button" class="act mini" data-bc-pick="all">All</button><button type="button" class="act mini" data-bc-pick="needs">Need you</button><button type="button" class="act mini" data-bc-pick="working">Working</button><button type="button" class="act mini" data-bc-pick="resting">Your turn &amp; idle</button><button type="button" class="act mini" data-bc-pick="none">None</button><span class="grow"></span><span id="bc-count" class="faint"></span></div>
+  <div id="bc-list" class="bc-list" role="group" aria-label="Agents"></div>
+  <label for="bc-text" class="bc-label">Message</label>
+  <textarea id="bc-text" rows="4" placeholder="What to tell each of them… (⌘↩ sends, ↩ is a new line)"></textarea>
+  <div class="compose-row"><span id="bc-status" class="faint" role="status"></span><span class="grow"></span><button type="button" class="act primary" id="bc-send">Send</button></div>
+  <div id="bc-results" class="bc-results"></div>
+</dialog>
 <dialog id="file-dlg" class="file-dlg" aria-label="File"><div id="file-dlg-body" class="center-body viewing"></div></dialog>
 <dialog id="convo" class="convo-dlg" aria-labelledby="convo-title">
   <div class="sess-head"><h3 id="convo-title">Conversation</h3><span id="convo-sub" class="faint"></span><span class="grow"></span><button type="button" class="act mini" data-convo-close aria-label="Close">×</button></div>
@@ -745,6 +781,7 @@ html[data-guard="on"] .app .act, html[data-guard="on"] dialog[open] .act { opaci
 <script src="/explorer.js"></script>
 <script src="/conversation.js"></script>
 <script src="/sidebar.js"></script>
+<script src="/broadcast.js"></script>
 <script src="/app.js"></script>
 <script src="/sessions.js"></script>
 <script src="/setup.js"></script>

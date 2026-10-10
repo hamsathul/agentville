@@ -720,6 +720,8 @@
     bell: ['....k....', '...kyk...', '..kyyyk..', '..kyyyk..', '..kyyyk..', '.kyyyyyk.', 'kkkkkkkkk', '...kyk...', '....k....'],
     winter: ['....b....', '.b..b..b.', '..b.b.b..', '...bbb...', 'bbbbbbbbb', '...bbb...', '..b.b.b..', '.b..b..b.', '....b....'],
     animals: ['.k.k.k...', '.k.k.k...', '.........', 'k.kkk.k..', '.kkkkk...', '.kkkkk...', '..kkk....', '.........', '.........'],
+    menu: ['.........', 'kkkkkkkkk', 'kkkkkkkkk', '.........', 'kkkkkkkkk', 'kkkkkkkkk', '.........', 'kkkkkkkkk', 'kkkkkkkkk'],
+    broadcast: ['.......k.', '.....kkk.', 'k..kkyyk.', 'kkkyyyyk.', 'kkyyyyyk.', 'kkkyyyyk.', 'k..kkyyk.', '....k.kk.', '....kk...'],
   };
   // The farm's words and colours in the engine's panel and buttons (panelHud): its stats line, its tooltips, its cream and wood.
   const FARM_WORDS = {
@@ -739,6 +741,7 @@
     helpTip: 'How to read the farm',
     zoomTip: 'Zoom the farm inside its frame (or ⌘/Ctrl + scroll, or pinch); drag to move around when zoomed in',
     zoomAllTip: 'Show the whole farm',
+    menuTip: "The dashboard's buttons, the farm's switches, the bell, help and zoom", menuHead: 'ON THE FARM',
   };
   const ICON_PAL = { k: '#4e3626', w: '#ffffff', y: '#f0b429', s: '#f4ecd8', r: '#e04a3a', g: '#3f9b3a', o: '#c8681a', b: '#a9dcf7' };
   const iconUrls = new Map();
@@ -1032,8 +1035,8 @@
       /**
        * The farm's controls, laid over it so it fills the window: the engine's panel and buttons
        * (panelHud) in the farm's words. Top left, the panel with what the dashboard's top bar and
-       * count cards say; top right, the dashboard's own buttons; along the bottom, below the fields'
-       * fence, a slim row of switches and zoom.
+       * count cards say; top right, one Menu holding the dashboard's own buttons, the farm's
+       * switches, the bell, help and zoom.
        */
       hud: p => panelHud({ ...p, scene, season, iconImg, seasonIcon, seasonTip }, FARM_WORDS),
       bg(f, season, ext) { drawLand(f, L, season, ext); },

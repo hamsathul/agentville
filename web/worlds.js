@@ -6,7 +6,7 @@
 (() => {
   'use strict';
 
-  const NAV = new Set(['list', 'session', 'setup', 'side', 'theme', 'worlds']);
+  const NAV = new Set(['list', 'session', 'setup', 'side', 'theme', 'worlds', 'broadcast']);
   const STATES = new Set(['waiting', 'working', 'turn', 'idle', 'stale']);
   const PREF_NAME = /^[a-z][a-z0-9-]{0,31}$/;
   // The creature library's kinds (sdk/creatures.js) and the situations the helper writes for (collector/sources/lines.mjs):

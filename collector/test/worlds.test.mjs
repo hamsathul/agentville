@@ -147,6 +147,15 @@ test("the farm's old settings carry over once, and are never copied again over n
   assert.deepEqual(plain(worlds.loadPrefs('farm', fresh)), {}, 'migrated once, even with nothing to copy');
 });
 
+test('Broadcast is one of the buttons a world may press', async () => {
+  const p = await page();
+  p.calls.length = 0;
+  p.farm.update(snap);
+  p.from({ type: 'loaded' });
+  p.from({ type: 'nav', what: 'broadcast' });
+  assert.deepEqual(p.calls, [['nav', 'broadcast']]);
+});
+
 test('what the frame may ask for is done; anything else is dropped', async () => {
   const p = await page();
   p.calls.length = 0; // the world announcement is not what is tested here

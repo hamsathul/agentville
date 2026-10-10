@@ -77,13 +77,13 @@ async function followConversation() {
   convo.loading = false;
   if (r.error || !r.items.length) return;
   const body = $('convo-body');
-  const atEnd = body.scrollHeight - body.scrollTop - body.clientHeight < 40; // reading further up: stay there
+  const searching = Boolean($('convo-q').value.trim()); // going through matches: the view stays on yours
   if (!convo.total) body.innerHTML = '';
   body.insertAdjacentHTML('beforeend', r.items.map(convoBubble).join(''));
   convo.total = r.total;
   convo.first ??= r.items[0].at;
   convoSub();
-  if (atEnd) body.scrollTop = body.scrollHeight;
+  if (!searching) body.scrollTop = body.scrollHeight; // a new message: always shown, even if you had scrolled up
   if ($('convo-q').value.trim()) findInConversation(false); // count the new matches too; the view stays
 }
 

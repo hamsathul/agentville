@@ -369,8 +369,9 @@ function composeHtml(a, ids = 'msg', { short = false } = {}) {
   if (a.kind === 'codex') return '';
   const live = Boolean(a.mod?.live);
   // short: the farm sidebar says the keys once, beside its modes, so its hint is just the state
+  const busy = a.state === 'working' || a.state === 'waiting'; // mid-turn: what you send waits for the turn to end
   const hint = !live ? (short ? "Not listening yet: send it anything in its terminal once" : "This session isn't listening for dashboard messages yet. Send it anything in its terminal once, or start a new session.")
-    : a.state === 'working' ? (short ? 'Busy: it gets this when its current step ends' : `${esc(a.name)} is busy: your message waits until its current step ends. ↩ sends, ⇧↩ new line, ↑ your earlier messages.`)
+    : busy ? (short ? 'Busy: it waits here until its turn ends (⚡ sends one at once)' : `${esc(a.name)} is busy: your message waits here until its turn ends (⚡ on it sends it at once). ↩ sends, ⇧↩ new line, ↑ your earlier messages.`)
     : short ? 'Sent as your own message' : 'Sent as your own message. Paste or drop files on the box. ↩ sends, ⇧↩ new line, ↑ your earlier messages.';
   const sent = msgStatus.get(a.id);
   const status = sent && Date.now() - sent.at < 20_000
@@ -557,6 +558,51 @@ function nameLineHtml(a) {
   return n.error ? `<div class="name-offer msg-bad">No name: ${esc(n.error)}</div>` : '';
 }
 
+/* ---------- messages waiting for a session's turn to end ---------- */
+// What you sent a working session: kept by the collector (state/held) and listed under the message box,
+// read when their rev in the snapshot moves on. ✕ removes one, Edit changes it, ⚡ Send now sends it at
+// once (it reads it at its next step); the rest go out when the turn ends, one per turn or all together.
+const heldCache = new Map(); // agentId → { rev, items, together } or { rev, error }
+const heldLoading = new Set();
+const heldEdits = new Map(); // agentId → { id, text }: the held message being edited
+
+/** Reads the shown session's held messages when they changed since they were last read. */
+function refreshHeld(a) {
+  if (!a || a.kind === 'codex' || heldLoading.has(a.id)) return;
+  const rev = a.held?.rev ?? 0, got = heldCache.get(a.id);
+  if (!a.held) { if (got) heldCache.delete(a.id); return; } // none waiting: nothing to read
+  if (got && rev <= got.rev) return;
+  heldLoading.add(a.id);
+  void getJson(`/api/agent/${encodeURIComponent(a.id)}/held`).then(r => {
+    heldLoading.delete(a.id);
+    heldCache.set(a.id, r.error ? { rev, error: r.error, items: got?.items ?? [] } : { rev: Math.max(rev, r.rev ?? 0), items: r.items ?? [], together: r.together === true });
+    requestRender();
+  });
+}
+
+function heldItemHtml(a, h) {
+  const ids = `data-agent="${esc(a.id)}"`, edit = heldEdits.get(a.id);
+  if (edit?.id === h.id) {
+    return `<li class="held editing"><textarea class="held-edit" data-held-edit-text="${esc(h.id)}" ${ids} rows="3">${esc(edit.text)}</textarea>
+      <div class="note-acts"><span class="grow"></span><button type="button" class="act mini" data-held-cancel="${esc(h.id)}" ${ids}>Cancel</button><button type="button" class="act mini primary" data-held-save="${esc(h.id)}" ${ids}>Save</button></div></li>`;
+  }
+  const attached = [...(h.files ?? []), ...(h.folders ?? []).map(f => f.split('/').filter(Boolean).pop() ?? f)];
+  return `<li class="held"><span class="held-text">${esc(h.text)}</span>${attached.length ? `<span class="faint held-files">📎 ${esc(attached.join(', '))}</span>` : ''}
+    <div class="note-acts"><span class="faint">${agoText(h.editedAt ?? h.at)}</span><span class="grow"></span><button type="button" class="act mini" data-held-edit="${esc(h.id)}" ${ids} data-tip="Change it before it goes">Edit</button><button type="button" class="act mini" data-held-now="${esc(h.id)}" ${ids} data-tip="Send it now: it reads it at its next step">⚡ Send now</button><button type="button" class="act mini" data-held-remove="${esc(h.id)}" ${ids} data-tip="Don't send it">✕</button></div></li>`;
+}
+
+/** Waiting to send: the messages held for the session's turn to end, under its message box. */
+function heldHtml(a) {
+  if (a.kind === 'codex' || !a.held?.count) return '';
+  const got = heldCache.get(a.id), together = got?.together ?? a.held.together;
+  const status = got?.error ? `<div class="msg-bad">Could not read them: ${esc(got.error)}</div>` : !got ? '<div class="faint">Loading…</div>' : '';
+  const failed = a.held.failed ? `<div class="msg-bad held-failed" data-tip="${esc(agoText(a.held.failed.at))}">${esc(a.held.failed.error)}</div>` : '';
+  const how = `Goes out when ${esc(a.name)} finishes its turn, ${together ? 'all together' : 'one per turn'}.`;
+  return `<div class="held-box"><div class="sec">Waiting to send (${a.held.count})</div>${failed}${status}
+    ${got?.items?.length ? `<ul class="notes helds">${got.items.map(h => heldItemHtml(a, h)).join('')}</ul>` : ''}
+    <label class="held-how faint"><input type="checkbox" data-held-together data-agent="${esc(a.id)}"${together ? ' checked' : ''}> Send together <span>· ${how}</span></label></div>`;
+}
+
 /* ---------- your notes on a session ---------- */
 // Things you may want to say to it later, or not: kept by the collector (state/notes), read when the
 // section shows and again when their rev in the snapshot moves on. Nothing goes to the session until
@@ -680,7 +726,7 @@ function removeFile(agentId, index) {
 }
 
 /** Sends the message box (with its files), or `quick` text (a one-click answer) leaving the box as it is. */
-async function sendMessage(agentId, button, quick = null) {
+async function sendMessage(agentId, button, quick = null, { now = false } = {}) { // now: sent at once, never held for the turn's end
   const text = (quick ?? msgDrafts.get(agentId) ?? '').trim();
   const attached = quick === null ? msgFiles.get(agentId) ?? [] : [];
   if (!text && !attached.length) {
@@ -702,7 +748,7 @@ async function sendMessage(agentId, button, quick = null) {
     render();
     return false;
   }
-  const r = await post('/api/actions/message', { agentId, text, ...(files.length ? { files } : {}), ...(folders.length ? { folders } : {}) });
+  const r = await post('/api/actions/message', { agentId, text, ...(files.length ? { files } : {}), ...(folders.length ? { folders } : {}), ...(now ? { now: true } : {}) });
   if (r.ok && quick === null) {
     msgDrafts.delete(agentId);
     resetRecall();
@@ -717,7 +763,7 @@ async function sendMessage(agentId, button, quick = null) {
   msgStatus.set(agentId, {
     at: Date.now(),
     bad: !r.ok,
-    text: r.ok ? (agent?.state === 'working' ? `Queued for ${agent.name}${extra}: it reads it when its current step ends.` : `✓ Sent to ${agent?.name ?? 'the session'}${extra}.`) : `Not sent: ${r.error}`,
+    text: r.ok ? (r.held ? `Waiting for ${agent?.name ?? 'the session'} to finish${extra}: it goes out when this turn ends (remove or edit it below).` : `✓ Sent to ${agent?.name ?? 'the session'}${extra}.`) : `Not sent: ${r.error}`,
   });
   render();
   return Boolean(r.ok);

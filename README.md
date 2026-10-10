@@ -30,6 +30,7 @@ It listens on `127.0.0.1` only and reads what Claude Code already writes to disk
 - [Using it](#using-it)
   - [The list view](#the-list-view)
   - [Answering and messaging agents](#answering-and-messaging-agents)
+  - [📣 Broadcast: one message to several agents](#-broadcast-one-message-to-several-agents)
   - [Stopping a turn (■ Stop)](#stopping-a-turn--stop)
   - [Side questions (/btw)](#side-questions-btw)
   - [Notes for later](#notes-for-later)
@@ -74,7 +75,10 @@ It listens on `127.0.0.1` only and reads what Claude Code already writes to disk
 - Answer an agent's question (with its options) or a permission prompt (**Allow** / **Deny**), or
   cancel its questions as Esc does and tell it what you want instead.
 - Message any session like a chat, with screenshots, PDFs or other files; it arrives as your own prompt.
+  What you send a working session waits until its turn ends, where you can remove, edit or send it
+  early.
   ↑ in the box brings back what you sent it before, as in its terminal.
+- Broadcast one message to several sessions at once: all of them, or the ones you tick.
 - Read a session's whole conversation, from its first message, in a dialog you can search.
 - Ask a session a side question (`/btw`) without interrupting or adding to its conversation.
 - Keep notes on a session: things you may want to tell it later, or not. Put one in the message
@@ -300,7 +304,17 @@ These need the mod in that session.
 - **Questions in replies.** When an agent ends its turn by asking something ("Should I push?"),
   it gets an "asks you" chip and a card, with one-click **Yes** / **No…** for yes/no questions.
 - **Messages.** Type in the box under **Now** and press Enter (Shift+Enter for a new line). It
-  arrives as your own prompt; a busy agent reads it when its current step ends.
+  arrives as your own prompt.
+- **Messages to a working session wait.** Sent while it is busy (working, or waiting on you in the
+  middle of a turn), a message goes into **Waiting to send** under the box instead, until the turn
+  ends. There, each one has **✕** (don't send it), **Edit** (change it in place) and **⚡ Send now**
+  (send it at once: Claude Code hands it to Claude at its next step, so it can steer the turn).
+  When the turn ends, the first one goes out, and the next waits until that turn ends too; tick
+  **Send together** to send all of them as one message instead. A session that is gone for two
+  minutes with messages still waiting gets them as notes on it (a very long one is cut to a note's
+  4,000 characters). (Prompts you type in
+  the session's terminal while it works go into Claude Code's own queue, which the dashboard can't
+  see or change.)
 - **↑ / ↓ recall what you sent**, as in the session's terminal. With the cursor on the box's first
   line, ↑ brings back your last message to that session, then the one before. ↓ on the last line
   goes forward again, and past the newest gives back what you were typing.
@@ -317,9 +331,25 @@ These need the mod in that session.
 - **⤢ Read all**, on the Conversation heading, opens the whole conversation in a dialog: every
   message from the first, oldest first, read from the transcript however long it is. **Search**
   highlights every match in place, with "1 of 12" and ↑ ↓ (Enter for older, Shift+Enter for
-  newer); it starts at the newest. While the dialog is open, new messages appear at the bottom.
+  newer); it starts at the newest. While the dialog is open, new messages appear at the bottom,
+  and it goes down to each one as it comes, unless you are searching.
   You can reply from it too: it has the same message box, with 📎 Attach and 📁 Folder, sharing the side
   panel's draft and files.
+
+### 📣 Broadcast: one message to several agents
+
+**📣 Broadcast** (in the list view's top bar, and in the farm's Menu) sends one message to every
+agent you tick:
+- The list has every agent, those that need you first. Tick them one by one, or pick **All**, **Need
+  you**, **Working**, **Your turn & idle** or **None**.
+- Each one gets it as your own message, as its own message box would send it: a busy one's copy waits
+  for its turn to end, under its message box, where you can remove, edit or send it now (see
+  "Messages to a working session wait"). The line under the box says which wait.
+- A session that isn't listening for the dashboard yet (send it anything in its terminal once), and
+  Codex, can't be ticked; the list says why.
+- **⌘↩** sends (a plain ↩ is a new line, so one key can't reach several agents by accident). Under the
+  box, a line for each says whether it was sent.
+- It is text only: send files and folders from an agent's own box.
 
 ### Stopping a turn (■ Stop)
 
@@ -361,8 +391,8 @@ the session until you use it.
   card, in the order you wrote them. Click a note's text to edit it (↩ saves, Esc cancels).
 - **↳ Use** puts the note at the end of the message box, to change before you send it. Once that
   message is sent, the note counts as used. If you clear the box instead, it stays unused.
-- **Send now** sends the note as it is, as your own message (queued if the session is busy), and
-  marks it used.
+- **Send now** sends the note as it is, as your own message, at once even if the session is busy (it
+  reads it at its next step), and marks it used.
 - A used note stays, crossed out, so you can see what you have already said. **Clear used** removes
   them all; **✕** deletes one.
 - You can write notes for any session on the dashboard, even one that isn't listening for the
@@ -875,10 +905,12 @@ can hold.
   **needs you** button. Click its title to fold it away. At 100% the farm sits beside the panel,
   or below it when that leaves it bigger, so the panel never covers a silo or a building. In a
   narrow window (the sidebar open) the farm is smaller then: **+** zooms in.
-- **Top right.** List, World (the list of worlds), ＋ Session, ⚙ Claude Code, Sidebar and the theme.
-- **Bottom.** Follow (keep the picked farmer in view), Resting (hide idle and stale farmers),
-  Bubbles, Sky (live, day or night), Season (live, then spring, summer, autumn or winter held),
-  Motion, Bell, Help, and zoom.
+- **Top right, Menu.** One button holds every other control. **Dashboard:** List, World (the list
+  of worlds), ＋ Session, ⚙ Claude Code, Sidebar, 📣 Broadcast and the theme. **On the farm:** Follow
+  (keep the picked farmer in view), Resting (hide idle and stale farmers), Bubbles, Animals, Sky
+  (live, day or night), Season (live, then spring, summer, autumn or winter held) and Motion. Then
+  Bell, Help and zoom. A switch or zoom leaves the menu open, to change several; a button that takes
+  you elsewhere shuts it, as do Esc and a click on the farm. Nothing lies along the farm's foot.
 - **Mouse.** ⌘/Ctrl + scroll or a pinch zooms, drag moves around, and a minimap appears while you
   are zoomed in.
 
@@ -915,7 +947,9 @@ dialog over the farm, with Quote and the reply box as in the list. Click a build
 - **Its own question** or permission prompt, on every tab.
 - **Chat, Activity, Subagents, Files.** **Chat** has **Now** (the working line with ■ Stop, its
   step, and its commands, folded until you open them), the conversation with the newest message at
-  the bottom (⤢ Read the whole conversation is at the top), and one box with three modes:
+  the bottom (⤢ Read the whole conversation is at the top), and one box with three modes. The chat
+  always goes to the newest message: when it opens, and whenever a new one comes, even if you had
+  scrolled up to read (with nothing new, it stays where you are). The three modes are
   **Message**, **Side question** and **Note**. **Activity** has a filter: All, Commands, Edits,
   Reads or Failed. **Subagents** has a card for each, and **Files** is its folder.
 - **Session** opens its settings: the model and effort (switched after its current turn), the
@@ -993,7 +1027,7 @@ hold.
 thermometer by your desk and in the floor vents between the bays: cool while it is fresh (blue, the
 vents' fans turning slowly), then warm (the fans faster), hot (the fans racing, a shimmer over the
 vents) and steaming (steam from the vents, sparks off the machines) when it is nearly used up; a new
-window cools it again. The **Heat** switch, among the switches along the bottom, holds a level
+window cools it again. The **Heat** switch, in the Menu (**On the floor**), holds a level
 instead: each click moves it on (live, cool, warm, hot, steaming, then live again), and it is
 remembered, as the sky is. It only holds the look: while a level is held, the panel shows it with a
 📌 and your real 5-hour use (for example "steaming 📌 · 5-hour 42%"), and its tooltip says it is held,
@@ -1019,9 +1053,11 @@ for anything, and there are no drones among them (every drone here is data).
 - The **Animals** switch hides them; it is remembered.
 
 **Controls and clicks.** The panel is top left (the money spent and the robots built, the floor
-heat, the counts and meters, **needs you**; at 100% the factory sits beside it or below it), with
-the dashboard's buttons top right, and along the bottom Follow, Resting (hide the robots charging and
-those powered down), Bubbles, Animals, Sky, Heat, Motion, Bell, Help and zoom. Click a robot to open it
+heat, the counts and meters, **needs you**; at 100% the factory sits beside it or below it). Top
+right, the **Menu** holds every other control, as on the farm: the dashboard's buttons (List, World,
+＋ Session, ⚙ Claude Code, Sidebar, 📣 Broadcast, the theme), then **On the floor**: Follow, Resting
+(hide the robots charging and those powered down), Bubbles, Animals, Sky, Heat and Motion; then Bell,
+Help and zoom. Nothing lies along the factory's foot. Click a robot to open it
 in the sidebar, a bay (or its sign) for a close-up of the files agents touched there, a speech bubble
 for its conversation, and a building for the rest:
 
@@ -1238,6 +1274,9 @@ and can do is in [docs/worlds.md](docs/worlds.md).
   its email (a private world gets `account 1`, `account 2`). Agentville never reads or touches the
   logins themselves: it starts `claude` with the account's `CLAUDE_CONFIG_DIR`, and asks
   `claude auth status` whether each is signed in.
+- Messages waiting for a session's turn to end are kept under `state/held/` (the folder and its
+  files readable only by you). Nothing in them reaches the session until one goes out, and the
+  snapshot the page reads says only how many are waiting; the text is read with the token.
 - Your notes on a session are kept under `state/notes/` (the folder and its files readable only by
   you) until you delete them. They never leave your Mac, and nothing in one reaches the session
   until you use or send it. The snapshot the page reads every few seconds carries only how many
@@ -1270,6 +1309,7 @@ and can do is in [docs/worlds.md](docs/worlds.md).
 | Problem | Try |
 |---|---|
 | The dashboard doesn't load | `agent-tracker status`, then `agent-tracker logs`. Check that nothing else uses the port |
+| A message waits and never goes out | It goes out when the session's turn ends, through its mod: the mod must be listening (📡 dashboard answers on). Press **⚡ Send now** to send it at once. A red line on the list says when the session didn't take it; it is tried again when the session next moves |
 | A session shows "dashboard answers off" | Its mod isn't loaded. Check `CLAUDE_CODE_PLUGIN_DIRS` in `~/.claude/settings.json` (or, for another account, in that account's own `settings.json`), then type anything in the session or `/reload-plugins` |
 | An account shows "No reading yet" | Its sessions report their limits through the mod: load the mod in that account too, then send a session on it a message |
 | "runs an older tracker mod" | `/reload-plugins` in that session, or resume it |

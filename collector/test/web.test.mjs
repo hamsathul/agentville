@@ -532,13 +532,13 @@ test('markdown renders headings, lists, code, tables and quotes, and never passe
 });
 
 test('after Send the box empties and says it was sent, right under the box', async () => {
-  const page = loadPage();
+  const page = loadPage({ replies: { '/api/actions/message': { ok: true, held: true, count: 1 } } }); // the collector holds a message to a working session
   page.push(richSnapshot([richAgent({ mod: { version: '0.3.1', live: true }, state: 'working' })]));
   await page.openAgent('r1');
   page.edit('input', { tagName: 'TEXTAREA', value: 'Also update the README', dataset: { msgAgent: 'r1' } });
   await page.clickButton('msg-send', { agent: 'r1' });
   assert.match(page.side(), /<textarea id="msg-text"[^>]*><\/textarea>/);
-  assert.match(page.side(), /id="msg-status"[^>]*>Queued for busy-one/);
+  assert.match(page.side(), /id="msg-status"[^>]*>Waiting for busy-one to finish/);
 });
 
 test('if the session did not take the message, the text stays in the box and the reason shows under it', async () => {
@@ -866,7 +866,7 @@ test('without the farm script, the toggle stays on the list and says why', async
 
 test('the page loads its mark, the scene and the host of its worlds (deferred), then its token, then its own scripts in order', () => {
   const tags = [...html.matchAll(/<script(?: src="\/([a-z]+)\.js"( defer)?)?>/g)].map(m => (m[1] ? `${m[1]}${m[2] ? ' defer' : ''}` : 'inline'));
-  assert.deepEqual(tags, ['inline', 'brand', 'scene defer', 'worlds defer', 'inline', 'core', 'charts', 'panels', 'markdown', 'viewer', 'explorer', 'conversation', 'sidebar', 'app', 'sessions', 'setup']);
+  assert.deepEqual(tags, ['inline', 'brand', 'scene defer', 'worlds defer', 'inline', 'core', 'charts', 'panels', 'markdown', 'viewer', 'explorer', 'conversation', 'sidebar', 'broadcast', 'app', 'sessions', 'setup']);
   assert.match(html, /<script>const TOKEN = '__TRACKER_TOKEN__';<\/script>/);
 });
 
@@ -898,12 +898,12 @@ test('the sidebar toggle shows activity and the explorer beside the farm, and is
 
 test('a message can be sent from the farm sidebar', async () => {
   const f = fakeFarm();
-  const page = loadPage({ farm: f.farm, stored: { 'tracker-view': 'farm', 'tracker-farm-side': 'open' } });
+  const page = loadPage({ farm: f.farm, stored: { 'tracker-view': 'farm', 'tracker-farm-side': 'open' }, replies: { '/api/actions/message': { ok: true, held: true, count: 1 } } });
   page.push(richSnapshot([richAgent({ mod: { version: '0.3.1', live: true } })]));
   page.edit('input', { tagName: 'TEXTAREA', value: 'Water the pumpkins', dataset: { msgAgent: 'r1' } });
   await page.clickButton('msg-send', { agent: 'r1' });
   assert.deepEqual(page.posts, [{ path: '/api/actions/message', body: { agentId: 'r1', text: 'Water the pumpkins' } }]);
-  assert.match(page.el('fs-compose').innerHTML, /id="msg-status"[^>]*>Queued for busy-one/);
+  assert.match(page.el('fs-compose').innerHTML, /id="msg-status"[^>]*>Waiting for busy-one to finish/);
 });
 
 test("entering the farm clears the list's centre and leaving clears the sidebar, so each id exists once", async () => {
@@ -1536,7 +1536,8 @@ test('Send now sends a note as your own message and marks it used; a session not
   await page.settle();
   await page.clickButton('note-send', { noteSend: 'n1', agent: 'r1' });
   await page.settle();
-  assert.deepEqual(page.posts.map(x => [x.path, x.body]), [['/api/actions/message', { agentId: 'r1', text: 'ask about the cache' }], ['/api/actions/note', { agentId: 'r1', op: 'used', ids: ['n1'] }]]);
+  // Send now means now: a note sent to a working session is not held for its turn's end
+  assert.deepEqual(page.posts.map(x => [x.path, x.body]), [['/api/actions/message', { agentId: 'r1', text: 'ask about the cache', now: true }], ['/api/actions/note', { agentId: 'r1', op: 'used', ids: ['n1'] }]]);
   const off = notesPage([note('n1', 'ask about the cache')], { mod: undefined });
   await off.settle();
   const side = off.side();
@@ -1795,6 +1796,7 @@ const talk = (from, list) => ({ total: from + list.length, from, items: list });
 const convoPage = async () => {
   const t = Date.now() - 3_600_000;
   const page = loadPage({ replies: {
+    '/api/actions/message': { ok: true, held: true, count: 1 }, // its session works: the collector holds what you send
     '/api/agent/r1/conversation': talk(0, [
       { at: t, kind: 'prompt', text: 'First question', body: 'First question', uuid: 'p-1' },
       { at: t + 60_000, kind: 'reply', text: 'The answer', body: 'The **answer**', uuid: 'r-1' },
@@ -1860,7 +1862,7 @@ test('the conversation dialog has the message box too, sharing the draft and fil
   await page.clickButton('convo-msg-send', { agent: 'r1' });
   const sent = page.posts.find(p => p.path === '/api/actions/message').body;
   assert.deepEqual(sent, { agentId: 'r1', text: 'Seen the whole thing', files: [{ name: 'notes.md', data: 'IyBOb3Rlcw==' }] });
-  assert.match(box(), /Queued for busy-one with 1 file/, 'what came of it shows in the dialog too');
+  assert.match(box(), /Waiting for busy-one to finish with 1 file/, 'what came of it shows in the dialog too');
 });
 
 test('Compact… in the session bar asks what to keep, then has the session run /compact', async () => {
@@ -2559,6 +2561,85 @@ test("Activity's filter keeps to commands, edits, reads or the steps that failed
   assert.doesNotMatch(act(), /npm/);
 });
 
+test('the chat goes to the newest message whenever one comes, even scrolled up', () => {
+  const { page } = farmPage();
+  const agent = chatty();
+  page.push(richSnapshot([agent]));
+  const box = page.el('fs-chat');
+  Object.assign(box, { scrollHeight: 900, clientHeight: 300, scrollTop: 0 }); // you scrolled to the top to read
+  page.push(richSnapshot([{ ...agent, feed: [{ at: Date.now(), kind: 'reply', text: 'All done.', body: 'All done.' }, ...agent.feed] }]));
+  assert.match(page.el('farm-agent').innerHTML, /All done\./);
+  assert.equal(box.scrollTop, 900, 'at the newest message');
+});
+
+test('📣 Broadcast sends one message to each agent you tick; one not listening, or Codex, cannot be ticked', async () => {
+  const page = loadPage();
+  const snap = crowd();
+  snap.agents.push(richAgent({ id: 'c1', name: 'codexer', kind: 'codex', ...live7 }));
+  snap.agents[4].mod = undefined; // sleeper: not listening
+  page.push(snap);
+  assert.match(html, /<button class="act" id="broadcast-open"[^>]*>📣 Broadcast</);
+  await page.click('broadcast-open');
+  assert.equal(page.el('broadcast').open, true);
+  const list = page.el('bc-list').innerHTML;
+  assert.match(list, /data-bc-agent="i1" disabled>[\s\S]*Not listening yet/);
+  assert.match(list, /data-bc-agent="c1" disabled>[\s\S]*Codex takes no messages/);
+  assert.ok(list.indexOf('data-bc-agent="q1"') < list.indexOf('data-bc-agent="r1"'), 'what needs you first, as in the picker');
+  await page.clickButton('pick-all', { bcPick: 'all' });
+  assert.equal(page.el('bc-send').textContent, 'Send to 4');
+  assert.match(page.el('bc-count').textContent, /^4 of 4 picked$/);
+  await page.clickButton('pick-needs', { bcPick: 'needs' });
+  assert.equal(page.el('bc-send').textContent, 'Send to 3');
+  await page.change({ dataset: { bcAgent: 'p1' }, checked: false });
+  assert.equal(page.el('bc-send').textContent, 'Send to 2');
+  await page.clickButton('bc-send', {});
+  assert.match(page.el('bc-status').textContent, /Write the message first/);
+  assert.equal(page.posts.length, 0);
+  page.el('bc-text').value = 'Please wrap up and commit.';
+  await page.clickButton('bc-send', {});
+  await page.settle();
+  assert.deepEqual(page.posts.map(p => [p.path, p.body.agentId, p.body.text]).sort(), [['/api/actions/message', 'q1', 'Please wrap up and commit.'], ['/api/actions/message', 't1', 'Please wrap up and commit.']]);
+  assert.match(page.el('bc-results').innerHTML, /✓ asker[\s\S]*✓ pusher/);
+  assert.match(page.el('bc-status').textContent, /Sent to 2 agents/);
+  assert.equal(page.el('bc-text').value, '', 'sent: the box is empty again');
+  await page.clickButton('pick-none', { bcPick: 'none' });
+  await page.clickButton('bc-send', {});
+  assert.match(page.el('bc-status').textContent, /Pick at least one agent/);
+});
+
+test('⌘↩ sends a broadcast; ↩ alone is a new line', async () => {
+  const page = loadPage();
+  page.push(crowd());
+  await page.click('broadcast-open');
+  await page.clickButton('pick-all', { bcPick: 'working' });
+  page.el('bc-text').value = 'Status?';
+  assert.equal(page.key('Enter', { id: 'bc-text' }), false);
+  assert.equal(page.posts.length, 0);
+  assert.equal(page.key('Enter', { id: 'bc-text' }, { metaKey: true }), true);
+  await page.settle();
+  assert.deepEqual(page.posts.map(p => p.body.agentId), ['r1']);
+});
+
+test("the farm's Menu opens Broadcast, and its Send is held a moment like any button a world raised", async () => {
+  const f = fakeFarm();
+  const page = loadPage({ farm: f.farm, stored: { 'tracker-view': 'farm' } });
+  page.push(crowd());
+  f.nav('broadcast');
+  assert.equal(page.el('broadcast').open, true);
+  assert.ok(f.calls.some(c => c[0] === 'arm'), 'the click guard is armed');
+  await page.clickButton('pick-all', { bcPick: 'all' });
+  page.el('bc-text').value = 'Hello all';
+  f.setBlocks(true);
+  page.el('bc-send').className = 'act primary';
+  await page.clickButton('bc-send', {});
+  await page.settle();
+  assert.equal(page.posts.length, 0, 'held');
+  f.setBlocks(false);
+  await page.clickButton('bc-send', {});
+  await page.settle();
+  assert.equal(page.posts.length, 4);
+});
+
 test('the Session menu has the model, effort and permissions, its actions, and End session apart; a click outside closes it', async () => {
   const { page } = farmPage();
   page.push(crowd({ pid: 4242, mode: 'acceptEdits', effort: 'high', model: 'claude-opus-5-5' }));
@@ -2835,4 +2916,93 @@ test('Fork: the account row starts on the session\'s own account and is sent', a
   assert.equal(page.el('fork-account').value, 'zeta');
   await page.ctx.forkGo(null);
   assert.equal(page.posts.at(-1).body.account, 'zeta');
+});
+
+// ---- held messages: what you sent a working session, waiting for its turn to end ----
+const HELD = '/api/agent/r1/held';
+const heldItem = (id, text, over = {}) => ({ id, text, files: [], folders: [], at: 1, ...over });
+const heldPage = (items, { together = false, failed, agent = {} } = {}) => {
+  const page = loadPage({ replies: { [HELD]: { items, together, rev: 7 } } });
+  page.push(richSnapshot([richAgent({ mod: { live: true, version: '0.9.0' }, held: items.length ? { count: items.length, together, rev: 7, ...(failed ? { failed } : {}) } : undefined, ...agent })]));
+  return page;
+};
+
+test('Waiting to send: the held messages, read with the token, each with ✕, Edit and ⚡ Send now; the toggle says what happens', async () => {
+  const page = heldPage([heldItem('h1', 'also <b>the docs</b>'), heldItem('h2', 'and the tests', { files: ['shot.png'] })]);
+  await page.settle();
+  assert.deepEqual(page.gets.filter(g => g.path === HELD).map(g => Boolean(g.token)), [true]);
+  const side = page.side();
+  assert.match(side, /Waiting to send \(2\)/);
+  assert.match(side, /also &lt;b&gt;the docs&lt;\/b&gt;[\s\S]*and the tests/, 'in order, as text');
+  assert.match(side, /shot\.png/);
+  assert.match(side, /data-held-remove="h1"/);
+  assert.match(side, /data-held-edit="h1"/);
+  assert.match(side, /data-held-now="h2"/);
+  assert.match(side, /<input type="checkbox" data-held-together data-agent="r1">/, 'unticked');
+  assert.match(side, /Goes out when busy-one finishes its turn, one per turn/);
+  page.push(richSnapshot([richAgent({ mod: { live: true, version: '0.9.0' }, held: { count: 2, together: false, rev: 7 } })]));
+  await page.settle();
+  assert.equal(page.gets.filter(g => g.path === HELD).length, 1, 'read again only when they change');
+});
+
+test('Waiting to send: ✕, ⚡ and the toggle post their changes; Edit opens it in place and Save posts the text', async () => {
+  const page = heldPage([heldItem('h1', 'first'), heldItem('h2', 'second')]);
+  await page.settle();
+  await page.clickButton('held-x', { heldRemove: 'h1', agent: 'r1' });
+  assert.deepEqual(page.posts.at(-1), { path: '/api/actions/held', body: { agentId: 'r1', op: 'remove', id: 'h1' } });
+  await page.clickButton('held-n', { heldNow: 'h2', agent: 'r1' });
+  assert.deepEqual(page.posts.at(-1), { path: '/api/actions/held', body: { agentId: 'r1', op: 'send-now', id: 'h2' } });
+  await page.change({ dataset: { heldTogether: '', agent: 'r1' }, checked: true });
+  assert.deepEqual(page.posts.at(-1), { path: '/api/actions/held', body: { agentId: 'r1', op: 'together', on: true } });
+  await page.clickButton('held-e', { heldEdit: 'h2', agent: 'r1' });
+  assert.match(page.side(), /<textarea class="held-edit" data-held-edit-text="h2" data-agent="r1"[^>]*>second<\/textarea>/);
+  page.edit('input', { value: 'second, better', dataset: { heldEditText: 'h2', agent: 'r1' } });
+  await page.clickButton('held-s', { heldSave: 'h2', agent: 'r1' });
+  assert.deepEqual(page.posts.at(-1), { path: '/api/actions/held', body: { agentId: 'r1', op: 'edit', id: 'h2', text: 'second, better' } });
+});
+
+test('a message to a working session that is held says so; one that went says Sent; a release not taken shows in red', async () => {
+  const page = heldPage([heldItem('h1', 'first')], { failed: { at: Date.now(), error: "The session didn't take it: it is still waiting here." } });
+  await page.settle();
+  assert.match(page.side(), /class="msg-bad held-failed"[^>]*>The session didn&#39;t take it/);
+  page.ctx.fetch = (orig => async (path, init) => (path === '/api/actions/message' ? (page.posts.push({ path, body: JSON.parse(init.body) }), { ok: true, json: async () => ({ ok: true, held: true, count: 2 }) }) : orig(path, init)))(page.ctx.fetch);
+  page.edit('input', { value: 'later please', dataset: { msgAgent: 'r1' } });
+  await page.clickButton('msg-send', { agent: 'r1' });
+  await page.settle();
+  assert.match(page.side(), /Waiting for busy-one to finish: it goes out when this turn ends \(remove or edit it below\)/);
+});
+
+test('no Waiting to send when nothing is held; the hint says a message waits for the turn to end', async () => {
+  const page = heldPage([]);
+  await page.settle();
+  assert.doesNotMatch(page.side(), /Waiting to send/);
+  assert.match(page.side(), /is busy: your message waits here until its turn ends/);
+  assert.equal(page.gets.filter(g => g.path === HELD).length, 0, 'nothing to read');
+});
+
+test('an edit the turn beat (the message went out meanwhile) is not lost: it lands in the message box, and the page says so', async () => {
+  const page = heldPage([heldItem('h1', 'feed the hens')]);
+  await page.settle();
+  await page.clickButton('held-e', { heldEdit: 'h1', agent: 'r1' });
+  page.edit('input', { value: 'feed the hens and the ducks', dataset: { heldEditText: 'h1', agent: 'r1' } });
+  page.ctx.fetch = (orig => async (path, init) => (path === '/api/actions/held' ? (page.posts.push({ path, body: JSON.parse(init.body) }), { ok: true, json: async () => ({ ok: false, error: 'That message is no longer waiting.' }) }) : orig(path, init)))(page.ctx.fetch);
+  await page.clickButton('held-s', { heldSave: 'h1', agent: 'r1' });
+  await page.settle();
+  assert.match(page.side(), /<textarea id="msg-text"[^>]*>feed the hens and the ducks<\/textarea>/, 'your change, in the box');
+  assert.match(page.el('notice').textContent, /had already gone out: your change is in the message box/);
+  assert.doesNotMatch(page.side(), /class="held-edit"/, 'the edit box is gone');
+});
+
+test("📣 Broadcast says which agents' copies wait for their turn to end (the collector held them), not 'queued'", async () => {
+  const page = loadPage({ replies: { '/api/actions/message': { ok: true, held: true, count: 1 } } });
+  page.push(crowd());
+  await page.click('broadcast-open');
+  await page.clickButton('pick-all', { bcPick: 'all' });
+  page.el('bc-text').value = 'Wrap up.';
+  await page.clickButton('bc-send', {});
+  await page.settle();
+  const results = page.el('bc-results').innerHTML;
+  assert.match(results, /waits for its turn to end: remove or edit it under its message box/);
+  assert.doesNotMatch(results, /queued: it reads it/);
+  assert.match(page.el('bc-status').textContent, /Sent to 4 agents \(4 wait for their turn to end\)/);
 });

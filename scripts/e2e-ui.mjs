@@ -452,8 +452,12 @@ try {
   await send('Input.insertText', { text: 'second line' });
   check(/First line\nsecond line/.test(await js("document.getElementById('msg-text').value")) && received.length === 0, 'Shift+Enter in the message box starts a new line');
   await key('keyDown'); await key('keyUp');
+  // ui-asker waits on you mid-turn: what you send waits for its turn to end, under the box; ⚡ sends one at once
+  const sendHeldNow = async () => { await until("!!document.querySelector('#center-body [data-held-now]')"); await js("document.querySelector('#center-body [data-held-now]').click()"); };
+  check(await until("/Waiting to send \\(1\\)/.test(document.getElementById('center-body').textContent) && /First line/.test(document.querySelector('#center-body .held-text')?.textContent ?? '')") && received.length === 0, 'Enter while it is mid-turn holds the message under the box: Waiting to send');
+  await sendHeldNow();
   for (let i = 0; i < 40 && !received.length; i++) await sleep(150);
-  check(received[0] === 'First line\nsecond line', `Enter sends the message (got ${JSON.stringify(received)})`);
+  check(received[0] === 'First line\nsecond line', `⚡ Send now sends it (got ${JSON.stringify(received)})`);
   check(await until("document.getElementById('msg-text')?.value === ''"), 'the message box clears once it is sent');
   const arrow = async (name, code) => { for (const type of ['keyDown', 'keyUp']) await send('Input.dispatchKeyEvent', { type, key: name, code: name, windowsVirtualKeyCode: code }); };
   await js("document.getElementById('msg-text').focus()"); // sending leaves the box (so the page can update): back in it
@@ -470,6 +474,7 @@ try {
   check(await until("document.getElementById('msg-text')?.value === 'Ask about the frost'"), '↳ Use puts the note in the message box');
   await js("document.getElementById('msg-text').focus()");
   await key('keyDown'); await key('keyUp');
+  await sendHeldNow();
   for (let i = 0; i < 40 && received.at(-1) !== 'Ask about the frost'; i++) await sleep(150);
   check(received.at(-1) === 'Ask about the frost' && await until("!!document.querySelector('#center-body .note.used')"), `sent from the message box, the note is crossed out as used (got ${JSON.stringify(received.at(-1))})`);
   await js("document.getElementById('note-text').focus()");
@@ -515,6 +520,7 @@ try {
   await send('Input.insertText', { text: 'Sent from the conversation dialog' });
   const sentBefore = received.length;
   await key('keyDown'); await key('keyUp');
+  await sendHeldNow(); // the list is in the side panel, behind the dialog
   for (let i = 0; i < 40 && received.length <= sentBefore; i++) await sleep(150);
   check(received.at(-1) === 'Sent from the conversation dialog', `the conversation dialog has the message box too: Enter sends from it (got ${JSON.stringify(received)})`);
   await js("document.getElementById('convo').close()");
@@ -522,6 +528,7 @@ try {
   check(await until("/farm-repo/.test(document.querySelector('#center-body .thumb-folder')?.textContent ?? '')"), "📁 Folder attaches the folder picked in Finder's window");
   const folderBefore = received.length;
   await js("document.getElementById('msg-send').click()");
+  await sendHeldNow();
   for (let i = 0; i < 40 && received.length <= folderBefore; i++) await sleep(150);
   check(received.at(-1) === `Please look at the folder I attached. Look in it with your tools:\n${repo}`, `sent, the message carries its path (got ${JSON.stringify(received.at(-1))})`);
   const theme = await js('document.documentElement.dataset.theme ?? "auto"');
@@ -755,9 +762,9 @@ try {
     c.dispatchEvent(new PointerEvent('pointerleave', { bubbles: true, pointerId: 1 })); document.querySelector('#farm .px-view').dispatchEvent(new PointerEvent('pointerleave', { pointerId: 1 }));
     return on && !document.querySelector('.px-tag.hover'); })()`);
   check(hovered, 'hovering a farmer shows its name, and leaving hides it again');
-  const corners = JSON.parse(await fjs(`(() => { const r = s => document.querySelector(s).getBoundingClientRect(), v = r('#farm .px-host'), st = r('.px-stats'), z = r('.px-zoombar'), t = r('.px-tools'), n = r('.px-nav');
-    return JSON.stringify({ stats: st.left - v.left < 20 && st.top - v.top < 20, nav: v.right - n.right < 20 && n.top - v.top < 20, zoom: v.bottom - z.bottom < 20 && z.height < 40, tools: (b => v.bottom - b.bottom < 20 && b.height < 40 && Math.abs((b.left + b.right) / 2 - (v.left + v.right) / 2) < 40)((r => ({ left: Math.min(...r.map(x => x.left)), right: Math.max(...r.map(x => x.right)), bottom: Math.max(...r.map(x => x.bottom)), height: Math.max(...r.map(x => x.bottom)) - Math.min(...r.map(x => x.top)) }))([...document.querySelectorAll('.px-tools > button, .px-tools > .px-zoombar')].map(x => x.getBoundingClientRect()))) }); })()`));
-  check(corners.stats && corners.nav && corners.zoom && corners.tools, `the controls lie over the farm: the panel top left, the dashboard's buttons top right, a slim row of switches and zoom along the bottom (${JSON.stringify(corners)})`);
+  const corners = JSON.parse(await fjs(`(() => { const r = s => document.querySelector(s).getBoundingClientRect(), v = r('#farm .px-host'), st = r('.px-stats'), n = r('.px-nav'), m = document.querySelector('.px-menu');
+    return JSON.stringify({ stats: st.left - v.left < 20 && st.top - v.top < 20, nav: v.right - n.right < 20 && n.top - v.top < 20 && n.height < 50, shut: !!m && m.hidden, bottom: !document.querySelector('.px-tools') }); })()`));
+  check(corners.stats && corners.nav && corners.shut && corners.bottom, `the controls lie over the farm: the panel top left, one Menu button top right (shut), nothing along the bottom (${JSON.stringify(corners)})`);
   // At 100% the panel never lies over the farm (it hid the silos' figures): the farm sits beside it or below it.
   const panelClear = () => fjs(`(() => { const c = document.querySelector('#farm canvas'), r = c.getBoundingClientRect(), cs = r.width / Number(c.dataset.ew), [pl, pt] = c.dataset.pad.split(',').map(Number), p = document.querySelector('.px-stats').getBoundingClientRect();
     const farm = [r.left + pl * cs, r.top + pt * cs], foot = r.bottom - Number(c.dataset.foot) * cs, tools = Math.min(...[...document.querySelectorAll('.px-tools > button, .px-tools > .px-zoombar')].map(b => b.getBoundingClientRect().top));
@@ -765,6 +772,9 @@ try {
     return JSON.stringify({ clear: beside || (below && foot <= tools + 1), farm: [...farm, foot].map(Math.round), panel: [p.right, p.bottom].map(Math.round), tools: Math.round(tools) }); })()`);
   const refitted = async () => { for (let i = 0, last = ''; i < 20; i++) { const now = await fjs("document.querySelector('#farm canvas').style.width + '|' + document.querySelector('#farm canvas').dataset.pad + '|' + document.querySelector('#farm .px-view').getBoundingClientRect().width"); if (now === last) return; last = now; await sleep(250); } };
   check(JSON.parse(await panelClear()).clear, `at 100% nothing of the farm lies under the panel (${await panelClear()})`);
+  const steady = [];
+  for (let i = 0; i < 8; i++) { steady.push(await fjs("(c => [document.querySelector('.px-stats').offsetWidth, c.dataset.pad, c.dataset.ew].join('/'))(document.querySelector('#farm canvas'))")); await sleep(500); }
+  check(new Set(steady.map(x => x.split('/').slice(1).join('/'))).size === 1, `the farm keeps its size and place while the panel's figures change (panel width / farm: ${[...new Set(steady)].join(', ')})`);
   await fjs("document.querySelector('[data-farm-nav=\"theme\"]').click()");
   check(await until("document.documentElement.dataset.theme !== 'dark'"), "the farm's own buttons work the dashboard: the theme changes");
   // Each click reaches the page as a message (wait for it before looking again), and the page takes one
@@ -779,6 +789,23 @@ try {
   await fjs("document.querySelector('[data-farm-nav=\"setup\"]')?.click()");
   check(await until("document.getElementById('setup').open"), "the farm's buttons have ⚙ Claude Code too, opening its dialog");
   await js("document.getElementById('setup').close()");
+  // The farm's buttons are in one Menu: it opens over the farm, in view; a switch in it leaves it open to
+  // change another; Esc shuts it; a button that leaves the farm (Broadcast) shuts it behind what it opens.
+  await fjs("document.querySelector('[data-farm-menu]').click()");
+  check(await funtil("(m => !!m && !m.hidden && (r => r.top >= 0 && r.bottom <= innerHeight + 1 && r.right <= innerWidth + 1 && r.left >= 0)(m.getBoundingClientRect()))(document.querySelector('.px-menu'))"), 'Menu opens the menu over the farm, all of it in view');
+  const bubblesWas = await fjs("document.querySelector('[data-farm-bubbles]').textContent");
+  await fjs("document.querySelector('[data-farm-bubbles]').click()");
+  check(await funtil(`document.querySelector('[data-farm-bubbles]').textContent !== ${JSON.stringify(bubblesWas)} && !document.querySelector('.px-menu').hidden`), 'a switch in it changes, and the menu stays open to change another');
+  await fjs("document.querySelector('[data-farm-bubbles]').click()");
+  await funtil(`document.querySelector('[data-farm-bubbles]').textContent === ${JSON.stringify(bubblesWas)}`);
+  await fjs("document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }))");
+  check(await funtil("document.querySelector('.px-menu').hidden && document.activeElement?.hasAttribute('data-farm-menu')"), 'Esc shuts it, back on its button');
+  await sleep(300); // the page takes one press of the top bar's buttons a quarter second
+  await fjs("document.querySelector('[data-farm-menu]').click()");
+  await fjs("document.querySelector('[data-farm-nav=\"broadcast\"]').click()");
+  check(await until("document.getElementById('broadcast').open && document.querySelectorAll('#bc-list [data-bc-agent]').length > 0"), "its Broadcast opens the dashboard's Broadcast over the farm, with the agents to tick");
+  check(await funtil("document.querySelector('.px-menu').hidden"), 'and the menu shuts behind it');
+  await js("document.getElementById('broadcast').close()");
   await shot('farm-bubbles');
   check(await fjs("[...document.querySelectorAll('.px-say')].some(b => b.textContent.includes('One question before I go on'))") === false, 'a waiting farmer shows its question, not its older reply');
   await fjs(`document.querySelector('.px-say[data-say="ui-asker"] [data-say-close]').click()`);
@@ -817,7 +844,7 @@ try {
   await fjs("document.querySelector('[data-farm-zoom=\"1\"]').click()");
   check(await width() > fit && (await frameBox()) === frame, `zooming in makes the farm bigger inside the same frame (${frame} → ${await frameBox()})`);
   check(await view('v.scrollLeft > 0 && v.scrollTop > 0 && v.scrollWidth > v.clientWidth'), 'it zooms around the middle of the view, which now scrolls');
-  check(await funtil("(m => !!m && !m.hidden && (a => [...document.querySelectorAll('.px-tools > button, .px-tools > .px-zoombar')].every(b => (r => r.right <= a.left || r.left >= a.right || r.bottom <= a.top || r.top >= a.bottom)(b.getBoundingClientRect())))(m.getBoundingClientRect()))(document.querySelector('.px-mini'))"), 'zoomed in, the minimap shows, above the toolbar rather than over its buttons');
+  check(await funtil("(m => !!m && !m.hidden && (a => (r => r.right <= a.left || r.left >= a.right || r.bottom <= a.top || r.top >= a.bottom)(document.querySelector('[data-farm-menu]').getBoundingClientRect()))(m.getBoundingClientRect()))(document.querySelector('.px-mini'))"), 'zoomed in, the minimap shows, clear of the Menu');
   const picked = () => fjs("document.querySelector('.px-tag.sel')?.dataset.farmer ?? ''");
   const pickedBefore = await picked(), left0 = await view('v.scrollLeft');
   const [mx, my] = JSON.parse(await view('JSON.stringify((r => [Math.round(r.left + r.width / 2), Math.round(r.top + r.height / 2)])(v.getBoundingClientRect()))'));
@@ -838,7 +865,7 @@ try {
   const followed = await funtil(`(() => { const v = document.querySelector('#farm .px-view').getBoundingClientRect(), t = document.querySelector('.px-tag[data-farmer="ui-worker"]').getBoundingClientRect(), cx = t.left + t.width / 2, cy = t.bottom;
     return v.width > 0 && Math.abs(cx - (v.left + v.width / 2)) < v.width / 5 && Math.abs(cy - (v.top + v.height / 2)) < v.height / 3 && parseFloat(document.querySelector('#farm canvas').style.width) > v.width; })()`, 4000);
   check(followed && /Follow: on/.test(await fjs("document.querySelector('[data-farm-follow]').textContent")), 'Follow zooms in and keeps the picked farmer in the middle of the view');
-  check(await funtil("(m => !!m && !m.hidden && (a => [...document.querySelectorAll('.px-tools > button, .px-tools > .px-zoombar')].every(b => (r => r.right <= a.left || r.left >= a.right || r.bottom <= a.top || r.top >= a.bottom)(b.getBoundingClientRect())))(m.getBoundingClientRect()))(document.querySelector('.px-mini'))"), 'with the sidebar open too, the minimap stays clear of the toolbar (Follow can be clicked)');
+  check(await funtil("(m => !!m && !m.hidden && (a => (r => r.right <= a.left || r.left >= a.right || r.bottom <= a.top || r.top >= a.bottom)(document.querySelector('[data-farm-menu]').getBoundingClientRect()))(m.getBoundingClientRect()))(document.querySelector('.px-mini'))"), 'with the sidebar open too, the minimap stays clear of the Menu');
   {
     const [fx, fy] = JSON.parse(await view('JSON.stringify((r => [Math.round(r.left + r.width / 2), Math.round(r.top + r.height / 2)])(v.getBoundingClientRect()))'));
     const [ox, oy] = await frameAt();
@@ -930,6 +957,10 @@ try {
     return side.scrollWidth <= side.clientWidth + 1 && s.bottom <= innerHeight + 1 && b.top >= s.top && b.bottom <= s.bottom + 1;
   })()`), '› steps to another farmer; the sidebar fits beside the farm, nothing wider than it, and its message box is in view at the bottom');
   check(await js("(c => c.scrollHeight - c.scrollTop - c.clientHeight < 2)(document.getElementById('fs-chat'))"), 'the chat shows its newest message, next to the box');
+  await js("document.getElementById('fs-chat').scrollTop = 0; true"); // scrolled up to read
+  await sleep(200);
+  appendFileSync(join(claudeDir, 'projects', '-farm-repo', 'ui-worker.jsonl'), `${line(Date.now(), { model: 'claude-haiku', content: [{ type: 'text', text: 'Fresh news from the north field.' }] })}\n`);
+  check(await until("/Fresh news from the north field/.test(document.getElementById('farm-agent').textContent) && (c => c.scrollHeight - c.scrollTop - c.clientHeight < 2)(document.getElementById('fs-chat'))", 8000), 'a new message brings the chat down to it, even scrolled up');
   await js("document.getElementById('fs-switch').click()");
   check(await until("!!document.querySelector('#fs-pop .fs-pick') && document.activeElement?.id === 'fs-find'"), "the agent's name opens the picker, its search box ready");
   check(await js("(p => { const r = p.getBoundingClientRect(), s = document.getElementById('farm-sidebar').getBoundingClientRect(); return r.left >= s.left - 1 && r.right <= s.right + 1 && r.bottom <= s.bottom + 1; })(document.querySelector('#fs-pop .fs-pop'))"), 'the picker fits inside the sidebar');
@@ -1194,6 +1225,55 @@ try {
   check(await until("document.getElementById('confirm').open && /End ui-done-b\\?/.test(document.getElementById('confirm-text').textContent)") && ended.length === 0, 'End session asks first, and does nothing until you confirm');
   await js("document.getElementById('confirm-yes').click()");
   check(await until("/Ended ui-done-b/.test(document.getElementById('notice').textContent)") && ended[0] === doneB.pid && launched.at(-1) === '/dev/ttys042', `confirmed, it ends that session and closes its window by its tty (ended ${JSON.stringify(ended)}, last ${launched.at(-1)})`);
+  console.log('Messages that wait');
+  // A collector of its own: one session at work, a stand-in mod taking its messages. Two sent from the
+  // page wait; one removed, one edited; the turn ends; exactly one goes, the edited one.
+  const wait = join(temp, 'waiting'), waitClaude = join(wait, 'claude'), waitRoot = join(wait, 'root'), WSID = 'dddddddd-4444-4444-8444-444444444444';
+  for (const d of [join(waitClaude, 'sessions'), join(waitClaude, 'projects', '-field'), join(waitRoot, 'state', 'mods')]) mkdirSync(d, { recursive: true });
+  cpSync(join(ROOT, 'web'), join(waitRoot, 'web'), { recursive: true });
+  writeFileSync(join(waitRoot, 'config.json'), JSON.stringify({ port: 0, pollMs: 300 }));
+  const worker2 = spawn('sleep', ['600'], { stdio: 'ignore' });
+  const waitReg = status => writeFileSync(join(waitClaude, 'sessions', `${worker2.pid}.json`), JSON.stringify({ pid: worker2.pid, sessionId: WSID, cwd: '/field', name: 'slow-farmer', kind: 'interactive', status }));
+  const waitLine = obj => appendFileSync(join(waitClaude, 'projects', '-field', `${WSID}.jsonl`), `${JSON.stringify({ timestamp: new Date().toISOString(), cwd: '/field', ...obj })}\n`);
+  waitReg('busy');
+  waitLine({ type: 'user', message: { role: 'user', content: 'Plough the field' } });
+  const waitGot = [], waitInbox = join(waitRoot, 'state', 'messages', WSID);
+  const waitMod = setInterval(() => {
+    writeFileSync(join(waitRoot, 'state', 'mods', `${WSID}.json`), JSON.stringify({ sessionId: WSID, version: '0.9.0', at: Date.now() }));
+    if (!existsSync(waitInbox)) return;
+    for (const name of readdirSync(waitInbox).sort()) if (name.endsWith('.json')) { waitGot.push(JSON.parse(readFileSync(join(waitInbox, name), 'utf8')).text); unlinkSync(join(waitInbox, name)); }
+  }, 100);
+  const waitHandle = await startCollector({ root: waitRoot, claudeDir: waitClaude, claudeBin: '/usr/bin/false', notify: () => {}, log: () => {}, home: '/nowhere', scratchBase: '/nonexistent' });
+  try {
+    const heldState = async () => `state ${waitHandle.getSnapshot()?.agents[0]?.state}, held ${JSON.stringify(waitHandle.getSnapshot()?.agents[0]?.held ?? null)}, got ${JSON.stringify(waitGot)}, page: ${JSON.stringify(await js("(document.querySelector('#center-body .held-box')?.textContent ?? 'no list').replace(/\\s+/g, ' ').slice(0, 200) + ' | status: ' + (document.getElementById('msg-status')?.textContent ?? '')"))}`;
+    await send('Page.navigate', { url: `http://127.0.0.1:${waitHandle.port}/` });
+    await until("document.querySelectorAll('.row').length === 1");
+    await js(`document.querySelector('.row[data-id="${WSID}"]')?.click()`);
+    await until("!!document.getElementById('msg-text') && !document.getElementById('msg-text').disabled"); // its mod is listening
+    for (const [i, text] of ['Water the corn', 'Feed the hens'].entries()) {
+      await js(`(t => { const b = document.getElementById('msg-text'); b.value = t; b.dispatchEvent(new Event('input', { bubbles: true })); document.getElementById('msg-send').click(); })(${JSON.stringify(text)})`);
+      await until(`/Waiting to send \\(${i + 1}\\)/.test(document.getElementById('center-body').textContent)`); // held before the next
+    }
+    check(await until("/Waiting to send \\(2\\)/.test(document.getElementById('center-body').textContent) && document.querySelectorAll('#center-body .held').length === 2") && waitGot.length === 0, `two messages to a working session wait under the box, none sent (${await heldState()})`);
+    await js("document.querySelector('#center-body [data-held-remove]').click()");
+    check(await until("document.querySelectorAll('#center-body .held').length === 1 && /Feed the hens/.test(document.querySelector('#center-body .held-text')?.textContent ?? '')"), '✕ removes one');
+    await js("document.querySelector('#center-body [data-held-edit]').click()");
+    await until("!!document.querySelector('#center-body .held-edit')");
+    await js("(b => { b.value = 'Feed the hens and the ducks'; b.dispatchEvent(new Event('input', { bubbles: true })); document.querySelector('#center-body [data-held-save]').click(); })(document.querySelector('#center-body .held-edit'))");
+    check(await until("/Feed the hens and the ducks/.test(document.querySelector('#center-body .held-text')?.textContent ?? '')"), `Edit changes it in place (${await heldState()})`);
+    waitReg('idle'); // the turn ends
+    waitLine({ type: 'assistant', message: { model: 'claude-opus-5-5', role: 'assistant', content: [{ type: 'text', text: 'Ploughed.' }] } });
+    waitLine({ type: 'system', subtype: 'turn_duration', durationMs: 1000 });
+    for (let i = 0; i < 40 && !waitGot.length; i++) await sleep(150);
+    await sleep(600);
+    check(JSON.stringify(waitGot) === JSON.stringify(['Feed the hens and the ducks']), `when the turn ends, exactly one goes out, as edited (got ${JSON.stringify(waitGot)}; ${await heldState()})`);
+    check(await until("!document.querySelector('#center-body .held-box')"), 'and the list is gone');
+  } finally {
+    clearInterval(waitMod);
+    worker2.kill();
+    await waitHandle.stop();
+  }
+
   console.log('Two Claude accounts');
   // A collector of its own: two accounts, work (its claudeDir) and home (a sibling, its projects linked
   // to work's), a live session on each, a past one, and a reading of each one's plan.
