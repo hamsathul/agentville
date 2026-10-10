@@ -90,7 +90,7 @@
   // - the back (y 0–64): the sky by your clock over a clipped hedge, flagpoles with bunting in the agents' colours,
   //   and in front, left to right: the motor pool gate, the drone pad, the alert board, the HQ tent, the briefing
   //   board, the fuel depot and the quartermaster's depot;
-  // - the track (y 74–92) in front of them, where soldiers queue at HQ;
+  // - the track (y 74–92) in front of them, where soldiers queue at HQ, lanterns along its front edge;
   // - the positions in the engine's grid (the farm's and the factory's numbers), inside the range's rope;
   // - the left side (x 4–110): the mess tent, the reserve tents, the drill ground, the cots, the vehicle park;
   // - along the bottom, the edge of the exercise field (a low hedge and a fence), then plain grass: the Menu's
@@ -141,6 +141,15 @@
   const COT_BOX = { dx: -8, dy: -18, w: 17, h: 23 }; // a cot round its sleeper's feet: its pillow end to its legs' shadow
   const CLOCK = [54, 236]; // the little clock over the cots: its post's top
   const PARK_BOX = { x: 4, y: 274, w: 106, h: 20 }; // the vehicle park's gravel
+  const RESERVE_TENTS = [30, 78]; // the reserve tents' apexes (x), behind their crates
+  const MESS_LAMP = [61, 112]; // the lantern hanging under the mess tent's fly: its glass
+  // What lights the base at night (lights), and from high alert by day: the lanterns on posts along the track's
+  // front edge (each one's middle; clear of the paths, the range rope's posts, the signs on the track, and below the
+  // feet of the soldiers on it), HQ's windows (each one's left), and the two searchlights on HQ's roof (each one's
+  // lens: its middle, its top).
+  const LANTERNS = [40, 90, 195, 266, 330, 388], LANTERN_Y = 87; // the glass's top
+  const HQ_WINDOWS = [146, 238];
+  const SEARCHLIGHTS = [[158, 19], [242, 19]];
   // Colours: sunny grass, a sandy track, khaki canvas, olive paint, white poles and a cream rope.
   const GRASS = '#6aa84f', MOWN = '#7fbf5a', SHADE = '#5d9b46', PATCH = ['#9ed36a', '#c6e89a', '#6cc04a'], SAND = '#dcc08a', SAND_EDGE = '#c9a46a', PEBBLE = '#b08850';
   const HEDGE = ['#264a2a', '#2f6b2f', '#3f9b3a', '#6cc04a']; // its foot in shade, its face, its leaves, its clipped top in the sun
@@ -263,7 +272,8 @@
   /**
    * The HQ tent: a big khaki marquee, its roof ridged across with a red valance, its front open between flaps tied
    * back: inside, a map table, a lamp hanging over it, a field telephone. Guy ropes at its ends. Soldiers queue on the
-   * track in front; its pennant pole stands on its ridge (drawn each frame above it: the pennant goes up and down).
+   * track in front; its pennant pole stands on its ridge (drawn each frame above it: the pennant goes up and down),
+   * between two searchlights on its roof.
    */
   function hqTent(f) {
     for (let j = 0; j < 16; j++) { const inset = Math.round((15 - j) * 0.55); f(140 + inset, HQ_RIDGE + j, 120 - 2 * inset, 1, j < 2 ? CANVAS_LIGHT : CANVAS); } // the roof
@@ -271,7 +281,7 @@
     f(140, 42, 120, 2, RED_DARK); for (let x = 140; x < 260; x += 8) { f(x + 1, 44, 6, 1, RED_DARK); f(x + 2, 45, 4, 1, RED_DARK); } // the valance
     f(141, 44, 118, 30, CANVAS); f(141, 44, 1, 30, CANVAS_LIGHT); f(258, 44, 1, 30, CANVAS_SHADE); f(141, 73, 118, 1, CANVAS_SHADE); // the walls
     for (const x of [160, 240]) f(x, 46, 1, 27, CANVAS_SHADE);
-    for (const x of [146, 238]) { f(x, 50, 16, 10, CANVAS_DARK); f(x + 1, 51, 14, 8, '#a9dcf7'); f(x + 8, 51, 1, 8, CANVAS_DARK); f(x + 1, 55, 14, 1, CANVAS_DARK); f(x + 1, 51, 3, 1, '#ffffff'); } // its windows
+    for (const x of HQ_WINDOWS) { f(x, 50, 16, 10, CANVAS_DARK); f(x + 1, 51, 14, 8, '#a9dcf7'); f(x + 8, 51, 1, 8, CANVAS_DARK); f(x + 1, 55, 14, 1, CANVAS_DARK); f(x + 1, 51, 3, 1, '#ffffff'); } // its windows
     f(176, 46, 48, 28, INSIDE); f(176, 46, 48, 2, CANVAS_DARK); // the way in, the inside in the shade
     for (let j = 0; j < 12; j++) { f(176, 46 + j, 11 - j, 1, CANVAS_SHADE); f(213 + j, 46 + j, 11 - j, 1, CANVAS_SHADE); } // the flaps, tied back
     f(177, 57, 3, 2, RED_DARK); f(220, 57, 3, 2, RED_DARK); // their ties
@@ -281,6 +291,18 @@
     f(209, 55, 5, 1, DARK); f(209, 56, 5, 3, OLIVE[1]); // a field telephone
     line(f, 140, 44, 137, 73, ROPE); f(136, 73, 2, 1, WOOD[1]); line(f, 259, 44, 261, 73, ROPE); f(261, 73, 2, 1, WOOD[1]); // guy ropes, pegged
     f(HQ_POLE, SKY_Y, 1, HQ_RIDGE - SKY_Y, POLE); // the pennant pole's foot (the rest stands against the sky)
+    for (const [x, y] of SEARCHLIGHTS) searchlight(f, x, y);
+  }
+  /** A searchlight on HQ's roof, its lens at (x, y): a dark drum on a steel yoke, its glass on top (it shines up: its beam sweeps the sky at night, top). */
+  function searchlight(f, x, y) {
+    f(x - 1, y + 4, 3, 2, STEEL); f(x - 3, y + 6, 7, 1, DARK); // its yoke, its base on the ridge
+    f(x - 2, y, 5, 4, DARK); f(x - 2, y + 1, 1, 3, STEEL); // its drum, lit on its left
+    f(x - 1, y, 3, 1, '#c3cbd2'); // its glass
+  }
+  /** A lantern on its post at the track's front edge, its glass's middle at x: a dark cap and base round pale glass, unlit (lit from high alert by day, and at night). */
+  function lantern(f, x) {
+    f(x + 1, LANTERN_Y + 9, 2, 1, SHADE); f(x, LANTERN_Y + 4, 1, 5, WOOD[1]); // its post, its shadow
+    f(x - 1, LANTERN_Y - 1, 3, 1, DARK); f(x - 1, LANTERN_Y, 3, 3, '#e6eef5'); f(x - 1, LANTERN_Y + 3, 3, 1, DARK); // its cap, its glass, its base
   }
   /** The briefing board: a cork board on two legs under a little roof, orders, a memo and a map pinned to it. */
   function briefingBoard(f) {
@@ -293,7 +315,7 @@
     f(265, 39, 9, 6, '#9ed36a'); f(266, 41, 7, 1, '#5ab4ff'); f(269, 39, 1, 6, SAND_EDGE); // a map
     for (const [x, y] of [[266, 32], [272, 32], [269, 39]]) f(x, y, 1, 1, RED); // pins
   }
-  /** A fuel depot, its left at x: a shelter with a tin roof, a lamp and a fuel sign under it, two shelves for its drums (the weekly limit fills them: drawn each frame). */
+  /** A fuel depot, its left at x: a shelter with a tin roof, a lamp and a fuel sign under it, two shelves for its drums (the weekly limit fills them: depotDrums, each frame). */
   function fuelDepot(f, x = DEPOT_X[0]) {
     f(x + 1, 76, 25, 1, SHADE);
     f(x, 25, 24, 50, INSIDE); f(x, 25, 2, 50, WOOD[2]); f(x + 22, 25, 2, 50, WOOD[2]); // its back and posts
@@ -330,6 +352,8 @@
     for (let sx = x + 15; sx < x + w - 4; sx += 13) f(sx, y + 2, 1, 8, CANVAS_SHADE); // its seams
     for (let sx = x + 2; sx < x + w - 3; sx += 6) { f(sx + 1, y + 10, 4, 1, CANVAS); f(sx + 2, y + 11, 2, 1, CANVAS); } // its scallops
     line(f, x + 2, y + 6, x, y + 18, ROPE); line(f, x + w - 3, y + 6, x + w - 1, y + 18, ROPE); // guy ropes
+    const [lx, ly] = MESS_LAMP; // a lantern hanging under the fly, by its middle pole (it glows at night)
+    f(lx, ly - 2, 1, 1, DARK); f(lx - 1, ly - 1, 3, 4, DARK); f(lx, ly, 1, 2, '#e6eef5');
   }
   /** The mess table, drawn among the soldiers just in front of the idle ones (they stand behind it): a trestle table, a plate of stew and a mug at each place, the pot. */
   function messTable() {
@@ -432,9 +456,10 @@
     f(111, TRACK.y1, 10, G.y1 - TRACK.y1, SAND); f(111, TRACK.y1, 1, G.y1 - TRACK.y1, SAND_EDGE); f(120, TRACK.y1, 1, G.y1 - TRACK.y1, SAND_EDGE);
     for (const c of CORR.slice(1)) f(c - 3, TRACK.y1, 6, G.y1 - TRACK.y1, SAND);
     rangeRope(f, L);
+    for (const x of LANTERNS) lantern(f, x);
     // the left side
     messTent(f);
-    for (const cx of [30, 78]) pupTent(f, cx, RESERVE_BOX.y + 2); // the reserve tents, behind their crates
+    for (const cx of RESERVE_TENTS) pupTent(f, cx, RESERVE_BOX.y + 2); // the reserve tents, behind their crates
     drillGround(f);
     for (const [x, y] of COTS) cot(f, x, y);
     cotClock(f, CLOCK);
@@ -496,20 +521,28 @@
     for (let x = a + 2; x <= b; x++) if (x === b || yAt(x) !== yAt(s)) { px(s, yAt(s), x - s, 1, ROPE); s = x; } // the string, in runs of one height
     for (let x = a + 4, k = k0; x < b - 3; x += 6, k++) { const y = yAt(x + 1) + 1, c = colours[k % colours.length]; exact(x, y, 3, 1, c); exact(x + 1, y + 1, 1, 1, c); }
   }
-  /** A flag at a pole's top, flying out to its right, a ripple running along it. */
-  function flag(x, c, T, i) {
+  /**
+   * A flag at a pole's top, by the alert level: at calm it hangs limp down its pole; at ready and high it flies out to
+   * the right, a ripple running along it; at max it stands straight out, longer, its end snapping in the wind.
+   */
+  function flag(x, c, T, i, level) {
+    if (level === 'spring') { exact(x + 1, POLE_TOP + 1, 1, 8, c); exact(x + 2, POLE_TOP + 1, 1, 7, c); exact(x + 3, POLE_TOP + 2, 1, 4, c); return; }
+    if (level === 'winter') {
+      for (let col = 0; col < 9; col++) exact(x + 1 + col, POLE_TOP + 1 + (col < 4 ? 0 : Math.round(Math.sin(T * 16 - col * 1.1 + i) * (col - 3) * 0.3)), 1, 4, c);
+      return;
+    }
     for (let col = 0; col < 8; col++) exact(x + 1 + col, POLE_TOP + 1 + (Math.sin(T * 5 - col * 0.8 + i) > 0.35 ? 1 : 0), 1, 4, c);
   }
   /**
    * What stands against the sky, over it: each flagpole's top with a gilt ball and a flag, bunting from pole to pole (the
-   * flags and the bunting in the agents' colours), and HQ's pennant pole on its ridge: its red pennant run up while a
-   * soldier waits on you ("awaiting orders"), furled at the pole's foot when no one does.
+   * flags and the bunting in the agents' colours; the flags as the alert level has them), and HQ's pennant pole on its
+   * ridge: its red pennant run up while a soldier waits on you ("awaiting orders"), furled at the pole's foot when no one does.
    */
-  function drawSkyline(colours, waiting, T) {
+  function drawSkyline(colours, waiting, T, level) {
     const anchors = [...POLES, HQ_POLE].sort((a, b) => a - b);
     for (let i = 0; i + 1 < anchors.length; i++) bunting(anchors[i], anchors[i + 1], colours, i * 3);
     for (const x of anchors) { const foot = x === HQ_POLE ? HQ_RIDGE : SKY_Y; px(x, POLE_TOP, 1, foot - POLE_TOP, POLE); px(x + 1, POLE_TOP, 1, foot - POLE_TOP, POLE_SIDE); px(x - 1, POLE_TOP - 2, 3, 2, '#f0b429'); }
-    POLES.forEach((x, i) => flag(x, colours[i % colours.length], T, i));
+    POLES.forEach((x, i) => flag(x, colours[i % colours.length], T, i, level));
     const x = HQ_POLE + 1;
     if (!waiting) { px(x, SKY_Y + 1, 2, 6, RED_DARK); px(x, SKY_Y + 1, 1, 6, RED); return; } // furled
     const flap = Math.floor(T * 5) % 2;
@@ -530,6 +563,8 @@
   /** Where a position's post stands (its foot), and where its deploy goes off (its middle, on the ground): for what is drawn there, its signs, and the animals' reactions. */
   const postAt = s => [s.cx - 37, s.rowTop + 24];
   const deployAt = s => [s.cx + 31, s.rowTop + 16];
+  /** Where a position's field generator stands, its top left, by its post (its lamp glows at night: lights). */
+  const generatorAt = s => [postAt(s)[0] + 8, postAt(s)[1] - 14];
   // Stage 0: a stake at each corner of where the ring will go, [dx, dy] of its foot from cx and t, a string between them.
   const STAKES = [[-15, 17], [14, 17], [-15, 29], [14, 29]];
   // The sandbags, [dx, dy] of each one's top left from cx and t: the ring one bag high (stage 1) and a second course on
@@ -635,17 +670,24 @@
     for (const [bx, by, r] of blobs) disc(bx, by, r, '#c3cbd2');
     for (const [bx, by, r] of blobs) if (r > 1) disc(bx - 1, by - 1, r - 2, '#e6eef5');
   }
+  /** A green flare from its canister at (x, y), at T: every 2.4 seconds one goes up ({ x, y, k }), then bursts into its star ({ x, y, k, star: true }); null between. */
+  function flareOf(x, y, T) {
+    const p = (T % 2.4) / 2.4;
+    if (p < 0.4) { const k = p / 0.4; return { x: x + 1 + Math.round(k * 2), y: Math.round(y - 10 - k * 14), k }; }
+    if (p < 0.92) return { x: x + 3, y: y - 24, k: (p - 0.4) / 0.52, star: true };
+    return null;
+  }
   /** Deployed: a green flare's canister on the ground at (x, y), and every 2.4 seconds a flare going up from it, a trail of sparks behind it, bursting into a green star that fades. */
   function greenFlare(x, y, T) {
     px(x - 1, y, 5, 1, SHADE); px(x - 1, y - 6, 4, 6, '#2f6b2f'); px(x - 1, y - 6, 2, 6, '#2fa57a'); px(x - 1, y - 7, 4, 1, '#6cc04a'); px(x, y - 4, 2, 1, '#ffffff'); // its canister
-    const p = (T % 2.4) / 2.4;
-    if (p < 0.4) { // going up
-      const k = p / 0.4, fx = x + 1 + Math.round(k * 2), fy = Math.round(y - 10 - k * 14);
+    const fl = flareOf(x, y, T);
+    if (fl && !fl.star) { // going up
+      const { x: fx, y: fy } = fl;
       px(fx, fy + 3, 1, 2, '#9ed36a'); px(fx, fy + 6, 1, 1, '#c6e89a'); px(fx, fy + 8, 1, 1, '#c6e89a');
       PXG.ctx.globalAlpha = 0.5; disc(fx, fy, 3, '#9ed36a'); PXG.ctx.globalAlpha = 1;
       disc(fx, fy, 1, '#6cc04a'); px(fx, fy, 1, 1, '#ffffff');
-    } else if (p < 0.92) { // its star, fading
-      const k = (p - 0.4) / 0.52, gx = x + 3, gy = y - 24, r = 3 + Math.round(k * 3), a = 1 - k * 0.8;
+    } else if (fl) { // its star, fading
+      const { k, x: gx, y: gy } = fl, r = 3 + Math.round(k * 3), a = 1 - k * 0.8;
       PXG.ctx.globalAlpha = a * 0.5; disc(gx, gy, 4, '#9ed36a'); // its glow
       PXG.ctx.globalAlpha = a; disc(gx, gy, 2, '#6cc04a'); px(gx, gy, 1, 1, '#ffffff');
       for (const [dx, dy] of [[-1, 0], [1, 0], [0, -1], [0, 1], [-1, -1], [1, -1], [-1, 1], [1, 1]]) px(gx + Math.round(dx * r * (dx && dy ? 0.7 : 1)), gy + Math.round(dy * r * (dx && dy ? 0.7 : 1)), 1, 1, '#c6e89a');
@@ -735,7 +777,7 @@
     else if (f.light === 'blocked') holdBoard(dx, dy);
     positionPost(px0, py0, f.flag);
     if (f.behind > 0) mailSack(px0 + 2, py0 - 6);
-    if (jobs > 0) generator(px0 + 8, py0 - 14, T);
+    if (jobs > 0) generator(...generatorAt(s), T);
     fortification(cx, t, f.build ?? 0, color, T);
     if (f.worktree) PXG.ctx.drawImage(camoNet(), cx - NET.w / 2, t + NET.dy);
     LOOSE.slice(0, Math.min(6, f.dirty ?? 0)).forEach(([x, y]) => sandbag(cx + x, t + y));
@@ -776,6 +818,140 @@
     return `<i class="pxt px-flag" aria-hidden="true" style="width:${(6 * k).toFixed(1)}px;height:${(10 * k).toFixed(1)}px;background-image:url(${pennantUrl})"></i>`;
   }
 
+  /* ---------- the limits: the alert level for the 5-hour limit, the fuel depots for the week, and night ---------- */
+
+  // The alert level is the engine's season (its Season switch is the field exercise's Alert): calm, ready, high, max.
+  // Each level: the alert board's face, its shade, how many of the board's four bars are lit, and how fast the
+  // soldiers walk (world px a second; the farm's is 40). The flags (drawSkyline) and the beacon (top) go by it too.
+  const ALERT = {
+    spring: { face: '#6cc04a', shade: '#3f9b3a', bars: 1, speed: 32 }, // calm: green; the flags hang limp, soldiers stroll
+    summer: { face: '#ffd43b', shade: '#f0b429', bars: 2, speed: 40 }, // ready: yellow; the flags fly
+    autumn: { face: '#f08a24', shade: '#c8681a', bars: 3, speed: 50 }, // high: amber; the base's lights warm, soldiers walk faster
+    winter: { face: '#e04a3a', shade: '#9c3b30', bars: 4, speed: 64 }, // max: red; the beacon spins, the flags snap, soldiers at the double
+  };
+  // The levels' names, and the switch's (the engine's seasonNames): the setting still saves spring … winter.
+  const ALERT_NAMES = { switch: 'Alert', spring: 'calm', summer: 'ready', autumn: 'high', winter: 'max' };
+  /** A limit's % used, from its window: 0 in a new window; null with no window, or one without a number (no reading). */
+  const usedOf = w => (!w ? null : w.reset ? 0 : Number.isFinite(w.percentUsed) ? w.percentUsed : null);
+  /**
+   * The alert level by the plan's 5-hour limit, at the farm's seasonOf bounds: calm while it is fresh, then ready
+   * and high, max when it is nearly used up; ready with no reading, calm again in a new window.
+   */
+  function alertOf(plan) {
+    const p = usedOf(plan?.windows?.find(x => x.kind === 'five_hour'));
+    if (p === null) return 'summer';
+    return p < 25 ? 'spring' : p < 60 ? 'summer' : p < 85 ? 'autumn' : 'winter';
+  }
+  /**
+   * The fuel depot, by the plan's weekly limit, all from the whole % it shows: the drums still full (8 in a fresh
+   * week, none when it is used up), its lamp (green; amber from 70%; red, blinking, from 90%), and when it resets;
+   * null with no reading.
+   */
+  function depotOf(plan) {
+    const w = plan?.windows?.find(x => x.kind === 'seven_day'), used = usedOf(w);
+    if (used === null) return null;
+    const pct = Math.round(Math.max(0, Math.min(100, used)));
+    return { drums: Math.round(8 * (1 - pct / 100)), lamp: pct >= 90 ? 'red' : pct >= 70 ? 'amber' : 'green', pct, resetsAt: w.resetsAt ?? null, reset: Boolean(w.reset) };
+  }
+  /** An account's name, or its number when it has none (account 1, account 2). */
+  const accountName = (a, i) => a?.name || `account ${i + 1}`;
+  /**
+   * A fuel depot per Claude account (two at most), as the factory's banksOf: [{ x, name, depot }]. With fewer than
+   * two accounts, the plan's depot and no name on it. The alert level stays the plan's: the first account's.
+   */
+  function depotsOf(scene) {
+    const accs = scene.accounts ?? [];
+    if (accs.length < 2) return [{ x: DEPOT_X[0], name: null, depot: depotOf(scene.plan) }];
+    return accs.slice(0, 2).map((a, i) => ({ x: DEPOT_X[i], name: accountName(a, i), depot: depotOf(a.plan) }));
+  }
+  /** When a limit resets, short: Tue 09:00. */
+  const resetAt = at => new Date(at).toLocaleString([], { weekday: 'short', hour: '2-digit', minute: '2-digit' });
+
+  /** The alert board's face at a level: its colour, and its four bars lit white from the bottom, one for each step up. */
+  function alertFace(level) {
+    const { face, shade, bars } = ALERT[level] ?? ALERT.summer;
+    px(129, 25, 9, 11, face); px(129, 35, 9, 1, shade);
+    for (let i = 0; i < 4; i++) px(131, 33 - i * 2, 5, 1, i < bars ? '#ffffff' : shade);
+  }
+  const BEACON = [133, 19]; // the beacon's dome on the alert board, on its housing: its middle
+  /**
+   * The alert board's beacon: a red dome, dark below max. At max it spins: a glint going round the dome, its beam
+   * flaring out to the left, then towards you (a flash), then to the right, then away.
+   */
+  function alertBeacon(spinning, T) {
+    const [x, y] = BEACON;
+    if (!spinning) { px(x - 1, y - 1, 3, 3, '#9c3b30'); px(x, y - 2, 1, 1, '#9c3b30'); return; }
+    const quarter = Math.floor(((T * 1.5) % 1) * 4); // its beam to the left, towards you, to the right, away
+    px(x - 1, y - 1, 3, 3, RED); px(x, y - 2, 1, 1, RED);
+    if (quarter === 1) { // towards you: a flash, its glare round it and short spikes of light
+      PXG.ctx.globalAlpha = 0.5; disc(x, y, 4, RED_LIGHT); PXG.ctx.globalAlpha = 1;
+      px(x - 1, y - 1, 3, 3, RED_LIGHT); px(x, y - 1, 1, 1, '#ffffff');
+      for (const [dx, dy] of [[-4, 0], [-3, 0], [3, 0], [4, 0], [0, -4], [0, -3]]) px(x + dx, y + dy, 1, 1, RED_LIGHT);
+      return;
+    }
+    const side = quarter === 0 ? -1 : quarter === 2 ? 1 : 0;
+    px(x + side, y - 1, 1, 2, RED_LIGHT); // the glint, on the side its beam faces (the middle while it faces away)
+    for (let i = 2; side && i <= 6; i++) px(x + side * i, y - (i > 3 ? 1 : 0), 1, i > 3 ? 3 : 1, RED_LIGHT); // its beam out to that side, widening
+  }
+  /** Lit lanterns along the track (by day from high alert: the base's lights warm), and HQ's lamp glowing over its map table. */
+  function warmLights() {
+    for (const x of LANTERNS) { px(x - 1, LANTERN_Y, 3, 3, '#ffd43b'); px(x, LANTERN_Y + 1, 1, 1, '#ffe8a3'); }
+    PXG.ctx.globalAlpha = 0.35; disc(200, 54, 6, '#ffe8a3'); PXG.ctx.globalAlpha = 1;
+    px(198, 52, 5, 4, '#ffd43b'); px(199, 53, 3, 2, '#ffe8a3');
+  }
+
+  // A fuel depot's eight drums, [x, y] of each one's top left (4 × 8), for the depot at x: four on its floor shelf,
+  // then four on the shelf above. The full ones are the first (the week empties the top shelf first, from its right).
+  const drumsOf = x => [64, 44].flatMap(y => [3, 8, 13, 18].map(dx => [x + dx, y]));
+  const FUEL = RED; // a full drum's paint
+  const LAMP_COLOURS = { green: '#6cc04a', amber: '#f0b429', red: RED };
+  /** A depot's drums and lamp, its left at x, for its reading (none: no drum full, the lamp off); f paints. A drum gone leaves its ring on the shelf. */
+  function depotDrums(depot, x = DEPOT_X[0], f = px) {
+    drumsOf(x).forEach(([dx, dy], i) => {
+      if (!depot || i >= depot.drums) { f(dx, dy + 7, 4, 1, WOOD[1]); return; }
+      f(dx, dy, 4, 8, FUEL); f(dx, dy, 4, 1, RED_LIGHT); f(dx + 3, dy + 1, 1, 7, RED_DARK); f(dx, dy + 3, 4, 1, RED_DARK); f(dx, dy + 6, 4, 1, RED_DARK); // its rim, its shaded side, its two hoops
+    });
+    if (!depot) return;
+    if (depot.lamp !== 'red' || blink(2)) { f(x + 10, 26, 4, 2, LAMP_COLOURS[depot.lamp]); f(x + 10, 26, 1, 1, '#ffffff'); } else f(x + 10, 26, 4, 2, '#5a1f19'); // red blinks: between flashes, unlit red
+  }
+
+  // Night: the searchlights' beams sweeping the sky, and now and then an illumination flare drifting down over the
+  // field under a little parachute. Both are drawn over everything (top), the sky too, with their light (PXG.lights,
+  // as the farm's fireflies) so the night shows them; nothing else at night is drawn there. White light only: no tracers.
+  const BEAM = '#f4ecd8';
+  /** Where a searchlight's beam points at T: radians from straight up (left negative), each sweeping its own slow way across the sky. */
+  const beamAngle = (i, T) => (i ? 0.3 : -0.3) + Math.sin(T * 0.3 + i * 2.2) * 0.85;
+  /** How strongly the night's beams and flare show, from how dark it is (0 day … 1 night): none by day, all at night. */
+  const nightOf = dark => Math.max(0, Math.min(1, (dark - 0.4) / 0.4));
+  /** A searchlight's beam, from its lens at (x, y) up through the sky at angle a, widening and fading; k how strongly (nightOf). Its light goes along it. */
+  function searchBeam(x, y, a, k) {
+    const top = Math.min(0, PXG.ext?.y0 ?? 0), tan = Math.tan(a), sec = 1 / Math.cos(a);
+    for (let t = 1; y - t >= top; t++) {
+      const cx = x + tan * t, half = (0.6 + t * 0.14) * sec;
+      PXG.ctx.globalAlpha = k * 0.5 * Math.max(0.3, 1 - t / 40);
+      px(Math.round(cx - half), y - t, Math.max(1, Math.round(2 * half)), 1, BEAM);
+      if (t % 4 === 0) PXG.lights?.push([Math.round(cx), y - t, Math.round(half) + 2, null]);
+    }
+    PXG.ctx.globalAlpha = 1;
+  }
+  const FLARE = { every: 45, burn: 16, lead: 6, drop: 180 }; // seconds between flares, seconds each burns, how far into its burn the first is at T 0, how far down it drifts (px)
+  /** The illumination flare at T: { x, y, k: how far through its burn } while one drifts down over the field (from the sky, under its parachute), else null. */
+  function flareAt(T) {
+    const n = Math.floor((T + FLARE.lead) / FLARE.every), t = T + FLARE.lead - n * FLARE.every;
+    if (t >= FLARE.burn) return null;
+    const k = t / FLARE.burn;
+    return { x: Math.round(170 + ((n * 97) % 190) + k * 16 + Math.sin(t * 0.7) * 3), y: Math.round(k * FLARE.drop), k };
+  }
+  /** The illumination flare at { x, y, k }: a little white parachute, its cords, and under them the flare burning white in its glare, dimming at the end of its burn; its light pools on the field under it. */
+  function illuminationFlare({ x, y, k }, strength, T) {
+    const fade = k > 0.85 ? (1 - k) / 0.15 : 1;
+    px(x - 2, y - 10, 5, 1, '#ffffff'); px(x - 3, y - 9, 7, 2, '#e6eef5'); px(x - 3, y - 9, 7, 1, '#ffffff'); // its parachute
+    line(px, x - 3, y - 7, x, y - 2, '#c3cbd2'); line(px, x + 3, y - 7, x, y - 2, '#c3cbd2'); // its cords
+    PXG.ctx.globalAlpha = (0.45 + 0.1 * Math.sin(T * 13)) * fade; disc(x, y, 3, '#ffffff'); PXG.ctx.globalAlpha = 1; // its glare, flickering
+    px(x - 1, y - 1, 2, 2, '#ffffff'); // the flare
+    PXG.lights?.push([x, y, Math.round(30 * fade * strength), null]);
+  }
+
   /* ---------- the props: what a soldier holds for each step (sdk/props.js) ---------- */
 
   // The props kit's set: each step's prop, what the soldier is doing (its tip and the field log's line), and where
@@ -786,10 +962,6 @@
 
   /** A time of day, short: 14:05. */
   const clock = at => new Date(at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-  /** When a limit resets, short: Tue 09:00. */
-  const resetAt = at => new Date(at).toLocaleString([], { weekday: 'short', hour: '2-digit', minute: '2-digit' });
-  /** A limit's % used, from its window: 0 in a new window; null with no window, or one without a number (no reading). */
-  const usedOf = w => (!w ? null : w.reset ? 0 : Number.isFinite(w.percentUsed) ? w.percentUsed : null);
 
   function makeMilitary() {
     let L = MILITARY_GRID.layoutFor([]);
@@ -797,24 +969,54 @@
     let gateLift = 0; // the motor pool's barrier: 0 down … 1 up, while a soldier comes through the gate
     let seenCompactions = null, seenMerged = null, seenLights = null; // what the last scene had, so news can be told
     const advancing = [], carried = []; // flags carried up-field (compactions): { key, color, t }; crates carried into the depot (merges): { t }
+    let alert = 'summer'; // the live alert level, from your 5-hour limit
+    // The level to draw: the engine's (the Alert switch may hold one), else the live one. What is drawn by the level reads this.
+    const shown = () => PXG.season ?? alert;
+    let dark = 0; // how dark it is (0 day … 1 night), from the sky last drawn (weather): for the night's beams, flare and smoke
+    let where = () => null; // where each soldier is (the engine's, given to tick): for their headgear lamps at night
     const stOf = k => L.ST.find(s => s.key === k);
     const fieldByKey = k => scene.fields.find(f => f.key === k);
+    /** Each position shown, with its repo and what its soldiers bring: [{ s, f, color: whose flag it raises, jobs: background commands running }]. */
+    const shownPositions = () => L.ST.flatMap(s => {
+      const f = fieldByKey(s.key);
+      if (!f) return [];
+      const here = scene.farmers.filter(a => a.field === f.key);
+      return [{ s, f, color: builderOf(here, f.key)?.shirt, jobs: here.reduce((n, a) => n + (a.jobs ?? 0), 0) }];
+    });
     /** The positions, each frame: each one and what its repo's state puts round it; then the flags being carried up-field. */
     function drawPositions() {
       const T = PXG.T;
-      for (const s of L.ST) {
-        const f = fieldByKey(s.key);
-        if (!f) continue;
-        const here = scene.farmers.filter(a => a.field === f.key);
-        drawPosition(s, f, { color: builderOf(here, f.key)?.shirt, jobs: here.reduce((n, a) => n + (a.jobs ?? 0), 0), T });
-      }
+      for (const { s, f, color, jobs } of shownPositions()) drawPosition(s, f, { color, jobs, T });
       for (const a of advancing) { const s = stOf(a.key); if (s) carriedFlag(s, a, T); }
+    }
+    /**
+     * The limits, each frame: the alert board at the level shown, the base's lights warm from high, and each fuel
+     * depot's drums and lamp (a second account's depot is drawn here too, the ground having only the first).
+     */
+    function drawLimits() {
+      const level = shown();
+      alertFace(level);
+      if (level === 'autumn' || level === 'winter') warmLights();
+      for (const { x, depot } of depotsOf(scene)) {
+        if (x !== DEPOT_X[0]) fuelDepot(px, x);
+        depotDrums(depot, x);
+      }
+    }
+    /**
+     * The fuel depot's tooltip: the week's % used, the drums left and when it resets; or that there is no reading.
+     * With two accounts, that there is a depot for each, and each one's week.
+     */
+    function depotTip() {
+      const depots = depotsOf(scene);
+      if (depots.length > 1) return `The fuel depots, one for each of your Claude accounts (the week used: ${depots.map(({ name, depot }) => `${name} ${depot ? `${depot.pct}%` : 'no reading'}`).join(', ')}). Click for their plans`;
+      const d = depots[0].depot;
+      if (!d) return "The fuel depot: your plan's weekly limit, no reading yet (it comes from the mod in a running session)";
+      return `The fuel depot: your plan's weekly limit, ${d.reset ? 'just reset' : `${d.pct}% used`}, ${d.drums} of 8 drums left${d.resetsAt ? `; resets ${resetAt(d.resetsAt)}` : ''}. Click for your plan`;
     }
     return {
       key: 'military', W, SH: 16, corridors: CORR, grid: MILITARY_GRID, fromScene: militaryScene, help: helpHtml,
       nouns: { agent: 'soldier', agents: 'soldiers', repo: 'position', repos: 'positions', place: 'base' },
-      // The 5-hour limit is the alert level; the setting still saves spring … winter.
-      seasonNames: { switch: 'Alert', spring: 'calm', summer: 'ready', autumn: 'high', winter: 'max' },
+      seasonNames: ALERT_NAMES,
       coldSeason: null, // max alert is no weather: the mascots never act cold
       boardTitle: 'The briefing board: what your projects remember', // the engine opens it (the 'board' building)
       /**
@@ -843,11 +1045,16 @@
         }
         seenLights = lights;
         scene = next;
+        alert = alertOf(next.plan);
         return events;
       },
       layout: () => L,
       relayout(ground) { L = ground; return L; },
       spawn: () => GATE,
+      /** The alert level, live: the engine shows it (or the level the Alert switch holds) as PXG.season. */
+      season: () => alert,
+      /** How fast a soldier walks: strolling at calm, faster when high, at the double at max; fast mode faster still. */
+      speed: f => Math.round((ALERT[shown()] ?? ALERT.summer).speed * (f.fast ? 1.7 : 1)),
       /**
        * Where each soldier stands: at its position while it works there; on the drill ground while it works outside
        * any repo (or in one with no position left); on a cot while it waits to wake up by itself; at HQ when it needs
@@ -898,9 +1105,10 @@
         return `${props.doing(f)?.verb ?? 'working'} at the ${fieldByKey(f.field)?.name ?? ''} position`;
       },
       bg(fill, season, ext) { drawBase(fill, L, ext); },
-      /** Each frame, on the ground: the motor pool's barrier (lifted while a soldier comes through), the crates on the quartermaster's pallet and those carried in, the positions. */
+      /** Each frame, on the ground: the motor pool's barrier (lifted while a soldier comes through), the limits (the alert board, the fuel depots), the crates on the quartermaster's pallet and those carried in, the positions. */
       ground() {
         barrier(gateLift);
+        drawLimits();
         for (const c of depotCrates(scene.fields)) supplyCrate(c);
         for (const c of carried) carriedCrate(c.t);
         drawPositions();
@@ -910,9 +1118,10 @@
       /**
        * Each frame: is a soldier coming through the motor pool gate (walking by it)? The barrier lifts, and comes down
        * slowly after. Flags are carried up-field and crates into the depot, until they're gone. Still, the barrier is
-       * down and nothing is carried.
+       * down and nothing is carried. Where the soldiers are is kept, for their headgear lamps at night (lights).
        */
       tick(dt, posOf, snap = false) {
+        where = posOf;
         const coming = !snap && scene.farmers.some(f => { const b = posOf(f.id); return b?.walk && Math.abs(b.x - GATE[0]) < 24 && Math.abs(b.y - GATE[1]) < 4; });
         gateLift = snap ? 0 : coming ? Math.min(1, gateLift + dt * 5) : Math.max(0, gateLift - dt * 1.5);
         if (snap) { advancing.length = 0; carried.length = 0; return; }
@@ -920,18 +1129,63 @@
         keep(advancing, a => a.t < WALK + GONE && Boolean(stOf(a.key)));
         keep(carried, c => c.t < CARRY);
       },
-      /** The sky by your clock above the hedge, and what stands against it: the flagpoles, the bunting and the flags, HQ's pennant. */
+      /** The sky by your clock above the hedge, and what stands against it: the flagpoles, the bunting and the flags (by the alert level), HQ's pennant. How dark it is is kept, for the night's beams and flare (top). */
       weather(sky) {
+        dark = 1 - (sky?.light ?? 1);
         drawSky(sky);
-        drawSkyline(coloursOf(scene.farmers), scene.farmers.some(f => f.state === 'waiting'), PXG.T);
+        drawSkyline(coloursOf(scene.farmers), scene.farmers.some(f => f.state === 'waiting'), PXG.T, shown());
+      },
+      /**
+       * Over everything, the sky too: the alert board's beacon (spinning at max); at night, the searchlights' beams
+       * sweeping the sky, and now and then the illumination flare drifting down over the field.
+       */
+      top() {
+        const T = PXG.T, k = nightOf(dark);
+        alertBeacon(shown() === 'winter', T);
+        if (k <= 0) return;
+        SEARCHLIGHTS.forEach(([x, y], i) => searchBeam(x, y, beamAngle(i, T), k));
+        const fl = flareAt(T);
+        if (fl) illuminationFlare(fl, k, T);
+      },
+      /** At night, the illumination flare trails a little smoke as it drifts down. */
+      ambient(dt, add) {
+        const fl = nightOf(dark) > 0 ? flareAt(PXG.T) : null;
+        if (fl && Math.random() < dt * 5) add({ x: fl.x + rand(-1, 1), y: fl.y - 1, vx: rand(-2, 2), vy: rand(-3, 0), g: 0, life: 2.4, max: 2.4, size: 2, grow: 0.8, color: '#e6eef5', alpha: 0.35 });
+      },
+      /**
+       * Lights that glow at night, [x, y, reach, the lit shape or null]: HQ's lamp, windows and way in; the reserve
+       * tents' doorways, the mess tent's lantern and the quartermaster's tent; the lanterns along the track; the
+       * searchlights' heads; each fuel depot's lamp; the alert beacon at max; a green flare going up and its star, a
+       * generator's lamp as it blinks; and each working soldier's headgear lamp. The engine adds those who need you;
+       * the beams and the flare give their own (top).
+       */
+      lights() {
+        const T = PXG.T;
+        const out = [
+          [200, 54, 18, [198, 52, 5, 4]], [200, 64, 16, null], // HQ's lamp over its map table, its way in
+          ...HQ_WINDOWS.map(x => [x + 8, 55, 8, [x + 1, 51, 14, 8, true]]), // its windows, lit from inside, their frames dark
+          ...RESERVE_TENTS.map(cx => [cx, 158, 10, [cx - 2, 155, 5, 8]]), // the reserve tents' doorways
+          [MESS_LAMP[0], MESS_LAMP[1] + 4, 20, [MESS_LAMP[0] - 1, MESS_LAMP[1], 3, 2]], [357, 52, 18, null], // the mess tent's lantern; the quartermaster's tent
+          ...LANTERNS.map(x => [x, LANTERN_Y + 1, 10, [x - 1, LANTERN_Y, 3, 3]]),
+          ...SEARCHLIGHTS.map(([x, y]) => [x, y + 1, 6, [x - 1, y, 3, 1]]),
+        ];
+        for (const { x, depot } of depotsOf(scene)) if (depot && (depot.lamp !== 'red' || blink(2))) out.push([x + 12, 27, 6, null]);
+        if (shown() === 'winter') out.push([...BEACON, 10, null]);
+        for (const { s, f, jobs } of shownPositions()) {
+          const fl = f.light === 'ok' ? flareOf(...deployAt(s), T) : null;
+          if (fl) out.push([fl.x, fl.y, fl.star ? 8 : 4, null]);
+          if (jobs > 0 && blink(2)) { const [gx, gy] = generatorAt(s); out.push([gx + 7, gy + 2, 3, null]); }
+        }
+        for (const f of scene.farmers) { const b = f.state === 'working' ? where(f.id) : null; if (b && !b.walk) { const x = Math.round(b.x), y = Math.round(b.y) - 13; out.push([x, y, 4, [x, y, 1, 1]]); } } // on its headgear's front
+        return out;
       },
       /** The position at a point of the base, if any: a click there opens its close-up, and the mascots keep off it. */
       fieldAt(x, y) { return L.ST.find(s => Math.abs(x - s.cx) <= 40 && y >= s.rowTop && y <= s.rowTop + 56)?.key ?? null; },
-      /** The building at a point of the base, if any: each opens something. */
-      buildingAt(x, y) { return BUILDINGS.find(([, x0, y0, x1, y1]) => x >= x0 && x <= x1 && y >= y0 && y <= y1)?.[0] ?? null; },
-      buildingTip: k => ({
+      /** The building at a point of the base, if any: each opens something (a second account's fuel depot too). */
+      buildingAt(x, y) { return [...BUILDINGS, ...depotsOf(scene).slice(1).map(d => depotBox(d.x))].find(([, x0, y0, x1, y1]) => x >= x0 && x <= x1 && y >= y0 && y <= y1)?.[0] ?? null; },
+      buildingTip: k => (k === 'bank' ? depotTip() : {
         barn: 'The motor pool gate: start a new session or resume one (a truck brings the new soldier in)', drones: 'The drone pad: subagents', desk: 'The HQ tent: who is waiting on you',
-        board: 'The briefing board: what your projects remember (CLAUDE.md and memory)', bank: "The fuel depot: your plan's usage (its drums are the weekly limit). Click for your plan", dock: "The quartermaster's depot: pull requests",
+        board: 'The briefing board: what your projects remember (CLAUDE.md and memory)', dock: "The quartermaster's depot: pull requests",
       }[k] ?? ''),
       /** What a building shows when clicked: { title, html }. */
       dialog(k) {
@@ -939,9 +1193,11 @@
           const list = scene.farmers.filter(f => f.state === 'waiting' || f.state === 'turn');
           return { title: 'The HQ tent', html: list.length ? `<ul class="px-dl">${list.map(f => `<li><button type="button" class="act" data-farm-pick="${esc(f.id)}">Open</button><span><b>${esc(f.name)}</b> ${esc(f.state === 'waiting' ? (f.planAsk ? 'has a plan for you to approve' : `needs you: ${f.ask}`) : f.question ? `asks: ${f.question}` : `reports back${f.reply ? `: ${f.reply}` : ''}`)}</span></li>`).join('')}</ul>` : '<p class="muted">No soldier is waiting on you.</p>' };
         }
-        if (k === 'bank') {
+        if (k === 'bank') { // with two accounts or more, each one's meters under its name (as the factory's banks)
           const name = w => ({ five_hour: '5-hour limit', seven_day: 'Weekly limit' })[w.kind] ?? w.kind;
           const meters = ws => ws.map(w => { const used = usedOf(w), pct = used === null ? 0 : Math.round(used); return `<div class="px-meter"><b>${esc(name(w))}</b><span class="bar"><i style="width:${Math.min(100, pct)}%"></i></span><span>${w.reset ? 'just reset' : used === null ? 'no reading' : `${pct}% used`}${w.resetsAt ? ` · resets ${esc(resetAt(w.resetsAt))}` : ''}</span></div>`; }).join('');
+          const accs = scene.accounts ?? [];
+          if (accs.length > 1) return { title: "The fuel depots: your accounts' plans", html: accs.map((a, i) => `<h4>${esc(accountName(a, i))}</h4>${a.plan?.windows?.length ? meters(a.plan.windows) : '<p class="muted">No reading yet: it comes from the mod in a session running on it.</p>'}`).join('') + `<p class="muted">Each depot's drums are its account's week. The alert level follows ${esc(accountName(accs[0], 0))}'s 5-hour limit (max when it is nearly used up).</p>` };
           const ws = scene.plan?.windows ?? [];
           return { title: 'The fuel depot: your plan', html: ws.length ? meters(ws) + '<p class="muted">The drums are the week; the alert level is the 5-hour limit (max when it is nearly used up).</p>' : '<p class="muted">No reading of your plan yet: it comes from the mod in a running session.</p>' };
         }
@@ -983,6 +1239,11 @@
           if (f.ahead > 0) lab(s.cx + 22, s.rowTop + 1, cnt(`↑${f.ahead}`), 'cnt', `${f.ahead} unpushed commit${f.ahead === 1 ? '' : 's'}`);
         }
         if (!ST.length) lab(262, 150, sign('No positions yet: no soldier has touched a repo in the last 30 minutes'), 'zone');
+        for (const { x, name, depot } of depotsOf(scene)) { // with two accounts, each depot's tag on the track at its foot: its account's name and week (the engine's tag colours near the limit)
+          if (!name) continue;
+          const text = `${name} ${depot ? `${depot.pct}%` : '–'}`, near = depot?.lamp === 'green' ? null : depot?.lamp;
+          lab(x + 12, 87, near === 'red' ? pxt(text, '#ffffff', null) : cnt(text), `cnt${near ? ` silo-${near}` : ''}`, `The fuel depot of ${name}: ${depot ? `its plan's weekly limit, ${depot.reset ? 'just reset' : `${depot.pct}% used`}, ${depot.drums} of 8 drums left${depot.resetsAt ? `; resets ${resetAt(depot.resetsAt)}` : ''}` : 'no reading of its plan yet'}`);
+        }
         lab(200, 30, sign('HQ'), 'zone'); lab(60, 21, sign('MOTOR POOL'), 'zone');
         lab(57, 93, sign('MESS'), 'zone'); lab(54, 147, sign('RESERVE'), 'zone'); lab(58, 177, sign('DRILL'), 'zone');
         lab(CORR[0], L.slots[0].lane - 8, sign('RANGE'), 'zone'); // on the left side's path where it comes into the range (the first row's lane), clear of the first position, its tape and its soldiers
@@ -1036,5 +1297,8 @@
 
   window.Agentville.world(makeMilitary());
   // The field exercise's own pieces, for its tests (and where the browser test clicks: the buildings' boxes, the positions' grid).
-  window.AgentvilleMilitary = { OUTFIT, lookOf, soldierSprite, militaryScene, makeMilitary, props, BUILDINGS, MILITARY_GRID, DEPOT_X, PARK, SKY_Y, depotCrates };
+  window.AgentvilleMilitary = {
+    OUTFIT, lookOf, soldierSprite, militaryScene, makeMilitary, props, BUILDINGS, MILITARY_GRID, DEPOT_X, PARK, SKY_Y, depotCrates,
+    depotOf, depotsOf, drumsOf, FUEL, LANTERNS, SEARCHLIGHTS, BEACON, BEAM, FLARE, flareAt,
+  };
 })();

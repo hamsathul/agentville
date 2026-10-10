@@ -3,7 +3,8 @@
 // down the jacket), the world's registration on the engine, and its base: the sky over a clipped hedge,
 // the buildings at the back, the track, the left side's tents, and where every soldier stands. Its
 // positions: fortified as the context fills, what each repo's state puts round them, their signs, and
-// the news setScene tells (Advanced!, Supplies in!, a deploy failing or going through).
+// the news setScene tells (Advanced!, Supplies in!, a deploy failing or going through). Its limits: the
+// alert level (the 5-hour limit), the fuel depots (the week, one for each Claude account), and night.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
@@ -772,4 +773,372 @@ test('an empty slot is trampled grass with a faint outline', () => {
     }
     assert.ok(flat >= 10, `slot ${s.i}: trampled (${flat} flattened pixels)`);
   }
+});
+
+/* ---------- the limits: the alert level for the 5-hour limit, the fuel depots for the week, and night ---------- */
+
+const RESETS = Date.UTC(2026, 9, 13, 9, 0), LEVELS = ['spring', 'summer', 'autumn', 'winter'];
+const SKY_DAY = { phase: 'day', light: 1, sun: { x: 170, y: 12 }, moon: null }, SKY_NIGHT = { phase: 'night', light: 0, sun: null, moon: { x: 230, y: 2 } };
+/** The shop's position with a plan: the 5-hour limit's % used and the week's (null: no window of that kind); `over` goes in each window. */
+function planned(five, week, over = {}) {
+  const w = (kind, pct) => (pct === null ? [] : [{ kind, percentUsed: pct, resetsAt: RESETS, ...over }]);
+  return { ...position(), plan: { from: 'test', at: TOUR_NOW, windows: [...w('five_hour', five), ...w('seven_day', week)] } };
+}
+/** Fills entirely inside a box [x, y, w, h]. */
+const inBox = ([bx, by, bw, bh]) => ([, x, y, w, hh]) => x >= bx && y >= by && x + w <= bx + bw && y + hh <= by + bh;
+/** The colour last painted at a point, of these fills. */
+const lastAt = (rects, x, y) => rects.reduce((c, [col, rx, ry, w, hh]) => (x >= rx && x < rx + w && y >= ry && y < ry + hh ? col : c), null);
+/** The field exercise drawn for a snapshot under a sky: the fills of the ground each frame, of the sky (weather) and of what is over everything (top); and the lights pushed while drawing. */
+function limits() {
+  const p = positions();
+  const frame = (snap, sky = SKY_DAY) => {
+    if (snap) { const scene = p.sceneOf(snap); p.h.relayout(p.h.grid.layoutFor(scene.fields)); p.h.setScene(scene); }
+    p.PXG.lights = [];
+    const fills = draw => { p.dom.calls.rects.length = 0; draw(); return p.dom.calls.rects.map(r => [...r]); };
+    return { ground: fills(() => p.h.ground()), sky: fills(() => p.h.weather(sky)), top: fills(() => p.h.top()), pushed: [...p.PXG.lights] };
+  };
+  return { ...p, frame };
+}
+
+test("season(): the alert level by the 5-hour limit, at the farm's bounds (calm, ready, high, max); ready with no reading or a % that isn't a number; calm again in a new window", () => {
+  const { h, sceneOf } = positions();
+  assert.equal(typeof h.season, 'function', 'the field exercise gives its own season(): the engine gives it the Alert switch');
+  const alertOf = snap => { h.setScene(sceneOf(snap)); return h.season(); };
+  assert.deepEqual([10, 40, 70, 95].map(p => alertOf(planned(p, 20))), LEVELS, 'calm, ready, high, max');
+  assert.deepEqual([0, 24, 25, 59, 60, 84, 85, 100].map(p => alertOf(planned(p, 20))), ['spring', 'spring', 'summer', 'summer', 'autumn', 'autumn', 'winter', 'winter'], "the farm's seasonOf bounds: 25, 60, 85");
+  assert.equal(alertOf({ ...position(), plan: null }), 'summer', 'no plan reading: ready');
+  assert.equal(alertOf(planned(null, 50)), 'summer', 'no 5-hour window: ready');
+  for (const odd of [undefined, null, 'lots', NaN]) {
+    const snap = planned(95, 50);
+    snap.plan.windows[0].percentUsed = odd;
+    assert.equal(alertOf(snap), 'summer', `a 5-hour window whose % is ${String(odd)}: no reading, ready (not max)`);
+  }
+  assert.equal(alertOf(planned(95, 50, { reset: true })), 'spring', 'a new 5-hour window: calm again');
+});
+
+test('the alert drawn is the level shown (PXG.season, which the Alert switch may hold), else the live one: the alert board green, yellow, amber or red, its bars lit by the level; at max a red beacon spins on it', () => {
+  const { PXG, ink, frame } = limits();
+  const BOARD = [129, 25, 9, 11], BEACON = [124, 12, 19, 12];
+  const beaconOf = rects => rects.filter(r => r[0] === ink('#ff6b6b') && inBox(BEACON)(r));
+  frame(planned(10, 20)); // live: calm
+  const faces = {}, bars = {};
+  for (const level of LEVELS) {
+    PXG.season = level;
+    const { ground } = frame();
+    faces[level] = lastAt(ground, 130, 26);
+    bars[level] = ground.filter(r => r[0] === ink('#ffffff') && inBox(BOARD)(r)).length;
+  }
+  assert.deepEqual(faces, { spring: ink('#6cc04a'), summer: ink('#ffd43b'), autumn: ink('#f08a24'), winter: ink('#e04a3a') }, 'the board green at calm, yellow at ready, amber at high, red at max');
+  assert.deepEqual(bars, { spring: 1, summer: 2, autumn: 3, winter: 4 }, 'and one bar lit for each step up');
+  PXG.season = 'winter';
+  assert.ok(beaconOf(frame().top).length > 0, 'held at max while the live level is calm: the beacon lit');
+  const turns = new Set([0, 0.15, 0.3, 0.45, 0.6].map(T => { PXG.T = T; return JSON.stringify(frame().top.filter(inBox(BEACON))); }));
+  assert.ok(turns.size >= 3, `it spins: its flash and its beam go round (${turns.size} pictures)`);
+  for (const level of ['spring', 'summer', 'autumn']) { PXG.season = level; assert.equal(beaconOf(frame().top).length, 0, `${level}: the beacon dark`); }
+  frame(planned(95, 20)); // live: max
+  PXG.season = 'spring';
+  assert.equal(beaconOf(frame().top).length, 0, 'held at calm while the live level is max: dark');
+  PXG.season = null;
+  assert.ok(beaconOf(frame().top).length > 0, 'live and max: the beacon spins');
+});
+
+test('the flags by the level shown: hanging limp at calm, flying at ready and high, snapping at max; soldiers stroll at calm, walk faster when high, and move at the double at max', () => {
+  const { h, PXG, frame } = limits();
+  frame(planned(30, 20));
+  // the first pole's flag (its pole at x 20): no one on the base, so the cheerful set's first colour, red, exact
+  const flagOf = sky => sky.filter(([c, x, y, w, hh]) => c === '#e04a3a' && w === 1 && hh >= 2 && x >= 21 && x <= 31 && y <= 7);
+  const at = level => { PXG.season = level; return flagOf(frame().sky); };
+  PXG.T = 3;
+  const limp = at('spring'), flying = at('summer'), high = at('autumn'), snapping = at('winter');
+  assert.ok(limp.length >= 2 && limp.every(([, x]) => x <= 23) && limp.some(r => r[4] >= 6), 'calm: it hangs down by its pole');
+  assert.deepEqual(flying.map(r => r[1]), [21, 22, 23, 24, 25, 26, 27, 28], 'ready: it flies out from its pole');
+  assert.equal(high.length, 8, 'high: it flies');
+  assert.ok(snapping.length >= 9, 'max: it stands straight out in the wind');
+  const changes = level => new Set(Array.from({ length: 10 }, (_, i) => { PXG.T = 3 + i * 0.03; return JSON.stringify(at(level)); })).size;
+  assert.ok(changes('winter') > changes('summer'), `max: it snaps, changing faster than it flies at ready (${changes('winter')} pictures to ${changes('summer')})`);
+  const speeds = LEVELS.map(level => { PXG.season = level; return h.speed({ id: 'x' }); });
+  assert.ok(speeds.every((v, i) => i === 0 || v > speeds[i - 1]), `slower at calm, faster each level up: ${speeds}`);
+  PXG.season = 'summer';
+  assert.equal(h.speed({ id: 'x' }), 40, "ready: the farm's walk");
+  assert.ok(h.speed({ id: 'x', fast: true }) > 40, 'fast mode walks faster');
+  PXG.season = null;
+});
+
+test("from high, the base's lights warm: the lanterns along the track lit by day, HQ's lamp glowing; at calm and ready, unlit", () => {
+  const { M, PXG, ink, frame } = limits();
+  frame(planned(30, 20));
+  const lit = level => { PXG.season = level; const { ground } = frame(); return M.LANTERNS.filter(x => ground.some(r => r[0] === ink('#ffd43b') && inBox([x - 1, 87, 3, 3])(r))).length; };
+  assert.ok(M.LANTERNS.length >= 5, `lanterns along the track (${M.LANTERNS.length})`);
+  for (const x of M.LANTERNS) for (const c of [116, 218, 306]) assert.ok(Math.abs(x - c) > 8, `the lantern at ${x} keeps off the path at ${c}`);
+  assert.deepEqual(LEVELS.map(lit), [0, 0, M.LANTERNS.length, M.LANTERNS.length], 'lit at high and max, not at calm or ready');
+  const glow = level => { PXG.season = level; return frame().ground.filter(r => r[0] === ink('#ffe8a3') && inBox([192, 46, 17, 17])(r)).length; };
+  assert.ok(glow('autumn') > glow('summer'), "HQ's lamp glows over its map table");
+  PXG.season = null;
+});
+
+test('the fuel depot: 8 drums, round(8 × (1 − week)) of them full; its lamp green, amber from 70%, blinking red from 90%; no reading, no drum full and the lamp off', () => {
+  const { M, PXG, ink, frame } = limits();
+  const weekly = (pct, over = {}) => ({ windows: [{ kind: 'seven_day', percentUsed: pct, resetsAt: RESETS, ...over }] });
+  for (const [week, drums, lamp, pct = week] of [[0, 8, 'green'], [50, 4, 'green'], [69, 2, 'green'], [69.6, 2, 'amber', 70], [70, 2, 'amber'], [89, 1, 'amber'], [89.6, 1, 'red', 90], [90, 1, 'red'], [100, 0, 'red']]) {
+    const d = plain(M.depotOf(weekly(week)));
+    assert.deepEqual([d.drums, d.lamp, d.pct], [drums, lamp, pct], `${week}% of the week: the drums and the lamp go by the % it shows`);
+  }
+  assert.equal(M.depotOf(weekly(95, { reset: true })).drums, 8, 'a new week: every drum full');
+  for (const plan of [null, { windows: [] }, { windows: [{ kind: 'five_hour', percentUsed: 50 }] }, weekly(undefined), weekly(null), weekly('lots'), weekly(NaN)]) assert.equal(M.depotOf(plan), null, `no reading: ${JSON.stringify(plan)}`);
+  const [x] = M.DEPOT_X, drums = plain(M.drumsOf(x)), LAMP = [x + 10, 26, 4, 2];
+  assert.equal(drums.length, 8);
+  for (const [dx, dy] of drums) assert.ok(dx >= x + 2 && dx + 4 <= x + 22 && dy >= 36 && dy + 8 <= 72, `the drum at ${dx},${dy}: on a shelf, inside the depot`);
+  const drawn = (week, T = 0) => {
+    PXG.T = T;
+    const { ground } = frame(week === null ? { ...position(), plan: null } : planned(30, week));
+    const full = drums.filter(([dx, dy]) => ground.some(r => r[0] === ink(M.FUEL) && inBox([dx, dy, 4, 8])(r))).length;
+    return { full, lamp: ground.filter(inBox(LAMP)).map(r => r[0]) };
+  };
+  assert.deepEqual([0, 50, 69.6, 90, 100].map(w => drawn(w).full), [8, 4, 2, 1, 0], 'drawn: 8, 4, 2, 1 and 0 drums full');
+  assert.ok(drawn(50).lamp.includes(ink('#6cc04a')), 'the lamp green');
+  assert.ok(drawn(75).lamp.includes(ink('#f0b429')) && drawn(75, 0.3).lamp.includes(ink('#f0b429')), 'amber, steady');
+  const red = [0, 0.3, 0.6, 0.9].map(T => drawn(95, T).lamp.includes(ink('#e04a3a')));
+  assert.ok(red.includes(true) && red.includes(false), `red, blinking (${red})`);
+  const none = drawn(null);
+  assert.deepEqual([none.full, none.lamp.length], [0, 0], 'no reading: no drum full, the lamp off');
+  const bad = drawn(undefined);
+  assert.deepEqual([bad.full, bad.lamp.length], [0, 0], 'a weekly window with no number: as no reading');
+});
+
+test("the fuel depot's tip and dialog give the week's % and when it resets; with no reading they say so", () => {
+  const { h, sceneOf } = positions();
+  const resets = new Date(RESETS).toLocaleString([], { weekday: 'short', hour: '2-digit', minute: '2-digit' });
+  h.setScene(sceneOf(planned(30, 72)));
+  const tip = h.buildingTip('bank');
+  assert.match(tip, /fuel depot/);
+  assert.match(tip, /72% used, 2 of 8 drums left/);
+  assert.ok(tip.includes(`resets ${resets}`), tip);
+  const dialog = plain(h.dialog('bank'));
+  assert.equal(dialog.title, 'The fuel depot: your plan');
+  assert.match(dialog.html, /30% used/);
+  assert.match(dialog.html, /72% used/);
+  assert.ok(dialog.html.includes(`resets ${resets}`), 'the dialog says when each resets');
+  assert.match(dialog.html, /The drums are the week; the alert level is the 5-hour limit/);
+  h.setScene(sceneOf(planned(30, 72, { reset: true })));
+  assert.match(h.buildingTip('bank'), /just reset/);
+  h.setScene(sceneOf(planned(30, 69.6)));
+  assert.match(h.buildingTip('bank'), /70% used, 2 of 8 drums left/, 'the % it shows is the one the lamp and drums go by');
+  h.setScene(sceneOf(planned(30, undefined)));
+  const bad = h.buildingTip('bank');
+  assert.match(bad, /no reading/, 'a weekly window with no number: no reading');
+  assert.doesNotMatch(bad, /NaN|undefined/);
+  assert.doesNotMatch(h.dialog('bank').html, /NaN|undefined/, 'nor in its dialog');
+  assert.match(h.dialog('bank').html, /no reading/);
+  h.setScene(sceneOf({ ...position(), plan: null }));
+  const none = h.buildingTip('bank');
+  assert.match(none, /no reading/);
+  assert.match(h.dialog('bank').html, /No reading of your plan yet/);
+  for (const t of [tip, none, dialog.html]) assert.doesNotMatch(readOf(t), FARM_OR_FACTORY);
+});
+
+/** A Claude account as the collector sends it: its name, and its plan's 5-hour and weekly % (both null: no reading). */
+const account = (name, five, week) => ({ key: name, name, plan: five === null && week === null ? null : planned(five, week).plan });
+/** The shop's position, the plan the first account's (as the collector sends it), and these accounts. */
+const accounts = (...list) => ({ ...planned(30, 40), accounts: list });
+const TWO = accounts(account('work', 30, 40), account('home', 95, 92));
+
+test("depotsOf: a fuel depot for each Claude account, two at most, the first where it always stood; with one account, the plan's and no name", () => {
+  const { M, sceneOf } = positions();
+  const depots = snap => plain(M.depotsOf(sceneOf(snap)).map(d => [d.x, d.name, d.depot?.pct ?? null, d.depot?.drums ?? null]));
+  const [first, second] = M.DEPOT_X;
+  assert.equal(first, 286, 'the first where it always stood');
+  assert.ok(second >= 2 && second + 26 <= 30, `the second left of the motor pool gate (x ${second}–${second + 24}, its roof and shadow a pixel more each side)`);
+  assert.deepEqual(depots(planned(30, 40)), [[first, null, 40, 5]], "no accounts (an older collector): the plan's depot");
+  assert.deepEqual(depots(accounts(account('work', 30, 40))), [[first, null, 40, 5]], 'one account: no name on it');
+  assert.deepEqual(depots(TWO), [[first, 'work', 40, 5], [second, 'home', 92, 1]], "two: each its own account's week");
+  assert.deepEqual(depots(accounts(account('work', 30, 40), account('home', 95, 92), account('lab', 5, 5))), [[first, 'work', 40, 5], [second, 'home', 92, 1]], 'three: the first two');
+  assert.deepEqual(depots(accounts(account('work', 30, 40), account('home', null, null))), [[first, 'work', 40, 5], [second, 'home', null, null]], 'a missing plan: no reading');
+  assert.deepEqual(depots(accounts({ key: 'a', plan: null }, { key: 'b', name: '', plan: null })).map(d => d[1]), ['account 1', 'account 2'], 'a nameless account: by its number');
+  assert.deepEqual(depots({ ...position(), plan: null }), [[first, null, null, null]], 'no plan reading');
+});
+
+test('buildingAt: with two accounts, the second fuel depot is a depot too; with one, the ground there is none', () => {
+  const { h, sceneOf, M } = positions();
+  const scene = sceneOf(planned(30, 40)), x = M.DEPOT_X[1];
+  h.relayout(h.grid.layoutFor(scene.fields));
+  h.setScene(scene);
+  const inside = [[x + 12, 50], [x, 20], [x + 24, 78], [x + 12, 30]];
+  for (const [px, py] of inside) assert.equal(h.buildingAt(px, py), null, `one account: ${px},${py} is the ground`);
+  h.setScene(sceneOf(TWO));
+  for (const [px, py] of inside) assert.equal(h.buildingAt(px, py), 'bank', `two accounts: ${px},${py} is the second depot`);
+  assert.equal(h.buildingAt(298, 50), 'bank', 'the first where it stood');
+  assert.equal(h.buildingAt(60, 50), 'barn', 'the motor pool gate beside it');
+  assert.equal(h.buildingAt(x + 25, 50), null, 'a gap between the second depot and the gate');
+});
+
+test("the second depot: drawn only with two accounts, left of the motor pool gate, its drums full from its own account's week, its lamp by it", () => {
+  const { M, PXG, ink, frame } = limits();
+  const [first, second] = M.DEPOT_X;
+  const full = (rects, x) => M.drumsOf(x).filter(([dx, dy]) => rects.some(r => r[0] === ink(M.FUEL) && inBox([dx, dy, 4, 8])(r))).length;
+  const lamp = (rects, x) => lastAt(rects, x + 11, 26);
+  PXG.T = 0;
+  const one = frame(accounts(account('work', 30, 40))).ground;
+  assert.equal(one.filter(inBox([0, 18, 30, 60])).length, 0, 'one account: nothing drawn left of the gate each frame');
+  assert.equal(full(one, first), 5, "the depot: the plan's week, 40%");
+  const two = frame(accounts(account('work', 30, 40), account('home', 30, 75))).ground;
+  assert.ok(two.some(r => r[0] === ink('#ffd43b') && inBox([second, 20, 24, 56])(r)), 'two: the second depot drawn, its fuel sign on it');
+  assert.equal(full(two, first), 5, "the first: work's week, 40%");
+  assert.equal(full(two, second), 2, "the second: home's week, 75%");
+  assert.equal(lamp(two, first), ink('#6cc04a'), 'the first lamp green');
+  assert.equal(lamp(two, second), ink('#f0b429'), 'the second amber');
+  const none = frame(accounts(account('work', 30, 40), account('home', null, null))).ground;
+  assert.ok(none.some(inBox([second, 20, 24, 56])), 'a second account with no reading still has its depot');
+  assert.deepEqual([full(none, second), lamp(none, second)], [0, ink('#5f6b7a')], 'no drum full, its lamp off');
+});
+
+test("with two accounts: each depot's tag at its foot, its account's name and week; the tip says there is one for each account; the dialog each account's meters, and whose 5-hour limit sets the alert level", () => {
+  const { h, sceneOf, M } = positions();
+  const tags = snap => {
+    const scene = sceneOf(snap);
+    h.relayout(h.grid.layoutFor(scene.fields));
+    h.setScene(scene);
+    const out = [];
+    h.labels((x, y, html, cls = '', title = '') => out.push({ x, y, html: String(html), cls, title }), {});
+    return out.filter(l => /fuel depot/.test(l.title));
+  };
+  assert.deepEqual(tags(planned(30, 40)), [], 'one account: no tag (the drums show the week, the tip its %)');
+  const oneTip = h.buildingTip('bank'), oneDialog = plain(h.dialog('bank'));
+  tags(accounts(account('work', 30, 40)));
+  assert.deepEqual([h.buildingTip('bank'), plain(h.dialog('bank'))], [oneTip, oneDialog], "one account: the plan's tip and dialog");
+  const [work, home] = tags(TWO);
+  for (const [tag, x, name, pct] of [[work, M.DEPOT_X[0], 'work', 40], [home, M.DEPOT_X[1], 'home', 92]]) {
+    assert.ok(tag && Math.abs(tag.x - (x + 12)) <= 2 && tag.y >= 80 && tag.y <= 92, `${name}'s tag on the track at its depot's foot (${tag?.x},${tag?.y})`);
+    assert.ok(tag.html.includes(`${name} ${pct}%`), `${name}'s tag: its name and week (${tag.html})`);
+    assert.match(tag.title, new RegExp(`fuel depot of ${name}: its plan's weekly limit, ${pct}% used`));
+  }
+  assert.match(home.cls, /\bcnt\b/);
+  assert.match(home.cls, /red/, 'nearly used up: the red tag');
+  assert.doesNotMatch(work.cls, /red|amber/);
+  const tip = h.buildingTip('bank');
+  assert.match(tip, /fuel depots, one for each of your Claude accounts/);
+  assert.match(tip, /work 40%, home 92%/);
+  const d = h.dialog('bank'), [, first, second] = d.html.split('<h4>');
+  assert.equal(d.title, "The fuel depots: your accounts' plans");
+  assert.ok(first.startsWith('work</h4>') && /30% used/.test(first) && /40% used/.test(first), "work's meters under its name");
+  assert.ok(second.startsWith('home</h4>') && /95% used/.test(second) && /92% used/.test(second), "home's under its");
+  assert.match(d.html, /alert level follows work's 5-hour limit/);
+  tags(accounts(account('work', 30, 40), { key: 'b', plan: null }));
+  assert.match(h.dialog('bank').html, /<h4>account 2<\/h4><p class="muted">No reading yet/, 'a nameless account with no reading: by its number, and says so');
+  assert.match(h.buildingTip('bank'), /account 2 no reading/);
+  const help = h.help();
+  assert.match(help, /two Claude accounts, each has a fuel depot \(the second left of the motor pool gate\)/);
+  for (const t of [tip, d.title, d.html, help, ...[work, home].flatMap(l => [l.html, l.title])]) assert.doesNotMatch(readOf(t), FARM_OR_FACTORY);
+});
+
+test("lights(): HQ's lamp and windows, the tents' glow, the lanterns, the searchlights' heads, each depot's lamp, a green flare going up, a generator's lamp, and working soldiers' headgear lamps; the beacon only at max; the same drawn still", () => {
+  const { h, M, PXG, sceneOf } = positions();
+  const worker = person('w', { children: [{ id: 'j1', kind: 'bgjob', state: 'running', startedAt: TOUR_NOW }] }), idler = person('i', { state: 'idle', now: null });
+  const scene = sceneOf({ ...position(deployed('ok'), [worker, idler]), plan: planned(30, 40).plan });
+  const L = h.relayout(h.grid.layoutFor(scene.fields)), [s] = L.ST;
+  h.setScene(scene);
+  const at = { w: { x: s.cx, y: s.lane, walk: false }, i: { x: 46, y: 132, walk: false } }, posOf = id => at[id] ?? null;
+  const near = (lights, [x, y], d = 3) => lights.some(([lx, ly]) => Math.abs(lx - x) <= d && Math.abs(ly - y) <= d);
+  const cored = (lights, [x, y]) => lights.some(([, , , c]) => c && x >= c[0] && x < c[0] + c[2] && y >= c[1] && y < c[1] + c[3]);
+  const within = (lights, [x0, y0, w, hh]) => lights.some(([x, y]) => x >= x0 && x < x0 + w && y >= y0 && y < y0 + hh);
+  const lamp = ([x, y]) => [x, y - 13]; // a soldier's headgear, over its face
+  const shown = T => { PXG.T = T; return plain(h.lights()); };
+  const check = (lights, when) => {
+    assert.ok(lights.every(l => l.length === 4 && l.slice(0, 3).every(Number.isFinite)), `${when}: each [x, y, reach, the lit shape]`);
+    assert.ok(cored(lights, [200, 54]), `${when}: HQ's lamp`);
+    for (const x of [150, 246]) assert.ok(cored(lights, [x, 53]), `${when}: HQ's window at ${x}, lit from inside`);
+    for (const x of [30, 78]) assert.ok(cored(lights, [x, 158]), `${when}: the reserve tent at ${x}, its doorway lit`);
+    assert.ok(within(lights, [4, 98, 106, 20]), `${when}: the mess tent glows under its fly`);
+    assert.ok(within(lights, [330, 39, 54, 25]), `${when}: the quartermaster's tent glows`);
+    for (const x of M.LANTERNS) assert.ok(cored(lights, [x, 88]), `${when}: the lantern at ${x}`);
+    for (const [x, y] of M.SEARCHLIGHTS) assert.ok(cored(lights, [x, y]), `${when}: the searchlight's head at ${x}`);
+    assert.ok(near(lights, [M.DEPOT_X[0] + 12, 27]), `${when}: the fuel depot's lamp`);
+    assert.ok(near(lights, lamp([s.cx, s.lane]), 1), `${when}: the working soldier's headgear lamp`);
+    assert.ok(!near(lights, lamp([46, 132]), 1), `${when}: none for an idle one`);
+  };
+  h.tick(0.03, posOf);
+  PXG.season = null;
+  const live = shown(0.6);
+  check(live, 'live');
+  assert.ok(!near(live, M.BEACON, 2), 'below max: no beacon');
+  const corner = [s.cx + 25, s.rowTop - 12, 15, 30], post = [s.cx - 30, s.rowTop + 5, 16, 12]; // the deploy's corner, over its canister; the post, where the generator hums
+  assert.ok(within(shown(0.3), corner) && within(shown(1.5), corner) && !within(shown(2.3), corner), 'the green flare lights the night going up and as its star bursts; not between');
+  assert.ok(within(shown(0.6), post) && !within(shown(0.2), post), "the generator's lamp, as it blinks");
+  PXG.season = 'winter';
+  assert.ok(near(shown(0.6), M.BEACON, 2), 'at max: the beacon glows');
+  PXG.season = null;
+  at.w.walk = true;
+  assert.ok(!near(shown(0.6), lamp([s.cx, s.lane]), 4), 'not while it walks');
+  at.w.walk = false;
+  h.tick(0, posOf, true);
+  check(shown(0.6), 'drawn still (motion off)');
+});
+
+test("top(), at night: the searchlights on HQ's roof sweep their beams slowly across the sky, and now and then a white illumination flare drifts down over the field, lighting it; by day neither; no tracers", () => {
+  const { M, PXG, frame, ink } = limits();
+  frame(planned(30, 20));
+  PXG.season = null;
+  const beams = rects => rects.filter(r => r[0] === ink(M.BEAM));
+  const quiet = Array.from({ length: 2 * M.FLARE.every }, (_, i) => i).find(T => !M.flareAt(T) && !M.flareAt(T + 6.2)); // between two flares, for a while
+  assert.equal(M.flareAt(quiet), null, 'the case under test: no flare then');
+  PXG.T = quiet;
+  const day = frame(null, SKY_DAY), night = frame(null, SKY_NIGHT);
+  assert.equal(beams(day.top).length + day.pushed.length, 0, 'by day: no beam, nothing lit');
+  const lit = beams(night.top);
+  assert.ok(lit.length >= 20, `at night: the beams (${lit.length} rows)`);
+  for (const [x, y] of M.SEARCHLIGHTS) assert.ok(lit.some(([, rx, ry, w]) => ry === y - 1 && rx <= x + 2 && rx + w >= x - 2), `a beam from the searchlight at ${x}`);
+  assert.ok(lit.every(([, , y]) => y < M.SEARCHLIGHTS[0][1]) && lit.some(([, , y]) => y <= 1), 'rising from the heads up through the sky');
+  assert.ok(night.pushed.filter(([, y]) => y < 18).length >= 4, 'their light goes along them (the night shows them)');
+  PXG.T = quiet + 6;
+  assert.notDeepEqual(beams(frame(null, SKY_NIGHT).top), lit, 'they sweep');
+  const tips = [0, 0.2].map(dt => { PXG.T = quiet + dt; const rows = beams(frame(null, SKY_NIGHT).top).filter(r => r[2] === 0); return rows.map(r => r[1]); });
+  assert.ok(tips[0].every((x, i) => Math.abs(x - tips[1][i]) <= 3), `slowly: their tips move a few pixels in a fifth of a second (${tips})`);
+  // the illumination flare
+  const times = Array.from({ length: 4 * M.FLARE.every }, (_, i) => i / 2), up = times.filter(T => M.flareAt(T));
+  assert.ok(up.length > 0 && up.length < times.length / 2, `now and then: ${up.length} of ${times.length} moments`);
+  const start = up.find(T => T > 0 && !M.flareAt(T - 0.5)), burn = []; // one flare, from when it lights to when it is gone
+  for (let T = start; M.flareAt(T); T += 0.5) burn.push(M.flareAt(T));
+  assert.ok(burn.every((f, i) => i === 0 || f.y >= burn[i - 1].y), 'it drifts down, never up');
+  assert.ok(burn[0].y <= 18 && burn.at(-1).y >= 100, `from the sky down over the field (y ${burn[0].y} to ${burn.at(-1).y})`);
+  assert.ok(burn.every(f => f.x >= 130 && f.x <= 396), 'over the field');
+  const T = up.find(t => M.flareAt(t).y > 60), f = M.flareAt(T);
+  PXG.T = T;
+  const flareNight = frame(null, SKY_NIGHT), flareDay = frame(null, SKY_DAY);
+  assert.ok(flareNight.top.some(r => r[0] === ink('#ffffff') && inBox([f.x - 2, f.y - 2, 4, 4])(r)), 'at night: the flare, burning white');
+  assert.ok(flareNight.pushed.some(([x, y, reach]) => Math.abs(x - f.x) <= 1 && Math.abs(y - f.y) <= 1 && reach >= 15), 'its light over the field');
+  assert.equal(flareDay.top.filter(r => inBox([f.x - 12, f.y - 14, 24, 24])(r)).length, 0, 'by day: none');
+  const pale = new Set([M.BEAM, '#ffffff', '#e6eef5', '#c3cbd2', '#9c3b30'].map(ink));
+  assert.deepEqual([...new Set(flareNight.top.map(r => r[0]))].filter(c => !pale.has(c)), [], 'at night, below max: only pale light over the base (no tracers)');
+});
+
+test('ambient: at night, the illumination flare trails a little smoke as it drifts down; none by day or between flares', () => {
+  const { h, M, PXG, frame } = limits();
+  frame(planned(30, 20));
+  const T = Array.from({ length: 2 * M.FLARE.every }, (_, i) => i / 2).find(t => M.flareAt(t)?.y > 60), f = M.flareAt(T);
+  const puffs = () => { const out = []; for (let i = 0; i < 40; i++) h.ambient(0.1, p => out.push(p)); return out; };
+  PXG.T = T;
+  frame(null, SKY_NIGHT);
+  const smoke = puffs();
+  assert.ok(smoke.length > 0, 'smoke, now and then');
+  for (const p of smoke) assert.ok(Math.abs(p.x - f.x) <= 3 && Math.abs(p.y - f.y) <= 4 && p.vy <= 0 && p.alpha < 1, `at the flare, hanging or rising, thin (${p.x},${p.y})`);
+  frame(null, SKY_DAY);
+  assert.equal(puffs().length, 0, 'by day: none');
+  PXG.T = Array.from({ length: 2 * M.FLARE.every }, (_, i) => i).find(t => !M.flareAt(t));
+  frame(null, SKY_NIGHT);
+  assert.equal(puffs().length, 0, 'at night between flares: none');
+});
+
+test('no plan reading: the alert is ready, the depot says there is no reading, and the Alert switch can still hold a level (held at max, the engine draws the beacon)', () => {
+  const seen = {};
+  const { window, dom, ctx, M } = load({ wrap: hooks => { hooks.hud = p => { seen.hud = p; return ''; }; } });
+  const ink = vm.runInContext('ink', ctx);
+  window.registered.start({ el: dom.make(), opts: { still: true }, prefs: { get: k => (k === 'season' ? 'winter' : null), set() {} } });
+  dom.calls.rects.length = 0;
+  window.registered.scene(window.AgentvilleScene.toScene({ ...position(), plan: null }));
+  const h = window.hooks;
+  assert.equal(h.season(), 'summer', 'live: ready');
+  assert.match(h.buildingTip('bank'), /no reading/);
+  assert.equal(seen.hud.seasons, true, 'the engine gives the field exercise its Alert switch');
+  assert.equal(seen.hud.seasonMode, 'winter', '… held at max');
+  assert.ok(dom.calls.rects.some(r => r[0] === ink('#ff6b6b') && inBox([124, 12, 19, 12])(r)), 'held at max: the beacon lit on the alert board');
+  assert.ok(!M.drumsOf(M.DEPOT_X[0]).some(([x, y]) => dom.calls.rects.some(r => r[0] === ink(M.FUEL) && inBox([x, y, 4, 8])(r))), 'no drum full');
 });
