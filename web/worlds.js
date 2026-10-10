@@ -15,7 +15,7 @@
   const SITUATIONS = ['idle', 'deployFailed', 'deployOk', 'harvest', 'merged', 'arrive'];
   // The built-in worlds the helper's lines are written for by name (the mod has its own words for each): a cast names
   // its world only if it is one of these, and not private. Copy: worlds.test.mjs fails when it drifts.
-  const LINE_WORLDS = ['farm', 'factory'];
+  const LINE_WORLDS = ['farm', 'factory', 'military'];
   const CONTROL = /[\x00-\x1f\x7f-\x9f]/g;
   const PREF_MAX = 16_384, DIARY_MAX = 20, IN_FLIGHT_MAX = 4, ID_MAX = 200, PATH_MAX = 4096;
   // A world keeps at most 64 settings, 64 KB in all (names and values, what is saved already included):

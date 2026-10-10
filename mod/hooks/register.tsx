@@ -26,7 +26,7 @@ const DASHBOARD_REASON = 'Answered from the Agentville dashboard'
 type Offer = { stateDir: string; sessionId: string; isLive: boolean; windowSec: number; now: number }
 type Waited = { kind: 'answer'; text: string } | { kind: 'withdrawn' } | { kind: 'timeout' }
 
-const MOD_VERSION = '0.9.1'
+const MOD_VERSION = '0.9.2'
 
 let latest: TrackerView = EMPTY
 // The terminal's working line (Slithering… while thinking), for the dashboard: when the turn began,
@@ -224,6 +224,7 @@ export function namePrompt(messages: any[]): string {
 const LINES_WORLDS: Record<string, { place: string; agents: string }> = {
   farm: { place: 'a pixel farm where coding agents work as farmers', agents: 'Farmers' },
   factory: { place: 'a pixel robot factory where coding agents work as robots', agents: 'Robots' },
+  military: { place: 'a pixel army field exercise where coding agents work as soldiers', agents: 'Soldiers' },
 }
 const LINES_ANY = { place: 'a pixel world where coding agents work', agents: 'Agents' }
 const wordsFor = (world: unknown) => (typeof world === 'string' && Object.hasOwn(LINES_WORLDS, world) ? LINES_WORLDS[world]! : LINES_ANY)

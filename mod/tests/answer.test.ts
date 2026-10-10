@@ -528,19 +528,29 @@ test('a lines request asks Haiku with the fixed lines prompt and the facts, and 
   await settle()
   expect(factory.completed[0]?.system).toBe(linesSystem('factory'))
   expect(factory.completed[0]?.prompt).toContain('\nRobots: deploy-bot is working')
+  const military = helper$({ '2-d.json': JSON.stringify({ ...LINES_REQ, id: '2-d', world: 'military' }) }, { complete: async () => ({ isAnswered: true, text: 'goat|idle|Baa-ttention!' }) })
+  await runHelper(military.$, '/repo/state', 's1', LINES_ON)
+  await settle()
+  expect(military.completed[0]?.system).toBe(linesSystem('military'))
+  expect(military.completed[0]?.prompt).toContain('\nSoldiers: deploy-bot is working')
 })
 
 // Today's prompt for the farm, word for word: the farm's lines are asked for exactly as before.
 const FARM_SYSTEM = 'You write short, funny, kind lines for animals on a pixel farm where coding agents work as farmers. Reply only with rows of the form kind|when|text: kind is one of the animals given, when is one of idle, deployFailed, deployOk, harvest, merged, arrive, and text is what that animal says, 40 characters or fewer, plain words, no quotes. Write two idle rows for every animal, and rows for an event only if it is in what just happened. At most 40 rows. Use only the names given and never invent names. Never mention files, code or secrets.'
 
-test("the lines prompt is in the world's own words, from the mod's fixed table: the farm's as before, the factory's, and plain ones for any other", () => {
+// The factory's, word for word as it was in 0.9.1.
+const FACTORY_SYSTEM = 'You write short, funny, kind lines for animals on a pixel robot factory where coding agents work as robots. Reply only with rows of the form kind|when|text: kind is one of the animals given, when is one of idle, deployFailed, deployOk, harvest, merged, arrive, and text is what that animal says, 40 characters or fewer, plain words, no quotes. Write two idle rows for every animal, and rows for an event only if it is in what just happened. At most 40 rows. Use only the names given and never invent names. Never mention files, code or secrets.'
+
+test("the lines prompt is in the world's own words, from the mod's fixed table: the farm's and the factory's as before, the field exercise's, and plain ones for any other", () => {
   expect(linesSystem('farm')).toBe(FARM_SYSTEM)
-  expect(linesSystem('factory')).toBe(FARM_SYSTEM.replace('a pixel farm where coding agents work as farmers', 'a pixel robot factory where coding agents work as robots'))
+  expect(linesSystem('factory')).toBe(FACTORY_SYSTEM)
+  expect(linesSystem('military')).toBe(FARM_SYSTEM.replace('a pixel farm where coding agents work as farmers', 'a pixel army field exercise where coding agents work as soldiers'))
   const plainWords = FARM_SYSTEM.replace('a pixel farm where coding agents work as farmers', 'a pixel world where coding agents work')
-  for (const world of [undefined, null, '', 'starter', 'u/space', 'Farm', '__proto__', 'constructor', 'toString', 42, ['farm']]) expect(linesSystem(world)).toBe(plainWords)
+  for (const world of [undefined, null, '', 'starter', 'u/space', 'Farm', 'Military', 'field exercise', '__proto__', 'constructor', 'toString', 42, ['farm']]) expect(linesSystem(world)).toBe(plainWords)
   const who = (world: unknown) => linesPrompt({ ...LINES_REQ, world })?.split('\n')[1]
   expect(who('farm')).toBe('Farmers: deploy-bot is working, running in api')
   expect(who('factory')).toBe('Robots: deploy-bot is working, running in api')
+  expect(who('military')).toBe('Soldiers: deploy-bot is working, running in api')
   for (const world of [undefined, 'starter', '__proto__', 'constructor']) expect(who(world)).toBe('Agents: deploy-bot is working, running in api')
 })
 
@@ -557,5 +567,5 @@ test('lines unticked, or no animals to write for: Haiku is not called', async ()
 })
 
 test('the lines prompt keeps the model to short rows about the animals, from the names given', () => {
-  for (const world of ['farm', 'factory', undefined]) for (const s of ['kind|when|text', '40 characters', 'idle, deployFailed, deployOk, harvest, merged, arrive', 'never invent names', 'files, code or secrets']) expect(linesSystem(world)).toContain(s)
+  for (const world of ['farm', 'factory', 'military', undefined]) for (const s of ['kind|when|text', '40 characters', 'idle, deployFailed, deployOk, harvest, merged, arrive', 'never invent names', 'files, code or secrets']) expect(linesSystem(world)).toContain(s)
 })

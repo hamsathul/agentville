@@ -14,6 +14,7 @@ import { fileURLToPath } from 'node:url';
 import vm from 'node:vm';
 import { checkWorldJson } from '../worlds.mjs';
 import { goldenSnapshot } from '../../scripts/golden/fixture.mjs';
+import { creatureProblems } from '../../scripts/lib/world-vm.mjs';
 
 const web = f => readFileSync(fileURLToPath(new URL(`../../web/${f}`, import.meta.url)), 'utf8');
 const plain = v => JSON.parse(JSON.stringify(v));
@@ -46,11 +47,14 @@ function stubDom() { // as in factory.test.mjs: each fillRect is kept with its c
   const ctx = make();
   return { make, calls, document: Object.assign(make(), { hidden: false }) };
 }
-/** The SDK and the field exercise in a vm; the hooks it gives the engine are kept as window.hooks. `wrap(hooks)` may change them before the engine takes them (to watch one). */
-function load({ wrap = null } = {}) {
+/**
+ * The SDK and the field exercise in a vm; the hooks it gives the engine are kept as window.hooks. `wrap(hooks)` may
+ * change them before the engine takes them (to watch one); `raf` is the frame's requestAnimationFrame (none by default).
+ */
+function load({ wrap = null, raf = () => 0 } = {}) {
   const dom = stubDom();
   const window = { Agentville: { raw: h => { window.registered = h; } } };
-  const ctx = vm.createContext({ window, document: dom.document, console, Math, Date, JSON, Map, Set, Intl, ResizeObserver: class { observe() {} disconnect() {} }, requestAnimationFrame: () => 0, cancelAnimationFrame() {}, setInterval: () => 0, clearInterval() {}, setTimeout: () => 0, clearTimeout() {}, Image: class {}, Path2D: class {} });
+  const ctx = vm.createContext({ window, document: dom.document, console, Math, Date, JSON, Map, Set, Intl, ResizeObserver: class { observe() {} disconnect() {} }, requestAnimationFrame: raf, cancelAnimationFrame() {}, setInterval: () => 0, clearInterval() {}, setTimeout: () => 0, clearTimeout() {}, Image: class {}, Path2D: class {} });
   for (const f of ['scene.js', 'worlds/sdk/pixel.js', 'worlds/sdk/people.js', 'worlds/sdk/props.js', 'worlds/sdk/creatures.js', 'worlds/sdk/animals.js', 'worlds/sdk/engine.js']) vm.runInContext(web(f), ctx, { filename: f });
   const engineWorld = window.Agentville.world;
   window.Agentville.world = hooks => { window.hooks = hooks; wrap?.(hooks); return engineWorld(hooks); };
@@ -326,6 +330,9 @@ test('no farm or factory words: the help, every building tip and dialog, the sig
   assert.equal(h.startText(7), 'Muster: <b>7</b> soldiers on the base');
   assert.equal(h.arriveText, 'jumps down from the truck');
   const texts = [];
+  const mascots = plain(h.animals()); // the mascots' names, menus and lines (the gags' role "farmer" is the kit's word, never shown)
+  for (const c of mascots.cast) texts.push([`creature ${c.kind}`, [c.name, ...c.actions.map(a => a.label), ...Object.values(c.lines).flat()].join('\n')]);
+  for (const g of [...mascots.gags, ...mascots.play]) texts.push([`gag ${g.id}`, Object.values(g.lines ?? {}).flat().join('\n')]);
   // a day with all a position's sign can say: a branch, deploys and why, git counts, a worktree, a collision (the busy day last: the dialogs below read it)
   const signsDay = {
     generatedAt: TOUR_NOW, agents: [person('a')], collisions: [{ repo: SHOP, severity: 'high', reason: 'two agents edit the same files', since: 0, agentIds: [] }],
@@ -1501,4 +1508,261 @@ test('asleep on a cot until it wakes by itself: a zzz over it (and nothing in it
   assert.match(label.html, /wakes in 20m/);
   assert.match(label.title, /n wakes up by itself at \d/);
   assert.equal(h.movers(id => (id === 'n' ? { ...cot, walk: true } : null)).filter(m => m.key === 'nap:n').length, 0, 'not while it walks there');
+});
+
+/* ---------- the mascots: the regimental goat, the mess cat and the depot mice (sdk/animals.js) ---------- */
+
+/** The field exercise with n repos' positions, and the animals kit from its frame; `animals(seed)` is a fresh kit placed on the base, as the engine places it. */
+function mascotBase(n = 3) {
+  const { window, ctx, M } = load();
+  const h = window.hooks, L = h.relayout(h.grid.layoutFor(Array.from({ length: n }, (_, i) => ({ key: `/r/${i}`, name: `r${i}` }))));
+  const kit = vm.runInContext('({ makeAnimals, seededRandom, CREATURES, gagProblem })', ctx);
+  const place = a => a.place({ roam: h.roam(), avoid: h.avoid(), perches: h.perches(), spots: h.spots(), blocked: (x, y) => Boolean(h.fieldAt(x, y) || h.buildingAt(x, y)) });
+  const animals = seed => { const a = kit.makeAnimals(h.animals(), { random: kit.seededRandom(seed) }); place(a); return a; };
+  return { h, L, M, kit, animals };
+}
+const inArea = (r, x, y, slack = 0) => x >= r.x - slack && x <= r.x + r.w + slack && y >= r.y - slack && y <= r.y + r.h + slack;
+/** Does a creature's body (c.w × c.h above its feet at x, y) overlap a rectangle? The kit's own test (animals.js, okAt). */
+const bodyOver = (c, x, y, r) => x + c.w / 2 > r.x && x - c.w / 2 < r.x + r.w && y > r.y && y - c.h < r.y + r.h;
+/** The same, a pixel in from each side: where list() puts it is rounded. */
+const bodyIn = (c, o, r) => o.x + c.w / 2 - 1 > r.x && o.x - c.w / 2 + 1 < r.x + r.w && o.y - 1 > r.y && o.y - c.h + 1 < r.y + r.h;
+/** May a creature of kind c stand with its feet at (x, y)? As the kit's okAt has it: its feet where they roam, its body clear of what they keep off, its corners and middle on no position or building. */
+function standsAt(h, c, x, y) {
+  if (!plain(h.roam()).some(r => inArea(r, x, y)) || plain(h.avoid()).some(r => bodyOver(c, x, y, r))) return false;
+  return [[x - c.w / 2, y - c.h], [x + c.w / 2, y - c.h], [x - c.w / 2, y], [x + c.w / 2, y], [x, y - c.h / 2]].every(([px, py]) => !h.fieldAt(px, py) && !h.buildingAt(px, py));
+}
+/** The engine's crew, stood in for: soldiers that are where they're sent at once (factory.test.mjs's). */
+function fakeCrew(farmers) {
+  const log = [];
+  return {
+    log, farmers,
+    idle: () => farmers.filter(f => f.state === 'idle' && !f.sent),
+    busy: () => farmers.filter(f => f.state === 'working'),
+    longIdle: () => [],
+    at: id => farmers.find(f => f.id === id) ?? null,
+    state: id => farmers.find(f => f.id === id)?.state,
+    send: (id, [x, y]) => { const f = farmers.find(z => z.id === id); f.sent = true; f.x = x; f.y = y; log.push(['send', id, x, y]); },
+    release: id => { const f = farmers.find(z => z.id === id); if (f) f.sent = false; log.push(['release', id]); },
+    flag() {}, chickens: () => [], spotFree: () => true, fx: kind => log.push(['fx', kind]),
+  };
+}
+/** Where soldiers stand on the base outside the positions, and the jeeps wait: [x, y (feet), what, w, h of what stands there]. */
+const soldierPlaces = (h, M) => [
+  ...[0, 1, 2].flatMap(i => [placeOf(h, 'desk', i), placeOf(h, 'turn', i)]).map(([x, y]) => [x, y, "HQ's queue", 14, 16]),
+  ...[0, 1, 2, 3].map(i => [...placeOf(h, 'charge', i), 'the mess table', 14, 16]),
+  ...[0, 1, 2, 3].map(i => [...placeOf(h, 'storage', i), 'the reserve', 14, 16]),
+  ...[0, 1, 2, 3].map(i => [...placeOf(h, 'floor', i), 'the drill ground', 14, 16]),
+  ...[0, 1].map(i => [...placeOf(h, 'nap', i), 'a cot', 14, 16]),
+  ...M.PARK.map(([x, y]) => [x, y, 'the vehicle park', 14, 9]),
+];
+
+test("the mascots: the regimental goat in its dress coat, the mess cat and two depot mice, held to the kit's own rules (check-world's), with two gags", () => {
+  const { h, kit } = mascotBase();
+  const world = plain(h.animals());
+  assert.deepEqual(Object.keys(world).sort(), ['cast', 'gags', 'play']);
+  assert.deepEqual(world.cast.map(c => [c.kind, c.name, c.count ?? 1, c.look ?? null]), [['goat', 'Mascot', 1, 'mascot'], ['cat', 'Mess cat', 1, null], ['mouse', 'Depot mice', 2, null]]);
+  const [goat, cat, mice] = world.cast;
+  assert.deepEqual(goat.actions, [{ label: 'Pet', fx: 'hearts', line: 'petted' }, { label: 'Feed', fx: 'crumbs', pose: 'eat', line: 'fed' }, { label: 'Salute', pose: 'happy', fx: 'hearts', line: 'saluted' }]);
+  assert.deepEqual(goat.habits, ['stretch']);
+  assert.deepEqual(goat.reacts, { merged: 'hop', arrive: 'hop' }, "pleased at a merge and at a new soldier: it hops (the kit's happy)");
+  assert.deepEqual(goat.lines, {
+    idle: ['I outrank you all.', 'Baa-ttention!', "At ease. I'm eating.", 'Inspection: passed.'], petted: ['Carry on.'], fed: ['Rations accepted.'], saluted: ['At ease, soldier.'],
+    merged: ['Supplies! Baa!'], arrive: ['Fall in, new one.'], deployOk: ['Well drilled.'], deployFailed: ['Again. From the top.'], snack: ['Map? What map?'],
+  });
+  assert.deepEqual(cat.actions, [{ label: 'Pet', fx: 'hearts', line: 'petted' }, { label: 'Feed', fx: 'crumbs', pose: 'eat', line: 'fed' }]);
+  assert.deepEqual(cat.habits, ['yawn', 'stretch', 'climb'], "and up onto the mess tent's crates now and then (climb: its perch)");
+  assert.deepEqual(cat.reacts, { deployFailed: 'scatter' }, "a failed deploy's puff startles it: it runs off (or starts where it is)");
+  assert.deepEqual(cat.lines, { idle: ['mrrp. mess is mine.', 'I guard the stew.', 'zzz… rations…'], petted: ['purr ♥'], fed: ['MEOW (thanks)'], chased: ['…where did it go'] });
+  assert.deepEqual(mice.actions.map(a => a.label), ['Pet', 'Feed'], 'a menu of its own (a creature has 2 to 4 actions)');
+  assert.deepEqual(mice.lines.idle, ['crumbs, sir?', 'rations: found', 'squeak (quietly)']);
+  assert.deepEqual(mice.lines.chased, ['eep!']);
+  assert.ok(mice.home, "the mice keep to their home, by the quartermaster's depot");
+  assert.deepEqual(world.gags.map(g => g.id), ['map snack', 'mouse patrol']);
+  assert.deepEqual(world.play, []);
+  const taken = JSON.parse(web('worlds/military/world.json')).taken;
+  assert.deepEqual(creatureProblems(world, { kinds: Object.keys(kit.CREATURES), taken, gagProblem: kit.gagProblem, spots: plain(h.spots()) }), { problems: [], pointers: [] }, 'nothing the kit would drop or do its own way: lines of 40 at most, known poses, fx, habits, reactions and looks');
+});
+
+test("where they go: the goat along the track's front edge, end to end; the cat about the track, by the mess tent, down the left side's path and between its places, and along the exercise field's edge; never the positions, HQ's queue, the vehicle park, or where soldiers eat, wait in reserve, drill or sleep", () => {
+  for (const n of [3, 18]) {
+    const { h, L, M, kit } = mascotBase(n), { goat, cat, mouse } = kit.CREATURES, at = `${n} positions`;
+    const avoid = plain(h.avoid()), cast = plain(h.animals()).cast, parade = cast.find(c => c.kind === 'goat').home, home = cast.find(c => c.kind === 'mouse').home;
+    // the goat's home, the parade line: the track's front edge from end to end, past HQ's queue; wherever it stands on it, all of it is clear of what they keep off, the positions and the buildings
+    assert.ok(parade.x <= 4 && parade.x + parade.w >= h.W - 4 && parade.y > 92 && parade.y + parade.h <= L.GRID.y0, `${at}: the parade line (${JSON.stringify(parade)})`);
+    for (let x = parade.x; x <= parade.x + parade.w; x++) for (const y of [parade.y, parade.y + parade.h]) {
+      for (const r of avoid) assert.ok(!bodyOver(goat, x, y, r), `${at}: the goat at ${x},${y} is clear of ${JSON.stringify(r)}`);
+      for (const [px, py] of [[x - goat.w / 2, y - goat.h], [x + goat.w / 2, y - goat.h], [x, y - goat.h / 2]]) assert.ok(!h.fieldAt(px, py) && !h.buildingAt(px, py), `${at}: the goat at ${x},${y}, on no position or building`);
+    }
+    for (const [x, y, where] of [
+      [20, 85, 'the track, by the motor pool'], [70, 91, 'the track, before the motor pool gate'], [300, 91, 'the track, before the fuel depot'], [370, 90, "the track, before the quartermaster's depot"],
+      [200, 95, "the parade line, past HQ's queue"], [60, 96, 'by the mess tent'], [116, 120, "the left side's path, by the mess tent"], [116, 240, "the left side's path, by the cots"],
+      [60, 272, 'between the cots and the vehicle park'], [200, L.GRID.y1 + 22, "the exercise field's edge"], [380, L.GRID.y1 + 24, "the exercise field's edge, at the right"],
+    ]) assert.ok(standsAt(h, cat, x, y), `${at}: the cat may stand ${where} (${x},${y})`);
+    for (const [x, y, where] of [[200, 90, "on HQ's queue"], [160, 92, "over the feet of HQ's queue"], [200, 120, 'on a position'], [60, 120, 'in the mess tent'], [200, 50, 'in HQ'], [60, 200, 'on the drill ground'], [60, 285, 'in the vehicle park']]) assert.ok(!standsAt(h, cat, x, y), `${at}: never ${where} (${x},${y})`);
+    for (const [x, y, w] of [[L.GRID.x0 + 4, L.GRID.y0 + 4, 'the positions'], [L.GRID.x1 - 4, L.GRID.y1 - 4, 'the positions']]) assert.ok(avoid.some(r => inArea(r, x, y)), `${at}: ${w} (${x},${y}) are kept off`);
+    for (const [x, y, what, w, hh] of soldierPlaces(h, M)) assert.ok(avoid.some(r => x - w / 2 >= r.x && x + w / 2 <= r.x + r.w && y - hh >= r.y && y <= r.y + r.h), `${at}: ${what} (${x},${y}), all of what stands there, is kept off`);
+    // the gags' spots: the board on the parade line before the briefing board; the depot by the quartermaster's crates, in the mice's home
+    const spots = plain(h.spots()), [bx, by] = spots.board, [dx, dy] = spots.depot;
+    const boardBox = M.BUILDINGS.find(b => b[0] === 'board'), dock = M.BUILDINGS.find(b => b[0] === 'dock');
+    assert.deepEqual(Object.keys(spots).sort(), ['board', 'depot']);
+    assert.ok(inArea(parade, bx, by) && bx >= boardBox[1] && bx <= boardBox[3] && by > boardBox[4], `${at}: on the parade line before the briefing board (${spots.board})`);
+    assert.ok(!avoid.some(r => inArea(r, bx, by)) && !avoid.some(r => inArea(r, dx, dy)), `${at}: both spots clear of what avoid() keeps off`);
+    assert.ok(inArea(home, dx, dy) && dx >= dock[1] && dx <= dock[3] && dy > dock[4], `${at}: the depot spot, before the quartermaster's depot, where the mice live (${spots.depot})`);
+    assert.ok(home.x >= dock[1] && home.x + home.w <= dock[3] && home.y - mouse.h > dock[4] && home.y + home.h <= 92, `${at}: the mice's home, on the track before the depot, clear of its click box (${JSON.stringify(home)})`);
+    for (const r of avoid) assert.ok(!(home.x + home.w > r.x && home.x < r.x + r.w && home.y + home.h > r.y && home.y - mouse.h < r.y + r.h), `${at}: the mice's home is clear of ${JSON.stringify(r)}`);
+    // the cat's perch: on the mess tent's ration crates, its feet where it may stand
+    const perches = plain(h.perches()), crates = plain(M.MESS_CRATES);
+    assert.equal(perches.length, 1);
+    const [px0, py0, lift] = perches[0];
+    assert.ok(standsAt(h, cat, px0, py0), `${at}: the cat may stand at the crates' foot (${px0},${py0})`);
+    assert.equal(py0 - lift, crates.y, 'lifted onto their lids');
+    assert.ok(px0 - cat.w / 2 >= crates.x - 1 && px0 + cat.w / 2 <= crates.x + crates.w + 1, `on the crates, not beside them (${perches[0]}, ${JSON.stringify(crates)})`);
+    assert.ok(crates.y + crates.h < 98 && crates.y > 91 && crates.x > 92 && crates.x + crates.w < 111, "behind the mess tent's right end, between it and the track (clear of the lantern and the path)");
+  }
+});
+
+test("placement: whatever they do, no mascot stands on a position, a building or what avoid() keeps off; the goat parades the track's front edge end to end, the mice keep to the depot, and the cat goes about the track, the left side and the exercise field's edge", () => {
+  const catWent = new Set(), goatWent = new Set();
+  for (const n of [3, 18]) for (const seed of [1, 2, 3]) {
+    const { h, L, kit, animals } = mascotBase(n), a = animals(seed), crew = fakeCrew([{ id: 's1', state: 'idle', x: 22, y: 132 }]);
+    const avoid = plain(h.avoid()), roam = plain(h.roam()), cast = plain(h.animals()).cast, homes = { goat: cast[0].home, mouse: cast[2].home };
+    const events = [['merged', [357, 50]], ['arrive', [62, 80]], ['deployFailed', [205, 116]], ['harvest', [174, 130]], ['deployOk', [293, 116]]];
+    for (let i = 0; i < 6000; i++) {
+      if (i % 400 === 0) { a.perform('goat-0', 2, null); a.perform('cat-0', 1, null); a.perform('mouse-1', 0, null); } // Salute, Feed, Pet
+      if (i % 900 === 300) a.react(...events[Math.floor(i / 900) % events.length]);
+      a.tick(0.1, { crew });
+      for (const o of plain(a.list())) {
+        const c = kit.CREATURES[o.kind], where = `${n} positions, seed ${seed}, t ${i / 10}: ${o.id} at ${o.x},${o.y}`;
+        if (homes[o.kind]) assert.ok(inArea(homes[o.kind], o.x, o.y, 1), `${where}: at home`);
+        else assert.ok(roam.some(r => inArea(r, o.x, o.y, 1)), `${where}: where it may roam`);
+        for (const r of avoid) assert.ok(!bodyIn(c, o, r), `${where}: in ${JSON.stringify(r)}`);
+        for (const [px, py] of [[o.x - c.w / 2 + 1, o.y - c.h + 1], [o.x + c.w / 2 - 1, o.y - c.h + 1], [o.x - c.w / 2 + 1, o.y - 1], [o.x + c.w / 2 - 1, o.y - 1]]) assert.ok(!h.fieldAt(px, py) && !h.buildingAt(px, py), `${where}: on a position or a building`);
+        if (o.kind === 'cat') catWent.add(o.y <= L.GRID.y0 ? 'the track' : o.y > L.GRID.y1 + 8 ? "the exercise field's edge" : 'the left side');
+        if (o.kind === 'goat') goatWent.add(o.x < 110 ? 'by the mess tent' : o.x > 260 ? 'past HQ' : 'before HQ');
+      }
+    }
+  }
+  assert.deepEqual([...catWent].sort(), ["the exercise field's edge", 'the left side', 'the track']);
+  assert.deepEqual([...goatWent].sort(), ['before HQ', 'by the mess tent', 'past HQ']);
+});
+
+test("the mess cat gets about: whatever its luck (the engine's seed for this cast too), over two hours it spends a tenth of its time or more on each of the track, the left side and the exercise field's edge; none of them traps it", () => {
+  for (const n of [3, 18]) for (const seed of [1, 2, 3 * 7919]) {
+    const { L, animals } = mascotBase(n), a = animals(seed), time = { track: 0, left: 0, edge: 0 };
+    for (let i = 0; i < 72000; i++) {
+      a.tick(0.1);
+      const cat = plain(a.list()).find(o => o.kind === 'cat');
+      time[cat.y <= L.GRID.y0 ? 'track' : cat.y > L.GRID.y1 + 8 ? 'edge' : 'left']++;
+    }
+    for (const [where, ticks] of Object.entries(time)) assert.ok(ticks >= 7200, `${n} positions, seed ${seed}: ${where} ${Math.round(ticks / 720)}% of the time (${JSON.stringify(time)})`);
+  }
+});
+
+test("the mess cat climbs onto the mess tent's ration crates now and then, and stays up there a while", () => {
+  const { h, animals } = mascotBase(3), [px0, py0, lift] = plain(h.perches())[0];
+  let longest = 0;
+  for (const seed of [1, 2, 3, 4]) {
+    const a = animals(seed);
+    let run = 0;
+    for (let i = 0; i < 12000; i++) {
+      a.tick(0.1);
+      const cat = plain(a.list()).find(o => o.kind === 'cat');
+      run = cat.x === px0 && cat.y === py0 && cat.lift === lift ? run + 1 : 0;
+      longest = Math.max(longest, run);
+    }
+  }
+  assert.ok(longest >= 40, `it sits up on the crates 4 s or more at a time (longest ${longest / 10} s)`);
+});
+
+test('the map snack: the goat parades to the briefing board and eats the map there ("Map? What map?"), an idle soldier walks over, and it trots off', () => {
+  const SNACK = 'Map? What map?';
+  let played = 0;
+  for (const seed of [1, 2, 3, 4, 5, 6, 7, 8]) {
+    const { h, animals } = mascotBase(3), a = animals(seed), board = plain(h.spots()).board;
+    const crew = fakeCrew([{ id: 's1', state: 'idle', x: 22, y: 132 }]);
+    let run = null; // a snack under way: the goat's poses and places, and where it was (and who had been sent) when it said its line
+    for (let i = 0; i < 40000; i++) {
+      a.tick(0.1, { crew });
+      const on = a.gagNow()?.id === 'map snack', goat = plain(a.list()).find(o => o.kind === 'goat');
+      if (on && !run) run = { seen: [], sends: crew.log.filter(l => l[0] === 'send').length };
+      if (!run) continue;
+      if (on) {
+        run.seen.push([goat.pose, goat.x, goat.y]);
+        if (!run.said && plain(a.bubbles()).some(b => b.text === SNACK)) run.said = { at: [goat.x, goat.y], sent: crew.log.filter(l => l[0] === 'send').length - run.sends };
+        continue;
+      }
+      if (run.said) { // a snack played out: check where everyone was
+        assert.deepEqual(run.said.at, board, `seed ${seed}: it says so at the board`);
+        assert.equal(run.said.sent, 0, `seed ${seed}: before the soldier comes`);
+        assert.ok(run.seen.some(([p, x, y]) => p === 'eat' && x === board[0] && y === board[1]), `seed ${seed}: it eats there`);
+        const sent = crew.log.filter(l => l[0] === 'send').slice(run.sends);
+        assert.ok(sent.length && Math.abs(sent[0][2] - board[0]) <= 12 && Math.abs(sent[0][3] - board[1]) <= 2, `seed ${seed}: then the soldier is sent over to it (${sent[0]})`);
+        const last = run.seen.at(-1);
+        assert.ok(Math.hypot(last[1] - board[0], last[2] - board[1]) > 8, `seed ${seed}: and it trots off (${last})`);
+        played++;
+      }
+      run = null;
+    }
+  }
+  assert.ok(played >= 4, `the snack played out a few times (${played})`);
+});
+
+test('the mouse patrol: a mouse pops out by the quartermaster\'s crates, the mess cat runs at it ("eep!"), the mouse is off, and the cat is left with nothing ("…where did it go")', () => {
+  let played = 0;
+  for (const seed of [1, 2, 3, 4, 5, 6, 7, 8]) {
+    const { h, animals } = mascotBase(3), a = animals(seed), depot = plain(h.spots()).depot, crew = fakeCrew([]);
+    let run = null; // a patrol under way: where the cat and its mouse were when each line was first said
+    for (let i = 0; i < 40000; i++) {
+      a.tick(0.1, { crew });
+      const on = a.gagNow()?.id === 'mouse patrol';
+      if (on && !run) run = {};
+      if (!run) continue;
+      const list = plain(a.list()), cat = list.find(o => o.kind === 'cat');
+      // the kit puts a creature back where it may be when a step of its walk grazes a corner its 2 px check passed (it
+      // jumps): that patrol says nothing of this world's places
+      if (run.at && Math.hypot(cat.x - run.at[0], cat.y - run.at[1]) > 6) run.jumped = true;
+      run.at = [cat.x, cat.y];
+      for (const b of plain(a.bubbles())) {
+        if (b.text === 'eep!' && !run.eep) run.eep = { cat, mouse: list.find(o => o.id === b.id) };
+        if (b.text === '…where did it go' && run.eep && !run.gone) run.gone = { cat, mouse: list.find(o => o.id === run.eep.mouse.id) };
+      }
+      if (on) continue;
+      const { eep, gone } = run, far = ({ cat: c, mouse: m }) => Math.hypot(c.x - m.x, c.y - m.y);
+      if (eep && gone && !run.jumped) { // a patrol played out
+        assert.ok(Math.hypot(eep.mouse.x - depot[0], eep.mouse.y - depot[1]) <= 2, `seed ${seed}: the mouse squeaks by the crates (${eep.mouse.x},${eep.mouse.y})`);
+        assert.ok(far(eep) <= 24, `seed ${seed}: the cat right at it (${eep.cat.x},${eep.cat.y})`);
+        assert.ok(far(gone) > far(eep) + 8, `seed ${seed}: the mouse got away (${gone.mouse.x},${gone.mouse.y}; the cat at ${gone.cat.x},${gone.cat.y})`);
+        played++;
+      }
+      run = null;
+    }
+  }
+  assert.ok(played >= 4, `the patrol played out a few times (${played})`);
+});
+
+test('at max alert the mascots never act cold: the goat wears no scarf and keeps going about (the world\'s coldSeason is null; with the engine\'s default it would)', () => {
+  const run = coldSeason => {
+    let pending = null;
+    const { window, dom, ctx } = load({ raf: cb => { pending = cb; return 1; }, wrap: hooks => { if (coldSeason !== undefined) hooks.coldSeason = coldSeason; } });
+    window.registered.start({ el: dom.make(), opts: { still: false }, prefs: { get: k => ({ season: 'winter', sky: 'day' })[k] ?? null, set() {} } });
+    window.registered.scene(window.AgentvilleScene.toScene(goldenSnapshot()));
+    const seen = [];
+    let now = 1000;
+    for (let i = 0; i < 1200 && pending; i++) { // two minutes, a tenth of a second a frame
+      const cb = pending;
+      pending = null;
+      dom.calls.rects.length = 0;
+      cb(now += 100);
+      const goat = window.Agentville.animalsNow().find(o => o.kind === 'goat');
+      if (goat) seen.push(plain(goat));
+    }
+    return { seen, season: vm.runInContext('PXG.season', ctx) };
+  };
+  const max = run();
+  assert.equal(max.season, 'winter', 'the Alert switch held at max');
+  assert.ok(max.seen.length > 1000, 'the goat is on the base, frame after frame');
+  assert.ok(max.seen.every(g => !g.wear.scarf), 'no scarf at max alert');
+  assert.ok(new Set(max.seen.map(g => `${g.x},${g.y}`)).size > 5 && max.seen.some(g => g.pose === 'walk'), 'it keeps going about');
+  const cold = run('winter'); // the engine's default, for contrast
+  assert.ok(cold.seen.length && cold.seen.every(g => g.wear.scarf), 'were max alert the cold season, it would wear a scarf');
 });

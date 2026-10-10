@@ -486,7 +486,8 @@ tick there. The farm's Menu has no ✨ Helper yet: to change it from the farm, g
   the last error, and says when today's limit is reached (it resets at midnight). **Switch off**
   asks for nothing more at once; a call already under way finishes, and its answer is dropped.
 - Names need mod 0.8.0 in the session, animal lines 0.9.0 (0.9.1 for the robot dog and the robot
-  vacuum). For a session started before you updated, run `/reload-plugins` in it.
+  vacuum; 0.9.2 for the field exercise's lines in its drill words: an older mod writes them in plain
+  words). For a session started before you updated, run `/reload-plugins` in it.
 
 ### Model, effort and permission mode
 

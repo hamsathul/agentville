@@ -1170,9 +1170,9 @@ test('the page posts the world’s cast while Animal lines is ticked, and sends 
   assert.deepEqual(plain(p.posted.filter(m => m.type === 'chatter').at(-1)), { type: 'chatter', lines: [] }, 'gone: the world drops its lines');
 });
 
-test('the cast names its world only for a built-in world the helper has words for (farm, factory): never the starter, your own worlds or a private one', async () => {
+test('the cast names its world only for a built-in world the helper has words for (farm, factory, military): never the starter, your own worlds or a private one', async () => {
   const built = (key, name) => ({ key, builtIn: true, name, icon: '🧩', description: '', nouns: {}, preview: null, error: null });
-  const worlds = [...WORLDS, built('factory', 'Robot factory'), built('starter', 'Starter')];
+  const worlds = [...WORLDS, built('factory', 'Robot factory'), built('military', 'Field exercise'), built('starter', 'Starter')];
   const cast = [{ kind: 'cat', name: 'Cat' }];
   const posts = async (key, stored = {}) => {
     const p = await page({ worlds, stored: { 'tracker-world': key, ...stored } });
@@ -1185,6 +1185,7 @@ test('the cast names its world only for a built-in world the helper has words fo
   };
   assert.deepEqual((await posts('farm')).sent(), [{ cast, world: 'farm' }]);
   assert.deepEqual((await posts('factory')).sent(), [{ cast, world: 'factory' }]);
+  assert.deepEqual((await posts('military')).sent(), [{ cast, world: 'military' }], 'the field exercise');
   assert.deepEqual((await posts('starter')).sent(), [{ cast }], 'the starter: no world');
   assert.deepEqual((await posts('u/space')).sent(), [{ cast }], 'one of yours: no world');
   assert.deepEqual((await posts('u/space', { 'tracker-world-cansee:u/space': 'on' })).sent(), [{ cast }], 'one of yours, even allowed to see: no world');

@@ -133,7 +133,7 @@
   const DRILL = [[34, 222], [82, 222], [34, 200], [82, 200]];
   const COTS = [[30, 256], [78, 256]];
   const PARK = [0, 1, 2, 3, 4, 5].map(i => [14 + 16 * i, 288]);
-  // What the left side is drawn in, each its box: its drawing keeps to it (and the mascots will keep off it). A box
+  // What the left side is drawn in, each its box: its drawing keeps to it (and the mascots keep off it: avoidOf). A box
   // with dx, dy goes round a place's feet; one with x, y stands where it is.
   const MESS_BOX = { x: 4, y: 98, w: 106, h: 40 }; // the mess tent's fly, its poles, its table and their shadows
   const RESERVE_BOX = { x: 6, y: 140, w: 98, h: 35 }; // the two reserve tents, their guy ropes, the crates before them
@@ -141,6 +141,7 @@
   const COT_BOX = { dx: -8, dy: -18, w: 17, h: 23 }; // a cot round its sleeper's feet: its pillow end to its legs' shadow
   const CLOCK = [54, 236]; // the little clock over the cots: its post's top
   const PARK_BOX = { x: 4, y: 274, w: 106, h: 20 }; // the vehicle park's gravel
+  const MESS_CRATES = { x: 95, y: 92, w: 14, h: 5 }; // the ration crates behind the mess tent's right end, between it and the track (the mess cat's perch)
   const RESERVE_TENTS = [30, 78]; // the reserve tents' apexes (x), behind their crates
   const MESS_LAMP = [61, 112]; // the lantern hanging under the mess tent's fly: its glass
   // What lights the base at night (lights), and from high alert by day: the lanterns on posts along the track's
@@ -355,6 +356,12 @@
     const [lx, ly] = MESS_LAMP; // a lantern hanging under the fly, by its middle pole (it glows at night)
     f(lx, ly - 2, 1, 1, DARK); f(lx - 1, ly - 1, 3, 4, DARK); f(lx, ly, 1, 2, '#e6eef5');
   }
+  /** The mess tent's ration crates, behind its right end: two wooden crates side by side, their lids lit, a stencilled mark on each, their shadow on the grass. */
+  function rationCrates(f) {
+    const { x, y, w, h } = MESS_CRATES, cw = w / 2;
+    f(x + 1, y + h, w, 1, SHADE);
+    for (const cx of [x, x + cw]) { f(cx, y, cw, h, WOOD[1]); f(cx + 1, y, cw - 2, h - 1, WOOD[4]); f(cx + 1, y, cw - 2, 1, WOOD[5]); f(cx + 1, y + 2, cw - 2, 1, WOOD[3]); f(cx + 3, y + 3, 1, 1, OLIVE[0]); }
+  }
   /** The mess table, drawn among the soldiers just in front of the idle ones (they stand behind it): a trestle table, a plate of stew and a mug at each place, the pot. */
   function messTable() {
     const y = MESS[0][1], x0 = 10, x1 = 106; // the soldiers' feet behind it
@@ -458,7 +465,7 @@
     rangeRope(f, L);
     for (const x of LANTERNS) lantern(f, x);
     // the left side
-    messTent(f);
+    messTent(f); rationCrates(f);
     for (const cx of RESERVE_TENTS) pupTent(f, cx, RESERVE_BOX.y + 2); // the reserve tents, behind their crates
     drillGround(f);
     for (const [x, y] of COTS) cot(f, x, y);
@@ -1289,6 +1296,88 @@
     if (moving && blink(6)) px(dir > 0 ? x - 9 : x + 7, y - 2, 2, 1, SHINE); // exhaust
   }
 
+  /* ---------- the creatures: the regimental mascots (sdk/animals.js) ---------- */
+
+  // Just for fun, never data: the regimental mascots, cheerful and pompous, never martial. The goat in its red dress
+  // coat (the library's mascot look) parades along the track's front edge, end to end (its home: a goat, 11 tall,
+  // passes HQ's queue only there), and naps by the mess tent on the way; the mess cat goes about the track, the left
+  // side and the exercise field's edge, and up onto the mess tent's ration crates; two mice keep to the track before
+  // the quartermaster's depot. None goes onto the positions, HQ's queue, the vehicle park, or where soldiers eat, wait
+  // in reserve, drill or sleep. Max alert is no weather: the world's coldSeason is null, so the kit never hears winter
+  // (no scarf, no huddle, no longer rests). No dog or pigeon: the K9 and the carrier pigeon are data (world.json's "taken").
+  // HQ's queue as the mascots keep off it: its soldiers (14 × 16 on their feet), the ring at a waiting one's feet (8
+  // either side, 2 below), a pixel round.
+  const QUEUE_BOX = { x: QUEUE.from - 9, y: TRACK_Y - 18, w: QUEUE.to - QUEUE.from + 18, h: 22 };
+  // The parade line: the track's front edge, end to end, where a goat's feet go past HQ's queue, down to the range's fence.
+  const PARADE_Y = QUEUE_BOX.y + QUEUE_BOX.h + CREATURES.goat.h; // 95
+  const PARADE = { x: 4, y: PARADE_Y, w: W - 8, h: MILITARY_GRID.layoutFor([]).GRID.y0 - PARADE_Y };
+  const DOCK = BUILDINGS.find(b => b[0] === 'dock');
+  // The mice's home: the track before the quartermaster's pallet of crates (x 333–371), clear of the depot's click box
+  // (so it still opens).
+  const MICE_HOME = { x: 328, y: DOCK[4] + 1 + CREATURES.mouse.h, w: 44, h: TRACK.y1 - DOCK[4] - 1 - CREATURES.mouse.h };
+  const MILITARY_ANIMALS = [
+    { kind: 'goat', name: 'Mascot', look: 'mascot', home: PARADE, habits: ['stretch'], reacts: { merged: 'hop', arrive: 'hop' }, // pleased: the kit's hop is its happy pose
+      actions: [{ label: 'Pet', fx: 'hearts', line: 'petted' }, { label: 'Feed', fx: 'crumbs', pose: 'eat', line: 'fed' }, { label: 'Salute', pose: 'happy', fx: 'hearts', line: 'saluted' }],
+      lines: { idle: ['I outrank you all.', 'Baa-ttention!', "At ease. I'm eating.", 'Inspection: passed.'], petted: ['Carry on.'], fed: ['Rations accepted.'], saluted: ['At ease, soldier.'],
+        merged: ['Supplies! Baa!'], arrive: ['Fall in, new one.'], deployOk: ['Well drilled.'], deployFailed: ['Again. From the top.'], snack: ['Map? What map?'] } },
+    { kind: 'cat', name: 'Mess cat', habits: ['yawn', 'stretch', 'climb'], reacts: { deployFailed: 'scatter' }, // climb: up onto the ration crates (CAT_PERCH); a failed deploy's puff startles it
+      actions: [{ label: 'Pet', fx: 'hearts', line: 'petted' }, { label: 'Feed', fx: 'crumbs', pose: 'eat', line: 'fed' }],
+      lines: { idle: ['mrrp. mess is mine.', 'I guard the stew.', 'zzz… rations…'], petted: ['purr ♥'], fed: ['MEOW (thanks)'], chased: ['…where did it go'] } },
+    { kind: 'mouse', name: 'Depot mice', count: 2, home: MICE_HOME,
+      actions: [{ label: 'Pet', fx: 'hearts', line: 'petted' }, { label: 'Feed', fx: 'crumbs', pose: 'eat', line: 'fed' }],
+      lines: { idle: ['crumbs, sir?', 'rations: found', 'squeak (quietly)'], petted: ['squeak ♥'], fed: ['a crumb! for me?'], chased: ['eep!'] } },
+  ];
+  // Now and then the goat parades to the briefing board and eats the map off it, and an idle soldier comes to see; or
+  // the mess cat runs at a mouse by the quartermaster's crates, the mouse is off, and the cat comes back with nothing.
+  // In the kit's words: its "farmer" is a soldier, and only a soldier chases, so the cat runs at the mouse.
+  const MILITARY_GAGS = [
+    { id: 'map snack', needs: { goat: 1, farmer: 'idle', spot: 'board' }, steps: [
+      { go: 'goat', to: 'spot:board' }, { pose: 'goat', is: 'eat', ms: 3000 }, { say: 'goat', line: 'snack' },
+      { go: 'farmer', to: 'goat' }, { go: 'goat', to: 'away' }] },
+    { id: 'mouse patrol', needs: { cat: 1, mouse: 1, spot: 'depot' }, steps: [
+      { go: 'mouse', to: 'spot:depot' }, { go: 'cat', to: 'mouse', run: true }, { say: 'mouse', line: 'chased' },
+      { go: 'mouse', to: 'away', run: true }, { say: 'cat', line: 'chased' }, { go: 'cat', to: 'back' }] },
+  ];
+  // The gags' spots: on the parade line before the briefing board (just right of its lantern), and by the
+  // quartermaster's crates at the right end of the mice's home: the cat comes up on the mouse's right (the kit's
+  // "beside" a creature), so the mouse is off to the left, along the crates.
+  const BOARD_SPOT = [272, PARADE_Y], DEPOT_SPOT = [368, 88];
+  // Where the mess cat climbs: its feet at the ration crates' foot, lifted onto their lids.
+  const CAT_PERCH = [MESS_CRATES.x + MESS_CRATES.w / 2, MESS_CRATES.y + MESS_CRATES.h, MESS_CRATES.h];
+  /**
+   * Where the cat may walk (its feet; the goat and the mice keep to their homes): the track to its front edge at the
+   * range's fence, the left side with its path down to the exercise field's edge, and along that edge, before its
+   * hedge and fence. The kit walks a creature only where a straight line (or one bend) takes it, so the ways between
+   * them are areas of their own too, and the cat often takes them: the parade line past HQ's queue, and the left
+   * side's path at the track and at the field's edge (where its body clears the mess tent and the range: x 116–122).
+   */
+  function roamOf(L) {
+    const G = L.GRID, edge = G.y1 + EDGE.bottom, path = { x: CORR[0], w: 6 };
+    return [
+      { x: 4, y: TRACK.y0, w: W - 8, h: G.y0 - TRACK.y0 }, // the track, to its front edge
+      { x: 4, y: TRACK.y1, w: CORR[0] + 8 - 4, h: edge + 4 - TRACK.y1 }, // the left side and its path, down to the field's edge
+      { x: 4, y: edge - 1, w: W - 8, h: 5 }, // the exercise field's edge
+      { ...PARADE }, { ...path, y: TRACK.y1, h: G.y0 - TRACK.y1 }, { ...path, y: edge - 1, h: 5 }, // the ways between them
+    ];
+  }
+  /** One box round a row of places, each with its box round its feet ({ dx, dy, w, h }): the cots. */
+  function around(places, b) {
+    const xs = places.map(p => p[0]), ys = places.map(p => p[1]), x = Math.min(...xs), y = Math.min(...ys);
+    return { x: x + b.dx, y: y + b.dy, w: Math.max(...xs) - x + b.w, h: Math.max(...ys) - y + b.h };
+  }
+  /**
+   * What the mascots keep off (besides the positions and buildings themselves: fieldAt, buildingAt), from the same
+   * places and boxes the base is drawn with: the range round the positions, HQ's queue, the vehicle park, and the left
+   * side's places where soldiers are: the mess tent, the reserve tents, the drill ground and the cots.
+   */
+  function avoidOf(L) {
+    const G = L.GRID;
+    return [
+      { x: G.x0, y: G.y0, w: G.x1 - G.x0, h: G.y1 - G.y0 }, { ...QUEUE_BOX }, { ...PARK_BOX },
+      { ...MESS_BOX }, { ...RESERVE_BOX }, { ...DRILL_BOX }, around(COTS, COT_BOX),
+    ];
+  }
+
   /* ---------- the hooks ---------- */
 
   /** A time of day, short: 14:05. */
@@ -1426,6 +1515,14 @@
         : [b.x + (k % 2 ? 13 : -13) + Math.sin(T * 1.3 + k) * 1.5, b.y - 12 - (k > 1 ? 11 : 0) + Math.sin(T * 3 + k * 1.7) * 1.5]),
       /** The alert level, live: the engine shows it (or the level the Alert switch holds) as PXG.season. */
       season: () => alert,
+      /** The regimental mascots (the creatures, above): just for fun, never data. */
+      animals: () => ({ cast: MILITARY_ANIMALS, gags: MILITARY_GAGS, play: [] }),
+      roam: () => roamOf(L),
+      avoid: () => avoidOf(L),
+      /** Where the mess cat climbs: the mess tent's ration crates. */
+      perches: () => [[...CAT_PERCH]],
+      /** Where the gags go: before the briefing board, and by the quartermaster's crates. No huddle: max alert is no winter. */
+      spots: () => ({ board: [...BOARD_SPOT], depot: [...DEPOT_SPOT] }),
       /** How fast a soldier walks: strolling at calm, faster when high, at the double at max; fast mode faster still. */
       speed: f => Math.round((ALERT[shown()] ?? ALERT.summer).speed * (f.fast ? 1.7 : 1)),
       /**
@@ -1745,6 +1842,6 @@
   window.AgentvilleMilitary = {
     OUTFIT, lookOf, soldierSprite, militaryScene, makeMilitary, props, BUILDINGS, MILITARY_GRID, DEPOT_X, PARK, SKY_Y, depotCrates,
     depotOf, depotsOf, drumsOf, FUEL, LANTERNS, SEARCHLIGHTS, BEACON, BEAM, FLARE, flareAt,
-    MILITARY_PROPS: Object.keys(MILITARY_PROPS), chevronsOf, jeepRoute, jeepGoal, RIDER_Y,
+    MILITARY_PROPS: Object.keys(MILITARY_PROPS), chevronsOf, jeepRoute, jeepGoal, RIDER_Y, MESS_CRATES,
   };
 })();

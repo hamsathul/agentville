@@ -65,12 +65,13 @@ test('factsOf: the facts only, capped, waiting first; no path, command or branch
   for (const s of ['/Users', 'ssh', 'deploy.sh', 'secret', 'feature/', 'Which DB']) assert.equal(text.includes(s), false, s);
 });
 
-test('factsOf names the world only when it is a built-in one the mod has words for (farm, factory); nothing else of a world reaches the request', () => {
+test('factsOf names the world only when it is a built-in one the mod has words for (farm, factory, military); nothing else of a world reaches the request', () => {
   const facts = world => factsOf({ agents: [], repos: [] }, [{ kind: 'cat', name: 'Cat' }], [], 0, world);
-  assert.deepEqual(LINE_WORLDS, ['farm', 'factory']);
+  assert.deepEqual(LINE_WORLDS, ['farm', 'factory', 'military']);
   assert.equal(facts('farm').world, 'farm');
   assert.equal(facts('factory').world, 'factory');
-  for (const w of [undefined, null, '', 'starter', 'u/space', 'space', 'Farm', ' farm', '__proto__', 'constructor', 'toString', 42, ['farm'], { toString: () => 'farm' }]) {
+  assert.equal(facts('military').world, 'military', 'the field exercise, by its key');
+  for (const w of [undefined, null, '', 'starter', 'u/space', 'space', 'Farm', ' farm', 'Military', 'field exercise', '__proto__', 'constructor', 'toString', 42, ['farm'], { toString: () => 'farm' }]) {
     assert.equal(Object.hasOwn(facts(w), 'world'), false, `${JSON.stringify(w) ?? String(w)}: no world`);
   }
   assert.deepEqual(Object.keys(facts('factory')).sort(), ['agents', 'cast', 'counts', 'events', 'world']);
