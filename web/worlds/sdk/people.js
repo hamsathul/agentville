@@ -90,6 +90,11 @@
       up: ['..kJJJJJJJjk..', '.kJJJJJJJJjjk.', '.kJJJJJJJJJjk.', '.ks.JJJJJJ.sk.'],
       right: ['...kJCJJJjk...', '...kJJJJJjk...', '...kJJJJJjk...', '...kJJJJJJk...'],
     },
+    jacket: { // a field jacket in the agent's colour: chest pockets, a belt with a buckle
+      down: ['..kCCCCCCCck..', '.kCcCCCCcCcck.', '.kCCCCCCCCCck.', '.ks.kkeekk.sk.'],
+      up: ['..kCCCCCCCck..', '.kCCCCCCCCcck.', '.kCCCCCCCCCck.', '.ks.kkkkkk.sk.'],
+      right: ['...kCCCCCck...', '...kCcCCCck...', '...kCCCCCck...', '...kkkkekkk...'],
+    },
   };
   // Bottoms: a bib laid over the top (overalls), the hips, and the legs in each walking frame: s standing,
   // a and b a step with each foot, p a pole (a scarecrow's); from the front, and from the side.

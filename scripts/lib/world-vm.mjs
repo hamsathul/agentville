@@ -26,12 +26,12 @@ const NUMBERS = new Set(['offsetWidth', 'offsetHeight', 'clientWidth', 'clientHe
 // The animals kit's rules (docs/worlds.md, "Creatures"). The effects the engine draws for an action
 // (engine.js, showFx); the poses every creature is drawn in (creatures.js, its POSE_AS too, and
 // animals.js's stand and happy), and the duck's and the ostrich's own (the duck's slide is on ice);
-// the looks a kind has (the duck's, creatures.js); 40 characters a line (animals.js, LINE_MAX).
+// the looks a kind has (the duck's and the goat's, creatures.js); 40 characters a line (animals.js, LINE_MAX).
 // Copies: check-world.test.mjs fails when they drift.
 const FX = ['hearts', 'crumbs', 'dust'];
 const POSES = ['stand', 'walk', 'run', 'eat', 'sleep', 'happy', 'yawn', 'startled', 'stretch', 'roll'];
 const POSES_OF = { duck: [...POSES, 'swim', 'dabble', 'slide'], ostrich: [...POSES, 'hide'] };
-const LOOKS_OF = { duck: ['drake', 'hen', 'duckling'] };
+const LOOKS_OF = { duck: ['drake', 'hen', 'duckling'], goat: ['mascot'] };
 const LINE_MAX = 40, COUNT_MAX = 12, ACTIONS = [2, 4];
 // The habits a creature may have, and what it may do when something happens (animals.js, HABITS and react).
 const HABITS = ['climb', 'circles', 'hide', 'yawn', 'stretch', 'chaseTail', 'pounce', 'fetch', 'roll', 'laps'];

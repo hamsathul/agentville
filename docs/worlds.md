@@ -663,6 +663,7 @@ every hat but `none` also has a highlight in a lighter shade of the hat colour.
 | top | `uniform` | an olive uniform with a shoulder patch | fixed (olive, dark green); the collar and the patch are the agent's colour |
 | top | `spacesuit` | a white suit with a chest panel, gloves and a pack on the back | fixed (white, grey gloves and pack); the panel is the agent's colour, with one yellow light |
 | top | `suit` | a dark jacket with the shirt down the front | fixed (dark); the shirt is the agent's colour |
+| top | `jacket` | a field jacket: chest pockets and a belt with a buckle | the agent's colour; the pockets are its shade, the belt dark with a metal buckle |
 | bottom | `overalls` | a bib over the top, and the hips and legs | the bottom colour (the bib too) |
 | bottom | `trousers` | trousers | the bottom colour |
 | bottom | `skirt` | a skirt, the legs bare | the bottom colour |
@@ -836,7 +837,7 @@ A creature in `animals()`:
 | `habits` | What it does now and then, of: `climb` (onto a `perch`), `circles`, `hide` (the ostrich's head in the ground; it hides from a failed deploy too), `yawn`, `stretch`, `roll` (onto its back), `chaseTail`, `pounce`, `fetch` (runs off and back), `laps` |
 | `reacts` | `{ <event kind>: what }`, over the defaults: `'scatter'`, `'hop'`, `'gather'`, `'hide'` or `'run'` (to where it happened); `null` for nothing |
 
-The library's creatures, each drawn on its feet, facing either way: `cow`, `goat`, `sheepdog` (with a
+The library's creatures, each drawn on its feet, facing either way: `cow`, `goat` (look `mascot`: a red dress coat with gold trim), `sheepdog` (with a
 red bandana), `ostrich`, `lion`, `tiger`, `duck` (looks `drake`, `hen`, `duckling`), `cat`, `dog`,
 `pigeon`, `mouse`, `fish`, `robodog` (a chrome robot terrier, its tail an antenna with a blinking red
 tip; asleep, a green standby light) and `vacuum` (a round robot vacuum with a blue ring light, its
@@ -1275,8 +1276,8 @@ A dot for each of these (a pointer, never a cross):
 - its `pose` is one the creature has: `stand`, `walk`, `run`, `eat`, `sleep`, `happy`, `yawn`,
   `startled`, `stretch`, `roll`, the duck's `swim`, `dabble` and `slide`, the ostrich's `hide`
   (another: it stands);
-- `looks` (or `look`), if given, are the kind's own: the duck's `drake`, `hen`, `duckling` (another
-  is drawn as the first);
+- `looks` (or `look`), if given, are the kind's own: the duck's `drake`, `hen`, `duckling` and the
+  goat's `mascot` (another is drawn as the first, which for the goat is the plain goat);
 - with no `roam()`, only creatures with a `home` are shown.
 
 When `animals()` returns `{ cast, gags, play }`, the rules above are for its `cast`, and these for its

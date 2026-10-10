@@ -92,7 +92,7 @@ test('a sprite is made once per look, colour and pose, and waves from the front'
 
 test("the other worlds' clothes: every spec part exists, and each draws differently from the default", () => {
   const { people } = load();
-  const want = { HATS: ['straw', 'cap', 'beanie', 'bandana', 'none', 'hardhat', 'helmet', 'beret', 'surgical', 'spacehelmet'], TOPS: ['shirt', 'labcoat', 'scrubs', 'hivis', 'uniform', 'spacesuit', 'suit'], BOTTOMS: ['overalls', 'trousers', 'skirt'], EXTRAS: ['none', 'beard', 'glasses', 'cheeks', 'stethoscope', 'tie', 'radio'] };
+  const want = { HATS: ['straw', 'cap', 'beanie', 'bandana', 'none', 'hardhat', 'helmet', 'beret', 'surgical', 'spacehelmet'], TOPS: ['shirt', 'labcoat', 'scrubs', 'hivis', 'uniform', 'spacesuit', 'suit', 'jacket'], BOTTOMS: ['overalls', 'trousers', 'skirt'], EXTRAS: ['none', 'beard', 'glasses', 'cheeks', 'stethoscope', 'tie', 'radio'] };
   for (const [k, names] of Object.entries(want)) assert.deepEqual(plain(people[k]), names, k);
   const base = farmLook({ hat: 'none', top: 'shirt', bottom: 'overalls', extra: 'none' }), plainRows = JSON.stringify(plain(people.rows(base)));
   for (const [field, names] of [['hat', want.HATS], ['top', want.TOPS], ['bottom', want.BOTTOMS], ['extra', want.EXTRAS]])
@@ -108,4 +108,20 @@ test('an empty list of hat colours falls back to the kit\'s hat colours, without
   assert.ok(a.hatColor, 'a hat colour');
   const b = people.lookFor({ id: 'x' }, { hat: 'cap', hatColors: { cap: [] } });
   assert.ok(b.hatColor, 'a hat colour');
+});
+
+test("the field jacket: 14 letters by 16 rows in every view and step, left mirrors right, and the torso is the agent's colour in every view", () => {
+  const { people } = load();
+  assert.ok(people.TOPS.includes('jacket'));
+  for (const view of ['down', 'up', 'right', 'left']) for (const legs of ['s', 'a', 'b']) {
+    const r = plain(people.rows(farmLook({ top: 'jacket', bottom: 'trousers', hat: 'none' }), view, legs));
+    assert.equal(r.length, 16);
+    for (const row of r) assert.match(row, /^[.khwbrsgpCcoOekE]{14}$/, `${view} ${legs}: ${row}`);
+    const torso = r.slice(9, 13);
+    assert.ok(torso.filter(row => row.includes('C')).length >= 3, `${view}: the jacket is C`);
+    assert.ok(torso.some(row => row.includes('c')), `${view}: shaded pockets or sides`);
+  }
+  const mirrored = plain(people.rows(farmLook({ top: 'jacket' }), 'right', 'a')).map(r => [...r].reverse().join(''));
+  assert.deepEqual(plain(people.rows(farmLook({ top: 'jacket' }), 'left', 'a')), mirrored);
+  assert.notDeepEqual(plain(people.rows(farmLook({ top: 'jacket' }), 'down')), plain(people.rows(farmLook({ top: 'shirt' }), 'down')), 'not the shirt');
 });

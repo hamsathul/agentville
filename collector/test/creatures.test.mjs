@@ -14,7 +14,7 @@ function load() {
   const window = { Agentville: {} };
   const sandbox = { window, console, Math, Date, JSON, Map, Set };
   vm.createContext(sandbox);
-  vm.runInContext(`${web('worlds/sdk/pixel.js')}\n;${web('worlds/sdk/creatures.js')}\n;PXG.ctx = __ctx; window.lib = { CREATURES, creaturePainter };`, Object.assign(sandbox, { __ctx: ctx }));
+  vm.runInContext(`${web('worlds/sdk/pixel.js')}\n;${web('worlds/sdk/creatures.js')}\n;PXG.ctx = __ctx; window.lib = { CREATURES, creaturePainter, ink };`, Object.assign(sandbox, { __ctx: ctx }));
   return { ...window.lib, rects };
 }
 const KINDS = ['cow', 'goat', 'sheepdog', 'ostrich', 'lion', 'tiger', 'duck', 'cat', 'dog', 'pigeon', 'mouse', 'fish', 'robodog', 'vacuum'];
@@ -36,7 +36,7 @@ test('every creature has a size, a speed, a night habit and draws itself', () =>
 
 test('every creature, in every pose and look, stays inside its box on its feet', () => {
   const lib = load();
-  for (const k of KINDS) for (const pose of POSES) for (const look of [undefined, 'drake', 'hen', 'duckling']) for (const T of [0, 0.1, 0.2, 0.7]) {
+  for (const k of KINDS) for (const pose of POSES) for (const look of [undefined, 'drake', 'hen', 'duckling', 'mascot']) for (const T of [0, 0.1, 0.2, 0.7]) {
     lib.rects.length = 0;
     lib.CREATURES[k].draw(lib.creaturePainter(100, 100, 1), pose, T, look);
     assert.ok(lib.rects.length > 0, `${k} ${pose} draws`);
@@ -133,4 +133,15 @@ const GOAT_FROZEN = { none: H, drake: H, hen: H, duckling: H };
 
 test("the goat with no look, or a look that isn't its own, draws exactly as it did before the mascot look", () => {
   assert.deepEqual({ none: goatHash(undefined), drake: goatHash('drake'), hen: goatHash('hen'), duckling: goatHash('duckling') }, GOAT_FROZEN);
+});
+
+test("the goat's mascot look: a red dress coat with gold trim in every pose, which the plain goat lacks; the coat is the look's, so wear still goes on", () => {
+  const lib = load(), RED = lib.ink('#c0392b'), GOLD = lib.ink('#d4a017');
+  const fills = (look, pose, wear) => { lib.rects.length = 0; lib.CREATURES.goat.draw(lib.creaturePainter(100, 100, 1), pose, 0.3, look, wear); return lib.rects.map(r => r.c); };
+  for (const pose of ['stand', 'walk', 'run', 'eat', 'sleep', 'happy', 'yawn', 'startled', 'stretch', 'roll']) {
+    const plain = fills(undefined, pose), coat = fills('mascot', pose);
+    assert.ok(coat.includes(RED) && coat.includes(GOLD), `${pose}: a red coat with gold`);
+    assert.ok(!plain.includes(RED) && !plain.includes(GOLD), `${pose}: the plain goat has neither`);
+  }
+  assert.ok(fills('mascot', 'stand', { scarf: true }).length > fills('mascot', 'stand', {}).length, 'a scarf goes over the coat');
 });

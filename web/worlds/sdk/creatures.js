@@ -20,12 +20,14 @@
       p(-7, -8, 12, 5, W); p(-5, -8, 4, 2, INK); p(0, -6, 3, 3, INK); p(-7, -6, 2, 2, INK); p(-8, -8, 1, 3, INK); p(-2, -3, 2, 1, P);
       p(4, -11 + down, 3, 4, W); p(6, -9 + down, 1, 2, P); p(5, -10 + down, 1, 1, INK); p(4, -11 + down, 1, 1, INK);
     } },
-    goat: { w: 11, h: 11, speed: 10, night: 'sleep', draw(p, pose, T) {
+    goat: { w: 11, h: 11, speed: 10, night: 'sleep', draw(p, pose, T, look) {
       const B = '#cbbfa8', D = '#8c7b62', H = '#e8dcc4';
-      if (pose === 'sleep') { p(-4, -3, 8, 3, B); p(2, -5, 3, 3, B); p(3, -6, 1, 1, H); return; }
+      const coat = look === 'mascot', R = '#c0392b', G = '#d4a017'; // the mascot's red dress coat, gold trim and button
+      if (pose === 'sleep') { p(-4, -3, 8, 3, B); if (coat) { p(-3, -3, 5, 2, R); p(-3, -1, 5, 1, G); } p(2, -5, 3, 3, B); p(3, -6, 1, 1, H); return; }
       const s = legStep(pose, T), down = pose === 'eat' ? 2 : 0;
       p(-4, -3, 1, 3 - s, D); p(-2, -3, 1, 2 + s, D); p(1, -3, 1, 3 - s, D); p(3, -3, 1, 2 + s, D);
       p(-5, -7, 9, 4, B); p(-5, -8, 1, 2, D);
+      if (coat) { p(-4, -7, 6, 3, R); p(-4, -4, 6, 1, G); p(-1, -6, 1, 1, G); }
       p(3, -10 + down, 2, 4, B); p(3, -11 + down, 1, 1, H); p(4, -11 + down, 1, 1, H); p(4, -7 + down, 1, 2, D); p(4, -9 + down, 1, 1, INK);
     } },
     sheepdog: { w: 12, h: 9, speed: 18, night: 'sleep', draw(p, pose, T) {
