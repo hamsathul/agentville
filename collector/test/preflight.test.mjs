@@ -109,7 +109,10 @@ test('--exit-after N starts the collector, serves, and ends the process by itsel
   const port = 47920;
   const root = throwawayRoot(port);
   const { spawn } = await import('node:child_process');
-  const child = spawn(process.execPath, [INDEX, '--exit-after', '4'], { env: { ...process.env, TRACKER_ROOT: root, TRACKER_CLAUDE_BIN: process.execPath }, stdio: 'ignore' });
+  // An empty home folder: the collector reads the sessions under ~/.claude at start, and on a machine with gigabytes of
+  // real transcripts that took longer than this test waits (measured: over 40 s against 4 GB; 2.6 s with an empty home).
+  const home = mkdtempSync(join(tmpdir(), 'agentville-exit-home-'));
+  const child = spawn(process.execPath, [INDEX, '--exit-after', '4'], { env: { ...process.env, USERPROFILE: home, HOME: home, TRACKER_ROOT: root, TRACKER_CLAUDE_BIN: process.execPath }, stdio: 'ignore' });
   const exited = new Promise(res => child.on('exit', (code, signal) => res({ code, signal })));
   try {
     let served = false;
