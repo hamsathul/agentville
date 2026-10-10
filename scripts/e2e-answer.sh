@@ -257,7 +257,10 @@ echo "   ok: the held message went out once the turn ended"
 
 echo "11/12 the helper names a new session with Haiku, through its own Claude Code, and /rename renames it"
 HELPER_BEFORE="$(curl -s "$BASE/api/state" | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{const h=JSON.parse(s).helper??{};process.stdout.write(JSON.stringify({on:Boolean(h.on),uses:{names:Boolean(h.uses?.names),lines:Boolean(h.uses?.lines)},dailyLimit:h.dailyLimit??200}))})')"
-R="$(post /api/actions/helper '{"on":true,"uses":{"names":true},"dailyLimit":20}')"
+# room for this run's calls above what the helper has made today (Animal lines alone make dozens a day); yours comes back after
+TODAY="$(curl -s "$BASE/api/state" | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{process.stdout.write(String(Number(JSON.parse(s).helper?.today)||0))})')"
+LIMIT=$(( TODAY + 20 > 2000 ? 2000 : TODAY + 20 ))
+R="$(post /api/actions/helper "{\"on\":true,\"uses\":{\"names\":true},\"dailyLimit\":$LIMIT}")"
 case "$R" in *'"ok":true'*) ;; *) fail "the helper could not be switched on: $R" ;; esac
 (cd "$ROOT" && exec env "${UNSET[@]}" TERM=xterm-256color python3 "$ROOT/scripts/pty-run.py" claude "${PLUGIN_ARGS[@]}" --model haiku \
   "Plan a vegetable garden in one sentence. Do not use any tools.") > /dev/null 2>&1 &
@@ -268,7 +271,10 @@ for _ in $(seq 1 120); do
   [ -n "$GOT" ] && break
   sleep 1
 done
-[ -n "$GOT" ] || fail "no name was offered for the new session"
+if [ -z "$GOT" ]; then
+  WHY="$(curl -s "$BASE/api/state" | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{const j=JSON.parse(s),a=j.agents.find(x=>String(x.lastPrompt??"").startsWith("Plan a vegetable garden"));process.stdout.write(a?.naming?.error??j.helper?.lastError??(a?"no naming yet":"the session never showed up"))})')"
+  fail "no name was offered for the new session ($WHY)"
+fi
 NS="${GOT%% *}"; OFFER="${GOT#* }"
 echo "   offered: $OFFER"
 R="$(post /api/actions/name "{\"agentId\":\"$NS\",\"op\":\"rename\",\"name\":\"$OFFER\"}")"
@@ -286,7 +292,7 @@ echo "   ok: named $OFFER by Haiku, renamed with /rename"
 echo "12/12 the helper writes the animals' lines with Haiku, through a session's own Claude Code"
 R="$(post /api/actions/animals '{"cast":[{"kind":"cow","name":"Cow"}]}')"
 [ "$R" = '{"ok":true}' ] || fail "the cast was refused: $R"
-R="$(post /api/actions/helper '{"on":true,"uses":{"names":true,"lines":true},"dailyLimit":20}')"
+R="$(post /api/actions/helper "{\"on\":true,\"uses\":{\"names\":true,\"lines\":true},\"dailyLimit\":$LIMIT}")"
 case "$R" in *'"ok":true'*) ;; *) fail "Animal lines could not be ticked: $R" ;; esac
 LINE=""
 for _ in $(seq 1 90); do
