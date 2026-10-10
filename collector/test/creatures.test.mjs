@@ -5,6 +5,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import vm from 'node:vm';
+import { createHash } from 'node:crypto';
 
 const web = f => readFileSync(fileURLToPath(new URL(`../../web/${f}`, import.meta.url)), 'utf8');
 function load() {
@@ -112,4 +113,24 @@ test('the robot dog and the vacuum ignore the season: what the kit puts on in wi
     const draw = wear => { lib.rects.length = 0; lib.CREATURES[k].draw(lib.creaturePainter(100, 100, 1), pose, 0.3, undefined, wear); return JSON.stringify(lib.rects); };
     assert.equal(draw({ scarf: true, ice: true }), draw({}), `${k} ${pose}`);
   }
+});
+
+// The goat as the library drew it before the mascot look (recorded on that code, 2026-10-10): a hash of
+// every rectangle it fills, over every pose, both ways, four clock times and each wear. A look the goat
+// doesn't know (none, the duck's) draws today's goat; the mascot look may not change any of them.
+const goatHash = look => {
+  const lib = load(), rects = [];
+  for (const pose of ['stand', 'walk', 'run', 'eat', 'sleep', 'happy', 'yawn', 'startled', 'stretch', 'roll']) for (const face of [1, -1]) for (const T of [0, 0.1, 0.2, 0.7])
+    for (const wear of [undefined, {}, { scarf: true }, { hat: '#e9c46a' }, { scarf: true, hat: '#e9c46a' }]) {
+      lib.rects.length = 0;
+      lib.CREATURES.goat.draw(lib.creaturePainter(100, 100, face), pose, T, look, wear);
+      rects.push([pose, face, T, JSON.stringify(wear), lib.rects.map(r => [r.x, r.y, r.w, r.h, r.c])]);
+    }
+  return createHash('sha256').update(JSON.stringify(rects)).digest('hex').slice(0, 16);
+};
+const H = '29d3f5ccb3da4f27'; // all four draw the same goat
+const GOAT_FROZEN = { none: H, drake: H, hen: H, duckling: H };
+
+test("the goat with no look, or a look that isn't its own, draws exactly as it did before the mascot look", () => {
+  assert.deepEqual({ none: goatHash(undefined), drake: goatHash('drake'), hen: goatHash('hen'), duckling: goatHash('duckling') }, GOAT_FROZEN);
 });
