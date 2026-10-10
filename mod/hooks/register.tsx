@@ -219,8 +219,16 @@ export function namePrompt(messages: any[]): string {
 }
 
 // Animal lines: the collector sends facts only (the animals on screen, agents' names, states, a step word, counts,
-// events); this prompt is fixed here, so a request can't make the model do anything else.
-export const LINES_SYSTEM = 'You write short, funny, kind lines for animals on a pixel farm where coding agents work as farmers. Reply only with rows of the form kind|when|text: kind is one of the animals given, when is one of idle, deployFailed, deployOk, harvest, merged, arrive, and text is what that animal says, 40 characters or fewer, plain words, no quotes. Write two idle rows for every animal, and rows for an event only if it is in what just happened. At most 40 rows. Use only the names given and never invent names. Never mention files, code or secrets.'
+// events, and a built-in world's key); this prompt is fixed here, so a request can't make the model do anything
+// else. The world's words come from this table only: a key it doesn't have gets the plain ones.
+const LINES_WORLDS: Record<string, { place: string; agents: string }> = {
+  farm: { place: 'a pixel farm where coding agents work as farmers', agents: 'Farmers' },
+  factory: { place: 'a pixel robot factory where coding agents work as robots', agents: 'Robots' },
+}
+const LINES_ANY = { place: 'a pixel world where coding agents work', agents: 'Agents' }
+const wordsFor = (world: unknown) => (typeof world === 'string' && Object.hasOwn(LINES_WORLDS, world) ? LINES_WORLDS[world]! : LINES_ANY)
+/** The fixed lines prompt, in the words of the world a request names (the farm's, as it always was). */
+export const linesSystem = (world?: unknown) => `You write short, funny, kind lines for animals on ${wordsFor(world).place}. Reply only with rows of the form kind|when|text: kind is one of the animals given, when is one of idle, deployFailed, deployOk, harvest, merged, arrive, and text is what that animal says, 40 characters or fewer, plain words, no quotes. Write two idle rows for every animal, and rows for an event only if it is in what just happened. At most 40 rows. Use only the names given and never invent names. Never mention files, code or secrets.`
 const LINE_KINDS = ['cow', 'goat', 'sheepdog', 'ostrich', 'lion', 'tiger', 'duck', 'cat', 'dog', 'pigeon', 'mouse', 'fish', 'robodog', 'vacuum']
 const LINE_EVENTS = ['deployFailed', 'deployOk', 'harvest', 'merged', 'arrive']
 
@@ -236,7 +244,7 @@ export function linesPrompt(req: any): string | null {
   const c = req?.counts ?? {}
   return [
     `Animals: ${[...new Set(cast.map((x: any) => x.kind))].join(', ')}`, // kinds only: a world's names for them never reach the model
-    `Farmers: ${agents.length ? agents.map((a: any) => `${s(a.name, 40)} is ${s(a.state, 10)}${a.step ? `, ${s(a.step, 12)}` : ''}${a.repo ? ` in ${s(a.repo, 40)}` : ''}`).join('; ') : 'none'}`,
+    `${wordsFor(req?.world).agents}: ${agents.length ? agents.map((a: any) => `${s(a.name, 40)} is ${s(a.state, 10)}${a.step ? `, ${s(a.step, 12)}` : ''}${a.repo ? ` in ${s(a.repo, 40)}` : ''}`).join('; ') : 'none'}`,
     `Waiting on the person: ${num(c.waiting)}; working: ${num(c.working)}; idle: ${num(c.idle)}`,
     `What just happened: ${events.length ? events.map((e: any) => `${e.kind}${e.agent ? ` (${s(e.agent, 40)})` : ''}${e.repo ? ` in ${s(e.repo, 40)}` : ''}, ${num(e.ago)} min ago`).join('; ') : 'nothing'}`,
   ].join('\n')
@@ -258,7 +266,7 @@ export async function runHelper($: any, stateDir: string, sessionId: string, sna
           const prompt = linesPrompt(req)
           if (!prompt) out = { ok: false, error: 'no animals to write for' }
           else {
-            const r = await $.model.complete({ model: 'haiku', system: LINES_SYSTEM, prompt, maxTokens: 700, timeoutMs: 25000 })
+            const r = await $.model.complete({ model: 'haiku', system: linesSystem(req?.world), prompt, maxTokens: 700, timeoutMs: 25000 })
             out = r?.isAnswered ? { ok: true, text: String(r.text ?? '').slice(0, 8000) } : { ok: false, error: String(r?.error ?? r?.reason ?? 'no answer') }
           }
         } else {

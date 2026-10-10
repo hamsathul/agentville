@@ -34,7 +34,7 @@ import { AlertEngine, notifyMac } from './alerts.mjs';
 import { createTrackerServer } from './server.mjs';
 import { makeWorlds, watchWorlds, worldsDirOf } from './worlds.mjs';
 import { renderTranscriptPage } from './transcript-page.mjs';
-import { checkCast, chooseSession, createLinesWatch, dueLines, factsOf, namesOf, parseLines } from './sources/lines.mjs';
+import { checkCast, chooseSession, createLinesWatch, dueLines, factsOf, lineWorld, namesOf, parseLines } from './sources/lines.mjs';
 
 const DOC_FILE = /\.(md|markdown|mdx)$/i;
 
@@ -125,6 +125,7 @@ export async function startCollector({ root, claudeDir = join(homedir(), '.claud
   // Animal lines (✨ Helper): the animals worlds on screen have (kind → { name, seenAt }, as pages report them),
   // what is news, the one batch asked for, the latest batch, why none can be asked, who ran one last.
   const casts = new Map();
+  let castWorld = null; // the world the last cast came from, if one the mod has words for (lineWorld): { key, seenAt }
   const linesWatch = createLinesWatch();
   let linesPending = null, linesAskedAt = null, chatter = null, linesBlocked = null;
   const linesUsed = new Map();
@@ -892,7 +893,7 @@ export async function startCollector({ root, claudeDir = join(homedir(), '.claud
     const a = chooseSession(snap.agents, linesUsed, cast); // a mod that knows every kind on screen
     if (!a) { linesBlocked = 'no-session'; return; }
     const id = `${now}-${Math.random().toString(36).slice(2, 8)}`;
-    const facts = factsOf(snap, cast, linesWatch.recent(), now);
+    const facts = factsOf(snap, cast, linesWatch.recent(), now, castWorld && now - castWorld.seenAt <= castKeepMs ? castWorld.key : null);
     const file = writeRequestFile(helperDir, a.id, { id, kind: 'lines', at: now, ...facts }, id);
     helper.count();
     linesPending = { sid: a.id, id, file, at: now, names: namesOf(snap, facts) }; // every name it could put in a line, for the private filter
@@ -1029,12 +1030,13 @@ export async function startCollector({ root, claudeDir = join(homedir(), '.claud
       if (r.ok) await schedule(false);
       return r;
     },
-    /** A page's world reports its animals (kinds and names only): kept 10 minutes, for Animal lines to write for. */
+    /** A page's world reports its animals (kinds and names only), and its key if it is a built-in world the mod has words for: kept 10 minutes, for Animal lines to write for. */
     async animals(body) {
       const cast = checkCast(body?.cast);
       if (!cast) return { ok: false, error: 'That is not a cast of animals.' };
       const at = Date.now(), first = casts.size === 0;
       for (const c of cast) casts.set(c.kind, { name: c.name, seenAt: at });
+      castWorld = { key: lineWorld(body?.world), seenAt: at }; // the newest page's world; any other key, none
       if (first && cast.length) await schedule(false); // the first batch goes out as soon as a cast is live
       return { ok: true };
     },

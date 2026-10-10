@@ -391,14 +391,16 @@ view.
   - **What it sends:** the dashboard's facts only: agent and repo names (the names the dashboard
     shows, which Claude Code may take from a conversation's title), each agent's state, a word for
     what it is doing (editing, running, searching…), how many are waiting or working, which kinds of
-    animal are on screen, and what just happened. Never code, file paths, commands, branches or
-    anything else said in a conversation. One of your open sessions (idle ones first, taking turns)
-    makes the call.
+    animal are on screen, what just happened, and which built-in world it is (`farm` or `factory`,
+    so the lines are in its words; your own worlds and the starter aren't named). Never code, file
+    paths, commands, branches or anything else said in a conversation. One of your open sessions
+    (idle ones first, taking turns) makes the call.
   - **What the animals say:** each fresh line once, before their own; what you click (Pet, Feed…)
     keeps its own line. A world of yours that can't see what agents say gets only the lines with no
     names in them.
-  - It needs mod 0.9.0 in a session (0.9.1 for the robot dog and the robot vacuum: an older mod
-    leaves them out); `/reload-plugins`. ✨ Helper says when no session can run it.
+  - It needs mod 0.9.0 in a session (`/reload-plugins`). While the robot dog or the robot vacuum
+    is on screen (and 10 minutes after) it needs 0.9.1: older mods aren't asked, so no lines come
+    until a session has it. ✨ Helper says when no session can run it.
 - **A daily limit** (200 to start, 1 to 2,000) caps the calls. The dialog shows today's count and
   the last error, and says when today's limit is reached (it resets at midnight). **Switch off**
   asks for nothing more at once; a call already under way finishes, and its answer is dropped.
@@ -981,9 +983,9 @@ and can do is in [docs/worlds.md](docs/worlds.md).
   prompt (the mod's instruction for each job is fixed), and for a name the session sends its own
   first messages itself: the collector and the page see only the name. For animal lines the
   collector sends the facts listed in "✨ Helper and suggested names" (names, states, a step word,
-  counts, events, the kinds of animal on screen; never paths, commands, branches or conversation
-  text), and the page reports which animals a world has (kinds and names; only the kinds reach
-  Haiku). The lines come back as plain text of 40 characters at
+  counts, events, the kinds of animal on screen, and `farm` or `factory` for those built-in worlds;
+  never paths, commands, branches or conversation text), and the page reports which animals a world
+  has (kinds and names; only the kinds reach Haiku) and, for the farm or the factory only, its key. The lines come back as plain text of 40 characters at
   most; a world of yours that can't see what agents say gets only those with no names, by the names
   it was sent (an agent gone since, or one renamed, too) and the names on the dashboard now. Its setting (with today's
   count) and what you chose for each session's name (renamed, edited, dismissed) are kept in

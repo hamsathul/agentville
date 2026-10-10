@@ -1175,7 +1175,7 @@ test("the factory's animals: a robot dog, a robot vacuum and a cat, held to the 
   assert.deepEqual(world.cast.map(c => [c.kind, c.name, c.count ?? 1]), [['robodog', 'Robot dog', 1], ['vacuum', 'Robot vacuum', 1], ['cat', 'Cat', 1]]);
   const [dog, vacuum, cat] = world.cast;
   assert.deepEqual(dog.actions.map(a => a.label), ['Pet', 'Oil', 'Fetch']);
-  assert.deepEqual(dog.habits, ['roll']);
+  assert.deepEqual(dog.habits, ['roll', 'climb'], 'it rolls over, and rests a while by the chargers (the perches)');
   assert.deepEqual(dog.reacts, { merged: 'run', arrive: 'run' }, 'it runs to a merged pull request, and to meet a new robot');
   assert.deepEqual(vacuum.actions.map(a => a.label), ['Pet', 'Empty it']);
   assert.deepEqual(cat.actions.map(a => a.label), ['Pet', 'Feed']);
@@ -1200,8 +1200,38 @@ test("where they may go: the walkway, the left side and the conveyor; never the 
     for (const [x, y, what] of [[L.GRID.x0 + 4, L.GRID.y0 + 4, 'the bays'], [L.GRID.x1 - 4, L.GRID.y1 - 4, 'the bays'], ...queue.map(([x, y]) => [x, y, 'the queue at your desk']), ...F.RANK.map(([x, y]) => [x, y - 4, 'the AGV rank']), [56, 115, 'the storage shelf'], [56, 176, 'the open table'], [24, 240, 'a sleep pod'], [54, 240, 'a sleep pod']]) assert.ok(avoids(x, y), `${n} bays: ${what} (${x},${y}) is kept off`);
     const { corner } = plain(h.spots());
     assert.ok(roams(...corner) && !avoids(...corner), `${n} bays: the gag's corner (${corner}) is floor they may stand on`);
-    assert.ok(Math.abs(corner[0] - 108) <= 6 && Math.abs(corner[1] - 131) <= 6, `the storage shelf's corner, at its foot (${corner})`);
+    assert.ok(Math.abs(corner[0] - 108) <= 6 && Math.abs(corner[1] - 131) <= 8, `the storage shelf's corner, at its foot (${corner})`);
+    // The vacuum standing in the corner, a pixel all round it, touches nothing kept off: room to spare
+    const [cx, cy0] = corner, vac = { x0: cx - 4.5 - 1, x1: cx + 4.5 + 1, y0: cy0 - 4 - 1, y1: cy0 + 1 };
+    for (const r of avoid) assert.ok(!(vac.x1 > r.x && vac.x0 < r.x + r.w && vac.y1 > r.y && vac.y0 < r.y + r.h), `${n} bays: the vacuum in the corner, with a pixel to spare, is clear of ${JSON.stringify(r)}`);
+    // The dog's places by the chargers: on the floor, clear of what it keeps off and of the robots charging on the pads
+    const rests = plain(h.perches()), pads = Array.from({ length: 4 }, (_, i) => placeOf(h, 'charge', i));
+    assert.equal(rests.length, 4);
+    for (const [x, y, lift] of rests) {
+      const dog = { x0: x - 5, x1: x + 5, y0: y - 8, y1: y };
+      assert.equal(lift, 0, 'it stands on the floor');
+      assert.ok(roams(x, y), `${n} bays: the dog's place ${x},${y} is floor it may walk`);
+      for (const r of avoid) assert.ok(!(dog.x1 > r.x && dog.x0 < r.x + r.w && dog.y1 > r.y && dog.y0 < r.y + r.h), `${n} bays: the dog at ${x},${y} is clear of ${JSON.stringify(r)}`);
+      for (const [px0, py0] of pads) assert.ok(!(dog.x1 > px0 - 7 && dog.x0 < px0 + 7 && dog.y1 > py0 - 16 && dog.y0 < py0 - 1), `${n} bays: the dog at ${x},${y} is clear of the robot charging at ${px0},${py0}`);
+      assert.ok(pads.some(([px0, py0]) => Math.abs(x - (px0 + 10)) <= 4 && Math.abs(y - py0) <= 8), `${n} bays: ${x},${y} is by a charger`);
+    }
   }
+});
+
+test('the dog rests a while by the chargers now and then (spec: it sits by the chargers)', () => {
+  const { h, animals } = creatureFloor(3), rests = plain(h.perches()).map(([x, y]) => `${x},${y}`);
+  let longest = 0;
+  for (const seed of [1, 2, 3, 4]) {
+    const a = animals(seed);
+    let run = 0;
+    for (let i = 0; i < 12000; i++) {
+      a.tick(0.1);
+      const dog = plain(a.list()).find(o => o.kind === 'robodog');
+      run = rests.includes(`${dog.x},${dog.y}`) && dog.pose === 'stand' ? run + 1 : 0;
+      longest = Math.max(longest, run);
+    }
+  }
+  assert.ok(longest >= 40, `it stands by a charger 4 s or more at a time (longest ${longest / 10} s)`);
 });
 
 test('placement: whatever they do, no creature stands in what avoid() keeps off, or on a bay or a building; the dog and the vacuum stay where they may roam, the cat on the belt', () => {

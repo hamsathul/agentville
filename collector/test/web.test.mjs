@@ -2552,6 +2552,7 @@ test('✨ Helper has an Animal lines box that says what it sends; ticked alone i
   assert.match(body, /<input type="checkbox" id="helper-lines"(?![^>]*checked)/);
   assert.match(body, /Animal lines\.[\s\S]*agent and repo names[\s\S]*never code, file paths or conversation text[\s\S]*only lines without names/);
   assert.match(body, /names the dashboard shows, which Claude Code may take from a conversation's title/);
+  assert.match(body, /the built-in world's name \(the farm or the robot factory/);
   page.el('helper-names').checked = false;
   page.el('helper-lines').checked = true;
   page.el('helper-limit').value = '200';

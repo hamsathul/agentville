@@ -4,7 +4,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import vm from 'node:vm';
-import { CREATURE_KINDS, SITUATIONS, checkCast, chooseSession, createLinesWatch, dueLines, factsOf, namesOf, parseLines, stepOf } from '../sources/lines.mjs';
+import { CREATURE_KINDS, LINE_WORLDS, SITUATIONS, checkCast, chooseSession, createLinesWatch, dueLines, factsOf, namesOf, parseLines, stepOf } from '../sources/lines.mjs';
 
 const agent = (id, over = {}) => ({ id, name: id, kind: 'interactive', state: 'idle', compactions: 0, mod: { live: true, version: '0.9.0' }, ...over });
 const repo = (path, over = {}) => ({ path, name: path.split('/').pop(), branch: 'main', agentIds: [], lastDeploy: null, prs: { open: [], merged: [] }, ...over });
@@ -63,6 +63,17 @@ test('factsOf: the facts only, capped, waiting first; no path, command or branch
   assert.deepEqual(f.cast, [{ kind: 'cow' }]);
   const text = JSON.stringify(f);
   for (const s of ['/Users', 'ssh', 'deploy.sh', 'secret', 'feature/', 'Which DB']) assert.equal(text.includes(s), false, s);
+});
+
+test('factsOf names the world only when it is a built-in one the mod has words for (farm, factory); nothing else of a world reaches the request', () => {
+  const facts = world => factsOf({ agents: [], repos: [] }, [{ kind: 'cat', name: 'Cat' }], [], 0, world);
+  assert.deepEqual(LINE_WORLDS, ['farm', 'factory']);
+  assert.equal(facts('farm').world, 'farm');
+  assert.equal(facts('factory').world, 'factory');
+  for (const w of [undefined, null, '', 'starter', 'u/space', 'space', 'Farm', ' farm', '__proto__', 'constructor', 'toString', 42, ['farm'], { toString: () => 'farm' }]) {
+    assert.equal(Object.hasOwn(facts(w), 'world'), false, `${JSON.stringify(w) ?? String(w)}: no world`);
+  }
+  assert.deepEqual(Object.keys(facts('factory')).sort(), ['agents', 'cast', 'counts', 'events', 'world']);
 });
 
 test('parseLines keeps only well-formed rows: a cast kind, a known situation, plain text of 1 to 40; 40 rows at most; 8,000 characters read', () => {

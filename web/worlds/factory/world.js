@@ -180,6 +180,8 @@
   // - the left side (x 4–110): the storage shelf, the charging pads, the open table, the sleep pods, the AGVs' rank;
   // - the conveyor along the bottom.
   const W = 400, COLW = 88, ROWH = 62, WALK = { y0: 74, y1: 92 }, DESK_Y = 80, FAB_DOOR = [62, DESK_Y];
+  const QUEUE = { from: 150, to: 250, step: 20, cap: 3 }; // your desk's two queues on the walkway: waiting from its left, your turn from its right
+  const ROBOT = { w: 14, h: 16 }; // a robot's sprite, standing on its feet (their middle)
   const CORR = [116, 218, 306]; // the paths running down: the left side's, then the aisles between the bays' columns
   const FACTORY_GRID = makeGrid({
     cols: 3, colW: COLW, rowH: ROWH, cx0: 174, top0: 100,
@@ -201,10 +203,18 @@
   ];
   // The back wall's windows, [x, y, w, h]: the sky by your clock shows in them (drawn each frame, by weather()).
   const WINDOWS = [[4, 6, 22, 24], [98, 6, 26, 22], [142, 6, 54, 24], [204, 6, 54, 24], [264, 6, 14, 20]];
+  // The left side's furniture, each as the box it is drawn in (its shadow too): its drawing keeps to it, and the
+  // animals keep off it (avoidOf). A box with dx, dy goes round a place's feet; one with x, y stands where it is.
+  const SHELF_BOX = { x: 4, y: 98, w: 106, h: 34 }; // the storage shelf: its rack 104 wide, its shadow 2 more
+  const TABLE_BOX = { x: 25, y: 166, w: 62, h: 26 }; // the open table: from its toolbox's handle down to its legs' shadow
+  const POD_BOX = { dx: -10, dy: -34, w: 22, h: 40 }; // a sleep pod round its sleeper's feet: its dome's top to its floor's shadow
+  const RANK_BOX = { dx: -7, dy: -11, w: 14, h: 13 }; // a parking bay of the rank round its AGV's place: its yellow corners
+  const CABINET_BOX = { w: 30, h: 26 }; // a tool cabinet from its top left: 28 × 24, its shadow 2 more
+  const PLANT_BOX = { dx: -6, dy: -17, w: 13, h: 18 }; // a potted plant round its foot
   // The left side's places, each a robot's feet: stale on the storage shelf, idle on the charging pads, working
   // outside any repo at the open table (two in front, then two behind it), asleep in the pods; and the rank,
   // where each MCP server's AGV waits.
-  const SHELF = [0, 1, 2, 3].map(i => [20 + 22 * i, 126]);
+  const SHELF = [0, 1, 2, 3].map(i => [20 + 22 * i, SHELF_BOX.y + 28]); // on its deck
   const PADS = [0, 1, 2, 3].map(i => [18 + 24 * i, 158]);
   const TABLE = [[40, 204], [72, 204], [40, 178], [72, 178]], TABLE_Y = 186; // TABLE_Y: where the table is sorted among the robots
   const PODS = [[24, 250], [54, 250]];
@@ -338,12 +348,13 @@
   }
   /** The storage shelf: a rack with a pegboard back; stale robots stand powered down on its deck. */
   function storageShelf(f) {
-    f(8, 100, 96, 26, '#e6eef5');
-    for (let y = 103; y < 125; y += 4) for (let x = 11 + (y % 8 ? 2 : 0); x < 103; x += 4) f(x, y, 1, 1, '#c3cbd2');
-    f(4, 98, 104, 3, '#8a8f96'); f(4, 98, 104, 1, '#c3cbd2');
-    f(4, 98, 4, 34, '#5f6b7a'); f(5, 98, 1, 34, '#8a8f96'); f(104, 98, 4, 34, '#5f6b7a'); f(105, 98, 1, 34, '#8a8f96');
-    f(4, 126, 104, 3, '#9aa4ad'); f(4, 126, 104, 1, '#c3cbd2'); f(4, 129, 104, 2, '#5f6b7a'); f(6, 131, 104, 1, SHADOW);
-    for (const [x] of SHELF) f(x - 2, 129, 5, 1, '#ffffff'); // bin tags
+    const { x, y, w, h } = SHELF_BOX, rack = w - 2; // its shadow falls 2 to the right
+    f(x + 4, y + 2, rack - 8, 26, '#e6eef5');
+    for (let py = y + 5; py < y + 27; py += 4) for (let bx = x + 7 + (py % 8 ? 2 : 0); bx < x + 99; bx += 4) f(bx, py, 1, 1, '#c3cbd2'); // its pegboard
+    f(x, y, rack, 3, '#8a8f96'); f(x, y, rack, 1, '#c3cbd2');
+    f(x, y, 4, h, '#5f6b7a'); f(x + 1, y, 1, h, '#8a8f96'); f(x + rack - 4, y, 4, h, '#5f6b7a'); f(x + rack - 3, y, 1, h, '#8a8f96'); // its legs
+    f(x, y + 28, rack, 3, '#9aa4ad'); f(x, y + 28, rack, 1, '#c3cbd2'); f(x, y + 31, rack, 2, '#5f6b7a'); f(x + 2, y + h - 1, rack, 1, SHADOW); // its deck
+    for (const [sx] of SHELF) f(sx - 2, y + 31, 5, 1, '#ffffff'); // bin tags
   }
   /** A charging pad under a robot's feet at (x, y): a painted green bay, a green disc with a bolt on its front, a charger beside it. */
   function chargingPad(f, x, y) {
@@ -356,10 +367,10 @@
   }
   /** A sleep pod for a robot's feet at (x, y): a white capsule, padded inside, a clock on its crown (its glass goes over the sleeper: items). */
   function sleepPod(f, x, y) {
-    const top = y - 34;
-    f(x - 8, y + 4, 20, 2, SHADOW);
+    const { dx, dy, w, h } = POD_BOX, top = y + dy;
+    f(x + dx + 2, top + h - 2, w - 2, 2, SHADOW);
     for (let j = 0; j < 5; j++) { const half = [5, 7, 8, 9, 10][j]; f(x - half, top + j, half * 2, 1, '#5f6b7a'); f(x - half + 1, top + j, half * 2 - 2, 1, j < 2 ? '#ffffff' : '#e6eef5'); } // its dome
-    f(x - 10, top + 5, 20, 34, '#5f6b7a'); f(x - 9, top + 5, 18, 33, '#e6eef5'); f(x - 9, top + 5, 1, 33, '#ffffff'); f(x + 7, top + 5, 2, 33, '#c3cbd2');
+    f(x + dx, top + 5, 20, 34, '#5f6b7a'); f(x - 9, top + 5, 18, 33, '#e6eef5'); f(x - 9, top + 5, 1, 33, '#ffffff'); f(x + 7, top + 5, 2, 33, '#c3cbd2');
     f(x - 8, y - 25, 16, 25, '#2c4a85'); for (let yy = y - 22; yy < y; yy += 5) f(x - 8, yy, 16, 1, '#3d7be0'); // the padded inside
     f(x - 9, y, 18, 3, '#9aa4ad'); f(x - 9, y, 18, 1, '#c3cbd2'); // the floor it stands on
     f(x - 2, top, 5, 7, '#3a3a40'); f(x - 3, top + 1, 7, 5, '#3a3a40'); f(x - 1, top + 1, 3, 5, '#ffffff'); f(x - 2, top + 2, 5, 3, '#ffffff'); // its clock, a round dial,
@@ -373,27 +384,34 @@
   }
   /** The open table (robots working outside any repo stand round it), drawn among them: two behind it, two in front. */
   function openTable() {
-    px(28, 183, 3, 8, '#5f6b7a'); px(81, 183, 3, 8, '#5f6b7a'); px(29, 191, 56, 1, SHADOW); // legs and shadow
-    px(25, 171, 62, 13, '#8b5a2b'); px(26, 171, 60, 9, '#e2b07a'); px(26, 171, 60, 1, '#f4d58d'); for (let x = 32; x < 86; x += 11) px(x, 173, 4, 1, '#c98d4f'); // the top, its grain
-    px(26, 180, 60, 3, '#c98d4f'); px(26, 183, 60, 1, '#6b4320');
-    px(48, 167, 9, 5, '#e04a3a'); px(48, 167, 9, 1, '#ff6b6b'); px(51, 166, 3, 1, '#3a3a40'); // a toolbox
-    px(33, 174, 3, 3, '#9aa4ad'); px(34, 175, 1, 1, '#5f6b7a'); px(64, 175, 6, 2, '#3d7be0'); px(76, 174, 2, 3, '#ffd43b'); // a gear, a board, a part
+    const { x, y, w, h } = TABLE_BOX; // its top's top is y + 5, its legs' shadow y + h − 1
+    px(x + 3, y + 17, 3, 8, '#5f6b7a'); px(x + w - 6, y + 17, 3, 8, '#5f6b7a'); px(x + 4, y + h - 1, w - 6, 1, SHADOW); // legs and shadow
+    px(x, y + 5, w, 13, '#8b5a2b'); px(x + 1, y + 5, w - 2, 9, '#e2b07a'); px(x + 1, y + 5, w - 2, 1, '#f4d58d'); for (let gx = x + 7; gx < x + w - 1; gx += 11) px(gx, y + 7, 4, 1, '#c98d4f'); // the top, its grain
+    px(x + 1, y + 14, w - 2, 3, '#c98d4f'); px(x + 1, y + 17, w - 2, 1, '#6b4320');
+    px(x + 23, y + 1, 9, 5, '#e04a3a'); px(x + 23, y + 1, 9, 1, '#ff6b6b'); px(x + 26, y, 3, 1, '#3a3a40'); // a toolbox
+    px(x + 8, y + 8, 3, 3, '#9aa4ad'); px(x + 9, y + 9, 1, 1, '#5f6b7a'); px(x + 39, y + 9, 6, 2, '#3d7be0'); px(x + 51, y + 8, 2, 3, '#ffd43b'); // a gear, a board, a part
   }
   /** A parking bay in the AGVs' rank: yellow corners and a charging plate, where an MCP server's AGV waits. */
   function rankBay(f, x, y) {
-    for (const [cx, cy, dx, dy] of [[x - 7, y - 11, 1, 1], [x + 6, y - 11, -1, 1], [x - 7, y + 1, 1, -1], [x + 6, y + 1, -1, -1]]) { f(Math.min(cx, cx + dx * 2), cy, 3, 1, YELLOW); f(cx, Math.min(cy, cy + dy * 2), 1, 3, YELLOW); }
+    const x0 = x + RANK_BOX.dx, y0 = y + RANK_BOX.dy, x1 = x0 + RANK_BOX.w - 1, y1 = y0 + RANK_BOX.h - 1; // its corners
+    for (const [cx, cy, sx, sy] of [[x0, y0, 1, 1], [x1, y0, -1, 1], [x0, y1, 1, -1], [x1, y1, -1, -1]]) { f(Math.min(cx, cx + sx * 2), cy, 3, 1, YELLOW); f(cx, Math.min(cy, cy + sy * 2), 1, 3, YELLOW); }
     f(x - 3, y - 4, 7, 3, '#c3cbd2'); f(x - 2, y - 3, 5, 1, '#9aa4ad');
   }
-  // With more than three rows of bays, the left side grows too: a tool cabinet and a plant for each row more.
+  /** With more than three rows of bays the left side grows too: for each row more, a tool cabinet (its top left) and a potted plant (its foot). */
+  const rowFurniture = L => Array.from({ length: Math.max(0, L.rows - 3) }, (_, i) => {
+    const r = 3 + i, y = 100 + r * ROWH;
+    return { cabinet: [r % 2 ? 60 : 14, y + 16], plant: [r % 2 ? 24 : 90, y + 44] };
+  });
   /** A red tool cabinet, its top left at (x, y). */
   function toolCabinet(f, x, y) {
-    f(x + 2, y + 24, 28, 2, SHADOW); f(x, y, 28, 24, '#5a1f19'); f(x + 1, y + 1, 26, 22, '#e04a3a'); f(x + 1, y + 1, 26, 1, '#ff6b6b');
+    const w = CABINET_BOX.w - 2, h = CABINET_BOX.h - 2; // its shadow is the 2 more
+    f(x + 2, y + h, w, 2, SHADOW); f(x, y, w, h, '#5a1f19'); f(x + 1, y + 1, 26, 22, '#e04a3a'); f(x + 1, y + 1, 26, 1, '#ff6b6b');
     for (let k = 0; k < 4; k++) { f(x + 1, y + 6 + k * 5, 26, 1, '#9c3b30'); f(x + 11, y + 3 + k * 5, 6, 1, '#c3cbd2'); }
   }
   /** A potted plant standing at (x, y). */
   function pottedPlant(f, x, y) {
     f(x - 3, y - 6, 7, 6, '#c8681a'); f(x - 3, y - 6, 7, 1, '#e9a23b'); f(x - 1, y, 7, 1, SHADOW);
-    f(x - 5, y - 14, 11, 8, '#3f9b3a'); f(x - 3, y - 17, 6, 4, '#6cc04a'); f(x - 6, y - 10, 2, 2, '#6cc04a'); f(x + 4, y - 12, 2, 3, '#2f6b2f');
+    f(x - 5, y - 14, 11, 8, '#3f9b3a'); f(x - 3, y + PLANT_BOX.dy, 6, 4, '#6cc04a'); f(x + PLANT_BOX.dx, y - 10, 2, 2, '#6cc04a'); f(x + 4, y - 12, 2, 3, '#2f6b2f'); // its leaves, from the top of its box
   }
   /** An empty slot, where no repo has a bay yet: bare floor, a faint dashed outline. */
   function emptyBay(f, { x0, y0 }) {
@@ -456,7 +474,7 @@
     for (const [x, y] of PADS) chargingPad(f, x, y);
     for (const [x, y] of PODS) sleepPod(f, x, y);
     for (const [x, y] of RANK) rankBay(f, x, y);
-    for (let r = 3; r < L.rows; r++) { const y = 100 + r * ROWH; toolCabinet(f, r % 2 ? 60 : 14, y + 16); pottedPlant(f, r % 2 ? 24 : 90, y + 44); }
+    for (const { cabinet, plant } of rowFurniture(L)) { toolCabinet(f, ...cabinet); pottedPlant(f, ...plant); }
     conveyor(f, x0, x1, cy);
     // the buildings along the back wall
     fabricator(f); droneDock(f); desk(f); manualsShelf(f); powerBank(f); loadingDock(f);
@@ -1165,13 +1183,13 @@
 
   // Just for fun, never data. The dog and the vacuum go about the walkway, the left side and the conveyor: never
   // into the bays (inside the safety line), the queue at your desk or the AGVs' rank, nor through the left side's
-  // shelf, open table, sleep pods and cabinets. The cat keeps to the belt (its home, as the farm's ducks keep to
+  // shelf, open table, sleep pods and cabinets; the dog rests a while by the chargers. The cat keeps to the belt (its home, as the farm's ducks keep to
   // their pond), napping and ambling along it, and a robot pets it from behind the belt. No drone: drones are
   // subagents (world.json's "taken"). The heat doesn't make them act cold: a steaming floor tells the kit
   // 'winter', which dresses only goats and freezes only ponds; with no huddle spot here, all it does is keep them
   // from their habits and rest them twice as long (too hot to play).
   const FACTORY_ANIMALS = [
-    { kind: 'robodog', name: 'Robot dog', habits: ['roll'], reacts: { merged: 'run', arrive: 'run' },
+    { kind: 'robodog', name: 'Robot dog', habits: ['roll', 'climb'], reacts: { merged: 'run', arrive: 'run' }, // climb: a while by a charger (DOG_REST)
       actions: [{ label: 'Pet', fx: 'hearts', line: 'petted' }, { label: 'Oil', fx: 'crumbs', pose: 'happy', line: 'oiled' }, { label: 'Fetch', pose: 'run', run: true, fx: 'dust', line: 'fetch' }],
       lines: { idle: ['Bark.exe running', 'Bolt detected!', 'beep boop woof', 'wag.wag()'], petted: ['woof ♥ (beep)'], oiled: ['so smooth'], fetch: ['BOLT!'],
         merged: ['SHIPPED! woof!'], arrive: ['new friend detected'], deployFailed: ['woof?! error 500'], deployOk: ['good deploy! good!'] } },
@@ -1194,7 +1212,12 @@
     { id: 'fetch', needs: { farmer: 'idle', robodog: 1 }, steps: [{ go: 'farmer', to: 'robodog' }, { go: 'robodog', to: 'away', run: true, ms: 3000 }, { go: 'robodog', to: 'farmer', run: true }, { say: 'robodog', line: 'fetch' }] },
     { id: 'pet', needs: { farmer: 'idle', vacuum: 1 }, steps: [{ go: 'farmer', to: 'vacuum' }, { fx: 'hearts', at: 'vacuum' }, { say: 'vacuum', line: 'petted' }, { wait: 2000 }] },
   ];
-  const SHELF_CORNER = [112, 136]; // on the floor at the storage shelf's front right foot (its leg x 104–108, down to y 131)
+  // The gag's corner: on the floor at the storage shelf's front right corner, its feet 6 below the shelf's box (the
+  // vacuum is 4 tall: 2 clear of it).
+  const SHELF_CORNER = [SHELF_BOX.x + SHELF_BOX.w + 2, SHELF_BOX.y + SHELF_BOX.h + 6];
+  // Where the dog rests by the chargers ([x, y, lift 0]: the kit's perches, which its 'climb' habit goes to and stays at
+  // a while): between two pads, in front of a charger's foot, clear of the robots charging and of the open table.
+  const DOG_REST = PADS.map(([x, y]) => [x + 12, y + 7, 0]);
   /** The belt's strip the cat keeps to (its feet on the belt), and where a robot stands behind the belt to pet it, for a layout. */
   function catBelt(L) {
     const cy = L.GRID.y1 + 12;
@@ -1205,18 +1228,23 @@
     const cy = L.GRID.y1 + 12;
     return [{ x: 4, y: WALK.y0, w: W - 8, h: WALK.y1 - WALK.y0 }, { x: 4, y: WALK.y1, w: CORR[0] + 2, h: cy - WALK.y1 }, { x: 4, y: cy, w: W - 8, h: 4 }];
   }
-  /** What they keep off (besides the bays and buildings themselves: fieldAt, buildingAt): the bays' floor, the desk queue, the rank, the left side's furniture. */
+  /** One box round a row of places, each with its box round its feet ({ dx, dy, w, h }): a row of pods, the rank's bays. */
+  function around(places, b) {
+    const xs = places.map(p => p[0]), ys = places.map(p => p[1]), x = Math.min(...xs), y = Math.min(...ys);
+    return { x: x + b.dx, y: y + b.dy, w: Math.max(...xs) - x + b.w, h: Math.max(...ys) - y + b.h };
+  }
+  /**
+   * What they keep off (besides the bays and buildings themselves: fieldAt, buildingAt), from the same places and boxes
+   * the floor is drawn with: the bays' floor, the queues at your desk, the rank, and the left side's furniture.
+   */
   function avoidOf(L) {
-    const G = L.GRID, more = [];
-    for (let r = 3; r < L.rows; r++) { const y = 100 + r * ROWH, cab = r % 2 ? 60 : 14, plant = r % 2 ? 24 : 90; more.push({ x: cab - 1, y: y + 15, w: 32, h: 28 }, { x: plant - 7, y: y + 26, w: 14, h: 20 }); } // a fourth row's tool cabinet and plant, and on
+    const G = L.GRID;
     return [
       { x: G.x0, y: G.y0, w: G.x1 - G.x0, h: G.y1 - G.y0 }, // the bays, inside the safety line
-      { x: 142, y: DESK_Y - 18, w: 116, h: 22 }, // the queue at your desk, both sides
-      { x: RANK[0][0] - 10, y: RANK[0][1] - 16, w: RANK.at(-1)[0] - RANK[0][0] + 20, h: 20 }, // the AGVs' rank
-      { x: 2, y: 94, w: 108, h: 38 }, // the storage shelf
-      { x: 24, y: 164, w: 64, h: 28 }, // the open table
-      { x: PODS[0][0] - 12, y: PODS[0][1] - 36, w: PODS.at(-1)[0] - PODS[0][0] + 24, h: 44 }, // the sleep pods
-      ...more,
+      around([[QUEUE.from, DESK_Y], [QUEUE.to, DESK_Y]], { dx: -ROBOT.w / 2 - 1, dy: -ROBOT.h - 2, w: ROBOT.w + 2, h: ROBOT.h + 6 }), // the queues: their robots, a pixel round, the rings at their feet
+      around(RANK, RANK_BOX), // the AGVs' rank
+      { ...SHELF_BOX }, { ...TABLE_BOX }, around(PODS, POD_BOX), // the storage shelf, the open table, the sleep pods
+      ...rowFurniture(L).flatMap(({ cabinet: [x, y], plant }) => [{ x, y, ...CABINET_BOX }, around([plant], PLANT_BOX)]), // a fourth row's cabinet and plant, and on
     ];
   }
 
@@ -1393,8 +1421,8 @@
         if (s) return { group: `st:${s.key}`, zone: `st:${s.key}:${props.doing(f)?.prop ?? ''}`, at: used => { const off = [props.doing(f)?.spot ?? 0, 0, -26, 26, -13, 13].find(o => !used.includes(o)) ?? 0; used.push(off); return [s.cx + off, s.lane]; } };
         if (f.state === 'working') return { group: 'floor', zone: 'floor', cap: TABLE.length, at: i => TABLE[i] };
         if (f.nap) return { group: 'nap', zone: 'nap', cap: PODS.length, at: i => PODS[i] }; // it wakes up by itself: a pod, not your desk
-        if (f.state === 'waiting') return { group: 'desk', zone: 'desk', cap: 3, at: i => [150 + 20 * i, DESK_Y] }; // the queue at your desk, from its left
-        if (f.state === 'turn') return { group: 'turn', zone: 'turn', cap: 3, at: i => [250 - 20 * i, DESK_Y] }; // your turn: from its right (full, the two queues still don't touch)
+        if (f.state === 'waiting') return { group: 'desk', zone: 'desk', cap: QUEUE.cap, at: i => [QUEUE.from + QUEUE.step * i, DESK_Y] }; // the queue at your desk, from its left
+        if (f.state === 'turn') return { group: 'turn', zone: 'turn', cap: QUEUE.cap, at: i => [QUEUE.to - QUEUE.step * i, DESK_Y] }; // your turn: from its right (full, the two queues still don't touch)
         if (f.state === 'stale') return { group: 'storage', zone: 'storage', cap: SHELF.length, at: i => SHELF[i] };
         return { group: 'charge', zone: 'charge', cap: PADS.length, at: i => PADS[i] };
       },
@@ -1439,6 +1467,8 @@
       animals: () => ({ cast, gags: FACTORY_GAGS, play: FACTORY_PLAY }),
       roam: () => roamOf(L),
       avoid: () => avoidOf(L),
+      /** Where the dog rests a while, by the chargers. */
+      perches: () => DOG_REST,
       /** Where the chase goes: the storage shelf's corner, by way of the foot of the left side's path, on the belt. No huddle: a hot floor is no place to huddle. */
       spots: () => ({ corner: SHELF_CORNER, path: [CORR[0], L.GRID.y1 + 14] }),
       /**
@@ -1552,7 +1582,7 @@
         const open = scene.fields.flatMap(fl => fl.prs?.open ?? []);
         if (open.length) lab(357, 91, cnt(`${open.length} PR${open.length === 1 ? '' : 's'}`), 'cnt', `Open pull requests: ${open.slice(0, 6).map(pr => `#${pr.number} ${pr.title}`).join(' · ')}${open.length > 6 ? ' …' : ''}. Click the loading dock for them all`);
         const plus = (x, y, n, what) => n > 0 && lab(x, y, cnt(`+${n} ${what}`), 'cnt');
-        plus(150, 91, overflow.desk, 'waiting'); plus(250, 91, overflow.turn, 'your turn'); // under each queue's first robot
+        plus(QUEUE.from, 91, overflow.desk, 'waiting'); plus(QUEUE.to, 91, overflow.turn, 'your turn'); // under each queue's first robot
         plus(116, 124, overflow.storage, 'stale'); plus(116, 156, overflow.charge, 'idle'); plus(116, 202, overflow.floor, 'working'); plus(116, 248, overflow.nap, 'asleep');
         if (more > 0) lab(350, L.GRID.y1 + 12, `<button type="button" class="px-more" data-farm-more>${pxt(`+${more} more bay${more === 1 ? '' : 's'}`, '#fff3d6', '#4e3626')}</button>`, 'wood');
       },
@@ -1564,7 +1594,7 @@
       drawChar(f, b) {
         const [ox, oy] = pixelOrigin(b, 16), rp = rpAt(ox, oy), off = f.state === 'stale', look = f.look ?? lookOf(f);
         const view = b.walk ? b.face ?? 'down' : 'down';
-        PXG.ctx.drawImage(robotSprite(look, f.shirt, { view, legs: legFrame(b), wave: f.state === 'waiting', off, light: off ? null : FAMILY_LIGHT[f.family] ?? null }), ox, oy, 14 * SC, 16 * SC);
+        PXG.ctx.drawImage(robotSprite(look, f.shirt, { view, legs: legFrame(b), wave: f.state === 'waiting', off, light: off ? null : FAMILY_LIGHT[f.family] ?? null }), ox, oy, ROBOT.w * SC, ROBOT.h * SC);
         beacon(rp, look, f.state);
         if (off) return; // powered down: nothing else on it
         if (f.mode === 'bypassPermissions') for (let x = 3; x < 11; x++) rp(x, 12, 1, 1, (x >> 1) % 2 ? BLACK : YELLOW); // no permission checks: hazard stripes

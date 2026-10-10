@@ -17,7 +17,7 @@ const WORLDS = [
 ];
 
 async function page({ stored = {}, hold = false, worlds = WORLDS, dialog = false, listFails = false, reveal = { ok: true, path: '/w' }, mounted = true } = {}) {
-  const posted = [], calls = [], listeners = {}, fetches = [], held = [], warnings = [], made = [], frames = [], timers = [], signals = [], windowPosts = [];
+  const posted = [], calls = [], listeners = {}, fetches = [], held = [], warnings = [], made = [], frames = [], timers = [], signals = [], windowPosts = [], bodies = [];
   // The page carries all traffic over a MessageChannel once the frame has loaded. The stub records what
   // the page posts over its port into `posted` (as frame.contentWindow.postMessage already does for the
   // one `start` message), and `from` (below) delivers the frame's messages back over that port.
@@ -73,7 +73,7 @@ async function page({ stored = {}, hold = false, worlds = WORLDS, dialog = false
         return new Promise(resolve => { ctx.releaseList = () => resolve({ ok: true, status: 200, json: async () => ({ worlds, folder: '/Users/sam/.agentville/worlds' }) }); });
       }
       if (url === '/api/worlds') return Promise.resolve({ ok: true, status: 200, json: async () => ({ worlds, folder: '/Users/sam/.agentville/worlds' }) });
-      fetches.push([url, init?.headers?.['x-tracker-token']]);
+      fetches.push([url, init?.headers?.['x-tracker-token']]); bodies.push([url, init?.body ?? null]);
       signals.push(init?.signal);
       const reply = { ok: true, status: 200, json: async () => ({ memory: [{ path: '/Users/sam/.claude/projects/x/memory/a.md' }], files: [] }) };
       return hold ? new Promise(resolve => held.push(() => resolve(reply))) : Promise.resolve(reply);
@@ -97,7 +97,7 @@ async function page({ stored = {}, hold = false, worlds = WORLDS, dialog = false
   /** The held file requests: the first one waiting is answered. */
   const answer = async () => { held.shift()?.(); await settle(); };
   return {
-    ctx, jump: ms => { clock.now += ms; }, farm, posted, calls, diary, stored, fetches, settle, wait, answer, timeouts: timers, warnings, made, host, options, worlds: window.AgentvilleWorlds, listeners, frames, dlg, els,
+    ctx, jump: ms => { clock.now += ms; }, farm, posted, calls, diary, stored, fetches, settle, wait, answer, bodies, timeouts: timers, warnings, made, host, options, worlds: window.AgentvilleWorlds, listeners, frames, dlg, els,
     setWorlds: list => { worlds = list; }, // what the collector lists from now on (a world saved, broken, mended)
     get frame() { return frames.at(-1); },
     // a message from the newest frame (one the page has let go of is still "the newest" here, and must be ignored)
@@ -1152,12 +1152,37 @@ test('the page posts the world’s cast while Animal lines is ticked, and sends 
   assert.deepEqual(plain(p.posted.filter(m => m.type === 'chatter').at(-1)), { type: 'chatter', lines: [] }, 'gone: the world drops its lines');
 });
 
-test("the page's copies of the creature kinds and situations match the collector's (drift fails here)", async () => {
+test('the cast names its world only for a built-in world the helper has words for (farm, factory): never the starter, your own worlds or a private one', async () => {
+  const built = (key, name) => ({ key, builtIn: true, name, icon: '🧩', description: '', nouns: {}, preview: null, error: null });
+  const worlds = [...WORLDS, built('factory', 'Robot factory'), built('starter', 'Starter')];
+  const cast = [{ kind: 'cat', name: 'Cat' }];
+  const posts = async (key, stored = {}) => {
+    const p = await page({ worlds, stored: { 'tracker-world': key, ...stored } });
+    p.farm.update({ ...snap, helper: { on: true, uses: { names: false, lines: true } }, chatter: null });
+    p.from({ type: 'loaded' });
+    p.from({ type: 'ready' });
+    p.from({ type: 'cast', animals: cast });
+    await p.settle();
+    return { p, sent: () => p.bodies.filter(b => b[0] === '/api/actions/animals').map(b => JSON.parse(b[1])) };
+  };
+  assert.deepEqual((await posts('farm')).sent(), [{ cast, world: 'farm' }]);
+  assert.deepEqual((await posts('factory')).sent(), [{ cast, world: 'factory' }]);
+  assert.deepEqual((await posts('starter')).sent(), [{ cast }], 'the starter: no world');
+  assert.deepEqual((await posts('u/space')).sent(), [{ cast }], 'one of yours: no world');
+  assert.deepEqual((await posts('u/space', { 'tracker-world-cansee:u/space': 'on' })).sent(), [{ cast }], 'one of yours, even allowed to see: no world');
+  const { p, sent } = await posts('farm');
+  await p.farm.mount(p.host, { ...p.options, private: true }); // shown again, private (as the test page's private stop)
+  await p.settle();
+  assert.deepEqual(sent().at(-1), { cast }, 'private: no world');
+});
+
+test("the page's copies of the creature kinds, situations and worlds named for lines match the collector's (drift fails here)", async () => {
   const src = readFileSync(fileURLToPath(new URL('../../web/worlds.js', import.meta.url)), 'utf8');
   const listOf = name => JSON.parse(src.match(new RegExp(`const ${name} = (\\[[^\\]]*\\])`))[1].replaceAll("'", '"'));
-  const { CREATURE_KINDS, SITUATIONS } = await import('../sources/lines.mjs');
+  const { CREATURE_KINDS, SITUATIONS, LINE_WORLDS } = await import('../sources/lines.mjs');
   assert.deepEqual(listOf('CREATURE_KINDS'), CREATURE_KINDS);
   assert.deepEqual(listOf('SITUATIONS'), SITUATIONS);
+  assert.deepEqual(listOf('LINE_WORLDS'), LINE_WORLDS);
 });
 
 test('chatterFor: a private world never gets a row the collector marked as naming someone (an agent gone since, a name before a rename)', async () => {

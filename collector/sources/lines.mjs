@@ -9,6 +9,11 @@ export const CREATURE_KINDS = ['cow', 'goat', 'sheepdog', 'ostrich', 'lion', 'ti
 // The mod that first knew a kind (its LINE_KINDS); the rest, 0.9.0. An older mod drops a kind it doesn't know from
 // the cast, so that animal gets no lines, and a cast of only such kinds comes back as an error, counted as a call.
 const KIND_SINCE = { robodog: '0.9.1', vacuum: '0.9.1' };
+// The built-in worlds the mod has its own words for (a farm, a robot factory): a request names its world only if it is
+// one of these, by its key; any other world gets the mod's plain words. The page keeps a copy (a test fails when they drift).
+export const LINE_WORLDS = ['farm', 'factory'];
+/** A world's key as a request may carry it: one of LINE_WORLDS, else null. */
+export const lineWorld = w => (LINE_WORLDS.includes(w) ? w : null);
 const CONTROLS = /[\x00-\x1f\x7f-\x9f\p{Bidi_Control}]/gu;
 const plain = (v, max) => String(v ?? '').replace(CONTROLS, '').trim().slice(0, max);
 const EVENT_KEEP_MS = 30 * 60_000;
@@ -72,8 +77,8 @@ export function createLinesWatch({ now = () => Date.now() } = {}) {
 }
 
 const ORDER = { waiting: 0, yourTurn: 1, working: 2, idle: 3, stale: 4 };
-/** The request's facts: the cast, up to 12 agents (waiting ones first), the counts and the events. Nothing else. */
-export function factsOf(snap, cast, events, now) {
+/** The request's facts: the cast, up to 12 agents (waiting ones first), the counts, the events, and the world if it is one of LINE_WORLDS. Nothing else. */
+export function factsOf(snap, cast, events, now, world = null) {
   const all = snap?.agents ?? [], repoOf = new Map();
   for (const r of snap?.repos ?? []) for (const id of r.agentIds ?? []) repoOf.set(id, r.name);
   const agents = [...all].sort((x, y) => (ORDER[x.state] ?? 5) - (ORDER[y.state] ?? 5)).slice(0, 12).map(a => {
@@ -85,6 +90,7 @@ export function factsOf(snap, cast, events, now) {
     agents,
     counts: { waiting: all.filter(a => a.state === 'waiting').length, working: all.filter(a => a.state === 'working').length, idle: all.filter(a => a.state === 'idle').length },
     events: (events ?? []).slice(0, 5).map(e => ({ kind: e.kind, ...(e.agent ? { agent: plain(e.agent, 40) } : {}), ...(e.repo ? { repo: plain(e.repo, 40) } : {}), ago: Math.max(0, Math.round((now - e.at) / 60_000)) })),
+    ...(lineWorld(world) ? { world: lineWorld(world) } : {}), // a built-in world's key, for the mod's own words for it
   };
 }
 

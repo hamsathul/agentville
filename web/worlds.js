@@ -13,6 +13,9 @@
   // a world's cast names only these. Copies: worlds.test.mjs fails when they drift.
   const CREATURE_KINDS = ['cow', 'goat', 'sheepdog', 'ostrich', 'lion', 'tiger', 'duck', 'cat', 'dog', 'pigeon', 'mouse', 'fish', 'robodog', 'vacuum'];
   const SITUATIONS = ['idle', 'deployFailed', 'deployOk', 'harvest', 'merged', 'arrive'];
+  // The built-in worlds the helper's lines are written for by name (the mod has its own words for each): a cast names
+  // its world only if it is one of these, and not private. Copy: worlds.test.mjs fails when it drifts.
+  const LINE_WORLDS = ['farm', 'factory'];
   const CONTROL = /[\x00-\x1f\x7f-\x9f]/g;
   const PREF_MAX = 16_384, DIARY_MAX = 20, IN_FLIGHT_MAX = 4, ID_MAX = 200, PATH_MAX = 4096;
   // A world keeps at most 64 settings, 64 KB in all (names and values, what is saved already included):
@@ -624,7 +627,8 @@
   /** The world's animals to the collector, for Animal lines: when the world says them, then every 5 minutes, while it's ticked. */
   async function postCast() {
     if (hidden || !cast?.length || !lastSnap?.helper?.on || !lastSnap?.helper?.uses?.lines || document.hidden) return; // only while the world is on screen
-    try { await fetch('/api/actions/animals', { method: 'POST', headers: { 'x-tracker-token': token, 'content-type': 'application/json' }, body: JSON.stringify({ cast }) }); } catch { /* the next one, in 5 minutes */ }
+    const named = !isPrivate(world) && LINE_WORLDS.includes(world) ? { world } : {}; // a built-in world's key, so the lines are in its words
+    try { await fetch('/api/actions/animals', { method: 'POST', headers: { 'x-tracker-token': token, 'content-type': 'application/json' }, body: JSON.stringify({ cast, ...named }) }); } catch { /* the next one, in 5 minutes */ }
   }
   /** The helper's latest batch to the world when it changes; an empty one once it's gone (never before a batch was sent). */
   function sendChatter(force = false) {

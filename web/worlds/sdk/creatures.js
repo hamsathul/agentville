@@ -100,15 +100,15 @@
     robodog: { w: 10, h: 8, speed: 16, night: 'sleep', draw(p, pose, T) { // a little chrome terrier, its tail an antenna with a red tip that blinks
       const B = '#c3cbd2', D = '#5f6b7a', H = '#e6eef5', S = '#9aa4ad';
       if (pose === 'sleep') { // curled up, its standby light blinking green
-        p(-4, -3, 7, 3, B); p(-4, -3, 7, 1, H); p(-4, -1, 7, 1, S); p(2, -4, 3, 3, B); p(2, -4, 3, 1, H); p(2, -5, 1, 1, D); p(3, -3, 1, 1, S);
+        p(-4, -3, 7, 3, B); p(-4, -3, 7, 1, S); p(-3, -2, 2, 1, H); p(-4, -1, 7, 1, D); p(2, -4, 3, 3, B); p(2, -4, 3, 1, S); p(2, -5, 1, 1, D); p(3, -3, 1, 1, S);
         p(-5, -2, 1, 1, D); p(-1, -2, 1, 1, Math.floor(T * 1.5) % 2 ? '#6cc04a' : '#2f6b2f');
         return;
       }
       const s = legStep(pose, T), moving = pose === 'walk' || pose === 'run', down = pose === 'eat' ? 1 : 0, wag = pose === 'happy' ? Math.floor(T * 8) % 2 : 0;
       p(-4, -2, 1, 2 - s, D); p(1, -2, 1, 2 - s, D); p(-2, -2, 1, moving ? 1 + s : 2, D); p(3, -2, 1, moving ? 1 + s : 2, D); // legs, trotting in diagonal pairs
-      p(-4, -5, 7, 3, B); p(-4, -5, 7, 1, H); p(-4, -3, 7, 1, S); p(-1, -4, 1, 1, S); // its body: a shine on top, a seam
+      p(-4, -5, 7, 3, B); p(-4, -5, 7, 1, S); p(-4, -3, 7, 1, D); p(-3, -4, 2, 1, H); p(0, -4, 1, 1, S); // its body: slate edges (it reads on the pale belt), a shine, a seam
       p(-5, -7, 1, 3, D); p(-5 + wag, -8, 1, 1, Math.floor(T * 2) % 2 ? '#ff6b6b' : '#9c3b30'); // the antenna tail
-      p(2, -7 + down, 3, 3, B); p(2, -7 + down, 3, 1, H); p(2, -8 + down, 1, 1, D); p(4, -8 + down, 1, 1, D); // its head and ears
+      p(2, -7 + down, 3, 3, B); p(2, -7 + down, 3, 1, S); p(2, -6 + down, 1, 1, H); p(2, -8 + down, 1, 1, D); p(4, -8 + down, 1, 1, D); // its head and ears
       p(3, -6 + down, 1, 1, '#2c4a85'); p(4, -5 + down, 1, 1, INK); p(3, -4 + down, 2, 1, S); // an eye, its nose, its beard
     } },
     vacuum: { w: 9, h: 4, speed: 6, night: 'sleep', draw(p, pose, T) { // a round robot vacuum: a ring light on top, a dark skirt, a brush that turns as it goes
