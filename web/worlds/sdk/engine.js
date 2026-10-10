@@ -132,6 +132,7 @@ function makeGrid({ cols = 3, colW, rowH, cx0, top0, minRows = 3, maxRows = 6, m
 function engineScene(s) {
   return {
     plan: s.plan ? { windows: s.plan.windows.map(w => ({ kind: w.kind, percentUsed: w.pct, resetsAt: w.resetsAt, reset: w.reset })) } : null,
+    accounts: (s.accounts ?? []).map(a => ({ key: a.key, name: a.name, plan: a.plan ? { windows: a.plan.windows.map(w => ({ kind: w.kind, percentUsed: w.pct, resetsAt: w.resetsAt, reset: w.reset })) } : null })),
     chrome: s.chrome,
     subagents: s.subagents,
     mail: s.mail,
