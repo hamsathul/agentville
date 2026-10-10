@@ -10,9 +10,19 @@
 
   /* ---------- the scene: what the base draws, from the snapshot ---------- */
 
-  /** The field exercise's scene: the engine's, with each soldier's look. */
+  /** The fortification's stage by the context used: 0 marker stakes, 1 a sandbag ring (from 30%), 2 a low wall (50%), 3 a lookout post (70%), 4 the flag raised (85%: nearly full). */
+  const stageOf = p => (p >= 0.85 ? 4 : p >= 0.7 ? 3 : p >= 0.5 ? 2 : p >= 0.3 ? 1 : 0);
+  /** Who fortifies a position: of the soldiers at work on its repo (working, waiting on you, your turn; not idle or stale), the one whose context is fullest; null if none. */
+  const builderOf = (farmers, key) => farmers.filter(a => a.field === key && ACTIVE.has(a.state)).reduce((best, a) => (best && (best.pct ?? 0) >= (a.pct ?? 0) ? best : a), null);
+  /** A position's deploy, from its last one: ok, failed, running, blocked (Actions didn't run), or other for any state it doesn't name; null with none. */
+  const lightOf = d => (d ? (['ok', 'failed', 'running', 'blocked'].includes(d.state) ? d.state : 'other') : null);
+  /**
+   * The field exercise's scene: the engine's, with each soldier's look, and each position's `build` stage (by its
+   * fullest soldier at work), its `flag` (a branch other than main) and its deploy's `light` (its last deploy).
+   */
   function militaryScene(s) {
     const e = engineScene(s);
+    e.fields = e.fields.map(f => ({ ...f, build: stageOf(builderOf(e.farmers, f.key)?.pct ?? 0), flag: Boolean(f.branch) && f.branch !== '(detached)' && !f.onMain, light: lightOf(f.deploy) }));
     e.farmers = e.farmers.map(f => ({ ...f, look: lookOf(f) }));
     return e;
   }
@@ -377,6 +387,18 @@
     for (let yy = y + 2; yy < y + h - 1; yy += 3) for (let xx = x + 1 + (yy % 2); xx < x + w - 1; xx += 4) if (noise(xx, yy) % 3 === 0) f(xx, yy, 1, 1, POLE_SIDE); // gravel
     for (const [cx, cy] of PARK) for (const [px0, sx] of [[cx - 7, 1], [cx + 6, -1]]) { f(px0, cy - 11, 1, 3, '#ffffff'); f(Math.min(px0, px0 + sx * 2), cy - 11, 3, 1, '#ffffff'); f(px0, cy - 1, 1, 2, '#ffffff'); f(Math.min(px0, px0 + sx * 2), cy + 1, 3, 1, '#ffffff'); }
   }
+  const TRAMPLED = ['#9ed36a', '#4f8f3a']; // flattened blades, pale in the sun; a boot print pressed in
+  /** An empty slot, where no repo has a position yet: trampled grass (blades flattened one way, a boot print here and there) inside a faint dashed outline. */
+  function emptySlot(f, { cx, rowTop: t }) {
+    const x0 = cx - 34, x1 = cx + 33, y0 = t + 6, y1 = t + 34;
+    for (let x = x0; x <= x1; x += 4) { f(x, y0, 2, 1, SHADE); f(x, y1, 2, 1, SHADE); }
+    for (let y = y0; y <= y1; y += 4) { f(x0, y, 1, 2, SHADE); f(x1, y, 1, 2, SHADE); }
+    for (let y = y0 + 3; y < y1 - 3; y += 3) for (let x = x0 + 3; x < x1 - 4; x += 5) {
+      const n = noise(x, y) % 9, dx = noise(y, x) % 3;
+      if (n < 2) { f(x + dx, y, 2, 1, TRAMPLED[0]); f(x + dx + 2, y + 1, 1, 1, TRAMPLED[0]); } // a blade, flattened
+      else if (n === 2) { f(x + dx, y, 1, 2, TRAMPLED[1]); f(x + dx + 2, y + 1, 1, 2, TRAMPLED[1]); } // a boot print
+    }
+  }
   /** The edge of the exercise field, along the bottom: a low hedge with a post-and-rail fence before it. */
   function fieldEdge(f, x0, x1, y) {
     hedge(f, x0, x1, y, 8);
@@ -405,6 +427,7 @@
       for (let x = gx0; x <= gx1; x += 4) { f(x, top + 2, 2, 1, PATCH[2]); f(x, top + 59, 2, 1, PATCH[2]); }
       for (let y = top + 2; y <= top + 59; y += 4) { f(gx0, y, 1, 2, PATCH[2]); f(gx1, y, 1, 2, PATCH[2]); }
     }
+    for (const s of L.empty) emptySlot(f, s);
     // the paths down: the left side's, out to the vehicle park, and the aisles between the positions' columns
     f(111, TRACK.y1, 10, G.y1 - TRACK.y1, SAND); f(111, TRACK.y1, 1, G.y1 - TRACK.y1, SAND_EDGE); f(120, TRACK.y1, 1, G.y1 - TRACK.y1, SAND_EDGE);
     for (const c of CORR.slice(1)) f(c - 3, TRACK.y1, 6, G.y1 - TRACK.y1, SAND);
@@ -493,6 +516,266 @@
     px(x, POLE_TOP + 1, 10, 2, RED); px(x, POLE_TOP + 1, 10, 1, RED_LIGHT); px(x, POLE_TOP + 3, 7 + flap, 1, RED); px(x, POLE_TOP + 4, 4, 1, RED_DARK); px(x + 10, POLE_TOP + 1 + flap, 3, 1, RED);
   }
 
+  /* ---------- the positions: fortified as the context fills, and what its repo's state puts round each ---------- */
+
+  // A position at its slot s (s.cx its middle, s.rowTop its row's top, t below) takes cx ± 41 across and t to t + 30
+  // down, behind where its soldiers stand (on t + 44, their heads from t + 28) and its sign hangs (a label, from
+  // t + 49). Its top few pixels are left to the signs over it (its git counts; the row above's sign, two lines tall):
+  // the flag raised flies below them. Back to front: the deploy's corner at the back right (a green flare, a
+  // practice charge, red range flags or a HOLD board); its post at the back left (a blue pennant over it for a
+  // branch other than main, a mail sack at its foot, a field generator by it); the fortification in the middle (a
+  // camouflage net over it for a worktree); loose sandbags at the front left and supply crates at the front right;
+  // yellow caution tape round it all, soldiers too, when two agents write one repo. Every effect is a drill's:
+  // flares, puffs, flags and signs, and nobody hurt.
+  /** Where a position's post stands (its foot), and where its deploy goes off (its middle, on the ground): for what is drawn there, its signs, and the animals' reactions. */
+  const postAt = s => [s.cx - 37, s.rowTop + 24];
+  const deployAt = s => [s.cx + 31, s.rowTop + 16];
+  // Stage 0: a stake at each corner of where the ring will go, [dx, dy] of its foot from cx and t, a string between them.
+  const STAKES = [[-15, 17], [14, 17], [-15, 29], [14, 29]];
+  // The sandbags, [dx, dy] of each one's top left from cx and t: the ring one bag high (stage 1) and a second course on
+  // it, the low wall (stage 2). Each in its back half (behind the lookout) and its front half, drawn back to front.
+  const RING = {
+    back: [[-12, 16], [-7, 16], [-2, 16], [3, 16], [8, 16], [-17, 18], [13, 18]],
+    front: [[-19, 21], [15, 21], [-17, 24], [13, 24], [-12, 26], [-7, 26], [-2, 26], [3, 26], [8, 26]],
+  };
+  const WALL = {
+    back: [[-10, 13], [-5, 13], [0, 13], [5, 13], [-15, 15], [11, 15]],
+    front: [[-18, 18], [14, 18], [-15, 21], [11, 21], [-10, 23], [-5, 23], [0, 23], [5, 23]],
+  };
+  const DECK = 11; // the lookout's platform, from t: its railing over it, its legs under it, the flag's pole on it
+  // One loose sandbag for each uncommitted file (6 at most), at the front left; one supply crate for each unpushed
+  // commit (4 at most), at the front right: two on the ground, two on them.
+  const LOOSE = [[-39, 24], [-33, 26], [-27, 24], [-38, 29], [-31, 31], [-25, 29]];
+  const CRATES = [[21, 24], [28, 24], [21, 18], [28, 18]];
+
+  /** A sandbag lying across, its top left at (x, y), 5 × 4: khaki canvas lit along its top, its tied end in shade, its seam under it. */
+  function sandbag(x, y) {
+    px(x, y, 5, 3, CANVAS); px(x, y, 4, 1, CANVAS_LIGHT); px(x + 4, y, 1, 3, CANVAS_SHADE); px(x, y + 3, 5, 1, CANVAS_DARK);
+  }
+  /** Stage 0: four marker stakes, an orange tag on each, a string between them round where the ring will go. */
+  function markerStakes(cx, t) {
+    px(cx - 14, t + 14, 29, 1, ROPE); px(cx - 14, t + 26, 29, 1, ROPE); px(cx - 15, t + 14, 1, 12, ROPE); px(cx + 15, t + 14, 1, 12, ROPE); // the string
+    for (const [dx, dy] of STAKES) { const x = cx + dx, y = t + dy; px(x + 1, y, 2, 1, SHADE); px(x, y - 5, 2, 5, WOOD[1]); px(x, y - 5, 1, 5, WOOD[3]); px(x, y - 6, 2, 1, '#f08a24'); }
+  }
+  /** The lookout post inside the ring (stage 3): a wooden tower on braced legs, a platform with a railing round it. */
+  function lookout(cx, t) {
+    const d = t + DECK;
+    for (const x of [cx - 6, cx + 5]) { px(x, d + 2, 2, 11, WOOD[1]); px(x, d + 2, 1, 11, WOOD[3]); } // its legs
+    line(px, cx - 4, d + 3, cx + 4, d + 10, WOOD[2]); line(px, cx + 4, d + 3, cx - 4, d + 10, WOOD[2]); // its braces
+    px(cx - 8, d, 17, 2, WOOD[2]); px(cx - 8, d, 17, 1, WOOD[4]); px(cx - 8, d + 2, 17, 1, WOOD[0]); // its platform
+    px(cx - 8, d - 3, 1, 3, WOOD[1]); px(cx + 8, d - 3, 1, 3, WOOD[1]); px(cx - 8, d - 3, 17, 1, WOOD[3]); // its railing
+  }
+  /** A flag's colour: its soldier's when it is one, else red. */
+  const flagColour = c => (/^#[0-9a-f]{6}$/i.test(c ?? '') ? c : RED);
+  /** The flag raised on the lookout (stage 4, nearly full), in its soldier's colour, flying out to the right; a glint on its pole's gilt ball now and then. */
+  function raisedFlag(cx, t, color, T) {
+    const d = t + DECK;
+    px(cx + 6, d - 8, 1, 8, POLE); px(cx + 5, d - 9, 3, 1, '#f0b429');
+    for (let col = 0; col < 7; col++) exact(cx + 7 + col, d - 7 + (Math.sin(T * 5 - col * 0.8) > 0.35 ? 1 : 0), 1, 3, flagColour(color));
+    if (Math.floor(T * 3 + cx) % 11 === 0) { px(cx + 3, d - 11, 1, 3, '#ffffff'); px(cx + 2, d - 10, 3, 1, '#ffffff'); }
+  }
+  /**
+   * The fortification at its stage: 0 its marker stakes; 1 a ring of sandbags round a dug floor; 2 a second course on
+   * it, a low wall; 3 a lookout post inside; 4 the flag raised on the lookout, in `color` (its soldier's).
+   */
+  function fortification(cx, t, stage, color, T) {
+    if (!(stage >= 1)) { markerStakes(cx, t); return; }
+    px(cx - 14, t + 18, 29, 9, SAND_EDGE); px(cx - 16, t + 20, 33, 5, SAND_EDGE); px(cx - 12, t + 20, 25, 5, SAND); // the dug floor
+    const bags = list => list.forEach(([dx, dy]) => sandbag(cx + dx, t + dy));
+    bags(RING.back);
+    if (stage >= 2) bags(WALL.back);
+    if (stage >= 3) lookout(cx, t);
+    bags(RING.front);
+    if (stage >= 2) bags(WALL.front);
+    if (stage >= 4) raisedFlag(cx, t, color, T);
+  }
+
+  /** A position's post at the back left, its foot at (x, y): a stout post with a cream plate on it; a blue pennant flying over it for a branch other than main. */
+  function positionPost(x, y, flag) {
+    px(x + 2, y, 3, 1, SHADE); // its shadow
+    px(x, y - 15, 2, 16, WOOD[1]); px(x, y - 15, 1, 16, WOOD[3]); // the post
+    px(x - 3, y - 18, 8, 5, WOOD[0]); px(x - 2, y - 17, 6, 3, CANVAS_LIGHT); px(x - 1, y - 16, 4, 1, CANVAS_DARK); // its plate
+    if (!flag) return;
+    const wave = blink(2);
+    px(x, y - 23, 1, 5, POLE); px(x + 1, y - 23, 4 + wave, 1, '#3d7be0'); px(x + 1, y - 22, 3, 1, '#5ab4ff'); px(x + 1, y - 21, 2 + wave, 1, '#3d7be0'); // the pennant
+  }
+  /** A mail sack left at the post (the repo is behind its remote), its top left at (x, y): tied at the neck, the mail's red and blue stripes. */
+  function mailSack(x, y) {
+    px(x, y + 6, 6, 1, SHADE);
+    px(x + 1, y, 4, 6, CANVAS_LIGHT); px(x, y + 2, 6, 4, CANVAS_LIGHT); px(x + 4, y + 1, 2, 5, CANVAS_SHADE); // the sack
+    px(x, y + 3, 6, 1, RED); px(x, y + 4, 6, 1, '#3d7be0'); // its stripes
+    px(x + 2, y - 1, 2, 1, WOOD[1]); px(x + 2, y - 2, 2, 1, CANVAS_LIGHT); // its neck, tied
+  }
+  /** A small field generator humming by the post while a background command runs, its top left at (x, y): an olive box on skids, its grille, a green lamp blinking, a wisp from its exhaust now and then; it shakes a little. */
+  function generator(x, y, T) {
+    const j = blink(12); // its hum
+    px(x, y + 7, 10, 1, SHADE); px(x, y + 6, 10, 1, WOOD[1]); // its skids
+    px(x + j, y, 9, 6, OLIVE[0]); px(x + 1 + j, y + 1, 7, 4, OLIVE[1]); px(x + 1 + j, y + 1, 7, 1, OLIVE[2]);
+    for (let i = 0; i < 3; i++) px(x + 2 + i * 2 + j, y + 3, 1, 2, OLIVE[0]); // its grille
+    px(x + 7 + j, y + 2, 1, 1, blink(2) ? '#6cc04a' : '#2f6b2f'); // its lamp
+    px(x + 1 + j, y - 2, 2, 2, STEEL); // its exhaust
+    if (Math.floor(T * 1.5) % 2) px(x + 1, y - 4, 2, 1, POLE_SIDE); // a wisp
+  }
+  /** A supply crate (an unpushed commit), its top left at (x, y): olive, its lid lit, a yellow stencil mark; its shadow when it stands on the ground. */
+  function fieldCrate(x, y, onGround) {
+    if (onGround) px(x + 1, y + 6, 6, 1, SHADE);
+    px(x, y, 6, 6, OLIVE[0]); px(x + 1, y + 1, 4, 4, OLIVE[1]); px(x + 1, y + 1, 4, 1, OLIVE[2]); px(x + 2, y + 3, 2, 1, '#e9c46a');
+  }
+
+  /** A round blob, its middle at (x, y), r out from it: a row of pixels at a time. */
+  function disc(x, y, r, c) {
+    for (let dy = -r; dy <= r; dy++) { const half = Math.round(Math.sqrt(r * r - dy * dy)); px(x - half, y + dy, 2 * half + 1, 1, c); }
+  }
+  // A puff of smoke: round blobs, [dx, dy, r] from its foot, shaded under, lit at the top left.
+  const PUFF = [[0, -2, 2], [-5, -7, 4], [3, -8, 5], [9, -6, 3], [-1, -13, 4], [5, -15, 3]];
+  /** A puff of smoke at (x, y), its foot, scale k (1 full): soft grey blobs, their undersides in shade, their tops lit. */
+  function smokePuff(x, y, k, T) {
+    const blobs = PUFF.map(([dx, dy, r], i) => [x + Math.round(dx * k), y + Math.round(dy * k), Math.max(1, Math.round(r * k + (Math.sin(T * 2 + i) > 0.6 ? 1 : 0)))]);
+    for (const [bx, by, r] of blobs) disc(bx, by + 1, r, POLE_SIDE);
+    for (const [bx, by, r] of blobs) disc(bx, by, r, '#c3cbd2');
+    for (const [bx, by, r] of blobs) if (r > 1) disc(bx - 1, by - 1, r - 2, '#e6eef5');
+  }
+  /** Deployed: a green flare's canister on the ground at (x, y), and every 2.4 seconds a flare going up from it, a trail of sparks behind it, bursting into a green star that fades. */
+  function greenFlare(x, y, T) {
+    px(x - 1, y, 5, 1, SHADE); px(x - 1, y - 6, 4, 6, '#2f6b2f'); px(x - 1, y - 6, 2, 6, '#2fa57a'); px(x - 1, y - 7, 4, 1, '#6cc04a'); px(x, y - 4, 2, 1, '#ffffff'); // its canister
+    const p = (T % 2.4) / 2.4;
+    if (p < 0.4) { // going up
+      const k = p / 0.4, fx = x + 1 + Math.round(k * 2), fy = Math.round(y - 10 - k * 14);
+      px(fx, fy + 3, 1, 2, '#9ed36a'); px(fx, fy + 6, 1, 1, '#c6e89a'); px(fx, fy + 8, 1, 1, '#c6e89a');
+      PXG.ctx.globalAlpha = 0.5; disc(fx, fy, 3, '#9ed36a'); PXG.ctx.globalAlpha = 1;
+      disc(fx, fy, 1, '#6cc04a'); px(fx, fy, 1, 1, '#ffffff');
+    } else if (p < 0.92) { // its star, fading
+      const k = (p - 0.4) / 0.52, gx = x + 3, gy = y - 24, r = 3 + Math.round(k * 3), a = 1 - k * 0.8;
+      PXG.ctx.globalAlpha = a * 0.5; disc(gx, gy, 4, '#9ed36a'); // its glow
+      PXG.ctx.globalAlpha = a; disc(gx, gy, 2, '#6cc04a'); px(gx, gy, 1, 1, '#ffffff');
+      for (const [dx, dy] of [[-1, 0], [1, 0], [0, -1], [0, 1], [-1, -1], [1, -1], [-1, 1], [1, 1]]) px(gx + Math.round(dx * r * (dx && dy ? 0.7 : 1)), gy + Math.round(dy * r * (dx && dy ? 0.7 : 1)), 1, 1, '#c6e89a');
+      PXG.ctx.globalAlpha = 1;
+    }
+  }
+  // The scorched patch's rows, from the ground's middle: [dy, half-widths of the singed grass, the burnt earth, its black heart].
+  const SCORCH = [[-3, 5, 0, 0], [-2, 9, 6, 0], [-1, 11, 9, 5], [0, 11, 9, 6], [1, 9, 6, 0], [2, 5, 0, 0]];
+  /**
+   * Deploy failed: a practice charge gone off at (x, y). A scorched patch on the grass and a big grey puff of smoke
+   * over it, billowing as it drifts off and forms again. Nobody near it, nobody hurt.
+   */
+  function practiceCharge(x, y, T) {
+    for (const [dy, singed, burnt, dark] of SCORCH) { // the scorched patch: singed grass round burnt earth, black at its heart
+      px(x - singed, y + dy, 2 * singed + 1, 1, '#8a8f3a');
+      if (burnt) px(x - burnt, y + dy, 2 * burnt + 1, 1, '#6b4a35');
+      if (dark) px(x - dark, y + dy, 2 * dark + 1, 1, DARK);
+    }
+    for (const [dx, dy] of [[-4, 0], [3, -1], [6, 1], [-8, 0], [9, -1]]) px(x + dx, y + dy, 1, 1, '#1b1420'); // soot
+    const p = (T % 4) / 4; // the puff forms, drifts up and off, and thins: then another
+    PXG.ctx.globalAlpha = p < 0.7 ? 0.95 : 0.95 - ((p - 0.7) / 0.3) * 0.6;
+    smokePuff(x + Math.round(p * 3), y - 3 - Math.round(p * 4), 0.75 + Math.min(1, p * 3) * 0.25, T);
+    PXG.ctx.globalAlpha = 1;
+  }
+  /** Deploying: red range flags flapping on two white poles either side of (x, y), the range in use; now and then a small practice thump far off, a little grey puff that swells and fades. */
+  function rangeFlags(x, y, T) {
+    for (const [dx, k] of [[-8, 0], [7, 1]]) {
+      const fx = x + dx, top = y - 12, flap = Math.floor(T * 6 + k) % 2;
+      px(fx + 1, y, 2, 1, SHADE); px(fx, top, 1, 13, POLE);
+      if (flap) { px(fx + 1, top, 5, 3, RED); px(fx + 1, top, 5, 1, RED_LIGHT); px(fx + 6, top + 1, 1, 2, RED); }
+      else { px(fx + 1, top + 1, 4, 3, RED); px(fx + 1, top + 1, 4, 1, RED_LIGHT); px(fx + 5, top, 2, 2, RED); }
+    }
+    const p = (T % 2.4) / 2.4; // a thump far off
+    if (p < 0.4) { PXG.ctx.globalAlpha = 1 - (p / 0.4) * 0.7; disc(x, y - 17, 1 + Math.round(p * 5), '#c3cbd2'); disc(x - 1, y - 18, Math.round(p * 5), '#e6eef5'); PXG.ctx.globalAlpha = 1; }
+  }
+  // "HOLD" in a 3 × 5 font: each letter's rows, a bit a pixel (4 its left).
+  const MINI = { H: [5, 5, 7, 5, 5], O: [7, 5, 5, 5, 7], L: [4, 4, 4, 4, 7], D: [6, 5, 5, 5, 6] };
+  const mini = (text, x, y, c) => [...text].forEach((ch, i) => MINI[ch].forEach((bits, r) => { for (let b = 0; b < 3; b++) if (bits & (4 >> b)) px(x + i * 4 + b, y + r, 1, 1, c); }));
+  /** Actions didn't run (billing, a spending limit): a HOLD board on two legs at (x, y), the deploy held. */
+  function holdBoard(x, y) {
+    px(x - 7, y + 1, 15, 1, SHADE); px(x - 7, y - 5, 1, 6, WOOD[1]); px(x + 6, y - 5, 1, 6, WOOD[1]); // its legs
+    px(x - 9, y - 14, 19, 10, DARK); px(x - 8, y - 13, 17, 8, '#ffffff'); mini('HOLD', x - 7, y - 12, RED);
+  }
+
+  let netSprite = null;
+  const NET = { w: 46, h: 20, dy: 12 }; // the camouflage net: its picture's size, and its top from t (the lookout's platform and the flag stand clear of it)
+  /**
+   * The camouflage net over a worktree's position (a picture, made once): draped from two poles over the sandbags,
+   * sagging between them and spreading to the ground, its hem ragged; leaf scraps in greens and browns on a dark
+   * mesh, with holes where the position shows through.
+   */
+  function camoNet() {
+    if (netSprite) return netSprite;
+    const { w, h } = NET, rows = [];
+    for (let y = 0; y < h; y++) {
+      let r = '';
+      for (let x = 0; x < w; x++) {
+        const dx = x + 0.5 - w / 2, n = noise(x, y);
+        if ((x === 4 || x === w - 5) && y < 4) r += 'p'; // its poles' tips
+        else if (Math.abs(dx) > 17 + y * 0.3 || y < 2 * (1 - (dx / 19) ** 2) || (y >= h - 2 && n % 3 === 0)) r += '.'; // its sagging top, its sides, its ragged hem
+        else if ((x + y) % 4 === 0 || (x - y + 64) % 4 === 0) r += 'm'; // the mesh
+        else { const clump = noise(x >> 2, (y >> 1) + 40) % 6; r += clump < 2 ? '.' : 'abcd'[clump - 2]; } // leaf scraps in clumps, holes between
+      }
+      rows.push(r);
+    }
+    return (netSprite = makeSprite(rows, { p: WOOD[2], m: '#2f5a2a', a: '#4f8f3a', b: '#6b7a35', c: '#8a8f3a', d: '#86603a' }));
+  }
+  /** Yellow caution tape round a position two agents are writing at once (its soldiers too), black-striped, on stakes at its corners, pulsing (faster when it's serious). */
+  function cautionTape(cx, t, high, T) {
+    const x0 = cx - 40, x1 = cx + 40, y0 = t - 1, y1 = t + 45, c = i => (i % 3 === 2 ? '#2a1d14' : '#ffd43b');
+    PXG.ctx.globalAlpha = 0.8 + 0.2 * Math.sin(T * (high ? 14 : 6)); // it pulses, and stays yellow
+    for (let x = x0, i = 0; x < x1; x += 2, i++) { px(x, y0, Math.min(2, x1 - x), 2, c(i)); px(x, y1, Math.min(2, x1 - x), 2, c(i)); }
+    for (let y = y0 + 2, i = 0; y < y1; y += 2, i++) { px(x0, y, 2, Math.min(2, y1 - y), c(i)); px(x1 - 2, y, 2, Math.min(2, y1 - y), c(i)); }
+    PXG.ctx.globalAlpha = 1;
+    for (const [x, y] of [[x0, y0], [x1 - 2, y0], [x0, y1], [x1 - 2, y1]]) { px(x, y - 4, 2, 6, WOOD[1]); px(x, y - 4, 1, 6, WOOD[3]); }
+  }
+
+  /**
+   * A position, each frame: its deploy's corner, its post (a mail sack, a generator), the fortification at its stage
+   * (under a net for a worktree), its loose sandbags and crates, and the tape. `color`: whose flag it raises.
+   */
+  function drawPosition(s, f, { color, jobs = 0, T = 0 }) {
+    const { cx, rowTop: t } = s, [dx, dy] = deployAt(s), [px0, py0] = postAt(s);
+    if (f.light === 'ok') greenFlare(dx, dy, T);
+    else if (f.light === 'failed') practiceCharge(dx, dy, T);
+    else if (f.light === 'running') rangeFlags(dx, dy, T);
+    else if (f.light === 'blocked') holdBoard(dx, dy);
+    positionPost(px0, py0, f.flag);
+    if (f.behind > 0) mailSack(px0 + 2, py0 - 6);
+    if (jobs > 0) generator(px0 + 8, py0 - 14, T);
+    fortification(cx, t, f.build ?? 0, color, T);
+    if (f.worktree) PXG.ctx.drawImage(camoNet(), cx - NET.w / 2, t + NET.dy);
+    LOOSE.slice(0, Math.min(6, f.dirty ?? 0)).forEach(([x, y]) => sandbag(cx + x, t + y));
+    CRATES.slice(0, Math.min(4, f.ahead ?? 0)).forEach(([x, y], i) => fieldCrate(cx + x, t + y, i < 2));
+    if (f.collision) cautionTape(cx, t, f.collision === 'high', T);
+  }
+
+  // A compaction: the line advances. The flag is carried a few pixels up-field from the middle of the position with a
+  // cheer (confetti over it), then it is gone, and the position starts again from its stakes. A
+  // merged pull request's crate is carried from the quartermaster's pallet into the depot, fading as it goes in.
+  const CHEER = 1.8, WALK = 1.8, GONE = 0.8, UPFIELD = 8, CARRY = 2; // seconds; seconds; seconds; px; seconds
+  const CONFETTI = ['#ff6b6b', '#ffd43b', '#6cc04a', '#5ab4ff', '#f4b6c2'];
+  const DEPOT_DOOR = [357, 50]; // where "Supplies in!" pops: in the quartermaster's depot
+  /** The flag being carried forward, t seconds after its position's compaction: on its pole, in its soldier's colour; confetti over it while they cheer; fading at the end. */
+  function carriedFlag(s, { color, t }, T) {
+    const foot = s.rowTop + 22 - Math.round(Math.min(1, t / WALK) * UPFIELD), x = s.cx + Math.round(Math.sin(t * 6));
+    PXG.ctx.globalAlpha = t < WALK ? 1 : Math.max(0, 1 - (t - WALK) / GONE);
+    px(x, foot - 12, 1, 12, POLE); px(x - 1, foot - 13, 3, 1, '#f0b429');
+    for (let col = 0; col < 7; col++) exact(x + 1 + col, foot - 12 + (Math.sin(T * 6 - col * 0.8) > 0.35 ? 1 : 0), 1, 4, flagColour(color));
+    PXG.ctx.globalAlpha = 1;
+    if (t < CHEER) for (let i = 0; i < 10; i++) { const p = (t * 1.4 + i / 10) % 1; px(x - 8 + ((i * 7 + Math.round(t * 9)) % 20), foot - 20 + Math.round(p * 14), 1, 1, CONFETTI[i % CONFETTI.length]); }
+  }
+  /** A merged pull request's crate being carried in, t seconds after: up from the pallet into the depot, fading as it goes in. */
+  function carriedCrate(t) {
+    const p = Math.min(1, t / CARRY);
+    PXG.ctx.globalAlpha = 1 - Math.max(0, p - 0.6) / 0.4;
+    supplyCrate({ x: 353, y: Math.round(64 - p * 14), tag: 'ok' });
+    PXG.ctx.globalAlpha = 1;
+  }
+  /** Drops what `ok` turns down from a list, in place. */
+  const keep = (list, ok) => { for (let i = list.length - 1; i >= 0; i--) if (!ok(list[i])) list.splice(i, 1); };
+  // The sign's blue pennant (a branch other than main): an image the pixel font's height, before the position's name.
+  const PENNANT = ['pb....', 'pbbb..', 'pbllbb', 'pbbb..', 'pb....', 'p.....', 'p.....', 'p.....', '......', '......'];
+  let pennantUrl = null;
+  function pennantImg() {
+    pennantUrl ??= makeSprite(PENNANT, { p: '#e6eef5', b: '#3d7be0', l: '#5ab4ff' }).toDataURL();
+    const k = fontPx();
+    return `<i class="pxt px-flag" aria-hidden="true" style="width:${(6 * k).toFixed(1)}px;height:${(10 * k).toFixed(1)}px;background-image:url(${pennantUrl})"></i>`;
+  }
+
   /* ---------- the props: what a soldier holds for each step (sdk/props.js) ---------- */
 
   // The props kit's set: each step's prop, what the soldier is doing (its tip and the field log's line), and where
@@ -512,8 +795,21 @@
     let L = MILITARY_GRID.layoutFor([]);
     let scene = { fields: [], farmers: [] };
     let gateLift = 0; // the motor pool's barrier: 0 down … 1 up, while a soldier comes through the gate
+    let seenCompactions = null, seenMerged = null, seenLights = null; // what the last scene had, so news can be told
+    const advancing = [], carried = []; // flags carried up-field (compactions): { key, color, t }; crates carried into the depot (merges): { t }
     const stOf = k => L.ST.find(s => s.key === k);
     const fieldByKey = k => scene.fields.find(f => f.key === k);
+    /** The positions, each frame: each one and what its repo's state puts round it; then the flags being carried up-field. */
+    function drawPositions() {
+      const T = PXG.T;
+      for (const s of L.ST) {
+        const f = fieldByKey(s.key);
+        if (!f) continue;
+        const here = scene.farmers.filter(a => a.field === f.key);
+        drawPosition(s, f, { color: builderOf(here, f.key)?.shirt, jobs: here.reduce((n, a) => n + (a.jobs ?? 0), 0), T });
+      }
+      for (const a of advancing) { const s = stOf(a.key); if (s) carriedFlag(s, a, T); }
+    }
     return {
       key: 'military', W, SH: 16, corridors: CORR, grid: MILITARY_GRID, fromScene: militaryScene, help: helpHtml,
       nouns: { agent: 'soldier', agents: 'soldiers', repo: 'position', repos: 'positions', place: 'base' },
@@ -521,8 +817,34 @@
       seasonNames: { switch: 'Alert', spring: 'calm', summer: 'ready', autumn: 'high', winter: 'max' },
       coldSeason: null, // max alert is no weather: the mascots never act cold
       boardTitle: 'The briefing board: what your projects remember', // the engine opens it (the 'board' building)
-      /** A new scene: kept, for what the base shows of it (the pennant, the crates, the signs). */
-      setScene(next) { scene = next; return []; },
+      /**
+       * A new scene; returns what happened since the last one: the line advanced (a compaction: its flag is carried
+       * up-field), supplies came in (a pull request merged in the last 30 minutes: its crate is carried into the
+       * quartermaster's depot), a deploy failing or going through (for the animals only).
+       */
+      setScene(next) {
+        const events = [];
+        const comp = new Map(next.farmers.map(f => [f.id, f.compactions ?? 0]));
+        if (seenCompactions) for (const f of next.farmers) if (seenCompactions.has(f.id) && comp.get(f.id) > seenCompactions.get(f.id)) {
+          events.push({ id: f.id, kind: 'harvest', text: 'Advanced!', cls: 'good', log: 'advances the line: its conversation was compacted, and its position starts again from the stakes' });
+          if (f.field) { advancing.push({ key: f.field, color: f.shirt, t: 0 }); if (advancing.length > 6) advancing.shift(); }
+        }
+        seenCompactions = comp;
+        const merged = next.fields.flatMap(fl => (fl.prs?.merged ?? []).map(m => ({ ...m, repo: fl.name, key: `${fl.key}#${m.number}` })));
+        if (seenMerged) for (const m of merged) if (!seenMerged.has(m.key) && (m.at ?? 0) > Date.now() - 30 * 60_000) {
+          events.push({ at: DEPOT_DOOR, kind: 'merged', text: `Supplies in! #${m.number}`, cls: 'good', who: "The quartermaster's depot", log: `${m.repo}: pull request #${m.number} merged${m.title ? ` (${clip(m.title, 50)})` : ''}` });
+          if (carried.length < 4) carried.push({ t: 0 });
+        }
+        seenMerged = new Set(merged.map(m => m.key));
+        const lights = new Map(next.fields.map(fl => [fl.key, fl.light ?? null]));
+        if (seenLights) for (const [key, l] of lights) {
+          const s = stOf(key), kind = l === 'failed' ? 'deployFailed' : l === 'ok' ? 'deployOk' : null;
+          if (kind && s && seenLights.get(key) !== l) events.push({ kind, at: deployAt(s), text: '' });
+        }
+        seenLights = lights;
+        scene = next;
+        return events;
+      },
       layout: () => L,
       relayout(ground) { L = ground; return L; },
       spawn: () => GATE,
@@ -576,23 +898,35 @@
         return `${props.doing(f)?.verb ?? 'working'} at the ${fieldByKey(f.field)?.name ?? ''} position`;
       },
       bg(fill, season, ext) { drawBase(fill, L, ext); },
-      /** Each frame, on the ground: the motor pool's barrier (lifted while a soldier comes through), the crates on the quartermaster's pallet. */
+      /** Each frame, on the ground: the motor pool's barrier (lifted while a soldier comes through), the crates on the quartermaster's pallet and those carried in, the positions. */
       ground() {
         barrier(gateLift);
         for (const c of depotCrates(scene.fields)) supplyCrate(c);
+        for (const c of carried) carriedCrate(c.t);
+        drawPositions();
       },
       /** Drawn among the soldiers, by how far down they stand: the mess table in front of the idle ones, a crate before each in reserve, a blanket over each cot. */
       items: () => [[MESS[0][1] + 1, messTable], ...RESERVE.map(([x, y]) => [y + 1, () => seatCrate(x, y)]), ...COTS.map(([x, y]) => [y + 1, () => blanket(x, y)])],
-      /** Each frame: is a soldier coming through the motor pool gate (walking by it)? The barrier lifts, and comes down slowly after. Still, it is down. */
+      /**
+       * Each frame: is a soldier coming through the motor pool gate (walking by it)? The barrier lifts, and comes down
+       * slowly after. Flags are carried up-field and crates into the depot, until they're gone. Still, the barrier is
+       * down and nothing is carried.
+       */
       tick(dt, posOf, snap = false) {
         const coming = !snap && scene.farmers.some(f => { const b = posOf(f.id); return b?.walk && Math.abs(b.x - GATE[0]) < 24 && Math.abs(b.y - GATE[1]) < 4; });
         gateLift = snap ? 0 : coming ? Math.min(1, gateLift + dt * 5) : Math.max(0, gateLift - dt * 1.5);
+        if (snap) { advancing.length = 0; carried.length = 0; return; }
+        for (const a of [...advancing, ...carried]) a.t += dt;
+        keep(advancing, a => a.t < WALK + GONE && Boolean(stOf(a.key)));
+        keep(carried, c => c.t < CARRY);
       },
       /** The sky by your clock above the hedge, and what stands against it: the flagpoles, the bunting and the flags, HQ's pennant. */
       weather(sky) {
         drawSky(sky);
         drawSkyline(coloursOf(scene.farmers), scene.farmers.some(f => f.state === 'waiting'), PXG.T);
       },
+      /** The position at a point of the base, if any: a click there opens its close-up, and the mascots keep off it. */
+      fieldAt(x, y) { return L.ST.find(s => Math.abs(x - s.cx) <= 40 && y >= s.rowTop && y <= s.rowTop + 56)?.key ?? null; },
       /** The building at a point of the base, if any: each opens something. */
       buildingAt(x, y) { return BUILDINGS.find(([, x0, y0, x1, y1]) => x >= x0 && x <= x1 && y >= y0 && y <= y1)?.[0] ?? null; },
       buildingTip: k => ({
@@ -626,9 +960,11 @@
       /** The projects whose memory the briefing board shows: one session in each folder. */
       boardSessions: () => [...new Map(scene.farmers.filter(f => f.kind !== 'codex' && f.cwd).map(f => [f.cwd, f])).values()].slice(0, 8),
       /**
-       * The signs: each position's name (click it for the files soldiers touched there), each project's over its mown
-       * patch, the places' (HQ, the motor pool, the mess, the reserve, the drill ground, the range), the open pull
-       * requests at the quartermaster's, and "+N" for whoever doesn't fit their place.
+       * The signs: each position's (click it for the files soldiers touched there): its name, a blue pennant and the
+       * branch when it isn't main, then a worktree's repo, the last deploy in words and a collision; why the deploy
+       * shows on hover; its git counts along its back edge. Each project's sign over its mown patch, the places' (HQ,
+       * the motor pool, the mess, the reserve, the drill ground, the range), the open pull requests at the
+       * quartermaster's, and "+N" for whoever doesn't fit their place.
        */
       labels(lab, overflow) {
         const { ST, more } = L;
@@ -636,12 +972,20 @@
         for (const s of ST) {
           const f = fieldByKey(s.key);
           if (!f) continue;
-          const tip = [f.key, f.branch && `on ${f.branch}`, 'Click to see the files soldiers touched here'].filter(Boolean).join(' · ');
-          lab(s.cx, s.rowTop + 49, `<button type="button" class="px-field" data-farm-field="${esc(f.key)}" title="${esc(tip)}"><span class="px-fl">${pxt(cutMid(f.name, 16), '#e6eef5')}</span></button>`);
+          const branch = f.branch === '(detached)' ? ` ${pxt('?', '#c3cbd2')}` : f.flag ? ` ${pxt(clip(f.branch, 12), '#a9dcf7')}` : '';
+          const d = f.lastDeploy, deploy = d?.label ? pxt(d.label, { ok: '#8ef0a0', failed: '#ff8a80', running: '#ffd166' }[d.state] ?? '#c9b48a') : '';
+          const second = [f.worktree && f.main ? pxt(`worktree of ${f.main.split('/').pop()}`, '#a9dcf7') : '', deploy, f.collision ? pxt('⚠ crowded', '#ffd166') : ''].filter(Boolean).join(' ');
+          const tip = [f.key, f.branch && `on ${f.branch}`, d && [d.label, d.detail].filter(Boolean).join(': '), 'Click to see the files soldiers touched here'].filter(Boolean).join(' · ');
+          lab(s.cx, s.rowTop + 49, `<button type="button" class="px-field" data-farm-field="${esc(f.key)}" title="${esc(tip)}"><span class="px-fl">${f.flag ? pennantImg() : ''}${pxt(cutMid(f.name, 16), f.collision ? '#ffd166' : '#e6eef5')}${branch}</span>${second ? `<span class="px-fl">${second}</span>` : ''}</button>`, f.collision ? 'bad' : '');
+          // the counts along the position's back edge: behind over its post, uncommitted on the loose sandbags' side, unpushed on the crates'
+          if (f.behind > 0) lab(postAt(s)[0] + 1, s.rowTop + 1, cnt(`↓${f.behind}`), 'cnt', `${f.behind} commit${f.behind === 1 ? '' : 's'} behind the remote`);
+          if (f.dirty > 0) lab(s.cx - 21, s.rowTop + 1, cnt(`+${f.dirty}`), 'cnt', `${f.dirty} uncommitted file${f.dirty === 1 ? '' : 's'}`);
+          if (f.ahead > 0) lab(s.cx + 22, s.rowTop + 1, cnt(`↑${f.ahead}`), 'cnt', `${f.ahead} unpushed commit${f.ahead === 1 ? '' : 's'}`);
         }
         if (!ST.length) lab(262, 150, sign('No positions yet: no soldier has touched a repo in the last 30 minutes'), 'zone');
         lab(200, 30, sign('HQ'), 'zone'); lab(60, 21, sign('MOTOR POOL'), 'zone');
-        lab(57, 93, sign('MESS'), 'zone'); lab(54, 147, sign('RESERVE'), 'zone'); lab(58, 177, sign('DRILL'), 'zone'); lab(150, 95, sign('RANGE'), 'zone');
+        lab(57, 93, sign('MESS'), 'zone'); lab(54, 147, sign('RESERVE'), 'zone'); lab(58, 177, sign('DRILL'), 'zone');
+        lab(CORR[0], L.slots[0].lane - 8, sign('RANGE'), 'zone'); // on the left side's path where it comes into the range (the first row's lane), clear of the first position, its tape and its soldiers
         for (const g of L.groups) { const [r, cols] = rowsOfGroup(g)[0]; lab(174 + Math.min(...cols) * COLW + 44, 100 + r * ROWH - 1, sign(clip(g.name, 16)), 'zone proj', `The ${g.name} project: its repos side by side`); }
         const open = scene.fields.flatMap(fl => fl.prs?.open ?? []);
         if (open.length) lab(357, 91, cnt(`${open.length} PR${open.length === 1 ? '' : 's'}`), 'cnt', `Open pull requests: ${open.slice(0, 6).map(pr => `#${pr.number}${pr.title ? ` ${pr.title}` : ''}`).join(' · ')}${open.length > 6 ? ' …' : ''}. Click the quartermaster's depot for them all`);
@@ -682,7 +1026,7 @@
       <b>Carrier pigeons</b><span>one agent messaging another (Claude Code's SendMessage between sessions): a carrier pigeon flies the letter from one soldier to the other, and the field log says what it said; the agents' conversations show it too</span>
       <b>Mascots</b><span>the regimental mascots live here just for fun: a mascot goat in a red dress coat, the mess cat, and mice in the quartermaster's depot. They never stand for anything. Click one to pet it, feed it or salute the goat: the nearest soldier that isn't waiting on you walks over and does it. The Animals switch hides them</span>
       <b>Day and night</b><span>the sky follows your clock; at night searchlights sweep, the tents glow from inside, lanterns light the track, and now and then a slow white flare drifts down. The Sky switch holds it at day or night</span>
-      <b>Click</b><span>a soldier to answer or message it in the sidebar; a position's sign for the files soldiers touched there</span>
+      <b>Click</b><span>a soldier to answer or message it in the sidebar; a position, or its sign, for the files soldiers touched there</span>
       <b>Zoom</b><span>+ / − (or ⌘/Ctrl + scroll, or pinch) zooms the base inside its frame; drag or scroll to move around (the map in the corner shows where you are; click it to go somewhere); the % button shows the whole base again</span>
       <b>Stats, bell</b><span>the stats add up what the sessions have cost and how often the line advanced (each compaction). Bell: a chime, and a desktop notice when the page is in the background, whenever an agent starts waiting on you</span>
     </div>`;

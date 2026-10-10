@@ -1,7 +1,9 @@
 // The field exercise (web/worlds/military/): its soldiers (people-kit soldiers in a field jacket of the
 // agent's colour, khaki trousers and headgear picked by the agent's id; codex agents with a slate stripe
 // down the jacket), the world's registration on the engine, and its base: the sky over a clipped hedge,
-// the buildings at the back, the track, the left side's tents, and where every soldier stands.
+// the buildings at the back, the track, the left side's tents, and where every soldier stands. Its
+// positions: fortified as the context fills, what each repo's state puts round them, their signs, and
+// the news setScene tells (Advanced!, Supplies in!, a deploy failing or going through).
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
@@ -290,8 +292,12 @@ test('buildingAt: a point just inside each building is its key; just outside, be
 // The ruling's sweep: whole words only ("install" is no "stall"), and "field" only in the drill's own compounds.
 const DRILL_COMPOUNDS = /\b(field (exercise|log|jacket|manual|generator|telephone|cap)|exercise field)\b/gi;
 const FARM_OR_FACTORY = /\b(farms?|fields?|crops?|harvests?|porch(es)?|barns?|silos?|henhouses?|stalls?|farmers?|robots?|factory|factories|bays?|conveyors?)\b/i;
-/** What a person reads of some HTML: its words, without the markup (the engine's own attributes are data-farm-*) or the drill's compounds. */
-const readOf = t => String(t).replace(/<[^>]*>/g, ' ').replace(DRILL_COMPOUNDS, ' ');
+const unescaped = s => s.replace(/&(amp|lt|gt|quot|#39);/g, (m, k) => ({ amp: '&', lt: '<', gt: '>', quot: '"', '#39': "'" })[k]);
+/**
+ * What a person reads of some HTML: its words without the markup (the engine's own attributes are data-farm-*), and
+ * its tooltips (each title="…", unescaped); without the drill's compounds.
+ */
+const readOf = t => [String(t).replace(/<[^>]*>/g, ' '), ...[...String(t).matchAll(/\btitle="([^"]*)"/g)].map(m => unescaped(m[1]))].join('\n').replace(DRILL_COMPOUNDS, ' ');
 /** Everything the world says to a person about a scene: help, building tips and dialogs, the signs, each soldier's tip, log lines and pop-ups. */
 function wordsOf(h, scene) {
   h.relayout(h.grid.layoutFor(scene.fields));
@@ -317,7 +323,17 @@ test('no farm or factory words: the help, every building tip and dialog, the sig
   assert.equal(h.startText(7), 'Muster: <b>7</b> soldiers on the base');
   assert.equal(h.arriveText, 'jumps down from the truck');
   const texts = [];
-  for (const snap of [{ generatedAt: TOUR_NOW, agents: [], repos: [], collisions: [] }, busyDay()]) texts.push(...wordsOf(h, M.militaryScene(window.AgentvilleScene.toScene(snap))));
+  // a day with all a position's sign can say: a branch, deploys and why, git counts, a worktree, a collision (the busy day last: the dialogs below read it)
+  const signsDay = {
+    generatedAt: TOUR_NOW, agents: [person('a')], collisions: [{ repo: SHOP, severity: 'high', reason: 'two agents edit the same files', since: 0, agentIds: [] }],
+    repos: [
+      { path: SHOP, name: 'shop', branch: 'feature/cart', dirty: 3, ahead: 2, behind: 1, lastDeploy: { state: 'failed', source: 'actions', label: '✗ deploy failed', detail: 'Build step failed', at: TOUR_NOW }, agentIds: ['a'] },
+      { path: `${SHOP}-cart`, name: 'shop-cart', branch: 'cart', worktree: true, main: SHOP, dirty: 0, ahead: 0, behind: 0, lastDeploy: { state: 'running', source: 'direct', label: '◌ deploying', detail: 'rsync to the server', at: TOUR_NOW }, agentIds: [] },
+    ],
+  };
+  for (const snap of [{ generatedAt: TOUR_NOW, agents: [], repos: [], collisions: [] }, signsDay, busyDay()]) texts.push(...wordsOf(h, M.militaryScene(window.AgentvilleScene.toScene(snap))));
+  const tips = texts.map(([, t]) => readOf(t)).join('\n');
+  for (const tip of ['Build step failed', '3 uncommitted files', '2 unpushed commits', '1 commit behind the remote', 'Click to see the files soldiers touched here']) assert.ok(tips.includes(tip), `the sweep reads the tooltip "${tip}"`);
   for (const k of ['barn', 'board', 'nothing']) assert.equal(h.dialog(k), null, `${k}: the engine's own, or none`);
   assert.deepEqual(['desk', 'bank', 'drones', 'dock'].map(k => h.dialog(k).title), ['The HQ tent', 'The fuel depot: your plan', 'The drone pad: subagents', "The quartermaster's depot: pull requests"]);
   assert.match(h.dialog('desk').html, /data-farm-pick="w0"/, 'the HQ tent: an Open button for each soldier waiting on you');
@@ -326,6 +342,8 @@ test('no farm or factory words: the help, every building tip and dialog, the sig
   assert.doesNotMatch(readOf('the field log, a field jacket, the exercise field'), FARM_OR_FACTORY, 'the drill compounds are allowed');
   assert.match(readOf('across the field'), FARM_OR_FACTORY, 'a field alone is not');
   assert.doesNotMatch(readOf('installing'), FARM_OR_FACTORY, 'whole words only');
+  assert.match(readOf('<button type="button" title="Click to see the farm">shop</button>'), FARM_OR_FACTORY, 'a tooltip is read too');
+  assert.match(readOf('<b title="Tom &amp; Jerry&#39;s &quot;depot&quot;">x</b>'), /Tom & Jerry's "depot"/, 'unescaped');
 });
 
 test('the log lines and pop-ups in drill words: to HQ, reporting back, in reserve, at the mess tent, on a cot, on the drill ground, at a position', () => {
@@ -359,6 +377,7 @@ test("the private scene: what a person reads has no undefined, NaN or [object], 
   const scene = M.militaryScene(window.AgentvilleScene.privateScene(window.AgentvilleScene.toScene(snap)));
   const texts = wordsOf(h, scene);
   assert.ok(texts.some(([, t]) => /Open pull requests: #41/.test(String(t))), 'the open pull requests sign has a tip to check');
+  assert.ok(texts.some(([, t]) => /title="r\d+ · Click to see the files soldiers touched here"/.test(String(t))), "a position's sign has a tooltip to check: its stand-in key, no branch, no deploy's words");
   // the snapshot's real words (MCP server names stay in a private scene, so Gmail is not among them)
   const real = [...snap.agents.map(a => a.name), ...snap.repos.map(r => r.name), 'New basket', 'Footer copy', 'feature/cart', 'example.com', 'Build step failed', 'Deploy #212', 'rsync', 'Ship the new cart', 'npm publish', 'Basket.tsx', 'The post is drafted', 'Keep the old footer', '/Users/sam']
     .map(w => new RegExp(`(^|[^\\w-])${w.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}($|[^\\w-])`, 'i'));
@@ -518,4 +537,239 @@ test("the signs: HQ, the motor pool, the mess, the reserve, the drill ground and
   assert.ok(busy.some(l => /\b1 PR\b/.test(l.text) && /#12 New cart/.test(l.title)), 'the open pull requests, counted by the depot');
   assert.ok(labelsOf(goldenSnapshot()).some(l => l.cls.includes('proj') && l.text.includes('shop')), "a project's sign over its positions");
   assert.ok(labelsOf({ generatedAt: TOUR_NOW, agents: [], repos: [], collisions: [] }).some(l => /No positions yet/.test(l.text)), 'no positions: the sign says so');
+});
+
+/* ---------- the positions: fortified as the context fills, and what its repo's state puts round each ---------- */
+
+/** A snapshot of the shop's position and its soldiers, in the collector's shapes; `collision` is the collision's severity. */
+function position({ collision = null, ...over } = {}, agents = []) {
+  return {
+    generatedAt: Date.now(), agents, collisions: collision ? [{ repo: SHOP, severity: collision, reason: 'two agents edit the same files', since: 0, agentIds: [] }] : [],
+    repos: [{ path: SHOP, name: 'shop', branch: 'main', dirty: 0, ahead: 0, behind: 0, lastDeploy: null, agentIds: agents.map(a => a.id), ...over }],
+  };
+}
+const deployed = (state, label = state, detail = undefined) => ({ lastDeploy: { state, source: 'actions', label, detail, at: TOUR_NOW } });
+const NOBODY = { generatedAt: TOUR_NOW, agents: [], repos: [], collisions: [] };
+/** The field exercise with a canvas to draw on, and the ground's drawing each frame (ground) for a snapshot: its fills and pictures. */
+function positions() {
+  const { window, dom, ctx, M } = load();
+  const h = window.hooks, PXG = vm.runInContext('PXG', ctx), ink = vm.runInContext('ink', ctx);
+  PXG.ctx = dom.document.createElement('canvas').getContext('2d');
+  PXG.T = 1.3;
+  const sceneOf = snap => M.militaryScene(window.AgentvilleScene.toScene(snap));
+  const ground = snap => {
+    if (snap) { const scene = sceneOf(snap); h.relayout(h.grid.layoutFor(scene.fields)); h.setScene(scene); }
+    dom.calls.rects.length = 0; dom.calls.images.length = 0;
+    h.ground();
+    return { rects: dom.calls.rects.map(r => [...r]), images: dom.calls.images.map(i => [...i]) };
+  };
+  return { window, dom, ctx, M, h, PXG, ink, sceneOf, ground };
+}
+/** The fills on the exercise field (below the track), where the positions are: the barrier and the depot's crates are above it. */
+const onField = ({ rects }) => rects.filter(([, , y]) => y >= 93);
+
+test('a position is fortified as the context fills: marker stakes, a sandbag ring (30%), a low wall (50%), a lookout post (70%), the flag raised (85%)', () => {
+  const { sceneOf } = positions();
+  const buildAt = (...pcts) => sceneOf(position({}, pcts.map((p, i) => person(`p${i}`, { contextTokens: Math.round(p * 200_000) })))).fields[0].build;
+  assert.deepEqual([0, 0.3, 0.5, 0.7, 0.9].map(p => buildAt(p)), [0, 1, 2, 3, 4]);
+  assert.deepEqual([0.29, 0.49, 0.69, 0.84, 0.85, 1].map(p => buildAt(p)), [0, 1, 2, 3, 4, 4], 'at the edges');
+  assert.equal(buildAt(0.2, 0.6), 2, 'the fullest soldier at work there');
+  const as = (state, p) => sceneOf(position({}, [person('x', { state, contextTokens: p * 200_000, now: null })])).fields[0].build;
+  assert.equal(as('waiting', 0.9), 4, 'waiting on you: still its position');
+  assert.equal(as('yourTurn', 0.9), 4, 'your turn: still its position');
+  assert.equal(as('idle', 0.9), 0, 'idle: nobody fortifies it, its stakes');
+  assert.equal(as('stale', 0.9), 0, 'stale: nobody fortifies it');
+  assert.equal(sceneOf(position()).fields[0].build, 0, 'no soldiers: its stakes');
+});
+
+test("a position's flag is a branch other than main; its light is its last deploy's state; each soldier keeps its look", () => {
+  const { sceneOf, M } = positions();
+  const field = over => sceneOf(position(over)).fields[0];
+  for (const [branch, flag] of [['feature/cart', true], ['main', false], ['master', false], ['(detached)', false], [null, false]]) assert.equal(field({ branch }).flag, flag, String(branch));
+  for (const state of ['ok', 'failed', 'running', 'blocked', 'other']) assert.equal(field(deployed(state)).light, state);
+  assert.equal(field(deployed('cancelled')).light, 'other', "a state it doesn't name: drawn one way");
+  assert.equal(field({}).light, null, 'no deploy: none');
+  assert.equal(field({ lastDeploy: undefined, deploy: { status: 'in_progress' } }).light, 'running', 'a bare Actions run (no words)');
+  assert.deepEqual(plain(sceneOf(position({}, [person('x')])).farmers[0].look), plain(M.lookOf({ id: 'x' })));
+});
+
+test('a bare position (no deploy, pull requests, git counts or project) draws only its stakes and its post, and nothing throws; each thing its repo has adds to it', () => {
+  const { ground, h, ink } = positions();
+  assert.equal(onField(ground(NOBODY)).length, 0, 'no repo: nothing on the field each frame');
+  const fills = (over = {}, agents = []) => { let n = 0; assert.doesNotThrow(() => { n = onField(ground(position(over, agents))).length; }, JSON.stringify(over)); return n; };
+  const bare = onField(ground(position()));
+  const [s] = h.layout().ST, t = s.rowTop;
+  assert.ok(bare.length > 0, 'it draws its stakes and post');
+  assert.ok(bare.length <= 40, `only those: ${bare.length} fills`);
+  for (const [c, x, y, w, hh] of bare) assert.ok(x >= s.cx - 41 && x + w <= s.cx + 41 && y >= t && y + hh <= t + 30, `${c} at ${x},${y} ${w}×${hh}: behind where its soldiers stand`);
+  const effects = new Set(['#2fa57a', '#6cc04a', '#c3cbd2', '#e04a3a', '#ffd43b', '#3a3a40'].map(ink)); // a flare's green, smoke, red flags and letters, caution tape, a scorched patch
+  assert.deepEqual(bare.filter(([c]) => effects.has(c)).map(r => r[0]), [], 'none of the deploys\' or the tape\'s colours');
+  const one = fills(), worker = [person('w')], job = [person('w', { children: [{ id: 'j1', kind: 'bgjob', state: 'running', startedAt: TOUR_NOW }] })];
+  const more = {
+    'deployed (a green flare)': deployed('ok', '✓ deployed'),
+    'deploy failed (a practice charge)': deployed('failed', '✗ deploy failed'),
+    'deploying (range flags)': deployed('running', '◌ deploying'),
+    "Actions didn't run (a HOLD board)": deployed('blocked', "⏸ Actions didn't run"),
+    'uncommitted files (loose sandbags)': { dirty: 3 },
+    'unpushed commits (supply crates)': { ahead: 2 },
+    'behind its remote (a mail sack at the post)': { behind: 1 },
+    'a collision (caution tape)': { collision: 'low' },
+  };
+  for (const [what, over] of Object.entries(more)) assert.ok(fills(over) > one, `${what}: ${fills(over)} fills, bare ${one}`);
+  assert.equal(fills(deployed('cancelled')), one, "a deploy state it doesn't name: nothing");
+  assert.ok(fills({}, job) > fills({}, worker), 'a background command (a field generator)');
+  assert.ok(fills({ dirty: 6 }) > fills({ dirty: 3 }) && fills({ dirty: 9 }) === fills({ dirty: 6 }), 'one loose sandbag a file, up to 6');
+  assert.ok(fills({ ahead: 4 }) > fills({ ahead: 2 }) && fills({ ahead: 9 }) === fills({ ahead: 4 }), 'one crate a commit, up to 4');
+  assert.equal(fills({ behind: 5 }), fills({ behind: 1 }), 'one mail sack, however far behind');
+  const net = ground(position({ worktree: true, main: '/Users/you/code/other' })).images.filter(([x, y]) => x > s.cx - 41 && x < s.cx + 41 && y >= t && y < t + 30);
+  assert.equal(net.length, 1, 'a worktree: a camouflage net over the position');
+  assert.equal(ground(position()).images.length, 0, '… and none otherwise');
+});
+
+test('each stage of the fortification differs, and so does each deploy', () => {
+  const { ground } = positions();
+  const sig = snap => JSON.stringify(ground(snap));
+  const stages = [0, 0.3, 0.5, 0.7, 0.9].map(p => sig(position({}, [person('a', { contextTokens: p * 200_000 })])));
+  assert.equal(new Set(stages).size, 5, 'five stages, five pictures');
+  const deploys = [{}, deployed('ok'), deployed('failed'), deployed('running'), deployed('blocked')].map(over => sig(position(over)));
+  assert.equal(new Set(deploys).size, 5, 'none, ok, failed, running and blocked: five pictures');
+});
+
+test('the flag raised is in the colour of the soldier filling the position; a compaction carries it forward with a cheer, a few pixels up-field, then the stakes again; with motion off nothing walks', () => {
+  const { h, sceneOf, ground } = positions();
+  const soldier = n => [person('a', { compactions: n, contextTokens: n % 2 ? 190_000 : 10_000 })];
+  const L = h.relayout(h.grid.layoutFor(sceneOf(position()).fields)), [s] = L.ST, colour = sceneOf(position({}, soldier(1))).farmers[0].shirt;
+  const flagAt = () => onField(ground()).filter(([c, x]) => c === colour && Math.abs(x - s.cx) <= 41); // the soldier's colour, exact, at its position
+  h.setScene(sceneOf(position({}, soldier(1))));
+  const raised = flagAt();
+  assert.ok(raised.length >= 4, 'nearly full: the flag raised, in its soldier\'s colour');
+  assert.equal(sceneOf(position({}, soldier(2))).fields[0].build, 0, 'compacted: the stakes again');
+  const events = plain(h.setScene(sceneOf(position({}, soldier(2)))));
+  assert.deepEqual(events.map(e => [e.kind, e.text]), [['harvest', 'Advanced!']]);
+  const tops = [];
+  for (let i = 0; i < 200 && (tops.length < 2 || flagAt().length); i++) {
+    const f = flagAt();
+    if (f.length) tops.push(Math.min(...f.map(r => r[2])));
+    h.tick(0.05, () => null);
+  }
+  assert.ok(tops.length > 20, `it is carried a while (${tops.length} frames)`);
+  assert.ok(tops.every((y, i) => i === 0 || y <= tops[i - 1]), 'forward, never back');
+  const walked = tops[0] - tops.at(-1);
+  assert.ok(walked >= 3 && walked <= 14, `a few pixels up-field (${walked})`);
+  assert.equal(flagAt().length, 0, 'then gone: the stakes again');
+  h.setScene(sceneOf(position({}, soldier(3))));
+  h.setScene(sceneOf(position({}, soldier(4))));
+  h.tick(0, () => null, true);
+  assert.equal(flagAt().length, 0, 'drawn still (motion off): nothing is carried');
+});
+
+test("setScene tells what happened: Advanced! for a compaction, Supplies in! at the quartermaster's depot for a newly merged pull request, a deploy failing or going through", () => {
+  const { h, sceneOf } = positions();
+  const a = n => [person('a', { compactions: n })];
+  h.relayout(h.grid.layoutFor(sceneOf(position()).fields));
+  assert.deepEqual(plain(h.setScene(sceneOf(position({}, a(1))))), [], 'the first scene: nothing has happened yet');
+  const advanced = plain(h.setScene(sceneOf(position({}, a(2)))));
+  assert.deepEqual(advanced.map(e => [e.kind, e.id, e.text, e.cls]), [['harvest', 'a', 'Advanced!', 'good']]);
+  assert.match(advanced[0].log, /compacted/);
+  assert.deepEqual(plain(h.setScene(sceneOf(position({}, a(2))))), [], 'nothing new');
+  const pr = (number, at) => ({ number, title: 'New cart', url: '', at });
+  assert.deepEqual(plain(h.setScene(sceneOf(position({ prs: { open: [], merged: [pr(9, Date.now() - 3 * 3_600_000)] } }, a(2))))), [], 'merged hours ago: old news');
+  const merged = plain(h.setScene(sceneOf(position({ prs: { open: [], merged: [pr(9, Date.now() - 3 * 3_600_000), pr(12, Date.now())] } }, a(2)))));
+  assert.deepEqual(merged.map(e => [e.kind, e.text, e.cls]), [['merged', 'Supplies in! #12', 'good']]);
+  assert.equal(h.buildingAt(...merged[0].at), 'dock', "it pops at the quartermaster's depot");
+  assert.equal(merged[0].who, "The quartermaster's depot", 'the field log names the depot');
+  assert.match(merged[0].log, /#12 merged/);
+  assert.deepEqual(plain(h.setScene(sceneOf(position({ prs: { open: [], merged: [pr(12, Date.now())] } }, a(2))))), [], 'seen');
+  const [s] = h.layout().ST;
+  const kinds = over => plain(h.setScene(sceneOf(position(over, a(2))))).map(e => [e.kind, e.text, h.fieldAt(...e.at)]);
+  assert.deepEqual(kinds(deployed('failed')), [['deployFailed', '', s.key]], 'a deploy fails: for the animals, no words, at its position');
+  assert.deepEqual(kinds(deployed('failed')), [], 'not again while it stays failed');
+  assert.deepEqual(kinds(deployed('running')), []);
+  assert.deepEqual(kinds(deployed('ok')), [['deployOk', '', s.key]], 'it goes through');
+  for (const e of [...advanced, ...merged]) assert.doesNotMatch(readOf(`${e.text} ${e.log} ${e.who ?? ''}`), FARM_OR_FACTORY, 'in drill words');
+});
+
+test("a merged pull request's crate is carried into the quartermaster's depot, fading as it goes in; with motion off it isn't", () => {
+  const { h, sceneOf, ground, ink } = positions();
+  const pr = { number: 12, title: 'New cart', url: '', at: Date.now() };
+  const crateWood = new Set(['#4e3626', '#c98d4f'].map(ink));
+  /** The crates drawn at the depot, above its pallet (where an open one stands, y 57 and below 64, none here): their tops. */
+  const carried = () => ground().rects.filter(([c, x, y]) => crateWood.has(c) && x >= 340 && x <= 370 && y < 64 && y > 36).map(r => r[2]);
+  h.relayout(h.grid.layoutFor(sceneOf(position()).fields));
+  h.setScene(sceneOf(position({ prs: { open: [pr], merged: [] } })));
+  const before = carried().length;
+  h.setScene(sceneOf(position({ prs: { open: [], merged: [pr] } })));
+  const tops = [];
+  for (let i = 0; i < 100 && (tops.length < 2 || carried().length > before); i++) { const c = carried(); if (c.length > before) tops.push(Math.min(...c)); h.tick(0.05, () => null); }
+  assert.ok(tops.length > 10, `carried a while (${tops.length} frames)`);
+  assert.ok(tops.at(-1) < tops[0], 'into the depot');
+  assert.equal(carried().length, before, 'and in');
+  h.setScene(sceneOf(position({ prs: { open: [{ ...pr, number: 13 }], merged: [pr] } })));
+  h.setScene(sceneOf(position({ prs: { open: [], merged: [pr, { ...pr, number: 13 }] } })));
+  h.tick(0, () => null, true);
+  assert.equal(carried().length, before, 'drawn still (motion off): nothing is carried');
+});
+
+test("a position's sign: its name, a blue pennant for a branch other than main, the deploy's words (why, on hover), a worktree's repo, a collision, and its git counts with what they count", () => {
+  const { h, window, M } = positions();
+  const signs = (snap, priv = false) => {
+    let scene = window.AgentvilleScene.toScene(snap);
+    if (priv) scene = window.AgentvilleScene.privateScene(scene);
+    scene = M.militaryScene(scene);
+    h.relayout(h.grid.layoutFor(scene.fields)); h.setScene(scene);
+    const labs = [];
+    h.labels((x, y, html, cls = '', title = '') => labs.push({ x, y, html: String(html), cls, title }), {});
+    return labs;
+  };
+  const words = html => html.replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim();
+  const signOf = labs => labs.find(l => l.html.includes('data-farm-field'));
+  const titleOf = l => l.html.match(/title="([^"]*)"/)?.[1] ?? '';
+  const branch = signOf(signs(position({ branch: 'feature/cart', ...deployed('failed', '✗ deploy failed', 'Build step failed') })));
+  assert.match(branch.html, /px-flag/, 'a blue pennant on the sign');
+  assert.match(words(branch.html), /shop/);
+  assert.match(words(branch.html), /feature\/cart/);
+  assert.match(words(branch.html), /✗ deploy failed/, 'the deploy, in words, under the name');
+  assert.match(titleOf(branch), /Build step failed/, 'and why, on hover');
+  assert.match(titleOf(branch), /on feature\/cart/);
+  assert.doesNotMatch(signOf(signs(position({ branch: 'main' }))).html, /px-flag/, 'on main: no pennant');
+  assert.match(words(signOf(signs(position({ worktree: true, main: '/Users/you/code/api' }))).html), /worktree of api/);
+  const crowded = signOf(signs(position({ collision: 'high' })));
+  assert.match(words(crowded.html), /⚠ crowded/);
+  assert.equal(crowded.cls, 'bad');
+  const counts = signs(position({ dirty: 3, ahead: 2, behind: 1 })).filter(l => l.cls === 'cnt').map(l => [words(l.html), l.title]);
+  assert.deepEqual(counts, [['↓1', '1 commit behind the remote'], ['+3', '3 uncommitted files'], ['↑2', '2 unpushed commits']]);
+  const priv = signOf(signs(position({ branch: 'feature/cart', ...deployed('failed', '✗ deploy failed', 'Build step failed') }), true));
+  assert.doesNotMatch(priv.html, /px-flag|feature|Build step|deploy failed|shop/, 'privacy mode: no branch, no words, no name');
+  for (const l of [branch, crowded, priv]) assert.doesNotMatch(readOf(l.html), FARM_OR_FACTORY);
+});
+
+test('fieldAt: a point on a position is its key (a click opens its close-up); the aisle, the track, an empty slot and the left side are none', () => {
+  const { h } = positions();
+  const L = h.relayout(h.grid.layoutFor([{ key: SHOP, name: 'shop' }])), [s] = L.ST;
+  for (const [x, y] of [[s.cx, s.rowTop + 20], [s.cx - 40, s.rowTop], [s.cx + 40, s.rowTop + 56], [s.cx, s.rowTop + 50]]) assert.equal(h.fieldAt(x, y), SHOP, `${x},${y}`);
+  for (const [x, y] of [[218, s.rowTop + 20], [s.cx, 84], [s.cx + 88, s.rowTop + 20], [56, 160], [s.cx, s.rowTop + 57]]) assert.equal(h.fieldAt(x, y), null, `${x},${y}`);
+});
+
+test('an empty slot is trampled grass with a faint outline', () => {
+  const { window, ctx } = load();
+  const h = window.hooks, ink = vm.runInContext('ink', ctx);
+  const L = h.relayout(h.grid.layoutFor([{ key: SHOP, name: 'shop' }]));
+  const ext = { x0: 0, x1: h.W, y0: 0, y1: L.H }, pix = new Map();
+  h.bg((x, y, w, hh, c) => { for (let yy = y; yy < y + hh; yy++) for (let xx = x; xx < x + w; xx++) pix.set(`${xx},${yy}`, ink(c)); }, 'summer', ext);
+  const grass = new Set(['#6aa84f', '#7fbf5a'].map(ink)), trampled = new Set(['#9ed36a', '#4f8f3a'].map(ink)); // flattened blades, boot prints
+  assert.ok(L.empty.length >= 8);
+  for (const s of L.empty) {
+    const x0 = s.cx - 34, x1 = s.cx + 33, y0 = s.rowTop + 6, y1 = s.rowTop + 34, edge = [];
+    for (let x = x0; x <= x1; x++) edge.push(pix.get(`${x},${y0}`), pix.get(`${x},${y1}`));
+    for (let y = y0; y <= y1; y++) edge.push(pix.get(`${x0},${y}`), pix.get(`${x1},${y}`));
+    const marked = edge.filter(c => !grass.has(c)).length;
+    assert.ok(marked >= edge.length * 0.3, `slot ${s.i}: an outline (${marked} of ${edge.length})`);
+    let flat = 0;
+    for (let y = y0 + 2; y < y1 - 1; y++) for (let x = x0 + 2; x < x1 - 1; x++) {
+      const c = pix.get(`${x},${y}`);
+      assert.ok(grass.has(c) || trampled.has(c), `slot ${s.i}: only grass inside, some of it trampled (${x},${y} ${c})`);
+      if (trampled.has(c)) flat++;
+    }
+    assert.ok(flat >= 10, `slot ${s.i}: trampled (${flat} flattened pixels)`);
+  }
 });
