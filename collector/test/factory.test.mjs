@@ -214,11 +214,8 @@ const PLACES = { desk: 3, turn: 3, charge: 4, storage: 4, nap: 2, floor: 4 };
 const STATE_OF = { desk: 'waiting', turn: 'turn', charge: 'idle', storage: 'stale', nap: 'turn', floor: 'working' };
 /** The i-th place of a group, from the world's slots. */
 const placeOf = (h, group, i) => plain(h.slots({ id: 'x', state: STATE_OF[group], nap: group === 'nap', field: null }).at(i));
-/**
- * Two robots (14 × 16, standing on their feet) whose boxes overlap. At your desk the two queues meet in the
- * middle, the brief's numbers 12 apart (194 and 206): there their arms may touch, by 2 pixels.
- */
-const overlap = ([ax, ay], [bx, by]) => Math.abs(ax - bx) < (ay === 80 && by === 80 ? 12 : 14) && Math.abs(ay - by) < 16;
+/** Two robots (14 × 16, standing on their feet) whose boxes overlap. */
+const overlap = ([ax, ay], [bx, by]) => Math.abs(ax - bx) < 14 && Math.abs(ay - by) < 16;
 
 test('slots: waiting at your desk (3), your turn at its right (3), idle on the pads (4), stale on the shelf (4), naps in the pods (2), no repo at the open table (4)', () => {
   const { window, F } = load();
@@ -234,8 +231,10 @@ test('slots: waiting at your desk (3), your turn at its right (3), idle on the p
     desk: of({ state: 'waiting' }, 'desk', 3), turn: of({ state: 'turn' }, 'turn', 3), charge: of({ state: 'idle' }, 'charge', 4),
     storage: of({ state: 'stale' }, 'storage', 4), nap: of({ state: 'turn', nap: true }, 'nap', 2), floor: of({ state: 'working', field: null }, 'floor', 4),
   };
-  assert.deepEqual(at.desk, [[150, 80], [172, 80], [194, 80]], 'the queue at your desk, on the walkway');
-  assert.deepEqual(at.turn, [[250, 80], [228, 80], [206, 80]], 'your turn: at the desk, from its right');
+  assert.deepEqual(at.desk, [[150, 80], [170, 80], [190, 80]], 'the queue at your desk, on the walkway, 20 apart');
+  assert.deepEqual(at.turn, [[250, 80], [230, 80], [210, 80]], 'your turn: at the desk, from its right, 20 apart');
+  const desk = [...at.desk, ...at.turn];
+  for (let i = 0; i < desk.length; i++) for (let j = i + 1; j < desk.length; j++) assert.ok(!overlap(desk[i], desk[j]), `at your desk, ${desk[i]} and ${desk[j]} don't touch, both queues full`);
   assert.deepEqual(plain(h.slots({ state: 'idle', nap: true }).at(1)), at.nap[1], 'an idle session that wakes by itself sleeps in a pod too');
   assert.deepEqual(plain(h.slots({ state: 'working', field: '/Users/you/gone' }).at(0)), at.floor[0], 'working in a repo with no bay (more than 18): the open table');
   assert.equal(h.slots({ state: 'working', field: SHOP, step: 'edit' }).group, `st:${SHOP}`, 'working in a repo: at its bay');
@@ -286,12 +285,17 @@ test('buildingAt: a point in each building is its key; the floor, the walkway, a
   const inside = { barn: [60, 50], drones: [111, 50], desk: [200, 62], board: [270, 50], bank: [298, 50], dock: [357, 40] };
   for (const [k, [x, y]] of Object.entries(inside)) assert.equal(h.buildingAt(x, y), k, `${k} at ${x},${y}`);
   for (const [x, y] of [[0, 300], [116, 84], [200, 18], [174, 140], [56, 160]]) assert.equal(h.buildingAt(x, y), null, `${x},${y}`);
+  // the desk's edges (x 140–260, y 34–76), in and just out; the gaps between buildings
+  for (const [x, y] of [[140, 60], [260, 60], [200, 34], [200, 76]]) assert.equal(h.buildingAt(x, y), 'desk', `${x},${y}: just inside the desk`);
+  for (const [x, y] of [[139, 60], [261, 60], [200, 33], [200, 77]]) assert.equal(h.buildingAt(x, y), null, `${x},${y}: just outside the desk`);
+  for (const [x, y] of [[93, 50], [133, 50], [282, 50], [315, 50]]) assert.equal(h.buildingAt(x, y), null, `${x},${y}: between two buildings`);
 });
 
 test('no farm words: the help, every building tip, dialog, log line, pop-up and tip is in factory words', () => {
   const { window, F } = load();
   const h = window.hooks, FARM = /\b(farm|field|crop|harvest|porch|barn|silo|henhouse|stall|scarecrow|meadow|hammock|pigeon)/i;
-  const texts = [['help', h.help()], ['startText', h.startText(1)], ['startText', h.startText(7)], ['arriveText', h.arriveText]];
+  assert.equal(h.boardTitle, 'The manuals shelf: what your projects remember', "the manuals shelf's dialog title (the engine's board)");
+  const texts = [['help', h.help()], ['startText', h.startText(1)], ['startText', h.startText(7)], ['arriveText', h.arriveText], ['boardTitle', h.boardTitle]];
   for (const k of ['barn', 'drones', 'desk', 'board', 'bank', 'dock']) { assert.ok(h.buildingTip(k), `${k} has a tip`); texts.push([`buildingTip ${k}`, h.buildingTip(k)]); }
   const busy = crowd({ prs: { open: [{ number: 12, title: 'New cart', url: 'https://github.com/you/shop/pull/12', checks: 'ok', draft: false }], merged: [{ number: 9, title: 'Old cart', url: 'https://github.com/you/shop/pull/9', at: TOUR_NOW }] },
     plan: { windows: [{ kind: 'five_hour', percentUsed: 40, resetsAt: TOUR_NOW + 3_600_000 }, { kind: 'seven_day', percentUsed: 75, resetsAt: TOUR_NOW + 86_400_000 }] },
@@ -301,6 +305,7 @@ test('no farm words: the help, every building tip, dialog, log line, pop-up and 
     h.relayout(h.grid.layoutFor(scene.fields));
     h.setScene(scene);
     for (const k of ['desk', 'bank', 'drones', 'dock']) { const d = h.dialog(k); assert.ok(d?.title && d.html, `${k} opens a dialog`); texts.push([`dialog ${k}`, `${d.title}\n${d.html}`]); }
+    h.labels((x, y, html, cls = '', title = '') => texts.push([`label at ${x},${y}`, `${html}\n${title}`]), { desk: 2, turn: 1, storage: 1, charge: 1, floor: 1, nap: 1 });
     for (const f of scene.farmers) {
       texts.push([`tip ${f.id}`, h.tip(f)]);
       const z = h.slots(f).zone;

@@ -241,6 +241,7 @@ function panelHud({ still, zoom = 1, saysOn = true, skyMode = 'live', seasonMode
           </div>`;
 }
 
+const BOARD_TITLE = 'The notice board: what your projects remember';
 /** A world's hooks, with the engine's default for each one it leaves out (docs/worlds.md, "Hooks"). */
 function withDefaults(h) {
   if (!(h.W > 0)) throw new Error('A world needs its width, W (in world pixels).');
@@ -251,6 +252,8 @@ function withDefaults(h) {
     const v = typeof given[k] === 'string' ? given[k].trim().slice(0, 24) : '';
     return [k, v || word];
   }));
+  // The notice board's dialog title (what a world's 'board' building opens): a string with words in it, cut to 80; else today's.
+  const boardTitle = (typeof h.boardTitle === 'string' ? h.boardTitle.trim().slice(0, 80).trim() : '') || BOARD_TITLE;
   // The default grid is centred on W, from the config merged over 3 × 88 × 62: columns centred, a
   // fence half a column wider each side (kept inside 0..W) unless the world gives cx0 or a fence itself.
   const g = h.grid ?? {};
@@ -277,7 +280,7 @@ function withDefaults(h) {
     labels: lab => { for (const s of out.layout().ST) lab(s.cx, s.rowTop + 50, pxt(cutMid(fields.find(f => f.key === s.key)?.name ?? '', 16)), 'zone'); },
     fieldAt: () => null, buildingAt: () => null, buildingTip: () => '', dialog: () => null, boardSessions: () => [],
     help: () => `<div class="px-key"><b>${esc(nouns.agents)}</b><span>one for each agent working on this Mac</span><b>${esc(nouns.repos)}</b><span>one for each repo an agent works in</span></div>`,
-    ...h, grid, nouns, seasonNames,
+    ...h, grid, nouns, seasonNames, boardTitle,
     // the fields are always recorded here (the default labels read them), whoever's setScene runs
     setScene(next) { fields = next.fields; return ownSetScene ? ownSetScene.call(h, next) : []; },
   };
@@ -1131,9 +1134,9 @@ function makePixelView(th, prefs) {
     dlg.querySelector('.px-dlg-body').innerHTML = d.html;
     if (!dlg.open) dlg.showModal();
   }
-  /** The notice board: each project's CLAUDE.md and memory, read from one of its sessions. */
+  /** The notice board: each project's CLAUDE.md and memory, read from one of its sessions. Its title is the world's (boardTitle). */
   async function openBoard() {
-    dlg.querySelector('.px-dlg-title').textContent = 'The notice board: what your projects remember';
+    dlg.querySelector('.px-dlg-title').textContent = th.boardTitle;
     const body = dlg.querySelector('.px-dlg-body');
     body.innerHTML = '<div class="loading"><span class="spinner"></span>Reading…</div>';
     if (!dlg.open) dlg.showModal();
@@ -1286,6 +1289,7 @@ function makeField(view) {
   const FW = 360, ROW = 50, HEAD = 40, X1 = 104, STEP = 31, BASE = 34, PER_ROW = 8;
   let back = null, canvas = null, ctx = null, timer = 0, key = null, sel = null, T = 0, data = null, error = '', fetchedAt = 0, loading = false;
   let opts = {};
+  const repo = () => view.nouns?.repo ?? 'field'; // what the world calls a repo, in the close-up's header, label and messages (the farm's: field)
   const p = (a, b, w, h, c) => { ctx.fillStyle = c; ctx.fillRect(a, b, w, h); };
   const writers = f => f.agents.filter(a => a.wrote).length;
   const kind = f => (f.doc ? 'doc' : f.wrote && writers(f) > 1 ? 'shared' : f.wrote ? 'write' : 'read');
@@ -1365,7 +1369,7 @@ function makeField(view) {
       shown.forEach((f, j) => ov.insertAdjacentHTML('beforeend', `<button type="button" class="fv-hit" data-fv-file="${esc(f.path)}" title="${esc(f.path)} · ${esc(label(f))} · ${ago(f.at)} ago" style="left:${(X1 + j * STEP - 15) * cs}px;top:${(y0 + 2) * cs}px;width:${30 * cs}px;height:${(ROW - 2) * cs}px"><span class="fv-pl" style="top:${(BASE + 7) * cs}px">${esc(nameIn(dir, f.path).split('/').pop())}</span></button>`));
       if (list.length > PER_ROW) ov.insertAdjacentHTML('beforeend', `<div class="fv-more" style="left:${(X1 + shown.length * STEP - 15) * cs}px;top:${(y0 + BASE - 22) * cs}px;width:${30 * cs}px">+${list.length - shown.length}</div>`);
     });
-    const empty = loading && !data ? 'Loading the field…' : error ? error : !g.length ? 'Fallow: no agent read or wrote files here in the last 24 hours' : '';
+    const empty = loading && !data ? `Loading the ${repo()}…` : error ? error : !g.length ? 'Fallow: no agent read or wrote files here in the last 24 hours' : '';
     if (empty) ov.insertAdjacentHTML('beforeend', `<div class="fv-dir fv-empty" style="left:${(X1 - 10) * cs}px;top:${(HEAD + 22) * cs}px">${esc(empty)}</div>`);
     draw();
   }
@@ -1402,9 +1406,9 @@ function makeField(view) {
     try {
       const r = await opts.request('repoTouched', { repo: asked });
       if (asked !== key) return;
-      if (r.ok) { data = r.data; error = ''; } else error = r.status === 0 ? `Could not load the field: ${r.error}` : r.error ?? `Could not load the field (HTTP ${r.status}).`;
+      if (r.ok) { data = r.data; error = ''; } else error = r.status === 0 ? `Could not load the ${repo()}: ${r.error}` : r.error ?? `Could not load the ${repo()} (HTTP ${r.status}).`;
     } catch (err) {
-      if (asked === key) error = `Could not load the field: ${err?.message ?? err}`;
+      if (asked === key) error = `Could not load the ${repo()}: ${err?.message ?? err}`;
     } finally {
       if (asked === key) loading = false;
     }
@@ -1434,7 +1438,7 @@ function makeField(view) {
       const field = view.field(k) ?? { name: k };
       back = document.createElement('div');
       back.className = 'fv-back';
-      back.innerHTML = `<div class="fv" role="dialog" aria-label="Field close-up"><header><b>${esc(field.name)} field</b><span class="muted">the files agents read or wrote here</span><span class="grow"></span><button type="button" class="x" data-fv-close aria-label="Close">×</button></header>
+      back.innerHTML = `<div class="fv" role="dialog" aria-label="${esc(`${repo().charAt(0).toUpperCase()}${repo().slice(1)}`)} close-up"><header><b>${esc(field.name)} ${esc(repo())}</b><span class="muted">the files agents read or wrote here</span><span class="grow"></span><button type="button" class="x" data-fv-close aria-label="Close">×</button></header>
         <div class="fv-body"><div class="fv-scene"><canvas></canvas><div class="fv-ov"></div></div><div class="fv-tree"></div></div>
         <div class="fv-legend"><span><b class="k k-write"></b>watered = written (glows while recent)</span><span><b class="k k-read"></b>white flag = read only</span><span><b class="k k-shared"></b>trampled = written by two ${esc(view.nouns.agents)}</span><span><b class="k k-doc"></b>noticeboard = document (click to read)</span><span><b class="k k-hay"></b>hay = not committed</span><span>ribbons = which ${esc(view.nouns.agent)}</span></div></div>`;
       document.body.appendChild(back);

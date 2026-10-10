@@ -44,7 +44,7 @@ function load() {
   const dom = stubDom();
   const window = { Agentville: { raw: h => { window.registered = h; } } };
   const ctx = vm.createContext({ window, document: dom.document, console, Math, Date, JSON, Map, Set, Intl, ...dom.globals });
-  vm.runInContext(`${code}\n;window.sdk = { makeGrid, withDefaults, engineScene, makePixelView, ACTIVE, defaultHud, panelHud, PXG };`, ctx);
+  vm.runInContext(`${code}\n;window.sdk = { makeGrid, withDefaults, engineScene, makePixelView, makeField, ACTIVE, defaultHud, panelHud, PXG };`, ctx);
   return { window, dom, sdk: window.sdk };
 }
 const twoAgents = window => window.AgentvilleScene.toScene({ generatedAt: NOW, collisions: [], agents: [
@@ -301,6 +301,76 @@ test('season names that are not usable fall back to today\'s words', () => {
   }
   const odd = sdk.withDefaults(fourHooks({ seasonNames: { switch: 5, spring: undefined, summer: null, autumn: '   ', winter: 'x'.repeat(40) } })).seasonNames;
   assert.deepEqual(JSON.parse(JSON.stringify(odd)), { ...defaults, winter: 'x'.repeat(24) });
+});
+
+/** The title the board's dialog gets when a world's 'board' building is clicked (a mounted world, its canvas clicked). */
+function boardTitleShown(world) {
+  const { window, dom, sdk } = load();
+  const els = {}, dlgEls = {}, host = dom.make();
+  let click = null;
+  els['.px-dlg'] = { querySelector: sel => (dlgEls[sel] ??= {}), open: false, showModal() {}, close() {}, contains: () => false };
+  els['.px-help'] = Object.assign(dom.make(), { contains: () => false });
+  host.querySelector = sel => (els[sel] ??= dom.make());
+  host.addEventListener = (type, fn) => { if (type === 'click') click = fn; };
+  const view = sdk.makePixelView(sdk.withDefaults({ ...world, buildingAt: () => 'board' }), prefs);
+  view.mount(host, { still: true });
+  view.update(sdk.engineScene(twoAgents(window)));
+  const canvas = els.canvas;
+  canvas.closest = () => null; // nothing of the HUD's under the pointer: the canvas itself
+  click({ target: canvas, clientX: 399, clientY: 1, button: 0, stopPropagation() {} });
+  return dlgEls['.px-dlg-title']?.textContent;
+}
+
+test("a world can title its notice board (boardTitle): today's title by default; anything but a string with words in it falls back; set as text", () => {
+  const { sdk } = load();
+  const TODAY = 'The notice board: what your projects remember';
+  assert.equal(sdk.withDefaults(fourHooks()).boardTitle, TODAY);
+  assert.equal(sdk.withDefaults(fourHooks({ boardTitle: '  The manuals shelf: what your projects remember ' })).boardTitle, 'The manuals shelf: what your projects remember', 'trimmed');
+  for (const bad of [5, null, undefined, [], {}, '   ', () => 'x']) assert.equal(sdk.withDefaults(fourHooks({ boardTitle: bad })).boardTitle, TODAY, `${String(bad)}: today's`);
+  const long = sdk.withDefaults(fourHooks({ boardTitle: 'x'.repeat(200) })).boardTitle;
+  assert.ok(long.length <= 80 && long.startsWith('xxx'), `cut to 80 at most (${long.length})`);
+  assert.equal(boardTitleShown(fourHooks()), TODAY, "the board's dialog, by default");
+  assert.equal(boardTitleShown(fourHooks({ boardTitle: 'The manuals shelf: what your projects remember' })), 'The manuals shelf: what your projects remember', "the world's own");
+  assert.equal(boardTitleShown(fourHooks({ boardTitle: '<b>x</b>' })), '<b>x</b>', 'HTML in it is text: the title is set as textContent');
+});
+
+/** An element of a stand-in page that keeps what is set on it and finds the same child for a selector again. */
+function keepingEl(make) {
+  const kids = new Map();
+  return new Proxy({}, {
+    get: (t, k) => {
+      if (k in t) return t[k];
+      if (k === 'then' || typeof k === 'symbol') return undefined;
+      if (k === 'querySelector') return sel => { if (!kids.has(sel)) kids.set(sel, keepingEl(make)); return kids.get(sel); };
+      if (k === 'insertAdjacentHTML') return (where, html) => { t.innerHTML = `${t.innerHTML ?? ''}${html}`; };
+      if (k === 'parentElement') return (t.parentElement = keepingEl(make));
+      if (k === 'style') return (t.style = {});
+      if (k === 'getContext') return () => make();
+      if (k === 'clientWidth') return 360;
+      return (t[k] = make());
+    },
+    set: (t, k, v) => { t[k] = v; return true; },
+  });
+}
+
+test("the field close-up names the world's repo: its header, its label and its errors (the farm's word is field)", async () => {
+  for (const [repo, Repo] of [['bay', 'Bay'], ['field', 'Field'], ['<i>pod</i>', '&lt;i&gt;pod&lt;/i&gt;']]) {
+    const { dom, sdk } = load();
+    let back = null;
+    dom.document.createElement = () => (back = keepingEl(dom.make));
+    const view = { nouns: { agent: 'robot', agents: 'robots', repo, repos: `${repo}s`, place: 'factory' }, field: () => ({ name: 'shop' }), isStill: () => true, farmerName: () => null, farmerColor: () => '#000000' };
+    const field = sdk.makeField(view);
+    field.setOptions({ request: async () => ({ ok: false, status: 0, error: 'it is down' }) });
+    field.open('/c/shop');
+    const html = String(back.innerHTML);
+    const word = repo.startsWith('<') ? '&lt;i&gt;pod&lt;/i&gt;' : repo;
+    assert.match(html, new RegExp(`<b>shop ${word}</b>`), `the header: shop ${repo}`);
+    assert.match(html, new RegExp(`aria-label="${repo.startsWith('<') ? Repo : `${Repo} close-up`}`), `its label (${repo})`);
+    if (repo.startsWith('<')) { assert.ok(!html.includes('<i>pod'), 'the noun is escaped'); continue; }
+    await new Promise(r => setTimeout(r, 0));
+    const shown = String(back.querySelector('canvas').parentElement.querySelector('.fv-ov').innerHTML);
+    assert.match(shown, new RegExp(`Could not load the ${repo}: it is down`), `its error (${repo})`);
+  }
 });
 
 test('a season name holding HTML is escaped in the default HUD', () => {

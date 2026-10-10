@@ -352,6 +352,7 @@ A hook you give always wins over its default.
 | `ground`, `shadows(body)`, `top`, `drawFx(agent, body)` | | nothing: drawn under the agents, under each agent, over everything, and over each agent |
 | `season` | `()` | `'summer'`, and no seasons. A world that gives its own has seasons ("Seasons", below): it returns the live season (`'spring'`, `'summer'`, `'autumn'` or `'winter'`), and the HUD gets the Season switch |
 | `seasonNames` | | a field, not a function: `{ switch, spring, summer, autumn, winter }`, what the world calls its Season switch and its four levels ("Seasons", below). Any you leave out keep today's word (`'Season'`, `'spring'`…). The default HUD's button reads `Heat: warm` with them; `hud(state)` gets the object as `state.seasonNames`. The setting still saves `live`, `spring`, `summer`, `autumn` or `winter`, and `PXG.season` holds those too |
+| `boardTitle` | | a field, not a function: the title of the notice board's dialog, which the `'board'` building opens (below); `'The notice board: what your projects remember'` unless you give one. A string with words in it, trimmed and cut to 80 characters; anything else keeps today's. It is shown as text, never HTML. The factory's is `'The manuals shelf: what your projects remember'` |
 | `lights` | `()` | `[]`; each `[x, y, r, colour]` glows at night |
 | `items` | `()` | `[]`; each `[y, draw]`, drawn among the agents in order of `y`. Return a fresh array each call: the engine pushes its own into it |
 | `movers` | `(posOf)` | `[]`; each `{ key, html, title, x, y }`, an HTML label that moves; `posOf(id)` gives an agent's body |
@@ -374,7 +375,7 @@ A hook you give always wins over its default.
 
 Buildings: `buildingAt` returns a key when the point is on a building. The key `'barn'` calls the
 page's ＋ Session (starting a session) and `'board'` opens the notice board, built from
-`boardSessions()`. Any other key goes to `dialog(key)`, which gives the dialog's title and HTML (or
+`boardSessions()` and titled by `boardTitle`. Any other key goes to `dialog(key)`, which gives the dialog's title and HTML (or
 `null` for none).
 
 ### Seasons
@@ -487,7 +488,9 @@ The engine's scene, from the version 1 scene: `farmers` (the agents, each with `
 world's `fromScene` can call it and add its own looks (the farm adds each farmer's `look` and each
 field's crop, fence, soil, pennant and weather).
 
-The field close-up (a field's files) is still drawn as the farm draws it.
+The field close-up (a field's files) is still drawn as the farm draws it. Its header, its label and its
+messages name your `nouns.repo` ("shop bay", "Loading the bay…", "Could not load the bay…"); its legend
+keeps the farm's words, as its pictures are the farm's.
 
 ### `panelHud(params, words)`
 

@@ -519,6 +519,7 @@
       key: 'factory', W, SH: 16, corridors: CORR, grid: FACTORY_GRID, fromScene: factoryScene, help: helpHtml,
       nouns: { agent: 'robot', agents: 'robots', repo: 'bay', repos: 'bays', place: 'factory' },
       seasonNames: { switch: 'Heat', spring: 'cool', summer: 'warm', autumn: 'hot', winter: 'steaming' },
+      boardTitle: 'The manuals shelf: what your projects remember', // the engine opens it (the 'board' building)
       /** A new scene, kept for the dialogs, tips and the floor's details. */
       setScene(next) { scene = next; return []; },
       layout: () => L,
@@ -535,8 +536,8 @@
         if (s) return { group: `st:${s.key}`, zone: `st:${s.key}:${props.doing(f)?.prop ?? ''}`, at: used => { const off = [props.doing(f)?.spot ?? 0, 0, -26, 26, -13, 13].find(o => !used.includes(o)) ?? 0; used.push(off); return [s.cx + off, s.lane]; } };
         if (f.state === 'working') return { group: 'floor', zone: 'floor', cap: TABLE.length, at: i => TABLE[i] };
         if (f.nap) return { group: 'nap', zone: 'nap', cap: PODS.length, at: i => PODS[i] }; // it wakes up by itself: a pod, not your desk
-        if (f.state === 'waiting') return { group: 'desk', zone: 'desk', cap: 3, at: i => [150 + 22 * i, DESK_Y] }; // the queue at your desk, from its left
-        if (f.state === 'turn') return { group: 'turn', zone: 'turn', cap: 3, at: i => [250 - 22 * i, DESK_Y] }; // your turn: from its right, apart
+        if (f.state === 'waiting') return { group: 'desk', zone: 'desk', cap: 3, at: i => [150 + 20 * i, DESK_Y] }; // the queue at your desk, from its left
+        if (f.state === 'turn') return { group: 'turn', zone: 'turn', cap: 3, at: i => [250 - 20 * i, DESK_Y] }; // your turn: from its right (full, the two queues still don't touch)
         if (f.state === 'stale') return { group: 'storage', zone: 'storage', cap: SHELF.length, at: i => SHELF[i] };
         return { group: 'charge', zone: 'charge', cap: PADS.length, at: i => PADS[i] };
       },
