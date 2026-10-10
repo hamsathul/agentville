@@ -302,14 +302,20 @@ const FARM_OR_FACTORY = /\b(farms?|fields?|crops?|harvests?|porch(es)?|barns?|si
 const unescaped = s => s.replace(/&(amp|lt|gt|quot|#39);/g, (m, k) => ({ amp: '&', lt: '<', gt: '>', quot: '"', '#39': "'" })[k]);
 /**
  * What a person reads of some HTML: its words without the markup (the engine's own attributes are data-farm-*), and
- * its tooltips (each title="…", unescaped); without the drill's compounds.
+ * its tooltips and labels (each title="…" and aria-label="…", unescaped); without the drill's compounds.
  */
-const readOf = t => [String(t).replace(/<[^>]*>/g, ' '), ...[...String(t).matchAll(/\btitle="([^"]*)"/g)].map(m => unescaped(m[1]))].join('\n').replace(DRILL_COMPOUNDS, ' ');
-/** Everything the world says to a person about a scene: help, building tips and dialogs, the signs, each soldier's tip, log lines and pop-ups. */
+const readOf = t => [String(t).replace(/<[^>]*>/g, ' '), ...[...String(t).matchAll(/\b(?:title|aria-label)="([^"]*)"/g)].map(m => unescaped(m[1]))].join('\n').replace(DRILL_COMPOUNDS, ' ');
+// The hud's state as the engine gives it (the Menu open, so all of it is there to read).
+const HUD_STATE = { still: true, zoom: 1, saysOn: true, skyMode: 'live', seasonMode: 'live', seasons: true, follow: false, canFollow: false, restingHidden: null, bell: false, nav: {}, panelOpen: true, animals: true };
+/**
+ * Everything the world says to a person about a scene: help, building tips and dialogs, the signs, each soldier's tip,
+ * log lines and pop-ups; and the panel and Menu, live and held at max.
+ */
 function wordsOf(h, scene) {
   h.relayout(h.grid.layoutFor(scene.fields));
   h.setScene(scene);
   const texts = [['help', h.help()], ['startText', h.startText(1)], ['startText', h.startText(7)], ['arriveText', h.arriveText], ['boardTitle', h.boardTitle]];
+  for (const seasonMode of ['live', 'winter']) texts.push([`hud ${seasonMode}`, h.hud({ ...HUD_STATE, seasonMode, seasonNames: h.seasonNames, menuOpen: true })]);
   for (const k of ['barn', 'drones', 'desk', 'board', 'bank', 'dock']) { assert.ok(h.buildingTip(k), `${k} has a tip`); texts.push([`buildingTip ${k}`, h.buildingTip(k)]); }
   for (const k of ['desk', 'bank', 'drones', 'dock']) { const d = h.dialog(k); assert.ok(d?.title && d.html, `${k} opens a dialog`); texts.push([`dialog ${k}`, `${d.title}\n${d.html}`]); }
   h.labels((x, y, html, cls = '', title = '') => texts.push([`label at ${x},${y}`, `${html}\n${title}`]), { desk: 2, turn: 1, storage: 1, charge: 1, floor: 1, nap: 1 });
@@ -322,7 +328,7 @@ function wordsOf(h, scene) {
   return texts;
 }
 
-test('no farm or factory words: the help, every building tip and dialog, the signs, and each soldier\'s tip, log line and pop-up are in drill words', () => {
+test('no farm or factory words: the help, every building tip and dialog, the signs, each soldier\'s tip, log line and pop-up, and the panel and Menu are in drill words', () => {
   const { window, M } = load();
   const h = window.hooks;
   assert.equal(h.boardTitle, 'The briefing board: what your projects remember', "the briefing board's dialog title (the engine's board)");
@@ -344,6 +350,7 @@ test('no farm or factory words: the help, every building tip and dialog, the sig
   for (const snap of [{ generatedAt: TOUR_NOW, agents: [], repos: [], collisions: [] }, signsDay, busyDay()]) texts.push(...wordsOf(h, M.militaryScene(window.AgentvilleScene.toScene(snap))));
   const tips = texts.map(([, t]) => readOf(t)).join('\n');
   for (const tip of ['Build step failed', '3 uncommitted files', '2 unpushed commits', '1 commit behind the remote', 'Click to see the files soldiers touched here']) assert.ok(tips.includes(tip), `the sweep reads the tooltip "${tip}"`);
+  for (const said of ['ON THE BASE', 'Alert: max', 'How to read the base', 'Zoom out']) assert.ok(tips.includes(said), `the sweep reads the panel and Menu: "${said}"`);
   for (const k of ['barn', 'board', 'nothing']) assert.equal(h.dialog(k), null, `${k}: the engine's own, or none`);
   assert.deepEqual(['desk', 'bank', 'drones', 'dock'].map(k => h.dialog(k).title), ['The HQ tent', 'The fuel depot: your plan', 'The drone pad: subagents', "The quartermaster's depot: pull requests"]);
   assert.match(h.dialog('desk').html, /data-farm-pick="w0"/, 'the HQ tent: an Open button for each soldier waiting on you');
@@ -381,11 +388,12 @@ test('the log lines and pop-ups in drill words: to HQ, reporting back, in reserv
   for (const part of ['b0', 'digging in at the shop position', '% context left', '$0.40 so far']) assert.ok(tip.includes(part), `the tip has "${part}": ${tip}`);
 });
 
-test("the private scene: what a person reads has no undefined, NaN or [object], no farm or factory word, and none of the snapshot's real names, titles, branches or services", () => {
+test("the private scene: what a person reads (the panel and Menu too) has no undefined, NaN or [object], no farm or factory word, and none of the snapshot's real names, titles, branches or services", () => {
   const { window, M } = load();
   const h = window.hooks, snap = goldenSnapshot();
   const scene = M.militaryScene(window.AgentvilleScene.privateScene(window.AgentvilleScene.toScene(snap)));
   const texts = wordsOf(h, scene);
+  assert.ok(texts.some(([where, t]) => where === 'hud live' && /ON THE BASE/.test(t)), 'the panel and Menu are read');
   assert.ok(texts.some(([, t]) => /Open pull requests: #41/.test(String(t))), 'the open pull requests sign has a tip to check');
   assert.ok(texts.some(([, t]) => /title="r\d+ · Click to see the files soldiers touched here"/.test(String(t))), "a position's sign has a tooltip to check: its stand-in key, no branch, no deploy's words");
   // the snapshot's real words (MCP server names stay in a private scene, so Gmail is not among them)
@@ -1150,6 +1158,138 @@ test('no plan reading: the alert is ready, the depot says there is no reading, a
   assert.equal(seen.hud.seasonMode, 'winter', '… held at max');
   assert.ok(dom.calls.rects.some(r => r[0] === ink('#ff6b6b') && inBox([124, 12, 19, 12])(r)), 'held at max: the beacon lit on the alert board');
   assert.ok(!M.drumsOf(M.DEPOT_X[0]).some(([x, y]) => dom.calls.rects.some(r => r[0] === ink(M.FUEL) && inBox([x, y, 4, 8])(r))), 'no drum full');
+});
+
+/* ---------- the panel and buttons: the engine's panelHud, in drill words ---------- */
+
+/** Draws each icon as its rows (so a test can tell which icon a button shows) and keeps each one's palette. */
+const ICON_STUB = "globalThis.iconsMade = []; makeSprite = (rows, pal) => { iconsMade.push({ rows, pal }); return { toDataURL: () => 'icon:' + rows.join('|') }; }";
+/** The field exercise with its icons stubbed (ICON_STUB), on a crowded day with a plan: `five` % of the 5-hour limit used. */
+function withPanel(five = 40) {
+  const loaded = load(), { window, ctx, M } = loaded, h = window.hooks;
+  vm.runInContext(ICON_STUB, ctx);
+  const snap = crowd({ plan: { windows: [{ kind: 'five_hour', percentUsed: five, resetsAt: TOUR_NOW + 3_600_000 }, { kind: 'seven_day', percentUsed: 75, resetsAt: TOUR_NOW + 86_400_000 }] } });
+  snap.agents[0].compactions = 2; snap.agents[1].compactions = 1; snap.agents[0].usage = { costUsd: 3.5 };
+  const scene = M.militaryScene(window.AgentvilleScene.toScene(snap));
+  h.relayout(h.grid.layoutFor(scene.fields));
+  h.setScene(scene);
+  const hud = (mode, over = {}) => h.hud({ ...HUD_STATE, seasonMode: mode, seasonNames: h.seasonNames, ...over });
+  const icon = name => `url(icon:${M.ICONS[name].join('|')})`;
+  /** The Alert switch's button, and the panel's alert line. */
+  const alertParts = html => ({ button: /<button type="button" data-farm-season[^>]*>[\s\S]*?<\/button>/.exec(html)[0], line: /<span class="px-season"[\s\S]*?<\/span><\/div>/.exec(html)[0] });
+  return { ...loaded, h, hud, icon, alertParts };
+}
+
+test("the panel and buttons are the engine's panelHud in drill words: soldiers, how often the line advanced, the alert level; every button the engine clicks", () => {
+  const { h, hud } = withPanel();
+  assert.equal(typeof h.hud, 'function');
+  for (const mode of ['live', 'spring', 'winter']) {
+    const html = hud(mode);
+    assert.match(html, /class="px-stats"/, `${mode}: the panel`);
+    assert.match(html, />\$15\.90</, `${mode}: what the sessions cost (31 soldiers at $0.40, one at $3.50)`);
+    assert.match(html, />3 advanced</, `${mode}: three compactions, the line advanced three times`);
+    assert.match(html, /<b class="advance"><\/b>/, `${mode}: beside it a flag of the base's own, not the farm's basket`);
+    for (const attr of ['data-farm-panel', 'data-farm-need', 'data-farm-menu', 'data-farm-nav="list"', 'data-farm-nav="worlds"', 'data-farm-nav="session"', 'data-farm-nav="broadcast"', 'data-farm-nav="chats"', 'data-farm-follow', 'data-farm-resting', 'data-farm-bubbles', 'data-farm-animals', 'data-farm-sky', 'data-farm-season', 'data-farm-motion', 'data-farm-bell', 'data-farm-help', 'data-farm-zoom="0"']) assert.ok(html.includes(attr), `${mode}: ${attr}`);
+    const read = readOf(html);
+    assert.doesNotMatch(read, FARM_OR_FACTORY, mode);
+    assert.doesNotMatch(read, /\bseasons?\b/i, `${mode}: the switch and its tooltips say alert`);
+    for (const word of ['soldier', 'base', 'alert level', 'Alert: ']) assert.ok(read.includes(word), `${mode}: says ${word}`);
+  }
+});
+
+test("its buttons are in the engine's Menu, top right: the dashboard's (Broadcast and Chats too), then the base's switches ON THE BASE, the bell, help and zoom; nothing along the bottom", () => {
+  const { h, icon } = withPanel();
+  const shut = h.hud({ ...HUD_STATE, seasonNames: h.seasonNames }), open = h.hud({ ...HUD_STATE, seasonNames: h.seasonNames, menuOpen: true });
+  const nav = shut.slice(shut.indexOf('<div class="px-nav">'));
+  const menuBtn = /<button type="button" data-farm-menu[^>]*>[\s\S]*?<\/button>/.exec(nav)[0];
+  assert.match(menuBtn, /aria-expanded="false" title="The dashboard's buttons, the base's switches, the bell, help and zoom"/);
+  assert.ok(menuBtn.includes(icon('menu')) && /class="px-sr">Menu</.test(menuBtn), "its button: the base's menu icon, and the word Menu");
+  assert.match(nav, /class="px-menu" role="group" aria-label="Menu" hidden>/);
+  const menu = nav.slice(nav.indexOf('class="px-menu"'));
+  const heads = [...menu.matchAll(/<div class="px-menu-h">[\s\S]*?class="px-sr">([^<]*)</g)].map(m => m[1]);
+  assert.deepEqual(heads, ['DASHBOARD', 'ON THE BASE'], "its headings: the dashboard's, then the base's own");
+  for (const [what, name] of [['broadcast', 'broadcast'], ['chats', 'chats'], ['list', 'list'], ['worlds', 'world']]) assert.ok(new RegExp(`data-farm-nav="${what}"[^>]*>[\\s\\S]*?</button>`).exec(menu)[0].includes(icon(name)), `${what}: the base's icon`);
+  const at = s => menu.indexOf(s);
+  for (const attr of ['data-farm-nav="list"', 'data-farm-nav="broadcast"', 'data-farm-nav="chats"', 'data-farm-follow', 'data-farm-season', 'data-farm-bell', 'data-farm-help', 'data-farm-zoom="1"']) assert.ok(at(attr) > 0, `${attr} is in the menu`);
+  assert.ok(at('DASHBOARD') < at('data-farm-nav="list"') && at('ON THE BASE') < at('data-farm-follow') && at('data-farm-nav="theme"') < at('ON THE BASE'), 'each heading over its buttons');
+  assert.doesNotMatch(shut, /px-tools/, 'no row along the bottom');
+  assert.match(open, /data-farm-menu aria-expanded="true"/);
+  assert.doesNotMatch(open, /class="px-menu"[^>]*hidden/);
+});
+
+test("the Alert switch and the panel: the alert board by HQ for each level (its face green, yellow, amber or red, a bar lit for each step up, its beacon lit at max); live follows the 5-hour limit, a held level shows its 📌 and the real use", () => {
+  const { M, ctx, hud, icon, alertParts } = withPanel(40);
+  const levels = ['calm', 'ready', 'high', 'max'];
+  for (const name of levels) assert.ok(M.ICONS[name].length === 9 && M.ICONS[name].every(r => /^[.PFSwdRL]{9}$/.test(r)), `${name}: 9 rows of 9 known letters`);
+  assert.equal(new Set(levels.map(n => M.ICONS[n].join())).size, 4, 'four boards, no two alike');
+  assert.deepEqual(levels.map(n => M.ICONS[n].filter(r => r.includes('PFwwwFP')).length), [1, 2, 3, 4], 'a bar lit for each step up');
+  assert.deepEqual(levels.map(n => M.ICONS[n][0].includes('R')), [false, false, false, true], 'the beacon lit only at max');
+  for (const mode of LEVELS) hud(mode); // each level's board drawn
+  const pal = name => vm.runInContext('iconsMade', ctx).find(s => s.rows.join() === M.ICONS[name].join())?.pal ?? {};
+  assert.deepEqual(levels.map(n => [pal(n).F, pal(n).S]), [['#6cc04a', '#3f9b3a'], ['#ffd43b', '#f0b429'], ['#f08a24', '#c8681a'], ['#e04a3a', '#9c3b30']], "each board's face and unlit bars in the colours of the board by HQ at that level");
+  const live = alertParts(hud('live'));
+  assert.ok(live.button.includes(icon('ready')) && /Alert: live/.test(live.button), 'live at 40%: the switch shows the ready board, and says live');
+  assert.ok(live.line.includes(icon('ready')) && />ready</.test(live.line) && !live.line.includes('📌'), "the panel's line: ready, live");
+  assert.match(live.line, /title="The alert level follows your plan&#39;s 5-hour limit: 40% used\. Calm while it is fresh, then ready and high; max when it is nearly used up/);
+  for (const [mode, name] of [['spring', 'calm'], ['autumn', 'high'], ['winter', 'max']]) {
+    const held = alertParts(hud(mode));
+    assert.ok(held.button.includes(icon(name)) && new RegExp(`Alert: ${name}<`).test(held.button), `held ${name}: its board and its name on the switch`);
+    assert.ok(held.line.includes(icon(name)) && /📌/.test(held.line) && /· 5-hour 40%/.test(held.line), `held ${name}: the panel shows it with a 📌 and the real 5-hour use`);
+    assert.match(held.line, new RegExp(`title="Held at ${name} by the Alert switch, not live\\. The live alert level would be ready \\(your plan&#39;s 5-hour limit: 40% used\\)\\. The switch goes back to live after max"`));
+  }
+  assert.match(alertParts(withPanel(95).hud('live')).line, /title="The alert level follows your plan&#39;s 5-hour limit: 95% used/, 'live at 95%: the tip follows the plan');
+  assert.ok(alertParts(withPanel(95).hud('live')).line.includes(icon('max')), '… and the panel shows the max board');
+});
+
+test("the panel with no plan reading: the alert level is ready and its tooltip says there is no reading yet, a % that isn't a number counts as none; a held level says no 5-hour reading", () => {
+  const { window, M, ctx } = load(), h = window.hooks;
+  vm.runInContext(ICON_STUB, ctx);
+  const state = { ...HUD_STATE, seasonNames: h.seasonNames };
+  for (const plan of [null, { windows: [{ kind: 'five_hour', percentUsed: 'lots', resetsAt: TOUR_NOW }] }]) {
+    h.setScene(M.militaryScene(window.AgentvilleScene.toScene(crowd({ plan }))));
+    const live = h.hud(state), held = h.hud({ ...state, seasonMode: 'autumn' }), what = plan ? 'a % that is no number' : 'no plan';
+    assert.match(live, /title="The alert level follows your plan&#39;s 5-hour limit \(no reading yet: ready\)/, what);
+    assert.ok(live.includes(`url(icon:${M.ICONS.ready.join('|')})`), `${what}: the ready board`);
+    assert.match(held, /title="Held at high by the Alert switch, not live\. The live alert level would be ready \(your plan&#39;s 5-hour limit: no reading yet\)/, what);
+  }
+  h.setScene(M.militaryScene(window.AgentvilleScene.toScene(crowd())));
+  assert.match(h.hud({ ...state, seasonMode: 'autumn' }), /· no 5-hour reading/);
+  h.setScene(M.militaryScene(window.AgentvilleScene.toScene(crowd({ plan: { windows: [{ kind: 'five_hour', percentUsed: 97, reset: true, resetsAt: TOUR_NOW }] } }))));
+  assert.match(h.hud(state), /title="The alert level follows your plan&#39;s 5-hour limit: just reset\./, 'a new window: just reset');
+});
+
+test("with two Claude accounts, the panel has a gauge for each (its name and week), as the base has a fuel depot for each; a nameless one is account N; the alert level is the first's", () => {
+  const { window, M } = load(), h = window.hooks;
+  h.setScene(M.militaryScene(window.AgentvilleScene.toScene(TWO)));
+  const html = h.hud({ ...HUD_STATE, seasonNames: h.seasonNames });
+  assert.deepEqual([...html.matchAll(/class="px-gauge" title="(Your [^"]*)"/g)].map(m => m[1]), ['Your work account: 40% of its week, 30% of its 5 hours (from the mod)', 'Your home account: 92% of its week, 95% of its 5 hours (from the mod)']);
+  assert.match(html, /The alert level follows your plan&#39;s 5-hour limit: 30% used/);
+  h.setScene(M.militaryScene(window.AgentvilleScene.toScene(accounts(account('work', 30, 40), { ...account('home', 95, 92), name: '' }))));
+  const nameless = h.hud({ ...HUD_STATE, seasonNames: h.seasonNames, menuOpen: true });
+  assert.ok(nameless.includes('title="Your account 2: 92% of its week, 95% of its 5 hours (from the mod)"'), 'the nameless one is account 2');
+  assert.doesNotMatch(readOf(nameless), /\bundefined\b|\bNaN\b|\[object/);
+});
+
+test("the panel's colours suit the base: olive glass with a brass edge, khaki words, the AGENTVILLE mark in brass; on the Menu's buttons olive names, brass states and headings; a flag beside how often the line advanced", () => {
+  const { M } = load(), W = M.MILITARY_WORDS;
+  /** A colour's hue (degrees), saturation and lightness (0–1). */
+  const hsl = c => {
+    const [r, g, b] = [1, 3, 5].map(i => parseInt(c.slice(i, i + 2), 16) / 255), max = Math.max(r, g, b), min = Math.min(r, g, b), d = max - min, l = (max + min) / 2;
+    const h = d === 0 ? 0 : max === r ? 60 * (((g - b) / d + 6) % 6) : max === g ? 60 * ((b - r) / d + 2) : 60 * ((r - g) / d + 4);
+    return { h, s: d === 0 ? 0 : d / (1 - Math.abs(2 * l - 1)), l };
+  };
+  const hex = rgb => `#${rgb.map(n => Number(n).toString(16).padStart(2, '0')).join('')}`;
+  const olive = c => { const { h, l } = hsl(c); return h >= 55 && h <= 85 && l < 0.35; };
+  const khaki = c => { const { h, s, l } = hsl(c); return h >= 35 && h <= 60 && s < 0.65 && l >= 0.5; };
+  const brass = c => { const { h, s, l } = hsl(c); return h >= 35 && h <= 52 && s >= 0.45 && l >= 0.2 && l <= 0.75; };
+  for (const k of ['textColor', 'dimColor', 'labelColor']) assert.ok(khaki(W[k]), `${k} ${W[k]}: khaki`);
+  for (const k of ['brandColor', 'toolStateColor']) assert.ok(brass(W[k]), `${k} ${W[k]}: brass`);
+  for (const k of ['toolColor', 'shadowColor']) assert.ok(olive(W[k]), `${k} ${W[k]}: olive`);
+  const glass = /\.px-stats \{ background: rgba\((\d+), (\d+), (\d+), [\d.]+\); border-color: (#[0-9a-f]{6});/.exec(M.PANEL_STYLE);
+  assert.ok(glass && olive(hex(glass.slice(1, 4))) && brass(glass[4]), `the glass olive, its edge brass: ${M.PANEL_STYLE}`);
+  assert.match(M.PANEL_STYLE, /\.px-hud \.advance \{/, 'the flag beside "advanced" is the base\'s own class');
+  assert.equal(W.compactedIcon, 'advance');
+  assert.equal(W.costIcon, 'coin', 'the cost stays a coin');
 });
 
 /* ---------- what soldiers hold, their details, and what moves: props, drones and the K9, the drone pad, jeeps, dispatch riders ---------- */

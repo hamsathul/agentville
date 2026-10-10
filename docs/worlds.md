@@ -36,11 +36,14 @@ Keys: a built-in world is named by its folder in `web/worlds/` (the farm is `far
 |---|---|---|
 | 🌾 **Farm** | `farm` | Built in, and the default: every agent a farmer, every repo a field, with animals of its own. The README's "The farm" says what each thing on it means |
 | 🤖 **Robot factory** | `factory` | Built in: a bright workshop where every agent is a robot put together from parts picked by its id, and every repo an assembly bay where a robot is built as the context fills. It shows everything the farm shows, its own way: the 5-hour limit is floor heat (its season switch is **Heat**: `seasonNames`), a message is a capsule through pneumatic tubes (its own `flight`), and its panel and Menu are the farm's (`panelHud`) in its words. A robot dog, a robot vacuum and a cat live there. `factory.png` below is taken from the golden `factory-day` view (`npm run golden`, the factory chosen by day, animals off), so retake it from that view. The README's "The robot factory" says what each thing means; `web/worlds/factory/world.js` is the second full example after the farm |
+| 🎖️ **Field exercise** | `military` | Built in: a bright, friendly army base on manoeuvres where every agent is a soldier in a field jacket of its colour (the people kit's `jacket`), and every repo a position fortified as the context fills, until its flag is raised. It shows everything the farm shows, its own way, and nobody is ever shown hurt: the 5-hour limit is the alert level (its season switch is **Alert**: `seasonNames`; its `coldSeason` is `null`, so its animals never act cold at max), a message is the engine's carrier pigeon, and its panel and Menu are the farm's (`panelHud`) in drill words. The regimental mascots live there: a goat in a red dress coat (the goat's `mascot` look), the mess cat and two depot mice. `military.png` below is taken from the golden `military-day` view (`npm run golden`, the field exercise chosen by day, animals off), so retake it from that view. The README's "The field exercise" says what each thing means; `web/worlds/military/world.js` is the third full example |
 | 🌱 **Starter** | `starter` | The template `npm run new-world` copies: plain, short, and not in the list of worlds (see "The starter world"). It can still be framed, so the test page and `check-world` run it |
 
 ![The farm: every agent a farmer, every repo a field](farm.png)
 
 ![The robot factory: every agent a robot, every repo an assembly bay](factory.png)
+
+![The field exercise: every agent a soldier, every repo a position](military.png)
 
 ![The starter: people at the door and on the bench, a plot for each repo, and a cat](starter.png)
 
@@ -363,7 +366,7 @@ A hook you give always wins over its default.
 | `ground`, `shadows(body)`, `top`, `drawFx(agent, body)` | | nothing: drawn under the agents, under each agent, over everything, and over each agent |
 | `season` | `()` | `'summer'`, and no seasons. A world that gives its own has seasons ("Seasons", below): it returns the live season (`'spring'`, `'summer'`, `'autumn'` or `'winter'`), and the HUD gets the Season switch |
 | `seasonNames` | | a field, not a function: `{ switch, spring, summer, autumn, winter }`, what the world calls its Season switch and its four levels ("Seasons", below). Any you leave out keep today's word (`'Season'`, `'spring'`…). The default HUD's button reads `Heat: warm` with them, and its tooltip lists them ("…or hold one: cool, warm, hot or steaming"); `hud(state)` gets the object as `state.seasonNames`. The setting still saves `live`, `spring`, `summer`, `autumn` or `winter`, and `PXG.season` holds those too |
-| `coldSeason` | | a field, not a function: the level the animals feel as cold (scarves, huddling, longer rests): `'spring'`, `'summer'`, `'autumn'` or `'winter'`, or `null` for none. `'winter'` by default (anything else is the default too), so the farm and the factory are as they were. See "Seasons" |
+| `coldSeason` | | a field, not a function: the level the animals feel as cold (scarves, huddling, longer rests): `'spring'`, `'summer'`, `'autumn'` or `'winter'`, or `null` for none. `'winter'` by default (anything else is the default too), so the farm and the factory are as they were; the field exercise sets `null`. See "Seasons" |
 | `boardTitle` | | a field, not a function: the title of the notice board's dialog, which the `'board'` building opens (below); `'The notice board: what your projects remember'` unless you give one. A string with words in it, trimmed and cut to 80 characters; anything else keeps today's. It is shown as text, never HTML. The factory's is `'The manuals shelf: what your projects remember'` |
 | `lights` | `()` | `[]`; each `[x, y, r, colour]` glows at night |
 | `items` | `()` | `[]`; each `[y, draw]`, drawn among the agents in order of `y`. Return a fresh array each call: the engine pushes its own into it |
@@ -422,7 +425,7 @@ not live.
 
 The animals feel the cold in `winter` unless the world says otherwise: its `coldSeason` field names the level they
 treat as cold (scarves, huddling, longer rests), or is `null` for none. A world whose levels are not weather
-(an alert level, say, whose top is `winter`) sets `coldSeason: null` so its animals never act cold.
+(an alert level, say, whose top is `winter`: the field exercise's) sets `coldSeason: null` so its animals never act cold.
 
 Seasons for the starter, by the 5-hour limit as on the farm (its `scene`, `W` and `DOOR_Y` are its
 own names):
@@ -563,7 +566,8 @@ and `agents` (`'world'`, `'agent'`, `'agents'`), with the farm's colours:
 A word is text: HTML in it is shown as it is written, never run. A word that isn't a string gets the
 plain one; a noun (`place`, `agent`, `agents`) must be a non-empty string, trimmed and cut to 40 characters, and any other word is cut to 300; `words` that isn't an object is none. The rest stays the engine's in any world: the count cards, the meters, the dashboard's buttons,
 the MENU and DASHBOARD words, the Bell, and the `data-farm-*` attributes the engine's clicks find the buttons by. Its stylesheet's
-`coin` and `basket` are the two icon classes a world can name without CSS of its own.
+`coin` and `basket` are the two icon classes a world can name without CSS of its own; another needs a
+style of its own (the field exercise's flag, below).
 
 The factory's `hud` is `p => panelHud({ ...p, scene, season: heat, iconImg, seasonIcon, seasonTip }, FACTORY_WORDS)`:
 its words are robots and `built` for compactions, its tooltips say floor heat, its menu's heading is
@@ -576,6 +580,18 @@ frame allows inline styles). A world may recolour the panel the same way, at the
 const glass = document.createElement('style'); // the panel's colours only: the engine still lays it out and fits the world clear of it
 glass.textContent = '.px-stats { background: rgba(28, 42, 72, .92); border-color: #3a3a40; }';
 document.head.append(glass);
+```
+
+The field exercise's `hud` is the same call with `MILITARY_WORDS`: soldiers, `advanced` for compactions
+(the line advances), tooltips in drill words, `ON THE BASE` over its switches, khaki words and a brass
+mark. Its `seasonIcon` gives the alert board by HQ at each level (its face green, yellow, amber or red,
+a bar lit for each step up, the beacon lit at max), drawn with a palette of the level's own colours, and
+its `seasonTip` explains the alert level, live or held. Its style gives the panel olive glass with a
+brass edge, and an icon class of its own for `compactedIcon`: a little red flag on a brass pole.
+
+```js
+// A class of your own for costIcon or compactedIcon: its look in the same style element.
+glass.textContent += '\n.px-hud .advance { display: inline-block; width: 9px; height: 11px; background: linear-gradient(#e04a3a, #e04a3a) 2px 1px / 7px 5px no-repeat, linear-gradient(#e6c25a, #e6c25a) 0 0 / 2px 11px no-repeat; }';
 ```
 
 ## The people kit
@@ -969,10 +985,11 @@ on the test page.
 ### The helper's lines
 
 With ✨ Helper's **Animal lines** ticked (off by default), Haiku writes fresh lines for the animals on
-screen, from the dashboard's facts (names, states, what just happened) and, for the farm or the
-factory, which world it is, and the page sends them to the world as `chatter` ("Messages"). While a
-`robodog` or a `vacuum` is on screen, only a session with mod 0.9.1 is asked. The kit says them
-first, each once:
+screen, from the dashboard's facts (names, states, what just happened) and, for the farm, the factory
+or the field exercise, which world it is, and the page sends them to the world as `chatter`
+("Messages"). While a `robodog` or a `vacuum` is on screen, only a session with mod 0.9.1 is asked.
+The field exercise's lines are in its drill words from mod 0.9.2; an older mod still writes them, in
+plain words. The kit says them first, each once:
 
 - for `idle` (now and then) and for the five reactions (`deployFailed`, `deployOk`, `harvest`,
   `merged`, `arrive`), as `lines` keys of the same names;
@@ -1230,9 +1247,10 @@ check-world: u/my-bakery (/Users/you/.agentville/worlds/my-bakery)
   · outfit parts the people kit doesn't have (drawn as the default): hat:hardhatt
 ```
 
-The starter, the farm and the factory pass with no cross. The farm and the factory draw no item the
-same; their only dots are hooks left to their defaults (the farm's `seasonNames`, `coldSeason` and `boardTitle`, the
-factory's `tag`, `shadows` and `coldSeason`). The starter's dots are explained below the checklist.
+The starter, the farm, the factory and the field exercise pass with no cross. The farm, the factory and
+the field exercise draw no item the same; their only dots are hooks left to their defaults (the farm's
+`seasonNames`, `coldSeason` and `boardTitle`, the factory's `tag`, `shadows` and `coldSeason`, the field
+exercise's `tag` and `shadows`). The starter's dots are explained below the checklist.
 
 ### The checklist
 
@@ -1389,7 +1407,7 @@ gaps").
 | `bell { on }` | Turns the page's bell on or off (`on` must be `true` or `false`) |
 | `motion { still }` | The world stood still, or moves again (`true` or `false`); the page keeps it for `settings` |
 | `diary { entries }` | Shows the world's diary in the sidebar: at most 20 entries `{ at, state, who, text }`, in the order given (the farm puts the newest first), with `state` one of the agents' states and `at` a time. `who` is cut to 80 characters and `text` to 300, and both are shown as text, never as HTML. One bad entry drops the whole message. Drawn at most every quarter second: the newest entries are drawn when their turn comes |
-| `cast { animals }` | The world's animals, for the ✨ Helper's lines: at most 12 `{ kind, name }`, each `kind` one of the creature library's, each `name` 30 characters or fewer (others are dropped). The engine sends it when a world with animals starts. While ✨ Helper's Animal lines is ticked, the page tells the collector which kinds are on screen, then every 5 minutes. Only the kinds reach Haiku (its names for them stay on the page). For the farm and the factory the page also sends the world's key (`farm` or `factory`), so the lines are in that world's words; the starter and your own worlds are never named. Nothing else changes: not how often. The page takes one `cast` per second at most, and none while the world is out of sight. The engine sends an empty one while the Animals switch is off |
+| `cast { animals }` | The world's animals, for the ✨ Helper's lines: at most 12 `{ kind, name }`, each `kind` one of the creature library's, each `name` 30 characters or fewer (others are dropped). The engine sends it when a world with animals starts. While ✨ Helper's Animal lines is ticked, the page tells the collector which kinds are on screen, then every 5 minutes. Only the kinds reach Haiku (its names for them stay on the page). For the farm, the factory and the field exercise the page also sends the world's key (`farm`, `factory` or `military`), so the lines are in that world's words; the starter and your own worlds are never named. Nothing else changes: not how often. The page takes one `cast` per second at most, and none while the world is out of sight. The engine sends an empty one while the Animals switch is off |
 | `store { key, value }` | Saves one of the world's settings in the page's storage, as `tracker-world:<world>:<key>`. Names match `^[a-z][a-z0-9-]{0,31}$`; values are strings of 16384 characters at most. A world keeps at most 64 settings, 64 KB in all (names and values, what it saved before included): a `store` past either is refused (the page says so once, in its console). `migrated` is the page's own |
 | `request { id, kind, agentId? \| repo? }` | Reads one of two things with the token and answers with `reply`: `agentFiles` (an agent's files and memory; `agentId` must be in the scene) or `repoTouched` (the files agents touched in a repo; `repo` must be a repo's `key` in the scene). At most four are answered at a time, counting any still running for a frame this one replaced: a fifth is refused at once (the bridge keeps a world under that: see below). One the collector hasn't answered in 30 seconds is cut off (`status: 0`). One that can't be done is refused, and still answered |
 

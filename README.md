@@ -47,6 +47,7 @@ It listens on `127.0.0.1` only and reads what Claude Code already writes to disk
   - [Worlds](#worlds)
     - [The farm](#the-farm)
     - [The robot factory](#the-robot-factory)
+    - [The field exercise](#the-field-exercise)
   - [Notifications and the bell](#notifications-and-the-bell)
   - [Inside Claude Code: the mod](#inside-claude-code-the-mod)
 - [Configuration](#configuration)
@@ -128,8 +129,9 @@ It listens on `127.0.0.1` only and reads what Claude Code already writes to disk
 - A bell in the page, and a count in the tab title.
 - Inside Claude Code: a `/tracker` pane, a status line and toasts.
 
-**Watch it as a farm, a robot factory, or a world of your own** (optional)
-- Choose how the dashboard draws your agents: the farm, the robot factory, or a world of your own.
+**Watch it as a farm, a robot factory, a field exercise, or a world of your own** (optional)
+- Choose how the dashboard draws your agents: the farm, the robot factory, the field exercise, or a
+  world of your own.
 - A pixel farm where every agent is a farmer and every repo a field. Crops grow as context
   fills, weather shows the last deploy, the season follows your 5-hour limit (or hold one with the
   **Season** switch), a cart runs to town for each web call, each MCP server's cart drives to the
@@ -145,7 +147,14 @@ It listens on `127.0.0.1` only and reads what Claude Code already writes to disk
   context fills. Drones are subagents and web calls, AGVs drive to the robot calling an MCP server,
   messages shoot through pneumatic tubes, and the floor heats up with your 5-hour limit (or hold a
   level with the **Heat** switch). A robot dog, a robot vacuum and a cat live there just for fun.
-- The farm and the factory are worlds: each runs in a sandboxed frame of its own, with no access to
+- A field exercise, the third world: a bright, friendly army base on manoeuvres, showing everything
+  the farm shows. Every agent is a soldier in a field jacket of its colour, and every repo a position
+  fortified as the context fills, until its flag is raised. Drones are subagents, jeeps drive to the
+  soldier calling an MCP server, a dispatch rider goes out for each web call, and the alert level
+  follows your 5-hour limit (or hold one with the **Alert** switch). It is a drill: nobody is ever
+  shown hurt. The regimental mascots, a goat in a dress coat, the mess cat and the depot mice, live
+  there just for fun.
+- The farm, the factory and the field exercise are worlds: each runs in a sandboxed frame of its own, with no access to
   the token, and asks the page for the little it needs ([docs/worlds.md](docs/worlds.md)). A world
   from your own folder sees no words or paths until you tick **Can see what agents say** for it.
 - Make your own world, or have Claude make one: `npm run new-world`, the test page, `check-world`
@@ -472,8 +481,8 @@ tick there. The farm's Menu has no ✨ Helper yet: to change it from the farm, g
   - **What it sends:** the dashboard's facts only: agent and repo names (the names the dashboard
     shows, which Claude Code may take from a conversation's title), each agent's state, a word for
     what it is doing (editing, running, searching…), how many are waiting or working, which kinds of
-    animal are on screen, what just happened, and which built-in world it is (`farm` or `factory`,
-    so the lines are in its words; your own worlds and the starter aren't named). Never code, file
+    animal are on screen, what just happened, and which built-in world it is (`farm`, `factory` or
+    `military`, so the lines are in its words; your own worlds and the starter aren't named). Never code, file
     paths, commands, branches or anything else said in a conversation. One of your open sessions
     (idle ones first, taking turns) makes the call.
   - **What the animals say:** each fresh line once, before their own; what you click (Pet, Feed…)
@@ -481,7 +490,8 @@ tick there. The farm's Menu has no ✨ Helper yet: to change it from the farm, g
     names in them.
   - It needs mod 0.9.0 in a session (`/reload-plugins`). While the robot dog or the robot vacuum
     is on screen (and 10 minutes after) it needs 0.9.1: older mods aren't asked, so no lines come
-    until a session has it. ✨ Helper says when no session can run it.
+    until a session has it. ✨ Helper says when no session can run it. The field exercise's lines are
+    in its drill words with 0.9.2; an older mod is still asked, and writes them in plain words.
 - **A daily limit** (200 to start, 1 to 2,000) caps the calls. The dialog shows today's count and
   the last error, and says when today's limit is reached (it resets at midnight). **Switch off**
   asks for nothing more at once; a call already under way finishes, and its answer is dropped.
@@ -739,8 +749,9 @@ The **⚙ Claude Code** button in the top bar opens your Claude Code setup in th
 
 ### Worlds
 
-A world is a way to draw what the dashboard knows. Two come built in: **the farm** (the default;
-[The farm](#the-farm)) and **the robot factory** ([The robot factory](#the-robot-factory)). **World**,
+A world is a way to draw what the dashboard knows. Three come built in: **the farm** (the default;
+[The farm](#the-farm)), **the robot factory** ([The robot factory](#the-robot-factory)) and **the
+field exercise** ([The field exercise](#the-field-exercise)). **World**,
 in a world's **Menu** (top right), opens the list of worlds: pick one. A world that might draw no
 buttons of its own — any world of yours, and a built-in one that draws itself — gets a small
 control from the page in a corner instead: **World ▾** for the list of worlds and **☰ List** for
@@ -1118,6 +1129,112 @@ for its conversation, and a building for the rest:
 The factory pauses when its tab is hidden, or while the list shows, and follows the system's
 reduce-motion setting.
 
+#### The field exercise
+
+The same live data as a bright, friendly army base on manoeuvres: every agent is a soldier and every
+repo a position on the exercise field. Choose **Field exercise** in the list of worlds (**World**).
+Everything the dashboard knows has its picture here, and the panel, buttons, sidebar, zoom and clicks
+work as in any built-in world, in drill words. It is a drill, not a war: nobody is ever shown hurt, a
+failed deploy is a practice charge going off in a puff of smoke, and a stale agent waits in reserve.
+
+![The field exercise: every agent a soldier, every repo a position](docs/military.png)
+
+**The layout.** Along the back, under the sky by your clock and the camp's flagpoles with bunting in
+your agents' colours, stand the motor pool gate, the drone pad, the alert board, the **HQ tent**, the
+briefing board, the fuel depot and the quartermaster's depot, with a sandy track in front of them.
+Below are the positions, one per repo, inside the range's rope, three across and up to 18, each
+keeping its place while you look (a repo that goes away leaves its position empty for a day). A
+project's positions share a mown patch with a sign. Down the left side are the mess tent, the reserve
+tents, the drill ground, two cots under a little clock and the vehicle park.
+
+**The soldiers.** Each wears a field jacket in its agent's colour in the list, khaki trousers, and a
+helmet, a beret or a cap picked by its agent's id, so the same agent is always the same soldier.
+Codex soldiers have a slate-grey stripe down the jacket.
+
+**Reading the base.** The **Help** button opens the full legend, including everything a soldier can
+carry.
+
+| You see | It means |
+|---|---|
+| A soldier queued at the left of the HQ tent, waving a red **!**, a red ring at its feet (and HQ's red pennant run up) | It is waiting on you, awaiting orders (a rolled map: a plan to approve) |
+| A soldier at the right of the HQ tent with a dispatch | It is reporting back: its turn ended (a **?** bubble: it asked you something) |
+| A soldier at a position, holding something | It is working in that repo. What it holds is its step: field manual = reading, binoculars = searching, a radio set = the web, shovel = editing, sandbag = a new file, mine detector = tests, toolbox = build, stamped crate = commit, wheelbarrow = push, a signal flare = deploy… |
+| A position fortified | The context filling: marker stakes, then a sandbag ring (30%), a low wall (50%), a lookout post (70%), and the flag raised when it is nearly full (85%) |
+| **Advanced!**, and the flag carried forward with a cheer | Its conversation was compacted: the line advances, and the position starts again from its stakes |
+| A radio on its back, the aerial blinking / a clipboard | It is thinking between steps / its task list (its name says e.g. 3/7) |
+| The pin on its headgear | Its model: purple Opus, blue Sonnet, green Haiku, orange Fable |
+| Chevrons on its sleeve | What it has cost: one from $1, two from $10, three from $50 |
+| Speed lines / a yellow and black armband / sweat drops | Fast mode / bypass permissions / a hot CPU |
+| Small drones hovering by a soldier | Its subagents, up to four (a K9 dog sniffing about: an Explore one) |
+| Drones docked on the drone pad / circling over it, with **+N** | Subagents that finished lately / more running than their soldiers can lead |
+| A dispatch rider on a motorbike, out of the motor pool and back | A web call (a fetch or a search), labelled with where it goes |
+| Jeeps in the vehicle park | One for each MCP server your agents called in the last hour. While a soldier calls one, its jeep drives over with the server's name and waits beside it until the call is done, and a few seconds more |
+| A carrier pigeon flying from one soldier to another | One session messaging another |
+| Loose sandbags / supply crates / a mail sack at its post | Uncommitted files / unpushed commits / commits behind |
+| A green flare / a practice charge: a big grey puff and a scorched patch, nobody hurt / red range flags flapping, with distant thumps / a **HOLD** board | Last deploy passed / failed / running / Actions didn't run |
+| Yellow caution tape round a position, pulsing | Two agents writing to the same repo (faster when it's serious) |
+| A blue pennant on a position's sign / a camouflage net | A branch other than main / a worktree, beside its repo's position |
+| A field generator humming by the post | A background command still running |
+| A soldier asleep on a cot | It will wake up by itself (`/loop`), with when |
+| Eating at the mess tent, eyes shut / on a crate by the reserve tents, greyed a little | Idle / stale: in reserve |
+| Soldiers on the drill ground | Working outside any repo |
+| Supply crates at the quartermaster's depot, tagged by their checks | Open pull requests. **Supplies in!** means one was merged: its crate is carried in |
+| The fuel depot's drums | Your plan's weekly usage: they empty as the week is used; its lamp turns amber from 70% and blinks red from 90% |
+| A second fuel depot, left of the motor pool gate | With two Claude accounts: each has its depot, its name and week on the tag at its foot. The alert level follows the first account |
+| The alert board by HQ | Your plan's 5-hour limit (below) |
+
+**The alert level and the Alert switch.** The alert level follows your plan's 5-hour limit, on the
+alert board by the HQ tent: calm while it is fresh (green, the flags hanging limp, soldiers strolling),
+then ready (yellow, the flags flying), high (amber, the base's lights warm by day, soldiers walking
+faster) and max (a red beacon spinning on the board, the flags snapping, soldiers at the double) when
+it is nearly used up; a new window brings it back to calm. The **Alert** switch, in the Menu (**On
+the base**), holds a level instead: each click moves it on (live, calm, ready, high, max, then live
+again), and it is remembered, as the sky is. It only holds the look: while a level is held, the panel
+shows it with a 📌 and your real 5-hour use (for example "max 📌 · 5-hour 42%"), and its tooltip says
+it is held, not live. With no reading of your plan yet, the alert level is ready.
+
+**Day and night.** The sky follows your clock. At night the searchlights on HQ's roof sweep the sky,
+the tents glow from inside, lanterns light the track, a working soldier's headgear lamp is lit, and
+now and then a slow white illumination flare drifts down over the field under its little parachute.
+Nothing at night looks like combat: no tracers, no gunfire.
+
+**The mascots.** The regimental mascots live on the base just for fun. They never stand for anything,
+and none is a dog or a pigeon (here those are data: the K9 and the carrier pigeon).
+- The mascot goat, in a red dress coat, parades along the track's front edge and naps by the mess tent.
+  The mess cat goes about the track, the left side and the field's edge, and climbs onto the mess
+  tent's ration crates. Two depot mice keep to the track before the quartermaster's depot. None of
+  them goes onto the positions, HQ's queue, the vehicle park or the left side's places.
+- Click one for its menu: Pet, Feed or Salute the goat; Pet or Feed the cat and the mice. The nearest
+  soldier that isn't waiting on you walks over and does it.
+- Now and then the goat parades to the briefing board and eats the map off it ("Map? What map?") until
+  an idle soldier comes over, or the mess cat runs at a mouse by the quartermaster's crates and comes
+  back with nothing. The goat hops at a merge and when a new soldier arrives; a failed deploy's puff
+  startles the cat. At max alert they don't act cold: no scarves.
+- With ✨ Helper's **Animal lines** ticked, they say lines Haiku wrote, in drill words with mod 0.9.2
+  (an older mod writes them in plain words: "✨ Helper and suggested names").
+- The **Animals** switch hides them; it is remembered.
+
+**Controls and clicks.** The panel is top left, on olive glass with a brass edge (the money spent and
+how often the line advanced, the alert level, the counts and meters, **needs you**; at 100% the base
+sits beside it or below it). Top right, the **Menu** holds every other control, as on the farm: the
+dashboard's buttons (List, World, ＋ Session, ⚙ Claude Code, Sidebar, 📣 Broadcast, 💬 Chats, the
+theme), then **On the base**: Follow, Resting (hide the soldiers at the mess tent and those in
+reserve), Bubbles, Animals, Sky, Alert and Motion; then Bell, Help and zoom. Nothing lies along the
+base's foot. Click a soldier to open it in the sidebar, a position (or its sign) for a close-up of the
+files agents touched there, a speech bubble for its conversation, and a building for the rest:
+
+| Building | Opens |
+|---|---|
+| Motor pool gate | Start or resume a session (a truck brings the new soldier in, and it jumps down) |
+| HQ tent | Who is waiting on you, with a button to open each |
+| Fuel depot | Your plan's usage and when each limit resets (each account's, when you have several) |
+| Drone pad | The subagents and how each is going |
+| Briefing board | Each project's CLAUDE.md and memory |
+| Quartermaster's depot | The pull requests, with links |
+
+The base pauses when its tab is hidden, or while the list shows, and follows the system's
+reduce-motion setting.
+
 ### Notifications and the bell
 
 - **macOS notifications** come from the collector: an agent needs you, finished its turn,
@@ -1336,9 +1453,9 @@ and can do is in [docs/worlds.md](docs/worlds.md).
   prompt (the mod's instruction for each job is fixed), and for a name the session sends its own
   first messages itself: the collector and the page see only the name. For animal lines the
   collector sends the facts listed in "✨ Helper and suggested names" (names, states, a step word,
-  counts, events, the kinds of animal on screen, and `farm` or `factory` for those built-in worlds;
-  never paths, commands, branches or conversation text), and the page reports which animals a world
-  has (kinds and names; only the kinds reach Haiku) and, for the farm or the factory only, its key. The lines come back as plain text of 40 characters at
+  counts, events, the kinds of animal on screen, and `farm`, `factory` or `military` for those built-in
+  worlds; never paths, commands, branches or conversation text), and the page reports which animals a world
+  has (kinds and names; only the kinds reach Haiku) and, for the farm, the factory or the field exercise only, its key. The lines come back as plain text of 40 characters at
   most; a world of yours that can't see what agents say gets only those with no names, by the names
   it was sent (an agent gone since, or one renamed, too) and the names on the dashboard now. Its setting (with today's
   count) and what you chose for each session's name (renamed, edited, dismissed) are kept in
@@ -1382,7 +1499,7 @@ and can do is in [docs/worlds.md](docs/worlds.md).
 | My world looks wrong in one situation | Open the test page at that stop: `http://localhost:7777/worlds/test?world=u/<folder>&stop=…` (the stops are listed in [docs/worlds.md](docs/worlds.md#the-test-page-and-the-tour)). It has no live reload: reload the page after saving. Or take a picture of that stop: `npm run world-shots -- <folder> --stop …` |
 | A red strip over a world | The world reported an error after it started. It keeps drawing; **×** hides the strip. The page's console has the same message |
 | The farm stays empty, or says "not found" | The farm loads in a frame of its own from the collector (`/world/farm/`). After an update, restart the service (`agent-tracker restart`) and reload the page. The page's console says what a world reported, if anything |
-| The animals never say anything new | Tick **Animal lines** in ✨ Helper (the helper on). A session with mod 0.9.0 must be open (0.9.1 for the robot dog and the robot vacuum; `/reload-plugins` in it), and a world with animals on screen. ✨ Helper shows the last error and today's count |
+| The animals never say anything new | Tick **Animal lines** in ✨ Helper (the helper on). A session with mod 0.9.0 must be open (0.9.1 for the robot dog and the robot vacuum; `/reload-plugins` in it), and a world with animals on screen. ✨ Helper shows the last error and today's count. The field exercise's mascots talking in plain words, not drill words: their session's mod is older than 0.9.2 (`/reload-plugins` in it) |
 | **✨** says no name came, or the ✨ Helper shows a last error | No session is listening with mod 0.8.0 (`/reload-plugins` in it), today's limit is reached (it resets at midnight), or your organisation doesn't allow Haiku (the error says so) |
 
 ## Known limits
@@ -1438,7 +1555,7 @@ npm run test:ui             # the dashboard, the farm and other worlds in headle
 npm run kit-sheet           # redraw docs/kits.png, the picture of the people and props kits
 npm run world-shots -- <world>  # a picture of a world at every stop of its test tour (.private/shots/)
 npm run check-world -- <world>  # the test tour run headless against a world: exceptions, loops, creatures, pointers
-npm run golden              # reference pictures of the list, the farm and the factory on a fixed snapshot,
+npm run golden              # reference pictures of the list, the farm, the factory and the field exercise on a fixed snapshot,
                             # compared byte for byte (.private/golden/); --record saves them
 claude plugin test mod      # the Claude Code mod
 scripts/e2e-answer.sh       # answering and messaging real sessions

@@ -1471,12 +1471,30 @@
       if (!d) return "The fuel depot: your plan's weekly limit, no reading yet (it comes from the mod in a running session)";
       return `The fuel depot: your plan's weekly limit, ${d.reset ? 'just reset' : `${d.pct}% used`}, ${d.drums} of 8 drums left${d.resetsAt ? `; resets ${resetAt(d.resetsAt)}` : ''}. Click for your plan`;
     }
+    /**
+     * The panel's alert tooltip: live, how it follows the 5-hour limit (the first account's, with several), a % that
+     * isn't a number being no reading; held (the Alert switch), that it is held and what the live level would be.
+     */
+    function seasonTip(mode = 'live') {
+      const w = scene.plan?.windows?.find(x => x.kind === 'five_hour'), used = usedOf(w);
+      const reading = w?.reset ? 'just reset' : used === null ? null : `${Math.round(used)}% used`;
+      if (mode !== 'live') return `Held at ${Object.hasOwn(ALERT, mode) ? ALERT_NAMES[mode] : mode} by the Alert switch, not live. The live alert level would be ${ALERT_NAMES[alert]} (your plan's 5-hour limit: ${reading ?? 'no reading yet'}). The switch goes back to live after max`;
+      return `The alert level follows your plan's 5-hour limit${reading ? `: ${reading}` : ' (no reading yet: ready)'}. Calm while it is fresh, then ready and high; max when it is nearly used up. The alert board by HQ shows it`;
+    }
+    /** The Alert switch's icon for a level: the alert board at that level, by the level's name (none for anything else). */
+    const seasonIcon = s => (Object.hasOwn(ALERT, s) ? ALERT_NAMES[s] : null);
     return {
       key: 'military', W, SH: 16, corridors: CORR, grid: MILITARY_GRID, fromScene: militaryScene, help: helpHtml,
       nouns: { agent: 'soldier', agents: 'soldiers', repo: 'position', repos: 'positions', place: 'base' },
       seasonNames: ALERT_NAMES,
       coldSeason: null, // max alert is no weather: the mascots never act cold
       boardTitle: 'The briefing board: what your projects remember', // the engine opens it (the 'board' building)
+      /**
+       * The dashboard's panel and buttons, the farm's (the engine's panelHud) in drill words: top left, the panel (what
+       * the sessions cost, how often the line advanced, the alert level, the counts and meters); top right, one Menu
+       * holding the dashboard's buttons, the base's switches (Alert among them, the alert board), the bell, help and zoom.
+       */
+      hud: p => panelHud({ ...p, scene, season: alert, iconImg, seasonIcon, seasonTip }, MILITARY_WORDS),
       /**
        * A new scene; returns what happened since the last one: the line advanced (a compaction: its flag is carried
        * up-field), supplies came in (a pull request merged in the last 30 minutes: its crate is carried into the
@@ -1835,6 +1853,86 @@
     </div>`;
   }
 
+  /* ---------- the panel and buttons: the engine's panelHud, in drill words ---------- */
+
+  // Pixel icons for the buttons (9×9): one letter per pixel, '.' clear. The dashboard's own (a list, a globe, a plus,
+  // a gear…) as on every world, outlined in dark olive; the Alert switch's are the alert board by HQ at each level.
+  const ICONS = {
+    follow: ['....k....', '..kkkkk..', '.k.....k.', '.k.....k.', 'kk..r..kk', '.k.....k.', '.k.....k.', '..kkkkk..', '....k....'],
+    resting: ['.....kkkk', '.......k.', '......k..', '.....kkkk', 'kkkkk....', '...k.....', '..k......', '.k.......', 'kkkkk....'],
+    bubbles: ['.........', '.kkkkkkk.', 'kwwwwwwwk', 'kwkwkwkwk', 'kwwwwwwwk', '.kkwkkkk.', '..kk.....', '..k......', '.........'],
+    day: ['....y....', '.y.....y.', '...yyy...', '..yyyyy..', 'y.yyyyy.y', '..yyyyy..', '...yyy...', '.y.....y.', '....y....'],
+    night: ['...yyy..s', '..yy.....', '.yy......', '.yy...s..', '.yy......', '.yy......', '..yy.....', '...yyy...', '.........'],
+    live: ['.........', '...yyy...', '..yyyyy..', '.yyyyyyy.', 'kkkkkkkkk', '.........', '..kkkkk..', '.........', '...kkk...'],
+    play: ['..k......', '..kk.....', '..kgk....', '..kggk...', '..kgggk..', '..kggk...', '..kgk....', '..kk.....', '..k......'],
+    pause: ['.........', '.kk...kk.', '.kk...kk.', '.kk...kk.', '.kk...kk.', '.kk...kk.', '.kk...kk.', '.kk...kk.', '.........'],
+    help: ['..kkkkk..', '.kk...kk.', '......kk.', '....kkk..', '...kk....', '...kk....', '.........', '...kk....', '.........'],
+    list: ['.........', 'kk.kkkkkk', '.........', 'kk.kkkkkk', '.........', 'kk.kkkkkk', '.........', '.........', '.........'],
+    world: ['..kkkkk..', '.kbbgbbk.', 'kbgggbbbk', 'kbbggbgbk', 'kbbbbbggk', 'kgbbbbbbk', 'kggbbgbbk', '.kbbgbbk.', '..kkkkk..'],
+    plus: ['....k....', '....k....', '....k....', 'kkkkkkkkk', '....k....', '....k....', '....k....', '.........', '.........'],
+    gear: ['....k....', '.k.kkk.k.', '..kkkkk..', '.kkk.kkk.', 'kkk...kkk', '.kkk.kkk.', '..kkkkk..', '.k.kkk.k.', '....k....'],
+    side: ['kkkkkkkkk', 'k...kyyyk', 'k...kyyyk', 'k...kyyyk', 'k...kyyyk', 'k...kyyyk', 'kkkkkkkkk', '.........', '.........'],
+    bell: ['....k....', '...kyk...', '..kyyyk..', '..kyyyk..', '..kyyyk..', '.kyyyyyk.', 'kkkkkkkkk', '...kyk...', '....k....'],
+    animals: ['.k.k.k...', '.k.k.k...', '.........', 'k.kkk.k..', '.kkkkk...', '.kkkkk...', '..kkk....', '.........', '.........'],
+    menu: ['.........', 'kkkkkkkkk', 'kkkkkkkkk', '.........', 'kkkkkkkkk', 'kkkkkkkkk', '.........', 'kkkkkkkkk', 'kkkkkkkkk'],
+    broadcast: ['.......k.', '.....kkk.', 'k..kkyyk.', 'kkkyyyyk.', 'kkyyyyyk.', 'kkkyyyyk.', 'k..kkyyk.', '....k.kk.', '....kk...'],
+    chats: ['kkkkkk...', 'kwwwwk...', 'kwwwwkkkk', 'kkwkkyyyk', '.kk.kyyyk', '....kyyyk', '....kkykk', '......kk.', '.........'],
+  };
+  // k the outline (dark olive); P the alert board's steel frame (it shows on the panel's olive and on the buttons'
+  // cream alike), F its face and S its unlit bars (each level's own colours: ALERT), d its beacon dark, R lit, L its flash.
+  const ICON_PAL = { k: '#3b4520', w: '#ffffff', y: '#f0b429', s: '#f4ecd8', r: '#e04a3a', g: '#3f9b3a', b: '#a9dcf7', P: '#7a828c', d: '#9c3b30', R: RED, L: RED_LIGHT };
+  /**
+   * The alert board by HQ at a level, small: its steel frame, its face in the level's colour, a bar lit white for
+   * each step up (one at calm … four at max, from the bottom; the rest its shade), and its beacon on top, dark below
+   * max and lit at max, flashing.
+   */
+  const alertRows = level => [
+    level === 'winter' ? '.L.RwR.L.' : '...ddd...', '.PPPPPPP.', '.PFFFFFP.',
+    ...[4, 3, 2, 1].map(i => (i <= (ALERT[level] ?? ALERT.summer).bars ? '.PFwwwFP.' : '.PFSSSFP.')),
+    '.PFFFFFP.', '.PPPPPPP.',
+  ];
+  const ICON_PALS = {}; // the alert boards' palettes: each with its level's face and shade
+  for (const level of Object.keys(ALERT)) { ICONS[ALERT_NAMES[level]] = alertRows(level); ICON_PALS[ALERT_NAMES[level]] = { ...ICON_PAL, F: ALERT[level].face, S: ALERT[level].shade }; }
+  const iconUrls = new Map();
+  /** HTML for one of the base's pixel icons (none without a DOM). */
+  function iconImg(name) {
+    if (typeof document === 'undefined' || !Object.hasOwn(ICONS, name)) return '';
+    if (!iconUrls.has(name)) iconUrls.set(name, makeSprite(ICONS[name], ICON_PALS[name] ?? ICON_PAL).toDataURL());
+    return `<i class="px-ico" aria-hidden="true" style="background-image:url(${iconUrls.get(name)})"></i>`;
+  }
+  // The base's words and colours in the engine's panel and buttons: soldiers, and how often the line advanced (each
+  // compaction); khaki words and a brass mark on olive glass; on the cream buttons, olive names and brass states.
+  const MILITARY_WORDS = {
+    place: 'base', agent: 'soldier', agents: 'soldiers',
+    costTip: "What the sessions on the base have cost so far (the chevrons on each soldier's sleeve; from the mod)", costIcon: 'coin',
+    compactedWord: 'advanced', compactedTip: "Advances: each time a session's conversation was compacted, the line advanced (its flag carried forward, its position started again from the stakes)", compactedIcon: 'advance',
+    textColor: '#ece2c4', shadowColor: '#1f2410', dimColor: '#bfb48a', labelColor: '#d4c294', brandColor: '#e6c25a', toolColor: '#3b4520', toolStateColor: '#6b5a1e',
+    sideTip: "Show the selected soldier's answer box, activity and files beside the base",
+    followTip: 'Keep the soldier you picked in the middle of the view (zooms in); dragging the view turns it off',
+    followFirstTip: 'Pick a soldier first, then Follow keeps it in view',
+    restingTip: 'Idle soldiers (at the mess tent) and stale ones (in reserve, by the reserve tents): show them, or hide them to keep the base to the soldiers on duty',
+    bubblesTip: 'Speech bubbles with what each soldier last said. × hides one; its 💬 shows it again',
+    animalsTip: 'The regimental mascots, just for fun: click one to pet it or feed it, or salute the goat. They never stand for anything',
+    skyTip: 'The light over the base: live follows your clock (dawn, day, dusk, night); or hold it at day or night',
+    seasonSwitchTip: "The alert level: live follows your plan's 5-hour limit (calm while it is fresh, max when it is nearly used up); or hold one: calm, ready, high or max. The panel's 📌 shows your real 5-hour use meanwhile",
+    motionTip: 'Soldiers on the march and everything moving on the base',
+    helpTip: 'How to read the base',
+    zoomTip: 'Zoom the base inside its frame (or ⌘/Ctrl + scroll, or pinch); drag to move around when zoomed in',
+    zoomAllTip: 'Show the whole base',
+    menuTip: "The dashboard's buttons, the base's switches, the bell, help and zoom", menuHead: 'ON THE BASE',
+  };
+  // The panel's glass: olive drab with a brass edge, in place of the farm's green (only its colours: its size and place
+  // stay the engine's). Beside "advanced", a little red flag on a brass pole: the flag the line carries forward.
+  const PANEL_STYLE = [
+    '.px-stats { background: rgba(52, 58, 28, .92); border-color: #8a6d24; box-shadow: inset 0 0 0 1px rgba(230, 194, 90, .22), 0 3px 0 rgba(0, 0, 0, .35); }',
+    '.px-hud .advance { display: inline-block; width: 9px; height: 11px; background: linear-gradient(#e04a3a, #e04a3a) 2px 1px / 7px 5px no-repeat, linear-gradient(#e6c25a, #e6c25a) 0 0 / 2px 11px no-repeat; }',
+  ].join('\n');
+  if (typeof document !== 'undefined' && document.head) {
+    const glass = document.createElement('style');
+    glass.textContent = PANEL_STYLE;
+    document.head.append(glass);
+  }
+
   /* ---------- the field exercise, as a world: the bridge (web/worlds/sdk/bridge.js) runs it ---------- */
 
   window.Agentville.world(makeMilitary());
@@ -1843,5 +1941,6 @@
     OUTFIT, lookOf, soldierSprite, militaryScene, makeMilitary, props, BUILDINGS, MILITARY_GRID, DEPOT_X, PARK, SKY_Y, depotCrates,
     depotOf, depotsOf, drumsOf, FUEL, LANTERNS, SEARCHLIGHTS, BEACON, BEAM, FLARE, flareAt,
     MILITARY_PROPS: Object.keys(MILITARY_PROPS), chevronsOf, jeepRoute, jeepGoal, RIDER_Y, MESS_CRATES,
+    ICONS, MILITARY_WORDS, PANEL_STYLE,
   };
 })();

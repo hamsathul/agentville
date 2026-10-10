@@ -32,6 +32,9 @@ const VIEWS = [
   // The robot factory, chosen in the list of worlds: by day, and by night (motion off, as every view: its lamps, screens and stack lights glow still).
   { name: 'factory-day', stored: { 'tracker-world': 'factory', 'tracker-world:factory:sky': 'day', 'tracker-world:factory:animals': 'off' } },
   { name: 'factory-night', stored: { 'tracker-world': 'factory', 'tracker-world:factory:sky': 'night', 'tracker-world:factory:animals': 'off' } },
+  // The field exercise, chosen in the list of worlds: by day, and by night (motion off: its tents, lanterns and searchlights glow still).
+  { name: 'military-day', stored: { 'tracker-world': 'military', 'tracker-world:military:sky': 'day', 'tracker-world:military:animals': 'off' } },
+  { name: 'military-night', stored: { 'tracker-world': 'military', 'tracker-world:military:sky': 'night', 'tracker-world:military:animals': 'off' } },
 ];
 // Before any script of the page or a frame runs: one moment in time, and the same "random" numbers.
 const FREEZE = freezeScript(GOLDEN_NOW);

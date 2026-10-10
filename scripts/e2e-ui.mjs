@@ -1446,6 +1446,90 @@ try {
   check(await until("document.querySelector('#farm .world-frame')?.src.endsWith('/world/farm/') && localStorage.getItem('tracker-world') === 'farm'") && await funtil("document.querySelectorAll('.px-tag').length >= 1"), 'and back to the farm');
   if (facSideBefore !== 'open' && (await js("document.getElementById('main').dataset.side")) === 'open') await js("document.getElementById('side-toggle').click()"); // the sidebar as it was
   check(errors.length === facErrors, `no page or frame errors in the factory${errors.length > facErrors ? `: ${errors.slice(facErrors).join(' | ')}` : ''}`);
+
+  console.log('Field exercise');
+  // The field exercise, chosen in the list of worlds: its soldiers, the sidebar, its buildings, the Alert switch and a
+  // position's close-up, with no errors; its test page's private stop; then back to the farm, as the run left it.
+  const milErrors = errors.length;
+  await send('Page.navigate', { url: `http://127.0.0.1:${handle.port}/` });
+  check(await until("typeof TOKEN === 'string' && !!document.getElementById('main').dataset.view"), 'the dashboard again');
+  await js("document.getElementById('view-list').click()"); // the run left the farm showing: the list view, where the list of worlds has its own button
+  check(await until("document.getElementById('main').dataset.view === 'list' && document.querySelectorAll('.row[data-id]').length > 0"), 'in the list view');
+  const milSideBefore = await js("document.getElementById('main').dataset.side");
+  await js("document.getElementById('view-worlds').click()"); // the list of worlds, from the list view
+  check(await until("document.getElementById('worlds-dlg').open && /Field exercise/.test(document.querySelector('.world-pick[data-world=\"military\"]')?.textContent ?? '')"), 'the list of worlds offers the Field exercise');
+  await js("document.querySelector('.world-pick[data-world=\"military\"]').click()");
+  await until("!document.getElementById('worlds-dlg').open");
+  await js("document.getElementById('view-farm').click()");
+  check(await until("document.getElementById('main').dataset.view === 'farm' && document.querySelector('#farm .world-frame')?.src.endsWith('/world/military/') && /Field exercise/.test(document.getElementById('view-farm').textContent) && localStorage.getItem('tracker-world') === 'military'"), 'picking it shows it, the toggle says its name, and the choice is kept');
+  check(await funtil("!!document.querySelector('#farm canvas') && document.querySelectorAll('.px-tag').length >= 2"), 'soldiers draw in its frame, each with its tag');
+  check(await js("(f => !!f && f.getAttribute('sandbox') === 'allow-scripts')(document.querySelector('#farm .world-frame'))"), 'in a sandboxed frame of its own');
+  const milHud = await fjs("document.querySelector('.px-hud').textContent");
+  check(/\d+ advanced/.test(milHud) && /Alert: live/.test(milHud) && /ON THE BASE/.test(milHud) && !/harvest|farm|Season|robot|factory/i.test(milHud), `its panel and Menu are in drill words: how often the line advanced, the Alert switch, ON THE BASE (${String(milHud).replace(/\s+/g, ' ').slice(0, 120)}…)`);
+  check(await fjs("(m => !!m && m.hidden && !document.querySelector('.px-tools'))(document.querySelector('.px-menu'))"), 'its buttons are in the Menu, shut, and nothing lies along the bottom');
+  // A point of the base to the screen (the canvas holds the ground round the base too: data-pad), clicked. `point` is
+  // frame JS for [x, y] in the base's own pixels, from its own boxes (window.AgentvilleMilitary).
+  const milClick = point => `(() => { const [x, y] = ${point}, c = document.querySelector('#farm canvas'); const [px, pt] = c.dataset.pad.split(',').map(Number), r = c.getBoundingClientRect(), cs = r.width / Number(c.dataset.ew); c.dispatchEvent(new MouseEvent('click', { bubbles: true, clientX: r.left + (x + px) * cs, clientY: r.top + (y + pt) * cs })); return JSON.stringify([x, y]); })()`;
+  // the middle of a building's click box: its BUILDINGS entry, [key, x0, y0, x1, y1] (the soldiers queue on the track below HQ's)
+  const milBuilding = key => milClick(`(([, x0, y0, x1, y1]) => [(x0 + x1) / 2, (y0 + y1) / 2])(AgentvilleMilitary.BUILDINGS.find(b => b[0] === ${JSON.stringify(key)}))`);
+  const milSoldier = JSON.parse((await fjs("JSON.stringify((t => t && ({ id: t.dataset.farmer, name: t.textContent.trim() }))(document.querySelector('.px-tag')))")) ?? 'null') ?? { id: '', name: '(no soldier)' };
+  await sleep(400); // the page takes a world's picks at most every 250 ms
+  await fjs(`document.querySelector('.px-tag[data-farmer="${milSoldier.id}"]')?.click()`);
+  check(await until(`document.getElementById('main').dataset.side === 'open' && (document.querySelector('#fs-head .fs-name')?.textContent ?? '').includes(${JSON.stringify(milSoldier.name)})`), `clicking a soldier's tag opens it in the sidebar (${milSoldier.name})`);
+  const hq = await fjs(milBuilding('desk'));
+  check(await funtil("document.querySelector('.px-dlg')?.open && /The HQ tent/.test(document.querySelector('.px-dlg-title').textContent)"), `clicking the HQ tent lists who is waiting on you (at ${hq})`);
+  await fjs("document.querySelector('[data-farm-dlg-close]').click()");
+  const fuel = await fjs(milBuilding('bank'));
+  check(await funtil("document.querySelector('.px-dlg')?.open && /fuel depot/.test(document.querySelector('.px-dlg-title').textContent) && /Weekly limit/.test(document.querySelector('.px-dlg').textContent)"), `clicking the fuel depot shows the plan's usage (at ${fuel})`);
+  await fjs("document.querySelector('[data-farm-dlg-close]').click()");
+  const qm = await fjs(milBuilding('dock'));
+  check(await funtil("document.querySelector('.px-dlg')?.open && /quartermaster's depot/.test(document.querySelector('.px-dlg-title').textContent)"), `clicking the quartermaster's depot shows the pull requests (at ${qm})`);
+  await fjs("document.querySelector('[data-farm-dlg-close]').click()");
+  const gate = await fjs(milBuilding('barn')); // the motor pool gate: the engine's 'barn', which starts a session
+  check(await until("document.getElementById('sessions').open"), `clicking the motor pool gate opens Start or resume a session (at ${gate})`);
+  await js("document.getElementById('sessions').close()");
+  // The Alert switch, in the Menu (opened first, as a person would): live (your 5-hour limit, 34% here: ready), then
+  // calm, ready, high and max held, then live again; the menu stays open for each click, and its button shuts it.
+  check(await fjs("PXG.season === 'summer'"), "the alert level starts live: ready (the engine's summer) at 34% of the 5-hour limit");
+  await fjs("document.querySelector('[data-farm-menu]').click()");
+  check(await funtil("(m => !!m && !m.hidden && (r => r.top >= 0 && r.bottom <= innerHeight + 1 && r.right <= innerWidth + 1 && r.left >= 0)(m.getBoundingClientRect()))(document.querySelector('.px-menu'))"), 'Menu opens the menu over the base, all of it in view');
+  for (const [level, name] of [['spring', 'calm'], ['summer', 'ready'], ['autumn', 'high'], ['winter', 'max'], ['live', 'live']]) {
+    await fjs("document.querySelector('[data-farm-season]').click(); true");
+    check(await funtil(`/Alert: ${name}/.test(document.querySelector('[data-farm-season]').textContent) && ${level === 'live' ? "PXG.season === 'summer' && !/📌/.test(document.querySelector('.px-season').textContent)" : `PXG.season === '${level}' && /${name}\\s*📌/.test(document.querySelector('.px-season').textContent)`}`)
+      && await until(`localStorage.getItem('tracker-world:military:season') === '${level}'`), `the Alert switch: ${name}${level === 'live' ? ', back to your 5-hour limit' : ' held, shown on the panel with a 📌'}; remembered as ${level}`);
+    if (level === 'winter') await shot('military-menu-max');
+  }
+  check(await fjs("!document.querySelector('.px-menu').hidden"), 'the menu stayed open through the Alert switch');
+  await fjs("document.querySelector('[data-farm-menu]').click()");
+  check(await funtil("document.querySelector('.px-menu').hidden"), 'its button shuts it');
+  // A position's close-up: a click on its back edge (a little left of its middle, above where its soldiers stand). The
+  // position is the one under the first position's sign: its labels are placed in the base's own pixels, so the sign's
+  // left is its position's middle (cx) and its top lies in its position's row.
+  const milPos = await fjs(`(() => { const c = document.querySelector('#farm canvas'), cs = c.getBoundingClientRect().width / Number(c.dataset.ew), lab = document.querySelector('[data-farm-field]').closest('.px-lab');
+    const cx = parseFloat(lab.style.left) / cs, top = parseFloat(lab.style.top) / cs;
+    const s = Array.from({ length: 18 }, (_, i) => AgentvilleMilitary.MILITARY_GRID.slotAt(i)).filter(s => Math.abs(s.cx - cx) < 1 && s.rowTop <= top).sort((a, b) => b.rowTop - a.rowTop)[0];
+    return ${milClick('[s.cx - 30, s.rowTop + 8]')}; })()`);
+  check(await funtil("!!document.querySelector('.fv-back') && /position/.test(document.querySelector('.fv-back').textContent)"), `a click on a position opens its close-up, in drill words (at ${milPos})`);
+  await fjs("document.querySelector('[data-fv-close]')?.click()");
+  check(await fjs("!document.querySelector('.fv-back')"), 'the close-up closes');
+  check(await js("!document.querySelector('#farm .world-strip') && !document.querySelector('#farm .world-panel')"), 'the field exercise broke nothing: no error strip or panel');
+  await shot('military');
+  // Its test page's private stop (no words, no paths, soldiers named agent N): it draws, with no error strip.
+  await send('Page.navigate', { url: `http://127.0.0.1:${handle.port}/worlds/test?world=military&stop=private` });
+  check(await until("document.body.dataset.shown === 'private'", 15_000) && !(await js("!!document.querySelector('.world-strip')"))
+    && Boolean(await chrome.inFrame('/world/military/', "(t => t.length > 0 && t.every(x => /^agent \\d+/.test(x.textContent.trim())))([...document.querySelectorAll('.px-tag')])").catch(() => false)), "the test page's private stop: the field exercise draws the private scene (agent N), no error strip");
+  // Back to the farm, from the base's own World button, in its Menu.
+  await send('Page.navigate', { url: `http://127.0.0.1:${handle.port}/` });
+  await until("typeof TOKEN === 'string' && document.getElementById('main').dataset.view === 'farm'");
+  await funtil("!!document.querySelector('[data-farm-menu]')");
+  await fjs("document.querySelector('[data-farm-menu]').click()");
+  await funtil("!document.querySelector('.px-menu').hidden");
+  await fjs("document.querySelector('[data-farm-nav=\"worlds\"]').click()");
+  check(await until("document.getElementById('worlds-dlg').open && !!document.querySelector('.world-pick[data-world=\"farm\"]')") && await funtil("document.querySelector('.px-menu').hidden"), "the base's World button, in its Menu, opens the list of worlds, and the menu shuts behind it");
+  await js("document.querySelector('.world-pick[data-world=\"farm\"]').click()");
+  check(await until("document.querySelector('#farm .world-frame')?.src.endsWith('/world/farm/') && localStorage.getItem('tracker-world') === 'farm'") && await funtil("document.querySelectorAll('.px-tag').length >= 1"), 'and back to the farm');
+  if (milSideBefore !== 'open' && (await js("document.getElementById('main').dataset.side")) === 'open') await js("document.getElementById('side-toggle').click()"); // the sidebar as it was
+  check(errors.length === milErrors, `no page or frame errors in the field exercise${errors.length > milErrors ? `: ${errors.slice(milErrors).join(' | ')}` : ''}`);
 } finally {
   await chrome?.close();
   worker.kill();
