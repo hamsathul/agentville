@@ -895,8 +895,8 @@
       px(pony - 3 + step, y - 1, 1, 2, '#6b4320'); px(pony + 1 - step, y - 1, 1, 2, '#6b4320'); px(pony - dir * 4, y - 4, 1, 2, '#4e3626');
     }
     const FIREFLIES = [[20, 150], [60, 160], [92, 176], [30, 232], [74, 196], [50, 252], [100, 250], [14, 262], [88, 140], [96, 214], [240, 92], [330, 70]];
-    // The farm's animals (sdk/animals.js): just for fun, never data. They walk the yard (not the lane:
-    // it runs along the porch, where farmers waiting on you stand), never the fields (their crops are context), the hay, crates or mailbox (git), the carts' rank (MCP),
+    // The farm's animals (sdk/animals.js): just for fun, never data. They walk the whole farm, but never
+    // on a crop bed (its crops, hay, crates and mailbox are the repo's state), into a building, onto the carts' row (MCP),
     // the hammocks or the henhouse. No chickens (subagents), and the dog is a sheepdog (the Explore dog is
     // data). The ducks keep to the pond and its bank.
     const POND = { x: 12, y: 199, w: 60, h: 22 }; // the water (the pond's oval, a little inside its bank)
@@ -1033,10 +1033,10 @@
       spots: () => ({ hammock: NAPS[1], bucket: [TROUGH.x + 9, TROUGH.y], huddle: [56, 200 - 30], stall: [104, 102], barn: [62, 140] }),
       /** Is a gag's spot free now: a hammock is taken while anyone naps (the nappers have the hammocks). */
       spotFree: name => (name === 'hammock' ? !scene.farmers.some(f => f.nap) : true),
-      /** Where the animals may walk: the yard, down to the fence's foot (not the lane, along the porch where farmers wait on you). */
-      roam: () => [{ x: 4, y: 100, w: 100, h: Math.max(20, L.GRID.y1 - 104) }],
-      /** What they keep off in there: the pond (the ducks' own), the hammocks, the henhouse and its run, the shade tree's trunk. */
-      avoid: () => [{ x: 8, y: 194, w: 70, h: 32 }, { x: 84, y: 196, w: 24, h: 34 }, { x: 0, y: 95, w: 106, h: 44 }, { x: 60, y: L.GRID.y1 - 26, w: 14, h: 12 }], // the run's hens are subagents
+      /** Where the animals may walk: the whole farm (its crop beds and buildings are kept off by fieldAt and buildingAt). */
+      roam: () => [{ x: 4, y: 14, w: W - 8, h: L.H - 18 }],
+      /** What they keep off besides: the pond (the ducks' own), the hammocks, the henhouse and its run, the shade tree's trunk, the row where the tool carts park. */
+      avoid: () => [{ x: 8, y: 194, w: 70, h: 32 }, { x: 84, y: 196, w: 24, h: 34 }, { x: 0, y: 95, w: 106, h: 44 }, { x: 60, y: L.GRID.y1 - 26, w: 14, h: 12 }, { x: 300, y: 78, w: 98, h: 16 }], // the run's hens are subagents; the carts are MCP servers
       /** Particles a farmer gives off: dust when walking; splashes, clods, sparks, chips from its tool. */
       emit(f, b, dt, add) {
         const ox = b.x - 7 * SC, oy = b.y - 16 * SC, T = PXG.T;

@@ -577,22 +577,42 @@ test('the farm’s animals: seven kinds, thirteen animals; never a chicken, the 
   assert.deepEqual(ducks.actions.map(a => a.label), ['Feed bread', 'Quack back']);
 });
 
-test('where the farm’s animals may walk: the yard, never the lane by the porch, the fields, the pond, the hammocks or the henhouse', () => {
+test('where the farm’s animals may walk: the whole farm, but never a crop bed, a building, the carts’ row, the pond, the hammocks or the henhouse', () => {
   const window = { Agentville: { raw: () => {} } };
   vm.runInNewContext(code, { window, console, Math, Date, JSON, Map, Set });
   const th = window.AgentvilleFarm.makeFarm();
-  th.relayout(window.AgentvilleFarm.layoutFor([]));
-  const { GRID } = th.layout();
+  th.relayout(window.AgentvilleFarm.layoutFor([{ key: '/a', name: 'a' }, { key: '/b', name: 'b' }, { key: '/c', name: 'c' }, { key: '/d', name: 'd' }]));
   const roam = plain(th.roam()), avoid = plain(th.avoid());
-  for (const r of roam) {
-    assert.ok(r.x + r.w <= GRID.x0 || r.y + r.h <= GRID.y0, `roam ${JSON.stringify(r)} stays out of the fields (fence ${JSON.stringify(GRID)})`);
-    assert.ok(r.y >= 96, 'and off the lane along the porch, where farmers waiting on you stand');
-  }
+  const inRoam = (x, y) => roam.some(r => x >= r.x && x <= r.x + r.w && y >= r.y && y <= r.y + r.h);
+  for (const [x, y, where] of [[20, 160, 'the yard'], [60, 86, 'the lane'], [200, 80, 'the porch'], [300, 300, 'the meadow below the fields'], [394, 60, 'by the scarecrows'], [120, 200, 'the path beside the fields']]) assert.ok(inRoam(x, y), where);
   const covers = (x, y) => avoid.some(r => x >= r.x && x <= r.x + r.w && y >= r.y && y <= r.y + r.h);
   assert.ok(covers(42, 210), 'the pond');
   assert.ok(covers(97, 204) && covers(97, 224), 'the hammocks');
   assert.ok(covers(20, 115), 'the henhouse');
   assert.ok(covers(70, 120), 'and its run, where the hens are subagents');
+  assert.ok(covers(388, 87) && covers(313, 87), 'the row where the tool carts park');
+  assert.ok(th.fieldAt(174, 120) && th.buildingAt(60, 40), 'beds and buildings are the engine’s to keep them off (fieldAt, buildingAt)');
+});
+
+test('the farm’s animals wander the whole farm, out of the yard, and never onto a bed, a building or a place kept off', () => {
+  const window = { Agentville: { raw: () => {} } };
+  vm.runInNewContext(`${code}\n;window.__kit = { makeAnimals, seededRandom };`, { window, console, Math, Date, JSON, Map, Set });
+  const farm = window.AgentvilleFarm, th = farm.makeFarm();
+  th.relayout(farm.layoutFor([{ key: '/a', name: 'a' }, { key: '/b', name: 'b' }, { key: '/c', name: 'c' }, { key: '/d', name: 'd' }]));
+  th.setScene({ plan: null, chrome: {}, fields: [], farmers: [], carts: [], mail: [], henhouse: { eggs: 0, roosting: 0 } });
+  const avoid = plain(th.avoid()), inAvoid = (x, y) => avoid.some(r => x > r.x && x < r.x + r.w && y > r.y && y < r.y + r.h);
+  const a = window.__kit.makeAnimals(th.animals(), { random: window.__kit.seededRandom(3) });
+  a.place({ roam: th.roam(), avoid: th.avoid(), perches: th.perches(), spots: th.spots(), blocked: (x, y) => Boolean(th.fieldAt(x, y) || th.buildingAt?.(x, y)) });
+  let out = 0;
+  for (let i = 0; i < 12000; i++) {
+    a.tick(0.1);
+    for (const o of a.list()) {
+      if (o.kind === 'duck') continue;
+      if (o.x > 112 || o.y < 94) out++; // out of the old yard
+      assert.ok(!th.fieldAt(o.x, o.y) && !th.buildingAt(o.x, o.y) && !inAvoid(o.x, o.y), `${o.id} at (${o.x},${o.y})`);
+    }
+  }
+  assert.ok(out > 1000, `they leave the yard (${out} animal-ticks out of it)`);
 });
 
 test('with animals on, the scenery duck is gone (the ducks are the animals’ now); off, it is back as it was', () => {

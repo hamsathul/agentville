@@ -301,7 +301,7 @@ const fakeMod = setInterval(() => {
       const req = JSON.parse(readFileSync(join(inbox, name), 'utf8'));
       unlinkSync(join(inbox, name));
       if (req.kind !== 'lines') continue;
-      const rows = (req.cast ?? []).flatMap(c => [`${c.kind}|idle|from the helper ${c.kind}`, ...(c.kind === 'cat' ? [`cat|idle|${req.agents?.[0]?.name ?? 'someone'} sat on me`, 'cat|idle|a nameless purr'] : [])]);
+      const rows = (req.cast ?? []).flatMap(c => [`${c.kind}|idle|${`from the helper ${c.kind}: a full forty-character line`.slice(0, 40)}`, ...(c.kind === 'cat' ? [`cat|idle|${req.agents?.[0]?.name ?? 'someone'} sat on me`, 'cat|idle|a nameless purr'] : [])]);
       mkdirSync(join(state, 'helper-replies'), { recursive: true });
       writeFileSync(join(state, 'helper-replies', `ui-done-a.${req.id}.json`), JSON.stringify({ id: req.id, sessionId: 'ui-done-a', kind: 'lines', ok: true, text: rows.join('\n'), at: Date.now() }));
     }
@@ -717,6 +717,7 @@ try {
   check((await handle.actions.helper({ on: true, uses: { names: false, lines: true }, dailyLimit: 200 })).ok, 'Animal lines ticked');
   check(await funtil('window.Agentville.freshLinesNow().some(t => t.startsWith("from the helper"))', 30_000), "the farm's animals get the helper's lines");
   check(await funtil('[...document.querySelectorAll(".px-animal-say")].some(b => !b.hidden && /from the helper/.test(b.textContent))', 90_000), 'and one says a fresh line');
+  check(await fjs('[...document.querySelectorAll(".px-animal-say")].filter(b => !b.hidden && /from the helper/.test(b.textContent)).every(b => b.textContent.length === 40 && b.scrollWidth <= b.clientWidth + 1 && b.scrollHeight <= b.clientHeight + 1)'), "a line of 40 characters fits inside its bubble");
   await setMotion(motionWas); // as it was, for the rest
 
   check(await funtil("[...document.querySelectorAll('.px-say')].some(b => b.textContent.includes('Which crop next?'))"), "the waiting farmer's question is in a speech bubble over its head");

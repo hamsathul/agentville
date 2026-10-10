@@ -672,9 +672,11 @@ keep clear of the panel and the buttons too.
 **Animals.** Two cows, two goats, a sheepdog (with a red bandana, so it is never taken for the
 Explore dog), an ostrich, a lion, a tiger and a duck family (a mallard pair and three ducklings) live
 on the farm just for fun. They never stand for anything.
-- They wander the yard, graze and nap. They keep off the lane by the porch (where farmers waiting
-  on you stand), out of the fields, the hay, crates and mailbox, the hammocks, and the henhouse and its run
-  (its hens are subagents). The ducks keep to the pond.
+- They wander the whole farm, graze and nap: the yard, the lanes and the porch, the meadow, around
+  the scarecrows, the barn and the market. They never walk on a crop bed (its crops, hay, crates and
+  mailbox are the repo's state), into a building, onto the row where the tool carts park, into the
+  hammocks or the henhouse and its run (its hens are subagents). The ducks keep to the pond.
+- Their lines wrap onto two lines when they need to, so a full 40-character line fits its bubble.
 - At night most sleep; the lion wanders. With **Motion** off they doze where they are.
 - Now and then one says something in a small cream bubble with a dotted edge. It never covers a
   farmer's bubble or name: it moves aside or waits.
