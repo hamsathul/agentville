@@ -291,7 +291,7 @@ export function createTrackerServer({ port, token, webFile, getSnapshot, getFeed
       server.listen(port, '127.0.0.1', () => {
         const chosen = server.address().port;
         const v6 = createServer(server.listeners('request')[0]);
-        v6.once('error', err => { log(`not listening on ::1 (${err.code ?? err.message}): http://localhost may not open on this machine, use http://127.0.0.1:${chosen}`); resolve(chosen); });
+        v6.on('error', err => { log(`not listening on ::1 (${err.code ?? err.message}): http://localhost may not open on this machine, use http://127.0.0.1:${chosen}`); resolve(chosen); });
         v6.listen(chosen, '::1', () => { server6 = v6; resolve(chosen); });
       });
     }),
