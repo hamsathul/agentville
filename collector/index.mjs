@@ -34,7 +34,7 @@ if (!pre.ok) {
 }
 
 try {
-  const handle = await startCollector({ root, claudeBin, log });
+  const handle = await startCollector({ root, system: pre.system, claudeBin, log });
   const shutdown = async () => {
     await handle.stop();
     process.exit(0);

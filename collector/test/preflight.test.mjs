@@ -135,3 +135,20 @@ test('--exit-after refuses anything that is not a whole number of seconds from 1
   const missing = spawnSync(process.execPath, [INDEX, '--exit-after'], { encoding: 'utf8', env: { ...process.env, TRACKER_ROOT: root, TRACKER_CLAUDE_BIN: process.execPath }, timeout: 30_000 });
   assert.equal(missing.status, 2);
 });
+
+// The dashboard header names the system: the OS and version, Node, and the session command's version.
+test('the check also describes the system: platform, OS and version, Node, session command version', async () => {
+  const winOs = { osName: 'Windows 11 Pro', osRelease: '10.0.26200' };
+  const w = await runPreflight(base({ platform: 'win32', ...winOs }));
+  assert.deepEqual(w.system, { platform: 'win', os: 'Windows 11 Pro 10.0.26200', node: '24.11.1', claude: '2.1.295' });
+  const macProbe = async (cmd, args) => (String(cmd).endsWith('sw_vers') ? OK('14.5\n') : goodProbe(cmd, args));
+  const m = await runPreflight(base({ platform: 'darwin', probe: macProbe }));
+  assert.deepEqual(m.system, { platform: 'mac', os: 'macOS 14.5', node: '24.11.1', claude: '2.1.295' });
+});
+
+test('a session command that did not run leaves its version out of the system line, not made up', async () => {
+  const noClaude = async (cmd, args) => (/^claude/.test(String(cmd)) ? { code: 1, stdout: '', stderr: 'nope' } : goodProbe(cmd, args));
+  const r = await runPreflight(base({ probe: noClaude, osName: 'Windows 10 Pro', osRelease: '10.0.19045' }));
+  assert.equal(r.system.claude, null);
+  assert.equal(r.system.os, 'Windows 10 Pro 10.0.19045');
+});

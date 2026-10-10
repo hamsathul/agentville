@@ -1,4 +1,5 @@
 import { existsSync } from 'node:fs';
+import { release, version } from 'node:os';
 import { join } from 'node:path';
 import { run } from '../lib/exec.mjs';
 import { existsApp } from './alias.mjs';
@@ -22,7 +23,7 @@ async function probeOk(probe, cmd, args, accept = () => true) {
 
 const check = (id, level, ok, message, fix) => ({ id, level, ok, message, ...(ok ? {} : { fix }) });
 
-export async function runPreflight({ platform = process.platform, nodeVersion = process.versions.node, probe = run, exists = existsSync, appExists = existsApp, claudeBin = 'claude', claudeDir } = {}) {
+export async function runPreflight({ platform = process.platform, nodeVersion = process.versions.node, probe = run, exists = existsSync, appExists = existsApp, claudeBin = 'claude', claudeDir, osName = version(), osRelease = release() } = {}) {
   const isWin = platform === 'win32', isMac = platform === 'darwin';
   if (!isWin && !isMac) {
     return { ok: false, checks: [check('platform', 'required', false, `This operating system (${platform}) is not supported: Agentville runs on macOS and Windows.`, 'Run it on a Mac or a Windows PC.')] };
@@ -60,7 +61,15 @@ export async function runPreflight({ platform = process.platform, nodeVersion = 
   if (claudeDir !== undefined) {
     checks.push(check('claude-folder', 'optional', Boolean(exists(claudeDir)), `Claude's folder ${claudeDir}`, 'Start Claude Code once so it creates its folder; there are no sessions to show until then.'));
   }
-  return { ok: checks.every(c => c.ok || c.level !== 'required'), checks };
+  // What the dashboard header shows. Nothing here is guessed: a value that could not be read is null or left out.
+  const mac = isMac ? await probeOk(probe, 'sw_vers', ['-productVersion']) : null;
+  const system = {
+    platform: isWin ? 'win' : 'mac',
+    os: isWin ? `${osName} ${osRelease}` : mac.ok ? `macOS ${mac.out}` : 'macOS',
+    node: nodeVersion,
+    claude: claude.ok ? (claude.out.split('\n')[0].match(/^[\w.+-]+/)?.[0] ?? null) : null,
+  };
+  return { ok: checks.every(c => c.ok || c.level !== 'required'), checks, system };
 }
 
 export function formatReport(result) {

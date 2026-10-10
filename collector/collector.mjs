@@ -106,7 +106,7 @@ async function quickLookPicture(real) {
   }
 }
 
-export async function startCollector({ root, claudeDir = join(homedir(), '.claude'), claudeBin = 'claude', home = homedir(), signedInMs = 60_000, heldGoneMs = 120_000, scratchBase = platform.scratchBase(), port: portOverride, deliveryTimeoutMs = 5000, helperTimeoutMs = 30_000, linesGapMs = 300_000, linesIdleMs = 1_800_000, castKeepMs = 600_000, notify = platform.notify, launch = defaultLaunch, sessionProcs = platform.sessionProcs, endWaitMs = 8000, readProcs = platform.readProcs, deployStatusOf = deployStatus, pullRequestsOf = pullRequests, githubSlugOf = githubSlug, ticketMs = 600_000, quickLook = platform.quickLookPicture ?? quickLookPicture, folderRoots = platform.folderRoots(home), chooseFolder = platform.name === 'win' ? platform.chooseFolder : chooseFolderMac, stopWaitMs = 3000, revealFile = real => platform.revealFile(real), openFolder = dir => platform.openFolder(dir), log = makeLogger(join(root, 'logs')) }) {
+export async function startCollector({ root, system = null, claudeDir = join(homedir(), '.claude'), claudeBin = 'claude', home = homedir(), signedInMs = 60_000, heldGoneMs = 120_000, scratchBase = platform.scratchBase(), port: portOverride, deliveryTimeoutMs = 5000, helperTimeoutMs = 30_000, linesGapMs = 300_000, linesIdleMs = 1_800_000, castKeepMs = 600_000, notify = platform.notify, launch = defaultLaunch, sessionProcs = platform.sessionProcs, endWaitMs = 8000, readProcs = platform.readProcs, deployStatusOf = deployStatus, pullRequestsOf = pullRequests, githubSlugOf = githubSlug, ticketMs = 600_000, quickLook = platform.quickLookPicture ?? quickLookPicture, folderRoots = platform.folderRoots(home), chooseFolder = platform.name === 'win' ? platform.chooseFolder : chooseFolderMac, stopWaitMs = 3000, revealFile = real => platform.revealFile(real), openFolder = dir => platform.openFolder(dir), log = makeLogger(join(root, 'logs')) }) {
   // readProcs, deployStatusOf, pullRequestsOf and githubSlugOf read the machine and GitHub; a test or the demo video passes stand-ins.
   const stateDir = join(root, 'state');
   const pendingDir = join(stateDir, 'pending');
@@ -444,7 +444,7 @@ export async function startCollector({ root, claudeDir = join(homedir(), '.claud
       generatedAt: now,
       settings: { modToasts: cfg.modToasts, permissionDashboardSec: cfg.permissionDashboardSec, memoryAlertGb: cfg.memoryAlertGb, cpuAlertPct: cfg.cpuAlertPct },
       collector: selfStats(),
-      machine: { totalMemMb: Math.round(totalmem() / 1_048_576), cpuCount: cpus().length },
+      machine: { totalMemMb: Math.round(totalmem() / 1_048_576), cpuCount: cpus().length, ...(system ? { system } : {}) },
       sources: { ...sources },
       counts: countStates(agents, collisions),
       agents: sortAgents(agents),

@@ -62,6 +62,14 @@ function planHtml() {
   }).join('\n    ');
 }
 
+/** Which system this is and what it runs on, from the collector's start-up check; a part it could not read is left out. */
+function systemHtml() {
+  const s = snap.machine?.system;
+  if (!s?.os) return '';
+  const parts = [s.os, s.node ? `Node ${s.node}` : '', s.claude ? `Claude Code ${s.claude}` : ''].filter(Boolean);
+  return `<span class="hstat" data-tip="${esc(`This computer: ${parts.join(' · ')}`)}"><span class="ml">System</span><b>${esc(s.os)}</b><span class="faint">${esc(parts.slice(1).join(' · '))}</span></span>`;
+}
+
 function hstatsHtml() {
   const totalMb = snap.machine?.totalMemMb || 1;
   const withMem = snap.agents.filter(a => a.proc?.rssMb).sort((x, y) => y.proc.rssMb - x.proc.rssMb);
@@ -70,8 +78,8 @@ function hstatsHtml() {
   const cores = snap.machine?.cpuCount || 1;
   const cpuUsed = snap.agents.reduce((t, a) => t + (a.proc?.cpu ?? 0), 0);
   const cpuRatio = cpuUsed / (cores * 100);
-  return `<span class="hstat" data-tip="${esc(`Memory used by agents · ${withMem.map(a => `${a.name} ${gb(a.proc.rssMb)}`).join(' · ') || 'none'}`)}"><span class="ml">Agents RAM</span>${memBar}<b>${gb(usedMb)}</b><span class="faint">of ${gb(totalMb)}</span></span>
-    <span class="hstat"><span class="ml">Agents CPU</span>${meter(cpuRatio, severityOf(cpuRatio, 0.5, 0.8), `${Math.round(cpuUsed)}% of one core · ${cores} cores`)}<b>${Math.round(cpuRatio * 100)}% of this Mac</b></span>
+  return `${systemHtml()}<span class="hstat" data-tip="${esc(`Memory used by agents · ${withMem.map(a => `${a.name} ${gb(a.proc.rssMb)}`).join(' · ') || 'none'}`)}"><span class="ml">Agents RAM</span>${memBar}<b>${gb(usedMb)}</b><span class="faint">of ${gb(totalMb)}</span></span>
+    <span class="hstat"><span class="ml">Agents CPU</span>${meter(cpuRatio, severityOf(cpuRatio, 0.5, 0.8), `${Math.round(cpuUsed)}% of one core · ${cores} cores`)}<b>${Math.round(cpuRatio * 100)}% of this computer</b></span>
     ${planHtml()}`;
 }
 

@@ -21,6 +21,9 @@ node collector\index.mjs --exit-after 60   # a throwaway run that ends itself af
 ```
 
 `--check` looks at: Node 22+, Claude Code (runs `claude --version`), PowerShell 5+, and (optional) Windows Terminal, git, gh,
+
+The same check feeds the **System** entry in the dashboard header: the operating system and its version, the Node version and
+the Claude Code version. A part that could not be read is left out, never guessed.
 and Claude's own folder. A check that cannot run counts as missing; it is never reported as fine.
 
 ## Start at login (optional)

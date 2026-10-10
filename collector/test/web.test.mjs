@@ -382,7 +382,7 @@ test("the top bar shows the agents' memory and CPU, CPU as a share of the whole 
   const page = loadPage();
   page.push(richSnapshot([richAgent({ proc: { ...richAgent().proc, cpu: 200 } })]));
   const stats = page.el('hstats').innerHTML;
-  assert.match(stats, /20% of this Mac/);
+  assert.match(stats, /20% of this computer/);
   assert.match(stats, /200% of one core · 10 cores/);
   assert.match(stats, /600 MB[\s\S]*of 16\.0 GB/);
   assert.doesNotMatch(page.list(), /Memory used by agents|This Mac/);
@@ -3059,4 +3059,27 @@ test("📣 Broadcast says which agents' copies wait for their turn to end (the c
   assert.match(results, /waits for its turn to end: remove or edit it under its message box/);
   assert.doesNotMatch(results, /queued: it reads it/);
   assert.match(page.el('bc-status').textContent, /Sent to 4 agents \(4 wait for their turn to end\)/);
+});
+
+test('the top bar names the system: OS and version, Node, and the session command; the CPU share says "this computer"', () => {
+  const page = loadPage();
+  const snap = richSnapshot([richAgent()]);
+  snap.machine.system = { platform: 'win', os: 'Windows 11 Pro 10.0.26200', node: '24.11.1', claude: '2.1.295' };
+  page.push(snap);
+  const stats = page.el('hstats').innerHTML;
+  assert.match(stats, /class="ml">System</);
+  assert.match(stats, /Windows 11 Pro 10\.0\.26200/);
+  assert.match(stats, /Node 24\.11\.1/);
+  assert.match(stats, /Claude Code 2\.1\.295/);
+  assert.match(stats, /of this computer/);
+  assert.doesNotMatch(stats, /of this Mac/);
+  // older snapshots, or a session command that did not report, leave that part out rather than guess
+  snap.machine.system = { platform: 'mac', os: 'macOS 14.5', node: '22.1.0', claude: null };
+  page.push(snap);
+  const mac = page.el('hstats').innerHTML;
+  assert.match(mac, /macOS 14\.5/);
+  assert.doesNotMatch(mac, /Claude Code d/);
+  delete snap.machine.system;
+  page.push(snap);
+  assert.doesNotMatch(page.el('hstats').innerHTML, />System</);
 });
