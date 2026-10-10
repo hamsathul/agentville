@@ -1,7 +1,7 @@
 // The collector with two Claude accounts: a config folder each, the second's history shared or not.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { chmodSync, mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
+import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { startCollector } from '../collector.mjs';
@@ -45,11 +45,12 @@ function twoAccounts({ shared = true } = {}) {
 function fakeClaude(f) {
   const bin = join(f.top, 'claude-cli'), log = join(f.top, 'claude-cli.log');
   const bg = JSON.stringify([{ id: 'bg1', sessionId: ID.bg, cwd: f.work, kind: 'background', startedAt: 1, state: 'blocked' }]);
+  // A file named cli-fails makes `agents --json` fail; zeta-out makes zeta's `auth status` say signed out.
   writeFileSync(bin, `#!/bin/sh
 echo "\${CLAUDE_CONFIG_DIR:-none}|$*" >> '${log}'
 case "$1 $2" in
-  "agents --json") if [ "$CLAUDE_CONFIG_DIR" = '${f.zeta}' ]; then echo '${bg}'; else echo '[]'; fi ;;
-  "auth status") echo '{"loggedIn":true}' ;;
+  "agents --json") if [ -e '${f.top}/cli-fails' ]; then exit 1; fi; if [ "$CLAUDE_CONFIG_DIR" = '${f.zeta}' ]; then echo '${bg}'; else echo '[]'; fi ;;
+  "auth status") if [ -e '${f.top}/zeta-out' ] && [ "$CLAUDE_CONFIG_DIR" = '${f.zeta}' ]; then echo '{"loggedIn":false}'; else echo '{"loggedIn":true}'; fi ;;
 esac
 exit 0
 `);
@@ -259,4 +260,93 @@ test("restore, remove and attach run on the session's account; the collector's o
     if (was === undefined) delete process.env.CLAUDE_CONFIG_DIR; else process.env.CLAUDE_CONFIG_DIR = was;
     await handle.stop();
   }
+});
+
+const settle = ms => new Promise(r => setTimeout(r, ms));
+
+test('an account that leaves the list (its folder removed) never stops the collector; its sessions fall to the first account', async () => {
+  const f = twoAccounts();
+  const claude = fakeClaude(f);
+  const logs = [];
+  const { handle, snap } = await start(f, { claudeBin: claude.bin, log: m => logs.push(m) });
+  try {
+    assert.equal(snap().agents.find(a => a.id === ID.bg)?.account, 'zeta');
+    rmSync(f.zeta, { recursive: true, force: true });
+    await handle.reloadConfig(); // the accounts are read again
+    await settle(700);
+    assert.deepEqual(logs.filter(m => m.includes('tick failed')), []);
+    assert.deepEqual(snap().accounts.map(a => a.key), ['main']);
+    assert.equal(snap().agents.find(a => a.id === ID.bg)?.account, 'main');
+  } finally { await handle.stop(); }
+});
+
+test('`claude agents --json` failing keeps the sessions it listed last time (one account too)', async () => {
+  const f = twoAccounts();
+  rmSync(f.zeta, { recursive: true, force: true });
+  const claude = fakeClaude(f);
+  writeFileSync(join(f.top, 'cli-bg-on-main'), '');
+  // with one account, main lists the background session
+  writeFileSync(claude.bin, readFileSync(claude.bin, 'utf8').replace(`if [ "$CLAUDE_CONFIG_DIR" = '${f.zeta}' ]`, 'if true'));
+  writeFileSync(join(f.root, 'config.json'), JSON.stringify({ port: 0, pollMs: 200, agentsCliPollMs: 300 }));
+  const { handle, snap } = await start(f, { claudeBin: claude.bin });
+  try {
+    assert.ok(snap().agents.some(a => a.id === ID.bg), 'listed at first');
+    writeFileSync(join(f.top, 'cli-fails'), '');
+    await settle(1000); // a few polls fail
+    assert.ok(claude.calls().filter(c => c.endsWith('agents --json')).length >= 3, 'it was asked again');
+    assert.ok(snap().agents.some(a => a.id === ID.bg), 'still listed');
+  } finally { await handle.stop(); }
+});
+
+test("an unshared account's past session that was never seen running is that account's, and resumes there", async () => {
+  const f = twoAccounts({ shared: false });
+  const only = '55555555-5555-4555-8555-555555555555';
+  writeFileSync(join(f.zeta, 'projects', '-work', `${only}.jsonl`), `${say(f.work, 'zeta only work', Date.now() - 60_000)}\n`);
+  const { handle, launched } = await start(f);
+  try {
+    const s = (await handle.pastSessions()).sessions.find(x => x.id === only);
+    assert.equal(s.account, 'zeta');
+    assert.deepEqual(s.canRunOn, ['zeta']);
+    assert.equal((await handle.actions.start({ resume: only })).ok, true);
+    assert.equal(launched.at(-1), `cd '${f.work}' && exec env CLAUDE_CONFIG_DIR='${f.zeta}' claude --resume ${only}`);
+  } finally { await handle.stop(); }
+});
+
+test("the refusal says which account's folders to link, and to which", async () => {
+  const f = twoAccounts({ shared: false });
+  const only = '55555555-5555-4555-8555-555555555555';
+  writeFileSync(join(f.zeta, 'projects', '-work', `${only}.jsonl`), `${say(f.work, 'zeta only work', Date.now() - 60_000)}\n`);
+  const { handle } = await start(f);
+  try {
+    const onto = await handle.actions.start({ resume: ID.old, account: 'zeta' }); // nco's session onto zeta
+    assert.match(onto.error, /link zeta's projects and file-history folders to nco's/);
+    const back = await handle.actions.start({ resume: only, account: 'main' }); // zeta's session onto nco
+    assert.match(back.error, /link zeta's projects and file-history folders to nco's/);
+  } finally { await handle.stop(); }
+});
+
+test('with one account, nothing is remembered about accounts', async () => {
+  const f = twoAccounts();
+  rmSync(f.zeta, { recursive: true, force: true });
+  const { handle, launched } = await start(f);
+  try {
+    assert.equal((await handle.actions.start({ resume: ID.old })).ok, true);
+    assert.equal(launched.at(-1), `cd '${f.work}' && exec claude --resume ${ID.old}`);
+    await settle(400);
+    assert.equal(existsSync(join(f.root, 'state', 'session-accounts.json')), false);
+  } finally { await handle.stop(); }
+});
+
+test('a signed-out account is asked again within signedInMs, so a /login shows soon', async () => {
+  const f = twoAccounts();
+  const claude = fakeClaude(f);
+  writeFileSync(join(f.top, 'zeta-out'), '');
+  const { handle, snap } = await start(f, { claudeBin: claude.bin, signedInMs: 300 });
+  try {
+    await settle(600);
+    assert.equal(snap().accounts.find(a => a.key === 'zeta').signedIn, false);
+    rmSync(join(f.top, 'zeta-out'));
+    await settle(1200);
+    assert.equal(snap().accounts.find(a => a.key === 'zeta').signedIn, true);
+  } finally { await handle.stop(); }
 });

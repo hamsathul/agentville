@@ -89,7 +89,7 @@ It listens on `127.0.0.1` only and reads what Claude Code already writes to disk
   working on, through your own Claude Code, only after you switch the ✨ Helper on. With its Animal
   lines ticked, Haiku also writes what the farm's animals say about what is happening.
 - Start a new session in any folder of yours (type it, browse to it, or create it) or in one you've
-  worked in, or find a past one (search, filter by folder, model, branch or running, sort by
+  worked in, or find a past one (search, filter by folder, model, branch, account or running, sort by
   activity, start, name, folder or length) and resume it, in the permission mode, model and effort
   you choose, and on the Claude account you choose when you have several.
 - Switch a running session's model or effort, compact it, restart it in another permission mode
@@ -420,7 +420,9 @@ Each terminal session's bar shows its **permission mode**, its **model** (e.g. *
   its context.
 - **Restart in…** another permission mode (ask first, accept edits, plan, auto, or bypass
   permissions). The session ends and resumes straight away in a new terminal window, and the
-  conversation carries on.
+  conversation carries on. With several Claude accounts it also offers **Move to another account**:
+  the same, on the account you pick, in the mode the session is in (see
+  [Several Claude accounts](#several-claude-accounts)).
 
 Switching and side questions need mod 0.5.0 or newer, and Compact 0.6.0. For a session started
 before you updated, run `/reload-plugins` in it.
@@ -1032,7 +1034,8 @@ and can do is in [docs/worlds.md](docs/worlds.md).
   path only.
 - With several Claude accounts, `state/session-accounts.json` keeps which account folder each
   session last ran on (the 2,000 most recent). Your accounts' emails are read from their
-  `.claude.json` and shown only on your own page; a world gets each account's name and plan, never
+  `.claude.json` and kept in the local snapshot (`state/state.json`, which the mod reads) to show on
+  your own page; a world gets each account's name and plan, never
   its email (a private world gets `account 1`, `account 2`). Agentville never reads or touches the
   logins themselves: it starts `claude` with the account's `CLAUDE_CONFIG_DIR`, and asks
   `claude auth status` whether each is signed in.

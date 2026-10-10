@@ -108,7 +108,7 @@ async function quickLookPicture(real) {
   }
 }
 
-export async function startCollector({ root, claudeDir = join(homedir(), '.claude'), claudeBin = 'claude', home = homedir(), scratchBase = `/private/tmp/claude-${process.getuid?.() ?? 0}`, port: portOverride, deliveryTimeoutMs = 5000, helperTimeoutMs = 30_000, linesGapMs = 300_000, linesIdleMs = 1_800_000, castKeepMs = 600_000, notify = notifyMac, launch = args => run('osascript', args, { timeoutMs: 15_000 }), sessionProcs = systemProcs, endWaitMs = 8000, readProcs = readPs, deployStatusOf = deployStatus, pullRequestsOf = pullRequests, githubSlugOf = githubSlug, ticketMs = 600_000, quickLook = quickLookPicture, folderRoots = [home, '/Volumes'], chooseFolder = chooseFolderMac, stopWaitMs = 3000, revealFile = real => run('open', ['-R', real], { timeoutMs: 10_000 }), openFolder = dir => run('open', ['-a', 'Finder', dir], { timeoutMs: 10_000 }), log = makeLogger(join(root, 'logs')) }) {
+export async function startCollector({ root, claudeDir = join(homedir(), '.claude'), claudeBin = 'claude', home = homedir(), signedInMs = 60_000, scratchBase = `/private/tmp/claude-${process.getuid?.() ?? 0}`, port: portOverride, deliveryTimeoutMs = 5000, helperTimeoutMs = 30_000, linesGapMs = 300_000, linesIdleMs = 1_800_000, castKeepMs = 600_000, notify = notifyMac, launch = args => run('osascript', args, { timeoutMs: 15_000 }), sessionProcs = systemProcs, endWaitMs = 8000, readProcs = readPs, deployStatusOf = deployStatus, pullRequestsOf = pullRequests, githubSlugOf = githubSlug, ticketMs = 600_000, quickLook = quickLookPicture, folderRoots = [home, '/Volumes'], chooseFolder = chooseFolderMac, stopWaitMs = 3000, revealFile = real => run('open', ['-R', real], { timeoutMs: 10_000 }), openFolder = dir => run('open', ['-a', 'Finder', dir], { timeoutMs: 10_000 }), log = makeLogger(join(root, 'logs')) }) {
   // readProcs, deployStatusOf, pullRequestsOf and githubSlugOf read the machine and GitHub; a test or the demo video passes stand-ins.
   const stateDir = join(root, 'state');
   const pendingDir = join(stateDir, 'pending');
@@ -122,7 +122,7 @@ export async function startCollector({ root, claudeDir = join(homedir(), '.claud
   // Your Claude accounts (config folders): read again each minute, and when config.json changes.
   const sessionAccounts = createSessionAccounts(join(stateDir, 'session-accounts.json')); // which account each session last ran on
   let accounts = [], accountsAt = 0;
-  const signedIn = new Map(); // account key → true or false, once `claude auth status` has said
+  const signedIn = new Map(), signedAt = new Map(); // account key → true or false once `claude auth status` has said, and when it was asked
   const helperDir = join(stateDir, 'helper'), helperRepliesDir = join(stateDir, 'helper-replies');
   const helperPending = new Map(); // sessionId → { id, file, at, auto }: a name asked for, not yet answered
   const nameOffers = new Map(); // sessionId → { name, at, auto }
@@ -411,9 +411,10 @@ export async function startCollector({ root, claudeDir = join(homedir(), '.claud
         shells: base.pid && base.kind !== 'codex' ? shellsOf(procs, base.pid, now, idx) : undefined,
         notes: base.kind === 'codex' ? undefined : notes.summary(base.id),
       });
-      if (base.kind !== 'codex') {
-        agent.account = base.account ?? accounts[0].key;
-        if (base.account) sessionAccounts.see(base.id, accountByKey(base.account).dir, now);
+      if (base.kind !== 'codex') { // an account that has just left the list leaves its sessions to the first
+        const acc = accountByKey(base.account);
+        agent.account = acc?.key ?? accounts[0].key;
+        if (acc && many()) sessionAccounts.see(base.id, acc.dir, now); // remembered only with two or more accounts
       }
       agents.push(applySince(agent, prevAgents.get(agent.id), now));
       if (rec) { // deploys it ran itself (a script over ssh, rsync…), its subagents' too
@@ -469,18 +470,34 @@ export async function startCollector({ root, claudeDir = join(homedir(), '.claud
     const all = [];
     let failed = null;
     for (const a of accounts) {
-      try { all.push(...(await readAgentsCli(claudeBin, run, envFor(a))).map(c => ({ ...c, account: a.key }))); } catch (err) { failed = err; }
+      try { all.push(...(await readAgentsCli(claudeBin, run, envFor(a))).map(c => ({ ...c, account: a.key }))); } catch (err) {
+        failed = err;
+        all.push(...cliAgents.filter(c => c.account === a.key)); // kept as last listed until it answers again
+      }
     }
     cliAgents = all;
     if (failed) markFail('agents', failed); else markOk('agents');
   }
 
-  /** Whether each account is signed in (`claude auth status`), with two or more accounts; kept as it was when it can't say. */
+  /**
+   * Whether each account is signed in (`claude auth status`), with two or more accounts: one signed in
+   * is asked again every 5 minutes, any other every `signedInMs`, so a /login shows soon. Kept as it
+   * was when it can't say.
+   */
+  let signing = false;
   async function pollSignedIn() {
-    if (!many()) return;
-    for (const a of accounts) {
-      const r = await run(claudeBin, ['auth', 'status'], { env: envFor(a), timeoutMs: 10_000 });
-      try { const st = JSON.parse(r.stdout); if (typeof st.loggedIn === 'boolean') signedIn.set(a.key, st.loggedIn); } catch { /* kept as it was */ }
+    if (!many() || signing) return;
+    signing = true;
+    try {
+      for (const a of accounts) {
+        const now = Date.now();
+        if (signedIn.get(a.key) === true && now - (signedAt.get(a.key) ?? 0) < 300_000) continue;
+        signedAt.set(a.key, now);
+        const r = await run(claudeBin, ['auth', 'status'], { env: envFor(a), timeoutMs: 10_000 });
+        try { const st = JSON.parse(r.stdout); if (typeof st.loggedIn === 'boolean') signedIn.set(a.key, st.loggedIn); } catch { /* kept as it was */ }
+      }
+    } finally {
+      signing = false;
     }
   }
 
@@ -522,7 +539,7 @@ export async function startCollector({ root, claudeDir = join(homedir(), '.claud
     for (const t of timers.splice(0)) clearInterval(t);
     timers.push(setInterval(() => schedule(true), cfg.pollMs));
     timers.push(setInterval(() => void pollAgents(), cfg.agentsCliPollMs));
-    timers.push(setInterval(() => void pollSignedIn(), 300_000));
+    timers.push(setInterval(() => void pollSignedIn(), signedInMs));
     timers.push(setInterval(() => void pollGit(), cfg.gitPollMs));
     timers.push(setInterval(() => void pollDeploys(), cfg.deployPollMs));
     timers.push(setInterval(() => void pollPullRequests(), cfg.prPollMs));
@@ -850,10 +867,11 @@ export async function startCollector({ root, claudeDir = join(homedir(), '.claud
     const noted = notes.counts(); // sessions with notes you haven't used yet: a 📝 on their row
     const folders = projectsFolders();
     const sessions = listSessions({ claudeDir, projectsDirs: folders.map(p => p.path), cache: sessionCache, maxAgeDays: all ? Infinity : 30 }).map(({ projectsDir, ...s }) => {
-      // the account it is on: running, where it last ran (that folder may be no account now), or the first
-      const liveOn = snapshot?.agents.find(a => a.id === s.id)?.account, dir = sessionAccounts.get(s.id);
-      const known = liveOn ? accountByKey(liveOn) : dir ? accountByDir(dir) : accounts[0];
-      return { ...s, live: live.has(s.id), account: known?.key ?? null, ...(dir && !known ? { accountGone: keyOfDir(dir, claudeDir) } : {}), canRunOn: folders.find(p => p.path === projectsDir)?.keys ?? [], ...(noted.has(s.id) ? { notes: noted.get(s.id) } : {}) };
+      // the account it is on: running, where it last ran (that folder may be no account now), else the
+      // first account whose history holds it
+      const liveOn = snapshot?.agents.find(a => a.id === s.id)?.account, dir = sessionAccounts.get(s.id), canRunOn = folders.find(p => p.path === projectsDir)?.keys ?? [];
+      const known = liveOn ? accountByKey(liveOn) : dir ? accountByDir(dir) : accounts.find(a => canRunOn.includes(a.key)) ?? accounts[0];
+      return { ...s, live: live.has(s.id), account: known?.key ?? null, ...(dir && !known ? { accountGone: keyOfDir(dir, claudeDir) } : {}), canRunOn, ...(noted.has(s.id) ? { notes: noted.get(s.id) } : {}) };
     });
     const projects = projectsOf(sessions).filter(p => isDir(p.cwd)).map(p => ({ ...p, account: sessions.find(s => s.cwd === p.cwd)?.account ?? accounts[0].key })); // its newest session's
     return { terminal: cfg.terminal === 'iTerm' ? 'iTerm' : 'Terminal', projects, sessions };
@@ -949,8 +967,12 @@ export async function startCollector({ root, claudeDir = join(homedir(), '.claud
     const a = typeof body.account === 'string' ? accountByKey(body.account) : null;
     return a ? { account: a } : { error: `No account "${String(body.account).slice(0, 40)}".` };
   }
-  const notShared = a => `Its history isn't shared with ${a.name}: link ${a.name}'s projects folder to your other accounts' to move conversations between them (see Several Claude accounts in the README).`;
-  const remember = (id, account) => { sessionAccounts.see(id, account.dir, Date.now()); sessionAccounts.save(); };
+  /** Why a session can't run on `target`: the folders to link are the other account's, to the first account's (as the README says). */
+  const notShared = (target, keys) => {
+    const other = target.first ? accountByKey(keys.find(k => k !== accounts[0].key)) ?? target : target;
+    return `Its history isn't shared with ${target.name}: to move conversations between accounts, link ${other.name}'s projects and file-history folders to ${accounts[0].name}'s (see Several Claude accounts in the README).`;
+  };
+  const remember = (id, account) => { if (!many()) return; sessionAccounts.see(id, account.dir, Date.now()); sessionAccounts.save(); };
   const ASIDE_WAIT_MS = 3 * 60_000;
   /** A session's side questions, newest first: answered ones, and the ones still being answered (given up on after 3 minutes). */
   function asidesOf(id, answered, now) {
@@ -1085,7 +1107,8 @@ export async function startCollector({ root, claudeDir = join(homedir(), '.claud
       if (!agent || !SESSION_ID.test(agent.id) || !agent.cwd || !isDir(agent.cwd)) return { ok: false, error: 'That session cannot be resumed from here.' };
       const chosen = accountFor(body, accountOfSession(agent.id)); // another account than its own moves it there
       if (chosen.error) return { ok: false, error: chosen.error };
-      if (chosen.account.key !== agent.account && !canRunOnPath(sessions.get(agent.id)?.path ?? '').includes(chosen.account.key)) return { ok: false, error: notShared(chosen.account) };
+      const runsOn = canRunOnPath(sessions.get(agent.id)?.path ?? '');
+      if (chosen.account.key !== agent.account && !runsOn.includes(chosen.account.key)) return { ok: false, error: notShared(chosen.account, runsOn) };
       const ended = await endSession(agent);
       if (!ended.ok) return ended;
       const opened = await openTerminal(claudeCommand(agent.cwd, agent.id, body.mode ?? 'default', { account: launchAccount(chosen.account) }));
@@ -1221,9 +1244,9 @@ export async function startCollector({ root, claudeDir = join(homedir(), '.claud
       if (!validMode(body?.mode)) return { ok: false, error: 'That is not a permission mode.' };
       if (!validStart(body)) return { ok: false, error: 'That is not a model or an effort level to start with.' };
       const known = await pastSessions();
-      let cwd, resume;
+      let cwd, resume, s;
       if (body?.resume !== undefined) {
-        const s = typeof body.resume === 'string' && SESSION_ID.test(body.resume) ? known.sessions.find(x => x.id === body.resume) : undefined;
+        s = typeof body.resume === 'string' && SESSION_ID.test(body.resume) ? known.sessions.find(x => x.id === body.resume) : undefined;
         if (!s) return { ok: false, error: 'That session was not found.' };
         if (s.live) return { ok: false, error: 'That session is already running.' };
         if (!s.cwd || !isDir(s.cwd)) return { ok: false, error: 'The folder that session ran in no longer exists.' };
@@ -1238,9 +1261,9 @@ export async function startCollector({ root, claudeDir = join(homedir(), '.claud
         }
       }
       // the account: the one asked for, else the session's own, or the account the folder's last session ran on
-      const chosen = accountFor(body, resume ? accountOfSession(resume) : accountByKey(known.projects.find(p => p.cwd === cwd)?.account) ?? accounts[0]);
+      const chosen = accountFor(body, resume ? accountByKey(s.account) ?? accountOfSession(resume) : accountByKey(known.projects.find(p => p.cwd === cwd)?.account) ?? accounts[0]);
       if (chosen.error) return { ok: false, error: chosen.error };
-      if (resume && !known.sessions.find(x => x.id === resume).canRunOn.includes(chosen.account.key)) return { ok: false, error: notShared(chosen.account) };
+      if (resume && !s.canRunOn.includes(chosen.account.key)) return { ok: false, error: notShared(chosen.account, s.canRunOn) };
       const opened = await openTerminal(claudeCommand(cwd, resume, body?.mode ?? 'default', { model: body?.model ?? 'default', effort: body?.effort, account: launchAccount(chosen.account) }));
       if (opened.ok && resume) remember(resume, chosen.account);
       return opened;
