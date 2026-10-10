@@ -861,7 +861,9 @@ can hold.
 - **Top left, the panel.** The money spent and harvests, then waiting on you, working, your turn
   and collisions (click one to open its first agent), then RAM, CPU and plan gauges (each account's
   week and 5 hours when you have several) and a
-  **needs you** button. Click its title to fold it away.
+  **needs you** button. Click its title to fold it away. At 100% the farm sits beside the panel,
+  or below it when that leaves it bigger, so the panel never covers a silo or a building. In a
+  narrow window (the sidebar open) the farm is smaller then: **+** zooms in.
 - **Top right.** List, World (the list of worlds), ＋ Session, ⚙ Claude Code, Sidebar and the theme.
 - **Bottom.** Follow (keep the picked farmer in view), Resting (hide idle and stale farmers),
   Bubbles, Sky (live, day or night), Season (live, then spring, summer, autumn or winter held),

@@ -758,6 +758,13 @@ try {
   const corners = JSON.parse(await fjs(`(() => { const r = s => document.querySelector(s).getBoundingClientRect(), v = r('#farm .px-host'), st = r('.px-stats'), z = r('.px-zoombar'), t = r('.px-tools'), n = r('.px-nav');
     return JSON.stringify({ stats: st.left - v.left < 20 && st.top - v.top < 20, nav: v.right - n.right < 20 && n.top - v.top < 20, zoom: v.bottom - z.bottom < 20 && z.height < 40, tools: (b => v.bottom - b.bottom < 20 && b.height < 40 && Math.abs((b.left + b.right) / 2 - (v.left + v.right) / 2) < 40)((r => ({ left: Math.min(...r.map(x => x.left)), right: Math.max(...r.map(x => x.right)), bottom: Math.max(...r.map(x => x.bottom)), height: Math.max(...r.map(x => x.bottom)) - Math.min(...r.map(x => x.top)) }))([...document.querySelectorAll('.px-tools > button, .px-tools > .px-zoombar')].map(x => x.getBoundingClientRect()))) }); })()`));
   check(corners.stats && corners.nav && corners.zoom && corners.tools, `the controls lie over the farm: the panel top left, the dashboard's buttons top right, a slim row of switches and zoom along the bottom (${JSON.stringify(corners)})`);
+  // At 100% the panel never lies over the farm (it hid the silos' figures): the farm sits beside it or below it.
+  const panelClear = () => fjs(`(() => { const c = document.querySelector('#farm canvas'), r = c.getBoundingClientRect(), cs = r.width / Number(c.dataset.ew), [pl, pt] = c.dataset.pad.split(',').map(Number), p = document.querySelector('.px-stats').getBoundingClientRect();
+    const farm = [r.left + pl * cs, r.top + pt * cs], foot = r.bottom - Number(c.dataset.foot) * cs, tools = Math.min(...[...document.querySelectorAll('.px-tools > button, .px-tools > .px-zoombar')].map(b => b.getBoundingClientRect().top));
+    const beside = farm[0] >= p.right - 1, below = farm[1] >= p.bottom - 1; // below the panel, its foot keeps above the switches too
+    return JSON.stringify({ clear: beside || (below && foot <= tools + 1), farm: [...farm, foot].map(Math.round), panel: [p.right, p.bottom].map(Math.round), tools: Math.round(tools) }); })()`);
+  const refitted = async () => { for (let i = 0, last = ''; i < 20; i++) { const now = await fjs("document.querySelector('#farm canvas').style.width + '|' + document.querySelector('#farm canvas').dataset.pad + '|' + document.querySelector('#farm .px-view').getBoundingClientRect().width"); if (now === last) return; last = now; await sleep(250); } };
+  check(JSON.parse(await panelClear()).clear, `at 100% nothing of the farm lies under the panel (${await panelClear()})`);
   await fjs("document.querySelector('[data-farm-nav=\"theme\"]').click()");
   check(await until("document.documentElement.dataset.theme !== 'dark'"), "the farm's own buttons work the dashboard: the theme changes");
   // Each click reaches the page as a message (wait for it before looking again), and the page takes one
@@ -882,6 +889,15 @@ try {
   await sleep(400); // the page takes a world's picks at most every 250 ms: the next one must not come sooner
   await fjs("document.querySelector('[data-farm-need]').click()");
   check(await until("document.getElementById('main').dataset.side === 'open' && /Which crop next/.test(document.querySelector('#fs-head .fs-ask')?.textContent ?? '')"), "the farm's “needs you” button opens the waiting farmer in the sidebar, with its question");
+  await refitted();
+  check(JSON.parse(await panelClear()).clear, `with the sidebar open, the narrower farm moves clear of the panel too (${await panelClear()})`);
+  const scale = () => fjs("(c => c.getBoundingClientRect().width / Number(c.dataset.ew))(document.querySelector('#farm canvas'))");
+  const sideScale = await scale();
+  await fjs("document.querySelector('[data-farm-panel]').click()"); // folded, it is a bar: the farm sits below it, as big as before
+  await refitted();
+  check(JSON.parse(await panelClear()).clear && await scale() > sideScale, `and below the folded panel, bigger again (${await panelClear()})`);
+  await fjs("document.querySelector('[data-farm-panel]').click()");
+  await refitted();
   check(await fits('#farm-side'), `in the narrower farm sidebar too, the wide code block scrolls inside its bubble (${await sideways('#farm-side')})`);
   check(await js("/^Subagents\\s*1/.test(document.getElementById('tab-subagents').textContent) && !document.querySelector('#farm-agent .sub-card')"), "the farm sidebar's Subagents tab says how many; its Agent tab has no cards");
   await js("document.getElementById('tab-subagents').click()");
