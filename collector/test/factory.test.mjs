@@ -964,6 +964,81 @@ test("lights(): with two accounts, each bank's lamp glows at night", () => {
 /* ---------- what robots hold, their details, their drones, the AGVs, and messages through the tubes ---------- */
 
 // The spec's table (§5): each step and the prop a robot holds for it; plan mode is the kit's blueprint.
+/* ---------- the panel and buttons: the engine's panelHud, in the factory's words ---------- */
+
+const HUD_STATE = { still: true, zoom: 1, saysOn: true, skyMode: 'live', seasonMode: 'live', seasons: true, follow: false, canFollow: false, restingHidden: null, bell: false, nav: {}, panelOpen: true, animals: true };
+/** The factory with each icon's picture made of its rows (so a test can tell which icon a button shows), and a busy scene with a plan set. */
+function withPanel(five = 40) {
+  const loaded = load(), { window, ctx, F } = loaded, h = window.hooks;
+  vm.runInContext("makeSprite = rows => ({ toDataURL: () => 'icon:' + rows.join('|') })", ctx);
+  const snap = crowd({ plan: { windows: [{ kind: 'five_hour', percentUsed: five, resetsAt: TOUR_NOW + 3_600_000 }, { kind: 'seven_day', percentUsed: 75, resetsAt: TOUR_NOW + 86_400_000 }] } });
+  snap.agents[0].compactions = 2; snap.agents[1].compactions = 1; snap.agents[0].usage = { costUsd: 3.5 };
+  const scene = F.factoryScene(window.AgentvilleScene.toScene(snap));
+  h.relayout(h.grid.layoutFor(scene.fields));
+  h.setScene(scene);
+  const hud = mode => h.hud({ ...HUD_STATE, seasonMode: mode, seasonNames: h.seasonNames });
+  const icon = name => `url(icon:${F.ICONS[name].join('|')})`;
+  /** The Heat switch's button, and the panel's floor-heat line. */
+  const heat = html => ({ button: /<button type="button" data-farm-season[^>]*>[\s\S]*?<\/button>/.exec(html)[0], line: /<span class="px-season"[\s\S]*?<\/span><\/div>/.exec(html)[0] });
+  return { ...loaded, h, hud, icon, heat };
+}
+
+test("the panel and buttons are the engine's panelHud in the factory's words: robots, what they built, the floor heat; every button the engine clicks", () => {
+  const { h, hud } = withPanel();
+  assert.equal(typeof h.hud, 'function');
+  for (const mode of ['live', 'spring', 'winter']) {
+    const html = hud(mode);
+    assert.match(html, /class="px-stats"/, `${mode}: the panel`);
+    assert.match(html, />\$15\.90</, `${mode}: what the sessions cost (31 robots at $0.40, one at $3.50)`);
+    assert.match(html, />3 built</, `${mode}: three compactions, three robots built`);
+    for (const attr of ['data-farm-panel', 'data-farm-need', 'data-farm-nav="list"', 'data-farm-nav="worlds"', 'data-farm-nav="session"', 'data-farm-follow', 'data-farm-resting', 'data-farm-bubbles', 'data-farm-animals', 'data-farm-sky', 'data-farm-season', 'data-farm-motion', 'data-farm-bell', 'data-farm-help', 'data-farm-zoom="0"']) assert.ok(html.includes(attr), `${mode}: ${attr}`);
+    assert.doesNotMatch(html.replace(/data-farm-[\w-]+(="[^"]*")?/g, ''), FARM_WORDS, mode); // anywhere, the engine's click attributes aside
+    const read = [...html.matchAll(/(?:title|aria-label)="([^"]*)"|class="px-sr">([^<]*)</g)].map(m => m[1] ?? m[2]).join('\n'); // what a person reads: the tooltips and the words
+    assert.doesNotMatch(read, /\bseasons?\b/i, `${mode}: the switch and its tooltips say heat`);
+    for (const word of ['robot', 'factory']) assert.match(read, new RegExp(word), `${mode}: says ${word}`);
+  }
+});
+
+test('the Heat switch and the panel: a thermometer for each level, filled as the one on the wall; live follows the 5-hour limit, a held level shows its 📌 and the real use', () => {
+  const { F, hud, icon, heat } = withPanel(40);
+  const levels = ['cool', 'warm', 'hot', 'steaming'];
+  for (const name of levels) assert.ok(F.ICONS[name].length === 9 && F.ICONS[name].every(r => /^[.PwysrgobBS]{9}$/.test(r)), `${name}: 9 rows of 9 known letters`);
+  assert.equal(new Set(levels.map(n => F.ICONS[n].join())).size, 4, 'four thermometers, no two alike');
+  const fluid = { cool: 'B', warm: 'y', hot: 'o', steaming: 'r' }, filled = n => F.ICONS[n].join('').split(fluid[n]).length - 1;
+  assert.ok(levels.every((n, i) => i === 0 || filled(n) > filled(levels[i - 1])), `filled higher at each level (${levels.map(filled)})`);
+  assert.ok(F.ICONS.steaming.join('').includes('S'), 'steaming: steam rising beside it');
+  const live = heat(hud('live'));
+  assert.ok(live.button.includes(icon('warm')) && /Heat: live/.test(live.button), 'live at 40%: the switch shows the warm thermometer, and says live');
+  assert.ok(live.line.includes(icon('warm')) && />warm</.test(live.line) && !live.line.includes('📌'), "the panel's line: warm, live");
+  assert.match(live.line, /title="The floor heat follows your plan&#39;s 5-hour limit: 40% used\. Cool while it is fresh/);
+  for (const [mode, name] of [['spring', 'cool'], ['autumn', 'hot'], ['winter', 'steaming']]) {
+    const held = heat(hud(mode));
+    assert.ok(held.button.includes(icon(name)) && new RegExp(`Heat: ${name}<`).test(held.button), `held ${name}: its thermometer and its name on the switch`);
+    assert.ok(held.line.includes(icon(name)) && /📌/.test(held.line) && /· 5-hour 40%/.test(held.line), `held ${name}: the panel shows it with a 📌 and the real 5-hour use`);
+    assert.match(held.line, new RegExp(`title="Held at ${name} by the Heat switch, not live\\. The live floor heat would be warm \\(your plan&#39;s 5-hour limit: 40% used\\)`));
+  }
+});
+
+test("the panel with no plan reading: the floor heat is warm, its tooltip says there is no reading; a held level says no 5-hour reading", () => {
+  const { window, F, ctx } = load(), h = window.hooks;
+  vm.runInContext("makeSprite = rows => ({ toDataURL: () => 'icon:' + rows.join('|') })", ctx);
+  h.setScene(F.factoryScene(window.AgentvilleScene.toScene(crowd())));
+  const state = { ...HUD_STATE, seasonNames: h.seasonNames };
+  const live = h.hud(state), held = h.hud({ ...state, seasonMode: 'autumn' });
+  assert.match(live, /title="The floor heat follows your plan&#39;s 5-hour limit \(no reading yet: warm\)/);
+  assert.ok(live.includes(`url(icon:${F.ICONS.warm.join('|')})`), 'the warm thermometer');
+  assert.match(held, /· no 5-hour reading/);
+  assert.match(held, /title="Held at hot by the Heat switch, not live\. The live floor heat would be warm \(your plan&#39;s 5-hour limit: no reading yet\)/);
+});
+
+test("with two Claude accounts, the panel has a gauge for each (its name and week), as the factory has a bank for each; the floor heat is the first's", () => {
+  const { window, F } = load(), h = window.hooks;
+  h.setScene(F.factoryScene(window.AgentvilleScene.toScene(TWO)));
+  const html = h.hud({ ...HUD_STATE, seasonNames: h.seasonNames });
+  assert.deepEqual([...html.matchAll(/class="px-gauge" title="(Your [^"]*)"/g)].map(m => m[1]), ['Your work account: 40% of its week, 30% of its 5 hours (from the mod)', 'Your home account: 92% of its week, 95% of its 5 hours (from the mod)']);
+  assert.match(html, /The floor heat follows your plan&#39;s 5-hour limit: 30% used/);
+});
+
 const HELD = {
   read: 'datapad', search: 'scanner', web: 'antenna', edit: 'welder', write: 'printer', test: 'multimeter', lint: 'polisher', build: 'wrench',
   install: 'forklift', commit: 'crate', push: 'ramp', deploy: 'rocketCrate', pull: 'capsule', serve: 'rack', delete: 'shredder', agent: 'megaphone',

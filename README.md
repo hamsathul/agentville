@@ -43,6 +43,7 @@ It listens on `127.0.0.1` only and reads what Claude Code already writes to disk
   - [Files, documents and quoting](#files-documents-and-quoting)
   - [Worlds](#worlds)
     - [The farm](#the-farm)
+    - [The robot factory](#the-robot-factory)
   - [Notifications and the bell](#notifications-and-the-bell)
   - [Inside Claude Code: the mod](#inside-claude-code-the-mod)
 - [Configuration](#configuration)
@@ -118,8 +119,8 @@ It listens on `127.0.0.1` only and reads what Claude Code already writes to disk
 - A bell in the page, and a count in the tab title.
 - Inside Claude Code: a `/tracker` pane, a status line and toasts.
 
-**Watch it as a farm, or a world of your own** (optional)
-- Choose how the dashboard draws your agents: the farm, or a world of your own.
+**Watch it as a farm, a robot factory, or a world of your own** (optional)
+- Choose how the dashboard draws your agents: the farm, the robot factory, or a world of your own.
 - A pixel farm where every agent is a farmer and every repo a field. Crops grow as context
   fills, weather shows the last deploy, the season follows your 5-hour limit (or hold one with the
   **Season** switch), a cart runs to town for each web call, each MCP server's cart drives to the
@@ -130,9 +131,14 @@ It listens on `127.0.0.1` only and reads what Claude Code already writes to disk
 - Animals on the farm, just for fun: cows, goats, a sheepdog, an ostrich, a lion, a tiger and a duck
   family on the pond. Click one to pet or feed it, and a farmer walks over to do it. Now and then they
   get up to something (a goat steals a hat), react to deploys and merges, and huddle in winter.
-- The farm is a world: it runs in a sandboxed frame of its own, with no access to the token, and
-  asks the page for the little it needs ([docs/worlds.md](docs/worlds.md)). A world from your own
-  folder sees no words or paths until you tick **Can see what agents say** for it.
+- A bright robot factory, the second world, showing everything the farm shows: every agent a robot
+  put together from parts picked by its id, every repo an assembly bay where a robot is built as the
+  context fills. Drones are subagents and web calls, AGVs drive to the robot calling an MCP server,
+  messages shoot through pneumatic tubes, and the floor heats up with your 5-hour limit (or hold a
+  level with the **Heat** switch). A robot dog, a robot vacuum and a cat live there just for fun.
+- The farm and the factory are worlds: each runs in a sandboxed frame of its own, with no access to
+  the token, and asks the page for the little it needs ([docs/worlds.md](docs/worlds.md)). A world
+  from your own folder sees no words or paths until you tick **Can see what agents say** for it.
 - Make your own world, or have Claude make one: `npm run new-world`, the test page, `check-world`
   and `world-shots`, with a guide written for Claude Code to follow ([docs/worlds.md](docs/worlds.md)).
   The test page shows any world playing a tour of made-up snapshots, each situation at its own
@@ -667,8 +673,9 @@ The **⚙ Claude Code** button in the top bar opens your Claude Code setup in th
 
 ### Worlds
 
-A world is a way to draw what the dashboard knows; the farm is the built-in one. **World**, among
-the farm's buttons at the top, opens the list of worlds: pick one. A world that might draw no
+A world is a way to draw what the dashboard knows. Two come built in: **the farm** (the default;
+[The farm](#the-farm)) and **the robot factory** ([The robot factory](#the-robot-factory)). **World**,
+among a world's buttons at the top, opens the list of worlds: pick one. A world that might draw no
 buttons of its own — any world of yours, and a built-in one that draws itself — gets a small
 control from the page in a corner instead: **World ▾** for the list of worlds and **☰ List** for
 the list view, so it can't leave you with no way back. In the list view, the button beside **☰
@@ -715,12 +722,12 @@ hold. How to write one is in [docs/worlds.md](docs/worlds.md), a guide written f
 follow as much as for you: ask Claude to make you a world and point it there. A plain starter world
 (`web/worlds/starter/`, with a cat; [a picture](docs/starter.png)) is the template for your own; it
 isn't in the list. A world can have animals
-of its own (the `animals()` hook, from a library of twelve creatures), and lists in its `world.json`
+of its own (the `animals()` hook, from a library of fourteen creatures), and lists in its `world.json`
 the shapes it already uses for data (`taken`), so its animals never look like them.
 
-**Try a world on the test page:** `http://localhost:7777/worlds/test?world=farm` (or `?world=starter`,
-or `?world=u/<folder>` for one of yours). It shows the world playing a tour of made-up snapshots,
-one stop for each thing a world may show (every state, deploys, a compaction, a collision, the
+**Try a world on the test page:** `http://localhost:7777/worlds/test?world=farm` (or `?world=factory`,
+`?world=starter`, or `?world=u/<folder>` for one of yours). It shows the world playing a tour of
+made-up snapshots, one stop for each thing a world may show (every state, deploys, a compaction, a collision, the
 limits, night, privacy mode…), and `&stop=<name>` holds one stop at its own address, for a
 screenshot. The page has no token and no real data: requests get made-up answers, what the world
 asks the page to do is listed rather than done (but a GitHub link still opens, and motion is applied
@@ -731,7 +738,7 @@ world. The error strip and the "didn't start" panel show here as on the dashboar
 when you save: reload the page. The stops are
 listed in [docs/worlds.md](docs/worlds.md#the-test-page-and-the-tour).
 
-**A picture of every stop:** `npm run world-shots -- <name>` (or `farm`, `starter`) opens each stop
+**A picture of every stop:** `npm run world-shots -- <name>` (or `farm`, `factory`, `starter`) opens each stop
 of the tour in headless Chrome, on a server of its own with made-up data, and saves a picture of
 each in `.private/shots/` (`--stop <name>` for one stop, `--dir <folder>` for another place). The
 clock is frozen, so the same world gives the same pictures, which makes a change easy to compare.
@@ -739,7 +746,7 @@ clock is frozen, so the same world gives the same pictures, which makes a change
 your worlds folder. If one of yours has a built-in world's name, `check-world` and `world-shots` use the
 built-in and say so; `u/<name>` reaches yours.
 
-**Check a world without a browser:** `npm run check-world -- <name>` (or `farm`, `starter`) plays the
+**Check a world without a browser:** `npm run check-world -- <name>` (or `farm`, `factory`, `starter`) plays the
 same tour headless, a few frames a stop, and lists each exception with its stop, file and line, a
 hook that never returns (cut off after 2 seconds; it never hangs), a `world.json` problem, creatures
 that break the animals kit's rules (a kind in `taken`, a line over 40 characters, fewer than 2 or more
@@ -927,6 +934,109 @@ tooltip says it is held, not live, and what the live season would be.
 The farm pauses when its tab is hidden, or while the list shows (it is kept as it was, diary
 and all, for when you come back), and follows the system's reduce-motion setting.
 
+#### The robot factory
+
+The same live data as a bright, friendly workshop: every agent is a robot and every repo an
+assembly bay. Choose **Robot factory** in the list of worlds (**World**). Everything the dashboard
+knows has its picture here, and the panel, buttons, sidebar, zoom and clicks work as in any built-in
+world, in the factory's own words.
+
+![The robot factory: every agent a robot, every repo an assembly bay](docs/factory.png)
+
+**The layout.** Along the back wall, under tall windows that show the sky by your clock, stand
+the fabricator, the drone dock, a thermometer, **your desk**, the manuals shelf, the power-cell bank
+and the loading dock, with a walkway in front of them. Below are the bays, one per repo, inside a
+yellow and black safety line on a tiled floor, three across and up to 18, each keeping its place
+while you look (a repo that goes away leaves its bay empty for a day). A project's bays share a
+painted floor zone with a sign. Down the left side are the storage shelf, the charging pads, the open
+table, the sleep pods and the AGV rank. The conveyor runs along the bottom, and pneumatic tubes
+overhead come down to every bay.
+
+**The robots.** Each is put together from parts picked by its agent's id: a head (a dome, a box, a
+round one with an antenna, or a screen face), a body in the agent's colour in the list, and a drive
+(wheels, two legs or treads). The same agent is always the same robot. Codex agents are the
+slate-grey model line.
+
+**Reading the factory.** The **Help** button opens the full legend, including every tool a robot can
+hold.
+
+| You see | It means |
+|---|---|
+| A robot queued at the left of your desk, waving a red **!**, its beacon blinking red (and the red beacon over the desk) | It is waiting on you (a blueprint on the desk: a plan to approve) |
+| A robot at the right of your desk with a crate of finished parts | Its turn ended (a **?** bubble: it asked you something) |
+| A robot at a bay, holding a tool | It is working in that repo. The tool is its step: datapad = reading, scanner = searching, welder = editing, part printer = a new file, multimeter = tests, wrench = build, stamped crate = commit, cart up a ramp = push, rocket crate = deploy… |
+| A robot being built on a bay's bench | The context filling: the frame, then the wiring (30%), the plating (50%), the head (70%), and its eyes light up when it is nearly full (85%) |
+| **Built!**, and the finished robot rolling off on the conveyor | Its conversation was compacted, so a new frame goes on the bench |
+| A gear spinning over its head / a checklist screen beside it | It is thinking between steps / its task list (its name says e.g. 3/7) |
+| The beacon on its head | Green working, red blinking waiting on you, amber your turn, blue idle |
+| The light on its antenna | Its model: purple Opus, blue Sonnet, green Haiku, orange Fable |
+| Speed lines / hazard stripes round its waist / smoke | Fast mode / bypass permissions / a hot CPU |
+| A badge on its chest | What it has cost: copper from $1, silver from $10, gold from $50 |
+| Mini drones by a robot | Its subagents (a scanner drone sweeping a beam: an Explore one) |
+| Drones docked in the drone dock / circling over it, with **+N** | Subagents that finished lately / more running than their robots can lead |
+| A delivery drone flying out of a window and back | A web call (a fetch or a search), labelled with where it goes |
+| AGVs in the rank on the left | One for each MCP server your agents called in the last hour. While a robot calls one, its AGV drives over with the server's name and waits beside it until the call is done, and a few seconds more |
+| A capsule shooting through the tubes | One session messaging another |
+| Loose parts on the floor / boxed parts / a capsule at the bay's tube outlet | Uncommitted files / unpushed commits / commits behind |
+| The stack light: green with a **SHIPPED** flash / red with sparks / amber with turning gears / a grey pause | Last deploy passed / failed / running / Actions didn't run |
+| Hazard tape round a bay, pulsing | Two agents writing to the same repo (faster when it's serious) |
+| A blue flag on a bay's sign / a glass clean room | A branch other than main / a worktree, beside its repo's bay |
+| A part printer humming by a bench | A background command still running |
+| A robot asleep in a sleep pod | It will wake up by itself (`/loop`), with when |
+| On a charging pad, eyes shut / powered down and grey on the storage shelf | Idle / stale |
+| Crates on the loading dock, tagged by their checks | Open pull requests. **Shipped!** means one was merged: its crate rolls out of the door |
+| The power-cell bank's cells | Your plan's weekly usage: they drain as the week is used; its lamp turns amber from 70% and blinks red from 90% |
+| A second power-cell bank, left of the fabricator | With two Claude accounts: each has its bank, its name and week on the tag at its foot. The floor heat follows the first account |
+| The floor heat | Your plan's 5-hour limit (below) |
+
+**Floor heat and the Heat switch.** The floor heats up with your plan's 5-hour limit, on the
+thermometer by your desk and in the floor vents between the bays: cool while it is fresh (blue, the
+vents' fans turning slowly), then warm (the fans faster), hot (the fans racing, a shimmer over the
+vents) and steaming (steam from the vents, sparks off the machines) when it is nearly used up; a new
+window cools it again. The **Heat** switch, among the switches along the bottom, holds a level
+instead: each click moves it on (live, cool, warm, hot, steaming, then live again), and it is
+remembered, as the sky is. It only holds the look: while a level is held, the panel shows it with a
+📌 and your real 5-hour use (for example "steaming 📌 · 5-hour 42%"), and its tooltip says it is held,
+not live. With no reading of your plan yet, the floor is warm.
+
+**Day and night.** The windows show the sky by your clock. At night the lights dim, and the desk
+lamp, the screens, the stack lights, the fabricator's glow and welding sparks glow.
+
+**Animals.** A robot dog, a robot vacuum and a cat live in the factory just for fun. They never stand
+for anything, and there are no drones among them (every drone here is data).
+- The dog trots about the walkway and the left side and rests now and then by the chargers; it
+  rolls over, runs to the loading dock when a pull request ships and to meet a new robot, and sleeps at
+  night with its standby light on. The vacuum roams the walkway and the left side too. The cat naps on
+  the conveyor and ambles along it. None of them goes into the bays, the queue at your desk or the AGV
+  rank.
+- Click one (or the belt, for the cat) for its menu: Pet, Oil or Fetch the dog; Pet or Empty the
+  vacuum; Pet or Feed the cat. The nearest robot that isn't waiting on you rolls over and does it.
+- Now and then the vacuum chases the cat off the belt, wedges itself in the storage shelf's corner and
+  beeps until a robot frees it. A robot idle for three minutes or more sometimes plays fetch with the
+  dog or pats the vacuum.
+- With ✨ Helper's **Animal lines** ticked, they say lines Haiku wrote, in the factory's words (the
+  robot dog and the vacuum need mod 0.9.1: "✨ Helper and suggested names").
+- The **Animals** switch hides them; it is remembered.
+
+**Controls and clicks.** The panel is top left (the money spent and the robots built, the floor
+heat, the counts and meters, **needs you**; at 100% the factory sits beside it or below it), with
+the dashboard's buttons top right, and along the bottom Follow, Resting (hide the robots charging and
+those powered down), Bubbles, Animals, Sky, Heat, Motion, Bell, Help and zoom. Click a robot to open it
+in the sidebar, a bay (or its sign) for a close-up of the files agents touched there, a speech bubble
+for its conversation, and a building for the rest:
+
+| Building | Opens |
+|---|---|
+| Fabricator | Start or resume a session (the new robot rolls out of its door) |
+| Your desk | Who is waiting on you, with a button to open each |
+| Power-cell bank | Your plan's usage and when each limit resets (each account's, when you have several) |
+| Drone dock | The subagents and how each is going |
+| Manuals shelf | Each project's CLAUDE.md and memory |
+| Loading dock | The pull requests, with links |
+
+The factory pauses when its tab is hidden, or while the list shows, and follows the system's
+reduce-motion setting.
+
 ### Notifications and the bell
 
 - **macOS notifications** come from the collector: an agent needs you, finished its turn,
@@ -982,8 +1092,8 @@ The mod also does the dashboard's work inside the session:
 | `agent-tracker open` | Opens the dashboard |
 | `agent-tracker logs` | The last lines of its logs |
 | `npm run new-world -- <name>` | Makes a world of your own from the starter, in your worlds folder, and says what to do next ([docs/worlds.md](docs/worlds.md#making-a-world)) |
-| `npm run world-shots -- <world>` | A picture of a world (`farm`, `starter` or one of yours) at every stop of the test tour, in headless Chrome on made-up data, in `.private/shots/` (`--stop <name>` for one stop). Exits 1 if a stop didn't show |
-| `npm run check-world -- <world>` | Runs the test tour headless against a world (`farm`, `starter` or one of yours): its exceptions with file and line, a hook that never returns, creatures (and their gags) that break the animals kit's rules, and pointers to what it may draw the same ([docs/worlds.md](docs/worlds.md#check-world-and-the-checklist)). Exits 1 on a problem. It runs the world's code contained (it can read only the SDK and the world's `world.js` and `world.json`), but the world can still reach the network: check only worlds you'd trust ([Privacy and security](#privacy-and-security)) |
+| `npm run world-shots -- <world>` | A picture of a world (`farm`, `factory`, `starter` or one of yours) at every stop of the test tour, in headless Chrome on made-up data, in `.private/shots/` (`--stop <name>` for one stop). Exits 1 if a stop didn't show |
+| `npm run check-world -- <world>` | Runs the test tour headless against a world (`farm`, `factory`, `starter` or one of yours): its exceptions with file and line, a hook that never returns, creatures (and their gags) that break the animals kit's rules, and pointers to what it may draw the same ([docs/worlds.md](docs/worlds.md#check-world-and-the-checklist)). Exits 1 on a problem. It runs the world's code contained (it can read only the SDK and the world's `world.js` and `world.json`), but the world can still reach the network: check only worlds you'd trust ([Privacy and security](#privacy-and-security)) |
 
 ## How it works
 
@@ -1219,8 +1329,8 @@ and can do is in [docs/worlds.md](docs/worlds.md).
 ```
 collector/   the collector: sources/, transcript/, derive/, server.mjs; its tests in test/
 web/         the dashboard: index.html, app.js, panels.js, scene.js, worlds.js…; worlds/ holds the
-             farm (worlds/farm/), the starter (worlds/starter/), the test page and its tour
-             (worlds/test/) and what every world's frame loads (worlds/sdk/)
+             farm (worlds/farm/), the robot factory (worlds/factory/), the starter (worlds/starter/),
+             the test page and its tour (worlds/test/) and what every world's frame loads (worlds/sdk/)
 mod/         the Claude Code mod: hooks/register.tsx; its tests in tests/
 bin/         the agent-tracker command and the launchd entry point
 launchd/     the service definition

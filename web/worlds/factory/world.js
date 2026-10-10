@@ -186,7 +186,9 @@
   const FACTORY_GRID = makeGrid({
     cols: 3, colW: COLW, rowH: ROWH, cx0: 174, top0: 100,
     slot: (cx, rowTop) => ({ lane: rowTop + 44, x0: cx - 36, y0: rowTop + 12 }),
-    fence: rows => ({ x0: 128, x1: 396, y0: 96, y1: 104 + rows * ROWH }), height: fence => fence.y1 + 28,
+    // the world's foot: the conveyor (fence.y1 + 12), then a strip of bare floor, which is what the switches along the
+    // frame's bottom lie over when the frame is short and wide (the engine fits the world beside the panel there)
+    fence: rows => ({ x0: 128, x1: 396, y0: 96, y1: 104 + rows * ROWH }), height: fence => fence.y1 + 48,
   });
   // The power-cell banks (24 wide, their shadow 2 more): the first account's where it always stood; a second
   // account's on the back wall left of the fabricator, in front of the first window (banksOf).
@@ -733,6 +735,8 @@
     autumn: { fan: 11, fill: 0.75, fluid: '#f08a24' }, // hot: fans racing, a shimmer over the vents
     winter: { fan: 14, fill: 1, fluid: '#e04a3a' }, // steaming: steam from the vents, sparks off the machines now and then
   };
+  // The levels' names, and the switch's (the engine's seasonNames): the setting still saves spring … winter.
+  const HEAT_NAMES = { switch: 'Heat', spring: 'cool', summer: 'warm', autumn: 'hot', winter: 'steaming' };
   /** A limit's % used, from its window: 0 in a new window; null with no window, or one without a number (no reading). */
   const usedOf = w => (!w ? null : w.reset ? 0 : Number.isFinite(w.percentUsed) ? w.percentUsed : null);
   /**
@@ -1278,6 +1282,71 @@
   /** How long until a time, in short: 12m, 2h. */
   const until = at => { const m = Math.max(0, (at - Date.now()) / 60_000); return m < 1 ? 'a moment' : m < 60 ? `${Math.round(m)}m` : `${Math.round(m / 60)}h`; };
 
+  /* ---------- the panel and buttons: the engine's panelHud, in the factory's words ---------- */
+
+  // Pixel icons for the buttons (9×9): one letter per pixel, '.' clear. The dashboard's own (a list, a globe, a
+  // plus, a gear…) as on every world; the Heat switch's are a thermometer at each level, filled as the one on the
+  // back wall is (cool low and blue, warm amber, hot orange, steaming full and red, with steam rising).
+  const ICONS = {
+    follow: ['....k....', '..kkkkk..', '.k.....k.', '.k.....k.', 'kk..r..kk', '.k.....k.', '.k.....k.', '..kkkkk..', '....k....'],
+    resting: ['.....kkkk', '.......k.', '......k..', '.....kkkk', 'kkkkk....', '...k.....', '..k......', '.k.......', 'kkkkk....'],
+    bubbles: ['.........', '.kkkkkkk.', 'kwwwwwwwk', 'kwkwkwkwk', 'kwwwwwwwk', '.kkwkkkk.', '..kk.....', '..k......', '.........'],
+    day: ['....y....', '.y.....y.', '...yyy...', '..yyyyy..', 'y.yyyyy.y', '..yyyyy..', '...yyy...', '.y.....y.', '....y....'],
+    night: ['...yyy..s', '..yy.....', '.yy......', '.yy...s..', '.yy......', '.yy......', '..yy.....', '...yyy...', '.........'],
+    live: ['.........', '...yyy...', '..yyyyy..', '.yyyyyyy.', 'kkkkkkkkk', '.........', '..kkkkk..', '.........', '...kkk...'],
+    play: ['..k......', '..kk.....', '..kgk....', '..kggk...', '..kgggk..', '..kggk...', '..kgk....', '..kk.....', '..k......'],
+    pause: ['.........', '.kk...kk.', '.kk...kk.', '.kk...kk.', '.kk...kk.', '.kk...kk.', '.kk...kk.', '.kk...kk.', '.........'],
+    help: ['..kkkkk..', '.kk...kk.', '......kk.', '....kkk..', '...kk....', '...kk....', '.........', '...kk....', '.........'],
+    list: ['.........', 'kk.kkkkkk', '.........', 'kk.kkkkkk', '.........', 'kk.kkkkkk', '.........', '.........', '.........'],
+    world: ['..kkkkk..', '.kbbgbbk.', 'kbgggbbbk', 'kbbggbgbk', 'kbbbbbggk', 'kgbbbbbbk', 'kggbbgbbk', '.kbbgbbk.', '..kkkkk..'],
+    plus: ['....k....', '....k....', '....k....', 'kkkkkkkkk', '....k....', '....k....', '....k....', '.........', '.........'],
+    gear: ['....k....', '.k.kkk.k.', '..kkkkk..', '.kkk.kkk.', 'kkk...kkk', '.kkk.kkk.', '..kkkkk..', '.k.kkk.k.', '....k....'],
+    side: ['kkkkkkkkk', 'k...kyyyk', 'k...kyyyk', 'k...kyyyk', 'k...kyyyk', 'k...kyyyk', 'kkkkkkkkk', '.........', '.........'],
+    bell: ['....k....', '...kyk...', '..kyyyk..', '..kyyyk..', '..kyyyk..', '.kyyyyyk.', 'kkkkkkkkk', '...kyk...', '....k....'],
+    animals: ['.k.k.k...', '.k.k.k...', '.........', 'k.kkk.k..', '.kkkkk...', '.kkkkk...', '..kkk....', '.........', '.........'],
+    cool: ['...PPP...', '...PwPP..', '...PwP...', '...PwPP..', '...PwP...', '...PBPP..', '..PBBBP..', '..PBBBP..', '...PPP...'],
+    warm: ['...PPP...', '...PwPP..', '...PwP...', '...PyPP..', '...PyP...', '...PyPP..', '..PyyyP..', '..PyyyP..', '...PPP...'],
+    hot: ['...PPP...', '...PwPP..', '...PoP...', '...PoPP..', '...PoP...', '...PoPP..', '..PoooP..', '..PoooP..', '...PPP...'],
+    steaming: ['S..PPP...', '.S.PrPP..', 'S..PrP...', '.S.PrPP..', '...PrP...', '...PrPP..', '..PrrrP..', '..PrrrP..', '...PPP...'],
+  };
+  // k the outline (dark steel); P the thermometers' steel (the wall thermometer's, which shows on the panel's navy and on the buttons' cream), their fluid in its colours (HEAT); S steam.
+  const ICON_PAL = { k: '#3a3a40', w: '#ffffff', y: '#f0b429', s: '#f4ecd8', r: '#e04a3a', g: '#2fa57a', o: '#f08a24', b: '#a9dcf7', B: '#3d7be0', S: '#9aa4ad', P: '#5f6b7a' };
+  const iconUrls = new Map();
+  /** HTML for one of the factory's pixel icons (none without a DOM). */
+  function iconImg(name) {
+    if (typeof document === 'undefined' || !ICONS[name]) return '';
+    if (!iconUrls.has(name)) iconUrls.set(name, makeSprite(ICONS[name], ICON_PAL).toDataURL());
+    return `<i class="px-ico" aria-hidden="true" style="background-image:url(${iconUrls.get(name)})"></i>`;
+  }
+  // The factory's words and colours in the engine's panel and buttons: robots and what they build, light steel and
+  // sky blue on the panel, safety yellow for the mark, dark steel on the buttons. The stylesheet's coin is the cost;
+  // its basket (a brown box, a red top) a crate of finished parts.
+  const FACTORY_WORDS = {
+    place: 'factory', agent: 'robot', agents: 'robots',
+    costTip: "What the sessions in the factory have cost so far (each robot's chest badge; from the mod)", costIcon: 'coin',
+    compactedWord: 'built', compactedTip: "Robots built: each time a session's conversation was compacted (its finished robot rolls off on the conveyor)", compactedIcon: 'basket',
+    textColor: '#ffffff', shadowColor: '#2a1d14', dimColor: '#c3cbd2', labelColor: '#a9dcf7', brandColor: '#ffd43b', toolColor: '#3a3a40', toolStateColor: '#5f6b7a',
+    sideTip: "Show the selected robot's answer box, activity and files beside the factory",
+    followTip: 'Keep the robot you picked in the middle of the view (zooms in); dragging the view turns it off',
+    followFirstTip: 'Pick a robot first, then Follow keeps it in view',
+    restingTip: 'Idle robots (on the charging pads) and stale ones (powered down on the storage shelf): show them, or hide them to keep the factory to the robots at work',
+    bubblesTip: 'Speech bubbles with what each robot last said. × hides one; its 💬 shows it again',
+    animalsTip: 'The robot dog, the robot vacuum and the cat, just for fun: click one to pet it, oil the dog, empty the vacuum or feed the cat. They never stand for anything',
+    skyTip: 'The light in the windows: live follows your clock (dawn, day, dusk, night); or hold it at day or night',
+    seasonSwitchTip: "The floor heat: live follows your plan's 5-hour limit (cool while it is fresh, steaming when it is nearly used up); or hold one: cool, warm, hot or steaming. The panel's 📌 shows your real 5-hour use meanwhile",
+    motionTip: 'Robots rolling and machines moving in the factory',
+    helpTip: 'How to read the factory',
+    zoomTip: 'Zoom the factory inside its frame (or ⌘/Ctrl + scroll, or pinch); drag to move around when zoomed in',
+    zoomAllTip: 'Show the whole factory',
+  };
+  // The panel's glass: a screen's navy, as a robot's visor is, in place of the farm's green (only its colours: its size
+  // and place stay the engine's). The buttons keep their cream and wood, as the floor's signs are.
+  if (typeof document !== 'undefined' && document.head) {
+    const glass = document.createElement('style');
+    glass.textContent = '.px-stats { background: rgba(28, 42, 72, .92); border-color: #3a3a40; box-shadow: inset 0 0 0 1px rgba(169, 220, 247, .16), 0 3px 0 rgba(0, 0, 0, .35); }';
+    document.head.append(glass);
+  }
+
   function makeFactory() {
     let L = FACTORY_GRID.layoutFor([]);
     let scene = { fields: [], farmers: [] };
@@ -1383,6 +1452,18 @@
       if (!b) return "The power-cell bank: your plan's weekly limit, no reading yet (it comes from the mod in a running session)";
       return `The power-cell bank: your plan's weekly limit, ${b.reset ? 'just reset' : `${b.pct}% used`}, ${b.lit} of 8 cells left${b.resetsAt ? `; resets ${resetAt(b.resetsAt)}` : ''}. Click for your plan`;
     }
+    /**
+     * The panel's floor-heat tooltip: live, how it follows the 5-hour limit (the first account's, with several);
+     * held (the Heat switch), that it is held and what the live heat would be.
+     */
+    function seasonTip(mode = 'live') {
+      const w = scene.plan?.windows?.find(x => x.kind === 'five_hour'), used = usedOf(w);
+      const reading = w?.reset ? 'just reset' : used === null ? null : `${Math.round(used)}% used`;
+      if (mode !== 'live') return `Held at ${HEAT_NAMES[mode] ?? mode} by the Heat switch, not live. The live floor heat would be ${HEAT_NAMES[heat]} (your plan's 5-hour limit: ${reading ?? 'no reading yet'}). The switch goes back to live after steaming`;
+      return `The floor heat follows your plan's 5-hour limit${reading ? `: ${reading}` : ' (no reading yet: warm)'}. Cool while it is fresh, then warm and hot; steaming when it is nearly used up. The thermometer by your desk and the floor vents show it`;
+    }
+    /** The Heat switch's icon for a level: its thermometer, by the level's name. */
+    const seasonIcon = s => HEAT_NAMES[s];
     /** A robot welding: working on an edit (the welder's step; plan mode is the blueprint). */
     const welding = f => f.state === 'working' && props.doing(f) === props.steps.edit;
     /** The windows a delivery drone can fly out of: those no bank stands in front of. */
@@ -1407,8 +1488,14 @@
     return {
       key: 'factory', W, SH: 16, corridors: CORR, grid: FACTORY_GRID, fromScene: factoryScene, help: helpHtml,
       nouns: { agent: 'robot', agents: 'robots', repo: 'bay', repos: 'bays', place: 'factory' },
-      seasonNames: { switch: 'Heat', spring: 'cool', summer: 'warm', autumn: 'hot', winter: 'steaming' },
+      seasonNames: HEAT_NAMES,
       boardTitle: 'The manuals shelf: what your projects remember', // the engine opens it (the 'board' building)
+      /**
+       * The dashboard's panel and buttons, the farm's (the engine's panelHud) in the factory's words: top left, the
+       * panel (what the sessions cost, the robots built, the floor heat, the counts and meters); top right, the
+       * dashboard's buttons; along the bottom, the switches (Heat among them, a thermometer) and zoom.
+       */
+      hud: p => panelHud({ ...p, scene, season: heat, iconImg, seasonIcon, seasonTip }, FACTORY_WORDS),
       /**
        * A new scene; returns what happened since the last one: a robot finished (a compaction: it rolls off along
        * the conveyor), a pull request shipped (merged in the last 30 minutes: its crate leaves the dock), a deploy
@@ -1759,6 +1846,6 @@
   // The factory's own pieces, for its tests.
   window.AgentvilleFactory = {
     HEADS, BODIES, DRIVES, lookOf, robotRows, robotSprite, factoryScene, makeFactory, WINDOWS, RANK, CELLS, dockCrates, outletAt, stackLightAt, ventsOf, bankOf, banksOf, BANK_X, THERMOMETER, STEAM, CHARGED,
-    props, FACTORY_PROPS: Object.keys(FACTORY_PROPS), WELD_TIP, agvRoute, agvGoal,
+    props, FACTORY_PROPS: Object.keys(FACTORY_PROPS), WELD_TIP, agvRoute, agvGoal, ICONS,
   };
 })();

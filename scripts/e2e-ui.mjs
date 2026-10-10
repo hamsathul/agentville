@@ -1242,6 +1242,72 @@ try {
     await acctHandle.stop();
   }
   check(errors.length === 0, `no page errors${errors.length ? `: ${errors.join(' | ')}` : ''}`);
+
+  console.log('Factory');
+  // The robot factory, chosen in the list of worlds: its robots, the sidebar, its buildings, the Heat switch and a
+  // bay's close-up, with no errors; its test page's private stop; then back to the farm, as the run left it.
+  const facErrors = errors.length;
+  await send('Emulation.setDeviceMetricsOverride', { width: 1400, height: 950, deviceScaleFactor: 1, mobile: false });
+  await send('Page.navigate', { url: `http://127.0.0.1:${handle.port}/` });
+  check(await until("typeof TOKEN === 'string' && document.querySelectorAll('.row[data-id]').length > 0"), 'the dashboard again');
+  const facSideBefore = await js("document.getElementById('main').dataset.side");
+  await js("document.getElementById('view-worlds').click()"); // the list of worlds, from the list view (the world chosen last may be one that left)
+  check(await until("document.getElementById('worlds-dlg').open && /Robot factory/.test(document.querySelector('.world-pick[data-world=\"factory\"]')?.textContent ?? '')"), 'the list of worlds offers the Robot factory');
+  await js("document.querySelector('.world-pick[data-world=\"factory\"]').click()");
+  await until("!document.getElementById('worlds-dlg').open");
+  await js("document.getElementById('view-farm').click()");
+  check(await until("document.getElementById('main').dataset.view === 'farm' && document.querySelector('#farm .world-frame')?.src.endsWith('/world/factory/') && /Robot factory/.test(document.getElementById('view-farm').textContent) && localStorage.getItem('tracker-world') === 'factory'"), 'picking it shows it, the toggle says its name, and the choice is kept');
+  check(await funtil("!!document.querySelector('#farm canvas') && document.querySelectorAll('.px-tag').length >= 2"), 'robots draw in its frame, each with its tag');
+  check(await js("(f => !!f && f.getAttribute('sandbox') === 'allow-scripts')(document.querySelector('#farm .world-frame'))"), 'in a sandboxed frame of its own');
+  const facHud = await fjs("document.querySelector('.px-hud').textContent");
+  check(/\d+ built/.test(facHud) && /Heat: live/.test(facHud) && !/harvest|farmer|Season/i.test(facHud), `its panel and buttons are in factory words: robots built, the Heat switch (${String(facHud).replace(/\s+/g, ' ').slice(0, 120)}…)`);
+  // a factory point to the screen: the canvas holds the hall round the factory too (data-pad)
+  const facClick = (x, y) => `(() => { const c = document.querySelector('#farm canvas'); const [px, pt] = c.dataset.pad.split(',').map(Number), r = c.getBoundingClientRect(), cs = r.width / Number(c.dataset.ew); c.dispatchEvent(new MouseEvent('click', { bubbles: true, clientX: r.left + (${x} + px) * cs, clientY: r.top + (${y} + pt) * cs })); })()`;
+  const facRobot = JSON.parse((await fjs("JSON.stringify((t => t && ({ id: t.dataset.farmer, name: t.textContent.trim() }))(document.querySelector('.px-tag')))")) ?? 'null') ?? { id: '', name: '(no robot)' };
+  await sleep(400); // the page takes a world's picks at most every 250 ms
+  await fjs(`document.querySelector('.px-tag[data-farmer="${facRobot.id}"]')?.click()`);
+  check(await until(`document.getElementById('main').dataset.side === 'open' && (document.querySelector('#fs-head .fs-name')?.textContent ?? '').includes(${JSON.stringify(facRobot.name)})`), `clicking a robot's tag opens it in the sidebar (${facRobot.name})`);
+  await fjs(facClick(200, 60));
+  check(await funtil("document.querySelector('.px-dlg')?.open && /Your desk/.test(document.querySelector('.px-dlg-title').textContent)"), 'clicking your desk lists who is waiting on you');
+  await fjs("document.querySelector('[data-farm-dlg-close]').click()");
+  await fjs(facClick(298, 50));
+  check(await funtil("document.querySelector('.px-dlg')?.open && /power-cell bank/.test(document.querySelector('.px-dlg-title').textContent) && /Weekly limit/.test(document.querySelector('.px-dlg').textContent)"), "clicking the power-cell bank shows the plan's usage");
+  await fjs("document.querySelector('[data-farm-dlg-close]').click()");
+  await fjs(facClick(357, 40));
+  check(await funtil("document.querySelector('.px-dlg')?.open && /loading dock/.test(document.querySelector('.px-dlg-title').textContent)"), 'clicking the loading dock shows the pull requests');
+  await fjs("document.querySelector('[data-farm-dlg-close]').click()");
+  await fjs(facClick(60, 40));
+  check(await until("document.getElementById('sessions').open"), 'clicking the fabricator opens Start or resume a session');
+  await js("document.getElementById('sessions').close()");
+  // The Heat switch: live (your 5-hour limit, 34% here: warm), then cool, warm, hot and steaming held, then live again.
+  check(await fjs("PXG.season === 'summer'"), 'the floor heat starts live: warm (the engine\'s summer) at 34% of the 5-hour limit');
+  for (const [level, name] of [['spring', 'cool'], ['summer', 'warm'], ['autumn', 'hot'], ['winter', 'steaming'], ['live', 'live']]) {
+    await fjs("document.querySelector('[data-farm-season]').click(); true");
+    check(await funtil(`/Heat: ${name}/.test(document.querySelector('[data-farm-season]').textContent) && ${level === 'live' ? "PXG.season === 'summer' && !/📌/.test(document.querySelector('.px-season').textContent)" : `PXG.season === '${level}' && /${name}\\s*📌/.test(document.querySelector('.px-season').textContent)`}`)
+      && await until(`localStorage.getItem('tracker-world:factory:season') === '${level}'`), `the Heat switch: ${name}${level === 'live' ? ', back to your 5-hour limit' : ' held, shown on the panel with a 📌'}; remembered as ${level}`);
+  }
+  // A bay's close-up: a click on the bay, above its sign (the sign's top is the bay's row top + 49; its middle the bay's)
+  const facBay = await fjs(`(() => { const c = document.querySelector('#farm canvas'), cs = c.getBoundingClientRect().width / Number(c.dataset.ew), s = document.querySelector('[data-farm-field]').closest('.px-lab').getBoundingClientRect(), x = s.left + s.width / 2 - 20 * cs, y = s.top - 31 * cs;
+    c.dispatchEvent(new MouseEvent('click', { bubbles: true, clientX: x, clientY: y })); return JSON.stringify([x, y].map(Math.round)); })()`);
+  check(await funtil("!!document.querySelector('.fv-back') && /bay/.test(document.querySelector('.fv-back').textContent)"), `a click on a bay opens its close-up, in the factory's words (at ${facBay})`);
+  await fjs("document.querySelector('[data-fv-close]')?.click()");
+  check(await fjs("!document.querySelector('.fv-back')"), 'the close-up closes');
+  check(await js("!document.querySelector('#farm .world-strip') && !document.querySelector('#farm .world-panel')"), 'the factory broke nothing: no error strip or panel');
+  await shot('factory');
+  // Its test page's private stop (no words, no paths, agents named agent N): it draws, with no error strip.
+  await send('Page.navigate', { url: `http://127.0.0.1:${handle.port}/worlds/test?world=factory&stop=private` });
+  check(await until("document.body.dataset.shown === 'private'", 15_000) && !(await js("!!document.querySelector('.world-strip')"))
+    && Boolean(await chrome.inFrame('/world/factory/', "(t => t.length > 0 && t.every(x => /^agent \\d+/.test(x.textContent.trim())))([...document.querySelectorAll('.px-tag')])").catch(() => false)), "the test page's private stop: the factory draws the private scene (agent N), no error strip");
+  // Back to the farm, from the factory's own World button.
+  await send('Page.navigate', { url: `http://127.0.0.1:${handle.port}/` });
+  await until("typeof TOKEN === 'string' && document.getElementById('main').dataset.view === 'farm'");
+  await funtil("!!document.querySelector('[data-farm-nav=\"worlds\"]')");
+  await fjs("document.querySelector('[data-farm-nav=\"worlds\"]').click()");
+  check(await until("document.getElementById('worlds-dlg').open && !!document.querySelector('.world-pick[data-world=\"farm\"]')"), "the factory's World button opens the list of worlds");
+  await js("document.querySelector('.world-pick[data-world=\"farm\"]').click()");
+  check(await until("document.querySelector('#farm .world-frame')?.src.endsWith('/world/farm/') && localStorage.getItem('tracker-world') === 'farm'") && await funtil("document.querySelectorAll('.px-tag').length >= 1"), 'and back to the farm');
+  if (facSideBefore !== 'open' && (await js("document.getElementById('main').dataset.side")) === 'open') await js("document.getElementById('side-toggle').click()"); // the sidebar as it was
+  check(errors.length === facErrors, `no page or frame errors in the factory${errors.length > facErrors ? `: ${errors.slice(facErrors).join(' | ')}` : ''}`);
 } finally {
   await chrome?.close();
   worker.kill();

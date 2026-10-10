@@ -35,9 +35,12 @@ Keys: a built-in world is named by its folder in `web/worlds/` (the farm is `far
 | World | Key | What it is |
 |---|---|---|
 | 🌾 **Farm** | `farm` | Built in, and the default: every agent a farmer, every repo a field, with animals of its own. The README's "The farm" says what each thing on it means |
+| 🤖 **Robot factory** | `factory` | Built in: a bright workshop where every agent is a robot put together from parts picked by its id, and every repo an assembly bay where a robot is built as the context fills. It shows everything the farm shows, its own way: the 5-hour limit is floor heat (its Season switch is **Heat**: `seasonNames`), a message is a capsule through pneumatic tubes (its own `flight`), and its panel is the farm's (`panelHud`) in its words. A robot dog, a robot vacuum and a cat live there. The README's "The robot factory" says what each thing means; `web/worlds/factory/world.js` is the second full example after the farm |
 | 🌱 **Starter** | `starter` | The template `npm run new-world` copies: plain, short, and not in the list of worlds (see "The starter world"). It can still be framed, so the test page and `check-world` run it |
 
 ![The farm: every agent a farmer, every repo a field](farm.png)
+
+![The robot factory: every agent a robot, every repo an assembly bay](factory.png)
 
 ![The starter: people at the door and on the bench, a plot for each repo, and a cat](starter.png)
 
@@ -349,7 +352,7 @@ A hook you give always wins over its default.
 | `setScene` | `(scene)` | returns `[]`. May return events `{ id?, at?: [x, y], text, cls?, log?, who?, kind? }`: a pop-up with `text` over the agent `id` (or at `at`), a line in the log if `log` is set (under the agent's name; with no agent, under `who`, else "The market"), and, with a `kind`, a reaction from the animals ("Reactions", in "Creatures"). The engine records `scene.fields` itself, whether or not you give one |
 | `spawn` | `()` | `[W / 2, 0]`: where a new agent appears |
 | `follow` | `(body, k, T, kid)` | where the k-th subagent stands beside its agent (`T` the clock, `kid` the subagent's scene entry) |
-| `flight` | `(a, z, t, T)` | the engine's carrier pigeon: draws a message from one agent to another on its way, each frame for its 2.4 s (`a` and `z` the sender's and the receiver's bodies, `t` how far along, 0 to 1, `T` the clock); the ✉ that pops when it lands is the engine's either way |
+| `flight` | `(a, z, t, T)` | the engine's carrier pigeon, flying an arc from the sender to the receiver: leave `flight` out and that is what is drawn. Give it to draw how a message travels your way. It is called each frame while a message from one agent to another is on its way, 2.4 s (only with motion on: drawn still, there is none, and the diary's line is all), after the agents and their `drawFx` and before `weather`, `top` and the night. `a` and `z` are the sender's and the receiver's bodies, as `drawChar` gets them (`x`, `y`: where it stands, its feet; `walk`, `face`, `zone`, `lift`; `tx`, `ty`: where it is going). `t` is how far along, from 0 when it sets off to 1 when it lands (the seconds since over 2.4); `T` is the clock. Draw it with `px` at a point between them: a paper plane, straight across, is `flight(a, z, t) { px(Math.round(a.x + (z.x - a.x) * t) - 2, Math.round(a.y - 20 + (z.y - a.y) * t), 5, 2, '#ffffff'); }`. The factory's eases `t` and runs a capsule along its pneumatic tubes, from the sender's bay to the receiver's (`flight` in `web/worlds/factory/world.js`). The ✉ that pops over the receiver when it lands is the engine's either way |
 | `startText` | `(n)` | "n agents here": the first line of the log |
 | `arriveText` | | the string `'arrives'`: the log line when an agent walks in |
 | `tag`, `tip` | `(agent)` | the name, cut to 16; the name |
@@ -552,6 +555,18 @@ A word is text: HTML in it is shown as it is written, never run. A word that isn
 plain one. The rest stays the engine's in any world: the count cards, the meters, the dashboard's buttons,
 the Bell, and the `data-farm-*` attributes the engine's clicks find the buttons by. Its stylesheet's
 `coin` and `basket` are the two icon classes a world can name without CSS of its own.
+
+The factory's `hud` is `p => panelHud({ ...p, scene, season: heat, iconImg, seasonIcon, seasonTip }, FACTORY_WORDS)`:
+its words are robots and `built` for compactions, its tooltips say floor heat, its `seasonIcon` gives
+a thermometer for each level, and its `seasonTip` explains the heat, live or held. Its `world.js` also
+gives the panel a navy glass in place of the farm's green, with a style of its own in its frame (the
+frame allows inline styles). A world may recolour the panel the same way, at the top of its function:
+
+```js
+const glass = document.createElement('style'); // the panel's colours only: the engine still lays it out and fits the world clear of it
+glass.textContent = '.px-stats { background: rgba(28, 42, 72, .92); border-color: #3a3a40; }';
+document.head.append(glass);
+```
 
 ## The people kit
 
@@ -1012,7 +1027,7 @@ world may have to show. Open it with the dashboard running:
 http://localhost:7777/worlds/test?world=<key>&stop=<name>
 ```
 
-- `world`: the world's key. `farm`, `starter`, or `u/<folder>` for one of yours (the name of its
+- `world`: the world's key. `farm`, `factory`, `starter`, or `u/<folder>` for one of yours (the name of its
   folder in your worlds folder). With no `world`, or one that isn't a key, the page says how to name one.
 - `stop`: one stop of the tour, by name (the table below). With no `stop`, the page plays the tour:
   each stop for 4 seconds once the world has started (5.5 for a stop with two snapshots), then the
@@ -1069,7 +1084,7 @@ needs Chrome; `CHROME` sets its path):
 npm run world-shots -- <world> [--stop <name>] [--dir <folder>] [--worlds <dir>]
 ```
 
-`<world>` is `farm`, `starter`, `u/<folder>` or just `<folder>` (one of yours; if yours has a built-in
+`<world>` is `farm`, `factory`, `starter`, `u/<folder>` or just `<folder>` (one of yours; if yours has a built-in
 world's name, the built-in is used and a line says so: `u/<folder>` reaches yours). It starts a server
 of its own on made-up data (your real sessions and your `config.json` token are not used), opens
 each stop of the tour in headless Chrome at 1280 by 820, waits for `document.body.dataset.shown`,
@@ -1135,7 +1150,7 @@ UTC).
 npm run check-world -- <world> [--worlds <dir>]
 ```
 
-`<world>` is `farm`, `starter`, `u/<folder>` or just `<folder>` (one of yours; as for `world-shots`, a
+`<world>` is `farm`, `factory`, `starter`, `u/<folder>` or just `<folder>` (one of yours; as for `world-shots`, a
 built-in world's name wins, with a line saying so); `--worlds` looks for
 it in that folder instead of your worlds folder. It needs no browser, server or token: it reads the
 world's `world.js` and `world.json`, the SDK and the tour (and `config.json`, only for where your
@@ -1202,8 +1217,9 @@ check-world: u/my-bakery (/Users/you/.agentville/worlds/my-bakery)
   · outfit parts the people kit doesn't have (drawn as the default): hat:hardhatt
 ```
 
-The starter and the farm pass with no cross (the farm with no dot either; the starter's dots are
-explained below the checklist).
+The starter, the farm and the factory pass with no cross. The farm and the factory draw no item the
+same; their only dots are hooks left to their defaults (the farm's `seasonNames` and `boardTitle`, the
+factory's `tag` and `shadows`). The starter's dots are explained below the checklist.
 
 ### The checklist
 
@@ -1211,27 +1227,27 @@ What a world should show, each item as two stops of the tour that differ only in
 `checks`). check-world points out the items a world draws the same; the test page and world-shots
 show you each stop.
 
-| Item | The two stops | What the farm draws | The starter |
-|---|---|---|---|
-| waiting on you | `working`, `waiting` | the farmer on the porch, waving a red **!** | at the door, a **!** bubble and a red ring |
-| a question for you | `working`, `question` | on the porch, waving a red **!** (its bubble asks the question) | at the door, a **!** bubble and a red ring, as for waiting |
-| your turn | `working`, `turn` | on the porch with a basket | at the door, a tick bubble (a **?** when it ended on a question) |
-| a repo filling with context | `context-low`, `context-high` | the crops grow, from seeds to ripe | the plot fills with green |
-| a compaction | `compacted-plain`, `compaction` | **Harvest!**: the field starts again from seed | left out |
-| deploy failed | `deploy-ok`, `deploy-failed` | rain over the field, for the rainbow | a red flag, for the green one |
-| deploying | `deploy-ok`, `deploy-running` | a windmill | a blinking amber flag |
-| deploy skipped | `deploy-ok`, `deploy-skipped` | no weather | a grey flag |
-| subagents | `working`, `subagents` | chickens, and a dog for an Explore one | left out |
-| the limits | `limits-low`, `limits-high` | winter (the live season), and the silo's grain | left out |
-| several accounts | `working`, `accounts` | a silo for each account, its name on the tag | a meter for each, top left |
-| an MCP call | `working`, `mcp` | its cart drives to the farmer | the step's prop (props kit) |
-| messages between agents | `two-working`, `pigeon` | a pigeon | a pigeon (the engine's) |
-| a collision | `two-working`, `collision` | rope with orange flags round the field | left out |
-| a merged pull request | `working`, `merged` | **Sold!** at the market stall | left out |
-| idle | `working`, `idle` | under the shade tree | on the bench, eyes shut, a zzz |
-| stale | `idle`, `stale` | a scarecrow | greyed out |
-| night | `day`, `night` | lit windows, lanterns and fireflies | the engine's night |
-| **Creatures (optional)** | none: check-world reads `animals()` once | thirteen animals, six gags and three plays, all within the rules | one cat and its gag, within the rules |
+| Item | The two stops | What the farm draws | What the factory draws | The starter |
+|---|---|---|---|---|
+| waiting on you | `working`, `waiting` | the farmer on the porch, waving a red **!** | the robot queued at your desk, waving a red **!**, its beacon blinking red | at the door, a **!** bubble and a red ring |
+| a question for you | `working`, `question` | on the porch, waving a red **!** (its bubble asks the question) | at your desk, waving a red **!** (its bubble asks the question) | at the door, a **!** bubble and a red ring, as for waiting |
+| your turn | `working`, `turn` | on the porch with a basket | at your desk with a crate of finished parts, a tick (a **?** for a question) | at the door, a tick bubble (a **?** when it ended on a question) |
+| a repo filling with context | `context-low`, `context-high` | the crops grow, from seeds to ripe | the robot on the bay's bench is built: frame, wiring, plating, head, its eyes lit | the plot fills with green |
+| a compaction | `compacted-plain`, `compaction` | **Harvest!**: the field starts again from seed | **Built!**: the finished robot rolls off on the conveyor, a new frame goes on | left out |
+| deploy failed | `deploy-ok`, `deploy-failed` | rain over the field, for the rainbow | the stack light red, with sparks, for the green one | a red flag, for the green one |
+| deploying | `deploy-ok`, `deploy-running` | a windmill | the stack light amber, gears turning | a blinking amber flag |
+| deploy skipped | `deploy-ok`, `deploy-skipped` | no weather | a grey pause light | a grey flag |
+| subagents | `working`, `subagents` | chickens, and a dog for an Explore one | mini drones by the robot, a scanner drone for an Explore one | left out |
+| the limits | `limits-low`, `limits-high` | winter (the live season), and the silo's grain | the floor steaming (thermometer, vents), and the power-cell bank's cells | left out |
+| several accounts | `working`, `accounts` | a silo for each account, its name on the tag | a power-cell bank for each account, its name on the tag | a meter for each, top left |
+| an MCP call | `working`, `mcp` | its cart drives to the farmer | its AGV drives to the robot | the step's prop (props kit) |
+| messages between agents | `two-working`, `pigeon` | a pigeon | a capsule through the pneumatic tubes (its own `flight`) | a pigeon (the engine's: it gives no `flight`) |
+| a collision | `two-working`, `collision` | rope with orange flags round the field | hazard tape round the bay, pulsing | left out |
+| a merged pull request | `working`, `merged` | **Sold!** at the market stall | **Shipped!**: a crate leaves the loading dock | left out |
+| idle | `working`, `idle` | under the shade tree | on a charging pad, eyes shut, a charging bolt | on the bench, eyes shut, a zzz |
+| stale | `idle`, `stale` | a scarecrow | powered down and grey on the storage shelf | greyed out |
+| night | `day`, `night` | lit windows, lanterns and fireflies | desk lamp, screens, stack lights and welding sparks glow | the engine's night |
+| **Creatures (optional)** | none: check-world reads `animals()` once | thirteen animals, six gags and three plays, all within the rules | a robot dog, a robot vacuum and a cat, a gag and two plays, within the rules | one cat and its gag, within the rules |
 
 A world with seasons (its own `season()`: "Seasons", in "Hooks") should also follow the Season
 switch, which the tour leaves live. On the test page, click it through spring, summer, autumn and
