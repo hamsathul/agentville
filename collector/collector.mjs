@@ -21,7 +21,7 @@ import { contentTypeOf, parseCsv, readXlsx, viewOf } from './sources/previews.mj
 import { repoFiles } from './derive/repo-files.mjs';
 import { checkFiles, checkFolders, pruneUploads, saveFiles, typedPart, withAttachments } from './sources/uploads.mjs';
 import { compactSummary, memoryFiles, scratchpadOf } from './sources/memory.mjs';
-import { EFFORTS, MODELS, MODE_FLAGS, SESSION_ID, claudeCommand, closeTerminalScript, forkCommand, listSessions, projectsOf, shellQuote, terminalScript } from './sources/sessions.mjs';
+import { EFFORTS, MODELS, MODE_FLAGS, SESSION_ID, accountPrefix, claudeCommand, closeTerminalScript, forkCommand, listSessions, projectsOf, shellQuote, terminalScript } from './sources/sessions.mjs';
 import { appendRewind, cutTranscript, pruneForks, restorePoint } from './sources/fork.mjs';
 import { createNotes } from './sources/notes.mjs';
 import { NAME_RE, cleanName, createHelper } from './sources/helper.mjs';
@@ -943,6 +943,14 @@ export async function startCollector({ root, claudeDir = join(homedir(), '.claud
   }
   const validMode = mode => mode === undefined || Object.hasOwn(MODE_FLAGS, mode);
   const validStart = b => (b?.model === undefined || MODELS.includes(b.model)) && (b?.effort === undefined || EFFORTS.includes(b.effort));
+  /** The account a request names, or `fallback`: { account } or { error }. */
+  function accountFor(body, fallback) {
+    if (body?.account === undefined) return { account: fallback ?? accounts[0] };
+    const a = typeof body.account === 'string' ? accountByKey(body.account) : null;
+    return a ? { account: a } : { error: `No account "${String(body.account).slice(0, 40)}".` };
+  }
+  const notShared = a => `Its history isn't shared with ${a.name}: link ${a.name}'s projects folder to your other accounts' to move conversations between them (see Several Claude accounts in the README).`;
+  const remember = (id, account) => { sessionAccounts.see(id, account.dir, Date.now()); sessionAccounts.save(); };
   const ASIDE_WAIT_MS = 3 * 60_000;
   /** A session's side questions, newest first: answered ones, and the ones still being answered (given up on after 3 minutes). */
   function asidesOf(id, answered, now) {
@@ -1075,9 +1083,14 @@ export async function startCollector({ root, claudeDir = join(homedir(), '.claud
       const agent = snapshot?.agents.find(a => a.id === body?.agentId);
       if (!validMode(body?.mode)) return { ok: false, error: 'That is not a permission mode.' };
       if (!agent || !SESSION_ID.test(agent.id) || !agent.cwd || !isDir(agent.cwd)) return { ok: false, error: 'That session cannot be resumed from here.' };
+      const chosen = accountFor(body, accountOfSession(agent.id)); // another account than its own moves it there
+      if (chosen.error) return { ok: false, error: chosen.error };
+      if (chosen.account.key !== agent.account && !canRunOnPath(sessions.get(agent.id)?.path ?? '').includes(chosen.account.key)) return { ok: false, error: notShared(chosen.account) };
       const ended = await endSession(agent);
       if (!ended.ok) return ended;
-      return openTerminal(claudeCommand(agent.cwd, agent.id, body.mode ?? 'default'));
+      const opened = await openTerminal(claudeCommand(agent.cwd, agent.id, body.mode ?? 'default', { account: launchAccount(chosen.account) }));
+      if (opened.ok) remember(agent.id, chosen.account);
+      return opened;
     },
     /**
      * Switches a running session's model or effort, or compacts it: its mod runs /model, /effort or
@@ -1224,7 +1237,13 @@ export async function startCollector({ root, claudeDir = join(homedir(), '.claud
           cwd = at.path;
         }
       }
-      return openTerminal(claudeCommand(cwd, resume, body?.mode ?? 'default', { model: body?.model ?? 'default', effort: body?.effort }));
+      // the account: the one asked for, else the session's own, or the account the folder's last session ran on
+      const chosen = accountFor(body, resume ? accountOfSession(resume) : accountByKey(known.projects.find(p => p.cwd === cwd)?.account) ?? accounts[0]);
+      if (chosen.error) return { ok: false, error: chosen.error };
+      if (resume && !known.sessions.find(x => x.id === resume).canRunOn.includes(chosen.account.key)) return { ok: false, error: notShared(chosen.account) };
+      const opened = await openTerminal(claudeCommand(cwd, resume, body?.mode ?? 'default', { model: body?.model ?? 'default', effort: body?.effort, account: launchAccount(chosen.account) }));
+      if (opened.ok && resume) remember(resume, chosen.account);
+      return opened;
     },
     /**
      * Forks a session's conversation at one of its messages (`at`, its transcript row) into a new
@@ -1239,12 +1258,14 @@ export async function startCollector({ root, claudeDir = join(homedir(), '.claud
       if (!path) return { ok: false, error: 'That session has no conversation to fork.' };
       if (!agent.cwd || !isDir(agent.cwd)) return { ok: false, error: 'The folder that session ran in no longer exists.' };
       if (typeof body.at !== 'string' || !/^[\w-]{1,64}$/.test(body.at)) return { ok: false, error: 'Pick a message to fork from.' };
+      const chosen = accountFor(body, accountOfSession(agent.id)); // any account: the fork starts from a copy, by its path
+      if (chosen.error) return { ok: false, error: chosen.error };
       pruneForks(forksDir, Date.now());
       const cut = await cutTranscript(path, body.at, forksDir, basename(path, '.jsonl')); // the copy is named as the transcript
       if (cut.error) return { ok: false, error: cut.error };
       const forkId = randomUUID(); // chosen here, so the fork's notes can be ready for it
-      const opened = await openTerminal(forkCommand(agent.cwd, cut.file, body.mode ?? 'default', { model: body.model ?? 'default', effort: body.effort, name: `${agent.name} (fork)`.slice(0, 80), prefillFile: cut.prefillFile, sessionId: forkId }));
-      if (opened.ok) notes.copy(agent.id, forkId);
+      const opened = await openTerminal(forkCommand(agent.cwd, cut.file, body.mode ?? 'default', { model: body.model ?? 'default', effort: body.effort, name: `${agent.name} (fork)`.slice(0, 80), prefillFile: cut.prefillFile, sessionId: forkId, account: launchAccount(chosen.account) }));
+      if (opened.ok) { notes.copy(agent.id, forkId); remember(forkId, chosen.account); }
       return opened;
     },
     /**
@@ -1270,10 +1291,11 @@ export async function startCollector({ root, claudeDir = join(homedir(), '.claud
         const ended = await endSession(agent);
         if (!ended.ok) return ended;
       }
-      const resume = prefillFile => openTerminal(claudeCommand(agent.cwd, agent.id, body.mode ?? 'default', { prefillFile }));
+      const account = accountOfSession(agent.id); // it is restored and resumed on its own account
+      const resume = prefillFile => openTerminal(claudeCommand(agent.cwd, agent.id, body.mode ?? 'default', { prefillFile, account: launchAccount(account) }));
       let files = null; // put back, none to put back, or not asked
       if (what !== 'conversation') {
-        const r = await run(claudeBin, ['--resume', agent.id, '--rewind-files', body.at], { cwd: agent.cwd, timeoutMs: 60_000, env: { CLAUDE_CODE_ENABLE_SDK_FILE_CHECKPOINTING: '1' } });
+        const r = await run(claudeBin, ['--resume', agent.id, '--rewind-files', body.at], { cwd: agent.cwd, timeoutMs: 60_000, env: { CLAUDE_CODE_ENABLE_SDK_FILE_CHECKPOINTING: '1', ...envFor(account) } });
         const said = (r.stdout || r.stderr).trim().split('\n').filter(Boolean).at(-1) ?? `exit ${r.code}`;
         files = r.code === 0;
         if (!files && !(what === 'both' && /No file checkpoint/i.test(said))) { // nothing changed: it goes on as it was
@@ -1429,7 +1451,7 @@ export async function startCollector({ root, claudeDir = join(homedir(), '.claud
       const agent = ID_RE.test(id) ? snapshot?.agents.find(a => a.id === id || a.cliId === id) : undefined;
       if (!agent) return { ok: false, error: 'unknown agent' };
       if (agent.kind !== 'background' || !agent.cliId || !ID_RE.test(agent.cliId)) return { ok: false, error: 'only background sessions can be opened from here' };
-      return openTerminal(`claude attach ${agent.cliId}`); // cliId is [A-Za-z0-9-] only
+      return openTerminal(`${accountPrefix(launchAccount(accountOfSession(agent.id)))}claude attach ${agent.cliId}`); // cliId is [A-Za-z0-9-] only
     },
     async rm(ids) {
       const results = [];
@@ -1439,7 +1461,8 @@ export async function startCollector({ root, claudeDir = join(homedir(), '.claud
           results.push({ id: String(id), ok: false, error: 'not a stale background session' });
           continue;
         }
-        const res = await run(claudeBin, ['rm', agent.cliId], { timeoutMs: 30_000 });
+        const env = envFor(accountOfSession(agent.id));
+        const res = await run(claudeBin, ['rm', agent.cliId], { timeoutMs: 30_000, ...(env ? { env } : {}) });
         results.push(res.code === 0 ? { id, ok: true } : { id, ok: false, error: res.stderr.trim().slice(0, 200) });
       }
       await pollAgents();
