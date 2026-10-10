@@ -569,9 +569,17 @@ async function removeFlow(id) {
   notice(res?.ok ? `Removed ${a.name}.` : `Could not remove ${a.name}: ${res?.error ?? r.error ?? 'unknown error'}`);
 }
 /** Restart in a mode: after you confirm, ends the session and resumes it in a new window in that mode. */
-async function restartFlow(id, mode) {
+async function restartFlow(id, choice) {
   const a = snap?.agents.find(x => x.id === id);
   if (!a) return;
+  if (choice.startsWith('account:')) { // Move to another account: the same session, resumed there in its mode
+    const key = choice.slice(8), name = accountName(key), mode = MODES.some(([m]) => m === a.mode) ? a.mode : 'default';
+    if (!(await confirmBox(`Move ${a.name} to ${name}? It ends now and resumes straight away on ${name} in a new terminal window, in ${modeName(mode)}; the conversation carries on.`, `Move to ${name}`))) return;
+    const r = await post('/api/actions/restart', { agentId: id, mode, account: key });
+    notice(r.ok ? `Moving ${a.name} to ${name}: a new ${r.terminal ?? 'terminal'} window opens.` : `Could not move ${a.name}: ${r.error}`);
+    return;
+  }
+  const mode = choice;
   const warn = mode === 'bypassPermissions' ? ' ⚠ Bypass permissions runs every tool without asking (--dangerously-skip-permissions).' : '';
   if (!(await confirmBox(`Restart ${a.name} in ${modeName(mode)}? It ends now and resumes straight away in a new terminal window; the conversation carries on.${warn}`, `Restart in ${modeName(mode)}`))) return;
   const r = await post('/api/actions/restart', { agentId: id, mode });
@@ -608,6 +616,11 @@ function openFork(agentId, at, kind) {
   $('fork-mode').value = MODES.some(([m]) => m === a.mode) ? a.mode : 'default';
   $('fork-model').value = /(opus|sonnet|haiku|fable)/.exec(String(a.model ?? ''))?.[1] ?? 'default';
   $('fork-effort').value = EFFORTS.includes(a.effort) ? a.effort : '';
+  $('fork-account-row').hidden = !accountsOn(); // with two or more accounts: the session's own to start with
+  if (accountsOn()) {
+    $('fork-account').innerHTML = snap.accounts.map(x => `<option value="${esc(x.key)}">${esc(acctChoice(x))}</option>`).join('');
+    $('fork-account').value = a.account ?? snap.accounts[0].key;
+  }
   $('fork-warn').hidden = $('fork-mode').value !== 'bypassPermissions';
   $('fork-dlg').showModal();
 }
@@ -616,7 +629,7 @@ async function forkGo(button) {
   if (!from) return;
   const mode = $('fork-mode').value || 'default', model = $('fork-model').value || 'default', effort = $('fork-effort').value || undefined;
   if (button) button.disabled = true;
-  const r = await post('/api/actions/fork', { agentId: from.agentId, at: from.at, mode, ...(model !== 'default' ? { model } : {}), ...(effort ? { effort } : {}) });
+  const r = await post('/api/actions/fork', { agentId: from.agentId, at: from.at, mode, ...(model !== 'default' ? { model } : {}), ...(effort ? { effort } : {}), ...(accountsOn() && $('fork-account').value ? { account: $('fork-account').value } : {}) });
   if (button) button.disabled = false;
   $('fork-dlg').close();
   forkFrom = null;

@@ -1,8 +1,9 @@
 // Start a new Claude Code session in a folder you worked in, or in any other of yours (typed, browsed
 // or made), or resume a past one, in a terminal window (Terminal or iTerm, as config.json says). The
 // collector checks the folder or session again.
-// Past sessions can be searched, filtered (folder, model, branch, running) and sorted; the sort and
-// how far back to look (the last 30 days, or all time) are kept for the next time.
+// Past sessions can be searched, filtered (folder, model, branch, account, running) and sorted; the sort
+// and how far back to look (the last 30 days, or all time) are kept for the next time. With two or more
+// Claude accounts, the Account picker starts each session on the account it last ran on, or on one for all.
 let sessData = null;
 const storedMode = () => { try { return localStorage.getItem('tracker-start-mode') || 'default'; } catch { return 'default'; } };
 const sessStored = key => { try { return localStorage.getItem(key); } catch { return null; } };
@@ -10,7 +11,7 @@ const sessRemember = (key, value) => { try { localStorage.setItem(key, value); }
 let sessAllFolders = false; // the folder list shows the 6 most recent until you ask for all
 const FOLDERS_SHOWN = 6;
 // What the dialog shows: the search and filters start empty each time; the sort and range are remembered.
-const sessView = { q: '', folder: '', model: '', branch: '', live: '', sort: 'active', range: '30' };
+const sessView = { q: '', folder: '', model: '', branch: '', account: '', live: '', sort: 'active', range: '30', pick: '' }; // pick: the Account picker ('' = as each last ran)
 let sessLoading = 0; // the newest read asked for: an older one that comes back after it is dropped
 
 const sessName = s => s.title || s.firstPrompt || '';
@@ -26,7 +27,7 @@ const SESS_ORDER = {
 };
 
 async function openSessions() {
-  Object.assign(sessView, { q: '', folder: '', model: '', branch: '', live: '' });
+  Object.assign(sessView, { q: '', folder: '', model: '', branch: '', account: '', live: '', pick: '' });
   sessView.sort = SESS_ORDER[sessStored('tracker-sess-sort')] ? sessStored('tracker-sess-sort') : 'active';
   sessView.range = sessStored('tracker-sess-range') === 'all' ? 'all' : '30';
   $('sess-status').textContent = '';
@@ -34,9 +35,18 @@ async function openSessions() {
   $('sess-mode-warn').hidden = $('sess-mode').value !== 'bypassPermissions';
   sessAllFolders = false;
   resetDirPicker();
+  fillAccountPicker();
   syncSessControls();
   $('sessions').showModal();
   await loadSessions();
+}
+
+/** The Account picker (two or more accounts): as each session last ran, or one account for all. */
+function fillAccountPicker() {
+  $('sess-account-row').hidden = !accountsOn();
+  if (!accountsOn()) return;
+  $('sess-account').innerHTML = `<option value="">As each last ran</option>${snap.accounts.map(a => `<option value="${esc(a.key)}"${acctFull(a) ? ' class="msg-bad"' : ''}>${esc(acctChoice(a))}</option>`).join('')}`;
+  $('sess-account').value = sessView.pick;
 }
 
 /** Reads the past sessions for the range picked, saying so while it reads. */
@@ -83,7 +93,7 @@ function fillFilter(id, field, all, choices) {
 }
 
 function clearSessionFilters() {
-  Object.assign(sessView, { q: '', folder: '', model: '', branch: '', live: '' });
+  Object.assign(sessView, { q: '', folder: '', model: '', branch: '', account: '', live: '' });
   renderSessions();
 }
 
@@ -98,6 +108,9 @@ function renderSessions() {
   fillFilter('sess-f-folder', 'folder', `All folders (${all.length})`, countsOf(all, s => s.cwd, folderLabel));
   fillFilter('sess-f-model', 'model', `Any model (${all.length})`, countsOf(all, s => sessFamily(s.model), f => f[0].toUpperCase() + f.slice(1)));
   fillFilter('sess-f-branch', 'branch', `Any branch (${all.length})`, countsOf(all, s => s.branch));
+  $('sess-f-account').hidden = !accountsOn();
+  if (accountsOn()) fillFilter('sess-f-account', 'account', `Any account (${all.length})`, countsOf(all, s => s.account ?? s.accountGone, accountName));
+  else sessView.account = '';
 
   const q = sessView.q.trim().toLowerCase();
   const hit = (...texts) => !q || texts.some(t => String(t ?? '').toLowerCase().includes(q));
@@ -105,6 +118,7 @@ function renderSessions() {
     && (!sessView.folder || s.cwd === sessView.folder)
     && (!sessView.model || sessFamily(s.model) === sessView.model)
     && (!sessView.branch || s.branch === sessView.branch)
+    && (!sessView.account || (s.account ?? s.accountGone) === sessView.account)
     && (!sessView.live || (sessView.live === 'live') === Boolean(s.live)))
     .sort(SESS_ORDER[sessView.sort] ?? SESS_ORDER.active);
   // Folders to start in: the search and the folder filter narrow them; they go A–Z when sessions do.
@@ -116,18 +130,24 @@ function renderSessions() {
     ? `<div class="sess-more"><button type="button" class="act mini" data-sess-more>${sessAllFolders ? 'Show fewer' : `Show all ${matching.length} folders`}</button></div>`
     : '';
 
-  const filtered = Boolean(q || sessView.folder || sessView.model || sessView.branch || sessView.live);
+  const filtered = Boolean(q || sessView.folder || sessView.model || sessView.branch || sessView.account || sessView.live);
   $('sess-count').innerHTML = `<span>Showing ${sessions.length} of ${all.length} session${all.length === 1 ? '' : 's'} · ${sessView.range === 'all' ? 'all time' : 'the last 30 days'}</span>${filtered ? '<button type="button" class="act mini" data-sess-clear>Clear filters</button>' : ''}`;
   const projectRow = p => `<div class="sess-row"><div class="sess-main"><b>${esc(p.name)}</b><span class="faint mono">${esc(short(p.cwd))}</span></div>
-    <span class="faint sess-when">${p.sessions} session${p.sessions === 1 ? '' : 's'} · ${esc(ago(p.at))}</span>
+    ${accountsOn() && p.account ? `<span class="chip acct" data-tip="${esc(`Its last session ran on ${accountName(p.account)}: ＋ New starts there, unless you pick another account above`)}">${esc(accountName(p.account))}</span>` : ''}<span class="faint sess-when">${p.sessions} session${p.sessions === 1 ? '' : 's'} · ${esc(ago(p.at))}</span>
     <button type="button" class="act mini primary" data-sess-new="${esc(p.cwd)}">＋ New</button></div>`;
   const sessionRow = s => {
     const about = [sessFolder(s.cwd), s.branch && `⎇ ${s.branch}`, s.model && modelName(s.model), s.size && sizeText(s.size)].filter(Boolean).join(' · ');
     const when = `active ${ago(s.at)}${s.startedAt ? ` · started ${ago(s.startedAt)}` : ''}`;
+    // its account (two or more): the one it last ran on, greyed when that folder is no account now
+    const acct = !accountsOn() ? '' : s.account
+      ? `<span class="chip acct" data-tip="${esc(`Last ran on ${accountName(s.account)}`)}">${esc(accountName(s.account))}</span>`
+      : s.accountGone ? `<span class="chip acct faint" data-tip="${esc(`Last ran on ${s.accountGone}, which is no longer one of your accounts`)}">${esc(s.accountGone)}</span>` : '';
+    const blocked = accountsOn() && sessView.pick && s.canRunOn && !s.canRunOn.includes(sessView.pick);
+    const running = accountsOn() && s.account ? `Already open on ${accountName(s.account)}: find it in the list (Restart in… moves it to another account)` : 'Already open: find it in the list';
     return `<div class="sess-row" data-sess-id="${esc(s.id)}"><div class="sess-main"><b>${esc(sessName(s))}</b>
       <span class="faint">${esc(about)}</span>
       <span class="faint">${esc(when)}${s.lastPrompt ? ` · “${esc(s.lastPrompt)}”` : ''}</span></div>
-      ${s.notes ? `<span class="chip c-plain" data-tip="${s.notes} note${s.notes === 1 ? '' : 's'} you haven’t used yet: they show under its message box once you resume it">📝 ${s.notes}</span>` : ''}${s.live ? '<span class="chip c-working live-dot" data-tip="Already open: find it in the list">running</span>' : `<button type="button" class="act mini" data-sess-resume="${esc(s.id)}">Resume</button>`}</div>`;
+      ${acct}${s.notes ? `<span class="chip c-plain" data-tip="${s.notes} note${s.notes === 1 ? '' : 's'} you haven’t used yet: they show under its message box once you resume it">📝 ${s.notes}</span>` : ''}${s.live ? `<span class="chip c-working live-dot" data-tip="${esc(running)}">running</span>` : `<button type="button" class="act mini" data-sess-resume="${esc(s.id)}"${blocked ? ` disabled data-tip="${esc(`Its history isn't shared with ${accountName(sessView.pick)} (see Several Claude accounts in the README)`)}"` : ''}>Resume</button>`}</div>`;
   };
   $('sess-body').innerHTML = `<div class="sec" style="margin-top:4px">Or a folder you worked in</div>${projects.map(projectRow).join('') || '<div class="empty">No folders match.</div>'}${more}
     <div class="sec">Resume</div>${sessions.map(sessionRow).join('') || '<div class="empty">No sessions match.</div>'}`;
@@ -246,7 +266,7 @@ async function startSession(body, button) {
   $('sess-status').className = 'faint';
   $('sess-status').textContent = `Opening ${app}…`;
   const model = $('sess-model').value || 'default', effort = $('sess-effort').value || undefined;
-  const r = await post('/api/actions/start', { ...body, mode: $('sess-mode').value || 'default', ...(model !== 'default' ? { model } : {}), ...(effort ? { effort } : {}) });
+  const r = await post('/api/actions/start', { ...body, mode: $('sess-mode').value || 'default', ...(model !== 'default' ? { model } : {}), ...(effort ? { effort } : {}), ...(accountsOn() && sessView.pick ? { account: sessView.pick } : {}) });
   button.disabled = false;
   if (!r.ok) {
     $('sess-status').className = 'msg-bad';
@@ -284,7 +304,7 @@ document.addEventListener('click', e => {
   else if (b.id === 'sess-dir-new' && sessDir.data?.exists) return startSession({ cwd: sessDir.data.path }, b);
 });
 // The search box, filters, sort and range.
-const SESS_FILTERS = { 'sess-f-folder': 'folder', 'sess-f-model': 'model', 'sess-f-branch': 'branch', 'sess-f-live': 'live' };
+const SESS_FILTERS = { 'sess-f-folder': 'folder', 'sess-f-model': 'model', 'sess-f-branch': 'branch', 'sess-f-account': 'account', 'sess-f-live': 'live' };
 document.addEventListener('input', e => {
   if (e.target?.id !== 'sess-filter') return;
   sessView.q = e.target.value;
@@ -294,6 +314,9 @@ document.addEventListener('change', e => {
   const id = e.target?.id;
   if (SESS_FILTERS[id]) {
     sessView[SESS_FILTERS[id]] = e.target.value;
+    renderSessions();
+  } else if (id === 'sess-account') {
+    sessView.pick = e.target.value;
     renderSessions();
   } else if (id === 'sess-sort') {
     sessView.sort = SESS_ORDER[e.target.value] ? e.target.value : 'active';

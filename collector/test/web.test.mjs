@@ -2598,3 +2598,71 @@ test('agents carry their account tag with two accounts, in the list and the side
   await page.openAgent('s1');
   assert.match(page.side(), /class="chip acct"[^>]*>zeta</);
 });
+
+const PAST = { terminal: 'iTerm', projects: [{ cwd: '/w', name: 'w', at: 1, sessions: 2, account: 'zeta' }], sessions: [
+  { id: '11111111-1111-4111-8111-111111111111', cwd: '/w', title: 'Old', at: 2, account: 'main', canRunOn: ['main', 'zeta'] },
+  { id: '22222222-2222-4222-8222-222222222222', cwd: '/w', title: 'Apart', at: 1, account: 'zeta', canRunOn: ['zeta'] },
+  { id: '33333333-3333-4333-8333-333333333333', cwd: '/w', title: 'Gone', at: 0, account: null, accountGone: 'home', canRunOn: ['main', 'zeta'] },
+] };
+
+test('＋ Session: the account picker, the rows\' tags and the account filter', async () => {
+  const page = loadPage({ replies: { '/api/sessions': PAST } });
+  page.push(onAccount('main'));
+  await page.ctx.openSessions(); // its button's own listener: the stand-in elements have none
+  assert.equal(page.el('sess-account-row').hidden, false);
+  const picker = page.el('sess-account').innerHTML;
+  assert.match(picker, /<option value="">As each last ran<\/option>/);
+  assert.match(picker, /nco · 5h 40% · week 22%/);
+  assert.match(picker, /zeta · signed out/);
+  const body = page.el('sess-body').innerHTML;
+  assert.match(body, /class="chip acct"[^>]*>zeta</, 'the folder and the zeta session');
+  assert.match(body, /class="chip acct faint"[^>]*>home</, 'an account that is gone, greyed');
+  assert.match(page.el('sess-f-account').innerHTML, /zeta \(1\)/);
+  await page.change({ id: 'sess-f-account', value: 'zeta' });
+  assert.doesNotMatch(page.el('sess-body').innerHTML, />Old</);
+});
+
+test('＋ Session: an account that cannot see a session greys its Resume; the account picked is sent', async () => {
+  const page = loadPage({ replies: { '/api/sessions': PAST } });
+  page.push(onAccount('main'));
+  await page.ctx.openSessions(); // its button's own listener: the stand-in elements have none
+  await page.change({ id: 'sess-account', value: 'main' });
+  assert.match(page.el('sess-body').innerHTML, /data-sess-resume="22222222-2222-4222-8222-222222222222" disabled data-tip="Its history isn(&#39;|')t shared with nco/);
+  await page.ctx.startSession({ resume: '11111111-1111-4111-8111-111111111111' }, {});
+  assert.equal(page.posts.at(-1).body.account, 'main');
+  await page.change({ id: 'sess-account', value: '' });
+  await page.ctx.startSession({ cwd: '/w' }, {});
+  assert.equal(page.posts.at(-1).body.account, undefined, 'as each last ran: the collector picks');
+});
+
+test('＋ Session with one account: no picker, no tags, no account sent', async () => {
+  const page = loadPage({ replies: { '/api/sessions': PAST } });
+  page.push(onAccount('main', [ACCOUNTS[0]]));
+  await page.ctx.openSessions(); // its button's own listener: the stand-in elements have none
+  assert.equal(page.el('sess-account-row').hidden, true);
+  assert.doesNotMatch(page.el('sess-body').innerHTML, /chip acct/);
+  await page.ctx.startSession({ cwd: '/w' }, {});
+  assert.equal(page.posts.at(-1).body.account, undefined);
+});
+
+test('Restart in… offers Move to the other accounts, and moving posts the account in the same mode', async () => {
+  const page = loadPage();
+  const s = onAccount('main');
+  s.agents[0] = { ...s.agents[0], pid: 4, mode: 'plan' };
+  page.push(s);
+  await page.openAgent('s1');
+  assert.match(page.side(), /<optgroup label="Move to another account"><option value="account:zeta">zeta · signed out<\/option><\/optgroup>/);
+  page.ctx.confirmBox = async () => true;
+  await page.ctx.restartFlow('s1', 'account:zeta');
+  assert.deepEqual(page.posts.at(-1), { path: '/api/actions/restart', body: { agentId: 's1', mode: 'plan', account: 'zeta' } });
+});
+
+test('Fork: the account row starts on the session\'s own account and is sent', async () => {
+  const page = loadPage();
+  page.push(onAccount('zeta'));
+  page.ctx.openFork('s1', 'r1', 'reply');
+  assert.equal(page.el('fork-account-row').hidden, false);
+  assert.equal(page.el('fork-account').value, 'zeta');
+  await page.ctx.forkGo(null);
+  assert.equal(page.posts.at(-1).body.account, 'zeta');
+});

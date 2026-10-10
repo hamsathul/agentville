@@ -157,7 +157,8 @@ function sessionBarHtml(a) {
   }
   if (a.kind !== 'interactive' || !a.pid) return '';
   const mode = a.mode, bypass = mode === 'bypassPermissions';
-  const options = MODES.map(([m, label]) => `<option value="${m}"${m === mode ? ' disabled' : ''}>${esc(label)}${m === mode ? ' (now)' : ''}</option>`).join('');
+  const options = MODES.map(([m, label]) => `<option value="${m}"${m === mode ? ' disabled' : ''}>${esc(label)}${m === mode ? ' (now)' : ''}</option>`).join('')
+    + (accountsOn() ? `<optgroup label="Move to another account">${snap.accounts.filter(x => x.key !== a.account).map(x => `<option value="account:${esc(x.key)}">${esc(acctChoice(x))}</option>`).join('')}</optgroup>` : '');
   const chip = mode
     ? `<span class="chip ${bypass ? 'c-crit' : mode === 'plan' ? 'c-warn' : 'c-plain'}" data-tip="Its permission mode (Shift+Tab in its terminal changes it). Restart in… resumes it in another mode.">${bypass ? '⚠ ' : ''}${esc(modeName(mode))}</span>`
     : '<span class="chip c-plain" data-tip="The session has not written its mode down yet; it shows after its next step">mode not known yet</span>';
@@ -172,7 +173,7 @@ function sessionBarHtml(a) {
   return `<div class="sessbar">${chip}
     <select class="act mini" data-switch-model data-agent="${esc(a.id)}" aria-label="Switch this session's model" data-tip="${esc(why)}"${off}><option value="">${esc(modelOf(a) ? modelName(modelOf(a)) : 'Model…')}</option>${models}</select>
     <select class="act mini" data-switch-effort data-agent="${esc(a.id)}" aria-label="Set this session's effort" data-tip="${esc(live ? 'Runs /effort in the session after its current turn. Claude Code saves low to xhigh as your default for new sessions; max is for this session only.' : why)}"${off}><option value="">effort: ${esc(a.effort ?? 'default')}</option>${efforts}</select>
-    <select class="act mini" data-restart-mode data-agent="${esc(a.id)}" aria-label="Restart this session in another permission mode"><option value="">Restart in…</option>${options}</select>
+    <select class="act mini" data-restart-mode data-agent="${esc(a.id)}" aria-label="Restart this session in another permission mode${accountsOn() ? ', or move it to another account' : ''}"><option value="">Restart in…</option>${options}</select>
     <button type="button" class="act mini" data-compact="${esc(a.id)}" data-tip="${esc(modCan(a, '0.6.0') ? 'Runs /compact in the session after its current turn: the conversation so far becomes a summary, freeing its context' : !a.mod?.live ? modWhy(a) : `Compacting from here needs tracker mod 0.6.0 (this session runs ${a.mod.version}): run /reload-plugins in it`)}"${modCan(a, '0.6.0') ? '' : ' disabled'}>Compact…</button>
     <button type="button" class="act mini" data-end-session="${esc(a.id)}" data-tip="End this session and close its terminal window (resume it later from ＋ Session)">End session</button>${note}</div>`;
 }
