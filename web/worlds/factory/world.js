@@ -1850,5 +1850,6 @@
   window.AgentvilleFactory = {
     HEADS, BODIES, DRIVES, lookOf, robotRows, robotSprite, factoryScene, makeFactory, WINDOWS, RANK, CELLS, dockCrates, outletAt, stackLightAt, ventsOf, bankOf, banksOf, BANK_X, THERMOMETER, STEAM, CHARGED,
     props, FACTORY_PROPS: Object.keys(FACTORY_PROPS), WELD_TIP, agvRoute, agvGoal, ICONS,
+    BUILDINGS, FACTORY_GRID, // the buildings' click boxes and the bays' grid: where the browser test clicks
   };
 })();
