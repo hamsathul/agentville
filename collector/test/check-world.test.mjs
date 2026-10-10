@@ -10,7 +10,7 @@ import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import vm from 'node:vm';
 import { RUNNER, plainLines, runContained, worldFiles } from '../../scripts/lib/contained.mjs';
-import { RULES, checkWorld, creatureProblems } from '../../scripts/lib/world-vm.mjs';
+import { RULES, checkWorld, creatureProblems, guardedGagCheck } from '../../scripts/lib/world-vm.mjs';
 
 const fixture = n => fileURLToPath(new URL(`./fixtures/worlds/${n}`, import.meta.url));
 const builtIn = n => fileURLToPath(new URL(`../../web/worlds/${n}`, import.meta.url));
@@ -377,4 +377,20 @@ test("gag rules: the copied habits and reactions match animals.js (drift fails h
   const src = readFileSync(builtIn('sdk/animals.js'), 'utf8');
   assert.deepEqual(new Set(JSON.parse(src.match(/const HABITS = new Set\((\[[^\]]*\])\)/)[1].replaceAll("'", '"'))), new Set(RULES.HABITS));
   assert.deepEqual(new Set([...src.matchAll(/byWhat\('(\w+)'\)/g)].map(m => m[1])), new Set(RULES.REACTS));
+});
+
+test("a world that swaps the kit's gag check can't use it to hang or fool check-world: the kit's own, read before world.js, still finds its bad gags", async () => {
+  const r = await checkWorld({ dir: fixture('fake-gag-check') });
+  assert.deepEqual(r.creatures, ['gag nap: its spot "basket" isn\'t in spots()', "gag stray: it has a role it wasn't cast (dog)"]);
+});
+
+test("the kit's gag check is called as world code: under the timeout, and only a string comes back, on one line", () => {
+  const ctx = vm.createContext({});
+  vm.runInContext("globalThis.loop = () => { for (;;) {} }; globalThis.odd = () => ({ toString() { for (;;) {} } }); globalThis.many = () => 'two\\nlines \\u001b[31mred'; globalThis.fine = () => '';", ctx);
+  const call = fn => { ctx.__job = fn; return vm.runInContext('__job()', ctx, { timeout: 200 }); };
+  assert.equal(guardedGagCheck(ctx.loop, call)({ id: 'a' }), "check-world couldn't check it: the kit's check didn't return");
+  assert.equal(guardedGagCheck(ctx.odd, call)({ id: 'a' }), 'it is written wrong');
+  assert.equal(guardedGagCheck(ctx.many, call)({ id: 'a' }), 'two lines red');
+  assert.equal(guardedGagCheck(ctx.fine, call)({ id: 'a' }), '');
+  assert.equal(guardedGagCheck(undefined, call), null, 'no kit: no gag checks');
 });

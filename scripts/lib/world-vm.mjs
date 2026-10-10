@@ -9,6 +9,7 @@ import { dirname, join, relative, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import vm from 'node:vm';
 import { checkWorldJson } from '../../collector/worlds.mjs';
+import { oneLine } from './plain-text.mjs';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..', '..');
 const WEB = join(ROOT, 'web');
@@ -17,7 +18,7 @@ const WEB = join(ROOT, 'web');
 const SDK = ['scene.js', 'brand.js', 'worlds/sdk/pixel.js', 'worlds/sdk/people.js', 'worlds/sdk/props.js', 'worlds/sdk/creatures.js', 'worlds/sdk/animals.js', 'worlds/sdk/engine.js'].filter(f => existsSync(join(WEB, f)));
 const TOUR = join(WEB, 'worlds', 'test', 'tour.js');
 /** Every file a check reads besides the world's own folder: this module, what it imports, the SDK and the tour. */
-export const FILES = [fileURLToPath(import.meta.url), join(ROOT, 'collector', 'worlds.mjs'), ...SDK.map(f => join(WEB, f)), TOUR];
+export const FILES = [fileURLToPath(import.meta.url), join(ROOT, 'collector', 'worlds.mjs'), join(ROOT, 'scripts', 'lib', 'plain-text.mjs'), ...SDK.map(f => join(WEB, f)), TOUR];
 const REQUIRED = ['W', 'slots', 'drawChar', 'bg', 'grid'];
 const hash = s => { let h = 0; for (let i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) >>> 0; return h.toString(36); };
 const NUMBERS = new Set(['offsetWidth', 'offsetHeight', 'clientWidth', 'clientHeight', 'scrollLeft', 'scrollTop', 'scrollWidth', 'scrollHeight', 'width', 'height', 'length', 'size']);
@@ -90,6 +91,21 @@ export function creatureProblems(value, { kinds, taken = [], gagProblem = null, 
   });
   if (gagProblem && !Array.isArray(value)) gagRules(value, { cast, gagProblem, spots, problems, pointers });
   return { problems, pointers };
+}
+
+/**
+ * The kit's gagProblem (animals.js), called as the world code it is: it runs in the world's context, so it goes
+ * through `call` (under the timeout), and only a string is taken back, on one line and cut (a world can patch what
+ * it uses). A world can still make its own gags pass: check-world helps its author, it isn't a gate. Null with no kit.
+ */
+export function guardedGagCheck(check, call) {
+  if (typeof check !== 'function') return null;
+  return gag => {
+    let why;
+    try { why = call(() => check(gag), 'checking its gags'); } catch { return "check-world couldn't check it: the kit's check didn't return"; }
+    if (typeof why === 'string') return oneLine(why, 160);
+    return why == null || why === false ? '' : 'it is written wrong';
+  };
 }
 
 /** The gags and play in `{ cast, gags, play }`: written as the kit reads them (its own gagProblem), their lines, their spots. */
@@ -233,14 +249,14 @@ export async function checkWorld({ dir, file = 'world.js', json = 'world.json', 
    * vm under the timeout and as plain data, so neither a loop nor a getter can hang this. A hook that throws
    * or never returns is left to the stops, which report it (the engine calls animals() as the world starts).
    */
-  function checkCreatures(hooks, call, g) {
+  function checkCreatures(hooks, call, g, kitGagCheck) {
     if (creaturesChecked || !hooks || typeof hooks.animals !== 'function') return;
     creaturesChecked = true;
     let value;
     try { value = JSON.parse(call(() => JSON.stringify(hooks.animals() ?? null), 'giving its animals') ?? 'null'); } catch { return; }
     let spots = {};
     try { spots = typeof hooks.spots === 'function' ? JSON.parse(call(() => JSON.stringify(hooks.spots() ?? {}), 'giving its spots') ?? '{}') : {}; } catch { spots = {}; }
-    const gagProblem = typeof g.gagProblem === 'function' ? gag => g.gagProblem(gag) : null;
+    const gagProblem = guardedGagCheck(kitGagCheck, call);
     const { problems, pointers } = creatureProblems(value, { kinds: Object.keys(g.CREATURES ?? {}), taken, gagProblem, spots });
     out.creatures = problems;
     out.notes.push(...pointers.map(p => `creatures: ${p}`));
@@ -271,12 +287,13 @@ export async function checkWorld({ dir, file = 'world.js', json = 'world.json', 
     const fail = (err, fatal = false) => ({ error: problem(err), fatal, timeout: timedOut(err), unknown: unknownOf() });
     try { for (const s of sdk) s.runInContext(ctx, { timeout: timeoutMs }); }
     catch (err) { return { error: { message: `check-world couldn't load the SDK: ${err?.message ?? err}`, where: whereOf(err) }, fatal: true }; }
+    const kitGagCheck = g.gagProblem; // the kit's own, taken before world.js runs (it could put its own there)
     vm.runInContext('(() => { const real = window.Agentville.world; if (real) window.Agentville.world = hooks => { window.__hooks = hooks; return real(hooks); }; })();', ctx);
     doing = 'running world.js';
     try { worldScript.runInContext(ctx, { timeout: timeoutMs }); } catch (err) { return fail(err, true); }
     if (!handlers.start) return { error: { message: 'world.js never registered: it must call Agentville.world(hooks) or Agentville.raw(handlers).', where: file }, fatal: true };
     const defaults = g.__hooks ? JSON.parse(JSON.stringify(vm.runInContext('Object.keys(withDefaults({ W: 1, slots() {}, drawChar() {}, bg() {} }))', ctx))).filter(k => !REQUIRED.includes(k) && !(k in g.__hooks)) : [];
-    checkCreatures(g.__hooks, call, g);
+    checkCreatures(g.__hooks, call, g, kitGagCheck);
     const prefs = { sky: stop.sky };
     const opts = {
       still: false, navState: () => ({}), request: () => new Promise(() => {}), // made-up answers are the test page's; here a request waits

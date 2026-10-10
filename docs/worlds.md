@@ -811,7 +811,9 @@ of its fields, off the hay, crates and mailbox, and off the carts' rank). `npm r
 checks a world's creatures (its `cast`) against these and the table above, and its gags and play
 the way the kit reads them: what the kit would drop is a cross (with the kit's own reason), so you see
 it there before the browser's console (the checklist's "Creatures" row, in "check-world and the
-checklist"). Keeping `roam`, `perches` and `spots` clear of data is yours to see on the test page.
+checklist"). It runs the world's own code, so a world can make its own checks pass: it helps you write
+a world, it doesn't vouch for one. Keeping `roam`, `perches` and `spots` clear of data is yours to see
+on the test page.
 
 ## The starter world
 
