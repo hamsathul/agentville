@@ -420,7 +420,7 @@ document.addEventListener('click', async e => {
   if (d.heldRemove) { await changeHeld(d.agent, { op: 'remove', id: d.heldRemove }); return; }
   if (d.heldNow) { el.disabled = true; await changeHeld(d.agent, { op: 'send-now', id: d.heldNow }); return; }
   if (d.heldEdit) { const h = heldCache.get(d.agent)?.items?.find(x => x.id === d.heldEdit); if (h) { heldEdits.set(d.agent, { id: h.id, text: h.text }); render(); document.querySelector?.('.held-edit')?.focus?.(); } return; }
-  if (d.heldSave) { const edit = heldEdits.get(d.agent); if (edit) { const r = await changeHeld(d.agent, { op: 'edit', id: edit.id, text: edit.text }); if (r.ok) heldEdits.delete(d.agent); render(); } return; }
+  if (d.heldSave) { await saveHeldEdit(d.agent); return; }
   if (d.heldCancel) { heldEdits.delete(d.agent); render(); return; }
   if (d.quickReply !== undefined) { await sendMessage(d.agent, el, d.quickReply); return; }
   if (d.quickDraft !== undefined || d.quote !== undefined) {
@@ -684,6 +684,27 @@ async function askAside(agentId, button) {
   if (r.ok) asideDrafts.delete(agentId);
   else notice(`Could not ask: ${r.error}`);
   document.activeElement?.blur?.();
+  render();
+}
+/**
+ * Saves an edit to a waiting message. If the turn ended meanwhile and it went out as it was, the change
+ * isn't lost: it goes into the message box, to send as a follow-up (or not).
+ */
+async function saveHeldEdit(agentId) {
+  const edit = heldEdits.get(agentId);
+  if (!edit) return;
+  const r = await post('/api/actions/held', { agentId, op: 'edit', id: edit.id, text: edit.text });
+  heldEdits.delete(agentId);
+  if (!r.ok && /no longer waiting/.test(r.error ?? '')) {
+    const prev = msgDrafts.get(agentId) ?? '';
+    msgDrafts.set(agentId, prev ? `${prev.replace(/\n*$/, '')}\n\n${edit.text}` : edit.text);
+    notice('It had already gone out: your change is in the message box, to send as a follow-up.');
+  } else if (!r.ok) {
+    heldEdits.set(agentId, edit); // kept open, to try again
+    notice(`Waiting messages: ${r.error}`);
+  }
+  const got = heldCache.get(agentId);
+  if (got) got.rev = 0;
   render();
 }
 /** A change to the messages waiting for a session's turn: the collector's answer, or why not. */

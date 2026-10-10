@@ -2978,3 +2978,16 @@ test('no Waiting to send when nothing is held; the hint says a message waits for
   assert.match(page.side(), /is busy: your message waits here until its turn ends/);
   assert.equal(page.gets.filter(g => g.path === HELD).length, 0, 'nothing to read');
 });
+
+test('an edit the turn beat (the message went out meanwhile) is not lost: it lands in the message box, and the page says so', async () => {
+  const page = heldPage([heldItem('h1', 'feed the hens')]);
+  await page.settle();
+  await page.clickButton('held-e', { heldEdit: 'h1', agent: 'r1' });
+  page.edit('input', { value: 'feed the hens and the ducks', dataset: { heldEditText: 'h1', agent: 'r1' } });
+  page.ctx.fetch = (orig => async (path, init) => (path === '/api/actions/held' ? (page.posts.push({ path, body: JSON.parse(init.body) }), { ok: true, json: async () => ({ ok: false, error: 'That message is no longer waiting.' }) }) : orig(path, init)))(page.ctx.fetch);
+  await page.clickButton('held-s', { heldSave: 'h1', agent: 'r1' });
+  await page.settle();
+  assert.match(page.side(), /<textarea id="msg-text"[^>]*>feed the hens and the ducks<\/textarea>/, 'your change, in the box');
+  assert.match(page.el('notice').textContent, /had already gone out: your change is in the message box/);
+  assert.doesNotMatch(page.side(), /class="held-edit"/, 'the edit box is gone');
+});

@@ -37,10 +37,14 @@ async function fixture(extra = {}) {
   const timer = setInterval(() => {
     beat();
     if (!mod.alive || !existsSync(inbox)) return;
-    for (const name of readdirSync(inbox).sort()) {
+    let names = [];
+    try { names = readdirSync(inbox).sort(); } catch { return; } // not a folder (a test's broken inbox)
+    for (const name of names) {
       if (!name.endsWith('.json')) continue;
-      received.push(JSON.parse(readFileSync(join(inbox, name), 'utf8')).text);
+      const text = JSON.parse(readFileSync(join(inbox, name), 'utf8')).text;
+      received.push(text);
       unlinkSync(join(inbox, name));
+      mod.onClaim?.(text);
     }
   }, 40);
   const handle = await startCollector({ root, claudeDir, claudeBin: '/usr/bin/false', notify: () => {}, log: () => {}, deliveryTimeoutMs: 500, ...extra });
@@ -51,7 +55,7 @@ async function fixture(extra = {}) {
   /** A whole turn, too quick for any update to see it working: the prompt that went out, and its reply. */
   const quickTurn = text => { line('user', text); line('assistant', 'ok'); line('end'); };
   const stop = async () => { clearInterval(timer); await handle.stop(); };
-  return { root, claudeDir, handle, agent, received, mod, registry, line, turnEnds, quickTurn, stop, inbox };
+  return { root, claudeDir, handle, agent, received, mod, registry, line, turnEnds, quickTurn, stop, inbox, transcriptPath: transcript };
 }
 
 test('a message to a working session is held, with no text in the snapshot; to one on its turn it goes at once', async () => {
@@ -147,5 +151,70 @@ test('a session gone for a while has its held messages as notes; one back sooner
     rmSync(join(f.claudeDir, 'sessions', `${process.pid}.json`));
     assert.ok(await until(() => (f.handle.getNotes(SID)?.notes ?? []).some(n => n.text === 'remember this'), 3000), 'a note now');
     assert.deepEqual(f.handle.getHeld(SID)?.items ?? [], []);
+  } finally { await f.stop(); }
+});
+
+test("Claude Code's queue lines before the released prompt lands don't let the next one go", async () => {
+  const f = await fixture();
+  try {
+    // as Claude Code does: queue lines at once, the prompt itself a moment later
+    f.mod.onClaim = text => {
+      appendFileSync(f.transcriptPath, `${JSON.stringify({ type: 'queue-operation', operation: 'enqueue', timestamp: new Date().toISOString(), content: text })}\n${JSON.stringify({ type: 'queue-operation', operation: 'dequeue', timestamp: new Date().toISOString() })}\n`);
+      setTimeout(() => f.line('user', text), 900);
+    };
+    for (const t of ['first', 'second']) await f.handle.actions.message({ agentId: SID, text: t });
+    f.turnEnds();
+    assert.ok(await until(() => f.received.length === 1));
+    await sleep(1500); // the queue lines, then the prompt, then its turn running
+    assert.deepEqual(f.received, ['first'], 'the second waits for the first one\'s turn');
+    f.mod.onClaim = undefined;
+    f.line('assistant', 'done'); f.line('end');
+    assert.ok(await until(() => f.received.length === 2));
+    assert.deepEqual(f.received, ['first', 'second']);
+  } finally { await f.stop(); }
+});
+
+test('a message sent while older ones still wait goes after them, not before', async () => {
+  const f = await fixture();
+  try {
+    await f.handle.actions.message({ agentId: SID, text: 'older' });
+    f.mod.alive = false;
+    f.turnEnds();
+    assert.ok(await until(() => Boolean(f.agent()?.held?.failed), 4000), 'its release was not taken: still waiting');
+    f.mod.alive = true;
+    assert.equal(f.agent().state, 'yourTurn');
+    assert.deepEqual(await f.handle.actions.message({ agentId: SID, text: 'newer' }), { ok: true, held: true, count: 2 }, 'held behind the older one');
+    assert.deepEqual(f.received, []);
+  } finally { await f.stop(); }
+});
+
+test('a release whose message file cannot be written is not lost: back in the list, the failure shown, sent once it can be', async () => {
+  const f = await fixture();
+  try {
+    for (const t of ['keep me', 'and me']) await f.handle.actions.message({ agentId: SID, text: t });
+    mkdirSync(join(f.root, 'state', 'messages'), { recursive: true });
+    writeFileSync(f.inbox, 'not a folder'); // its inbox can't be made
+    f.turnEnds();
+    assert.ok(await until(() => Boolean(f.agent()?.held?.failed), 4000), 'the failure shows');
+    assert.deepEqual(f.handle.getHeld(SID).items.map(i => i.text), ['keep me', 'and me']);
+    const now = await f.handle.actions.held({ agentId: SID, op: 'send-now', id: f.handle.getHeld(SID).items[1].id });
+    assert.equal(now.ok, false, 'send now fails too');
+    assert.deepEqual(f.handle.getHeld(SID).items.map(i => i.text), ['keep me', 'and me'], 'and keeps it where it was');
+    unlinkSync(f.inbox);
+    f.quickTurn('nothing'); // the next chance
+    assert.ok(await until(() => f.received.length === 1, 4000));
+    assert.deepEqual(f.received, ['keep me']);
+  } finally { await f.stop(); }
+});
+
+test('messages of a gone session are not lost when their notes cannot be written', async () => {
+  const f = await fixture({ heldGoneMs: 300 });
+  try {
+    await f.handle.actions.message({ agentId: SID, text: 'precious' });
+    rmSync(join(f.root, 'state', 'notes'), { recursive: true, force: true });
+    writeFileSync(join(f.root, 'state', 'notes'), 'not a folder'); // notes can't be saved
+    rmSync(join(f.claudeDir, 'sessions', `${process.pid}.json`));
+    await sleep(900);
+    assert.deepEqual(f.handle.getHeld(SID).items.map(i => i.text), ['precious'], 'still held');
   } finally { await f.stop(); }
 });

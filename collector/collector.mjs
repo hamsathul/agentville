@@ -996,19 +996,34 @@ export async function startCollector({ root, claudeDir = join(homedir(), '.claud
     return { command: r.command, args: r.args, ok: r.ok === true, text: typeof r.text === 'string' ? r.text.slice(0, 300) : '', at: r.at };
   }
 
-  /** Sends held messages as one message (their texts in order, a blank line between, every attachment), as a message is sent. */
-  function deliverHeld(sessionId, items) {
+  /**
+   * Whether the prompt the session's last release handed over has landed in its transcript (or a turn
+   * ended since). Claude Code writes its queue lines first: those don't count, or the next message
+   * could go into a session that is busy with this one.
+   */
+  const landedSince = (id, at) => { const m = sessions.get(id)?.model; return (m?.lastPromptAt ?? 0) > at || (m?.lastTurnEndAt ?? 0) > at; };
+  /** A release being handed over, or handed over and not landed yet (2 minutes at most): new messages wait behind it. */
+  const awaitingRelease = (id, now) => { const last = releases.get(id); return Boolean(last) && (last.inflight || (!landedSince(id, last.at) && now - last.at < 120_000)); };
+  /** Sends held messages as one message (their texts in order, a blank line between, every attachment), as a message is sent. A file that can't be written is a failure like any other. */
+  async function deliverHeld(sessionId, items) {
     const text = items.map(i => i.text).filter(Boolean).join('\n\n');
     const file = writeMessageFile(messagesDir, sessionId, withAttachments(text, items.flatMap(i => i.files ?? []), items.flatMap(i => i.folders ?? [])));
     return confirmDelivery(file, { timeoutMs: deliveryTimeoutMs, failure: "The session didn't take it: it is still waiting here." });
   }
-  /** A session gone a while: what it had waiting becomes notes on it (attachments named), so nothing is lost. */
-  function heldToNotes(id) {
-    for (const i of held.takeAll(id)) {
+  /**
+   * A session gone a while: what it had waiting becomes notes on it (attachments named). Each one
+   * leaves the list only once its note is saved; one that can't be saved stays held, tried again
+   * after another heldGoneMs.
+   */
+  function heldToNotes(id, now) {
+    for (const i of held.list(id).items) {
       const attached = [...(i.files ?? []), ...(i.folders ?? [])];
       let text = [i.text, attached.length ? `(attached: ${attached.join(', ')})` : ''].filter(Boolean).join('\n');
       if (text.length > MAX_NOTE_CHARS) text = `${text.slice(0, MAX_NOTE_CHARS - 50)}… (cut: longer than a note can be)`;
-      notes.add(id, text);
+      let saved = null;
+      try { saved = notes.add(id, text); } catch (err) { saved = { ok: false, error: err?.message ?? String(err) }; }
+      if (!saved?.ok) { log(`held: ${id}'s waiting messages could not become notes (${saved?.error}); kept`); heldGoneSince.set(id, now); return; }
+      held.remove(id, i.id);
     }
     held.drop(id);
     for (const m of [heldGoneSince, releases, heldFailed]) m.delete(id);
@@ -1024,16 +1039,16 @@ export async function startCollector({ root, claudeDir = join(homedir(), '.claud
       const a = byId.get(id);
       if (!a) { // off the dashboard: a restart or a move brings it back soon
         if (!heldGoneSince.has(id)) heldGoneSince.set(id, now);
-        else if (now - heldGoneSince.get(id) >= heldGoneMs) heldToNotes(id);
+        else if (now - heldGoneSince.get(id) >= heldGoneMs) heldToNotes(id, now);
         continue;
       }
       heldGoneSince.delete(id);
       const last = releases.get(id);
       if (a.kind === 'codex' || !a.mod?.live || !['yourTurn', 'idle'].includes(a.state) || last?.inflight) continue;
-      if (last && !((a.lastActivityAt ?? 0) > last.at || now - last.at >= 120_000)) continue;
+      if (last && !(landedSince(id, last.at) || now - last.at >= 120_000)) continue; // the turn the last one started has ended
       const items = held.list(id).together ? held.takeAll(id) : [held.take(id)];
       releases.set(id, { at: now, inflight: true });
-      deliverHeld(id, items).catch(err => ({ ok: false, error: String(err?.message ?? err) })).then(sent => {
+      deliverHeld(id, items).catch(err => ({ ok: false, error: `The message could not be written (${err?.code ?? err?.message ?? err}): it is still waiting here.` })).then(sent => {
         releases.set(id, { at: now, inflight: false });
         if (sent.ok) heldFailed.delete(id);
         else { held.putBack(id, items); heldFailed.set(id, { at: Date.now(), error: sent.error }); }
@@ -1419,7 +1434,8 @@ export async function startCollector({ root, claudeDir = join(homedir(), '.claud
         if (at < 0) return { ok: false, error: 'That message is no longer waiting.' };
         if (!agent.mod?.live) return { ok: false, error: "That session isn't listening for dashboard messages yet." };
         const item = held.take(id, body.id);
-        const sent = await deliverHeld(id, [item]);
+        let sent;
+        try { sent = await deliverHeld(id, [item]); } catch (err) { sent = { ok: false, error: `The message could not be written (${err?.code ?? err?.message ?? err}): it is still waiting here.` }; }
         if (!sent.ok) held.putBack(id, [item], at); // back where it was
         r = sent.ok ? { ok: true } : sent;
       } else return { ok: false, error: 'That is not something to do with a waiting message.' };
@@ -1438,7 +1454,8 @@ export async function startCollector({ root, claudeDir = join(homedir(), '.claud
       if (text.length > 20_000) return { ok: false, error: 'That message is too long (20,000 characters at most).' };
       if (!agent.mod?.live) return { ok: false, error: "That session isn't listening for dashboard messages yet. Send it anything in its terminal once, or start a new session." };
       const saved = saveFiles(uploadsDir, agent.id, checked.files);
-      if (body.now !== true && (agent.state === 'working' || agent.state === 'waiting')) { // mid-turn: it waits here until the turn ends
+      // mid-turn, or behind messages still waiting (or a release not landed yet): it waits, in order
+      if (body.now !== true && (agent.state === 'working' || agent.state === 'waiting' || held.summary(agent.id) || awaitingRelease(agent.id, Date.now()))) {
         const r = held.add(agent.id, { text, files: saved, folders: dirs.folders });
         if (!r.ok) return r;
         await schedule(false);

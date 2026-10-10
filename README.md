@@ -305,7 +305,8 @@ These need the mod in that session.
   (send it at once: Claude Code hands it to Claude at its next step, so it can steer the turn).
   When the turn ends, the first one goes out, and the next waits until that turn ends too; tick
   **Send together** to send all of them as one message instead. A session that is gone for two
-  minutes with messages still waiting gets them as notes, so nothing is lost. (Prompts you type in
+  minutes with messages still waiting gets them as notes on it (a very long one is cut to a note's
+  4,000 characters). (Prompts you type in
   the session's terminal while it works go into Claude Code's own queue, which the dashboard can't
   see or change.)
 - **↑ / ↓ recall what you sent**, as in the session's terminal. With the cursor on the box's first
