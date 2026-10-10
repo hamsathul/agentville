@@ -423,6 +423,7 @@
     // the paths down: the left side's, and the aisles between the bays' columns
     f(CORR[0] - 6, WALK.y1, 12, G.y1 - WALK.y1, WALKWAY); f(CORR[0] + 5, WALK.y1, 1, G.y1 - WALK.y1, WALK_SHADOW);
     for (const c of CORR.slice(1)) f(c - 5, G.y0, 10, G.y1 - G.y0, WALKWAY);
+    for (const [x, y] of ventsOf(L)) floorVent(f, x, y);
     // a project's bays: a painted floor zone round them (its sign is a label)
     for (const g of L.groups) {
       const [paint, edge] = PAINTS[hashOf(g.name ?? '') % PAINTS.length];
@@ -689,6 +690,89 @@
     return `<i class="pxt px-flag" aria-hidden="true" style="width:${(6 * k).toFixed(1)}px;height:${(10 * k).toFixed(1)}px;background-image:url(${flagUrl})"></i>`;
   }
 
+  /* ---------- the limits: floor heat for the 5-hour limit, the power-cell bank for the week ---------- */
+
+  // The floor's heat is the engine's season (its Season switch is the factory's Heat): cool, warm, hot, steaming.
+  // Each level: how fast the vents' fans turn (turns a second), how full the thermometer is, and its colour.
+  const HEAT = {
+    spring: { fan: 2, fill: 0.2, fluid: '#3d7be0' }, // cool: fans slow, the thermometer low and blue
+    summer: { fan: 5, fill: 0.5, fluid: '#f0b429' }, // warm: fans faster, the gauge mid
+    autumn: { fan: 11, fill: 0.75, fluid: '#f08a24' }, // hot: fans racing, a shimmer over the vents
+    winter: { fan: 14, fill: 1, fluid: '#e04a3a' }, // steaming: steam from the vents, sparks off the machines now and then
+  };
+  /** The floor's heat by the plan's 5-hour limit, at the farm's seasonOf bounds: cool while it is fresh, then warm and hot, steaming when it is nearly used up; warm with no reading, cool again in a new window. */
+  function heatOf(plan) {
+    const w = plan?.windows?.find(x => x.kind === 'five_hour');
+    if (!w) return 'summer';
+    const p = w.reset ? 0 : w.percentUsed;
+    return p < 25 ? 'spring' : p < 60 ? 'summer' : p < 85 ? 'autumn' : 'winter';
+  }
+  /** The power-cell bank, by the plan's weekly limit: the cells still lit (8 in a fresh week, none when it is used up), its lamp (green; amber from 70%; red, blinking, from 90%), the % used and when it resets; null with no reading. */
+  function bankOf(plan) {
+    const w = plan?.windows?.find(x => x.kind === 'seven_day');
+    if (!w) return null;
+    const p = w.reset ? 0 : Math.max(0, Math.min(100, w.percentUsed));
+    return { lit: Math.round(8 * (1 - p / 100)), lamp: p >= 90 ? 'red' : p >= 70 ? 'amber' : 'green', pct: Math.round(p), resetsAt: w.resetsAt ?? null, reset: Boolean(w.reset) };
+  }
+  /** When a limit resets, short: Tue 09:00. */
+  const resetAt = at => new Date(at).toLocaleString([], { weekday: 'short', hour: '2-digit', minute: '2-digit' });
+
+  // The thermometer on the back wall, between the drone dock and your desk: its plate, [x, y, w, h].
+  const THERMOMETER = [129, 4, 9, 28];
+  /** The thermometer at a level: a white plate, a scale from blue (bottom) to red (top), the glass tube filled to the level in its colour. */
+  function thermometer(level) {
+    const { fill, fluid } = HEAT[level] ?? HEAT.summer, [x, y, w, h] = THERMOMETER;
+    px(x + 1, y + h, w, 1, WALL_SEAM); px(x + w, y + 1, 1, h, WALL_SEAM); // its shadow on the wall
+    px(x, y, w, h, '#5f6b7a'); px(x + 1, y + 1, w - 2, h - 2, '#ffffff'); px(x + 1, y + h - 2, w - 2, 1, '#e6eef5'); px(x + 4, y, 1, 1, '#c3cbd2');
+    for (const [c, j, n] of [['#e04a3a', 3, 4], ['#f08a24', 7, 4], ['#f0b429', 11, 4], ['#5ab4ff', 15, 5]]) px(x + 7, y + j, 1, n, c); // the scale
+    for (let j = 5; j < 20; j += 4) px(x + 1, y + j, 1, 1, '#9aa4ad'); // its marks
+    px(x + 2, y + 2, 4, 20, '#9aa4ad'); px(x + 3, y + 3, 2, 18, '#e6eef5'); // the glass tube
+    const n = Math.round(18 * fill);
+    px(x + 3, y + 21 - n, 2, n, fluid);
+    px(x + 1, y + 20, 6, 6, '#9aa4ad'); px(x + 2, y + 21, 4, 4, fluid); px(x + 2, y + 21, 1, 1, '#ffffff'); // the bulb
+  }
+  /** The floor vents: one in each aisle between the bays' columns, on each row; each [its middle x, its top y]. */
+  const ventsOf = L => Array.from({ length: L.rows }, (_, r) => CORR.slice(1).map(c => [c, 100 + r * ROWH + 22])).flat();
+  /** A floor vent (drawn once, with the floor): a steel frame round a dark shaft; its fan turns in it each frame. */
+  function floorVent(f, x, y) {
+    f(x - 4, y, 8, 8, '#5f6b7a'); f(x - 4, y, 8, 1, '#9aa4ad'); f(x - 3, y + 1, 6, 6, '#3a3a40'); f(x - 4, y + 8, 8, 1, WALK_SHADOW);
+  }
+  /** The fan down a vent: a hub and four blades, square to the frame (pose 0) or slanted (1); turning, one pose follows the other. */
+  function ventFan(x, y, pose) {
+    for (const [dx, dy] of pose ? [[-3, 1], [1, 1], [-3, 5], [1, 5]] : [[-1, 1], [1, 3], [-1, 5], [-3, 3]]) px(x + dx, y + dy, 2, 2, '#8a8f96');
+    px(x - 1, y + 3, 2, 2, '#c3cbd2');
+  }
+  /** Hot: a shimmer over a vent, three threads of hot air wavering up from it. */
+  function shimmer(x, y, T) {
+    PXG.ctx.globalAlpha = 0.5;
+    for (let k = 0; k < 3; k++) for (let j = 2; j < 16; j += 2) px(x - 3 + k * 3 + Math.round(Math.sin(T * 6 + j * 0.6 + k * 2.1)), y - j, 1, 2, '#f08a24');
+    PXG.ctx.globalAlpha = 1;
+  }
+  const STEAM = '#ffffff';
+  /** Steaming: puffs of steam billowing out of a vent, swelling and thinning as they rise (a frozen moment of it when drawn still). */
+  function steamPuffs(x, y, T, i) {
+    const puffs = [0, 1, 2, 3].map(k => { // each swells and drifts to its side as it rises: a billow, not a column
+      const p = (T * 0.4 + k / 4 + i * 0.29) % 1, s = 3 + Math.round(p * 3);
+      return { s, x: x - (s >> 1) + Math.round(((k % 2 ? -1.4 : 1.4) + Math.sin(T * 1.3 + k * 2 + i) * 0.6) * p), y: Math.round(y - 1 - s - p * 10), a: p < 0.5 ? 1 : 1.5 - p * 1.2 };
+    });
+    // a grey edge round them all, then the white: one cloud, which shows on the pale floor
+    for (const pass of ['#9aa4ad', STEAM]) for (const q of puffs) {
+      PXG.ctx.globalAlpha = q.a;
+      if (pass === STEAM) px(q.x, q.y, q.s, q.s, STEAM);
+      else { px(q.x - 1, q.y, q.s + 2, q.s, pass); px(q.x, q.y - 1, q.s, q.s + 2, pass); }
+    }
+    PXG.ctx.globalAlpha = 1;
+  }
+  // The power-cell bank's cells fill from the bottom row up (CELLS: two a row, top to bottom).
+  const FILL_ORDER = [6, 7, 4, 5, 2, 3, 0, 1], CHARGED = '#2fa57a';
+  const LAMP_COLOURS = { green: '#6cc04a', amber: '#f0b429', red: '#e04a3a' };
+  /** The bank's cells and lamp, for its reading (none: every cell dark, the lamp off). */
+  function powerCells(bank) {
+    if (!bank) return;
+    for (const i of FILL_ORDER.slice(0, bank.lit)) { const [x, y] = CELLS[i]; px(x + 1, y + 2, 6, 7, CHARGED); px(x + 1, y + 2, 6, 1, '#6cc04a'); px(x + 2, y + 3, 1, 5, '#9ed36a'); }
+    if (bank.lamp !== 'red' || blink(2)) { px(295, 15, 6, 4, LAMP_COLOURS[bank.lamp]); px(296, 15, 2, 1, '#ffffff'); } else px(295, 15, 6, 4, '#5a1f19'); // red blinks: between flashes, unlit red (no reading: grey)
+  }
+
   /* ---------- the hooks ---------- */
 
   // What a robot holds for each step and its verb: the props kit's for now (the factory's own props come later).
@@ -700,6 +784,10 @@
     let L = FACTORY_GRID.layoutFor([]);
     let scene = { fields: [], farmers: [] };
     let fabGlow = 0; // the fabricator's door, lit while a robot rolls out (0–1)
+    let heat = 'summer'; // the live heat, from your 5-hour limit
+    // The heat to draw: the engine's (the Heat switch may hold one), else the live one. What is drawn or emitted by heat reads this.
+    const shown = () => PXG.season ?? heat;
+    let where = () => null; // where each robot is (the engine's, given to tick): for the welders' sparks at night
     let seenCompactions = null, seenMerged = null, seenLights = null; // what the last scene had, so news can be told
     const rolling = [], leaving = []; // finished robots rolling off to the conveyor (compactions); crates leaving the dock (merges): { …, t }
     const stOf = k => L.ST.find(s => s.key === k);
@@ -729,6 +817,26 @@
       if (f.state === 'turn' && !b.walk) { rp(4, 5, 2, 1, E); rp(8, 5, 2, 1, E); rp(6, 7, 2, 1, E); return; } // pleased: a squint and a grin
       rp(5, down ? 6 : 5, 1, 2, E); rp(8, down ? 6 : 5, 1, 2, E);
     };
+    /** The limits, each frame: the thermometer and the floor vents at the heat shown (fans, a shimmer, steam), the power-cell bank's cells and lamp. */
+    function drawLimits() {
+      const level = shown(), T = PXG.T, fan = (HEAT[level] ?? HEAT.summer).fan;
+      thermometer(level);
+      ventsOf(L).forEach(([x, y], i) => {
+        if (level === 'autumn' || level === 'winter') px(x - 3, y + 1, 6, 6, level === 'winter' ? '#9c3b30' : '#6b2a22'); // the shaft glows, hot under the fan
+        ventFan(x, y, Math.floor(T * fan + i * 0.5) % 2);
+        if (level === 'autumn') shimmer(x, y, T);
+        if (level === 'winter') steamPuffs(x, y, T, i);
+      });
+      powerCells(bankOf(scene.plan));
+    }
+    /** The power-cell bank's tooltip: the week's % used, the cells left and when it resets; or that there is no reading. */
+    function bankTip() {
+      const b = bankOf(scene.plan);
+      if (!b) return "The power-cell bank: your plan's weekly limit, no reading yet (it comes from the mod in a running session)";
+      return `The power-cell bank: your plan's weekly limit, ${b.reset ? 'just reset' : `${b.pct}% used`}, ${b.lit} of 8 cells left${b.resetsAt ? `; resets ${resetAt(b.resetsAt)}` : ''}. Click for your plan`;
+    }
+    /** A robot welding: working on an edit (the welder's step; plan mode is the blueprint). */
+    const welding = f => f.state === 'working' && props.doing(f) === props.steps.edit;
     /** What moves on the floor, or reads the scene, each frame: the beacon over your desk, the crates on the dock, the conveyor's slats, the fabricator's glow. */
     function drawWorkshop() {
       const T = PXG.T, waiting = scene.farmers.some(f => f.state === 'waiting'), on = waiting && !blink(2);
@@ -776,6 +884,7 @@
         }
         seenLights = lights;
         scene = next;
+        heat = heatOf(next.plan);
         return events;
       },
       layout: () => L,
@@ -831,14 +940,44 @@
         return `${props.doing(f)?.verb ?? 'working'} at the ${fieldByKey(f.field)?.name ?? ''} bay`;
       },
       bg(fill, season, ext) { drawFloor(fill, L, ext); },
-      ground() { drawWorkshop(); drawBays(); },
+      ground() { drawLimits(); drawWorkshop(); drawBays(); },
+      /** The floor's heat, live: the engine shows it (or the level the Heat switch holds) as PXG.season. */
+      season: () => heat,
+      /**
+       * Steaming: steam puffs rising from the floor vents, and now and then a burst of sparks off a machine (the
+       * fabricator, a bay's assembly frame). Only for the heat shown.
+       */
+      ambient(dt, add) {
+        if (shown() !== 'winter') return;
+        for (const [x, y] of ventsOf(L)) if (Math.random() < dt * 2) add({ x: x + rand(-2, 2), y: y + 1, vx: rand(-2, 2), vy: rand(-12, -7), g: 0, life: 1.8, max: 1.8, size: 2, grow: 1.2, color: STEAM, alpha: 0.6, sway: 2 });
+        if (Math.random() < dt * 0.6) {
+          const spots = [[60, 9], [86, 12], ...L.ST.map(s => [s.cx + 11, s.rowTop + 3])], [x, y] = spots[Math.floor(Math.random() * spots.length)];
+          for (let i = 0; i < 6; i++) add({ x, y, vx: rand(-28, 28), vy: rand(-34, -10), g: 90, life: 0.45, max: 0.45, size: 1, color: i % 3 ? '#ffd43b' : '#ffe8a3' });
+        }
+      },
+      /**
+       * Lights that glow at night, [x, y, reach, the lit shape or null]: the desk lamp (its bulb lit), your desk's
+       * screen and the fabricator's, every stack light with a lamp on, the bank's lamp, the fabricator's door while a
+       * robot rolls out, and each welding robot's spark. The rest (the robots waiting on you) the engine adds.
+       */
+      lights() {
+        const out = [[158, 49, 14, [156, 46, 5, 1]], [201, 47, 12, null], [47, 33, 9, null]];
+        for (const s of L.ST) { const f = fieldByKey(s.key); if (f?.light && f.light !== 'other') out.push([...stackLightAt(s), 9, null]); } // 'other': every lamp off
+        const bank = bankOf(scene.plan);
+        if (bank && (bank.lamp !== 'red' || blink(2))) out.push([298, 17, 7, null]);
+        if (fabGlow > 0) out.push([62, 62, Math.round(20 * fabGlow), null]);
+        for (const f of scene.farmers) { const b = welding(f) ? where(f.id) : null; if (b && !b.walk) out.push([b.x + 7, b.y - 6, 5 + 2 * blink(9), null]); }
+        return out;
+      },
       /** Drawn among the robots, by how far down they stand: the open table (two robots behind it, two in front), and each pod's glass over its sleeper. */
       items: () => [[TABLE_Y, openTable], ...PODS.map(([x, y]) => [y + 1, () => podGlass(x, y)])],
       /**
        * Each frame: is a robot rolling out of the fabricator (walking near its door)? Its door glows, and fades
        * after. Finished robots roll on, and crates leave the dock, until they're gone. Still, nothing moves.
+       * Where the robots are is kept, for the welders' sparks at night (lights).
        */
       tick(dt, posOf, snap = false) {
+        where = posOf;
         const out = !snap && scene.farmers.some(f => { const b = posOf(f.id); return b?.walk && Math.abs(b.x - FAB_DOOR[0]) < 30 && Math.abs(b.y - FAB_DOOR[1]) < 4; });
         fabGlow = snap ? 0 : out ? 1 : Math.max(0, fabGlow - dt * 1.5);
         if (snap) { rolling.length = 0; leaving.length = 0; return; }
@@ -853,10 +992,10 @@
       weather(sky) { drawWindows(sky); },
       /** The building at a point of the floor, if any: each opens something. */
       buildingAt(x, y) { return BUILDINGS.find(([, x0, y0, x1, y1]) => x >= x0 && x <= x1 && y >= y0 && y <= y1)?.[0] ?? null; },
-      buildingTip: k => ({
+      buildingTip: k => (k === 'bank' ? bankTip() : {
         barn: 'The fabricator: start a new session or resume one (a new robot rolls out of its door)', drones: 'The drone dock: subagents', desk: 'Your desk: who is waiting on you',
-        board: 'The manuals shelf: what your projects remember (CLAUDE.md and memory)', bank: "The power-cell bank: your plan's usage", dock: 'The loading dock: pull requests',
-      })[k] ?? '',
+        board: 'The manuals shelf: what your projects remember (CLAUDE.md and memory)', dock: 'The loading dock: pull requests',
+      }[k] ?? ''),
       /** What a building shows when clicked: { title, html }. */
       dialog(k) {
         if (k === 'desk') {
@@ -865,7 +1004,7 @@
         }
         if (k === 'bank') {
           const ws = scene.plan?.windows ?? [], name = w => ({ five_hour: '5-hour limit', seven_day: 'Weekly limit' })[w.kind] ?? w.kind;
-          return { title: 'The power-cell bank: your plan', html: ws.length ? ws.map(w => { const pct = w.reset ? 0 : Math.round(w.percentUsed); return `<div class="px-meter"><b>${esc(name(w))}</b><span class="bar"><i style="width:${Math.min(100, pct)}%"></i></span><span>${w.reset ? 'just reset' : `${pct}% used`}${w.resetsAt ? ` · resets ${esc(new Date(w.resetsAt).toLocaleString([], { weekday: 'short', hour: '2-digit', minute: '2-digit' }))}` : ''}</span></div>`; }).join('') + '<p class="muted">The cells are the week; the floor heat is the 5-hour limit (steaming when it is nearly used up).</p>' : '<p class="muted">No reading of your plan yet: it comes from the mod in a running session.</p>' };
+          return { title: 'The power-cell bank: your plan', html: ws.length ? ws.map(w => { const pct = w.reset ? 0 : Math.round(w.percentUsed); return `<div class="px-meter"><b>${esc(name(w))}</b><span class="bar"><i style="width:${Math.min(100, pct)}%"></i></span><span>${w.reset ? 'just reset' : `${pct}% used`}${w.resetsAt ? ` · resets ${esc(resetAt(w.resetsAt))}` : ''}</span></div>`; }).join('') + '<p class="muted">The cells are the week; the floor heat is the 5-hour limit (steaming when it is nearly used up).</p>' : '<p class="muted">No reading of your plan yet: it comes from the mod in a running session.</p>' };
         }
         if (k === 'drones') {
           const subs = scene.subagents ?? [];
@@ -944,7 +1083,7 @@
       <b>Robots</b><span>one per agent, put together from a head, a body and a drive picked by its agent, so the same agent is always the same robot; its body is the agent's colour in the list. Hover one for its name; names always show for the robot you picked and those at your desk</span>
       <b>Speech bubbles</b><span>what a robot asked or last said; × hides one to a 💬 (click it to show the bubble again); a new message brings it back by itself. The Bubbles switch hides or shows them all</span>
       <b>Power-cell bank</b><span>its lit cells are what is left of your plan's weekly limit: they drain as the week is used (the % on hover, and when it resets); its lamp turns amber from 70% and blinks red from 90%</span>
-      <b>Floor heat</b><span>follows your plan's 5-hour limit: cool while it is fresh, then warm, hot (a shimmer over the vents), and steaming (steam and sparks) when it is nearly used up; a new window cools it again. The Heat switch holds one instead (each click moves it on, then back to live): the panel then shows the heat with a 📌 and your real 5-hour use</span>
+      <b>Floor heat</b><span>follows your plan's 5-hour limit, on the thermometer by your desk and in the floor vents between the bays: cool while it is fresh (blue, the vents' fans turning slowly), then warm (the fans faster), hot (the fans racing, a shimmer over the vents), and steaming (steam from the vents, sparks off the machines) when it is nearly used up; a new window cools it again. The Heat switch holds one instead (each click moves it on, then back to live): the panel then shows the heat with a 📌 and your real 5-hour use</span>
       <b>Capsules</b><span>one agent messaging another (Claude Code's SendMessage between sessions): a capsule shoots through the pneumatic tubes overhead from one robot to the other, and the floor log says what it said; the agents' conversations show it too</span>
       <b>Animals</b><span>a robot dog, a robot vacuum and a cat that naps on the conveyor live here just for fun: they never stand for anything. Click one to pet it: the nearest robot that isn't waiting on you rolls over and does it. The Animals switch hides them</span>
       <b>Day and night</b><span>the windows show the sky by your clock; at night the lights dim, and desk lamps, screens, stack lights and welding sparks glow. The Sky switch holds it at day or night</span>
@@ -958,5 +1097,5 @@
 
   window.Agentville.world(makeFactory());
   // The factory's own pieces, for its tests.
-  window.AgentvilleFactory = { HEADS, BODIES, DRIVES, lookOf, robotRows, robotSprite, factoryScene, makeFactory, WINDOWS, RANK, CELLS, dockCrates };
+  window.AgentvilleFactory = { HEADS, BODIES, DRIVES, lookOf, robotRows, robotSprite, factoryScene, makeFactory, WINDOWS, RANK, CELLS, dockCrates, stackLightAt, ventsOf, bankOf, THERMOMETER, STEAM, CHARGED };
 })();

@@ -616,3 +616,172 @@ test('an empty slot is bare floor with a faint outline', () => {
     for (let y = s.y0 + 3; y < s.y0 + 27; y++) for (let x = s.x0 + 3; x < s.x0 + 69; x++) assert.ok(plainFloor.has(pix.get(`${x},${y}`)), `slot ${s.i}: bare floor inside (${x},${y})`);
   }
 });
+
+/* ---------- the limits: floor heat for the 5-hour limit, the power-cell bank for the week, and night ---------- */
+
+const RESETS = Date.UTC(2026, 9, 13, 9, 0), LEVELS = ['spring', 'summer', 'autumn', 'winter'];
+/** The shop's bay with a plan: the 5-hour limit's % used and the week's (null: no window of that kind); `over` goes in each window. */
+function planned(five, week, over = {}) {
+  const w = (kind, pct) => (pct === null ? [] : [{ kind, percentUsed: pct, resetsAt: RESETS, ...over }]);
+  return { ...bay(), plan: { from: 'test', at: TOUR_NOW, windows: [...w('five_hour', five), ...w('seven_day', week)] } };
+}
+/** Fills entirely inside a box [x, y, w, h]. */
+const inBox = ([bx, by, bw, bh]) => ([, x, y, w, hh]) => x >= bx && y >= by && x + w <= bx + bw && y + hh <= by + bh;
+/** Fills over a floor vent (its middle x, its top y): where its shimmer and its steam go. */
+const overVents = (rects, vents) => rects.filter(([, x, y, w, hh]) => vents.some(([vx, vy]) => x >= vx - 6 && x + w <= vx + 6 && y >= vy - 18 && y + hh <= vy));
+
+test("season(): the floor's heat by the 5-hour limit, at the farm's bounds (cool, warm, hot, steaming); warm with no reading; cool again in a new window", () => {
+  const { h, sceneOf } = bays();
+  assert.equal(typeof h.season, 'function', 'the factory gives its own season(): the engine gives it the Heat switch');
+  const heatOf = snap => { h.setScene(sceneOf(snap)); return h.season(); };
+  assert.deepEqual([10, 40, 70, 95].map(p => heatOf(planned(p, 20))), LEVELS);
+  assert.deepEqual([0, 24, 25, 59, 60, 84, 85, 100].map(p => heatOf(planned(p, 20))), ['spring', 'spring', 'summer', 'summer', 'autumn', 'autumn', 'winter', 'winter'], "the farm's seasonOf bounds: 25, 60, 85");
+  assert.equal(heatOf({ ...bay(), plan: null }), 'summer', 'no plan reading: warm');
+  assert.equal(heatOf(planned(null, 50)), 'summer', 'no 5-hour window: warm');
+  assert.equal(heatOf(planned(95, 50, { reset: true })), 'spring', 'a new 5-hour window: cool again');
+});
+
+test('the heat drawn is the one shown (PXG.season, which the Heat switch may hold), else the live one: steam over the floor vents only when steaming', () => {
+  const { h, F, PXG, ground, ctx } = bays();
+  const ink = vm.runInContext('ink', ctx);
+  ground(planned(10, 20)); // live: cool
+  const G = h.layout().GRID, vents = plain(F.ventsOf(h.layout()));
+  assert.ok(vents.length >= 6, `a vent in each aisle on each row (${vents.length})`);
+  for (const [x, y] of vents) assert.ok(G.y0 < y && y < G.y1 && [218, 306].includes(x), `${x},${y}: in an aisle between the bays`);
+  const steam = rects => overVents(rects, vents).filter(r => r[0] === ink(F.STEAM));
+  const puffs = () => { const out = []; for (let i = 0; i < 10; i++) h.ambient(0.5, p => out.push(p)); return out.filter(p => p.color === F.STEAM); };
+  PXG.season = null;
+  assert.equal(steam(ground().rects).length + puffs().length, 0, 'live and cool: no steam');
+  PXG.season = 'winter';
+  assert.ok(steam(ground().rects).length >= vents.length, 'held at steaming while the live level is cool: steam over every vent');
+  const rising = puffs();
+  assert.ok(rising.length > 0 && rising.every(p => p.vy < 0), 'and puffs of it rising (ambient)');
+  for (const level of ['spring', 'summer', 'autumn']) { PXG.season = level; assert.equal(steam(ground().rects).length + puffs().length, 0, `${level}: no steam`); }
+  PXG.season = 'autumn';
+  assert.ok(overVents(ground().rects, vents).length >= vents.length, 'hot: a shimmer over the vents');
+  PXG.season = 'summer';
+  assert.equal(overVents(ground().rects, vents).length, 0, 'warm: nothing over the vents');
+  ground(planned(95, 20)); // live: steaming
+  PXG.season = 'spring';
+  assert.equal(steam(ground().rects).length + puffs().length, 0, 'held at cool while the live level is steaming: none');
+  PXG.season = null;
+  assert.ok(steam(ground().rects).length > 0 && puffs().length > 0, 'live and steaming: steam');
+});
+
+test("the thermometer on the back wall shows the level shown; the vents' fans turn slow when cool, faster when warm, racing when hot", () => {
+  const { h, F, PXG, ground, ctx } = bays();
+  const ink = vm.runInContext('ink', ctx);
+  ground(planned(95, 20)); // live: steaming, so each picture below is the held level's
+  const [tx, ty, tw, th] = F.THERMOMETER;
+  assert.ok(tx >= 127 && tx + tw <= 139 && ty >= 2 && ty + th <= 34, 'on the back wall, between the drone dock and your desk');
+  for (const [k, x0, y0, x1, y1] of [['drones', 96, 30, 126, 78], ['desk', 140, 34, 260, 76]]) assert.ok(tx + tw <= x0 || tx >= x1 || ty + th <= y0 || ty >= y1, `clear of the ${k}`);
+  const reading = level => { PXG.season = level; return ground().rects.filter(inBox(F.THERMOMETER)); };
+  const pics = LEVELS.map(reading);
+  assert.equal(new Set(pics.map(p => JSON.stringify(p))).size, 4, 'four levels, four readings');
+  assert.ok(pics[0].some(r => r[0] === ink('#3d7be0')) && !pics[3].some(r => r[0] === ink('#3d7be0')), 'cool: blue');
+  const [vx, vy] = F.ventsOf(h.layout())[0];
+  const turns = level => {
+    PXG.season = level;
+    let n = 0, last = null;
+    for (let k = 0; k <= 60; k++) { PXG.T = k / 60; const sig = JSON.stringify(ground().rects.filter(inBox([vx - 3, vy + 1, 6, 6]))); if (last !== null && sig !== last) n++; last = sig; }
+    return n;
+  };
+  const [cool, warm, hot, steaming] = LEVELS.map(turns);
+  assert.ok(cool > 0, `cool: the fans still turn (${cool} turns a second)`);
+  assert.ok(cool < warm && warm < hot && hot <= steaming, `slow, faster, racing: ${cool}, ${warm}, ${hot}, ${steaming} turns a second`);
+});
+
+test('the power-cell bank: 8 cells, round(8 × (1 − week)) lit; its lamp green, amber from 70%, blinking red from 90%; no reading, nothing lit', () => {
+  const { F, PXG, ground, ctx } = bays();
+  const ink = vm.runInContext('ink', ctx);
+  const weekly = (pct, over = {}) => ({ windows: [{ kind: 'seven_day', percentUsed: pct, resetsAt: RESETS, ...over }] });
+  for (const [week, lit, lamp] of [[0, 8, 'green'], [50, 4, 'green'], [69, 2, 'green'], [70, 2, 'amber'], [89, 1, 'amber'], [90, 1, 'red'], [100, 0, 'red']]) {
+    const b = plain(F.bankOf(weekly(week)));
+    assert.deepEqual([b.lit, b.lamp, b.pct], [lit, lamp, week], `${week}% of the week`);
+  }
+  assert.equal(F.bankOf(weekly(95, { reset: true })).lit, 8, 'a new week: every cell charged');
+  for (const plan of [null, { windows: [] }, { windows: [{ kind: 'five_hour', percentUsed: 50 }] }]) assert.equal(F.bankOf(plan), null, `no reading: ${JSON.stringify(plan)}`);
+  const LAMP = [295, 15, 6, 4];
+  const drawn = (week, T = 0) => {
+    PXG.T = T;
+    const { rects } = ground(week === null ? { ...bay(), plan: null } : planned(30, week));
+    const lit = F.CELLS.filter(([x, y]) => rects.some(r => r[0] === ink(F.CHARGED) && inBox([x, y, 8, 10])(r))).length;
+    return { lit, lamp: rects.filter(inBox(LAMP)).map(r => r[0]) };
+  };
+  assert.deepEqual([0, 50, 90, 100].map(w => drawn(w).lit), [8, 4, 1, 0], 'drawn: 8, 4, 1 and 0 cells lit');
+  assert.ok(drawn(50).lamp.includes(ink('#6cc04a')), 'the lamp green');
+  assert.ok(drawn(75).lamp.includes(ink('#f0b429')) && drawn(75, 0.3).lamp.includes(ink('#f0b429')), 'amber, steady');
+  const red = [0, 0.3, 0.6, 0.9].map(T => drawn(95, T).lamp.includes(ink('#e04a3a')));
+  assert.ok(red.includes(true) && red.includes(false), `red, blinking (${red})`);
+  const none = drawn(null);
+  assert.deepEqual([none.lit, none.lamp.length], [0, 0], 'no reading: no cell lit, the lamp off');
+});
+
+test("the bank's tooltip gives the week's % and when it resets; with no reading it says so", () => {
+  const { h, sceneOf } = bays();
+  const resets = new Date(RESETS).toLocaleString([], { weekday: 'short', hour: '2-digit', minute: '2-digit' });
+  h.setScene(sceneOf(planned(30, 72)));
+  const tip = h.buildingTip('bank');
+  assert.match(tip, /power-cell bank/);
+  assert.match(tip, /72% used/);
+  assert.ok(tip.includes(`resets ${resets}`), tip);
+  h.setScene(sceneOf(planned(30, 72, { reset: true })));
+  assert.match(h.buildingTip('bank'), /just reset/);
+  h.setScene(sceneOf({ ...bay(), plan: null }));
+  const none = h.buildingTip('bank');
+  assert.match(none, /no reading/);
+  for (const t of [tip, none]) assert.doesNotMatch(t, FARM_WORDS);
+});
+
+test("lights(): the desk lamp, the screens, every bay's stack light, the fabricator's glow and each welding robot's spark; the same drawn still", () => {
+  const { h, F, sceneOf } = bays();
+  const reader = person('r', { cwd: '/Users/you/code/blog', now: { tool: 'Read', summary: 'a.ts', step: 'read', startedAt: TOUR_NOW } });
+  const repo = (name, state, agentIds = []) => ({ path: `/Users/you/code/${name}`, name, branch: 'main', dirty: 0, ahead: 0, behind: 0, lastDeploy: state ? deployed(state).lastDeploy : null, agentIds });
+  const scene = sceneOf({ generatedAt: TOUR_NOW, collisions: [], agents: [person('w'), reader], repos: [repo('shop', 'ok', ['w']), repo('blog', 'failed', ['r']), repo('api', 'running'), repo('docs', 'blocked'), repo('notes', null)] });
+  const L = h.relayout(h.grid.layoutFor(scene.fields));
+  h.setScene(scene);
+  const at = { w: { x: 200, y: 144, walk: false }, r: { x: 290, y: 144, walk: false } }, posOf = id => at[id] ?? null;
+  const shown = () => plain(h.lights());
+  const within = (lights, [x0, y0, w, hh]) => lights.some(([x, y]) => x >= x0 && x < x0 + w && y >= y0 && y < y0 + hh);
+  const near = (lights, [x, y], d = 3) => lights.some(([lx, ly]) => Math.abs(lx - x) <= d && Math.abs(ly - y) <= d);
+  const check = (lights, when) => {
+    assert.ok(lights.every(l => l.length === 4 && l.slice(0, 3).every(Number.isFinite)), `${when}: each [x, y, reach, the lit shape]`);
+    assert.ok(within(lights, [148, 43, 15, 13]), `${when}: the desk lamp`);
+    assert.ok(within(lights, [189, 41, 24, 13]), `${when}: your desk's screen`);
+    assert.ok(within(lights, [40, 29, 15, 8]), `${when}: the fabricator's screen`);
+    for (const s of L.ST) {
+      const lit = scene.fields.find(f => f.key === s.key).light !== null;
+      assert.equal(near(lights, plain(F.stackLightAt(s))), lit, `${when}: ${s.key}'s stack light ${lit ? 'glows' : '(none: no deploy)'}`);
+    }
+  };
+  h.tick(0.03, posOf);
+  const live = shown();
+  check(live, 'live');
+  assert.ok(near(live, [207, 138], 4), "the welding robot's spark (editing: a welder)");
+  assert.ok(!near(live, [297, 138], 4), 'none for a robot reading');
+  assert.ok(!within(live, [47, 44, 30, 40]), "the fabricator's door is dark while nobody rolls out");
+  at.w.walk = true;
+  assert.ok(!near(shown(), [207, 138], 4), 'nor while it walks');
+  at.w.walk = false;
+  h.tick(0.03, () => ({ walk: true, x: 62, y: 80 }));
+  assert.ok(within(shown(), [47, 44, 30, 40]), "a robot rolling out: the fabricator's door glows");
+  h.tick(0, posOf, true);
+  check(shown(), 'drawn still (motion off)');
+});
+
+test('no plan reading: warm, the bank shows no reading, and the Heat switch can still hold a level (held at steaming, the engine draws steam)', () => {
+  const seen = {};
+  const { window, dom, ctx, F } = load({ wrap: hooks => { hooks.hud = p => { seen.hud = p; return ''; }; } });
+  const ink = vm.runInContext('ink', ctx);
+  window.registered.start({ el: dom.make(), opts: { still: true }, prefs: { get: k => (k === 'season' ? 'winter' : null), set() {} } });
+  dom.calls.rects.length = 0;
+  window.registered.scene(window.AgentvilleScene.toScene({ ...bay(), plan: null }));
+  const h = window.hooks;
+  assert.equal(h.season(), 'summer', 'live: warm');
+  assert.match(h.buildingTip('bank'), /no reading/);
+  assert.equal(seen.hud.seasons, true, 'the engine gives the factory its Heat switch');
+  assert.equal(seen.hud.seasonMode, 'winter', '… held at steaming');
+  const vents = plain(F.ventsOf(h.layout()));
+  assert.ok(overVents(dom.calls.rects, vents).filter(r => r[0] === ink(F.STEAM)).length >= vents.length, 'held at steaming: steam over the vents');
+  assert.ok(!F.CELLS.some(([x, y]) => dom.calls.rects.some(r => r[0] === ink(F.CHARGED) && inBox([x, y, 8, 10])(r))), 'no cell lit');
+});
