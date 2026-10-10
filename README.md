@@ -449,7 +449,8 @@ before you updated, run `/reload-plugins` in it.
   - **Range**: the last 30 days, or **All time**. The list says how many it shows of how many, and
     the sort and range are kept for next time.
   - Each past session shows its folder, branch, model, length, and when it started and was last
-    active, and 📝 with a count when it has notes you haven't used.
+    active, and 📝 with a count when it has notes you haven't used. A session resumed in another
+    folder is listed once, as it is now.
   - You pick the permission mode, model and effort. Model and effort apply to that session only
     (`--model`, `--effort`), not your defaults.
   - With several Claude accounts, you also pick the **Account**: **As each last ran** (the default),
@@ -513,6 +514,10 @@ on its own account, and both can run at the same time.
   too), and ↺ Restore still finds a moved session's checkpoints. The login, MCP servers, plugins
   and prompt history stay each account's own. Without the links, a session resumes only on the
   account that ran it, and ＋ Session greys out **Resume** for the others.
+- **The mod in each account.** Each account reads its own `settings.json`, so add the mod's
+  `CLAUDE_CODE_PLUGIN_DIRS` there too (see [Load the mod](#3-load-the-mod-in-claude-code-recommended)),
+  or link that account's `settings.json` to `~/.claude/settings.json`. Without it, the account's
+  sessions can't be answered from the dashboard and its plan never shows.
 - **How it knows.** A running session is on the account whose `sessions/` folder lists it. An
   ended one is on the account it last ran on, which Agentville remembers. A session it never saw
   running counts as the first account's.
@@ -908,6 +913,10 @@ The **collector** (`collector/`) is a Node program run by launchd. Every few sec
 - the transcripts under `~/.claude/projects/` (only the new bytes of each). When a session moves
   into a worktree, Claude Code moves its transcript to the worktree's folder, and the collector
   follows it there;
+- with several Claude accounts, the same for each account's folder (`~/.claude-<name>`): its
+  `sessions/` with `claude agents --json` run in its `CLAUDE_CONFIG_DIR`, and its `projects/`
+  unless it is a link to one already read. Every minute it looks for accounts again, and it asks
+  `claude auth status` whether each is signed in;
 - `ps`: processes, CPU and memory, and each session's start flags;
 - `git` in each repo, with `GIT_OPTIONAL_LOCKS=0`, so it never takes `index.lock` from an agent
   that is committing (it never fetches);
@@ -1071,7 +1080,8 @@ and can do is in [docs/worlds.md](docs/worlds.md).
 | Problem | Try |
 |---|---|
 | The dashboard doesn't load | `agent-tracker status`, then `agent-tracker logs`. Check that nothing else uses the port |
-| A session shows "dashboard answers off" | Its mod isn't loaded. Check `CLAUDE_CODE_PLUGIN_DIRS` in `~/.claude/settings.json`, then type anything in the session or `/reload-plugins` |
+| A session shows "dashboard answers off" | Its mod isn't loaded. Check `CLAUDE_CODE_PLUGIN_DIRS` in `~/.claude/settings.json` (or, for another account, in that account's own `settings.json`), then type anything in the session or `/reload-plugins` |
+| An account shows "No reading yet" | Its sessions report their limits through the mod: load the mod in that account too, then send a session on it a message |
 | "runs an older tracker mod" | `/reload-plugins` in that session, or resume it |
 | An idle farmer walks off to the animals, or has no hat | It is playing (idle three minutes or more) or a goat has its hat; it is the farm's fun, not the session. It comes back the moment it gets work or needs you. Switch **Animals** off to stop it all |
 | **■ Stop** on the working line, or **✕ Cancel** on a question, is greyed out | Both need mod 0.7.0: `/reload-plugins` in that session. Until then, press Esc in its terminal |
