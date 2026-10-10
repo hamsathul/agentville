@@ -29,7 +29,7 @@ test('every stop makes valid scenes, and the names are unique', () => {
 test("the tour covers the spec's list", () => {
   const { tour, toScene, STEPS } = load();
   const has = n => assert.ok(tour.stop(n), `a stop named ${n}`);
-  ['working', 'waiting', 'question', 'plan-ask', 'turn', 'idle', 'stale', 'nap', 'thinking', 'steps', 'deploy-ok', 'deploy-failed', 'deploy-running', 'deploy-skipped', 'compaction', 'collision', 'merged', 'mcp', 'pigeon', 'limits-low', 'limits-high', 'day', 'night', 'one', 'sixteen', 'private', 'subagents', 'context-low', 'context-high', 'nobody'].forEach(has);
+  ['working', 'waiting', 'question', 'plan-ask', 'turn', 'idle', 'stale', 'nap', 'thinking', 'steps', 'deploy-ok', 'deploy-failed', 'deploy-running', 'deploy-skipped', 'compaction', 'collision', 'merged', 'mcp', 'pigeon', 'limits-low', 'limits-high', 'accounts', 'day', 'night', 'one', 'sixteen', 'private', 'subagents', 'context-low', 'context-high', 'nobody'].forEach(has);
   const scene = n => toScene(tour.stop(n).frames.at(-1));
   assert.equal(scene('one').agents.length, 1);
   assert.equal(scene('sixteen').agents.length, 16);
@@ -42,6 +42,10 @@ test("the tour covers the spec's list", () => {
   assert.equal(tour.stop('private').private, true);
   assert.ok(scene('limits-high').plan.windows.every(w => w.pct >= 90));
   assert.ok(scene('limits-low').plan.windows.every(w => w.pct <= 20));
+  assert.deepEqual(plain(scene('accounts').accounts.map(a => a.name)), ['work', 'home']);
+  assert.ok(scene('accounts').accounts[1].plan.weekly.pct >= 90);
+  assert.equal(scene('accounts').agents[0].account, 'home');
+  assert.ok(tour.checks.some(([item, a, b]) => item === 'several accounts' && a === 'working' && b === 'accounts'), 'and its checklist item');
   assert.equal(tour.stop('compaction').frames.length, 2);
   assert.equal(tour.stop('merged').frames.length, 2);
   assert.ok(scene('collision').repos[0].collision);

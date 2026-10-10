@@ -707,3 +707,21 @@ test('the goats get up on both the woodpile and the rock, and neither is on the 
   }
   assert.equal(used.size, perches.length, `goats stood on ${[...used].join(' ')} of ${perches.map(p => `${p[0]},${p[1]}`).join(' ')}`);
 });
+
+test('silos: one per account, two at most, the first where it always stood', () => {
+  const { silosOf } = load();
+  const acc = (key, week) => ({ key, name: key, plan: planWith(10, week) });
+  const row = s => [s.x, s.name, s.silo?.label ?? null, s.silo?.lamp ?? null];
+  assert.deepEqual(plain(silosOf({ plan: planWith(10, 40), accounts: [] }).map(row)), [[92, null, '40%', null]]);
+  assert.deepEqual(plain(silosOf({ plan: planWith(10, 40), accounts: [acc('main', 40)] }).map(row)), [[92, null, '40%', null]], 'one account: no name on it');
+  assert.deepEqual(plain(silosOf({ plan: planWith(10, 40), accounts: [acc('nco', 40), acc('zeta', 93), acc('third', 5)] }).map(row)), [[92, 'nco', '40%', null], [8, 'zeta', '93%', 'red']]);
+  assert.deepEqual(plain(silosOf({ plan: null, accounts: [acc('nco', 40), { key: 'zeta', name: 'zeta', plan: null }] }).map(row)), [[92, 'nco', '40%', null], [8, 'zeta', null, null]]);
+  assert.deepEqual(plain(silosOf({ plan: null }).map(row)), [[92, null, null, null]], 'an older scene without accounts');
+});
+
+test("the farm's scene keeps the accounts and each farmer's", () => {
+  const { toScene } = load();
+  const s = plain(toScene({ generatedAt: NOW, collisions: [], repos: [], agents: [agent('a', { account: 'zeta' })], accounts: [{ key: 'main', name: 'nco', plan: planWith(10, 40) }, { key: 'zeta', name: 'zeta', plan: null }] }));
+  assert.deepEqual(s.accounts.map(a => [a.key, a.name, a.plan?.windows.length ?? null]), [['main', 'nco', 2], ['zeta', 'zeta', null]]);
+  assert.equal(s.farmers[0].account, 'zeta');
+});
