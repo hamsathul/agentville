@@ -705,7 +705,7 @@ The **⚙ Claude Code** button in the top bar opens your Claude Code setup in th
 
 A world is a way to draw what the dashboard knows. Two come built in: **the farm** (the default;
 [The farm](#the-farm)) and **the robot factory** ([The robot factory](#the-robot-factory)). **World**,
-among a world's buttons at the top, opens the list of worlds: pick one. A world that might draw no
+in a world's **Menu** (top right), opens the list of worlds: pick one. A world that might draw no
 buttons of its own — any world of yours, and a built-in one that draws itself — gets a small
 control from the page in a corner instead: **World ▾** for the list of worlds and **☰ List** for
 the list view, so it can't leave you with no way back. In the list view, the button beside **☰
