@@ -18,7 +18,7 @@ export function worldsDir(argv = process.argv, configPath = join(ROOT, 'config.j
   const at = argv.indexOf('--worlds');
   return { dir: at > 0 && argv[at + 1] ? resolve(argv[at + 1]) : worldsDirOf(cfg, homedir(), msg => console.warn(msg)), cfg };
 }
-/** The built-in worlds' names: the folders of web/worlds with a world.json, the farm first (farm, factory, starter). */
+/** The built-in worlds' names: the folders of web/worlds with a world.json, the farm first (farm, factory, military, starter). */
 export const builtInKeys = (dir = join(ROOT, 'web', 'worlds')) => readdirSync(dir, { withFileTypes: true })
   .filter(d => d.isDirectory() && existsSync(join(dir, d.name, 'world.json'))).map(d => d.name)
   .sort((a, b) => (a === 'farm' ? -1 : b === 'farm' ? 1 : a.localeCompare(b)));

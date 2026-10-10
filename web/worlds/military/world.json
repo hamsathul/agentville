@@ -1,0 +1,9 @@
+{
+  "name": "Field exercise",
+  "icon": "🎖️",
+  "description": "Every agent a soldier, every repo a position",
+  "api": 1,
+  "author": "",
+  "nouns": { "agent": "soldier", "agents": "soldiers", "repo": "position", "repos": "positions", "start": "motor pool", "diary": "Field log" },
+  "taken": ["dog", "pigeon"]
+}

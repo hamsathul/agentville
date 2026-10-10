@@ -762,7 +762,7 @@ of its own (the `animals()` hook, from a library of fourteen creatures), and lis
 the shapes it already uses for data (`taken`), so its animals never look like them.
 
 **Try a world on the test page:** `http://localhost:7777/worlds/test?world=farm` (or `?world=factory`,
-`?world=starter`, or `?world=u/<folder>` for one of yours). It shows the world playing a tour of
+`?world=military`, `?world=starter`, or `?world=u/<folder>` for one of yours). It shows the world playing a tour of
 made-up snapshots, one stop for each thing a world may show (every state, deploys, a compaction, a collision, the
 limits, night, privacy mode…), and `&stop=<name>` holds one stop at its own address, for a
 screenshot. The page has no token and no real data: requests get made-up answers, what the world
@@ -774,7 +774,7 @@ world. The error strip and the "didn't start" panel show here as on the dashboar
 when you save: reload the page. The stops are
 listed in [docs/worlds.md](docs/worlds.md#the-test-page-and-the-tour).
 
-**A picture of every stop:** `npm run world-shots -- <name>` (or `farm`, `factory`, `starter`) opens each stop
+**A picture of every stop:** `npm run world-shots -- <name>` (or `farm`, `factory`, `military`, `starter`) opens each stop
 of the tour in headless Chrome, on a server of its own with made-up data, and saves a picture of
 each in `.private/shots/` (`--stop <name>` for one stop, `--dir <folder>` for another place). The
 clock is frozen, so the same world gives the same pictures, which makes a change easy to compare.
@@ -782,7 +782,7 @@ clock is frozen, so the same world gives the same pictures, which makes a change
 your worlds folder. If one of yours has a built-in world's name, `check-world` and `world-shots` use the
 built-in and say so; `u/<name>` reaches yours.
 
-**Check a world without a browser:** `npm run check-world -- <name>` (or `farm`, `factory`, `starter`) plays the
+**Check a world without a browser:** `npm run check-world -- <name>` (or `farm`, `factory`, `military`, `starter`) plays the
 same tour headless, a few frames a stop, and lists each exception with its stop, file and line, a
 hook that never returns (cut off after 2 seconds; it never hangs), a `world.json` problem, creatures
 that break the animals kit's rules (a kind in `taken`, a line over 40 characters, fewer than 2 or more
@@ -1144,8 +1144,8 @@ The mod also does the dashboard's work inside the session:
 | `agent-tracker open` | Opens the dashboard |
 | `agent-tracker logs` | The last lines of its logs |
 | `npm run new-world -- <name>` | Makes a world of your own from the starter, in your worlds folder, and says what to do next ([docs/worlds.md](docs/worlds.md#making-a-world)) |
-| `npm run world-shots -- <world>` | A picture of a world (`farm`, `factory`, `starter` or one of yours) at every stop of the test tour, in headless Chrome on made-up data, in `.private/shots/` (`--stop <name>` for one stop). Exits 1 if a stop didn't show |
-| `npm run check-world -- <world>` | Runs the test tour headless against a world (`farm`, `factory`, `starter` or one of yours): its exceptions with file and line, a hook that never returns, creatures (and their gags) that break the animals kit's rules, and pointers to what it may draw the same ([docs/worlds.md](docs/worlds.md#check-world-and-the-checklist)). Exits 1 on a problem. It runs the world's code contained (it can read only the SDK and the world's `world.js` and `world.json`), but the world can still reach the network: check only worlds you'd trust ([Privacy and security](#privacy-and-security)) |
+| `npm run world-shots -- <world>` | A picture of a world (`farm`, `factory`, `military`, `starter` or one of yours) at every stop of the test tour, in headless Chrome on made-up data, in `.private/shots/` (`--stop <name>` for one stop). Exits 1 if a stop didn't show |
+| `npm run check-world -- <world>` | Runs the test tour headless against a world (`farm`, `factory`, `military`, `starter` or one of yours): its exceptions with file and line, a hook that never returns, creatures (and their gags) that break the animals kit's rules, and pointers to what it may draw the same ([docs/worlds.md](docs/worlds.md#check-world-and-the-checklist)). Exits 1 on a problem. It runs the world's code contained (it can read only the SDK and the world's `world.js` and `world.json`), but the world can still reach the network: check only worlds you'd trust ([Privacy and security](#privacy-and-security)) |
 
 ## How it works
 
@@ -1385,8 +1385,9 @@ and can do is in [docs/worlds.md](docs/worlds.md).
 ```
 collector/   the collector: sources/, transcript/, derive/, server.mjs; its tests in test/
 web/         the dashboard: index.html, app.js, panels.js, scene.js, worlds.js…; worlds/ holds the
-             farm (worlds/farm/), the robot factory (worlds/factory/), the starter (worlds/starter/),
-             the test page and its tour (worlds/test/) and what every world's frame loads (worlds/sdk/)
+             farm (worlds/farm/), the robot factory (worlds/factory/), the field exercise
+             (worlds/military/), the starter (worlds/starter/), the test page and its tour (worlds/test/)
+             and what every world's frame loads (worlds/sdk/)
 mod/         the Claude Code mod: hooks/register.tsx; its tests in tests/
 bin/         the agent-tracker command and the launchd entry point
 launchd/     the service definition

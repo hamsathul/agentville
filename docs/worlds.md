@@ -1040,7 +1040,7 @@ world may have to show. Open it with the dashboard running:
 http://localhost:7777/worlds/test?world=<key>&stop=<name>
 ```
 
-- `world`: the world's key. `farm`, `factory`, `starter`, or `u/<folder>` for one of yours (the name of its
+- `world`: the world's key. `farm`, `factory`, `military`, `starter`, or `u/<folder>` for one of yours (the name of its
   folder in your worlds folder). With no `world`, or one that isn't a key, the page says how to name one.
 - `stop`: one stop of the tour, by name (the table below). With no `stop`, the page plays the tour:
   each stop for 4 seconds once the world has started (5.5 for a stop with two snapshots), then the
@@ -1097,7 +1097,7 @@ needs Chrome; `CHROME` sets its path):
 npm run world-shots -- <world> [--stop <name>] [--dir <folder>] [--worlds <dir>]
 ```
 
-`<world>` is `farm`, `factory`, `starter`, `u/<folder>` or just `<folder>` (one of yours; if yours has a built-in
+`<world>` is `farm`, `factory`, `military`, `starter`, `u/<folder>` or just `<folder>` (one of yours; if yours has a built-in
 world's name, the built-in is used and a line says so: `u/<folder>` reaches yours). It starts a server
 of its own on made-up data (your real sessions and your `config.json` token are not used), opens
 each stop of the tour in headless Chrome at 1280 by 820, waits for `document.body.dataset.shown`,
@@ -1163,7 +1163,7 @@ UTC).
 npm run check-world -- <world> [--worlds <dir>]
 ```
 
-`<world>` is `farm`, `factory`, `starter`, `u/<folder>` or just `<folder>` (one of yours; as for `world-shots`, a
+`<world>` is `farm`, `factory`, `military`, `starter`, `u/<folder>` or just `<folder>` (one of yours; as for `world-shots`, a
 built-in world's name wins, with a line saying so); `--worlds` looks for
 it in that folder instead of your worlds folder. It needs no browser, server or token: it reads the
 world's `world.js` and `world.json`, the SDK and the tour (and `config.json`, only for where your

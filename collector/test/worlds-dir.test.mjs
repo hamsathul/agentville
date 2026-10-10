@@ -13,8 +13,8 @@ const script = name => fileURLToPath(new URL(`../../scripts/${name}.mjs`, import
 const shadowLine = name => `There is a built-in world and one of yours named ${name}: checking the built-in. For yours, use u/${name}.`;
 
 test("a world's key from its name: every built-in world by its folder's name, yours under u/", () => {
-  assert.deepEqual(builtInKeys(), ['farm', 'factory', 'starter'], 'the folders of web/worlds with a world.json (not sdk or test), the farm first');
-  for (const key of ['farm', 'factory', 'starter', 'u/mine']) assert.equal(keyOf(key), key);
+  assert.deepEqual(builtInKeys(), ['farm', 'factory', 'military', 'starter'], 'the folders of web/worlds with a world.json (not sdk or test), the farm first');
+  for (const key of ['farm', 'factory', 'military', 'starter', 'u/mine']) assert.equal(keyOf(key), key);
   assert.equal(keyOf('mine'), 'u/mine');
   assert.equal(keyOf('factory', { builtIns: ['farm'] }), 'u/factory', 'the built-in names can be given');
 });
@@ -40,7 +40,7 @@ test('check-world and world-shots: the usage names the built-in worlds; a shadow
   for (const name of ['check-world', 'world-shots']) {
     const r = spawnSync(process.execPath, [script(name)], { encoding: 'utf8', timeout: 30_000 });
     assert.equal(r.status, 1);
-    assert.match(r.stderr, new RegExp(`Which world\\? npm run ${name} -- <farm \\| factory \\| starter \\| your folder>`), `${name}: ${r.stderr}`);
+    assert.match(r.stderr, new RegExp(`Which world\\? npm run ${name} -- <farm \\| factory \\| military \\| starter \\| your folder>`), `${name}: ${r.stderr}`);
   }
   const root = mkdtempSync(join(tmpdir(), 'agentville-shadow-'));
   try {
