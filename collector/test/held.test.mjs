@@ -49,6 +49,8 @@ test('take the first or one by id, take them all, put them back at the front', (
   assert.deepEqual(held.sessions(), []);
   held.putBack(SID, [a, b]);
   assert.deepEqual(texts(held.list(SID)), ['a', 'b']);
+  held.putBack(SID, [c], 1);
+  assert.deepEqual(texts(held.list(SID)), ['a', 'c', 'b'], 'back where it was');
   assert.equal(held.take('22222222-2222-4222-8222-222222222222'), null);
 });
 

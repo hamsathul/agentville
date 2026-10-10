@@ -60,7 +60,7 @@ function clampInt(value, min, max, fallback) {
   return Number.isFinite(n) ? Math.min(max, Math.max(min, n)) : fallback;
 }
 
-export function createTrackerServer({ port, token, webFile, getSnapshot, getFeed, getConversation, getPrompts, getNotes, getSubagent, claudePlugins, claudeMcp, claudeRules, fileTicket, rawFile, officeView, listDirs, shellOutput, namedFiles, getTranscriptHtml, getDoc, listFiles, readFile, repoTouched, actions, pastSessions, worlds, log = () => {} }) {
+export function createTrackerServer({ port, token, webFile, getSnapshot, getFeed, getConversation, getPrompts, getNotes, getHeld = () => null, getSubagent, claudePlugins, claudeMcp, claudeRules, fileTicket, rawFile, officeView, listDirs, shellOutput, namedFiles, getTranscriptHtml, getDoc, listFiles, readFile, repoTouched, actions, pastSessions, worlds, log = () => {} }) {
   const clients = new Set();
   let server;
   const actualPort = () => server.address()?.port ?? port;
@@ -148,7 +148,7 @@ export function createTrackerServer({ port, token, webFile, getSnapshot, getFeed
         }
         // A session's whole conversation, or a subagent's prompt, steps and result: token only, like files.
         // The id comes encoded from the page (a subagent's is session:call), so it is decoded, then checked.
-        if ((m = path.match(/^\/api\/agent\/([^/]+)\/(conversation|subagent|prompts|notes)$/))) {
+        if ((m = path.match(/^\/api\/agent\/([^/]+)\/(conversation|subagent|prompts|notes|held)$/))) {
           if (req.headers['x-tracker-token'] !== token) return sendJson(res, 403, { error: 'forbidden' });
           let id = '';
           try { id = decodeURIComponent(m[1]); } catch { /* not an id */ }
@@ -156,6 +156,10 @@ export function createTrackerServer({ port, token, webFile, getSnapshot, getFeed
           if (m[2] === 'subagent') {
             const sub = id.includes(':') ? getSubagent(id) : null;
             return sub ? sendJson(res, 200, sub) : sendJson(res, 404, { error: 'That subagent is not known.' });
+          }
+          if (m[2] === 'held') { // what you sent it while it worked, waiting for its turn to end
+            const got = id.includes(':') ? null : getHeld(id);
+            return got ? sendJson(res, 200, got) : sendJson(res, 404, { error: 'That session is not on the dashboard.' });
           }
           if (m[2] === 'notes') { // your notes on it, for later
             const got = id.includes(':') ? null : getNotes(id);
@@ -223,7 +227,7 @@ export function createTrackerServer({ port, token, webFile, getSnapshot, getFeed
         }
       }
 
-      const isBodyAction = ['/api/actions/rm', '/api/actions/answer', '/api/actions/permit', '/api/actions/always', '/api/actions/plugin', '/api/actions/reload', '/api/actions/mcp', '/api/actions/rule', '/api/actions/message', '/api/actions/start', '/api/actions/fork', '/api/actions/restore', '/api/actions/note', '/api/actions/helper', '/api/actions/name', '/api/actions/animals', '/api/actions/end', '/api/actions/restart', '/api/actions/setting', '/api/actions/aside', '/api/actions/reveal', '/api/actions/reveal-worlds', '/api/actions/mkdir', '/api/actions/choose-folder', '/api/actions/stop-shell'].includes(path);
+      const isBodyAction = ['/api/actions/rm', '/api/actions/answer', '/api/actions/permit', '/api/actions/always', '/api/actions/plugin', '/api/actions/reload', '/api/actions/mcp', '/api/actions/rule', '/api/actions/message', '/api/actions/start', '/api/actions/fork', '/api/actions/restore', '/api/actions/note', '/api/actions/held', '/api/actions/helper', '/api/actions/name', '/api/actions/animals', '/api/actions/end', '/api/actions/restart', '/api/actions/setting', '/api/actions/aside', '/api/actions/reveal', '/api/actions/reveal-worlds', '/api/actions/mkdir', '/api/actions/choose-folder', '/api/actions/stop-shell'].includes(path);
       if (req.method === 'POST' && (isBodyAction || /^\/api\/actions\/open\/[\w-]+$/.test(path))) {
         if (req.headers['x-tracker-token'] !== token || !isAllowedOrigin(req.headers.origin ?? '')) {
           return sendJson(res, 403, { error: 'forbidden' });
@@ -248,6 +252,7 @@ export function createTrackerServer({ port, token, webFile, getSnapshot, getFeed
         if (path === '/api/actions/fork') return sendJson(res, 200, await actions.fork(body));
         if (path === '/api/actions/restore') return sendJson(res, 200, await actions.restore(body));
         if (path === '/api/actions/note') return sendJson(res, 200, await actions.note(body));
+        if (path === '/api/actions/held') return sendJson(res, 200, await actions.held(body));
         if (path === '/api/actions/helper') return sendJson(res, 200, await actions.helper(body));
         if (path === '/api/actions/name') return sendJson(res, 200, await actions.name(body));
         if (path === '/api/actions/animals') return sendJson(res, 200, await actions.animals(body));

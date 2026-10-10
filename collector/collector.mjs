@@ -23,7 +23,8 @@ import { checkFiles, checkFolders, pruneUploads, saveFiles, typedPart, withAttac
 import { compactSummary, memoryFiles, scratchpadOf } from './sources/memory.mjs';
 import { EFFORTS, MODELS, MODE_FLAGS, SESSION_ID, accountPrefix, claudeCommand, closeTerminalScript, forkCommand, listSessions, projectsOf, shellQuote, terminalScript } from './sources/sessions.mjs';
 import { appendRewind, cutTranscript, pruneForks, restorePoint } from './sources/fork.mjs';
-import { createNotes } from './sources/notes.mjs';
+import { MAX_NOTE_CHARS, createNotes } from './sources/notes.mjs';
+import { createHeld } from './sources/held.mjs';
 import { NAME_RE, cleanName, createHelper } from './sources/helper.mjs';
 import { parseMcpList, parsePluginDetails, projectServersOf, readOwnSkills, readRules, removeRule } from './sources/claude-setup.mjs';
 import { applySince, buildAgent, countStates, sortAgents } from './derive/agent.mjs';
@@ -108,7 +109,7 @@ async function quickLookPicture(real) {
   }
 }
 
-export async function startCollector({ root, claudeDir = join(homedir(), '.claude'), claudeBin = 'claude', home = homedir(), signedInMs = 60_000, scratchBase = `/private/tmp/claude-${process.getuid?.() ?? 0}`, port: portOverride, deliveryTimeoutMs = 5000, helperTimeoutMs = 30_000, linesGapMs = 300_000, linesIdleMs = 1_800_000, castKeepMs = 600_000, notify = notifyMac, launch = args => run('osascript', args, { timeoutMs: 15_000 }), sessionProcs = systemProcs, endWaitMs = 8000, readProcs = readPs, deployStatusOf = deployStatus, pullRequestsOf = pullRequests, githubSlugOf = githubSlug, ticketMs = 600_000, quickLook = quickLookPicture, folderRoots = [home, '/Volumes'], chooseFolder = chooseFolderMac, stopWaitMs = 3000, revealFile = real => run('open', ['-R', real], { timeoutMs: 10_000 }), openFolder = dir => run('open', ['-a', 'Finder', dir], { timeoutMs: 10_000 }), log = makeLogger(join(root, 'logs')) }) {
+export async function startCollector({ root, claudeDir = join(homedir(), '.claude'), claudeBin = 'claude', home = homedir(), signedInMs = 60_000, heldGoneMs = 120_000, scratchBase = `/private/tmp/claude-${process.getuid?.() ?? 0}`, port: portOverride, deliveryTimeoutMs = 5000, helperTimeoutMs = 30_000, linesGapMs = 300_000, linesIdleMs = 1_800_000, castKeepMs = 600_000, notify = notifyMac, launch = args => run('osascript', args, { timeoutMs: 15_000 }), sessionProcs = systemProcs, endWaitMs = 8000, readProcs = readPs, deployStatusOf = deployStatus, pullRequestsOf = pullRequests, githubSlugOf = githubSlug, ticketMs = 600_000, quickLook = quickLookPicture, folderRoots = [home, '/Volumes'], chooseFolder = chooseFolderMac, stopWaitMs = 3000, revealFile = real => run('open', ['-R', real], { timeoutMs: 10_000 }), openFolder = dir => run('open', ['-a', 'Finder', dir], { timeoutMs: 10_000 }), log = makeLogger(join(root, 'logs')) }) {
   // readProcs, deployStatusOf, pullRequestsOf and githubSlugOf read the machine and GitHub; a test or the demo video passes stand-ins.
   const stateDir = join(root, 'state');
   const pendingDir = join(stateDir, 'pending');
@@ -118,6 +119,11 @@ export async function startCollector({ root, claudeDir = join(homedir(), '.claud
   const uploadsDir = join(stateDir, 'uploads');
   const forksDir = join(stateDir, 'forks'); // transcripts cut at a message, for a fork to start from
   const notes = createNotes(join(stateDir, 'notes')); // your notes on each session, for later (or never)
+  // What you sent a session while it worked, waiting for its turn to end (remove, edit or send each early).
+  const held = createHeld(join(stateDir, 'held'));
+  const releases = new Map(); // sessionId → { at, inflight }: its last release
+  const heldFailed = new Map(); // sessionId → { at, error }: its last release wasn't taken
+  const heldGoneSince = new Map(); // sessionId → since when it has been off the dashboard with messages waiting
   const helper = createHelper(stateDir); // the helper (Haiku through a session's mod): its setting, today's count, each session's name outcome
   // Your Claude accounts (config folders): read again each minute, and when config.json changes.
   const sessionAccounts = createSessionAccounts(join(stateDir, 'session-accounts.json')); // which account each session last ran on
@@ -429,6 +435,7 @@ export async function startCollector({ root, claudeDir = join(homedir(), '.claud
     queueResolve(agents);
     const collisions = findCollisions(agents, now, cfg.collisionWindowMin * 60_000);
     try { helperTick(agents, now); markOk('helper'); } catch (err) { markFail('helper', err); } // the helper never stops the dashboard
+    try { heldTick(agents, now); markOk('held'); } catch (err) { markFail('held', err); } // nor do held messages
     // Each account's plan, from its own sessions' readings; the old `plan` is the first account's.
     const readings = planReadings(beacons, agents, id => accountOfSessionIn(agents, id).key);
     const accountsView = accounts.map(a => {
@@ -989,6 +996,63 @@ export async function startCollector({ root, claudeDir = join(homedir(), '.claud
     return { command: r.command, args: r.args, ok: r.ok === true, text: typeof r.text === 'string' ? r.text.slice(0, 300) : '', at: r.at };
   }
 
+  /** Sends held messages as one message (their texts in order, a blank line between, every attachment), as a message is sent. */
+  function deliverHeld(sessionId, items) {
+    const text = items.map(i => i.text).filter(Boolean).join('\n\n');
+    const file = writeMessageFile(messagesDir, sessionId, withAttachments(text, items.flatMap(i => i.files ?? []), items.flatMap(i => i.folders ?? [])));
+    return confirmDelivery(file, { timeoutMs: deliveryTimeoutMs, failure: "The session didn't take it: it is still waiting here." });
+  }
+  /** A session gone a while: what it had waiting becomes notes on it (attachments named), so nothing is lost. */
+  function heldToNotes(id) {
+    for (const i of held.takeAll(id)) {
+      const attached = [...(i.files ?? []), ...(i.folders ?? [])];
+      let text = [i.text, attached.length ? `(attached: ${attached.join(', ')})` : ''].filter(Boolean).join('\n');
+      if (text.length > MAX_NOTE_CHARS) text = `${text.slice(0, MAX_NOTE_CHARS - 50)}… (cut: longer than a note can be)`;
+      notes.add(id, text);
+    }
+    held.drop(id);
+    for (const m of [heldGoneSince, releases, heldFailed]) m.delete(id);
+  }
+  /**
+   * Each update: the next held message (or all of them, together) to each session whose turn is over,
+   * once the turn the last one started has ended (its transcript moved since, or 2 minutes passed);
+   * the messages of a session gone for heldGoneMs turned into notes; and each agent's count for the page.
+   */
+  function heldTick(agents, now) {
+    const byId = new Map(agents.map(a => [a.id, a]));
+    for (const id of held.sessions()) {
+      const a = byId.get(id);
+      if (!a) { // off the dashboard: a restart or a move brings it back soon
+        if (!heldGoneSince.has(id)) heldGoneSince.set(id, now);
+        else if (now - heldGoneSince.get(id) >= heldGoneMs) heldToNotes(id);
+        continue;
+      }
+      heldGoneSince.delete(id);
+      const last = releases.get(id);
+      if (a.kind === 'codex' || !a.mod?.live || !['yourTurn', 'idle'].includes(a.state) || last?.inflight) continue;
+      if (last && !((a.lastActivityAt ?? 0) > last.at || now - last.at >= 120_000)) continue;
+      const items = held.list(id).together ? held.takeAll(id) : [held.take(id)];
+      releases.set(id, { at: now, inflight: true });
+      deliverHeld(id, items).catch(err => ({ ok: false, error: String(err?.message ?? err) })).then(sent => {
+        releases.set(id, { at: now, inflight: false });
+        if (sent.ok) heldFailed.delete(id);
+        else { held.putBack(id, items); heldFailed.set(id, { at: Date.now(), error: sent.error }); }
+        scheduleLight();
+      });
+    }
+    for (const a of agents) {
+      const s = a.kind === 'codex' ? null : held.summary(a.id);
+      if (s) a.held = { ...s, ...(heldFailed.has(a.id) ? { failed: heldFailed.get(a.id) } : {}) };
+      else heldFailed.delete(a.id);
+    }
+  }
+  /** A session's held messages for its list on the page (files by name), or null for one neither on the dashboard nor holding any. */
+  function getHeld(id) {
+    if (!(snapshot?.agents.some(a => a.id === id && a.kind !== 'codex') || held.summary(id))) return null;
+    const l = held.list(id);
+    return { items: l.items.map(i => ({ id: i.id, text: i.text, files: (i.files ?? []).map(p => basename(p).replace(/^\d+-[a-z0-9]+-\d+-/, '')), folders: i.folders ?? [], at: i.at, ...(i.editedAt ? { editedAt: i.editedAt } : {}) })), together: l.together, rev: l.rev };
+  }
+
   /** Asks a session's mod for a name: the request carries only its kind (the mod's prompt is fixed). */
   function askName(agent, auto) {
     const can = helper.canCall('names');
@@ -1338,6 +1402,30 @@ export async function startCollector({ root, claudeDir = join(homedir(), '.claud
       const opened = await resume(prefillFile);
       return opened.ok ? { ...opened, files } : opened;
     },
+    /**
+     * What you sent a working session, waiting for its turn to end: remove one, edit one, send one now
+     * (as a message is sent, read at the session's next step), or send them all together at the turn's end.
+     */
+    async held(body) {
+      const agent = snapshot?.agents.find(a => a.id === body?.agentId);
+      if (!agent || agent.kind === 'codex') return { ok: false, error: 'That session was not found.' };
+      const id = agent.id;
+      let r;
+      if (body.op === 'remove') r = held.remove(id, body.id);
+      else if (body.op === 'edit') r = held.edit(id, body.id, body.text);
+      else if (body.op === 'together') { held.setTogether(id, body.on === true); r = { ok: true }; }
+      else if (body.op === 'send-now') {
+        const at = held.list(id).items.findIndex(i => i.id === body.id);
+        if (at < 0) return { ok: false, error: 'That message is no longer waiting.' };
+        if (!agent.mod?.live) return { ok: false, error: "That session isn't listening for dashboard messages yet." };
+        const item = held.take(id, body.id);
+        const sent = await deliverHeld(id, [item]);
+        if (!sent.ok) held.putBack(id, [item], at); // back where it was
+        r = sent.ok ? { ok: true } : sent;
+      } else return { ok: false, error: 'That is not something to do with a waiting message.' };
+      if (r.ok) await schedule(false);
+      return r;
+    },
     async message(body) {
       const agent = snapshot?.agents.find(a => a.id === body?.agentId);
       if (!agent || agent.kind === 'codex') return { ok: false, error: 'That session was not found.' };
@@ -1350,6 +1438,12 @@ export async function startCollector({ root, claudeDir = join(homedir(), '.claud
       if (text.length > 20_000) return { ok: false, error: 'That message is too long (20,000 characters at most).' };
       if (!agent.mod?.live) return { ok: false, error: "That session isn't listening for dashboard messages yet. Send it anything in its terminal once, or start a new session." };
       const saved = saveFiles(uploadsDir, agent.id, checked.files);
+      if (body.now !== true && (agent.state === 'working' || agent.state === 'waiting')) { // mid-turn: it waits here until the turn ends
+        const r = held.add(agent.id, { text, files: saved, folders: dirs.folders });
+        if (!r.ok) return r;
+        await schedule(false);
+        return { ok: true, held: true, count: r.count };
+      }
       const file = writeMessageFile(messagesDir, agent.id, withAttachments(text, saved, dirs.folders));
       return confirmDelivery(file, { timeoutMs: deliveryTimeoutMs, failure: "The session didn't pick up the message. Please send it in its terminal." });
     },
@@ -1503,7 +1597,7 @@ export async function startCollector({ root, claudeDir = join(homedir(), '.claud
     worlds: makeWorlds({ builtinDir: join(root, 'web', 'worlds'), userDir: worldsDir, home }),
     getSnapshot: () => snapshot,
     getFeed: (id, limit) => modelFor(id)?.history(limit) ?? null,
-    getConversation, getPrompts, getNotes, getSubagent, claudePlugins, claudeMcp, claudeRules, fileTicket, rawFile, officeView, shellOutput, namedFiles,
+    getConversation, getPrompts, getNotes, getHeld, getSubagent, claudePlugins, claudeMcp, claudeRules, fileTicket, rawFile, officeView, shellOutput, namedFiles,
     getTranscriptHtml, getDoc: readDoc, listFiles, readFile, repoTouched, actions, pastSessions, listDirs: dirsFor, log,
   });
   const port = await server.listen();
@@ -1552,5 +1646,5 @@ export async function startCollector({ root, claudeDir = join(homedir(), '.claud
     await server.close();
   }
 
-  return { port, getSnapshot: () => snapshot, reloadConfig, actions, pastSessions, listDirs: dirsFor, shellOutput, namedFiles, getConversation, getPrompts, getNotes, claudePlugins, claudeMcp, claudeRules, fileTicket, rawFile, officeView, readDoc, listFiles, readFile, repoTouched, stop };
+  return { port, getSnapshot: () => snapshot, reloadConfig, actions, pastSessions, listDirs: dirsFor, shellOutput, namedFiles, getConversation, getPrompts, getNotes, getHeld, claudePlugins, claudeMcp, claudeRules, fileTicket, rawFile, officeView, readDoc, listFiles, readFile, repoTouched, stop };
 }

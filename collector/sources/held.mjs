@@ -81,11 +81,11 @@ export function createHeld(dir, { now = () => Date.now(), newId = () => randomBy
       if (got.items.length) save(id, { ...got, items: [] });
       return got.items;
     },
-    /** Items that didn't go out, back at the front in their order. */
-    putBack(id, items) {
+    /** Items that didn't go out, back where they were (`at`; the front by default), in their order. */
+    putBack(id, items, at = 0) {
       if (!items.length) return;
       const got = load(id);
-      save(id, { ...got, items: [...items, ...got.items] });
+      save(id, { ...got, items: [...got.items.slice(0, at), ...items, ...got.items.slice(at)] });
     },
     setTogether(id, on) {
       const got = load(id);
