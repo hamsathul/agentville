@@ -418,10 +418,10 @@ as `state.seasonNames`.
 
 Draw the season shown, never your own: `bg` gets it as `season`, and `PXG.season` holds it while the
 engine ticks and draws (it is set before each frame's `emit`, `tick`, `ambient` and drawing; `null`
-before the first). The animals go by it too: a held winter brings the goats' scarves and the icy
-pond. Keep your own live season only for what tells the person their real numbers: while a season is
-held, the farm's panel shows it with a 📌 and the real 5-hour use, and its tooltip says it is held,
-not live.
+before the first). The animals go by it too: a held winter brings the goats' scarves (by default:
+see `coldSeason`, below) and the icy pond. Keep your own live season only for what tells the person
+their real numbers: while a season is held, the farm's panel shows it with a 📌 and the real 5-hour
+use, and its tooltip says it is held, not live.
 
 The animals feel the cold in `winter` unless the world says otherwise: its `coldSeason` field names the level they
 treat as cold (scarves, huddling, longer rests), or is `null` for none. A world whose levels are not weather
@@ -1258,27 +1258,27 @@ What a world should show, each item as two stops of the tour that differ only in
 `checks`). check-world points out the items a world draws the same; the test page and world-shots
 show you each stop.
 
-| Item | The two stops | What the farm draws | What the factory draws | The starter |
-|---|---|---|---|---|
-| waiting on you | `working`, `waiting` | the farmer on the porch, waving a red **!** | the robot queued at your desk, waving a red **!**, its beacon blinking red | at the door, a **!** bubble and a red ring |
-| a question for you | `working`, `question` | on the porch, waving a red **!** (its bubble asks the question) | at your desk, waving a red **!** (its bubble asks the question) | at the door, a **!** bubble and a red ring, as for waiting |
-| your turn | `working`, `turn` | on the porch with a basket | at your desk with a crate of finished parts, a tick (a **?** for a question) | at the door, a tick bubble (a **?** when it ended on a question) |
-| a repo filling with context | `context-low`, `context-high` | the crops grow, from seeds to ripe | the robot on the bay's bench is built: frame, wiring, plating, head, its eyes lit | the plot fills with green |
-| a compaction | `compacted-plain`, `compaction` | **Harvest!**: the field starts again from seed | **Built!**: the finished robot rolls off on the conveyor, a new frame goes on | left out |
-| deploy failed | `deploy-ok`, `deploy-failed` | rain over the field, for the rainbow | the stack light red, with sparks, for the green one | a red flag, for the green one |
-| deploying | `deploy-ok`, `deploy-running` | a windmill | the stack light amber, gears turning | a blinking amber flag |
-| deploy skipped | `deploy-ok`, `deploy-skipped` | no weather | a grey pause light | a grey flag |
-| subagents | `working`, `subagents` | chickens, and a dog for an Explore one | mini drones by the robot, a scanner drone for an Explore one | left out |
-| the limits | `limits-low`, `limits-high` | winter (the live season), and the silo's grain | the floor steaming (thermometer, vents), and the power-cell bank's cells | left out |
-| several accounts | `working`, `accounts` | a silo for each account, its name on the tag | a power-cell bank for each account, its name on the tag | a meter for each, top left |
-| an MCP call | `working`, `mcp` | its cart drives to the farmer | its AGV drives to the robot | the step's prop (props kit) |
-| messages between agents | `two-working`, `pigeon` | a pigeon | a capsule through the pneumatic tubes (its own `flight`) | a pigeon (the engine's: it gives no `flight`) |
-| a collision | `two-working`, `collision` | rope with orange flags round the field | hazard tape round the bay, pulsing | left out |
-| a merged pull request | `working`, `merged` | **Sold!** at the market stall | **Shipped!**: a crate leaves the loading dock | left out |
-| idle | `working`, `idle` | under the shade tree | on a charging pad, eyes shut, a charging bolt | on the bench, eyes shut, a zzz |
-| stale | `idle`, `stale` | a scarecrow | powered down and grey on the storage shelf | greyed out |
-| night | `day`, `night` | lit windows, lanterns and fireflies | desk lamp, screens, stack lights and welding sparks glow | the engine's night |
-| **Creatures (optional)** | none: check-world reads `animals()` once | thirteen animals, six gags and three plays, all within the rules | a robot dog, a robot vacuum and a cat, a gag and two plays, within the rules | one cat and its gag, within the rules |
+| Item | The two stops | What the farm draws | What the factory draws | What the field exercise draws | The starter |
+|---|---|---|---|---|---|
+| waiting on you | `working`, `waiting` | the farmer on the porch, waving a red **!** | the robot queued at your desk, waving a red **!**, its beacon blinking red | the soldier queued at the HQ tent's left, waving a red **!**, a red ring at its feet, HQ's red pennant run up | at the door, a **!** bubble and a red ring |
+| a question for you | `working`, `question` | on the porch, waving a red **!** (its bubble asks the question) | at your desk, waving a red **!** (its bubble asks the question) | queued at the HQ tent, waving a red **!** (its bubble asks the question) | at the door, a **!** bubble and a red ring, as for waiting |
+| your turn | `working`, `turn` | on the porch with a basket | at your desk with a crate of finished parts, a tick (a **?** for a question) | at the HQ tent's right with a dispatch, a tick (a **?** for a question) | at the door, a tick bubble (a **?** when it ended on a question) |
+| a repo filling with context | `context-low`, `context-high` | the crops grow, from seeds to ripe | the robot on the bay's bench is built: frame, wiring, plating, head, its eyes lit | the position is fortified: marker stakes, a sandbag ring, a low wall, a lookout post, its flag raised | the plot fills with green |
+| a compaction | `compacted-plain`, `compaction` | **Harvest!**: the field starts again from seed | **Built!**: the finished robot rolls off on the conveyor, a new frame goes on | **Advanced!**: the flag is carried forward with a cheer (confetti), the position starts again from its stakes | left out |
+| deploy failed | `deploy-ok`, `deploy-failed` | rain over the field, for the rainbow | the stack light red, with sparks, for the green one | a practice charge, a big grey puff over a scorched patch, for the green flare | a red flag, for the green one |
+| deploying | `deploy-ok`, `deploy-running` | a windmill | the stack light amber, gears turning | red range flags flapping | a blinking amber flag |
+| deploy skipped | `deploy-ok`, `deploy-skipped` | no weather | a grey pause light | a **HOLD** board | a grey flag |
+| subagents | `working`, `subagents` | chickens, and a dog for an Explore one | mini drones by the robot, a scanner drone for an Explore one | small drones by the soldier, a K9 dog for an Explore one | left out |
+| the limits | `limits-low`, `limits-high` | winter (the live season), and the silo's grain | the floor steaming (thermometer, vents), and the power-cell bank's cells | max alert (the alert board red, its beacon on), and the fuel depot's drums | left out |
+| several accounts | `working`, `accounts` | a silo for each account, its name on the tag | a power-cell bank for each account, its name on the tag | a fuel depot for each account, its name on the tag | a meter for each, top left |
+| an MCP call | `working`, `mcp` | its cart drives to the farmer | its AGV drives to the robot | its jeep drives from the vehicle park to the soldier | the step's prop (props kit) |
+| messages between agents | `two-working`, `pigeon` | a pigeon | a capsule through the pneumatic tubes (its own `flight`) | a carrier pigeon (the engine's: it gives no `flight`) | a pigeon (the engine's: it gives no `flight`) |
+| a collision | `two-working`, `collision` | rope with orange flags round the field | hazard tape round the bay, pulsing | yellow caution tape round the position, pulsing | left out |
+| a merged pull request | `working`, `merged` | **Sold!** at the market stall | **Shipped!**: a crate leaves the loading dock | **Supplies in!**: a crate is carried into the quartermaster's depot | left out |
+| idle | `working`, `idle` | under the shade tree | on a charging pad, eyes shut, a charging bolt | eating at the mess tent, eyes shut | on the bench, eyes shut, a zzz |
+| stale | `idle`, `stale` | a scarecrow | powered down and grey on the storage shelf | greyed a little, on a crate by the reserve tents | greyed out |
+| night | `day`, `night` | lit windows, lanterns and fireflies | desk lamp, screens, stack lights and welding sparks glow | searchlights sweep, the tents glow, lanterns along the track, headgear lamps, a slow illumination flare | the engine's night |
+| **Creatures (optional)** | none: check-world reads `animals()` once | thirteen animals, six gags and three plays, all within the rules | a robot dog, a robot vacuum and a cat, a gag and two plays, within the rules | a goat in a red dress coat, the mess cat and two depot mice, two gags and no play, within the rules | one cat and its gag, within the rules |
 
 A world with seasons (its own `season()`: "Seasons", in "Hooks") should also follow the Season
 switch, which the tour leaves live. On the test page, open the Menu and click the Season switch

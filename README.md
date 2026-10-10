@@ -154,9 +154,10 @@ It listens on `127.0.0.1` only and reads what Claude Code already writes to disk
   follows your 5-hour limit (or hold one with the **Alert** switch). It is a drill: nobody is ever
   shown hurt. The regimental mascots, a goat in a dress coat, the mess cat and the depot mice, live
   there just for fun.
-- The farm, the factory and the field exercise are worlds: each runs in a sandboxed frame of its own, with no access to
-  the token, and asks the page for the little it needs ([docs/worlds.md](docs/worlds.md)). A world
-  from your own folder sees no words or paths until you tick **Can see what agents say** for it.
+- The farm, the factory and the field exercise are worlds: each runs in a sandboxed frame
+  of its own, with no access to the token, and asks the page for the little it needs
+  ([docs/worlds.md](docs/worlds.md)). A world from your own folder sees no words or paths until
+  you tick **Can see what agents say** for it.
 - Make your own world, or have Claude make one: `npm run new-world`, the test page, `check-world`
   and `world-shots`, with a guide written for Claude Code to follow ([docs/worlds.md](docs/worlds.md)).
   The test page shows any world playing a tour of made-up snapshots, each situation at its own
@@ -1225,7 +1226,7 @@ files agents touched there, a speech bubble for its conversation, and a building
 
 | Building | Opens |
 |---|---|
-| Motor pool gate | Start or resume a session (a truck brings the new soldier in, and it jumps down) |
+| Motor pool gate | Start or resume a session (the new soldier comes out past the truck parked in its yard, the barrier lifting) |
 | HQ tent | Who is waiting on you, with a button to open each |
 | Fuel depot | Your plan's usage and when each limit resets (each account's, when you have several) |
 | Drone pad | The subagents and how each is going |
@@ -1453,9 +1454,10 @@ and can do is in [docs/worlds.md](docs/worlds.md).
   prompt (the mod's instruction for each job is fixed), and for a name the session sends its own
   first messages itself: the collector and the page see only the name. For animal lines the
   collector sends the facts listed in "✨ Helper and suggested names" (names, states, a step word,
-  counts, events, the kinds of animal on screen, and `farm`, `factory` or `military` for those built-in
-  worlds; never paths, commands, branches or conversation text), and the page reports which animals a world
-  has (kinds and names; only the kinds reach Haiku) and, for the farm, the factory or the field exercise only, its key. The lines come back as plain text of 40 characters at
+  counts, events, the kinds of animal on screen, and `farm`, `factory` or `military` for those
+  built-in worlds; never paths, commands, branches or conversation text), and the page reports which
+  animals a world has (kinds and names; only the kinds reach Haiku) and, for the farm, the factory
+  or the field exercise only, its key. The lines come back as plain text of 40 characters at
   most; a world of yours that can't see what agents say gets only those with no names, by the names
   it was sent (an agent gone since, or one renamed, too) and the names on the dashboard now. Its setting (with today's
   count) and what you chose for each session's name (renamed, edited, dismissed) are kept in
