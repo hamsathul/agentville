@@ -91,11 +91,18 @@ test('a normal start with a required thing missing refuses before it listens, an
 });
 
 // --- throwaway servers end themselves (nothing is allowed to kill a node process by its port) ---
-import { createConnection } from 'node:net';
+import { createConnection, createServer } from 'node:net';
 import { mkdirSync, writeFileSync, cpSync } from 'node:fs';
 
 const REPO = join(dirname(INDEX), '..');
 const listening = port => new Promise(res => { const s = createConnection({ port, host: '127.0.0.1' }, () => { s.destroy(); res(true); }); s.on('error', () => res(false)); });
+
+/** A port nothing listens on now: bound on 0 for the number, then released. */
+const freePort = () => new Promise((resolve, reject) => {
+  const probe = createServer();
+  probe.once('error', reject);
+  probe.listen(0, '127.0.0.1', () => { const { port } = probe.address(); probe.close(() => resolve(port)); });
+});
 
 function throwawayRoot(port) {
   const root = mkdtempSync(join(tmpdir(), 'agentville-exit-'));
@@ -106,7 +113,7 @@ function throwawayRoot(port) {
 }
 
 test('--exit-after N starts the collector, serves, and ends the process by itself (exit 0) after N seconds', async () => {
-  const port = 47920;
+  const port = await freePort(); // not a fixed one: two test runs at once (two checkouts, two CI jobs on one host) would meet on it
   const root = throwawayRoot(port);
   const { spawn } = await import('node:child_process');
   // An empty home folder: the collector reads the sessions under ~/.claude at start, and on a machine with gigabytes of
