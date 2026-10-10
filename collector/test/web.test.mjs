@@ -3094,3 +3094,17 @@ test('on Windows the file buttons and notes say File Explorer, not Finder; witho
   noSystem.push(richSnapshot([richAgent()]));
   assert.equal(noSystem.ctx.fileManager(), 'Finder');
 });
+
+test('Windows paths: a file, a folder and a session are named by their last part, and a document under the session folder reads relative', () => {
+  const page = loadPage();
+  const b = String.fromCharCode(92);
+  const here = (code, vars = {}) => { Object.assign(page.ctx, vars); return vm.runInContext(code, page.ctx); };
+  const cwd = `C:${b}Users${b}me${b}shop`, doc = `${cwd}${b}docs${b}spec.md`;
+  assert.equal(here('docName(p)', { p: doc }), 'spec.md');
+  assert.equal(here('docName(p)', { p: '/Users/me/shop/docs/spec.md' }), 'spec.md', 'a Mac path as before');
+  assert.equal(here('sessFolder(p)', { p: cwd }), 'shop');
+  assert.equal(here('lastPart(p)', { p: `${b}${b}server${b}share${b}work` }), 'work', 'a network share');
+  assert.equal(here('docLabel(a, p)', { a: { cwd }, p: doc }), 'docs/spec.md', 'relative to the session folder, with forward slashes');
+  assert.equal(here('docLabel(a, p)', { a: { cwd: '/Users/me/shop' }, p: '/Users/me/shop/docs/spec.md' }), 'docs/spec.md');
+  assert.equal(here('short(p)', { p: doc }), `~${b}shop${b}docs${b}spec.md`, 'the home folder is ~ here too');
+});

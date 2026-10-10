@@ -499,6 +499,25 @@ test("a field that leaves leaves its bed empty and held for a day: it comes back
   assert.equal(bedsOf(later)['/Users/me/code/next'], 1, 'a day on, the bed is free for a new field');
 });
 
+test('Windows paths: a folder inside a repo is that repo, and a project and its repos group, whichever separator the path has', () => {
+  const { fieldOf, projectOf, layoutFor } = load();
+  const b = String.fromCharCode(92);
+  const w = (...parts) => `C:${b}${parts.join(b)}`;
+  const repos = [repo(w('code', 'app')), repo(w('code', 'app', 'packages', 'ui')), repo(w('code', 'apple'))];
+  assert.equal(fieldOf(agent('a', { cwd: w('code', 'app', 'src') }), repos), w('code', 'app'));
+  assert.equal(fieldOf(agent('a', { cwd: w('code', 'app', 'packages', 'ui', 'src') }), repos), w('code', 'app', 'packages', 'ui'), 'the deepest repo holding it');
+  assert.equal(fieldOf(agent('a', { cwd: w('code', 'appendix') }), repos), null, 'a longer name is not inside');
+  assert.equal(fieldOf(agent('a', { cwd: 'C:/code/app/src' }), [repo('C:/code/app')]), 'C:/code/app', 'a path with forward slashes, as Git prints one');
+  assert.equal(projectOf(w('Users', 'me', 'shop', 'api')), 'C:/Users/me/shop');
+  assert.equal(projectOf(w('Users', 'me', 'code', 'a')), null, 'a catch-all folder holds unrelated repos');
+  assert.equal(projectOf(w('work', 'proj', 'api')), null, 'the drive letter is not a folder: this is as deep as /work/proj/api');
+  assert.equal(projectOf('/Users/me/shop/api'), '/Users/me/shop', 'a Mac path is read as before');
+  const f = (key, over = {}) => ({ key, ...over });
+  const api = w('Users', 'me', 'shop', 'api'), web = w('Users', 'me', 'shop', 'web');
+  const L = plain(layoutFor([f(w('Users', 'me', 'solo')), f(api), f(w('Users', 'me', 'other')), f(web)]));
+  assert.deepEqual(L.groups, [{ name: 'shop', slots: [L.ST.find(x => x.key === api).i, L.ST.find(x => x.key === web).i] }], 'shop is one project, named by its folder');
+});
+
 test("a project's outline goes round each run of its beds side by side, never round another repo's bed", () => {
   const { rowsOfGroup } = load();
   assert.deepEqual(plain(rowsOfGroup({ slots: [3, 4] })), [[1, [0, 1]]]);

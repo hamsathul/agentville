@@ -15,7 +15,7 @@ const sessView = { q: '', folder: '', model: '', branch: '', account: '', live: 
 let sessLoading = 0; // the newest read asked for: an older one that comes back after it is dropped
 
 const sessName = s => s.title || s.firstPrompt || '';
-const sessFolder = cwd => cwd?.split('/').filter(Boolean).pop() ?? '';
+const sessFolder = cwd => lastPart(cwd);
 const sessFamily = model => ['opus', 'sonnet', 'haiku', 'fable'].find(f => String(model ?? '').includes(f)) ?? '';
 const byText = (x, y) => x.localeCompare(y, undefined, { sensitivity: 'base' });
 const SESS_ORDER = {
@@ -221,7 +221,7 @@ async function completeDir() {
   const d = sessDir.data;
   if (!d || d.error || !d.dirs.length) return false;
   const typed = sessDir.typed.trim();
-  const part = typed.endsWith('/') ? '' : typed.split('/').pop();
+  const part = /[\\/]$/.test(typed) ? '' : typed.split(/[\\/]/).pop();
   let common = d.dirs[0];
   for (const name of d.dirs) while (!name.startsWith(common)) common = common.slice(0, -1);
   const base = `${tildeOf(d.dir, d.home).replace(/\/$/, '')}/`;

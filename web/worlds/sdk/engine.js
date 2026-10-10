@@ -12,10 +12,15 @@ const ACTIVE = new Set(['waiting', 'working', 'turn']);
 // A project: the folder holding sibling repos. The scene says which (a repo's `project`); a field
 // without one falls back to its path, read the same way as web/scene.js reads it.
 const CATCH_ALL = new Set(['code', 'projects', 'repos', 'src', 'dev', 'work', 'tools', 'github', 'git', 'documents', 'desktop', 'downloads', 'workspace', 'workspaces', 'sites', 'apps', 'clients', 'tmp']);
+const WIN_PATH = /^(?:[A-Za-z]:[\\/]|\\\\)/; // C:\code\shop\api, as the collector sends a path on Windows
 function projectOf(path) {
-  const parts = String(path).split('/').filter(Boolean).slice(0, -1);
-  return parts.length >= 3 && !CATCH_ALL.has(parts.at(-1).toLowerCase()) ? `/${parts.join('/')}` : null;
+  const p = String(path), win = WIN_PATH.test(p);
+  const all = p.split(win ? /[\\/]/ : '/').filter(Boolean).slice(0, -1);
+  const parts = win && /^[A-Za-z]:$/.test(all[0] ?? '') ? all.slice(1) : all; // a drive letter is not a folder
+  return parts.length >= 3 && !CATCH_ALL.has(parts.at(-1).toLowerCase()) ? `${win ? '' : '/'}${all.join('/')}` : null;
 }
+/** The last part of a path, whichever separator it has (a folder's name for a label). */
+const lastPart = path => String(path ?? '').split(WIN_PATH.test(path) ? /[\\/]/ : '/').filter(Boolean).pop() ?? '';
 // A field keeps its bed; one that leaves keeps it held for a day, so it comes back to the same place.
 const BED_HELD_MS = 86_400_000;
 
@@ -1236,7 +1241,7 @@ function makePixelView(th, prefs) {
         const r = await opts.request('agentFiles', { agentId: f.id });
         if (!r.ok && r.status === 0) throw new Error(r.error); // the request itself failed: "Could not read it."
         const files = (r.ok ? r.data : null)?.memory ?? [];
-        return `<h4>${esc(f.cwd.split('/').pop() || f.cwd)}</h4>${files.length ? `<ul class="px-dl">${files.map(m => `<li><button type="button" class="act" data-farm-mem="${esc(f.id)}" data-path="${esc(m.path)}">${esc(m.label)}</button><span class="muted">${esc(m.where)}</span></li>`).join('')}</ul>` : '<p class="muted">Nothing remembered here yet.</p>'}`;
+        return `<h4>${esc(lastPart(f.cwd) || f.cwd)}</h4>${files.length ? `<ul class="px-dl">${files.map(m => `<li><button type="button" class="act" data-farm-mem="${esc(f.id)}" data-path="${esc(m.path)}">${esc(m.label)}</button><span class="muted">${esc(m.where)}</span></li>`).join('')}</ul>` : '<p class="muted">Nothing remembered here yet.</p>'}`;
       } catch {
         return `<h4>${esc(f.cwd)}</h4><p class="muted">Could not read it.</p>`;
       }

@@ -9,7 +9,7 @@ let readerQuote = '';
 let readerLines = null; // [first, last] line numbers of the quoted code selection
 const readerDrafts = new Map(); // agent id + path → half-typed reply
 const readerKey = () => (reader ? `${reader.agentId}\n${reader.path}` : '');
-const docName = path => String(path).split('/').pop();
+const docName = path => lastPart(path);
 const isMarkdown = path => path === '@summary' || /\.(md|markdown|mdx)$/i.test(path);
 
 // How each file is shown, by its extension: the collector serves them the same way (collector/sources/previews.mjs).
@@ -36,7 +36,7 @@ function readerHasText() {
 }
 const docEntry = (agentId, path) => snap?.agents.find(a => a.id === agentId)?.docs?.find(d => d.path === path);
 /** The path as the agent knows it: relative to its folder when inside it. */
-const docLabel = (agent, path) => (path === '@summary' ? 'your conversation summary' : agent?.cwd && path.startsWith(`${agent.cwd}/`) ? path.slice(agent.cwd.length + 1) : path);
+const docLabel = (agent, path) => (path === '@summary' ? 'your conversation summary' : agent?.cwd && (path.startsWith(`${agent.cwd}/`) || path.startsWith(`${agent.cwd}\\`)) ? path.slice(agent.cwd.length + 1).replaceAll('\\', '/') : path);
 /** When the agent last wrote or read a file: from its documents, or from the explorer listing. */
 function touchOf(agentId, path) {
   const doc = docEntry(agentId, path);

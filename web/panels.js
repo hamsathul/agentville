@@ -595,7 +595,7 @@ function heldItemHtml(a, h) {
     return `<li class="held editing"><textarea class="held-edit" data-held-edit-text="${esc(h.id)}" ${ids} rows="3">${esc(edit.text)}</textarea>
       <div class="note-acts"><span class="grow"></span><button type="button" class="act mini" data-held-cancel="${esc(h.id)}" ${ids}>Cancel</button><button type="button" class="act mini primary" data-held-save="${esc(h.id)}" ${ids}>Save</button></div></li>`;
   }
-  const attached = [...(h.files ?? []), ...(h.folders ?? []).map(f => f.split('/').filter(Boolean).pop() ?? f)];
+  const attached = [...(h.files ?? []), ...(h.folders ?? []).map(f => lastPart(f) || f)];
   return `<li class="held"><span class="held-text">${esc(h.text)}</span>${attached.length ? `<span class="faint held-files">📎 ${esc(attached.join(', '))}</span>` : ''}
     <div class="note-acts"><span class="faint">${agoText(h.editedAt ?? h.at)}</span><span class="grow"></span><button type="button" class="act mini" data-held-edit="${esc(h.id)}" ${ids} data-tip="Change it before it goes">Edit</button><button type="button" class="act mini" data-held-now="${esc(h.id)}" ${ids} data-tip="Send it now: it reads it at its next step">⚡ Send now</button><button type="button" class="act mini" data-held-remove="${esc(h.id)}" ${ids} data-tip="Don't send it">✕</button></div></li>`;
 }
@@ -722,7 +722,7 @@ async function attachFolder(agentId, button) {
   button.disabled = false;
   const list = msgFiles.get(agentId) ?? [];
   if (r.ok && list.length >= MAX_FILES) msgStatus.set(agentId, { at: Date.now(), bad: true, text: `At most ${MAX_FILES} attachments per message.` });
-  else if (r.ok && !list.some(f => f.folder === r.path)) msgFiles.set(agentId, [...list, { folder: r.path, name: r.path.split('/').pop() || r.path }]);
+  else if (r.ok && !list.some(f => f.folder === r.path)) msgFiles.set(agentId, [...list, { folder: r.path, name: lastPart(r.path) || r.path }]);
   else if (!r.ok && !r.cancelled) msgStatus.set(agentId, { at: Date.now(), bad: true, text: r.error ?? 'The folder window could not open.' });
   render();
 }
