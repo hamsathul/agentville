@@ -132,6 +132,7 @@ function makeGrid({ cols = 3, colW, rowH, cx0, top0, minRows = 3, maxRows = 6, m
 function engineScene(s) {
   return {
     plan: s.plan ? { windows: s.plan.windows.map(w => ({ kind: w.kind, percentUsed: w.pct, resetsAt: w.resetsAt, reset: w.reset })) } : null,
+    accounts: (s.accounts ?? []).map(a => ({ key: a.key, name: a.name, plan: a.plan ? { windows: a.plan.windows.map(w => ({ kind: w.kind, percentUsed: w.pct, resetsAt: w.resetsAt, reset: w.reset })) } : null })),
     chrome: s.chrome,
     subagents: s.subagents,
     mail: s.mail,
@@ -197,7 +198,7 @@ function panelHud({ still, zoom = 1, saysOn = true, skyMode = 'live', seasonMode
   const kpi = (state, glyph, cls, name, n, sub, hot, title) => `<button type="button" class="px-kpi${hot ? ' hot' : ''}"${state && n ? ` data-farm-state="${state}"` : ' disabled'} title="${esc(title)}"><span class="px-kpi-ico ${cls}">${pxt(glyph, '#ffffff', null)}</span><span class="px-kpi-n">${w(String(n ?? 0))}</span><span class="px-kpi-l">${label(name)}${sub ? `<br>${dim(sub)}` : ''}</span></button>`;
   const ramRatio = ch.ram?.totalMb ? ch.ram.usedMb / ch.ram.totalMb : 0, cpuRatio = (ch.cpu?.used ?? 0) / ((ch.cpu?.cores || 1) * 100);
   const windows = scene.plan?.windows ?? [], win = kind => windows.find(x => x.kind === kind), pctOf = x => (x ? (x.reset ? 0 : Math.round(x.percentUsed)) : null);
-  const five = pctOf(win('five_hour')), week = pctOf(win('seven_day'));
+  const five = pctOf(win('five_hour')), week = pctOf(win('seven_day')), accs = scene.accounts ?? [];
   const tool = (attrs, icon, name, state, title, disabled = false) => `<button type="button" ${attrs}${disabled ? ' disabled' : ''} title="${esc(title)}">${iconImg(icon)}${pxImg(name, words.toolColor, null)}${state ? pxImg(state, words.toolStateColor, null) : ''}<span class="px-sr">${esc(state ? `${name}: ${state}` : name)}</span></button>`;
   const navBtn = (what, icon, name, title, pressed) => `<button type="button" data-farm-nav="${what}" title="${esc(title)}"${pressed === undefined ? '' : ` aria-pressed="${pressed}"`}>${iconImg(icon)}${pxImg(name, words.toolColor, null)}<span class="px-sr">${esc(name)}</span></button>`;
   return `<div class="px-stats${panelOpen ? '' : ' folded'}">
@@ -212,8 +213,11 @@ function panelHud({ still, zoom = 1, saysOn = true, skyMode = 'live', seasonMode
             <div class="px-gauges">
               <span class="px-gauge" title="Memory used by the agents, of this Mac's">${label('RAM')}${bar(ramRatio, tone(ramRatio))}${w(gb(ch.ram?.usedMb ?? 0))}${ch.ram?.totalMb ? dim(`of ${gb(ch.ram.totalMb)}`) : ''}</span>
               <span class="px-gauge" title="${esc(`CPU used by the agents: ${Math.round(ch.cpu?.used ?? 0)}% of one core, ${ch.cpu?.cores ?? 1} cores`)}">${label('CPU')}${bar(cpuRatio, tone(cpuRatio))}${w(`${Math.round(cpuRatio * 100)}%`)}${dim('of this Mac')}</span>
-              ${five !== null ? `<span class="px-gauge" title="Your plan's 5-hour limit (from the mod)">${label('5H')}${bar(five / 100, tone(five / 100))}${w(`${five}%`)}${dim('5-hour limit')}</span>` : ''}
-              ${week !== null ? `<span class="px-gauge" title="Your plan's weekly limit (from the mod)">${label('WEEK')}${bar(week / 100, tone(week / 100))}${w(`${week}%`)}${dim('this week')}</span>` : ''}
+              ${accs.length > 1 ? accs.map(a => { // with two or more Claude accounts: each one's week, and its 5 hours beside it
+                const ws = a.plan?.windows ?? [], f5 = pctOf(ws.find(x => x.kind === 'five_hour')), wk = pctOf(ws.find(x => x.kind === 'seven_day'));
+                return `<span class="px-gauge" title="${esc(`Your ${a.name} account: ${wk === null ? 'no weekly reading' : `${wk}% of its week`}, ${f5 === null ? 'no 5-hour reading' : `${f5}% of its 5 hours`} (from the mod)`)}">${label(a.name.toUpperCase().slice(0, 6))}${bar((wk ?? 0) / 100, tone((wk ?? 0) / 100))}${w(wk === null ? '–' : `${wk}%`)}${dim(`week · 5h ${f5 === null ? '–' : `${f5}%`}`)}</span>`;
+              }).join('') : `${five !== null ? `<span class="px-gauge" title="Your plan's 5-hour limit (from the mod)">${label('5H')}${bar(five / 100, tone(five / 100))}${w(`${five}%`)}${dim('5-hour limit')}</span>` : ''}
+              ${week !== null ? `<span class="px-gauge" title="Your plan's weekly limit (from the mod)">${label('WEEK')}${bar(week / 100, tone(week / 100))}${w(`${week}%`)}${dim('this week')}</span>` : ''}`}
               ${ch.collector ? `<span class="px-gauge" title="The tracker itself">${dim(`tracker ${ch.collector.cpu ?? 0}% CPU · ${ch.collector.rssMb ?? 0} MB`)}</span>` : ''}
             </div>
             ${(ch.errors ?? []).map(e => `<div class="px-err">⚠ ${esc(e)}</div>`).join('')}
@@ -239,6 +243,29 @@ function panelHud({ still, zoom = 1, saysOn = true, skyMode = 'live', seasonMode
               ${tool(`class="px-info" data-farm-help aria-label="${attr(words.helpTip)}"`, 'help', 'Help', '', words.helpTip)}
               <span class="px-zoombar" title="${attr(words.zoomTip)}"><button type="button" data-farm-zoom="-1" aria-label="Zoom out">${pxt('-', words.toolColor, null)}</button><button type="button" data-farm-zoom="0" title="${attr(words.zoomAllTip)}">${pxt(`${Math.round(zoom * 100)}%`, words.toolColor, null)}</button><button type="button" data-farm-zoom="1" aria-label="Zoom in">${pxt('+', words.toolColor, null)}</button></span>
           </div>`;
+}
+
+/**
+ * How big the world is at 100% in a frame of fw × fh (CSS pixels), and the frame's spare room round it
+ * (whole world pixels: more land). A panel lying over the frame's top left (`panel`: its width and height
+ * with its margin, in CSS pixels; null for none) never covers the world: it sits beside the panel or
+ * below it, whichever leaves it bigger. With room to spare, beside it rather than in the middle. Below
+ * it, the world also keeps clear of the switches along the bottom (`tools`: their height with their
+ * margin); beside it, they lie over the land at its foot, as they always have.
+ */
+function fitClear(fw, fh, W, H, panel, tools = 0) {
+  const pw = panel?.w ?? 0, ph = panel?.h ?? 0, tall = fh > 60;
+  const scale = (w, h) => Math.max(0.5, Math.min(6, w / W, tall ? h / H : Infinity));
+  // a world pixel over, so that rounding the spare room to whole pixels never puts it back under the panel
+  const beside = pw ? Math.max(0.5, Math.min(scale(fw - 2, fh - 2), (fw - 2 - pw) / (W + 1))) : scale(fw - 2, fh - 2);
+  const below = tall && ph ? Math.min(scale(fw - 2, fh - 2), (fh - 2 - ph - tools) / (H + 1)) : 0;
+  const fit = Math.max(beside, below);
+  const spareW = Math.max(0, (fw - 2) / fit - W), spareH = tall ? Math.floor(Math.max(0, (fh - 2) / fit - H)) : 0;
+  const left = pw / fit, top = ph / fit, foot = tools / fit;
+  const isBelow = below > beside;
+  const l = Math.floor(isBelow ? spareW / 2 : spareW <= 0 ? 0 : spareW >= left ? left + (spareW - left) / 2 : spareW);
+  const t = isBelow ? Math.min(spareH, Math.ceil(top + Math.max(0, spareH - top - foot) / 2)) : Math.floor(spareH / 2);
+  return { fit, pad: { l, r: Math.floor(spareW) - l, t, b: spareH - t } };
 }
 
 const BOARD_TITLE = 'The notice board: what your projects remember';
@@ -349,6 +376,7 @@ function makePixelView(th, prefs) {
   const resting = f => f.state === 'idle' || f.state === 'stale';
   let glide = null; // a zoom easing in: { from: scale, start, ox, oy }
   let pad = { l: 0, r: 0, t: 0, b: 0 }; // the frame's spare room, in world pixels: more forest all round
+  let hudKey = ''; // the panel's size and the switches' height the farm was last fitted clear of
   const extOf = () => ({ x0: -pad.l, x1: th.W + pad.r, y0: -pad.t, y1: th.layout().H + pad.b });
   const skyNow = () => skyAt(skyMode === 'day' ? new Date(2000, 0, 1, 12) : skyMode === 'night' ? new Date(2000, 0, 1, 23) : new Date());
   let wheel = 0;
@@ -470,6 +498,13 @@ function makePixelView(th, prefs) {
   function renderHud() {
     if (hudEl) hudEl.innerHTML = th.hud({ still, zoom, saysOn, skyMode, seasonMode, seasons: th.hasSeasons, follow, canFollow: Boolean(selectedId && bots.has(selectedId)), restingHidden: restingShown ? null : scene.farmers.filter(resting).length, bell: bellOn, nav: opts.navState?.() ?? {}, panelOpen, animals: kit ? animalsOn : null, seasonNames: th.seasonNames });
     placeMini();
+    // a panel that grew (an account's row) or shrank, or switches on more rows: the farm moves clear of them
+    if (canvas && hudSize() !== hudKey) resize();
+  }
+  /** The panel over the frame's top left (a world's .px-stats; 0 × 0 when there is none) and the switches' height, as they stand. */
+  function hudSize() {
+    const el = hudEl?.querySelector('.px-stats'), tools = hudEl?.querySelector('.px-tools');
+    return `${el?.offsetWidth ?? 0},${el?.offsetWidth ? el.offsetHeight : 0},${tools?.offsetHeight ?? 0}`;
   }
   /** The minimap sits just above the switches, which take more rows in a narrow frame (the sidebar open). */
   function placeMini() {
@@ -911,7 +946,7 @@ function makePixelView(th, prefs) {
     draw();
   }
   function layoutLabels() {
-    const key = JSON.stringify([th.layout().key, scene.fields, overflow]);
+    const key = JSON.stringify([th.layout().key, scene.fields, overflow, scene.plan, scene.accounts]); // the farm's silo tags read the plan and the accounts
     if (key === labelKey) return;
     labelKey = key;
     ov.querySelectorAll('.px-lab').forEach(n => n.remove());
@@ -935,17 +970,14 @@ function makePixelView(th, prefs) {
     // 100% fits the whole farm in the frame (its outer size, so scrollbars coming and going don't
     // change it); zoom scales the farm inside. The backing store is a whole multiple of the art,
     // at most ~24M pixels, and image-rendering: pixelated keeps the pixels square when scaled.
+    // The frame's spare room is more land, not empty frame: the forest round the farm. The panel lies
+    // over the frame's top left (its 10px margin and a 6px gap): the farm sits clear of it.
     const fw = viewEl?.offsetWidth || th.W, fh = viewEl?.offsetHeight || 0;
-    const fit = Math.max(0.5, Math.min(6, (fw - 2) / th.W, fh > 60 ? (fh - 2) / H : Infinity));
-    // The frame's spare room is more land, not empty frame: the forest round the farm.
-    const spareW = Math.max(0, (fw - 2) / fit - th.W), spareH = fh > 60 ? Math.floor(Math.max(0, (fh - 2) / fit - H)) : 0;
     const was = `${pad.l},${pad.r},${pad.t},${pad.b}`;
-    // The panel lies over the frame's left edge: with room to spare, the farm sits beside it rather
-    // than in the middle.
-    const edge = sel => { const el = hudEl?.querySelector(sel); return el ? (el.offsetWidth + 16) / fit : 0; };
-    const left = edge('.px-stats'), right = 0, room = spareW - left - right;
-    const padL = spareW <= 0 ? 0 : room >= 0 ? left + room / 2 : (spareW * left) / Math.max(1, left + right);
-    pad = { l: Math.floor(padL), r: Math.floor(spareW) - Math.floor(padL), t: Math.floor(spareH / 2), b: spareH - Math.floor(spareH / 2) };
+    hudKey = hudSize();
+    const [pw, ph, tools] = hudKey.split(',').map(Number);
+    let fit;
+    ({ fit, pad } = fitClear(fw, fh, th.W, H, pw ? { w: pw + 16, h: ph + 16 } : null, tools ? tools + 12 : 0)); // the switches: 8px off the bottom, a 4px gap
     const EW = th.W + pad.l + pad.r, EH = H + pad.t + pad.b;
     cs = Math.max(0.25, Math.min(18, fit * zoom));
     const k = Math.max(1, Math.min(Math.ceil(cs * dpr), Math.floor(Math.sqrt(24e6 / (EW * EH)))));
@@ -956,6 +988,7 @@ function makePixelView(th, prefs) {
     canvas.style.height = `${EH * cs}px`;
     canvas.dataset.pad = `${pad.l},${pad.t}`; // where the farm sits in the canvas, and how wide the land drawn is (for tests)
     canvas.dataset.ew = String(EW);
+    canvas.dataset.foot = String(pad.b); // the land below the farm (for tests)
     ov.style.left = `${pad.l * cs}px`; // names and labels keep the farm's own coordinates
     ov.style.top = `${pad.t * cs}px`;
     if (was !== `${pad.l},${pad.r},${pad.t},${pad.b}`) bg = buildBg(); // the land grows with the frame

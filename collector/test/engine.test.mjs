@@ -96,3 +96,11 @@ test("the frame's scripts, loaded one by one in one context, register the farm w
   for (const fn of listeners.DOMContentLoaded ?? []) fn();
   assert.ok(posted.some(m => m && m.type === 'loaded'), `the bridge sent loaded; got ${JSON.stringify(posted)}`);
 });
+
+test("the engine's scene passes the accounts with their plans, in the engine's names", () => {
+  const { sdk, AgentvilleScene } = load();
+  const s = AgentvilleScene.toScene({ generatedAt: NOW, collisions: [], agents: [], repos: [], accounts: [
+    { key: 'main', name: 'nco', plan: { windows: [{ kind: 'seven_day', percentUsed: 30, resetsAt: 1 }] } }, { key: 'zeta', name: 'zeta', plan: null }] });
+  assert.deepEqual(plain(sdk.engineScene(s)).accounts, [{ key: 'main', name: 'nco', plan: { windows: [{ kind: 'seven_day', percentUsed: 30, resetsAt: 1, reset: false }] } }, { key: 'zeta', name: 'zeta', plan: null }]);
+  assert.deepEqual(plain(sdk.engineScene(AgentvilleScene.toScene({ generatedAt: NOW, collisions: [], agents: [], repos: [] }))).accounts, []);
+});

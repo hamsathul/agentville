@@ -36,6 +36,8 @@ It listens on `127.0.0.1` only and reads what Claude Code already writes to disk
   - [✨ Helper and suggested names](#-helper-and-suggested-names)
   - [Model, effort and permission mode](#model-effort-and-permission-mode)
   - [Starting, resuming, forking, ending and restarting sessions](#starting-resuming-forking-ending-and-restarting-sessions)
+  - [Several Claude accounts](#several-claude-accounts)
+    - [Setting up a second account](#setting-up-a-second-account)
   - [Going back to an earlier point (↺ Restore)](#going-back-to-an-earlier-point--restore)
   - [⚙ Claude Code: plugins, MCP servers and permission rules](#-claude-code-plugins-mcp-servers-and-permission-rules)
   - [Files, documents and quoting](#files-documents-and-quoting)
@@ -62,7 +64,7 @@ It listens on `127.0.0.1` only and reads what Claude Code already writes to disk
 - Its subagents, background jobs, task list, model, effort, permission mode, context left and
   cost so far.
 - Your plan's usage (the 5-hour and weekly limits, and when they reset), and the CPU and memory
-  your agents use.
+  your agents use. With several Claude accounts, each one's plan, and which account every agent is on.
 - Collisions: two agents writing to the same repo at the same time.
 - Each repo's branch, uncommitted files, unpushed commits, last deploy (GitHub Actions or a
   deploy an agent ran itself) and open pull requests.
@@ -88,11 +90,11 @@ It listens on `127.0.0.1` only and reads what Claude Code already writes to disk
   working on, through your own Claude Code, only after you switch the ✨ Helper on. With its Animal
   lines ticked, Haiku also writes what the farm's animals say about what is happening.
 - Start a new session in any folder of yours (type it, browse to it, or create it) or in one you've
-  worked in, or find a past one (search, filter by folder, model, branch or running, sort by
+  worked in, or find a past one (search, filter by folder, model, branch, account or running, sort by
   activity, start, name, folder or length) and resume it, in the permission mode, model and effort
-  you choose.
-- Switch a running session's model or effort, compact it, restart it in another permission mode,
-  or end it (its terminal window closes too).
+  you choose, and on the Claude account you choose when you have several.
+- Switch a running session's model or effort, compact it, restart it in another permission mode
+  or move it to another of your Claude accounts, or end it (its terminal window closes too).
 - See the shell commands each session runs right now (how long, CPU, memory), follow a background
   one's output, and stop one with everything it started.
 
@@ -122,6 +124,9 @@ It listens on `127.0.0.1` only and reads what Claude Code already writes to disk
   fills, weather shows the last deploy, the season follows your 5-hour limit (or hold one with the
   **Season** switch), a cart runs to town for each web call, each MCP server's cart drives to the
   farmer calling it, and you click the barn to start a session.
+- A sidebar beside the farm for any agent: pick one from a list or step through them, answer the
+  others that need you from their cards without leaving the one you are on (Allow, Yes, an option),
+  and chat with it, the newest message by one box for a message, a side question or a note.
 - Animals on the farm, just for fun: cows, goats, a sheepdog, an ostrich, a lion, a tiger and a duck
   family on the pond. Click one to pet or feed it, and a farmer walks over to do it. Now and then they
   get up to something (a goat steals a hat), react to deploys and merges, and huddle in winter.
@@ -254,7 +259,8 @@ The page is laid out like an editor, in three columns:
 - **Right: the explorer.** The agent's folder with git status letters (M, U, D) and a dot on files
   it edited or read, its **Scratchpad** and its **Memory**.
 
-Along the top: your agents' memory and CPU, your plan's 5-hour and weekly usage, and four cards:
+Along the top: your agents' memory and CPU, your plan's 5-hour and weekly usage (a block for each
+account when you have several Claude accounts: see [Several Claude accounts](#several-claude-accounts)), and four cards:
 **Waiting on you**, **Working**, **Your turn** and **Collisions**. The tab title counts the agents
 that need you, e.g. `(2) Agentville`, and the farmhouse in the tab gets a red light.
 
@@ -320,7 +326,8 @@ Esc does in its terminal:
 - A message you sent while it worked isn't lost: it becomes the session's next prompt. That's the
   way to stop it and steer it at once.
 - A command the model put in the background on purpose keeps running. Stop that one under
-  **Commands running**, whose **■ Stop** ends a single command.
+  **Commands running** (in the farm's sidebar, open **N commands running** under Now), whose
+  **■ Stop** ends a single command.
 - There is no confirm, as Esc has none. It takes up to 2 seconds, since the mod checks for
   requests every 2 seconds.
 
@@ -333,9 +340,10 @@ The **Side question** box asks the session something on the side, like `/btw` in
 It is answered from the conversation so far, with no tools, even while the session is busy, and
 nothing is added to the conversation. The answer appears under the box.
 
-Click the **Side question** heading to fold the whole section away, or to bring it back. Folded,
-the heading shows how many side questions the session has. The choice holds for every session,
-in the list and in the farm's sidebar, and is remembered.
+In the list, click the **Side question** heading to fold the whole section away, or to bring it
+back. Folded, the heading shows how many side questions the session has. The choice holds for every
+session, and is remembered. In the farm's sidebar, **Side question** is one of the message box's three
+modes instead: pick it above the box, and the chat shows the side questions and their answers.
 
 ### Notes for later
 
@@ -358,6 +366,8 @@ the session until you use it.
   and how many.
 - A session holds up to 200 notes of up to 4,000 characters each.
 - Like Side question, the heading folds the section away and, folded, says how many notes are unused.
+  In the farm's sidebar, **Note** is one of the message box's modes: pick it to write notes in the
+  box and see them above it, with **↳ Use** turning the box back into a message box.
 
 ### ✨ Helper and suggested names
 
@@ -421,7 +431,9 @@ Each terminal session's bar shows its **permission mode**, its **model** (e.g. *
   its context.
 - **Restart in…** another permission mode (ask first, accept edits, plan, auto, or bypass
   permissions). The session ends and resumes straight away in a new terminal window, and the
-  conversation carries on.
+  conversation carries on. With several Claude accounts it also offers **Move to another account**:
+  the same, on the account you pick, in the mode the session is in (see
+  [Several Claude accounts](#several-claude-accounts)).
 
 Switching and side questions need mod 0.5.0 or newer, and Compact 0.6.0. For a session started
 before you updated, run `/reload-plugins` in it.
@@ -448,9 +460,14 @@ before you updated, run `/reload-plugins` in it.
   - **Range**: the last 30 days, or **All time**. The list says how many it shows of how many, and
     the sort and range are kept for next time.
   - Each past session shows its folder, branch, model, length, and when it started and was last
-    active, and 📝 with a count when it has notes you haven't used.
+    active, and 📝 with a count when it has notes you haven't used. A session resumed in another
+    folder is listed once, as it is now.
   - You pick the permission mode, model and effort. Model and effort apply to that session only
     (`--model`, `--effort`), not your defaults.
+  - With several Claude accounts, you also pick the **Account**: **As each last ran** (the default),
+    or one for whatever you start or resume. Each choice shows how much of its limits it has used.
+    Each past session and folder shows the account it last ran on, and the filters include
+    **Account**.
   - It opens a new Terminal or iTerm window (the `terminal` setting), and the window closes when
     Claude exits.
 - **⑂ Fork** on any message in the conversation (in the side panel or ⤢ Read all; it shows when you
@@ -459,7 +476,7 @@ before you updated, run `/reload-plugins` in it.
   - On one of Claude's replies, the new session has the conversation up to and including that reply.
   - On one of your messages, it has the conversation up to just before it, and your message waits in
     its prompt box, so you can change it and send it. That is how you try a different answer.
-  - You pick the permission mode, model and effort; they start as the original session's.
+  - You pick the permission mode, model and effort, and the account when you have several; they start as the original session's.
   - The new session is named after the original, with "(fork)". It is a session of its own: resume
     it later from ＋ Session like any other.
   - It gets a copy of your notes on the original, which from then on are its own.
@@ -467,6 +484,104 @@ before you updated, run `/reload-plugins` in it.
 - **End session** stops Claude cleanly after you confirm and closes its terminal window. You can
   resume the conversation later.
 - A stale background session can be **removed** (`claude rm`).
+
+### Several Claude accounts
+
+Claude Code keeps its login, settings and history in one config folder: `~/.claude`, or the folder
+`CLAUDE_CONFIG_DIR` names. Give each Claude account its own folder and you can use them side by
+side, each logged in, with no logging out and in. Agentville then shows them all, and lets you
+start, resume or move a session on the account you pick.
+
+#### Setting up a second account
+
+The examples call the accounts `work` (the `~/.claude` you have now) and `home` (a new
+`~/.claude-home`). Use your own names.
+
+1. **An alias for each account**, in `~/.zshrc` (or `~/.bashrc`):
+
+   ```bash
+   alias claude-work='env -u CLAUDE_CONFIG_DIR claude'              # ~/.claude
+   alias claude-home='CLAUDE_CONFIG_DIR="$HOME/.claude-home" claude' # ~/.claude-home
+   ```
+
+   Then `source ~/.zshrc`. Plain `claude` stays on `~/.claude`.
+
+2. **Share what both should have.** Before its first start, link your instructions, settings,
+   skills and commands into the new folder, so both accounts work the same way (in a folder that
+   already has them, move those aside first). The settings carry the Agentville mod
+   (`CLAUDE_CODE_PLUGIN_DIRS`), so the new account's sessions can be answered from the dashboard
+   and report their limits:
+
+   ```bash
+   mkdir -p ~/.claude-home
+   for f in CLAUDE.md settings.json settings.local.json skills commands agents; do
+     [ -e ~/.claude/$f ] && ln -s ~/.claude/$f ~/.claude-home/$f
+   done
+   ```
+
+   Don't link `.claude.json` (it holds the folder's login and its MCP servers) or `plugins`
+   (plugins your organization syncs belong to its account).
+
+3. **Share the history, to move conversations between accounts.** Link the new account's
+   `projects` and `file-history` folders to yours, before it has made either:
+
+   ```bash
+   ln -s ~/.claude/projects ~/.claude-home/projects
+   ln -s ~/.claude/file-history ~/.claude-home/file-history
+   ```
+
+   Every account then sees every conversation (Claude Code's own `/resume` list and project memory
+   too), a conversation can go on under another account with the same id, and ↺ Restore still
+   finds its checkpoints. Skip this to keep the accounts' work fully apart: then a session resumes
+   only on the account that ran it.
+
+4. **Log in.** Run `claude-home`, type `/login` and sign in with the other account. `/status` shows
+   which account a session is on. From now on, each alias opens on its own account, and both can
+   run at once.
+
+5. **MCP servers and plugins**, if you want them in the new account too, are added there:
+
+   ```bash
+   CLAUDE_CONFIG_DIR="$HOME/.claude-home" claude mcp add -s user <name> -- <command…>
+   CLAUDE_CONFIG_DIR="$HOME/.claude-home" claude plugin install <plugin>@<marketplace>
+   ```
+
+6. **Name them in Agentville** (optional), in `config.json`:
+   `"accounts": { "~/.claude": "work", "~/.claude-home": "home" }`. Without names, `~/.claude` is
+   `main` and the others go by their suffix (`home`). Agentville finds a new `~/.claude-<name>`
+   folder with a login in it within a minute, and `config.json` is read again when you save it:
+   no restart needed. The top bar then shows a block for each account.
+
+Use the same path every time: the login is kept in the macOS keychain under the folder's exact
+path, so `~/.claude-home/` with a slash, or another way to reach the same folder, asks you to log
+in again. The aliases are for terminals. The VS Code extension and the desktop app sign in on their
+own.
+
+#### Using several accounts
+
+- **Which accounts.** `~/.claude` is the first. Every `~/.claude-<name>` folder with a login in it
+  is another. `config.json`'s `accounts` can add any other folder.
+- **What you see.** The top bar shows a plan block for each account, with its email and how many
+  sessions it has open on hover, or "Signed out" (checked again each minute until you log in).
+  Every agent carries its account's tag. The farm gives the second account a silo of its own, left
+  of the barn (see [The farm](#the-farm)).
+- **Starting.** ＋ Session, ⑂ Fork and Restart in… let you pick the account, each choice with how
+  much of its limits it has used. A new session starts on the account its folder's last session
+  ran on, a resumed one on the account it last ran on, and a fork on the original's.
+- **Moving a conversation.** **Restart in… → Move to another account** ends a running session and
+  resumes it on the other account, in the same mode and under the same id. In ＋ Session, pick the
+  account and press **Resume** on a past one. This needs the shared history of step 3: without
+  it, ＋ Session greys out **Resume** for the accounts that can't see the conversation.
+- **The mod in each account.** Each account reads its own `settings.json`. If you didn't link it
+  (step 2), add the mod's `CLAUDE_CODE_PLUGIN_DIRS` to it too (see
+  [Load the mod](#3-load-the-mod-in-claude-code-recommended)). Without it, the account's sessions
+  can't be answered from the dashboard and its plan never shows.
+- **How it knows.** A running session is on the account whose `sessions/` folder lists it. An
+  ended one is on the account it last ran on, which Agentville remembers. One it never saw running
+  counts as the first account whose history holds it.
+- **What stays on the first account.** The ⚙ Claude Code dialog (plugins, MCP servers and
+  permission rules) shows the first account's. The ✨ Helper calls Haiku through whichever open
+  session it picks, so it counts against that session's account.
 
 ### Going back to an earlier point (↺ Restore)
 
@@ -743,12 +858,16 @@ can hold.
 | Stones round some beds, with a sign | One project's repos, side by side |
 | The market stall | Open pull requests as crates, tagged by their checks. **Sold!** means one was merged |
 | The silo's grain / the season | Your plan's weekly usage / its 5-hour limit (winter when nearly used up), unless the **Season** switch holds one: then the panel's season has a 📌 and your real 5-hour use beside it. The tag at the silo's foot gives the week's figure, amber from 70% and red from 90% |
+| A second silo, left of the barn | With two Claude accounts: each has its silo, its name on the tag. The season follows the first account |
 | Eggs, hens in the run | Subagents that finished lately / more running than farmers can lead |
 
 **Controls.**
 - **Top left, the panel.** The money spent and harvests, then waiting on you, working, your turn
-  and collisions (click one to open its first agent), then RAM, CPU and plan gauges and a
-  **needs you** button. Click its title to fold it away.
+  and collisions (click one to open its first agent), then RAM, CPU and plan gauges (each account's
+  week and 5 hours when you have several) and a
+  **needs you** button. Click its title to fold it away. At 100% the farm sits beside the panel,
+  or below it when that leaves it bigger, so the panel never covers a silo or a building. In a
+  narrow window (the sidebar open) the farm is smaller then: **+** zooms in.
 - **Top right.** List, World (the list of worlds), ＋ Session, ⚙ Claude Code, Sidebar and the theme.
 - **Bottom.** Follow (keep the picked farmer in view), Resting (hide idle and stale farmers),
   Bubbles, Sky (live, day or night), Season (live, then spring, summer, autumn or winter held),
@@ -756,9 +875,8 @@ can hold.
 - **Mouse.** ⌘/Ctrl + scroll or a pinch zooms, drag moves around, and a minimap appears while you
   are zoomed in.
 
-**Click things.** Click a farmer to open its sidebar, with Agent, Activity, Subagents (its
-subagents' cards, as in the list), Files and Diary tabs, or a field for a close-up of the files
-agents touched there. Click a farmer's speech bubble to read its whole conversation over the farm
+**Click things.** Click a farmer to open it in the sidebar (below), or a field for a close-up of
+the files agents touched there. Click a farmer's speech bubble to read its whole conversation over the farm
 (⤢ Read all, with search and a message box), the farmer picked in the sidebar behind it. A bubble
 waiting on you (a question or a permission prompt), or asking a question you can answer with a
 button, opens the sidebar instead, where you answer it. A bubble's tooltip says which: "click to read the whole conversation", or "click to open it in the sidebar".
@@ -769,10 +887,34 @@ dialog over the farm, with Quote and the reply box as in the list. Click a build
 |---|---|
 | Barn | Start or resume a session (the new farmer walks out of its door) |
 | Farmhouse | Who is on your porch, with a button to open each |
-| Silo | Your plan's usage and when each limit resets |
+| Silo | Your plan's usage and when each limit resets (each account's, when you have several) |
 | Henhouse | The subagents and how each is going |
 | Notice board | Each project's CLAUDE.md and memory |
 | Market stall | The pull requests, with links |
+
+**The sidebar.** **Sidebar** (top right) opens one panel beside the farm, on the farmer you picked
+(or the first one at work). Top to bottom:
+- **Who.** The agent's name: click it for every agent, those that need you first, then working,
+  your turn, idle and stale, with what each asks or is doing. Type to find one by name, folder or
+  branch; ↑ ↓ and ↩ pick, Esc closes. **‹ ›** step through them in that order, the book opens the
+  diary and the last button hides the sidebar. Under the name: its state, its permission mode when it is
+  Bypass or Plan, its account, and **Session**; then its folder, branch, model and effort.
+- **Who else needs you.** A red line names the other agents waiting on you, longest waiting
+  first, with **Next ›** to open that one. Below it, a card for each, answered without leaving the
+  agent you are on: **Allow** or **Deny** a command, pick one of a question's options, **Yes** to a
+  yes or no question. **No…**, **Reply…** and questions with several parts open that agent instead.
+  The line folds the cards away, and that is remembered. Like every action button, a card's
+  buttons ignore clicks for a moment after a world swaps or raises part of the page.
+- **Its own question** or permission prompt, on every tab.
+- **Chat, Activity, Subagents, Files.** **Chat** has **Now** (the working line with ■ Stop, its
+  step, and its commands, folded until you open them), the conversation with the newest message at
+  the bottom (⤢ Read the whole conversation is at the top), and one box with three modes:
+  **Message**, **Side question** and **Note**. **Activity** has a filter: All, Commands, Edits,
+  Reads or Failed. **Subagents** has a card for each, and **Files** is its folder.
+- **Session** opens its settings: the model and effort (switched after its current turn), the
+  permission mode or account to restart it in, then Compact, Copy the resume command, the full
+  transcript and Show it in the list view, with **End session** set apart at the bottom.
+- **The diary** covers the tabs, with **Back** to the tab you were on.
 
 The light follows your clock: cloud shadows by day, and lit windows, lanterns and fireflies at
 night. The season follows your plan's 5-hour limit: spring while it is fresh (blossom), then summer,
@@ -827,6 +969,7 @@ The mod also does the dashboard's work inside the session:
 | `deployRepos` | Checkout path → `owner/repo` whose latest GitHub Actions run is shown, e.g. `{ "/Users/you/code/api": "you/api" }` |
 | `worldsDir` | Your own worlds, a folder each; `null` means `~/.agentville/worlds` (a leading `~` is your home; a relative one is under your home) |
 | `terminal` | Where sessions open: `"Terminal"` or `"iTerm"` |
+| `accounts` | Your Claude accounts' names, folder → name, e.g. `{ "~/.claude": "work", "~/.claude-home": "home" }`; a folder named here is an account even if it isn't a `~/.claude-*` folder ([Several Claude accounts](#several-claude-accounts)) |
 
 ## Commands
 
@@ -850,6 +993,10 @@ The **collector** (`collector/`) is a Node program run by launchd. Every few sec
 - the transcripts under `~/.claude/projects/` (only the new bytes of each). When a session moves
   into a worktree, Claude Code moves its transcript to the worktree's folder, and the collector
   follows it there;
+- with several Claude accounts, the same for each account's folder (`~/.claude-<name>`): its
+  `sessions/` with `claude agents --json` run in its `CLAUDE_CONFIG_DIR`, and its `projects/`
+  unless it is a link to one already read. Every minute it looks for accounts again, and it asks
+  `claude auth status` whether each is signed in;
 - `ps`: processes, CPU and memory, and each session's start flags;
 - `git` in each repo, with `GIT_OPTIONAL_LOCKS=0`, so it never takes `index.lock` from an agent
   that is committing (it never fetches);
@@ -974,6 +1121,13 @@ and can do is in [docs/worlds.md](docs/worlds.md).
   them. A Word document's page shows with no scripts at all.
 - Files you attach are kept under `state/uploads/` for 7 days. A folder you attach is sent as its
   path only.
+- With several Claude accounts, `state/session-accounts.json` keeps which account folder each
+  session last ran on (the 2,000 most recent). Your accounts' emails are read from their
+  `.claude.json` and kept in the local snapshot (`state/state.json`, which the mod reads) to show on
+  your own page; a world gets each account's name and plan, never
+  its email (a private world gets `account 1`, `account 2`). Agentville never reads or touches the
+  logins themselves: it starts `claude` with the account's `CLAUDE_CONFIG_DIR`, and asks
+  `claude auth status` whether each is signed in.
 - Your notes on a session are kept under `state/notes/` (the folder and its files readable only by
   you) until you delete them. They never leave your Mac, and nothing in one reaches the session
   until you use or send it. The snapshot the page reads every few seconds carries only how many
@@ -1006,11 +1160,16 @@ and can do is in [docs/worlds.md](docs/worlds.md).
 | Problem | Try |
 |---|---|
 | The dashboard doesn't load | `agent-tracker status`, then `agent-tracker logs`. Check that nothing else uses the port |
-| A session shows "dashboard answers off" | Its mod isn't loaded. Check `CLAUDE_CODE_PLUGIN_DIRS` in `~/.claude/settings.json`, then type anything in the session or `/reload-plugins` |
+| A session shows "dashboard answers off" | Its mod isn't loaded. Check `CLAUDE_CODE_PLUGIN_DIRS` in `~/.claude/settings.json` (or, for another account, in that account's own `settings.json`), then type anything in the session or `/reload-plugins` |
+| An account shows "No reading yet" | Its sessions report their limits through the mod: load the mod in that account too, then send a session on it a message |
 | "runs an older tracker mod" | `/reload-plugins` in that session, or resume it |
 | An idle farmer walks off to the animals, or has no hat | It is playing (idle three minutes or more) or a goat has its hat; it is the farm's fun, not the session. It comes back the moment it gets work or needs you. Switch **Animals** off to stop it all |
 | **■ Stop** on the working line, or **✕ Cancel** on a question, is greyed out | Both need mod 0.7.0: `/reload-plugins` in that session. Until then, press Esc in its terminal |
 | No cost, plan usage or working line | These come from the mod (0.4.0 or newer; the working line from 0.5.0) in a running session |
+| An account shows "Signed out" | Start a session on it (its alias, or ＋ Session with that account) and run `/login` there |
+| An account is missing | Its folder needs a login (`.claude.json` with your account) and must sit next to `~/.claude` as `~/.claude-<name>`, or be named in `config.json`'s `accounts` |
+| **Resume** is greyed out for an account | That account doesn't share the session's history: link its `projects` and `file-history` folders ([Several Claude accounts](#several-claude-accounts)) |
+| A second account asks you to log in again | Its folder is spelled differently from when you logged in (a trailing slash, or a link to it): use the same path every time |
 | My world shows no bubbles and calls its repos `repo 1`, `repo 2`… (and its agents `agent 1`…) | It is in privacy mode: tick **Can see what agents say** for it in the list of worlds. Unticking later doesn't clear what the world saved while it could see; it gets its own saved settings back on start |
 | No pull requests or deploy weather | `gh auth status`. Pull requests need a GitHub `origin`; Actions runs need the repo in `deployRepos` |
 | ＋ Session or End session does nothing | Allow the tracker to control Terminal or iTerm: System Settings → Privacy & Security → Automation |

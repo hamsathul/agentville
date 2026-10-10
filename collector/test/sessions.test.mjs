@@ -4,7 +4,7 @@ import assert from 'node:assert/strict';
 import { mkdirSync, mkdtempSync, utimesSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { claudeCommand, closeTerminalScript, forkCommand, listSessions, projectsOf, terminalScript } from '../sources/sessions.mjs';
+import { accountPrefix, claudeCommand, closeTerminalScript, forkCommand, listSessions, projectsOf, terminalScript } from '../sources/sessions.mjs';
 
 const NOW = Date.parse('2026-10-07T12:00:00Z');
 const DAY = 86_400_000;
@@ -149,4 +149,30 @@ test('the terminal script gets the command as an argument, never inside the scri
   }
   assert.match(terminalScript('iTerm', cmd).join('\n'), /create window with default profile/);
   assert.match(terminalScript('Hyper', cmd).join('\n'), /tell application "Terminal"/, 'an unknown app falls back to Terminal');
+});
+
+test('commands on an account: none with one, env -u for the first, the folder quoted for another', () => {
+  assert.equal(claudeCommand('/w', undefined, 'default'), "cd '/w' && exec claude");
+  assert.equal(claudeCommand('/w', undefined, 'default', { account: { dir: '/h/.claude', first: true } }), "cd '/w' && exec env -u CLAUDE_CONFIG_DIR claude");
+  const id = '11111111-2222-3333-4444-555555555555';
+  assert.equal(claudeCommand('/w', id, 'plan', { account: { dir: "/h/it's/.claude-zeta", first: false } }),
+    `cd '/w' && exec env CLAUDE_CONFIG_DIR='/h/it'\\''s/.claude-zeta' claude --resume ${id} --permission-mode plan`);
+  assert.match(forkCommand('/w', '/f/x.jsonl', 'default', { account: { dir: '/h/.claude-zeta', first: false } }), /^cd '\/w' && exec env CLAUDE_CONFIG_DIR='\/h\/.claude-zeta' claude --resume '\/f\/x.jsonl' --fork-session$/);
+  assert.throws(() => accountPrefix({ dir: 'relative', first: false }), /not an account folder/);
+  assert.throws(() => accountPrefix({ dir: '/h/.claude-zeta/', first: false }), /not an account folder/);
+  assert.equal(accountPrefix(null), '');
+});
+
+test('listSessions reads several projects folders, one row per session, the newest file winning', () => {
+  const a = mkdtempSync(join(tmpdir(), 'proj-a-')), b = mkdtempSync(join(tmpdir(), 'proj-b-'));
+  const id = '11111111-2222-3333-4444-555555555555';
+  const line = text => `${JSON.stringify({ type: 'user', timestamp: new Date().toISOString(), cwd: '/w', message: { role: 'user', content: text } })}\n`;
+  mkdirSync(join(a, '-w')); mkdirSync(join(b, '-w'));
+  writeFileSync(join(a, '-w', `${id}.jsonl`), line('old'));
+  writeFileSync(join(b, '-w', `${id}.jsonl`), line('new'));
+  utimesSync(join(a, '-w', `${id}.jsonl`), new Date(Date.now() - 60_000), new Date(Date.now() - 60_000));
+  const got = listSessions({ projectsDirs: [a, b] });
+  assert.equal(got.length, 1);
+  assert.equal(got[0].firstPrompt, 'new');
+  assert.equal(got[0].projectsDir, b);
 });

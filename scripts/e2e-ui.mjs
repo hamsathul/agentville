@@ -7,7 +7,7 @@
 // No dependencies; needs Chrome (set CHROME to
 // its path if it isn't in the usual place). Exits 1 if a check fails.
 import { execFileSync, spawn } from 'node:child_process';
-import { appendFileSync, cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, realpathSync, rmSync, unlinkSync, utimesSync, writeFileSync } from 'node:fs';
+import { appendFileSync, cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, realpathSync, rmSync, symlinkSync, unlinkSync, utimesSync, writeFileSync } from 'node:fs';
 import { createSocket } from 'node:dgram';
 import { createServer } from 'node:http';
 import { createServer as createTcpServer } from 'node:net';
@@ -758,6 +758,13 @@ try {
   const corners = JSON.parse(await fjs(`(() => { const r = s => document.querySelector(s).getBoundingClientRect(), v = r('#farm .px-host'), st = r('.px-stats'), z = r('.px-zoombar'), t = r('.px-tools'), n = r('.px-nav');
     return JSON.stringify({ stats: st.left - v.left < 20 && st.top - v.top < 20, nav: v.right - n.right < 20 && n.top - v.top < 20, zoom: v.bottom - z.bottom < 20 && z.height < 40, tools: (b => v.bottom - b.bottom < 20 && b.height < 40 && Math.abs((b.left + b.right) / 2 - (v.left + v.right) / 2) < 40)((r => ({ left: Math.min(...r.map(x => x.left)), right: Math.max(...r.map(x => x.right)), bottom: Math.max(...r.map(x => x.bottom)), height: Math.max(...r.map(x => x.bottom)) - Math.min(...r.map(x => x.top)) }))([...document.querySelectorAll('.px-tools > button, .px-tools > .px-zoombar')].map(x => x.getBoundingClientRect()))) }); })()`));
   check(corners.stats && corners.nav && corners.zoom && corners.tools, `the controls lie over the farm: the panel top left, the dashboard's buttons top right, a slim row of switches and zoom along the bottom (${JSON.stringify(corners)})`);
+  // At 100% the panel never lies over the farm (it hid the silos' figures): the farm sits beside it or below it.
+  const panelClear = () => fjs(`(() => { const c = document.querySelector('#farm canvas'), r = c.getBoundingClientRect(), cs = r.width / Number(c.dataset.ew), [pl, pt] = c.dataset.pad.split(',').map(Number), p = document.querySelector('.px-stats').getBoundingClientRect();
+    const farm = [r.left + pl * cs, r.top + pt * cs], foot = r.bottom - Number(c.dataset.foot) * cs, tools = Math.min(...[...document.querySelectorAll('.px-tools > button, .px-tools > .px-zoombar')].map(b => b.getBoundingClientRect().top));
+    const beside = farm[0] >= p.right - 1, below = farm[1] >= p.bottom - 1; // below the panel, its foot keeps above the switches too
+    return JSON.stringify({ clear: beside || (below && foot <= tools + 1), farm: [...farm, foot].map(Math.round), panel: [p.right, p.bottom].map(Math.round), tools: Math.round(tools) }); })()`);
+  const refitted = async () => { for (let i = 0, last = ''; i < 20; i++) { const now = await fjs("document.querySelector('#farm canvas').style.width + '|' + document.querySelector('#farm canvas').dataset.pad + '|' + document.querySelector('#farm .px-view').getBoundingClientRect().width"); if (now === last) return; last = now; await sleep(250); } };
+  check(JSON.parse(await panelClear()).clear, `at 100% nothing of the farm lies under the panel (${await panelClear()})`);
   await fjs("document.querySelector('[data-farm-nav=\"theme\"]').click()");
   check(await until("document.documentElement.dataset.theme !== 'dark'"), "the farm's own buttons work the dashboard: the theme changes");
   // Each click reaches the page as a message (wait for it before looking again), and the page takes one
@@ -787,7 +794,7 @@ try {
   await js("document.getElementById('convo').close()");
   await sleep(400); // the page lets one pick from a world through per 250 ms and drops a faster second one
   await fjs(`document.querySelector('.px-say[data-say="ui-asker"] span').click()`);
-  check(await until("!document.getElementById('convo').open && /Which crop next\\?/.test(document.getElementById('farm-agent')?.textContent ?? '')"), 'a bubble waiting on you opens the sidebar instead, where you answer it');
+  check(await until("!document.getElementById('convo').open && /Which crop next\\?/.test(document.getElementById('farm-sidebar')?.textContent ?? '')"), 'a bubble waiting on you opens the sidebar instead, where you answer it');
   if (sideBefore !== 'open') { // the sidebar as it was, for the size checks that follow
     await js("document.getElementById('side-toggle').click()");
     await until("document.getElementById('main').dataset.side === 'closed'");
@@ -877,18 +884,28 @@ try {
   // Farmers come first: a click on a farmer's sprite opens that farmer, never an animal's menu (the next step opens the sidebar anyway).
   await fjs(`(() => { const c = document.querySelector('#farm canvas'), t = document.querySelector('.px-tag[data-farmer="ui-worker"]').getBoundingClientRect(), cs = c.getBoundingClientRect().width / Number(c.dataset.ew);
     c.dispatchEvent(new MouseEvent('click', { bubbles: true, clientX: t.left + t.width / 2, clientY: t.bottom + 10 * cs })); })()`);
-  check(await until("/ui-worker/.test(document.getElementById('farm-agent')?.textContent ?? '')") && !(await fjs("!!document.querySelector('.px-animal-menu')")), 'a click on a farmer picks the farmer, not an animal');
+  check(await until("/ui-worker/.test(document.getElementById('fs-head')?.textContent ?? '')") && !(await fjs("!!document.querySelector('.px-animal-menu')")), 'a click on a farmer picks the farmer, not an animal');
+  check(await js("/ui-asker/.test(document.querySelector('#fs-head .fs-queue')?.textContent ?? '') && [...document.querySelectorAll('#fs-head .fs-card [data-fs-answer]')].map(b => b.textContent).join() === 'Wheat,Pumpkins'"), 'on another farmer, the one waiting on you shows as a card above, its options ready to answer in place');
   await sleep(400); // the page takes a world's picks at most every 250 ms: the next one must not come sooner
   await fjs("document.querySelector('[data-farm-need]').click()");
-  check(await until("document.getElementById('main').dataset.side === 'open' && /Which crop next/.test(document.getElementById('farm-agent').textContent)"), "the farm's “needs you” button opens the waiting farmer in the sidebar, with its question");
+  check(await until("document.getElementById('main').dataset.side === 'open' && /Which crop next/.test(document.querySelector('#fs-head .fs-ask')?.textContent ?? '')"), "the farm's “needs you” button opens the waiting farmer in the sidebar, with its question");
+  await refitted();
+  check(JSON.parse(await panelClear()).clear, `with the sidebar open, the narrower farm moves clear of the panel too (${await panelClear()})`);
+  const scale = () => fjs("(c => c.getBoundingClientRect().width / Number(c.dataset.ew))(document.querySelector('#farm canvas'))");
+  const sideScale = await scale();
+  await fjs("document.querySelector('[data-farm-panel]').click()"); // folded, it is a bar: the farm sits below it, as big as before
+  await refitted();
+  check(JSON.parse(await panelClear()).clear && await scale() > sideScale, `and below the folded panel, bigger again (${await panelClear()})`);
+  await fjs("document.querySelector('[data-farm-panel]').click()");
+  await refitted();
   check(await fits('#farm-side'), `in the narrower farm sidebar too, the wide code block scrolls inside its bubble (${await sideways('#farm-side')})`);
   check(await js("/^Subagents\\s*1/.test(document.getElementById('tab-subagents').textContent) && !document.querySelector('#farm-agent .sub-card')"), "the farm sidebar's Subagents tab says how many; its Agent tab has no cards");
   await js("document.getElementById('tab-subagents').click()");
   check(await until("/Survey the fields/.test(document.querySelector('#farm-subagents .sub-card')?.textContent ?? '')"), 'the Subagents tab shows its card');
   await js("document.getElementById('tab-agent').click()");
-  await until("/Which crop next/.test(document.getElementById('farm-agent').textContent)");
+  await until("/Which crop next/.test(document.getElementById('fs-head').textContent)");
   check(await js("document.getElementById('center-body').innerHTML === ''"), 'the hidden centre holds no second answer form');
-  await js("(() => { const r = document.querySelector('#farm-agent input[value=\"Pumpkins\"]'); r.checked = true; r.dispatchEvent(new Event('change', { bubbles: true })); })()");
+  await js("(() => { const r = document.querySelector('#fs-head input[value=\"Pumpkins\"]'); r.checked = true; r.dispatchEvent(new Event('change', { bubbles: true })); })()");
   // The click guard: a world raising the sidebar holds its action controls for about a second.
   await until("!document.documentElement.dataset.guard", 3000);
   await fjs("document.querySelector('[data-farm-need]').click()"); // the world raises it again
@@ -900,6 +917,34 @@ try {
   await js("document.getElementById('ask-send').click()");
   check(await until("/Answer sent to ui-asker/.test(document.getElementById('notice').textContent)"), 'the answer is sent from the farm sidebar');
   check(answered?.answers?.['Which crop next?'] === 'Pumpkins', 'the session received the answer');
+
+  // The sidebar's layout, as only a browser can tell: it fits, its chat opens at the newest message by the
+  // box, and the picker and the diary open over it and close again.
+  for (let i = 0; i < 8 && !/ui-worker/.test(await js("document.querySelector('#fs-head .fs-name')?.textContent ?? ''")); i++) { // › steps to the working farmer
+    await js("document.querySelector('[data-fs-step=\"1\"]').click()");
+    await sleep(150);
+  }
+  await js("document.getElementById('tab-agent').click()");
+  check(await until("/ui-worker/.test(document.querySelector('#fs-head .fs-name')?.textContent ?? '') && !!document.getElementById('msg-text')") && await js(`(() => {
+    const side = document.getElementById('farm-sidebar'), s = side.getBoundingClientRect(), b = document.getElementById('msg-text').getBoundingClientRect();
+    return side.scrollWidth <= side.clientWidth + 1 && s.bottom <= innerHeight + 1 && b.top >= s.top && b.bottom <= s.bottom + 1;
+  })()`), '› steps to another farmer; the sidebar fits beside the farm, nothing wider than it, and its message box is in view at the bottom');
+  check(await js("(c => c.scrollHeight - c.scrollTop - c.clientHeight < 2)(document.getElementById('fs-chat'))"), 'the chat shows its newest message, next to the box');
+  await js("document.getElementById('fs-switch').click()");
+  check(await until("!!document.querySelector('#fs-pop .fs-pick') && document.activeElement?.id === 'fs-find'"), "the agent's name opens the picker, its search box ready");
+  check(await js("(p => { const r = p.getBoundingClientRect(), s = document.getElementById('farm-sidebar').getBoundingClientRect(); return r.left >= s.left - 1 && r.right <= s.right + 1 && r.bottom <= s.bottom + 1; })(document.querySelector('#fs-pop .fs-pop'))"), 'the picker fits inside the sidebar');
+  await js("document.getElementById('fs-find').dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }))");
+  check(await until("!document.querySelector('#fs-pop .fs-pop') && document.activeElement?.id === 'fs-switch'"), 'Esc closes it, back on the name');
+  await js("document.getElementById('fs-session').click()");
+  check(await until("!!document.querySelector('#fs-pop [data-end-session], #fs-pop #fs-list')"), 'Session opens its menu');
+  await js("document.getElementById('tab-activity').click()");
+  check(await until("!document.querySelector('#fs-pop .fs-pop') && document.getElementById('main').dataset.sideTab === 'activity'"), 'a click elsewhere closes the menu (and does what it was for)');
+  await js("document.getElementById('fs-diary').click()");
+  check(await until("document.getElementById('main').dataset.sideTab === 'diary' && getComputedStyle(document.getElementById('farm-diary-pane')).display === 'flex'"), 'the book opens the diary over the tabs');
+  await js("document.getElementById('diary-back').click()");
+  check(await until("document.getElementById('main').dataset.sideTab === 'activity'"), "the diary's Back returns to the tab you were on");
+  await js("document.getElementById('tab-agent').click()");
+  await shot('farm-sidebar');
 
   check(await js("!document.querySelector('#farm .world-strip') && !document.querySelector('#farm .world-panel')"), "the farm broke nothing: no error strip or panel (an error its bridge caught would show here)");
   check(await js("!document.querySelector('#farm .world-corner')"), "the farm has its own buttons: the page adds no corner control");
@@ -1002,7 +1047,7 @@ try {
     "the same picture loads in the page itself: the world's frame is what stops it, not the network");
   check(/private: yes/.test(diaryText), 'one of your worlds sees no words or paths by default');
   check(JSON.stringify(answered ?? null) === answeredBefore, 'a message the page does not accept (an answer) reached no session');
-  check(await js("!/nobody-here/.test(document.getElementById('farm-agent').textContent)"), 'a pick for an agent not on the dashboard was dropped');
+  check(await js("!/nobody-here/.test(document.getElementById('farm-sidebar').textContent)"), 'a pick for an agent not on the dashboard was dropped');
   check(await js("document.querySelector('#farm .world-frame')?.src.endsWith('/world/u/probe/') && !document.querySelector('#farm .world-panel') && document.getElementById('main').dataset.view === 'farm'"), 'and the page is still itself, the probe still in its frame');
   // The probe draws no buttons: the page gives it a way back, in a corner over its frame.
   check(await until("!!document.querySelector('#farm .world-corner')"), "a world that draws itself gets the page's corner control");
@@ -1149,6 +1194,53 @@ try {
   check(await until("document.getElementById('confirm').open && /End ui-done-b\\?/.test(document.getElementById('confirm-text').textContent)") && ended.length === 0, 'End session asks first, and does nothing until you confirm');
   await js("document.getElementById('confirm-yes').click()");
   check(await until("/Ended ui-done-b/.test(document.getElementById('notice').textContent)") && ended[0] === doneB.pid && launched.at(-1) === '/dev/ttys042', `confirmed, it ends that session and closes its window by its tty (ended ${JSON.stringify(ended)}, last ${launched.at(-1)})`);
+  console.log('Two Claude accounts');
+  // A collector of its own: two accounts, work (its claudeDir) and home (a sibling, its projects linked
+  // to work's), a live session on each, a past one, and a reading of each one's plan.
+  const acct = join(temp, 'accounts'), workDir = join(acct, 'claude'), homeDir = join(acct, 'claude-home'), field = join(acct, 'field'), acctRoot = join(acct, 'root');
+  for (const d of [join(workDir, 'sessions'), join(workDir, 'projects', '-field'), join(homeDir, 'sessions'), field, join(acctRoot, 'state', 'mods')]) mkdirSync(d, { recursive: true });
+  cpSync(join(ROOT, 'web'), join(acctRoot, 'web'), { recursive: true });
+  symlinkSync(join(workDir, 'projects'), join(homeDir, 'projects'));
+  writeFileSync(`${workDir}.json`, JSON.stringify({ oauthAccount: { emailAddress: 'farm@work.example' } }));
+  writeFileSync(join(homeDir, '.claude.json'), JSON.stringify({ oauthAccount: { emailAddress: 'farm@home.example' } }));
+  writeFileSync(join(acctRoot, 'config.json'), JSON.stringify({ port: 0, pollMs: 300, accounts: { [workDir]: 'work', [homeDir]: 'home' } }));
+  const A = { work: 'aaaaaaaa-1111-4111-8111-111111111111', home: 'bbbbbbbb-2222-4222-8222-222222222222', past: 'cccccccc-3333-4333-8333-333333333333' };
+  const onWork = spawn('sleep', ['600'], { stdio: 'ignore' }), onHome = spawn('sleep', ['600'], { stdio: 'ignore' });
+  writeFileSync(join(workDir, 'sessions', `${onWork.pid}.json`), JSON.stringify({ pid: onWork.pid, sessionId: A.work, cwd: field, name: 'work-farmer', kind: 'interactive', status: 'idle' }));
+  writeFileSync(join(homeDir, 'sessions', `${onHome.pid}.json`), JSON.stringify({ pid: onHome.pid, sessionId: A.home, cwd: field, name: 'home-farmer', kind: 'interactive', status: 'idle' }));
+  for (const [id, text, ago] of [[A.work, 'Work on the field', 9000], [A.home, 'Home on the field', 8000], [A.past, 'Plan the orchard', 86_400_000]]) {
+    writeFileSync(join(workDir, 'projects', '-field', `${id}.jsonl`), `${JSON.stringify({ type: 'user', timestamp: iso(Date.now() - ago), cwd: field, message: { role: 'user', content: text } })}\n`);
+  }
+  for (const [id, five, week] of [[A.work, 30, 40], [A.home, 95, 92]]) {
+    writeFileSync(join(acctRoot, 'state', 'mods', `${id}.json`), JSON.stringify({ sessionId: id, version: '0.9.0', at: Date.now(), usage: { costUsd: 1, rateLimits: [{ kind: 'five_hour', percentUsed: five, resetsAt: Date.now() + 3_600_000 }, { kind: 'seven_day', percentUsed: week, resetsAt: Date.now() + 86_400_000 }] } }));
+  }
+  const acctCli = join(acct, 'claude-cli');
+  writeFileSync(acctCli, `#!/bin/sh\ncase "$1 $2" in\n  "agents --json") echo '[]' ;;\n  "auth status") echo '{"loggedIn":true}' ;;\nesac\n`, { mode: 0o755 });
+  const acctLaunched = [];
+  const acctHandle = await startCollector({ root: acctRoot, claudeDir: workDir, claudeBin: acctCli, notify: () => {}, log: () => {}, home: '/nowhere', scratchBase: '/nonexistent', folderRoots: [realpathSync(acct)], launch: async args => { acctLaunched.push(args.at(-1)); return { code: 0, stdout: '', stderr: '' }; } });
+  try {
+    await send('Page.navigate', { url: `http://127.0.0.1:${acctHandle.port}/` });
+    check(await until("document.querySelectorAll('.row').length === 2"), 'both accounts\' sessions are listed');
+    check(await until("/work.*5-hour 30%.*week 40%.*home.*5-hour 95%.*week 92%/.test(document.getElementById('hstats').textContent.replace(/\\s+/g, ' '))"), `the top bar shows each account's plan (${await js("document.getElementById('hstats').textContent.replace(/\\s+/g, ' ')")})`);
+    check(await js("/farm@home\\.example/.test([...document.querySelectorAll('#hstats .hstat')].map(h => h.dataset.tip).join(' '))"), "each block's tip names its account's email");
+    check(await js("[...document.querySelectorAll('.row')].some(r => r.textContent.includes('home-farmer') && r.querySelector('.chip.acct')?.textContent === 'home')"), 'each agent carries its account\'s tag');
+    await js(`document.querySelector('.row[data-id="${A.work}"]')?.click()`);
+    check(await until(`(s => !!s && /account:home/.test(s.innerHTML) && /Move to another account/.test(s.innerHTML))(document.querySelector('#center-body [data-restart-mode]'))`), "Restart in… offers to move the work session to home");
+    await js("document.getElementById('sessions-open').click()");
+    check(await until("document.getElementById('sessions').open && !document.getElementById('sess-account-row').hidden && /home · 5h 95% · week 92%/.test(document.getElementById('sess-account').textContent)"), '＋ Session has the Account picker, with each account\'s room left');
+    check(await until(`[...document.querySelectorAll('#sessions [data-sess-resume="${A.past}"]')].length === 1`), 'and the past session to resume');
+    await js("(s => { s.value = 'home'; s.dispatchEvent(new Event('change', { bubbles: true })); })(document.getElementById('sess-account'))");
+    await js(`document.querySelector('#sessions [data-sess-resume="${A.past}"]').click()`);
+    check(await until("!document.getElementById('sessions').open") && acctLaunched.at(-1) === `cd '${field}' && exec env CLAUDE_CONFIG_DIR='${homeDir}' claude --resume ${A.past}`, `Resume on home runs it with home's config folder (got ${JSON.stringify(acctLaunched.at(-1))})`);
+    await js("document.getElementById('view-farm').click()");
+    check(await until("document.getElementById('main').dataset.view === 'farm'") && await funtil("[...document.querySelectorAll('.px-lab')].some(l => l.title.startsWith('The silo of home')) && [...document.querySelectorAll('.px-lab')].some(l => l.title.startsWith('The silo of work'))"), `the farm has a silo for each account (tags: ${await fjs("[...document.querySelectorAll('.px-lab.cnt')].map(l => l.title.slice(0, 40)).join(' | ')")})`);
+    await shot('two-accounts-farm');
+    await js("document.getElementById('view-list').click()");
+  } finally {
+    onWork.kill();
+    onHome.kill();
+    await acctHandle.stop();
+  }
   check(errors.length === 0, `no page errors${errors.length ? `: ${errors.join(' | ')}` : ''}`);
 } finally {
   await chrome?.close();

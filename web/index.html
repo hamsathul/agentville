@@ -213,6 +213,7 @@ dialog.sess-dlg { width: min(680px, calc(100vw - 32px)); max-width: none; paddin
 .sess-main b { font-weight: 600; }
 .sess-when { font-size: 12px; white-space: nowrap; }
 .sess-more { padding: 6px 2px 2px; border-top: 1px solid var(--line); }
+.chip.acct { background: transparent; border: 1px dashed var(--line); color: var(--muted); font-weight: 500; } /* an agent's Claude account, with two or more */
 .sess-modes { display: flex; align-items: center; gap: 8px; margin-top: 8px; font-size: 12px; flex-wrap: wrap; }
 .sess-modes select, .sess-tools select { padding: 3px 6px; border: 1px solid var(--line); border-radius: 6px; background: var(--page); color: var(--text); font: inherit; }
 .sess-tools { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; margin-top: 6px; font-size: 12px; }
@@ -368,19 +369,136 @@ table.sheet thead th:first-child { left: 0; z-index: 2; }
 #farm { display: none; min-height: 0; overflow: auto; }
 /* a world that broke: a panel in its place, or a strip over it (their rules, and the corner's, are in base.css, shared with the test page) */
 .app[data-view="farm"] > #farm { position: relative; }
-#farm-side { display: none; min-height: 0; overflow: auto; background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 12px 14px; }
-/* The farm sidebar: tabs on top, then one of the agent panel, its files (the explorer) or the farm diary. */
-#farm-tabs, #farm-diary-pane, #farm-activity-pane, #farm-subagents-pane { display: none; }
-.app[data-view="farm"][data-side="open"] { grid-template-columns: minmax(0, 1fr) 380px; grid-template-rows: auto minmax(0, 1fr); }
-.app[data-view="farm"][data-side="open"] > #farm { grid-row: 1 / span 2; grid-column: 1; }
-.app[data-view="farm"][data-side="open"] > #farm-tabs { display: flex; grid-row: 1; grid-column: 2; justify-self: start; }
-.app[data-view="farm"][data-side="open"][data-side-tab="agent"] > #farm-side { display: block; grid-row: 2; grid-column: 2; }
-.app[data-view="farm"][data-side="open"][data-side-tab="files"] > .col.right { display: flex; grid-row: 2; grid-column: 2; }
-.app[data-view="farm"][data-side="open"][data-side-tab="diary"] > #farm-diary-pane { display: block; grid-row: 2; grid-column: 2; }
-.app[data-view="farm"][data-side="open"][data-side-tab="activity"] > #farm-activity-pane { display: block; grid-row: 2; grid-column: 2; }
-.app[data-view="farm"][data-side="open"][data-side-tab="subagents"] > #farm-subagents-pane { display: block; grid-row: 2; grid-column: 2; }
-#farm-activity-pane, #farm-diary-pane, #farm-subagents-pane { min-height: 0; overflow: auto; background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 12px 14px; }
-#farm-tabs button[aria-selected="true"] { background: var(--panel); color: var(--text); box-shadow: 0 1px 3px rgba(0, 0, 0, .18), 0 0 0 1px var(--line); }
+/* The farm sidebar (web/sidebar.js), one panel beside the farm: who you are looking at, the others that
+   need you, its question, then its tabs (Chat, Activity, Subagents, Files), with the diary over them. */
+#farm-sidebar { display: none; }
+.app[data-view="farm"][data-side="open"] { grid-template-columns: minmax(0, 1fr) 400px; grid-template-rows: minmax(0, 1fr); }
+.app[data-view="farm"][data-side="open"] > #farm { grid-row: 1; grid-column: 1; }
+.app[data-view="farm"][data-side="open"] > #farm-sidebar { display: flex; flex-direction: column; grid-row: 1; grid-column: 2; position: relative; min-height: 0; overflow: hidden; background: var(--panel); border: 1px solid var(--line); border-radius: 12px; }
+#fs-head { flex: none; max-height: 62%; overflow-y: auto; }
+.fs-top { display: grid; gap: 7px; padding: 10px 10px 9px; border-bottom: 1px solid var(--line); }
+.fs-row { display: flex; align-items: center; gap: 6px; min-width: 0; }
+.fs-row .chip { flex: none; }
+.fs-wrap { flex-wrap: wrap; row-gap: 5px; } /* the state and its tags; Session keeps to the right, on the next line when they are many */
+.fs-switch { flex: 1; min-width: 0; height: 38px; display: flex; align-items: center; gap: 8px; padding: 0 9px 0 11px; border: 1px solid var(--line); border-radius: 9px; background: var(--panel-2); color: var(--text); font: inherit; text-align: left; cursor: pointer; }
+.fs-name { flex: 1; min-width: 0; font-size: 15px; font-weight: 650; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.fs-pos { flex: none; font-size: 11px; color: var(--faint); }
+.fs-icon { flex: none; width: 34px; height: 38px; display: inline-flex; align-items: center; justify-content: center; padding: 0; border: 1px solid var(--line); border-radius: 9px; background: var(--panel-2); color: var(--muted); cursor: pointer; }
+.fs-switch:hover, .fs-icon:hover, .fs-session:hover { border-color: color-mix(in srgb, var(--text) 28%, transparent); color: var(--text); }
+#farm-sidebar svg { flex: none; width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width: 1.6; stroke-linecap: round; stroke-linejoin: round; }
+.fs-steps { flex: none; display: inline-flex; }
+.fs-steps .fs-icon { width: 30px; }
+.fs-steps .fs-icon:first-child { border-radius: 9px 0 0 9px; }
+.fs-steps .fs-icon + .fs-icon { border-left: 0; border-radius: 0 9px 9px 0; }
+.fs-session { flex: none; margin-left: auto; height: 28px; display: inline-flex; align-items: center; gap: 5px; padding: 0 9px; border: 1px solid var(--line); border-radius: 8px; background: none; color: var(--text); font: inherit; font-size: 12px; font-weight: 600; cursor: pointer; }
+.fs-session[aria-expanded="true"] { background: var(--panel-2); }
+.fs-meta { font-size: 12px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.fs-top .set-note { max-width: none; }
+.fs-top .name-offer { margin-top: 0; }
+/* the other agents that need you: a line saying who, and a card each, answered in place */
+.fs-queue { border-bottom: 1px solid var(--line); background: color-mix(in srgb, var(--crit) 8%, var(--panel)); }
+.fs-queue-row { display: flex; align-items: center; padding-right: 6px; }
+.fs-queue-toggle { flex: 1; min-width: 0; min-height: 40px; display: flex; align-items: center; gap: 8px; padding: 6px 4px 6px 10px; border: 0; background: none; color: var(--text); font: inherit; font-size: 12.5px; text-align: left; cursor: pointer; }
+.fs-badge { flex: none; min-width: 20px; height: 20px; padding: 0 6px; border-radius: 999px; background: var(--crit); color: #fff; font-size: 11px; font-weight: 700; display: inline-flex; align-items: center; justify-content: center; }
+.fs-queue-label { flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.fs-next, .fs-open { flex: none; height: 28px; padding: 0 8px; border: 0; border-radius: 7px; background: none; color: var(--text); font: inherit; font-size: 12px; font-weight: 650; cursor: pointer; }
+.fs-next:hover, .fs-open:hover { background: var(--panel-2); }
+.fs-cards { display: grid; gap: 6px; max-height: 280px; overflow-y: auto; padding: 0 10px 10px; }
+.fs-card { display: grid; gap: 6px; padding: 8px 10px; border: 1px solid var(--line); border-radius: 10px; background: var(--panel); }
+.fs-card.perm { border-color: color-mix(in srgb, var(--crit) 45%, transparent); }
+.fs-card.ask { border-color: color-mix(in srgb, var(--warn) 60%, transparent); }
+.fs-card-head { display: flex; align-items: center; gap: 6px; min-width: 0; font-size: 12.5px; }
+.fs-card-head b { white-space: nowrap; }
+.fs-card-head .faint { min-width: 0; font-size: 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.fs-card-head .fs-open { margin-right: -4px; }
+.fs-card-what { font-size: 12px; overflow-wrap: anywhere; }
+.fs-card-what.mono { padding: 5px 8px; border: 1px solid var(--line); border-radius: 7px; background: var(--page); }
+.fs-card-q { font-size: 13px; font-weight: 600; }
+.fs-card-acts { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+.fs-card-acts .act { margin: 0; }
+.fs-card-note { font-size: 11.5px; }
+/* its own question, above the tabs */
+.fs-ask { padding: 0 10px; border-bottom: 1px solid var(--line); }
+.fs-ask .ask, .fs-ask .qcard { margin: 10px 0; }
+/* the tabs */
+#farm-tabs { flex: none; display: flex; gap: 2px; padding: 2px 6px 0; border-bottom: 1px solid var(--line); }
+#farm-tabs button { height: 38px; display: inline-flex; align-items: center; gap: 2px; padding: 0 9px; margin-bottom: -1px; border: 0; border-bottom: 2px solid transparent; background: none; color: var(--muted); font: inherit; font-weight: 600; cursor: pointer; }
+#farm-tabs button:hover { color: var(--text); }
+#farm-tabs button[aria-selected="true"] { color: var(--text); border-bottom-color: var(--accent); }
+#fs-body { flex: 1; min-height: 0; display: flex; flex-direction: column; }
+#fs-body > * { display: none; }
+.app[data-side-tab="agent"] #fs-body > #farm-side, .app[data-side-tab="activity"] #fs-body > #farm-activity-pane, .app[data-side-tab="subagents"] #fs-body > #farm-subagents-pane,
+.app[data-side-tab="files"] #fs-body > #explorer { display: flex; flex-direction: column; flex: 1; min-height: 0; }
+#fs-body > #explorer { overflow: hidden; background: none; border: 0; border-radius: 0; }
+#farm-activity-pane, #farm-subagents-pane { overflow: auto; padding: 12px 12px 14px; }
+/* Chat: what it does now, the conversation (newest at the bottom), the box */
+#fs-now { flex: none; }
+.fs-now { margin: 10px 10px 6px; padding: 9px 11px; border: 1px solid var(--line); border-radius: 10px; background: var(--panel-2); }
+.fs-now .workline { flex-wrap: nowrap; align-items: center; margin-bottom: 6px; }
+.fs-now .workline b { white-space: nowrap; }
+.fs-now .workline .muted { min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.fs-now .now { padding: 5px 8px; }
+.fs-now .sec { margin: 10px 0 4px; }
+.fs-now .shell-row:first-of-type { border-top: 1px solid var(--line); }
+.fs-cmds { display: flex; align-items: center; gap: 4px; width: 100%; min-height: 28px; margin-top: 6px; padding: 0; border: 0; background: none; color: var(--muted); font: inherit; font-size: 12px; text-align: left; cursor: pointer; }
+.fs-cmds:hover { color: var(--text); }
+.fs-rest { margin: 10px 12px 0; font-size: 12px; }
+#fs-chat { flex: 1; min-height: 0; overflow-y: auto; }
+#farm-agent { min-height: 100%; box-sizing: border-box; display: flex; flex-direction: column; justify-content: flex-end; padding: 12px; }
+.fs-chat-top { display: flex; justify-content: center; flex-wrap: wrap; gap: 6px; margin-bottom: 12px; }
+.fs-latest { display: flex; align-items: center; gap: 8px; margin: 2px 0; font-size: 10.5px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; color: var(--latest); }
+.fs-latest::before, .fs-latest::after { content: ''; flex: 1; height: 1px; background: color-mix(in srgb, var(--latest) 30%, transparent); }
+.fs-intro { margin-bottom: 10px; font-size: 12px; color: var(--muted); }
+.fs-intro .act { margin: 0 0 0 4px; }
+#fs-compose { flex: none; padding: 9px 10px 10px; border-top: 1px solid var(--line); }
+#fs-compose:empty { display: none; }
+#fs-compose .compose { margin-top: 0 !important; }
+#fs-compose #msg-status { flex: 1 1 100%; } /* on its own line, so Attach, Folder and Send stay together on the next */
+#fs-compose textarea { display: block; width: 100%; min-height: 62px; resize: vertical; padding: 8px 10px; border: 1px solid var(--line); border-radius: 10px; background: var(--page); color: var(--text); font: inherit; }
+#fs-compose textarea:focus { outline: 2px solid var(--accent); outline-offset: -1px; }
+.fs-modes-row { display: flex; align-items: center; gap: 8px; margin-bottom: 7px; }
+.fs-modes { flex: none; }
+.fs-modes button { flex: none; display: inline-flex; align-items: center; gap: 4px; padding: 3px 9px; font-size: 12px; white-space: nowrap; }
+.fs-modes button[aria-selected="true"] { background: var(--panel); color: var(--text); box-shadow: 0 1px 3px rgba(0, 0, 0, .18), 0 0 0 1px var(--line); }
+.fs-modes .grp-n { margin-left: 0; }
+.fs-keys { flex: 0 1 auto; min-width: 0; font-size: 11px; color: var(--faint); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+/* Activity's filter */
+.fs-chips { display: flex; flex-wrap: wrap; gap: 6px; margin: 2px 0 10px; }
+.fs-chip { height: 28px; display: inline-flex; align-items: center; gap: 2px; padding: 0 10px; border: 1px solid var(--line); border-radius: 999px; background: none; color: var(--muted); font: inherit; font-size: 12px; font-weight: 600; cursor: pointer; }
+.fs-chip[aria-pressed="true"] { border-color: var(--accent); background: color-mix(in srgb, var(--accent) 16%, transparent); color: var(--text); }
+/* the popovers: every agent, and the Session menu */
+#fs-pop:empty { display: none; }
+.fs-pop { position: absolute; z-index: 6; top: 56px; left: 10px; right: 10px; max-height: min(640px, calc(100% - 70px)); overflow: auto; padding: 8px; background: var(--panel); border: 1px solid var(--line); border-radius: 12px; box-shadow: 0 18px 44px rgba(0, 0, 0, .35); }
+.fs-pop.fs-menu { left: auto; width: 330px; max-width: calc(100% - 20px); box-sizing: border-box; }
+.fs-find { display: flex; align-items: center; gap: 8px; height: 36px; padding: 0 10px; border: 1px solid var(--line); border-radius: 8px; background: var(--page); color: var(--faint); }
+.fs-find input { flex: 1; min-width: 0; border: 0; background: none; color: var(--text); font: inherit; outline: none; }
+.fs-grp { display: flex; align-items: center; gap: 2px; padding: 10px 8px 4px; font-size: 11px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; color: var(--muted); }
+.fs-grp-needs::before { content: ''; width: 7px; height: 7px; margin-right: 5px; border-radius: 50%; background: var(--crit); }
+.fs-pick { width: 100%; min-height: 44px; display: flex; align-items: center; gap: 10px; padding: 5px 8px; border: 0; border-radius: 8px; background: none; color: var(--text); font: inherit; text-align: left; cursor: pointer; }
+.fs-pick:hover, .fs-pick:focus-visible { background: var(--panel-2); outline: none; }
+.fs-pick[aria-current="true"] { background: color-mix(in srgb, var(--accent) 18%, transparent); }
+.fs-pick-main { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+.fs-pick-main > * { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.fs-pick-main span { font-size: 12px; color: var(--muted); }
+.fs-pick-since { flex: none; font-size: 11px; color: var(--faint); font-variant-numeric: tabular-nums; }
+.fs-pop-foot { margin-top: 6px; padding: 8px 8px 2px; border-top: 1px solid var(--line); font-size: 11.5px; color: var(--faint); }
+.fs-pop-title { display: flex; align-items: baseline; gap: 6px; margin: 2px 4px 10px; font-size: 14px; }
+.fs-pop-title .faint { font-size: 12px; }
+.fs-form { display: grid; grid-template-columns: 84px minmax(0, 1fr); align-items: center; gap: 7px 10px; padding: 0 4px; }
+.fs-form label { font-size: 12px; color: var(--muted); }
+.fs-form select { min-width: 0; height: 32px; padding: 0 6px; border: 1px solid var(--line); border-radius: 7px; background: var(--page); color: var(--text); font: inherit; }
+.fs-hint { grid-column: 2; margin: -3px 0 2px; font-size: 11.5px; color: var(--faint); }
+.fs-sep { height: 1px; margin: 10px -8px 6px; background: var(--line); }
+.fs-item { width: 100%; min-height: 36px; display: flex; flex-direction: column; align-items: flex-start; justify-content: center; gap: 1px; margin: 0; padding: 5px 8px; border: 0; border-radius: 8px; background: none; color: var(--text); font: inherit; text-align: left; text-decoration: none; cursor: pointer; }
+.fs-item:hover { background: var(--panel-2); border-color: transparent; }
+.fs-item span { font-size: 11.5px; font-weight: 400; color: var(--faint); }
+.fs-item.danger b { color: var(--crit); }
+.fs-mod { margin: 6px 8px 2px; font-size: 12px; }
+/* the diary, over the tabs, with a way back */
+#farm-diary-pane { display: none; position: absolute; inset: 0; z-index: 5; flex-direction: column; overflow: auto; padding: 10px 14px 14px; background: var(--panel); }
+.app[data-side-tab="diary"] #farm-diary-pane { display: flex; }
+.fs-back { align-self: flex-start; height: 36px; display: inline-flex; align-items: center; gap: 7px; padding: 0 12px 0 9px; border: 1px solid var(--line); border-radius: 9px; background: var(--panel-2); color: var(--text); font: inherit; font-weight: 600; cursor: pointer; }
+#farm-diary-pane .sec { margin: 14px 0 8px; }
 .qcard { border: 1px solid color-mix(in srgb, var(--warn) 65%, transparent); background: color-mix(in srgb, var(--warn) 10%, transparent); border-radius: 12px; padding: 10px 13px; margin: 12px 0; display: grid; gap: 8px; }
 .qtext { font-weight: 600; font-size: 14px; }
 .qbtns { display: flex; gap: 6px; }
@@ -408,16 +526,16 @@ a.chip { text-decoration: none; }
 .bub-md pre { overflow: auto; background: var(--panel); border-radius: 6px; padding: 6px 8px; }
 .bub-md pre code { background: none; padding: 0; }
 .bub-md a { color: var(--accent); }
-.fs-head { display: flex; align-items: center; gap: 8px; }
-.fs-head .name { font-size: 15px; }
-.fs-head .act { margin: 0; }
-@media (max-width: 900px) { .app[data-view="farm"][data-side="open"] { display: block; } }
+@media (max-width: 900px) {
+  .app[data-view="farm"][data-side="open"] { display: block; }
+  .app[data-view="farm"][data-side="open"] > #farm-sidebar { height: 85vh; margin: 10px 0 0 10px; }
+}
 .app[data-view="farm"] { grid-template-columns: minmax(0, 1fr); }
 /* The farm fills the window: the top bar and the count cards are drawn inside it (its panel and buttons). */
 html[data-view="farm"] header.top, html[data-view="farm"] #kpis { display: none; }
 html[data-view="farm"] .app { padding: 0; gap: 0; }
 html[data-view="farm"] .app[data-side="open"] { padding: 0 10px 10px 0; column-gap: 10px; row-gap: 8px; }
-html[data-view="farm"] .app[data-side="open"] > #farm-tabs { margin-top: 10px; }
+html[data-view="farm"] .app[data-side="open"] > #farm-sidebar { margin-top: 10px; }
 #farm > .world-frame { flex: 1; min-height: 0; width: 100%; border: 0; display: block; background: transparent; }
 html[data-view="farm"] .app[data-side="open"] #farm > .world-frame { border-right: 1px solid var(--line); background: #1c3320; } /* the edge over the farm's ground, as when the farm drew it */
 html[data-view="farm"] .banner.show { position: fixed; top: 10px; left: 50%; transform: translateX(-50%); z-index: 50; max-width: min(640px, calc(100vw - 32px)); border: 1px solid var(--line); border-radius: 8px; box-shadow: 0 6px 18px rgba(0, 0, 0, .35); }
@@ -516,17 +634,23 @@ html[data-guard="on"] .app .act, html[data-guard="on"] dialog[open] .act { opaci
     <div id="center-tabs" class="tabs" role="tablist"></div>
     <div id="center-body" class="center-body"><div class="loading"><span class="spinner"></span>Waiting for the first update from the tracker…</div></div>
   </section>
-  <aside class="col right" aria-label="Files in the agent's folder">
+  <aside class="col right" id="explorer" aria-label="Files in the agent's folder">
     <div class="ex-head"><span class="ex-title">Explorer</span><span class="grow"></span><button class="act mini" id="ex-refresh" type="button" data-tip="Reload the file list">↻</button></div>
     <input id="ex-filter" type="search" placeholder="Filter files…" autocomplete="off" spellcheck="false">
     <div id="tree" class="tree"></div>
   </aside>
   <section id="farm" aria-label="Pixel farm"></section>
-  <div id="farm-tabs" class="seg" role="tablist" aria-label="Sidebar"><button type="button" id="tab-agent" role="tab" data-farm-tab="agent">Agent</button><button type="button" id="tab-activity" role="tab" data-farm-tab="activity">Activity</button><button type="button" id="tab-subagents" role="tab" data-farm-tab="subagents">Subagents</button><button type="button" id="tab-files" role="tab" data-farm-tab="files">Files</button><button type="button" id="tab-diary" role="tab" data-farm-tab="diary">Diary</button></div>
-  <aside id="farm-side" aria-label="The selected farmer"><div id="farm-agent"></div></aside>
-  <aside id="farm-activity-pane" aria-label="Activity"><div id="farm-activity"></div></aside>
-  <aside id="farm-subagents-pane" aria-label="Subagents"><div id="farm-subagents"></div></aside>
-  <aside id="farm-diary-pane" aria-label="Farm diary"><div class="sec" style="margin-top:0">Farm diary</div><ol id="farm-diary" class="px-log"></ol></aside>
+  <aside id="farm-sidebar" aria-label="Sidebar">
+    <div id="fs-head"></div>
+    <div id="farm-tabs" role="tablist" aria-label="This agent"><button type="button" id="tab-agent" role="tab" data-farm-tab="agent">Chat</button><button type="button" id="tab-activity" role="tab" data-farm-tab="activity">Activity</button><button type="button" id="tab-subagents" role="tab" data-farm-tab="subagents">Subagents</button><button type="button" id="tab-files" role="tab" data-farm-tab="files">Files</button></div>
+    <div id="fs-body">
+      <section id="farm-side" aria-label="Chat"><div id="fs-now"></div><div id="fs-chat"><div id="farm-agent"></div></div><div id="fs-compose"></div></section>
+      <section id="farm-activity-pane" aria-label="Activity"><div id="farm-activity"></div></section>
+      <section id="farm-subagents-pane" aria-label="Subagents"><div id="farm-subagents"></div></section>
+    </div>
+    <section id="farm-diary-pane" aria-label="Farm diary"><button type="button" id="diary-back" class="fs-back">Back</button><div class="sec">Farm diary</div><ol id="farm-diary" class="px-log"></ol></section>
+    <div id="fs-pop"></div>
+  </aside>
 </main>
 <div id="tip" class="tip" role="tooltip"></div>
 <input type="file" id="file-picker" multiple hidden>
@@ -539,6 +663,7 @@ html[data-guard="on"] .app .act, html[data-guard="on"] dialog[open] .act { opaci
   <p id="fork-text"></p>
   <div class="sess-modes"><label for="fork-mode">Permission mode</label><select id="fork-mode"></select></div>
   <div class="sess-modes"><label for="fork-model">Model</label><select id="fork-model"></select><label for="fork-effort">Effort</label><select id="fork-effort"></select></div>
+  <div class="sess-modes" id="fork-account-row" hidden><label for="fork-account">Account</label><select id="fork-account"></select></div>
   <p id="fork-warn" class="msg-bad" hidden>⚠ every tool runs without asking (--dangerously-skip-permissions)</p>
   <p class="confirm-actions"><button type="button" class="act" data-fork-cancel>Cancel</button><button type="button" class="act primary" id="fork-go" data-fork-go>⑂ Fork</button></p>
 </dialog>
@@ -558,6 +683,7 @@ html[data-guard="on"] .app .act, html[data-guard="on"] dialog[open] .act { opaci
   <div class="sess-modes"><label for="sess-mode">Permission mode</label><select id="sess-mode"><option value="default">Ask first</option><option value="acceptEdits">Accept edits</option><option value="plan">Plan mode</option><option value="auto">Auto</option><option value="bypassPermissions">Bypass permissions</option></select><span id="sess-mode-warn" class="msg-bad" hidden>⚠ every tool runs without asking (--dangerously-skip-permissions)</span></div>
   <div class="sess-modes"><label for="sess-model">Model</label><select id="sess-model"><option value="default">Your default</option><option value="opus">Opus</option><option value="opus[1m]">Opus, 1M context</option><option value="sonnet">Sonnet</option><option value="haiku">Haiku</option><option value="fable">Fable</option></select>
     <label for="sess-effort">Effort</label><select id="sess-effort"><option value="">Its default</option><option value="low">low</option><option value="medium">medium</option><option value="high">high</option><option value="xhigh">xhigh</option><option value="max">max</option></select><span class="faint">for this session only (--model, --effort)</span></div>
+  <div class="sess-modes" id="sess-account-row" hidden><label for="sess-account">Account</label><select id="sess-account"></select><span class="faint">your Claude account for this session (CLAUDE_CONFIG_DIR)</span></div>
   <div class="sec" style="margin-top:12px">New session in any folder</div>
   <div class="sess-dir"><input id="sess-dir" type="text" placeholder="Type or paste a folder: ~/code/new-app" autocomplete="off" spellcheck="false" aria-label="Folder" aria-describedby="sess-dir-note"><button type="button" class="act mini" id="sess-dir-browse" data-tip="Pick it in Finder's folder window, which can also make a new folder">Browse…</button><button type="button" class="act mini primary" id="sess-dir-new" disabled>＋ New</button></div>
   <div id="sess-dir-list" class="dir-list" hidden></div>
@@ -567,6 +693,7 @@ html[data-guard="on"] .app .act, html[data-guard="on"] dialog[open] .act { opaci
     <select id="sess-f-folder" aria-label="Folder"><option value="">All folders</option></select>
     <select id="sess-f-model" aria-label="Model it last ran on"><option value="">Any model</option></select>
     <select id="sess-f-branch" aria-label="Git branch"><option value="">Any branch</option></select>
+    <select id="sess-f-account" aria-label="Account it last ran on" hidden><option value="">Any account</option></select>
     <select id="sess-f-live" aria-label="Running or not"><option value="">Running or not</option><option value="live">Running now</option><option value="idle">Not running</option></select>
     <span class="grow"></span>
     <label for="sess-sort">Sort</label><select id="sess-sort"><option value="active">Last active</option><option value="started">Started</option><option value="name">Name A–Z</option><option value="folder">Folder A–Z</option><option value="length">Longest first</option></select>
@@ -617,6 +744,7 @@ html[data-guard="on"] .app .act, html[data-guard="on"] dialog[open] .act { opaci
 <script src="/viewer.js"></script>
 <script src="/explorer.js"></script>
 <script src="/conversation.js"></script>
+<script src="/sidebar.js"></script>
 <script src="/app.js"></script>
 <script src="/sessions.js"></script>
 <script src="/setup.js"></script>

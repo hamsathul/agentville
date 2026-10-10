@@ -16,5 +16,6 @@
   "modToasts": true,
   "deployRepos": {},
   "worldsDir": null,
-  "terminal": "Terminal"
+  "terminal": "Terminal",
+  "accounts": {}
 }

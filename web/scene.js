@@ -124,12 +124,18 @@
     const kids = agents.map(a => a.children ?? []);
     const now = snap?.generatedAt ?? Date.now();
     const waiting = agents.filter(a => a.state === 'waiting'), cpuUsed = agents.reduce((t, a) => t + (a.proc?.cpu ?? 0), 0);
-    const windows = (snap?.plan?.windows ?? []).map(w => ({ kind: w.kind, pct: w.reset ? 0 : w.percentUsed, resetsAt: w.resetsAt ?? null, reset: w.reset === true }));
+    // a plan's limits ({ windows, fiveHour, weekly }), the first account's (`plan`) and each account's
+    const planOf = plan => {
+      if (!plan) return null;
+      const windows = (plan.windows ?? []).map(w => ({ kind: w.kind, pct: w.reset ? 0 : w.percentUsed, resetsAt: w.resetsAt ?? null, reset: w.reset === true }));
+      return { windows, fiveHour: windows.find(w => w.kind === 'five_hour') ?? null, weekly: windows.find(w => w.kind === 'seven_day') ?? null };
+    };
     return {
       version: VERSION,
       generatedAt: now,
       private: false,
-      plan: snap?.plan ? { windows, fiveHour: windows.find(w => w.kind === 'five_hour') ?? null, weekly: windows.find(w => w.kind === 'seven_day') ?? null } : null,
+      plan: planOf(snap?.plan),
+      accounts: (snap?.accounts ?? []).map(a => ({ key: a.key, name: a.name, plan: planOf(a.plan) })), // your Claude accounts: never their emails
       // what the dashboard's top bar and count cards say, for a world's own panel (it fills the window)
       chrome: {
         counts: snap?.counts ?? null, asking: agents.filter(a => a.question).length, agents: agents.length,
@@ -173,6 +179,7 @@
         turn: a.state === 'working' ? a.turn ?? null : null, effort: a.effort ?? null,
         model: a.modelLabel ?? a.model ?? null, family: familyOf(a.modelLabel ?? a.model), fast: a.fast === true,
         planAsk: a.state === 'waiting' && a.now?.tool === 'ExitPlanMode', // a plan waiting for your approval
+        account: a.account ?? null, // the key of the Claude account it runs on
         service: a.now?.service ?? null, // where a web or connector call goes
         jobs: (a.children ?? []).filter(c => c.kind === 'bgjob' && c.state === 'running').length, // background commands running
         wakeAt: a.wakeAt ?? null, nap: Boolean(a.wakeAt > now && (a.state === 'yourTurn' || a.state === 'idle') && !a.question), // it comes back by itself (/loop)
@@ -193,7 +200,8 @@
    * task, message and subagent text, pull requests' titles, deploys' words, branches, where calls go),
    * no paths, and no names. A world can reach a host it names, so what it sees could leave the machine;
    * a session's name can be its conversation's title, and folder, repo and project names can name
-   * clients or work. So repos, projects and agents are numbers (repo 1, project 1, agent 1; keys r1, p1).
+   * clients or work. So repos, projects and agents are numbers (repo 1, project 1, agent 1; keys r1, p1),
+   * and so are your Claude accounts, in their order (account 1; keys a1).
    * States, tools (and MCP server names), steps, numbers, colours, ids and PR numbers stay.
    */
   function privateScene(s) {
@@ -205,11 +213,13 @@
       if (!byName.has(a.name)) byName.set(a.name, label);
     }
     const num = id => id.slice(1);
+    const accountKey = key => { const i = s.accounts.findIndex(x => x.key === key); return i < 0 ? null : `a${i + 1}`; };
     return {
       ...s, private: true,
       chrome: { ...s.chrome, errors: [] },
       subagents: s.subagents.map(x => ({ ...x, label: '', parent: byName.get(x.parent) ?? null })),
       mail: s.mail.map(m => ({ ...m, text: '' })),
+      accounts: s.accounts.map((a, i) => ({ ...a, key: `a${i + 1}`, name: `account ${i + 1}` })),
       repos: s.repos.map(r => ({
         ...r, key: standIn(r.key, 'r'), main: standIn(r.main, 'r'), branch: null, project: standIn(r.project, 'p'),
         name: `repo ${num(standIn(r.key, 'r'))}`, projectName: r.project ? `project ${num(standIn(r.project, 'p'))}` : null,
@@ -217,7 +227,7 @@
         prs: r.prs ? { open: (r.prs.open ?? []).map(p => ({ number: p.number, checks: p.checks, draft: p.draft })), merged: (r.prs.merged ?? []).map(p => ({ number: p.number, at: p.at })) } : null,
       })),
       agents: s.agents.map(a => ({
-        ...a, name: labels.get(a.id), cwd: null, repo: standIn(a.repo, 'r'), summary: '', ask: '', question: null, reply: '', said: '', service: null,
+        ...a, name: labels.get(a.id), cwd: null, repo: standIn(a.repo, 'r'), summary: '', ask: '', question: null, reply: '', said: '', service: null, account: accountKey(a.account),
         tasks: a.tasks ? { done: a.tasks.done, total: a.tasks.total } : null,
         turn: a.turn ? { word: a.turn.word ?? null, startedAt: a.turn.startedAt ?? null, outTokens: a.turn.outTokens ?? null, mode: a.turn.mode ?? null } : null,
       })),

@@ -211,7 +211,7 @@ test("the command refuses a world whose world.js leads out of its folder, before
     symlinkSync(join('src', 'main.js'), join(worlds, 'inside', 'world.js'));
     const ok = run('inside', '--worlds', worlds);
     assert.equal(ok.status, 0, ok.stdout + ok.stderr);
-    assert.match(ok.stdout, /✓ 33 stops of the tour/);
+    assert.match(ok.stdout, /✓ 34 stops of the tour/);
   } finally { rmSync(tmp, { recursive: true, force: true }); }
 });
 
@@ -400,4 +400,9 @@ test("the kit's gag check is called as world code: under the timeout, and only a
   assert.equal(guardedGagCheck(ctx.many, call)({ id: 'a' }), 'two lines red');
   assert.equal(guardedGagCheck(ctx.fine, call)({ id: 'a' }), '');
   assert.equal(guardedGagCheck(undefined, call), null, 'no kit: no gag checks');
+});
+
+test("the starter draws several accounts (a meter for each), so check-world doesn't flag the item", async () => {
+  const r = await checkWorld({ dir: builtIn('starter') });
+  assert.ok(!r.same.some(s => s.includes('several accounts')), r.same.join('\n'));
 });

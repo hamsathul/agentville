@@ -40,6 +40,13 @@
     const p = w.reset ? 0 : w.percentUsed;
     return { fill: Math.max(0, Math.min(1, p / 100)), lamp: p >= 90 ? 'red' : p >= 70 ? 'amber' : null, label: `${Math.round(p)}%`, resetsAt: w.resetsAt ?? null };
   }
+  const SILO_X = [92, 8]; // the first account's silo where it always stood; a second account's left of the barn, before the trees
+  /** A silo per Claude account (two at most): [{ x, name, silo }]. With one account, the plan's silo and no name on it. */
+  function silosOf(scene) {
+    const accs = scene.accounts ?? [];
+    if (accs.length < 2) return [{ x: SILO_X[0], name: null, silo: siloOf(scene.plan) }];
+    return accs.slice(0, 2).map((a, i) => ({ x: SILO_X[i], name: a.name, silo: siloOf(a.plan) }));
+  }
 
   /**
    * Weather over a field, from its last deploy (same rules as the list view's deploy chip): the
@@ -810,14 +817,19 @@
       return `The season follows your plan's 5-hour limit${w ? `: ${w.reset ? 'just reset' : `${Math.round(w.percentUsed)}% used`}` : ' (no reading yet: summer)'}. Spring while it is fresh, then summer and autumn; winter when it is nearly used up`;
     }
     const seasonIcon = s => (s === 'summer' ? 'day' : s);
-    /** The silo's grain and lamp, the pond's ripples and duck, the henhouse's eggs and hens: each frame. */
+    /**
+     * The silos' grain and lamps (a second account's silo is drawn here too, in front of the corner's trees),
+     * the pond's ripples and duck, the henhouse's eggs and hens: each frame.
+     */
     function drawScenery() {
-      const T = PXG.T, silo = siloOf(scene.plan);
-      if (silo) {
-        const h = Math.round(46 * silo.fill);
-        if (h) { px(99, 73 - h, 6, h, '#e9c46a'); px(99, 73 - h, 6, 1, '#f4d58d'); }
-        for (const t of [0.25, 0.5, 0.75]) px(105, 73 - Math.round(46 * t), 1, 1, '#c3cbd2');
-        if (silo.lamp && (silo.lamp === 'amber' || blink(2))) { px(100, 3, 4, 3, silo.lamp === 'red' ? '#e04a3a' : '#f0b429'); PXG.lights?.push([102, 6, 8, [100, 3, 4, 3]]); }
+      const T = PXG.T;
+      for (const { x, silo: g } of silosOf(scene)) {
+        if (x !== SILO_X[0]) silo(px, x, 6, SEASONS[shown()] ?? SEASONS.summer);
+        if (!g) continue;
+        const h = Math.round(46 * g.fill);
+        if (h) { px(x + 7, 73 - h, 6, h, '#e9c46a'); px(x + 7, 73 - h, 6, 1, '#f4d58d'); }
+        for (const t of [0.25, 0.5, 0.75]) px(x + 13, 73 - Math.round(46 * t), 1, 1, '#c3cbd2');
+        if (g.lamp && (g.lamp === 'amber' || blink(2))) { px(x + 8, 3, 4, 3, g.lamp === 'red' ? '#e04a3a' : '#f0b429'); PXG.lights?.push([x + 10, 6, 8, [x + 8, 3, 4, 3]]); }
       }
       if (shown() !== 'winter') { // ripples, and a duck paddling round the pond
         for (let i = 0; i < 2; i++) { const ph = (T * 0.5 + i * 0.5) % 1, r = Math.round(ph * 6); PXG.ctx.globalAlpha = 0.6 * (1 - ph); px(30 - r, 208 + i * 5, r * 2 + 1, 1, '#a9dcf7'); }
@@ -1111,9 +1123,9 @@
       /** The building at a farm point, if any: each opens something. */
       buildingAt(x, y) {
         const at = ([x0, y0, x1, y1]) => x >= x0 && x <= x1 && y >= y0 && y <= y1;
-        return [['barn', [36, 12, 88, 80]], ['silo', [92, 4, 112, 80]], ['board', [111, 58, 128, 82]], ['house', [132, 8, 268, 66]], ['stall', [STALL.x - 1, STALL.y - 1, STALL.x + 29, STALL.y + 34]], ['henhouse', [6, 96, 100, 136]]].find(([, box]) => at(box))?.[0] ?? null;
+        return [['barn', [36, 12, 88, 80]], ...silosOf(scene).map(({ x }) => ['silo', [x, 4, x + 20, 80]]), ['board', [111, 58, 128, 82]], ['house', [132, 8, 268, 66]], ['stall', [STALL.x - 1, STALL.y - 1, STALL.x + 29, STALL.y + 34]], ['henhouse', [6, 96, 100, 136]]].find(([, box]) => at(box))?.[0] ?? null;
       },
-      buildingTip: k => ({ barn: 'The barn: start a new session or resume one (a new farmer walks out of its door)', silo: "The silo: your plan's usage", board: 'The notice board: what your projects remember (CLAUDE.md and memory)', house: 'The farmhouse: who is on your porch', stall: 'The market stall: pull requests', henhouse: 'The henhouse: subagents' })[k] ?? '',
+      buildingTip: k => ({ barn: 'The barn: start a new session or resume one (a new farmer walks out of its door)', silo: "The silo: your plan's usage (a silo for each of your Claude accounts, when you have two)", board: 'The notice board: what your projects remember (CLAUDE.md and memory)', house: 'The farmhouse: who is on your porch', stall: 'The market stall: pull requests', henhouse: 'The henhouse: subagents' })[k] ?? '',
       /** What a building shows when clicked: { title, html }. */
       dialog(k) {
         if (k === 'house') {
@@ -1121,7 +1133,11 @@
           return { title: 'Your porch', html: list.length ? `<ul class="px-dl">${list.map(f => `<li><button type="button" class="act" data-farm-pick="${esc(f.id)}">Open</button><span><b>${esc(f.name)}</b> ${esc(f.state === 'waiting' ? (f.planAsk ? 'has a plan for you to approve' : `needs you: ${f.ask}`) : f.question ? `asks: ${f.question}` : `finished${f.reply ? `: ${f.reply}` : ''}`)}</span></li>`).join('')}</ul>` : '<p class="muted">Nobody is waiting on you.</p>' };
         }
         if (k === 'silo') {
-          const ws = scene.plan?.windows ?? [], name = w => ({ five_hour: '5-hour limit', seven_day: 'Weekly limit' })[w.kind] ?? w.kind;
+          const name = w => ({ five_hour: '5-hour limit', seven_day: 'Weekly limit' })[w.kind] ?? w.kind;
+          const meters = ws => ws.map(w => { const pct = w.reset ? 0 : Math.round(w.percentUsed); return `<div class="px-meter"><b>${esc(name(w))}</b><span class="bar"><i style="width:${Math.min(100, pct)}%"></i></span><span>${w.reset ? 'just reset' : `${pct}% used`}${w.resetsAt ? ` · resets ${esc(new Date(w.resetsAt).toLocaleString([], { weekday: 'short', hour: '2-digit', minute: '2-digit' }))}` : ''}</span></div>`; }).join('');
+          const accs = scene.accounts ?? [];
+          if (accs.length > 1) return { title: "The silos: your accounts' plans", html: accs.map(a => `<h4>${esc(a.name)}</h4>${a.plan?.windows?.length ? meters(a.plan.windows) : '<p class="muted">No reading yet: it comes from the mod in a session running on it.</p>'}`).join('') + `<p class="muted">Each silo's grain is its account's week. The season follows ${esc(accs[0].name)}'s 5-hour limit (winter when it is nearly used up).</p>` };
+          const ws = scene.plan?.windows ?? [];
           return { title: 'The silo: your plan', html: ws.length ? ws.map(w => { const pct = w.reset ? 0 : Math.round(w.percentUsed); return `<div class="px-meter"><b>${esc(name(w))}</b><span class="bar"><i style="width:${Math.min(100, pct)}%"></i></span><span>${w.reset ? 'just reset' : `${pct}% used`}${w.resetsAt ? ` · resets ${esc(new Date(w.resetsAt).toLocaleString([], { weekday: 'short', hour: '2-digit', minute: '2-digit' }))}` : ''}</span></div>`; }).join('') + '<p class="muted">The grain is the week; the season is the 5-hour limit (winter when it is nearly used up).</p>' : '<p class="muted">No reading of your plan yet: it comes from the mod in a running session.</p>' };
         }
         if (k === 'henhouse') {
@@ -1318,8 +1334,11 @@
           if (f.dirty > 0) lab(s.cx + 25, s.rowTop + 3 - Math.ceil(Math.min(f.dirty, 12) / 9) * 6, cnt(`+${f.dirty}`), 'cnt', `${f.dirty} uncommitted file${f.dirty === 1 ? '' : 's'}`);
         }
         if (!ST.length) lab(262, 150, pxt('No fields yet: no agent has touched a repo in the last 30 minutes', '#fff3d6', '#4e3626'), 'zone');
-        const silo = siloOf(scene.plan);
-        if (silo) lab(102, 80, silo.lamp === 'red' ? pxt(silo.label, '#ffffff', null) : cnt(silo.label), `cnt${silo.lamp ? ` silo-${silo.lamp}` : ''}`, `The silo: your plan's weekly limit, ${silo.label} used${silo.resetsAt ? `, resets ${new Date(silo.resetsAt).toLocaleString([], { weekday: 'short', hour: '2-digit', minute: '2-digit' })}` : ''}`);
+        for (const { x, name, silo } of silosOf(scene)) { // its week's figure at its foot; with two accounts, its account's name too
+          const text = name ? `${name} ${silo?.label ?? '–'}` : silo?.label;
+          if (!text) continue;
+          lab(x + 10, 80, silo?.lamp === 'red' ? pxt(text, '#ffffff', null) : cnt(text), `cnt${silo?.lamp ? ` silo-${silo.lamp}` : ''}`, `The silo${name ? ` of ${name}` : ''}: ${silo ? `${name ? 'its' : 'your'} plan's weekly limit, ${silo.label} used${silo.resetsAt ? `, resets ${new Date(silo.resetsAt).toLocaleString([], { weekday: 'short', hour: '2-digit', minute: '2-digit' })}` : ''}` : 'no reading of its plan yet'}`);
+        }
         if (scene.henhouse?.roosting) lab(64, 104, cnt(`+${scene.henhouse.roosting}`), 'cnt', `${scene.henhouse.roosting} more subagent${scene.henhouse.roosting === 1 ? '' : 's'} running than the farmers can lead`);
         if (scene.henhouse?.eggs) lab(14, 142, cnt(`${scene.henhouse.eggs} egg${scene.henhouse.eggs === 1 ? '' : 's'}`), 'cnt', 'Eggs: subagents that finished lately');
         const sign = t => pxt(t, '#fff3d6', '#4e3626');
@@ -1351,7 +1370,7 @@
       <b>Carts by the road to town</b><span>a cart for each MCP server (Gmail, playwright, Chrome…) your agents called in the last hour, waiting in a row at the lane's end; while one calls it, its cart drives to that farmer, with the server's name, and waits beside it until the call is done</span>
       <b>Pumps, hammocks</b><span>a pump by a bed = a background command still running; a farmer in a hammock = a session that wakes up by itself (/loop, a scheduled wake-up), with when</span>
       <b>Market stall</b><span>a crate for each open pull request, its tag the checks (green pass, red failed, yellow running, grey draft); “Sold!” = one merged</span>
-      <b>Buildings</b><span>click the barn to start or resume a session, the farmhouse for who is on your porch, the silo for your plan's usage, the henhouse for subagents, the notice board for CLAUDE.md and memory, the stall for pull requests</span>
+      <b>Buildings</b><span>click the barn to start or resume a session, the farmhouse for who is on your porch, the silo for your plan's usage (a silo for each Claude account, when you have two), the henhouse for subagents, the notice board for CLAUDE.md and memory, the stall for pull requests</span>
       <b>Farmers</b><span>one per agent; each has its own hat, hair and clothes, and its shirt is the agent's colour in the list. Hover one for its name; names always show for the farmer you picked and those on the porch</span>
       <b>Speech bubbles</b><span>what a farmer asked or last said; × hides one to a 💬 (click it to show the bubble again); a new message brings it back by itself. The Bubbles switch hides or shows them all</span>
       <b>Above a field</b><span>hay = uncommitted files, crates = unpushed commits, mailbox = behind the remote</span>
@@ -1359,7 +1378,7 @@
       <b>Hearts, crops</b><span>hearts = context left. Crops grow as the context fills: seeds, sprouts, young plants, in flower, ripening, then ripe with a sparkle (golden wheat, red tomatoes, sunflowers in bloom…) when it is nearly full. When the conversation is compacted, that's the harvest: the field starts again from seed. Chickens = subagents, the dog = an Explore subagent</span>
       <b>Animals</b><span>cows, goats, a sheepdog (with a red bandana), an ostrich, a lion, a tiger and the ducks on the pond live here just for fun: they never stand for anything. Click one, or the pond, to pet or feed it: the nearest farmer that isn't waiting on you walks over and does it. Now and then they get up to something: a goat steals a hat, the ostrich runs off with the bucket, the cow naps in an empty hammock. They react to deploys, harvests and merges. Farmers idle for a while sometimes play with them. In winter they huddle, and the goats wear scarves. The Animals switch hides them</span>
       <b>Shade tree, scarecrows</b><span>idle agents nap under the tree (bottom left); stale ones stand as scarecrows (top right); the meadow by the henhouse is for agents outside any repo</span>
-      <b>Silo</b><span>its grain is your plan's weekly limit used (the % under it; when it resets on hover); its lamp turns amber from 70% and blinks red from 90%</span>
+      <b>Silo</b><span>its grain is your plan's weekly limit used (the % under it; when it resets on hover); its lamp turns amber from 70% and blinks red from 90%. With two Claude accounts, each has a silo (the second left of the barn), its name on the tag at its foot</span>
       <b>Seasons</b><span>follow your plan's 5-hour limit: spring while it is fresh (blossom), then summer, autumn (falling leaves), and winter (snow) when it is nearly used up; a new window brings spring back. The Season switch holds one instead (each click moves it on, then back to live): the panel then shows the season with a 📌 and your real 5-hour use, and the animals follow the season you see</span>
       <b>Henhouse</b><span>eggs in the nest = subagents that finished lately; hens in the run and a +N sign = more subagents running than their farmers can lead</span>
       <b>Pigeons</b><span>one agent messaging another (Claude Code's SendMessage between sessions): a pigeon flies the note from one farmer to the other, and the diary says what it said; the agents' conversations show it too</span>
@@ -1375,7 +1394,7 @@
   window.Agentville.world(makeFarm());
   // The farm's own pieces, for its tests (and the world tools to come).
   window.AgentvilleFarm = {
-    farmScene, makeFarm, actionOf, paint, growthStage, STAGES, skyAt, PALETTE, ink, walkFrame, stepParticles, seasonOf, siloOf, glyphOf, textWidth,
+    farmScene, makeFarm, actionOf, paint, growthStage, STAGES, skyAt, PALETTE, ink, walkFrame, stepParticles, seasonOf, siloOf, silosOf, glyphOf, textWidth,
     weatherOf, helpHtml, layoutFor, packedLayout, rowsOfGroup, cartRoute, cartGoal, cutMid, tagText,
   };
 })();

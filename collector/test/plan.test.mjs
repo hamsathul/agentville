@@ -40,3 +40,10 @@ test("readings come from every mod's beacon: an open session's as fresh as its l
     { id: 'ended', lastActivityAt: NOW - 20 * MIN, rateLimits: w },
   ]);
 });
+
+test('planReadings carries the account of each reading', () => {
+  const beacons = new Map([['s1', { live: true, at: NOW, usage: { rateLimits: [win('five_hour', 10, 100)] } }], ['s2', { live: false, at: NOW - MIN, usage: { rateLimits: [win('five_hour', 80, 100)] } }]]);
+  const got = planReadings(beacons, [{ id: 's1', lastActivityAt: NOW }], id => (id === 's1' ? 'main' : 'zeta'));
+  assert.deepEqual(got.map(r => [r.id, r.account]), [['s1', 'main'], ['s2', 'zeta']]);
+  assert.equal(planReadings(beacons, [])[0].account, undefined, 'no accountOf: no account');
+});

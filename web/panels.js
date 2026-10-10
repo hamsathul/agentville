@@ -25,13 +25,40 @@ const resetText = ms => (!ms ? '' : ms - Date.now() < 86_400_000 ? `at ${hhmm(ms
 const agoText = ms => { const m = Math.round((Date.now() - ms) / 60_000); return m < 1 ? 'just now' : m < 60 ? `${m} min ago` : m < 1440 ? `${Math.round(m / 60)} h ago` : `${Math.round(m / 1440)} d ago`; };
 
 /** The plan's usage (the 5-hour and weekly limits), from Claude Code's last API response in any session. */
+/** Your Claude accounts, when there are two or more (with one, the page is as it always was). */
+const accountsOn = () => (snap?.accounts?.length ?? 0) > 1;
+const accountName = key => snap?.accounts?.find(x => x.key === key)?.name ?? key;
+/** An agent's account, as a small tag (only with two or more accounts). */
+function acctTag(a) {
+  if (!accountsOn() || !a.account) return '';
+  const acc = snap.accounts.find(x => x.key === a.account);
+  return `<span class="chip acct" data-tip="${esc(`On the ${acc?.name ?? a.account} account${acc?.email ? ` (${acc.email})` : ''}`)}">${esc(acc?.name ?? a.account)}</span>`;
+}
+/** An account as the pickers show it: its name and how much of each limit it has used. */
+function acctChoice(acc) {
+  const w = kind => acc.plan?.windows?.find(x => x.kind === kind);
+  const pct = x => (x ? `${x.reset ? 0 : Math.round(x.percentUsed)}%` : '–');
+  if (acc.signedIn === false) return `${acc.name} · signed out`;
+  if (!acc.plan) return `${acc.name} · no reading yet`;
+  return `${acc.name} · 5h ${pct(w('five_hour'))} · week ${pct(w('seven_day'))}`;
+}
+/** An account at 90% or more of either limit. */
+const acctFull = acc => Boolean(acc.plan?.windows?.some(w => !w.reset && w.percentUsed >= 90));
+
+/** Your plan's usage: one block, or one per account when you have two or more. */
 function planHtml() {
-  const plan = snap.plan;
-  if (!plan?.windows?.length) return '';
   const said = w => `${windowName(w.kind)} limit: ${w.reset ? 'reset since the last reading' : `${Math.round(w.percentUsed)}% used${w.resetsAt ? `, resets ${resetText(w.resetsAt)}` : ''}`}`;
-  const read = ` (Claude Code's reading, ${agoText(plan.at)})`;
-  const meters = plan.windows.map(w => { const r = w.percentUsed / 100; return `${meter(r, severityOf(r, 0.7, 0.9), said(w) + read)}<b>${esc(windowName(w.kind))} ${Math.round(w.percentUsed)}%</b>`; }).join(' ');
-  return `<span class="hstat" data-tip="${esc(`Your Claude plan: ${plan.windows.map(said).join(' · ')}${read}`)}"><span class="ml">Plan</span>${meters}</span>`;
+  const block = (label, plan, about, faint = false) => {
+    const read = plan ? ` (Claude Code's reading, ${agoText(plan.at)})` : '';
+    const meters = (plan?.windows ?? []).map(w => { const r = w.percentUsed / 100; return `${meter(r, severityOf(r, 0.7, 0.9), said(w) + read)}<b>${esc(windowName(w.kind))} ${Math.round(w.percentUsed)}%</b>`; }).join(' ');
+    return `<span class="hstat" data-tip="${esc(`${about}${plan?.windows?.length ? `: ${plan.windows.map(said).join(' · ')}${read}` : ''}`)}"><span class="ml${faint ? ' faint' : ''}">${esc(label)}</span>${meters}</span>`;
+  };
+  if (!accountsOn()) return snap.plan?.windows?.length ? block('Plan', snap.plan, 'Your Claude plan') : '';
+  return snap.accounts.map(acc => {
+    const open = `${acc.open} session${acc.open === 1 ? '' : 's'} open${acc.costUsd ? `, $${acc.costUsd.toFixed(2)} so far` : ''}`;
+    const about = `${acc.name}${acc.email ? ` (${acc.email})` : ''} · ${open}${acc.signedIn === false ? ' · Signed out: run /login in a session on it' : ''}${acc.plan?.windows?.length ? '' : ' · No reading yet: open a session on it'}`;
+    return block(acc.name, acc.plan, about, acc.signedIn === false);
+  }).join('\n    ');
 }
 
 function hstatsHtml() {
@@ -82,7 +109,7 @@ function rowHtml(a) {
   const nums = a.state === 'stale' ? `<span class="rn">${ago(a.lastActivityAt)}</span>`
     : a.proc ? `<span class="rn">${Math.round(a.proc.cpu)}%</span><span class="rn">${gb(a.proc.rssMb)}</span>` : '';
   return `<button class="row ${a.state}${a.id === selected ? ' sel' : ''}" data-id="${esc(a.id)}" data-tip="${esc(`${short(a.cwd)}${a.kind === 'background' ? ' · background' : ''}`)}">
-    <span class="rtop"><span class="swatch" style="background:${colorOf(a.id)}"></span><span class="name">${esc(a.name)}</span>${a.ask ? '<span class="chip c-waiting live-dot">answer here</span>' : a.question ? '<span class="chip c-yourTurn">asks you</span>' : ''}<span class="grow"></span>${nums}</span>${sub ? `<span class="rsub">${sub}</span>` : ''}</button>`;
+    <span class="rtop"><span class="swatch" style="background:${colorOf(a.id)}"></span><span class="name">${esc(a.name)}</span>${acctTag(a)}${a.ask ? '<span class="chip c-waiting live-dot">answer here</span>' : a.question ? '<span class="chip c-yourTurn">asks you</span>' : ''}<span class="grow"></span>${nums}</span>${sub ? `<span class="rsub">${sub}</span>` : ''}</button>`;
 }
 
 function listHtml() {
@@ -130,7 +157,8 @@ function sessionBarHtml(a) {
   }
   if (a.kind !== 'interactive' || !a.pid) return '';
   const mode = a.mode, bypass = mode === 'bypassPermissions';
-  const options = MODES.map(([m, label]) => `<option value="${m}"${m === mode ? ' disabled' : ''}>${esc(label)}${m === mode ? ' (now)' : ''}</option>`).join('');
+  const options = MODES.map(([m, label]) => `<option value="${m}"${m === mode ? ' disabled' : ''}>${esc(label)}${m === mode ? ' (now)' : ''}</option>`).join('')
+    + (accountsOn() ? `<optgroup label="Move to another account">${snap.accounts.filter(x => x.key !== a.account).map(x => `<option value="account:${esc(x.key)}">${esc(acctChoice(x))}</option>`).join('')}</optgroup>` : '');
   const chip = mode
     ? `<span class="chip ${bypass ? 'c-crit' : mode === 'plan' ? 'c-warn' : 'c-plain'}" data-tip="Its permission mode (Shift+Tab in its terminal changes it). Restart in… resumes it in another mode.">${bypass ? '⚠ ' : ''}${esc(modeName(mode))}</span>`
     : '<span class="chip c-plain" data-tip="The session has not written its mode down yet; it shows after its next step">mode not known yet</span>';
@@ -145,7 +173,7 @@ function sessionBarHtml(a) {
   return `<div class="sessbar">${chip}
     <select class="act mini" data-switch-model data-agent="${esc(a.id)}" aria-label="Switch this session's model" data-tip="${esc(why)}"${off}><option value="">${esc(modelOf(a) ? modelName(modelOf(a)) : 'Model…')}</option>${models}</select>
     <select class="act mini" data-switch-effort data-agent="${esc(a.id)}" aria-label="Set this session's effort" data-tip="${esc(live ? 'Runs /effort in the session after its current turn. Claude Code saves low to xhigh as your default for new sessions; max is for this session only.' : why)}"${off}><option value="">effort: ${esc(a.effort ?? 'default')}</option>${efforts}</select>
-    <select class="act mini" data-restart-mode data-agent="${esc(a.id)}" aria-label="Restart this session in another permission mode"><option value="">Restart in…</option>${options}</select>
+    <select class="act mini" data-restart-mode data-agent="${esc(a.id)}" aria-label="Restart this session in another permission mode${accountsOn() ? ', or move it to another account' : ''}"><option value="">Restart in…</option>${options}</select>
     <button type="button" class="act mini" data-compact="${esc(a.id)}" data-tip="${esc(modCan(a, '0.6.0') ? 'Runs /compact in the session after its current turn: the conversation so far becomes a summary, freeing its context' : !a.mod?.live ? modWhy(a) : `Compacting from here needs tracker mod 0.6.0 (this session runs ${a.mod.version}): run /reload-plugins in it`)}"${modCan(a, '0.6.0') ? '' : ' disabled'}>Compact…</button>
     <button type="button" class="act mini" data-end-session="${esc(a.id)}" data-tip="End this session and close its terminal window (resume it later from ＋ Session)">End session</button>${note}</div>`;
 }
@@ -285,19 +313,29 @@ const restoreBtn = (a, m) => (a.kind === 'codex' || !m.uuid || m.kind !== 'promp
 /** Where the session was restored to (the messages after it are no longer its conversation). */
 const restoredHtml = m => `<div class="restored-line" title="The messages from here on were dropped by a restore; they stay in the transcript file">↺ Restored to before “${esc(m.text)}”</div>`;
 
-function conversationHtml(a) {
-  const all = fullFeeds.has(a.id);
-  const said = feedOf(a).filter(f => f.kind === 'prompt' || f.kind === 'reply' || f.kind === 'peer' || f.kind === 'restored').slice(0, all ? Infinity : 10); // newest first, under the box
-  if (!said.length) return '';
-  // Replies are markdown (rendered by the escape-everything renderer); your prompts stay as typed.
-  // Reply on an agent message quotes it into the message box.
-  const peer = f => `<div class="bub peer ${f.dir === 'in' ? 'in' : 'out'}"><div class="peer-head">✉ ${f.dir === 'in' ? `from ${esc(f.other)}` : f.helper ? 'to a helper agent' : `to ${esc(f.other)}`}${f.summary ? ` · ${esc(f.summary)}` : ''}</div><div class="bub-md">${renderMarkdown(f.body || f.text)}</div>${moreHtml(a, f)}<time>${hhmm(f.at)}</time></div>`;
-  const bubble = f => (f.kind === 'peer' ? peer(f) : f.kind === 'restored' ? restoredHtml(f) : f.kind === 'prompt'
+/** What was said (your prompts, its replies, messages between sessions, restores), newest first: the latest 10, or all of it after Show all. */
+function saidOf(a, limit = 10) {
+  return feedOf(a).filter(f => f.kind === 'prompt' || f.kind === 'reply' || f.kind === 'peer' || f.kind === 'restored').slice(0, fullFeeds.has(a.id) ? Infinity : limit);
+}
+/** The newest message is framed as the latest, with your message when it is right below it: a quick exchange frames the pair, a long working turn only its newest note. */
+const latestCut = said => (said[0].kind !== 'prompt' && said[1]?.kind === 'prompt' ? 2 : 1);
+/**
+ * One message of a conversation as a bubble. Replies are markdown (rendered by the escape-everything
+ * renderer); your prompts stay as typed. Reply on an agent message quotes it into the message box.
+ */
+function bubbleHtml(a, f) {
+  if (f.kind === 'peer') return `<div class="bub peer ${f.dir === 'in' ? 'in' : 'out'}"><div class="peer-head">✉ ${f.dir === 'in' ? `from ${esc(f.other)}` : f.helper ? 'to a helper agent' : `to ${esc(f.other)}`}${f.summary ? ` · ${esc(f.summary)}` : ''}</div><div class="bub-md">${renderMarkdown(f.body || f.text)}</div>${moreHtml(a, f)}<time>${hhmm(f.at)}</time></div>`;
+  if (f.kind === 'restored') return restoredHtml(f);
+  return f.kind === 'prompt'
     ? `<div class="bub you">${esc(f.body || f.text)}${moreHtml(a, f)}<time>${hhmm(f.at)}${forkBtn(a, f)}${restoreBtn(a, f)}</time></div>`
-    : `<div class="bub agent"><div class="bub-md">${renderMarkdown(f.body || f.text)}</div>${namedSlotHtml(a.id, f.body || f.text)}${moreHtml(a, f)}<time>${hhmm(f.at)}<button type="button" class="bub-reply" data-quote="${esc(f.body || f.text)}" data-agent="${esc(a.id)}" title="Quote this in your reply">↩ Reply</button>${forkBtn(a, f)}</time></div>`);
-  // The newest message is framed as the latest, with your message when it is right below it: a quick
-  // exchange frames the pair, a long working turn only its newest note.
-  const cut = said[0].kind !== 'prompt' && said[1]?.kind === 'prompt' ? 2 : 1;
+    : `<div class="bub agent"><div class="bub-md">${renderMarkdown(f.body || f.text)}</div>${namedSlotHtml(a.id, f.body || f.text)}${moreHtml(a, f)}<time>${hhmm(f.at)}<button type="button" class="bub-reply" data-quote="${esc(f.body || f.text)}" data-agent="${esc(a.id)}" title="Quote this in your reply">↩ Reply</button>${forkBtn(a, f)}</time></div>`;
+}
+
+function conversationHtml(a) {
+  const said = saidOf(a); // newest first, under the box
+  if (!said.length) return '';
+  const bubble = f => bubbleHtml(a, f);
+  const cut = latestCut(said);
   const readAll = a.kind === 'codex' ? '' : `<span class="grow"></span><button type="button" class="act mini" data-convo="${esc(a.id)}" data-tip="The whole conversation, from its first message, with search">⤢ Read all</button>`;
   return `<div class="sec">Conversation${readAll}</div><div class="chat"><div class="latest" role="group" aria-label="The latest message"><span class="latest-tag">Latest</span>${said.slice(0, cut).map(bubble).join('')}</div>${said.slice(cut).map(bubble).join('')}</div>`;
 }
@@ -327,12 +365,13 @@ function questionHtml(a) {
  * Chat box: sends a message, with any attached files, into the session as the person's own words (queued if it is busy).
  * `ids` names its parts: msg-text, msg-send… in the side panel; convo-msg-… in the conversation dialog, which shares its draft and files.
  */
-function composeHtml(a, ids = 'msg') {
+function composeHtml(a, ids = 'msg', { short = false } = {}) {
   if (a.kind === 'codex') return '';
   const live = Boolean(a.mod?.live);
-  const hint = !live ? "This session isn't listening for dashboard messages yet. Send it anything in its terminal once, or start a new session."
-    : a.state === 'working' ? `${esc(a.name)} is busy: your message waits until its current step ends. ↩ sends, ⇧↩ new line, ↑ your earlier messages.`
-    : 'Sent as your own message. Paste or drop files on the box. ↩ sends, ⇧↩ new line, ↑ your earlier messages.';
+  // short: the farm sidebar says the keys once, beside its modes, so its hint is just the state
+  const hint = !live ? (short ? "Not listening yet: send it anything in its terminal once" : "This session isn't listening for dashboard messages yet. Send it anything in its terminal once, or start a new session.")
+    : a.state === 'working' ? (short ? 'Busy: it gets this when its current step ends' : `${esc(a.name)} is busy: your message waits until its current step ends. ↩ sends, ⇧↩ new line, ↑ your earlier messages.`)
+    : short ? 'Sent as your own message' : 'Sent as your own message. Paste or drop files on the box. ↩ sends, ⇧↩ new line, ↑ your earlier messages.';
   const sent = msgStatus.get(a.id);
   const status = sent && Date.now() - sent.at < 20_000
     ? `<span id="${ids}-status" class="${sent.bad ? 'msg-bad' : 'msg-ok'}">${esc(sent.text)}</span>`
@@ -397,10 +436,13 @@ function restHtml(a) {
 function shellsHtml(a) {
   const shells = a.shells ?? [];
   if (!shells.length) return '';
-  return `<div class="sec">Commands running <span class="tab-n">${shells.length}</span></div>${shells.map(s => `<div class="shell-row">
+  return `<div class="sec">Commands running <span class="tab-n">${shells.length}</span></div>${shells.map(s => shellRowHtml(a, s)).join('')}`;
+}
+function shellRowHtml(a, s) {
+  return `<div class="shell-row">
     <div class="shell-main"><code class="shell-cmd"${s.about ? ` data-tip="${esc(s.about)}"` : ''}>$ ${esc(s.command)}</code>
       <span class="faint shell-meta">${s.background ? 'background · ' : ''}<span data-lasted="${s.startedAt}">${lasted(s.startedAt)}</span> · ${Math.round(s.cpu)}% CPU · ${gb(s.rssMb)}</span></div>
-    ${s.output ? `<button type="button" class="act mini" data-shell-output="${s.pid}" data-agent="${esc(a.id)}" data-tip="Its output so far, followed as it grows">Output</button>` : ''}<button type="button" class="act mini" data-shell-stop="${s.pid}" data-agent="${esc(a.id)}" data-tip="Stop it, with everything it started">■ Stop</button></div>`).join('')}`;
+    ${s.output ? `<button type="button" class="act mini" data-shell-output="${s.pid}" data-agent="${esc(a.id)}" data-tip="Its output so far, followed as it grows">Output</button>` : ''}<button type="button" class="act mini" data-shell-stop="${s.pid}" data-agent="${esc(a.id)}" data-tip="Stop it, with everything it started">■ Stop</button></div>`;
 }
 
 /** A background command's output, in a dialog, followed every 2 seconds while it is open. */
@@ -526,9 +568,9 @@ const noteDrafts = new Map(); // agentId → the note being written
 const noteEdits = new Map(); // agentId → { id, text }: the note being edited
 const notesInDraft = new Map(); // agentId → ids of the notes put in its message box
 
-/** Reads the shown session's notes when they changed since they were last read. */
-function refreshNotes(a) {
-  if (!a || a.kind === 'codex' || !isOpen('notes') || notesLoading.has(a.id)) return;
+/** Reads the shown session's notes when they changed since they were last read (while they show: `force` for the farm sidebar's Note mode). */
+function refreshNotes(a, force = false) {
+  if (!a || a.kind === 'codex' || (!isOpen('notes') && !force) || notesLoading.has(a.id)) return;
   const rev = a.notes?.rev ?? 0, got = notesCache.get(a.id);
   if (!got && !rev) { notesCache.set(a.id, { rev: 0, notes: [] }); return; } // never had any: nothing to read
   if (got && rev <= got.rev) return;
@@ -572,13 +614,16 @@ function notesHtml(a) {
     <div class="note-add"><textarea id="note-text" data-note-agent="${esc(a.id)}" rows="1" placeholder="A note for later… (↩ adds, ⇧↩ new line)">${esc(noteDrafts.get(a.id) ?? '')}</textarea><button type="button" class="act" id="note-add" data-agent="${esc(a.id)}">Add</button>${clear}</div></div>`;
 }
 
+/** One side question and its answer (or that it is thinking, or why there is none). */
+const asideItemHtml = x => `<div class="aside"><div class="aside-q"><b>btw</b> ${esc(x.question)}</div>${x.pending
+  ? '<div class="aside-a muted"><span class="spinner"></span> thinking…</div>'
+  : x.answer ? `<div class="aside-a md">${renderMarkdown(x.answer)}</div>` : `<div class="aside-a msg-bad">No answer: ${esc(x.reason ?? 'unknown')}</div>`}</div>`;
+
 /** Side questions (/btw): asked of the session from its conversation so far, answered without adding to it, even while it works. */
 function asideHtml(a) {
   if (a.kind === 'codex') return '';
   const live = modCan(a);
-  const list = (a.asides ?? []).map(x => `<div class="aside"><div class="aside-q"><b>btw</b> ${esc(x.question)}</div>${x.pending
-    ? '<div class="aside-a muted"><span class="spinner"></span> thinking…</div>'
-    : x.answer ? `<div class="aside-a md">${renderMarkdown(x.answer)}</div>` : `<div class="aside-a msg-bad">No answer: ${esc(x.reason ?? 'unknown')}</div>`}</div>`).join('');
+  const list = (a.asides ?? []).map(asideItemHtml).join('');
   // Its heading folds the whole section away (remembered, for every session); folded, it says how many it holds.
   const open = isOpen('btw'), count = (a.asides ?? []).length;
   const head = `<button class="sec sec-fold" type="button" data-group="btw" aria-expanded="${open}" data-tip="${open ? 'Hide' : 'Show'} side questions (/btw): answered from its conversation, not added to it; they work while it is busy"><span class="tw">${open ? '▾' : '▸'}</span>Side question${!open && count ? `<span class="grp-n">${count}</span>` : ''}</button>`;

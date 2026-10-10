@@ -156,3 +156,20 @@ test('a private scene: no words and no paths; names, states, tools and numbers s
   assert.equal(api.onMain, false);
   assert.equal(JSON.parse(JSON.stringify(privateScene(s))).repos[0].key, api.key, 'the same stand-in next time');
 });
+
+test('accounts in the scene: names and plans, never emails; a private scene has numbers', () => {
+  const { toScene, privateScene } = load();
+  const snap = snapOf([agent('a', { account: 'zeta' }), agent('b', { kind: 'codex', account: undefined })], [], { accounts: [
+    { key: 'main', name: 'nco', email: 'me@nco.example', org: 'NCO Org', plan: { windows: [{ kind: 'seven_day', percentUsed: 22, resetsAt: 5 }] } },
+    { key: 'zeta', name: 'zeta', email: 'z@x.example', plan: null },
+  ] });
+  const s = plain(toScene(snap));
+  assert.deepEqual(s.accounts.map(a => [a.key, a.name, a.plan?.weekly?.pct ?? null]), [['main', 'nco', 22], ['zeta', 'zeta', null]]);
+  assert.deepEqual(s.agents.map(a => a.account), ['zeta', null]);
+  assert.doesNotMatch(JSON.stringify(s), /me@nco|NCO Org|z@x/);
+  const p = plain(privateScene(toScene(snap)));
+  assert.deepEqual(p.accounts.map(a => [a.key, a.name, a.plan?.weekly?.pct ?? null]), [['a1', 'account 1', 22], ['a2', 'account 2', null]]);
+  assert.deepEqual(p.agents.map(a => a.account), ['a2', null]);
+  assert.doesNotMatch(JSON.stringify(p), /nco|zeta/);
+  assert.deepEqual(plain(toScene(snapOf([], []))).accounts, [], 'no accounts in the snapshot: none in the scene');
+});

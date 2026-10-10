@@ -44,7 +44,7 @@ function load() {
   const dom = stubDom();
   const window = { Agentville: { raw: h => { window.registered = h; } } };
   const ctx = vm.createContext({ window, document: dom.document, console, Math, Date, JSON, Map, Set, Intl, ...dom.globals });
-  vm.runInContext(`${code}\n;window.sdk = { makeGrid, withDefaults, engineScene, makePixelView, makeField, ACTIVE, defaultHud, panelHud, PXG };`, ctx);
+  vm.runInContext(`${code}\n;window.sdk = { makeGrid, withDefaults, engineScene, makePixelView, makeField, ACTIVE, defaultHud, panelHud, PXG, fitClear };`, ctx);
   return { window, dom, sdk: window.sdk };
 }
 const twoAgents = window => window.AgentvilleScene.toScene({ generatedAt: NOW, collisions: [], agents: [
@@ -532,4 +532,52 @@ test("a world's own flight draws how a message travels: given the sender's and r
   run(10);
   assert.equal(got.length - n, 6, 'drawn on until 2.4 s (T 1.8 to 2.3), then no more: it has landed');
   assert.equal(landed(), 1, 'a ✉ pops where it lands, as with the pigeon');
+});
+
+test("labels are drawn again when the plan or the accounts change, not only the fields (the farm's silo tags show them)", () => {
+  const { window, dom, sdk } = load();
+  let drawn = 0;
+  const view = sdk.makePixelView(sdk.withDefaults(fourHooks({ labels() { drawn++; } })), prefs);
+  const withAccounts = week => sdk.engineScene(window.AgentvilleScene.toScene({ generatedAt: NOW, collisions: [], agents: [], repos: [{ path: '/c/x', name: 'x' }],
+    plan: { windows: [{ kind: 'seven_day', percentUsed: 10, resetsAt: 1 }] },
+    accounts: [{ key: 'main', name: 'work', plan: { windows: [{ kind: 'seven_day', percentUsed: 10, resetsAt: 1 }] } }, { key: 'home', name: 'home', plan: { windows: [{ kind: 'seven_day', percentUsed: week, resetsAt: 1 }] } }] }));
+  view.mount(dom.make(), { still: true });
+  view.update(withAccounts(40));
+  const before = drawn;
+  view.update(withAccounts(40));
+  assert.equal(drawn, before, 'nothing changed: not drawn again');
+  view.update(withAccounts(92));
+  assert.ok(drawn > before, "home's week changed: drawn again");
+});
+
+// The farm's panel (358 × 415 on a laptop, plus its 10px margin and a 6px gap) lay over the barn and the
+// silos whenever the frame had no room beside it: at 100% the world now sits clear of it.
+test('at 100% the world sits clear of the panel over its top left: beside it or below it, whichever leaves it bigger', () => {
+  const { sdk } = load();
+  const W = 400, H = 318, open = { w: 374, h: 431 }, folded = { w: 216, h: 51 };
+  const plain = (fw, fh) => Math.min((fw - 2) / W, (fh - 2) / H);
+  const clearOf = (p, { fit, pad }, fw, fh) => pad.l * fit >= p.w - 6 || pad.t * fit >= p.h - 6;
+  for (const [fw, fh, p, why] of [[1437, 898, open, 'a 16:10 window'], [1507, 980, open, "a 14″ MacBook's"], [1107, 966, open, 'the sidebar open'], [1107, 966, folded, 'the sidebar open, the panel folded'], [1915, 1078, open, 'a wide screen']]) {
+    const got = sdk.fitClear(fw, fh, W, H, p);
+    assert.ok(clearOf(p, got, fw, fh), `${why}: nothing of the world under the panel (${JSON.stringify(got)})`);
+    assert.ok(got.fit <= plain(fw, fh) + 1e-9, `${why}: never bigger than the frame`);
+    const beside = Math.min((fw - 2 - p.w) / W, (fh - 2) / H), below = Math.min((fw - 2) / W, (fh - 2 - p.h) / H);
+    assert.ok(got.fit >= Math.max(beside, below) * 0.99, `${why}: no smaller than it needs to be (${got.fit} for ${Math.max(beside, below)})`);
+    assert.ok(got.pad.l + got.pad.r >= 0 && got.pad.t + got.pad.b >= 0 && Number.isInteger(got.pad.l) && Number.isInteger(got.pad.t), `${why}: the spare room is whole world pixels`);
+  }
+  assert.equal(sdk.fitClear(1915, 1078, W, H, open).fit, plain(1915, 1078), 'with room beside the panel, the world keeps the size it had');
+  assert.equal(sdk.fitClear(1107, 966, W, H, folded).fit, plain(1107, 966), 'below a folded panel, too');
+  assert.deepEqual(sdk.fitClear(1437, 898, W, H, null), sdk.fitClear(1437, 898, W, H, { w: 0, h: 0 }), 'no panel: the plain fit');
+  assert.equal(sdk.fitClear(1437, 898, W, H, null).fit, plain(1437, 898));
+});
+
+test('below the panel, the world keeps clear of the switches along the bottom too (two rows of them in a narrow frame)', () => {
+  const { sdk } = load();
+  const W = 400, H = 318, panel = { w: 374, h: 356 }, tools = 77, fw = 998, fh = 948;
+  const { fit, pad } = sdk.fitClear(fw, fh, W, H, panel, tools);
+  assert.ok(pad.t * fit >= panel.h - 6, `below the panel (${pad.t * fit})`);
+  assert.ok((pad.t + H) * fit <= fh - tools + 6, `and its foot above the switches (${(pad.t + H) * fit} of ${fh - tools})`);
+  const beside = Math.min((fw - 2 - panel.w) / W, (fh - 2) / H), below = Math.min((fw - 2) / W, (fh - 2 - panel.h - tools) / H);
+  assert.ok(fit >= Math.max(beside, below) * 0.99, `no smaller than it needs to be (${fit})`);
+  assert.deepEqual(sdk.fitClear(1437, 898, W, H, { w: 374, h: 431 }, tools), sdk.fitClear(1437, 898, W, H, { w: 374, h: 431 }), 'beside the panel, the switches lie over the forest at its foot, as they always have');
 });

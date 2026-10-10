@@ -17,12 +17,12 @@ export function planUsage(readings, now = Date.now()) {
 /**
  * Every mod's last usage reading, open sessions and ended ones (a beacon file stays after its
  * session): an open session's reading is as fresh as its last activity, an ended one's as its
- * last beacon.
+ * last beacon. Each reading carries the account its session is on, when `accountOf` (id → key) is given.
  */
-export function planReadings(beacons, agents) {
+export function planReadings(beacons, agents, accountOf) {
   return [...beacons].flatMap(([id, b]) => {
     if (!b.usage?.rateLimits?.length) return [];
     const a = agents.find(x => x.id === id);
-    return [{ id, lastActivityAt: b.live && a?.lastActivityAt ? a.lastActivityAt : b.at, rateLimits: b.usage.rateLimits }];
+    return [{ id, lastActivityAt: b.live && a?.lastActivityAt ? a.lastActivityAt : b.at, rateLimits: b.usage.rateLimits, ...(accountOf ? { account: accountOf(id) } : {}) }];
   });
 }

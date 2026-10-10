@@ -23,3 +23,14 @@ test('env is merged over process.env', async () => {
   const r = await run(process.execPath, ['-e', 'process.stdout.write(process.env.TRACKER_X + ":" + (process.env.PATH ? "path" : "none"))'], { env: { TRACKER_X: 'y' } });
   assert.equal(r.stdout, 'y:path');
 });
+
+test('an undefined variable is left out of the child environment', async () => {
+  process.env.AGENTVILLE_TEST_UNSET = 'set';
+  try {
+    const r = await run('/usr/bin/env', [], { env: { AGENTVILLE_TEST_UNSET: undefined } });
+    assert.equal(r.code, 0);
+    assert.doesNotMatch(r.stdout, /AGENTVILLE_TEST_UNSET/);
+  } finally {
+    delete process.env.AGENTVILLE_TEST_UNSET;
+  }
+});

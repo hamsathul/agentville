@@ -80,6 +80,10 @@
     stop('subagents', 'Subagents running and done', [one({ children: [{ id: 'c1', kind: 'subagent', state: 'running', label: 'Look around', agentType: 'Explore', startedAt: NOW - MIN }, { id: 'c2', kind: 'subagent', state: 'running', label: 'Write tests', startedAt: NOW - MIN }, { id: 'c3', kind: 'subagent', state: 'done', label: 'Read the docs', startedAt: NOW - 5 * MIN }] })]),
     stop('limits-low', 'The 5-hour and weekly limits: barely used', [snap([agent('a1')], SHOP, { plan: { from: 'tour', at: NOW, windows: windows(10, 15) } })]),
     stop('limits-high', 'The 5-hour and weekly limits: nearly used up', [snap([agent('a1')], SHOP, { plan: { from: 'tour', at: NOW, windows: windows(95, 92) } })]),
+    stop('accounts', 'Two Claude accounts: one fresh, one nearly used up', [snap([agent('a1', { account: 'home' })], SHOP, { plan: { from: 'tour', at: NOW, windows: windows(30, 40) }, accounts: [
+      { key: 'work', name: 'work', email: null, signedIn: true, open: 0, costUsd: 0, plan: { from: 'tour', at: NOW, windows: windows(30, 40) } },
+      { key: 'home', name: 'home', email: null, signedIn: true, open: 1, costUsd: 0, plan: { from: 'tour', at: NOW, windows: windows(95, 92) } },
+    ] })]),
     stop('day', 'By day', [everyone()]),
     stop('night', 'By night', [everyone()], { sky: 'night' }),
     stop('private', 'Privacy mode: no words, paths or names', [everyone()], { private: true }),
@@ -90,7 +94,7 @@
     ['waiting on you', 'working', 'waiting'], ['a question for you', 'working', 'question'], ['your turn', 'working', 'turn'],
     ['a repo filling with context', 'context-low', 'context-high'], ['a compaction', 'compacted-plain', 'compaction'],
     ['deploy failed', 'deploy-ok', 'deploy-failed'], ['deploying', 'deploy-ok', 'deploy-running'], ['deploy skipped', 'deploy-ok', 'deploy-skipped'],
-    ['subagents', 'working', 'subagents'], ['the limits', 'limits-low', 'limits-high'], ['an MCP call', 'working', 'mcp'],
+    ['subagents', 'working', 'subagents'], ['the limits', 'limits-low', 'limits-high'], ['several accounts', 'working', 'accounts'], ['an MCP call', 'working', 'mcp'],
     ['messages between agents', 'two-working', 'pigeon'], ['a collision', 'two-working', 'collision'], ['a merged pull request', 'working', 'merged'],
     ['idle', 'working', 'idle'], ['stale', 'idle', 'stale'], ['night', 'day', 'night'],
   ];

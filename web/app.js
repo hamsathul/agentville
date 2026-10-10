@@ -15,7 +15,7 @@ function overviewHtml(a) {
     ? `CPU <b>${Math.round(a.proc.cpu)}%</b> · RAM <b>${gb(a.proc.rssMb)}</b> · ${a.proc.childCount} child process${a.proc.childCount === 1 ? '' : 'es'}${a.proc.children.length ? ` <span class="muted">(${esc(a.proc.children.join(', '))})</span>` : ''}`
     : '<span class="muted">No process found.</span>';
   const resume = a.kind === 'codex' ? '' : `cd ${shellQuote(a.cwd)} && claude --resume ${a.id}`;
-  return `<div class="ov"><div class="head"><span class="swatch" style="background:${color}"></span><span class="name">${esc(a.name)}</span>${suggestBtn(a, snap?.helper)}<span class="chip c-${a.state}">${STATE_CHIP[a.state] ?? esc(a.state)} · <span data-since="${a.stateSince}"></span></span></div>${nameLineHtml(a)}
+  return `<div class="ov"><div class="head"><span class="swatch" style="background:${color}"></span><span class="name">${esc(a.name)}</span>${acctTag(a)}${suggestBtn(a, snap?.helper)}<span class="chip c-${a.state}">${STATE_CHIP[a.state] ?? esc(a.state)} · <span data-since="${a.stateSince}"></span></span></div>${nameLineHtml(a)}
     ${askHtml(a)}
     <div class="muted where" style="margin-top:6px">${esc(short(a.cwd))} · ${esc(a.kind)}${modelOf(a) ? ` · ${esc(modelOf(a))}` : ''}
       ${a.kind === 'codex' ? '' : a.mod?.live
@@ -60,15 +60,11 @@ function render() {
   renderConvoCompose(); // and its message box
   if (view === 'farm') {
     // The farm draws the agents; the list and the centre are not drawn (so their ids don't exist twice).
-    // The sidebar shows the selected farmer: its answer form, message box and activity, then its files.
+    // The sidebar (web/sidebar.js) shows the selected farmer, the others that need you, and its tabs.
     window.TrackerFarm?.update(snap);
     const a = farmSide ? centreAgent() : null;
     window.TrackerFarm?.select?.(a?.id ?? null);
-    if (farmSide && farmTab === 'agent') $('farm-agent').innerHTML = a ? farmSideHtml(a) : '<div class="empty">No agents are running.</div>';
-    if (farmSide && farmTab === 'activity') $('farm-activity').innerHTML = a ? activityHtml(a) : '<div class="empty">No agents are running.</div>';
-    if (farmSide && farmTab === 'subagents') $('farm-subagents').innerHTML = a ? subagentsHtml(a) : '<div class="empty">No agents are running.</div>';
-    $('tab-subagents').innerHTML = subTabLabel(subagentsOf(a)); // how many, while you are on another tab
-    if (farmSide && farmTab === 'files') syncExplorer();
+    if (farmSide) renderFarmSidebar(a);
     updateTimers();
     return;
   }
@@ -136,8 +132,10 @@ function refreshFullFeeds() {
 
 let view = loadView();
 let farmSide = loadSaved('tracker-farm-side') === 'open'; // the farm's sidebar: answer, message, activity, files
+// The sidebar's tabs: Chat ('agent'), Activity, Subagents and Files; the diary covers them from its own button.
 const FARM_TABS = ['agent', 'activity', 'subagents', 'files', 'diary'];
 let farmTab = FARM_TABS.includes(loadSaved('tracker-farm-tab')) ? loadSaved('tracker-farm-tab') : 'agent';
+let farmTabBefore = farmTab === 'diary' ? 'agent' : farmTab; // where the diary's Back goes
 function loadSaved(key) {
   try {
     return localStorage.getItem(key);
@@ -167,9 +165,11 @@ function setView(next, { remember = true } = {}) {
   $('side-toggle').hidden = next !== 'farm';
   applyFarmSide();
   // Only one of the centre and the farm sidebar holds the agent's answer and message boxes at a time.
+  // The explorer is the list's right column, and the sidebar's Files tab in the farm: it moves between them.
   if (next === 'farm') {
     $('center-tabs').innerHTML = '';
     $('center-body').innerHTML = '';
+    $('fs-body')?.appendChild?.($('explorer'));
     reader = null;
     window.TrackerFarm.mount($('farm'), {
       token: TOKEN, diary: $('farm-diary'), onPickAgent: pickFromFarm, onOpenDoc: openDocFromFarm, onShowRepos: showReposFromFarm, onStartSession: () => { window.TrackerFarm?.armClickGuard?.(); void openSessions(); }, onBell: bellSwitched,
@@ -183,7 +183,8 @@ function setView(next, { remember = true } = {}) {
     });
   } else {
     window.TrackerFarm?.hide?.(); // out of sight, the world can't act on the page
-    $('farm-agent').innerHTML = '';
+    clearFarmSidebar();
+    $('main')?.insertBefore?.($('explorer'), $('farm'));
   }
   showWorld(null); // the toggle's tip says what a click does now
   shownKey = ''; // the centre is drawn afresh when the list comes back
@@ -193,12 +194,14 @@ function applyFarmSide() {
   $('main').dataset.side = farmSide ? 'open' : 'closed';
   $('main').dataset.sideTab = farmTab;
   $('side-toggle').setAttribute('aria-pressed', farmSide);
-  for (const tab of FARM_TABS) $(`tab-${tab}`).setAttribute('aria-selected', tab === farmTab);
-  if (!farmSide) $('farm-agent').innerHTML = '';
+  for (const tab of FARM_TABS) if (tab !== 'diary') $(`tab-${tab}`).setAttribute('aria-selected', tab === farmTab);
+  if (!farmSide) clearFarmSidebar();
 }
-/** The sidebar's tabs: the selected farmer (answer, message, conversation, activity), its files, the diary. */
+/** The sidebar's tabs: Chat (Now, the conversation, the box), Activity, Subagents and Files; and the diary over them. */
 function setFarmTab(tab) {
-  farmTab = FARM_TABS.includes(tab) ? tab : 'agent';
+  const next = FARM_TABS.includes(tab) ? tab : 'agent';
+  if (next === 'diary' && farmTab !== 'diary') farmTabBefore = farmTab;
+  farmTab = next;
   save('tracker-farm-tab', farmTab);
   applyFarmSide();
   render();
@@ -208,23 +211,6 @@ function setFarmSide(open) {
   save('tracker-farm-side', open ? 'open' : 'closed');
   applyFarmSide();
   render();
-}
-
-/** The farm sidebar for one agent: what it asks, a message box, what it is doing, what it did. */
-function farmSideHtml(a) {
-  const color = window.TrackerFarm?.colorOf?.(a.id) ?? colorOf(a.id);
-  const now = a.now ? `<div class="now mono"><span class="pulse"></span> ${esc(a.now.tool)} ${esc(a.now.summary)} · <b data-since="${a.now.startedAt}"></b></div>` : restHtml(a);
-  return `<div class="fs-head"><span class="swatch" style="background:${color}"></span><span class="name">${esc(a.name)}</span>${suggestBtn(a, snap?.helper)}<span class="chip c-${a.state}">${STATE_CHIP[a.state] ?? esc(a.state)} · <span data-since="${a.stateSince}"></span></span><span class="grow"></span><button class="act mini" id="fs-list" type="button" data-tip="Show this agent in the list view">☰ List</button></div>${nameLineHtml(a)}
-    <div class="muted where" style="margin-top:4px">${esc(short(a.cwd))}${modelOf(a) ? ` · ${esc(modelOf(a))}` : ''}</div>
-    ${sessionBarHtml(a)}
-    ${askHtml(a)}
-    <div class="sec">Now</div>${workingLineHtml(a)}${a.turn && !a.now ? '' : now}
-    ${shellsHtml(a)}
-    ${questionHtml(a)}
-    ${composeHtml(a)}
-    ${notesHtml(a)}
-    ${asideHtml(a)}
-    ${conversationHtml(a)}`;
 }
 
 /** The world shown in the farm view: the toggle says its name, the diary its word for one. */
@@ -243,6 +229,7 @@ function showWorld(w) {
 /** A farmer was clicked: show it in the farm's sidebar, where it can be answered or messaged; its speech bubble: its conversation. */
 async function pickFromFarm(id, { from } = {}) {
   window.TrackerFarm?.armClickGuard?.(); // a world swapped the sidebar's agent: its action controls ignore clicks for a moment
+  fsClosePop();
   if (selected !== id) openChildren.clear();
   selected = id;
   farmTab = 'agent';
@@ -356,7 +343,8 @@ $('cleanup').addEventListener('close', async () => {
 // world moved the UI. It runs in the capture phase and stops the click there, so it holds every handler
 // alike: this file's, the session and setup dialogs' (sessions.js, setup.js), the conversation's. A way
 // out is never held: a close or cancel button, the page's corner over a world, its failure panel, the
-// sidebar's ☰ List; nor is anything that isn't an `act` (a row, the view toggle and its ▾, a tab). The
+// sidebar's Show it in the list view (fs-list, in its Session menu); nor is anything that isn't an `act`
+// (a row, the view toggle and its ▾, a tab, the sidebar's picker, ‹ ›, a card's Open, the diary's Back). The
 // guard is only ever armed by a world's own message, never by your clicks.
 const WAY_OUT = /(?:Close|Cancel)$|^corner(?:List|Worlds)$|^world(?:Back|List|Tolist|Retry)$/;
 function heldByGuard(e) {
@@ -569,9 +557,17 @@ async function removeFlow(id) {
   notice(res?.ok ? `Removed ${a.name}.` : `Could not remove ${a.name}: ${res?.error ?? r.error ?? 'unknown error'}`);
 }
 /** Restart in a mode: after you confirm, ends the session and resumes it in a new window in that mode. */
-async function restartFlow(id, mode) {
+async function restartFlow(id, choice) {
   const a = snap?.agents.find(x => x.id === id);
   if (!a) return;
+  if (choice.startsWith('account:')) { // Move to another account: the same session, resumed there in its mode
+    const key = choice.slice(8), name = accountName(key), mode = MODES.some(([m]) => m === a.mode) ? a.mode : 'default';
+    if (!(await confirmBox(`Move ${a.name} to ${name}? It ends now and resumes straight away on ${name} in a new terminal window, in ${modeName(mode)}; the conversation carries on.`, `Move to ${name}`))) return;
+    const r = await post('/api/actions/restart', { agentId: id, mode, account: key });
+    notice(r.ok ? `Moving ${a.name} to ${name}: a new ${r.terminal ?? 'terminal'} window opens.` : `Could not move ${a.name}: ${r.error}`);
+    return;
+  }
+  const mode = choice;
   const warn = mode === 'bypassPermissions' ? ' ⚠ Bypass permissions runs every tool without asking (--dangerously-skip-permissions).' : '';
   if (!(await confirmBox(`Restart ${a.name} in ${modeName(mode)}? It ends now and resumes straight away in a new terminal window; the conversation carries on.${warn}`, `Restart in ${modeName(mode)}`))) return;
   const r = await post('/api/actions/restart', { agentId: id, mode });
@@ -608,6 +604,11 @@ function openFork(agentId, at, kind) {
   $('fork-mode').value = MODES.some(([m]) => m === a.mode) ? a.mode : 'default';
   $('fork-model').value = /(opus|sonnet|haiku|fable)/.exec(String(a.model ?? ''))?.[1] ?? 'default';
   $('fork-effort').value = EFFORTS.includes(a.effort) ? a.effort : '';
+  $('fork-account-row').hidden = !accountsOn(); // with two or more accounts: the session's own to start with
+  if (accountsOn()) {
+    $('fork-account').innerHTML = snap.accounts.map(x => `<option value="${esc(x.key)}">${esc(acctChoice(x))}</option>`).join('');
+    $('fork-account').value = a.account ?? snap.accounts[0].key;
+  }
   $('fork-warn').hidden = $('fork-mode').value !== 'bypassPermissions';
   $('fork-dlg').showModal();
 }
@@ -616,7 +617,7 @@ async function forkGo(button) {
   if (!from) return;
   const mode = $('fork-mode').value || 'default', model = $('fork-model').value || 'default', effort = $('fork-effort').value || undefined;
   if (button) button.disabled = true;
-  const r = await post('/api/actions/fork', { agentId: from.agentId, at: from.at, mode, ...(model !== 'default' ? { model } : {}), ...(effort ? { effort } : {}) });
+  const r = await post('/api/actions/fork', { agentId: from.agentId, at: from.at, mode, ...(model !== 'default' ? { model } : {}), ...(effort ? { effort } : {}), ...(accountsOn() && $('fork-account').value ? { account: $('fork-account').value } : {}) });
   if (button) button.disabled = false;
   $('fork-dlg').close();
   forkFrom = null;

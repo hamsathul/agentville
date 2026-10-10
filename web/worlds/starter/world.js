@@ -58,8 +58,17 @@
       for (const s of L.ST) fill(s.cx - 36, s.rowTop + 12, 72, 30, '#7a5230');
     },
 
-    /** Drawn every frame, under the people: each plot fills with green as its agents use their context; its last deploy is a flag. */
+    /**
+     * Drawn every frame, under the people: each plot fills with green as its agents use their context; its last deploy is a flag.
+     * With two or more Claude accounts, a meter for each in the top left: how much of its week is used.
+     */
     ground() {
+      const accs = scene.accounts ?? [];
+      if (accs.length > 1) accs.forEach((a, i) => {
+        const w = a.plan?.windows.find(x => x.kind === 'seven_day'), p = w ? (w.reset ? 0 : w.percentUsed) / 100 : 0;
+        px(8, 8 + i * 6, 40, 4, '#3a3a40');
+        px(8, 8 + i * 6, Math.round(40 * Math.min(1, p)), 4, p >= 0.9 ? '#e04a3a' : p >= 0.7 ? '#f0b429' : '#6cc04a');
+      });
       for (const s of L.ST) {
         const pct = Math.max(0, ...scene.farmers.filter(f => f.field === s.key).map(f => f.pct ?? 0));
         px(s.cx - 34, s.rowTop + 14, Math.round(68 * pct), 4, '#6cc04a');
