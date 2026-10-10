@@ -4,8 +4,8 @@
 # mkdir), answers them through the dashboard's HTTP API (one with Always allow and one of Claude
 # Code's own options), compacts one, sends the first one a chat message,
 # has it read a markdown file and fetches that file for the document reader, sends it a
-# screenshot, cancels a question (as Esc does), messages a busy interactive session and stops it
-# mid-turn, has the helper name a new session with Haiku and renames it, then removes the
+# screenshot, cancels a question (as Esc does), messages a busy interactive session (one message sent
+# now, one held until its turn ends) and stops it mid-turn, has the helper name a new session with Haiku and renames it, then removes the
 # sessions. Needs the collector running.
 set -eo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
@@ -124,7 +124,7 @@ echo "   ok: the session ran /compact"
 echo "5/12 chat message sent from the dashboard"
 WORD="tracker-e2e-$$"
 for _ in $(seq 1 60); do
-  R="$(post /api/actions/message "{\"agentId\":\"$QS\",\"text\":\"Reply with only the word $WORD and stop.\"}")"
+  R="$(post /api/actions/message "{\"agentId\":\"$QS\",\"text\":\"Reply with only the word $WORD and stop.\",\"now\":true}")" # now: sent at once (steps 5 to 7 check delivery; holding is step 9's)
   [ "$R" = '{"ok":true}' ] && break
   sleep 1
 done
@@ -134,7 +134,7 @@ echo "   ok: the session got the message"
 
 echo "6/12 the document reader and the explorer, and what they refuse"
 DOC="$ROOT/README.md"
-R="$(post /api/actions/message "{\"agentId\":\"$QS\",\"text\":\"Use the Read tool to read README.md (first 5 lines are enough), then reply with only DONE.\"}")"
+R="$(post /api/actions/message "{\"agentId\":\"$QS\",\"text\":\"Use the Read tool to read README.md (first 5 lines are enough), then reply with only DONE.\",\"now\":true}")"
 [ "$R" = '{"ok":true}' ] || fail "message refused: $R"
 for _ in $(seq 1 90); do
   curl -s "$BASE/api/state" | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{const a=JSON.parse(s).agents.find(x=>x.id===process.argv[1]);process.exit(a?.docs?.some(d=>d.path===process.argv[2])?0:1)})' "$QS" "$DOC" && break
@@ -162,7 +162,7 @@ const ihdr = Buffer.alloc(13); ihdr.writeUInt32BE(w, 0); ihdr.writeUInt32BE(h, 4
 process.stdout.write(Buffer.concat([Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]), chunk("IHDR", ihdr), chunk("IDAT", zlib.deflateSync(raw)), chunk("IEND", Buffer.alloc(0))]).toString("base64"));
 ')"
 SHOT_WORD="shot-e2e-$$"
-R="$(post /api/actions/message "{\"agentId\":\"$QS\",\"text\":\"($SHOT_WORD) What single colour fills this screenshot? Reply with only the colour name.\",\"files\":[{\"name\":\"red.png\",\"data\":\"$SHOT\"}]}")"
+R="$(post /api/actions/message "{\"agentId\":\"$QS\",\"text\":\"($SHOT_WORD) What single colour fills this screenshot? Reply with only the colour name.\",\"files\":[{\"name\":\"red.png\",\"data\":\"$SHOT\"}],\"now\":true}")"
 [ "$R" = '{"ok":true}' ] || fail "a message with a screenshot was refused: $R"
 SAW=""
 for _ in $(seq 1 120); do
@@ -200,7 +200,7 @@ done
 [ "$GONE" = yes ] || fail "the question still shows on the dashboard after Cancel"
 echo "   ok: the question is gone and the session waits for you"
 
-echo "9/12 a message to a busy interactive session is taken at once and queued once"
+echo "9/12 a message to a busy interactive session: sent now, taken at once and queued once; sent plain, held"
 if ! command -v python3 >/dev/null; then
   echo "   skipped: needs python3 to run an interactive session"
   echo "PASS (steps 9 to 11 skipped)"
@@ -223,13 +223,18 @@ for _ in $(seq 1 90); do
 done
 [ -n "$BS" ] || fail "the interactive session never showed up busy with the mod listening"
 BUSY_WORD="busy-e2e-$$"
-R="$(post /api/actions/message "{\"agentId\":\"$BS\",\"text\":\"After that, reply with only the word $BUSY_WORD.\"}")"
-[ "$R" = '{"ok":true}' ] || fail "a message to a busy session was refused: $R"
+R="$(post /api/actions/message "{\"agentId\":\"$BS\",\"text\":\"After that, reply with only the word $BUSY_WORD.\",\"now\":true}")"
+[ "$R" = '{"ok":true}' ] || fail "a message sent now to a busy session was refused: $R"
+HELD_WORD="held-e2e-$$" # sent plain, it waits in the dashboard until the turn ends (step 10 ends it)
+R="$(post /api/actions/message "{\"agentId\":\"$BS\",\"text\":\"Then reply with only the word $HELD_WORD.\"}")"
+case "$R" in *'"held":true'*) ;; *) fail "a plain message to a busy session was not held: $R" ;; esac
 sleep 6
 F="$(ls "$HOME"/.claude/projects/*/"$BS".jsonl | head -1)"
 N="$(grep -c "\"operation\":\"enqueue\".*reply with only the word $BUSY_WORD" "$F" || true)"
-[ "$N" = 1 ] || fail "the message was queued $N times, not once"
-echo "   ok: taken at once, queued once"
+[ "$N" = 1 ] || fail "the message sent now was queued $N times, not once"
+H="$(grep -c "reply with only the word $HELD_WORD" "$F" || true)"
+[ "$H" = 0 ] || fail "the held message reached the session before its turn ended"
+echo "   ok: sent now, taken at once and queued once; sent plain, held"
 
 echo "10/12 ■ Stop ends the busy session's turn at once, as Esc does"
 if [ "$(curl -s "$BASE/api/state" | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{const a=JSON.parse(s).agents.find(x=>x.id===process.argv[1]);process.stdout.write(a?.state??"")})' "$BS")" != working ]; then
@@ -247,6 +252,8 @@ else
   [ "$SAID" = Stopped. ] || fail "the mod said \"$SAID\", not Stopped."
   echo "   ok: stopped, and the marker Esc leaves is in its conversation"
 fi
+transcript_has "$BS" "reply with only the word $HELD_WORD" || fail "the held message never went out after the turn ended"
+echo "   ok: the held message went out once the turn ended"
 
 echo "11/12 the helper names a new session with Haiku, through its own Claude Code, and /rename renames it"
 HELPER_BEFORE="$(curl -s "$BASE/api/state" | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{const h=JSON.parse(s).helper??{};process.stdout.write(JSON.stringify({on:Boolean(h.on),uses:{names:Boolean(h.uses?.names),lines:Boolean(h.uses?.lines)},dailyLimit:h.dailyLimit??200}))})')"
