@@ -1,0 +1,9 @@
+{
+  "name": "Robot factory",
+  "icon": "🤖",
+  "description": "Every agent a robot, every repo an assembly bay",
+  "api": 1,
+  "author": "",
+  "nouns": { "agent": "robot", "agents": "robots", "repo": "bay", "repos": "bays", "start": "fabricator", "diary": "Floor log" },
+  "taken": ["drone"]
+}

@@ -4,7 +4,14 @@ import assert from 'node:assert/strict';
 import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { homedir, tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { worldsDir } from '../../scripts/lib/worlds-dir.mjs';
+import { builtInKeys, keyOf, worldsDir } from '../../scripts/lib/worlds-dir.mjs';
+
+test("a world's key from its name: every built-in world by its folder's name, yours under u/", () => {
+  assert.deepEqual(builtInKeys().sort(), ['factory', 'farm', 'starter'], 'the folders of web/worlds with a world.json (not sdk or test)');
+  for (const key of ['farm', 'factory', 'starter', 'u/mine']) assert.equal(keyOf(key), key);
+  assert.equal(keyOf('mine'), 'u/mine');
+  assert.equal(keyOf('factory', ['farm']), 'u/factory', 'the built-in names can be given');
+});
 
 test('a malformed config.json warns once and uses the defaults; a missing one is no error', () => {
   const root = mkdtempSync(join(tmpdir(), 'agentville-worlds-dir-')), cfgPath = join(root, 'config.json');
