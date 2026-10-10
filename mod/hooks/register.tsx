@@ -235,7 +235,7 @@ export function linesPrompt(req: any): string | null {
   const events = list(req?.events, 5).filter((e: any) => LINE_EVENTS.includes(e?.kind))
   const c = req?.counts ?? {}
   return [
-    `Animals: ${cast.map((x: any) => `${x.kind} (${s(x.name, 30)})`).join(', ')}`,
+    `Animals: ${[...new Set(cast.map((x: any) => x.kind))].join(', ')}`, // kinds only: a world's names for them never reach the model
     `Farmers: ${agents.length ? agents.map((a: any) => `${s(a.name, 40)} is ${s(a.state, 10)}${a.step ? `, ${s(a.step, 12)}` : ''}${a.repo ? ` in ${s(a.repo, 40)}` : ''}`).join('; ') : 'none'}`,
     `Waiting on the person: ${num(c.waiting)}; working: ${num(c.working)}; idle: ${num(c.idle)}`,
     `What just happened: ${events.length ? events.map((e: any) => `${e.kind}${e.agent ? ` (${s(e.agent, 40)})` : ''}${e.repo ? ` in ${s(e.repo, 40)}` : ''}, ${num(e.ago)} min ago`).join('; ') : 'nothing'}`,

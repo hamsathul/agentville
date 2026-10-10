@@ -1411,7 +1411,7 @@ test('Animal lines: a live cast and a 0.9.0 session get a batch; the reply’s g
     assert.deepEqual(snap().chatter.lines, [{ kind: 'cow', when: 'idle', text: 'MOO. all good here' }]);
     assert.equal(snap().helper.linesBlocked, undefined);
     assert.equal(asked[0].kind, 'lines');
-    assert.deepEqual(asked[0].cast, [{ kind: 'cow', name: 'Cow' }]);
+    assert.deepEqual(asked[0].cast, [{ kind: 'cow' }], 'kinds only: the world’s own names for its animals stay on the page');
     assert.deepEqual(Object.keys(asked[0]).sort(), ['agents', 'at', 'cast', 'counts', 'events', 'id', 'kind']);
     assert.equal(JSON.stringify(asked[0]).includes('/w'), false, 'no path in a request');
     assert.equal(snap().helper.today >= 1, true, 'counted');
@@ -1425,6 +1425,50 @@ test('Animal lines: a live cast and a 0.9.0 session get a batch; the reply’s g
     await handle.reloadConfig();
     assert.equal(snap().chatter, null, 'unticked: chatter cleared');
     assert.equal(existsSync(join(root, 'state', 'helper', 'helper-one')) && readdirSync(join(root, 'state', 'helper', 'helper-one')).some(n => n.endsWith('.json')), false, 'nothing waiting');
+  } finally {
+    clearInterval(fakeMod);
+    proc.kill();
+    await handle.stop();
+  }
+});
+
+test('Animal lines ticked again: a batch goes out at once, not after the 30-minute wait', async () => {
+  const root = mkdtempSync(join(tmpdir(), 'tracker-root-relines-'));
+  mkdirSync(join(root, 'web'));
+  writeFileSync(join(root, 'web', 'index.html'), '<html></html>');
+  writeFileSync(join(root, 'config.json'), JSON.stringify({ port: 0, deployRepos: {} }));
+  const claudeDir = mkdtempSync(join(tmpdir(), 'tracker-claude-relines-'));
+  mkdirSync(join(claudeDir, 'sessions'));
+  mkdirSync(join(claudeDir, 'projects', '-w'), { recursive: true });
+  const proc = spawn('sleep', ['60']);
+  writeFileSync(join(claudeDir, 'sessions', `${proc.pid}.json`), JSON.stringify({ pid: proc.pid, sessionId: 'helper-two', cwd: '/w', name: 'helper-two', nameSource: 'user', status: 'idle', startedAt: Date.now() }));
+  writeFileSync(join(claudeDir, 'projects', '-w', 'helper-two.jsonl'), JSON.stringify({ type: 'user', timestamp: new Date().toISOString(), message: { content: 'hello' } }) + '\n');
+  mkdirSync(join(root, 'state', 'mods'), { recursive: true });
+  let n = 0;
+  const fakeMod = setInterval(() => {
+    writeFileSync(join(root, 'state', 'mods', 'helper-two.json'), JSON.stringify({ sessionId: 'helper-two', version: '0.9.0', at: Date.now() }));
+    const inbox = join(root, 'state', 'helper', 'helper-two');
+    if (!existsSync(inbox)) return;
+    for (const name of readdirSync(inbox).filter(x => x.endsWith('.json'))) {
+      const req = JSON.parse(readFileSync(join(inbox, name), 'utf8'));
+      unlinkSync(join(inbox, name));
+      n += 1;
+      mkdirSync(join(root, 'state', 'helper-replies'), { recursive: true });
+      writeFileSync(join(root, 'state', 'helper-replies', `helper-two.${req.id}.json`), JSON.stringify({ id: req.id, sessionId: 'helper-two', kind: req.kind, ok: true, text: `cow|idle|batch ${n}`, at: Date.now() }));
+    }
+  }, 40);
+  const handle = await startCollector({ root, claudeDir, claudeBin: '/usr/bin/false', notify: () => {}, log: () => {}, linesGapMs: 300_000, linesIdleMs: 1_800_000 });
+  const snap = () => handle.getSnapshot();
+  const until = async (ok, ms = 4000) => { for (let i = 0; i < ms / 50; i++) { await handle.reloadConfig(); if (ok()) return true; await new Promise(r => setTimeout(r, 50)); } return false; };
+  try {
+    await handle.actions.animals({ cast: [{ kind: 'cow', name: 'Cow' }] });
+    await handle.actions.helper({ on: true, uses: { names: true, lines: true } });
+    assert.ok(await until(() => snap().chatter?.lines?.[0]?.text === 'batch 1'), 'the first batch');
+    await handle.actions.helper({ uses: { names: true, lines: false } });
+    await handle.reloadConfig();
+    assert.equal(snap().chatter, null);
+    await handle.actions.helper({ uses: { names: true, lines: true } });
+    assert.ok(await until(() => snap().chatter?.lines?.[0]?.text === 'batch 2', 3000), 'ticked again: a batch at once');
   } finally {
     clearInterval(fakeMod);
     proc.kill();

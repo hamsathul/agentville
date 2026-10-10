@@ -290,3 +290,11 @@ test('mounting a world with animals reports its cast through opts.onCast; the vi
   assert.deepEqual(noCasts, [], 'no animals: no cast');
   none.chatter([{ kind: 'cow', when: 'idle', text: 'x' }]); // no kit: nothing happens, nothing throws
 });
+
+test('with the Animals switch off, the world reports no animals (so no lines are written for them)', () => {
+  const { dom, sdk } = load();
+  const casts = [];
+  const view = sdk.makePixelView(sdk.withDefaults(fourHooks({ animals: () => [{ kind: 'cow', name: 'Cow' }], roam: () => [{ x: 10, y: 50, w: 150, h: 40 }] })), { get: k => (k === 'animals' ? 'off' : null), set() {} });
+  view.mount(dom.make(), { still: true, onCast: list => casts.push(list) });
+  assert.deepEqual(plain(casts), [[]]);
+});

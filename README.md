@@ -386,11 +386,14 @@ view.
   happening ("not my fault (it was deploy-bot)" from the ostrich after a failed deploy).
   - **When:** a batch when something happens (a deploy fails or goes through, a harvest, a merge,
     someone new), at most once every 5 minutes, and one every 30 minutes for idle chatter; only
-    while a dashboard shows a world with animals. Each batch is one call, counted in the daily limit.
-  - **What it sends:** the dashboard's facts only: agent and repo names, each agent's state, a word
-    for what it is doing (editing, running, searching…), how many are waiting or working, and what
-    just happened. Never code, file paths, commands, branches or anything said in a conversation.
-    One of your open sessions (idle ones first, taking turns) makes the call.
+    while a dashboard shows a world with its animals (and for up to 10 minutes after). Ticking it
+    again asks at once. Each batch is one call, counted in the daily limit.
+  - **What it sends:** the dashboard's facts only: agent and repo names (the names the dashboard
+    shows, which Claude Code may take from a conversation's title), each agent's state, a word for
+    what it is doing (editing, running, searching…), how many are waiting or working, which kinds of
+    animal are on screen, and what just happened. Never code, file paths, commands, branches or
+    anything else said in a conversation. One of your open sessions (idle ones first, taking turns)
+    makes the call.
   - **What the animals say:** each fresh line once, before their own; what you click (Pet, Feed…)
     keeps its own line. A world of yours that can't see what agents say gets only the lines with no
     names in them.
@@ -974,9 +977,11 @@ and can do is in [docs/worlds.md](docs/worlds.md).
   prompt (the mod's instruction for each job is fixed), and for a name the session sends its own
   first messages itself: the collector and the page see only the name. For animal lines the
   collector sends the facts listed in "✨ Helper and suggested names" (names, states, a step word,
-  counts, events; never paths, commands, branches or conversation text), and the page reports which
-  animals a world has (kinds and names only). The lines come back as plain text of 40 characters at
-  most; a world of yours that can't see what agents say gets only those with no names. Its setting (with today's
+  counts, events, the kinds of animal on screen; never paths, commands, branches or conversation
+  text), and the page reports which animals a world has (kinds and names; only the kinds reach
+  Haiku). The lines come back as plain text of 40 characters at
+  most; a world of yours that can't see what agents say gets only those with no names, by the names
+  it was sent (an agent gone since, or one renamed, too) and the names on the dashboard now. Its setting (with today's
   count) and what you chose for each session's name (renamed, edited, dismissed) are kept in
   `state/helper.json` and `state/names.json`, readable only by you. No world is told the helper's setting, a suggested name or a pending offer: a world gets only the fields in the scene (see [docs/worlds.md](docs/worlds.md)).
 - **↺ Restore** is the one thing that writes to Claude Code's own files. Once the session has ended,

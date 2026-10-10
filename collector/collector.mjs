@@ -34,7 +34,7 @@ import { AlertEngine, notifyMac } from './alerts.mjs';
 import { createTrackerServer } from './server.mjs';
 import { makeWorlds, watchWorlds, worldsDirOf } from './worlds.mjs';
 import { renderTranscriptPage } from './transcript-page.mjs';
-import { checkCast, chooseSession, createLinesWatch, dueLines, factsOf, parseLines } from './sources/lines.mjs';
+import { checkCast, chooseSession, createLinesWatch, dueLines, factsOf, namesOf, parseLines } from './sources/lines.mjs';
 
 const DOC_FILE = /\.(md|markdown|mdx)$/i;
 
@@ -892,9 +892,10 @@ export async function startCollector({ root, claudeDir = join(homedir(), '.claud
     if (!a) { linesBlocked = 'no-session'; return; }
     const cast = [...casts].map(([kind, c]) => ({ kind, name: c.name }));
     const id = `${now}-${Math.random().toString(36).slice(2, 8)}`;
-    const file = writeRequestFile(helperDir, a.id, { id, kind: 'lines', at: now, ...factsOf(snap, cast, linesWatch.recent(), now) }, id);
+    const facts = factsOf(snap, cast, linesWatch.recent(), now);
+    const file = writeRequestFile(helperDir, a.id, { id, kind: 'lines', at: now, ...facts }, id);
     helper.count();
-    linesPending = { sid: a.id, id, file, at: now };
+    linesPending = { sid: a.id, id, file, at: now, names: namesOf(snap, facts) }; // every name it could put in a line, for the private filter
     linesAskedAt = now;
     linesUsed.set(a.id, now);
   }
@@ -905,10 +906,11 @@ export async function startCollector({ root, claudeDir = join(homedir(), '.claud
   }
   /** A mod's lines: kept if they answer the batch asked for; the good rows become the chatter, none counts as a failure. */
   function linesReply(sid, r, now) {
-    if (!linesPending || linesPending.sid !== sid || linesPending.id !== r.id) return; // late, or withdrawn: dropped
+    const p = linesPending;
+    if (!p || p.sid !== sid || p.id !== r.id) return; // late, or withdrawn: dropped
     linesPending = null;
     if (!r.ok) { helper.fail(String(r.error ?? 'no answer')); return; }
-    const lines = parseLines(r.text, [...casts.keys()]);
+    const lines = parseLines(r.text, [...casts.keys()], p.names);
     if (!lines.length) { helper.fail('Haiku gave no usable lines.'); return; }
     helper.ok();
     chatter = { at: now, lines };
@@ -1019,7 +1021,9 @@ export async function startCollector({ root, claudeDir = join(homedir(), '.claud
     },
     /** The ✨ Helper dialog: on or off, its uses, the daily limit. Switching off withdraws what is out. */
     async helper(body) {
+      const was = helper.settings(), linesWere = was.on && was.uses.lines;
       const r = helper.update(body ?? {});
+      if (r.ok && r.helper.on && r.helper.uses.lines && !linesWere) linesAskedAt = null; // ticked (again): the first batch goes out at once
       if (r.ok && !r.helper.on) for (const id of [...helperPending.keys()]) withdrawName(id);
       if (r.ok && (!r.helper.on || !r.helper.uses.lines)) { withdrawLines(); chatter = null; }
       if (r.ok) await schedule(false);

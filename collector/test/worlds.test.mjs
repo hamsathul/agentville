@@ -1159,3 +1159,38 @@ test("the page's copies of the creature kinds and situations match the collector
   assert.deepEqual(listOf('CREATURE_KINDS'), CREATURE_KINDS);
   assert.deepEqual(listOf('SITUATIONS'), SITUATIONS);
 });
+
+test('chatterFor: a private world never gets a row the collector marked as naming someone (an agent gone since, a name before a rename)', async () => {
+  const W = (await page()).worlds;
+  const snap = { agents: [], repos: [], chatter: { at: 5, lines: [{ kind: 'cow', when: 'idle', text: 'welcome back, old friend', named: true }, { kind: 'cow', when: 'idle', text: 'moo' }] } };
+  assert.deepEqual(plain(W.chatterFor(snap, [{ kind: 'cow', name: 'Cow' }], true)).map(l => l.text), ['moo']);
+  assert.deepEqual(plain(W.chatterFor(snap, [{ kind: 'cow', name: 'Cow' }], false)).map(l => l.text), ['welcome back, old friend', 'moo']);
+});
+
+test('a world’s cast is taken once a second at most (the same again is ignored, a new one waits for the second to end), and none is posted while the list view shows', async () => {
+  const p = await page();
+  const on = { ...snap, helper: { on: true, uses: { names: false, lines: true } }, chatter: null };
+  p.farm.update(on);
+  p.from({ type: 'loaded' });
+  p.from({ type: 'ready' });
+  const posts = () => p.fetches.filter(f => f[0] === '/api/actions/animals').length;
+  p.from({ type: 'cast', animals: [{ kind: 'cow', name: 'Cow' }] });
+  await p.settle();
+  assert.equal(posts(), 1);
+  for (let i = 0; i < 20; i++) p.from({ type: 'cast', animals: [{ kind: 'cow', name: 'Cow' }] });
+  p.from({ type: 'cast', animals: [] }); // the Animals switch off…
+  p.from({ type: 'cast', animals: [{ kind: 'cat', name: 'Cat' }] }); // …and another cast, all within the second
+  await p.settle();
+  assert.equal(posts(), 1, 'a flood of casts posts nothing more at once');
+  p.wait(1100);
+  await p.settle();
+  assert.equal(posts(), 2, 'the newest is taken when the second is up');
+  p.farm.hide();
+  p.wait(1500);
+  p.from({ type: 'cast', animals: [{ kind: 'duck', name: 'Ducks' }] });
+  await p.settle();
+  assert.equal(posts(), 2, 'the list view shows: nothing is posted');
+  p.farm.mount(p.host, p.options);
+  await p.settle();
+  assert.equal(posts(), 3, 'shown again: the cast goes at once');
+});

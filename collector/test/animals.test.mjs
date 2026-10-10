@@ -665,3 +665,19 @@ test('cast(): the kinds a world has, each once, with its name', () => {
   const a = k.makeAnimals([{ kind: 'cow', count: 2, name: 'Cow' }, { kind: 'duck', count: 3, name: 'Ducks', home: POND }], { random: k.seededRandom(1) });
   assert.deepEqual(plain(a.cast()), [{ kind: 'cow', name: 'Cow' }, { kind: 'duck', name: 'Ducks' }]);
 });
+
+test('a creature with no fixed idle lines still says the helper’s fresh ones; a gag keeps its fixed line', () => {
+  const k = load();
+  const a = k.makeAnimals([{ kind: 'cat', actions: [{ label: 'Pet' }, { label: 'Feed' }] }], { random: k.seededRandom(2) });
+  a.place({ roam: [YARD], avoid: [] });
+  a.chatter([{ kind: 'cat', when: 'idle', text: 'fresh mrrp' }]);
+  let said = false;
+  for (let i = 0; i < 1000 && !said; i++) { a.tick(0.1); said = plain(a.bubbles()).some(b => b.text === 'fresh mrrp'); }
+  assert.ok(said, 'no fixed idle line needed');
+  const g = k.makeAnimals({ cast: [{ kind: 'cat', lines: { idle: ['mrrp.'] }, actions: [{ label: 'Pet' }, { label: 'Feed' }] }], gags: [{ id: 'pounce', needs: { cat: 1 }, steps: [{ say: 'cat', line: 'idle' }, { wait: 100 }] }] }, { random: k.seededRandom(2) });
+  g.place({ roam: [YARD], avoid: [] });
+  g.chatter([{ kind: 'cat', when: 'idle', text: 'fresh mrrp' }]);
+  let gagSaid = null;
+  for (let i = 0; i < 1500 && !gagSaid; i++) { g.tick(0.1, { crew: fakeCrew([]) }); if (g.gagNow()) gagSaid = plain(g.bubbles())[0]?.text ?? null; }
+  assert.equal(gagSaid, 'mrrp.', 'the gag says its fixed line');
+});

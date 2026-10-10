@@ -33,6 +33,8 @@ export function stepOf(a) {
 /** What is news between one snapshot and the next: a deploy that turns failed or ok, a compaction, a new merge, a new agent. */
 export function createLinesWatch({ now = () => Date.now() } = {}) {
   let seen = null, events = [];
+  const startedAt = now(); // what happened before this (learned late: a transcript read, a deploy or PR check) is no news
+  const before = t => Number.isFinite(t) && t <= startedAt;
   return {
     observe(snap) {
       const at = now(), agents = snap?.agents ?? [], repos = snap?.repos ?? [];
@@ -43,12 +45,12 @@ export function createLinesWatch({ now = () => Date.now() } = {}) {
         for (const r of repos) {
           if (!seen.deploys.has(r.path)) continue; // a repo first seen now: no news
           const s = r.lastDeploy?.state ?? null;
-          if ((s === 'failed' || s === 'ok') && seen.deploys.get(r.path) !== s) push(s === 'failed' ? 'deployFailed' : 'deployOk', null, r.name ?? null);
-          for (const p of r.prs?.merged ?? []) if (!seen.merged.has(`${r.path}#${p.number}`) && (p.at ?? 0) > at - EVENT_KEEP_MS) push('merged', null, r.name ?? null);
+          if ((s === 'failed' || s === 'ok') && seen.deploys.get(r.path) !== s && !before(r.lastDeploy?.at)) push(s === 'failed' ? 'deployFailed' : 'deployOk', null, r.name ?? null);
+          for (const p of r.prs?.merged ?? []) if (!seen.merged.has(`${r.path}#${p.number}`) && (p.at ?? 0) > at - EVENT_KEEP_MS && !before(p.at)) push('merged', null, r.name ?? null);
         }
         for (const a of agents) {
           if (!seen.agents.has(a.id)) push('arrive', a.name ?? null, repoOf.get(a.id) ?? null);
-          else if ((a.compactions ?? 0) > (seen.compactions.get(a.id) ?? 0)) push('harvest', a.name ?? null, repoOf.get(a.id) ?? null);
+          else if ((a.compactions ?? 0) > (seen.compactions.get(a.id) ?? 0) && !before(a.lastCompactAt)) push('harvest', a.name ?? null, repoOf.get(a.id) ?? null);
         }
       }
       seen = {
@@ -76,22 +78,42 @@ export function factsOf(snap, cast, events, now) {
     return { name: plain(a.name, 40), state: a.state === 'yourTurn' ? 'turn' : plain(a.state, 10), ...(step ? { step } : {}), ...(repo ? { repo: plain(repo, 40) } : {}) };
   });
   return {
-    cast: (cast ?? []).slice(0, 12).map(c => ({ kind: c.kind, name: plain(c.name, 30) })),
+    cast: (cast ?? []).slice(0, 12).map(c => ({ kind: c.kind })), // kinds only: a world's own names for its animals never reach the model
     agents,
     counts: { waiting: all.filter(a => a.state === 'waiting').length, working: all.filter(a => a.state === 'working').length, idle: all.filter(a => a.state === 'idle').length },
     events: (events ?? []).slice(0, 5).map(e => ({ kind: e.kind, ...(e.agent ? { agent: plain(e.agent, 40) } : {}), ...(e.repo ? { repo: plain(e.repo, 40) } : {}), ago: Math.max(0, Math.round((now - e.at) / 60_000)) })),
   };
 }
 
-/** The rows of Haiku's reply worth keeping: `kind|when|text`, a kind of the cast, a known situation, plain text of 1 to 40; 40 at most. */
-export function parseLines(text, castKinds) {
+/** Every name a request could have put in a line: the snapshot's agents, repos and branches, and the names in its facts (an agent gone since, a name before a rename). */
+export function namesOf(snap, facts) {
+  return [...new Set([
+    ...(snap?.agents ?? []).map(a => a.name), ...(snap?.repos ?? []).flatMap(r => [r.name, r.branch]),
+    ...(facts?.agents ?? []).flatMap(a => [a.name, a.repo]), ...(facts?.events ?? []).flatMap(e => [e.agent, e.repo]),
+  ].filter(n => typeof n === 'string' && n.trim()))];
+}
+/** Whether a line holds a name (as the page's private filter decides): one of 4 or more characters anywhere, or a part of one; a shorter one as a whole word; any case. */
+function isNamed(text, names) {
+  const long = new Set(), short = new Set();
+  for (const n of names ?? []) {
+    const s = n.toLowerCase().trim();
+    (s.length >= 4 ? long : short).add(s);
+    for (const part of s.split(/[-_/. ]+/)) if (part.length >= 4) long.add(part);
+  }
+  const t = text.toLowerCase();
+  if ([...long].some(n => t.includes(n))) return true;
+  return [...short].some(n => new RegExp(`(^|[^\\p{L}\\p{N}])${n.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}(?=$|[^\\p{L}\\p{N}])`, 'u').test(t));
+}
+
+/** The rows of Haiku's reply worth keeping: `kind|when|text`, a kind of the cast, a known situation, plain text of 1 to 40; 40 at most. A row holding one of `names` is marked `named` (a private world never gets it). */
+export function parseLines(text, castKinds, names = []) {
   const kinds = new Set(castKinds ?? []), out = [];
   for (const row of String(text ?? '').slice(0, 8000).split('\n')) {
     const parts = row.split('|');
     if (parts.length !== 3) continue;
     const [kind, when] = parts.map(p => p.trim()), t = plain(parts[2].trim().replace(/^["'“”‘’]+|["'“”‘’]+$/g, ''), 41);
     if (!kinds.has(kind) || !SITUATIONS.includes(when) || !t || t.length > 40) continue;
-    out.push({ kind, when, text: t });
+    out.push({ kind, when, text: t, ...(isNamed(t, names) ? { named: true } : {}) });
     if (out.length >= 40) break;
   }
   return out;

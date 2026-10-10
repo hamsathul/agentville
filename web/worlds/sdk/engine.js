@@ -976,6 +976,7 @@ function makePixelView(th, prefs) {
       prefs.set('animals', animalsOn ? 'on' : 'off');
       closeMenu();
       if (!animalsOn) kit?.stopGags(crew); // hidden: the hats back, the farmers let go
+      if (kit) opts.onCast?.(animalsOn ? kit.cast() : []); // no lines are written for animals you can't see
       if (!animalsOn && errands) { errands.clear(); sync(false); } // hidden: no farmer walks to an animal you can't see
       renderHud();
       draw();
@@ -1138,7 +1139,7 @@ function makePixelView(th, prefs) {
       renderHud();
       timer = setInterval(() => { if (!document.hidden) { renderLog(); renderHud(); if (still && animalsShown() && kit.bubbles().length) redrawStill(); } }, 1000); // still: an animal's line goes after its few seconds
       startLoop();
-      if (kit) opts.onCast?.(kit.cast()); // the page learns which animals to ask the helper's lines for
+      if (kit) opts.onCast?.(animalsShown() ? kit.cast() : []); // the page learns which animals to ask the helper's lines for (none while hidden)
     },
     update(next) { apply(next); },
     chatter(lines) { kit?.chatter(lines); },

@@ -151,6 +151,7 @@
     const kinds = new Set((cast ?? []).map(c => c.kind));
     const lines = (Array.isArray(snap?.chatter?.lines) ? snap.chatter.lines : []).slice(0, 40)
       .filter(l => l && kinds.has(l.kind) && SITUATIONS.includes(l.when) && typeof l.text === 'string' && l.text.length >= 1 && l.text.length <= 40)
+      .filter(l => !priv || !l.named) // the collector marks a line holding any name it sent (one gone since, too)
       .map(l => ({ kind: l.kind, when: l.when, text: l.text }));
     return priv ? namelessLines(lines, snap) : lines;
   }
@@ -183,7 +184,7 @@
   let host = null, frame = null, opts = {}, world = 'farm', scene = null, selectedId = null, loaded = false;
   let diary = [], timer = 0, lastSettings = '', inFlight = 0, generation = 0;
   let sent = null; // the scene the world was last given (private, or not)
-  let cast = null, castTimer = 0, lastSnap = null, chatterAt = null; // the world's animals (its cast message), the snapshot last seen, the batch last sent
+  let cast = null, castTimer = 0, lastSnap = null, chatterAt = null, castKey = '', castAt = -Infinity, castNext = null, castLater = 0; // the world's animals (its cast message), the snapshot last seen, the batch last sent
   let port = null; // the MessageChannel port to this frame: made on `loaded`, one end handed to the bridge in `start`
   let heardLoaded = false; // the frame's `loaded`, heard: once per frame (every load builds a new one)
   let ready = false, loadsLeft = 0, startTimer = 0, lastError = null, strip = null, failed = false;
@@ -329,7 +330,7 @@
         break;
       }
       case 'diary': showDiary(act.entries); break;
-      case 'cast': cast = act.animals; clearInterval(castTimer); castTimer = setInterval(postCast, 300_000); void postCast(); sendChatter(true); break;
+      case 'cast': takeCast(act.animals); break;
       case 'refuse': post({ type: 'reply', id: act.id, ok: false, status: 403, error: act.error }); break;
       case 'request': {
         const mine = generation;
@@ -393,7 +394,7 @@
     world = key;
     loaded = false;
     heardLoaded = false;
-    cast = null; clearInterval(castTimer); chatterAt = null; // a new frame says its animals again
+    cast = null; clearInterval(castTimer); chatterAt = null; castKey = ''; castAt = -Infinity; castNext = null; clearTimeout(castLater); castLater = 0; // a new frame says its animals again
     generation++;
     closePort();
     sent = null; // nothing is given to the new frame until it says `loaded`
@@ -512,6 +513,7 @@
       opts = { ...options, still };
       pushSettings();
       renderDiary(opts.diary, diary);
+      void postCast(); // shown again: its animals are on screen once more
       return Promise.resolve();
     }
     unmount();
@@ -606,9 +608,22 @@
     if (loaded) { sendScene(); sendChatter(); }
     if (!linesWas && snap?.helper?.on && snap?.helper?.uses?.lines) void postCast(); // ticked just now: say the animals at once
   }
+  /** A world's cast, taken once a second at most: the same again is dropped; a new one within the second waits for its end (the newest wins). The page keeps it alive itself. */
+  function takeCast(animals) {
+    const key = JSON.stringify(animals);
+    if (key === castKey) { castNext = null; return; }
+    const wait = 1000 - (tick() - castAt);
+    if (wait > 0) {
+      castNext = animals;
+      if (!castLater) castLater = setTimeout(() => { castLater = 0; const next = castNext; castNext = null; if (next) takeCast(next); }, wait);
+      return;
+    }
+    castKey = key; castAt = tick(); cast = animals;
+    clearInterval(castTimer); castTimer = setInterval(postCast, 300_000); void postCast(); sendChatter(true);
+  }
   /** The world's animals to the collector, for Animal lines: when the world says them, then every 5 minutes, while it's ticked. */
   async function postCast() {
-    if (!cast?.length || !lastSnap?.helper?.on || !lastSnap?.helper?.uses?.lines || document.hidden) return;
+    if (hidden || !cast?.length || !lastSnap?.helper?.on || !lastSnap?.helper?.uses?.lines || document.hidden) return; // only while the world is on screen
     try { await fetch('/api/actions/animals', { method: 'POST', headers: { 'x-tracker-token': token, 'content-type': 'application/json' }, body: JSON.stringify({ cast }) }); } catch { /* the next one, in 5 minutes */ }
   }
   /** The helper's latest batch to the world when it changes; an empty one once it's gone (never before a batch was sent). */
@@ -651,7 +666,7 @@
     closePort();
     loaded = false;
     heardLoaded = false;
-    cast = null; clearInterval(castTimer); chatterAt = null;
+    cast = null; clearInterval(castTimer); chatterAt = null; castKey = ''; castAt = -Infinity; castNext = null; clearTimeout(castLater); castLater = 0;
     clearTimeout(startTimer);
     resetStrip();
     failed = false;

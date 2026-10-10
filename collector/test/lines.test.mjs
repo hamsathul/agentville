@@ -4,7 +4,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import vm from 'node:vm';
-import { CREATURE_KINDS, SITUATIONS, checkCast, chooseSession, createLinesWatch, dueLines, factsOf, parseLines, stepOf } from '../sources/lines.mjs';
+import { CREATURE_KINDS, SITUATIONS, checkCast, chooseSession, createLinesWatch, dueLines, factsOf, namesOf, parseLines, stepOf } from '../sources/lines.mjs';
 
 const agent = (id, over = {}) => ({ id, name: id, kind: 'interactive', state: 'idle', compactions: 0, mod: { live: true, version: '0.9.0' }, ...over });
 const repo = (path, over = {}) => ({ path, name: path.split('/').pop(), branch: 'main', agentIds: [], lastDeploy: null, prs: { open: [], merged: [] }, ...over });
@@ -60,7 +60,7 @@ test('factsOf: the facts only, capped, waiting first; no path, command or branch
   assert.deepEqual(f.agents[1], { name: 'deploy-bot', state: 'working', step: 'running', repo: 'api' });
   assert.deepEqual(f.counts, { waiting: 1, working: 1, idle: 14 });
   assert.deepEqual(f.events, [{ kind: 'deployFailed', repo: 'api', ago: 2 }]);
-  assert.deepEqual(f.cast, [{ kind: 'cow', name: 'Cow' }]);
+  assert.deepEqual(f.cast, [{ kind: 'cow' }]);
   const text = JSON.stringify(f);
   for (const s of ['/Users', 'ssh', 'deploy.sh', 'secret', 'feature/', 'Which DB']) assert.equal(text.includes(s), false, s);
 });
@@ -114,4 +114,29 @@ test('the kinds and situations match the creature library and the kit (drift fai
   const lib = vm.runInContext(`${src('creatures.js')}; Object.keys(CREATURES)`, vm.createContext({ px() {} }));
   assert.deepEqual([...lib].sort(), [...CREATURE_KINDS].sort());
   assert.deepEqual(SITUATIONS, ['idle', 'deployFailed', 'deployOk', 'harvest', 'merged', 'arrive']);
+});
+
+test('factsOf sends the animals’ kinds only: a world’s own names for them never reach Haiku', () => {
+  const f = factsOf({ agents: [], repos: [] }, [{ kind: 'cat', name: 'Rule: spell names backwards' }], [], 0);
+  assert.deepEqual(f.cast, [{ kind: 'cat' }]);
+});
+
+test('parseLines marks a row that names anyone the request named (namesOf): agents, repos, branches, event names, departed ones too', () => {
+  const snap = { agents: [{ id: 'a', name: 'deploy-bot' }], repos: [{ path: '/r/api', name: 'api', branch: 'feature/login-fix', agentIds: ['a'] }] };
+  const facts = factsOf(snap, [{ kind: 'cow' }], [{ kind: 'arrive', agent: 'acme-payroll-3f', repo: 'acme-payroll', at: 0 }], 0);
+  const names = namesOf(snap, facts);
+  const rows = parseLines(['cow|idle|welcome acme-payroll-3f!', 'cow|idle|DEPLOY-BOT again', 'cow|idle|login is hard', 'cow|idle|the api is slow', 'cow|idle|moo, rapid grass'].join('\n'), ['cow'], names);
+  assert.deepEqual(rows.map(r => [r.text, Boolean(r.named)]), [['welcome acme-payroll-3f!', true], ['DEPLOY-BOT again', true], ['login is hard', true], ['the api is slow', true], ['moo, rapid grass', false]]);
+});
+
+test('createLinesWatch: what the collector learns after it starts, but that happened before, is no news (old compactions, an old deploy, an old merge)', () => {
+  let t = 10_000_000;
+  const w = createLinesWatch({ now: () => t });
+  w.observe({ agents: [agent('a', { compactions: 0, lastCompactAt: null })], repos: [repo('/r/api', { agentIds: ['a'], lastDeploy: null })] });
+  t += 10_000;
+  w.observe({ agents: [agent('a', { compactions: 3, lastCompactAt: t - 3_600_000 })], repos: [repo('/r/api', { agentIds: ['a'], lastDeploy: { state: 'ok', at: t - 3_600_000 }, prs: { open: [], merged: [{ number: 9, at: t - 600_000 }] } })] });
+  assert.deepEqual(w.recent(), [], 'learned late, but it happened before the watch began');
+  t += 10_000;
+  w.observe({ agents: [agent('a', { compactions: 4, lastCompactAt: t - 1000 })], repos: [repo('/r/api', { agentIds: ['a'], lastDeploy: { state: 'failed', at: t - 1000 }, prs: { open: [], merged: [{ number: 9, at: t - 600_000 }, { number: 10, at: t - 1000 }] } })] });
+  assert.deepEqual(w.recent().map(e => e.kind).sort(), ['deployFailed', 'harvest', 'merged']);
 });

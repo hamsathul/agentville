@@ -140,9 +140,9 @@
     }
     const FRESH = new Set(['idle', 'deployFailed', 'deployOk', 'harvest', 'merged', 'arrive']); // what the helper may write (actions keep their own)
     let fresh = new Map(); // `${kind}|${when}` → [text]: the helper's lines (✨ Helper, Animal lines), each said once
-    function say(o, key) {
+    function say(o, key, { fixed = false } = {}) { // fixed: a gag's or play's own line, never the helper's
       if (says.length >= LINES_AT_ONCE || says.some(s => s.id === o.id)) return false;
-      const q = FRESH.has(key) ? fresh.get(`${o.kind}|${key}`) : null;
+      const q = FRESH.has(key) && !fixed ? fresh.get(`${o.kind}|${key}`) : null;
       let text;
       if (q?.length) text = q.shift(); // the helper's, fresh, first
       else {
@@ -353,7 +353,7 @@
             }
           } else if (key === 'say') {
             const by = o ?? byId(Object.entries(g.roles).find(([k]) => k !== 'farmer' && k !== 'chicken')?.[1]);
-            if (by && (role === 'farmer' || !say(by, step.line)) && g.def.lines?.[step.line]) { const save = by.def.lines; by.def = { ...by.def, lines: { ...save, [step.line]: g.def.lines[step.line] } }; say(by, step.line); by.def = { ...by.def, lines: save }; }
+            if (by && (role === 'farmer' || !say(by, step.line, { fixed: true })) && g.def.lines?.[step.line]) { const save = by.def.lines; by.def = { ...by.def, lines: { ...save, [step.line]: g.def.lines[step.line] } }; say(by, step.line, { fixed: true }); by.def = { ...by.def, lines: save }; }
             next(g); return;
           } else if (key === 'pose') doing(o, { pose: step.is, s: ms / 1000 });
           else if (key === 'stay') { doing(o, { pose: step.is ?? 'sleep', s: ms / 1000 }); }
@@ -452,7 +452,7 @@
         }
         if ((quiet -= dt) <= 0) {
           quiet = 20 + random() * 20;
-          const awake = shown().filter(o => o.pose !== 'sleep' && o.def.lines?.idle?.length);
+          const awake = shown().filter(o => o.pose !== 'sleep' && (o.def.lines?.idle?.length || fresh.get(`${o.kind}|idle`)?.length)); // a fresh line needs no fixed one
           if (awake.length) say(awake[Math.floor(random() * awake.length)], 'idle');
         }
       },
