@@ -321,7 +321,9 @@ A world without one of them stops with an error that names it.
   and `zone`.
 - `bg(fill, season, ext)`: draws the ground. `fill(x, y, w, h, colour)` paints a rectangle; `ext` is
   `{ x0, x1, y0, y1 }`, the area to cover (it grows past the world's edges when the frame has room).
-  It is redrawn when the season turns, the layout changes or the frame is resized.
+  `season` is the season shown: your `season()`, or the one the Season switch holds ("Seasons",
+  below). It is redrawn when the season turns or is switched, the layout changes or the frame is
+  resized.
 
 ### The optional ones, with their defaults
 
@@ -346,9 +348,9 @@ A hook you give always wins over its default.
 | `onMove` | `(agent, zone, prevZone, pop)` | nothing; `pop(text, cls)` shows a pop-up over the agent |
 | `speed` | `(agent)` | `40`: walking speed |
 | `zoneText` | `(agent, zone)` | `'moves'`: the log line when an agent changes zone |
-| `hud` | `(state)` | the dashboard's buttons: list, world, sidebar, sky, motion, help, zoom. `state` is `{ still, zoom, saysOn, skyMode, follow, canFollow, restingHidden, bell, nav, panelOpen, animals }` (`animals`: `true` or `false` for a world with animals, its Animals switch with `data-farm-animals`; `null` for one without). Your own should keep List and World: an engine world gets no corner control from the page |
+| `hud` | `(state)` | the dashboard's buttons: list, world, sidebar, sky, season (in a world with seasons), motion, help, zoom. `state` is `{ still, zoom, saysOn, skyMode, seasonMode, seasons, follow, canFollow, restingHidden, bell, nav, panelOpen, animals }` (`animals`: `true` or `false` for a world with animals, its Animals switch with `data-farm-animals`; `null` for one without. `seasons`: `true` for a world with seasons, whose Season switch is a button with `data-farm-season`, right after the Sky's `data-farm-sky`, saying `seasonMode`: `'live'`, `'spring'`, `'summer'`, `'autumn'` or `'winter'`; the engine moves it on when it is clicked). Your own should keep List and World: an engine world gets no corner control from the page |
 | `ground`, `shadows(body)`, `top`, `drawFx(agent, body)` | | nothing: drawn under the agents, under each agent, over everything, and over each agent |
-| `season` | `()` | `'summer'` |
+| `season` | `()` | `'summer'`, and no seasons. A world that gives its own has seasons ("Seasons", below): it returns the live season (`'spring'`, `'summer'`, `'autumn'` or `'winter'`), and the HUD gets the Season switch |
 | `lights` | `()` | `[]`; each `[x, y, r, colour]` glows at night |
 | `items` | `()` | `[]`; each `[y, draw]`, drawn among the agents in order of `y`. Return a fresh array each call: the engine pushes its own into it |
 | `movers` | `(posOf)` | `[]`; each `{ key, html, title, x, y }`, an HTML label that moves; `posOf(id)` gives an agent's body |
@@ -374,6 +376,49 @@ page's ＋ Session (starting a session) and `'board'` opens the notice board, bu
 `boardSessions()`. Any other key goes to `dialog(key)`, which gives the dialog's title and HTML (or
 `null` for none).
 
+### Seasons
+
+A world has seasons when it gives its own `season()` hook; the default (`'summer'`) is none. Yours
+returns the live season, `'spring'`, `'summer'`, `'autumn'` or `'winter'`, by a rule of your own (the
+farm's follows your plan's 5-hour limit, from the scene's `plan`). A world with seasons gets the
+**Season switch** in its HUD (the default HUD's, or your own `hud`'s, from `seasons` and
+`seasonMode`): live, then spring, summer, autumn and winter held, then live again, saved as the
+world's `season` setting. A world without seasons gets no switch, and is always drawn in its own
+`season()`.
+
+Draw the season shown, never your own: `bg` gets it as `season`, and `PXG.season` holds it while the
+engine ticks and draws (it is set before each frame's `emit`, `tick`, `ambient` and drawing; `null`
+before the first). The animals go by it too: a held winter brings the goats' scarves and the icy
+pond. Keep your own live season only for what tells the person their real numbers: while a season is
+held, the farm's panel shows it with a 📌 and the real 5-hour use, and its tooltip says it is held,
+not live.
+
+Seasons for the starter, by the 5-hour limit as on the farm (its `scene`, `W` and `DOOR_Y` are its
+own names):
+
+```js
+// Inside the starter's function, beside its other names: the live season.
+const liveSeason = () => {
+  const w = scene.plan?.windows.find(x => x.kind === 'five_hour');
+  if (!w) return 'summer'; // no reading yet
+  const p = w.reset ? 0 : w.percentUsed;
+  return p < 25 ? 'spring' : p < 60 ? 'summer' : p < 85 ? 'autumn' : 'winter';
+};
+```
+
+Then, among its hooks, `season: liveSeason,`; in `bg`, the grass in the season shown (its first
+line):
+
+```js
+fill(ext.x0, ext.y0, ext.x1 - ext.x0, ext.y1 - ext.y0, season === 'winter' ? '#e6eef5' : '#5d9b46'); // snow, or grass
+```
+
+and at the end of `ground()`, what changes with it each frame:
+
+```js
+if (PXG.season === 'winter') px(0, DOOR_Y + 1, W, 1, '#ffffff'); // snow along the path, held or live
+```
+
 ### Drawing with the pixel kit
 
 The pixel kit (`pixel.js`) is loaded before your `world.js`, and its names are global in the frame:
@@ -382,7 +427,7 @@ canvas. What the starter draws with:
 
 | Name | What it is |
 |---|---|
-| `PXG` | The drawing state: `PXG.ctx` is the canvas being drawn now (a 2D context), `PXG.T` the animation clock, in seconds |
+| `PXG` | The drawing state: `PXG.ctx` is the canvas being drawn now (a 2D context), `PXG.T` the animation clock, in seconds, `PXG.season` the season to draw (held by the Season switch, or live; "Seasons"): read it rather than your own state when drawing |
 | `px(x, y, w, h, colour)` | Paints a rectangle on `PXG.ctx`; the colour is snapped to the kit's palette |
 | `blink(hz, n = 2)` | `0`, `1`, … `n - 1`, turning over `hz` times a second: for blinking and simple animation |
 | `pixelOrigin(body, SH)` | `[x, y]`: the top left of a 14-wide sprite `SH` high standing at `body` (with the walk's bob) |
@@ -673,8 +718,9 @@ props kit and before the engine) does the rest:
   the night owls), not in winter.
 - They react to what happens: a world event from `setScene` with a `kind` (below), and `arrive`,
   from the engine, when a new agent walks in.
-- In winter (`season()` returns `'winter'`) the goats wear scarves, the pond freezes (the ducks slide
-  on it), they rest twice as long and huddle at `spots().huddle`.
+- In winter (the season shown is `'winter'`: your `season()`'s, or one the Season switch holds) the
+  goats wear scarves, the pond freezes (the ducks slide on it), they rest twice as long and huddle at
+  `spots().huddle`.
 - Now and then (every one to two minutes, one at a time) they get up to something: a gag, a short
   script of steps. An agent idle three minutes or more sometimes plays with one (play, two at most).
 
@@ -889,7 +935,7 @@ policy lets it fetch nothing (`connect-src 'none'`). Every snapshot is made up
 goes through `toScene` like a real one, so the world gets a scene exactly as on the dashboard. A
 world's **requests** (`agentFiles`, `repoTouched`) get made-up answers in the collector's shapes. The
 world's **settings** are kept in memory, starting fresh at each stop with the stop's sky (`sky` is
-`day` or `night`); `prefs.set` works as usual, but nothing is written to the browser. The page shares
+`day` or `night`) and the season live; `prefs.set` works as usual, but nothing is written to the browser. The page shares
 the dashboard's origin (the same address and port), so it never reads or writes the dashboard's own storage in this browser:
 the world you chose, each world's saved settings, and the **Can see what agents say** switches are
 left as they were.
@@ -1077,7 +1123,7 @@ show you each stop.
 | deploying | `deploy-ok`, `deploy-running` | a windmill | a blinking amber flag |
 | deploy skipped | `deploy-ok`, `deploy-skipped` | no weather | a grey flag |
 | subagents | `working`, `subagents` | chickens, and a dog for an Explore one | left out |
-| the limits | `limits-low`, `limits-high` | winter, and the silo's grain | left out |
+| the limits | `limits-low`, `limits-high` | winter (the live season), and the silo's grain | left out |
 | an MCP call | `working`, `mcp` | its cart drives to the farmer | the step's prop (props kit) |
 | messages between agents | `two-working`, `pigeon` | a pigeon | a pigeon (the engine's) |
 | a collision | `two-working`, `collision` | rope with orange flags round the field | left out |
@@ -1086,6 +1132,11 @@ show you each stop.
 | stale | `idle`, `stale` | a scarecrow | greyed out |
 | night | `day`, `night` | lit windows, lanterns and fireflies | the engine's night |
 | **Creatures (optional)** | none: check-world reads `animals()` once | thirteen animals, six gags and three plays, all within the rules | one cat and its gag, within the rules |
+
+A world with seasons (its own `season()`: "Seasons", in "Hooks") should also follow the Season
+switch, which the tour leaves live. On the test page, click it through spring, summer, autumn and
+winter: everything seasonal should change with it (draw from `bg`'s `season` and `PXG.season`, never
+your own state), and whatever shows the person's real limit should still show it.
 
 The creature rules (see "Creatures"). A cross for each one broken:
 

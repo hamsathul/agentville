@@ -118,9 +118,9 @@ It listens on `127.0.0.1` only and reads what Claude Code already writes to disk
 **Watch it as a farm, or a world of your own** (optional)
 - Choose how the dashboard draws your agents: the farm, or a world of your own.
 - A pixel farm where every agent is a farmer and every repo a field. Crops grow as context
-  fills, weather shows the last deploy, a cart runs to town for each web call, each MCP server's
-  cart drives to the farmer calling it, and you click
-  the barn to start a session.
+  fills, weather shows the last deploy, the season follows your 5-hour limit (or hold one with the
+  **Season** switch), a cart runs to town for each web call, each MCP server's cart drives to the
+  farmer calling it, and you click the barn to start a session.
 - Animals on the farm, just for fun: cows, goats, a sheepdog, an ostrich, a lion, a tiger and a duck
   family on the pond. Click one to pet or feed it, and a farmer walks over to do it. Now and then they
   get up to something (a goat steals a hat), react to deploys and merges, and huddle in winter.
@@ -683,7 +683,8 @@ on the farm just for fun. They never stand for anything.
   request is merged and to meet a new farmer.
 - A farmer idle for three minutes or more sometimes plays with one: throws the sheepdog a stick, pets a
   goat, naps by the lion. Two at most.
-- In winter they huddle together, the goats wear scarves and the ducks slide on the frozen pond.
+- In winter they huddle together, the goats wear scarves and the ducks slide on the frozen pond. They
+  follow the season you see, so a winter held with the **Season** switch brings the scarves too.
 - The **Animals** switch hides them all (and brings back the pond's white duck); it is remembered.
   With it off, or **Motion** off, whatever they were up to stops where it is.
 
@@ -715,7 +716,7 @@ can hold.
 | A blue pennant / a greenhouse | A branch other than main / a worktree, beside its repo |
 | Stones round some beds, with a sign | One project's repos, side by side |
 | The market stall | Open pull requests as crates, tagged by their checks. **Sold!** means one was merged |
-| The silo's grain / the season | Your plan's weekly usage / its 5-hour limit (winter when nearly used up). The tag at the silo's foot gives the week's figure, amber from 70% and red from 90% |
+| The silo's grain / the season | Your plan's weekly usage / its 5-hour limit (winter when nearly used up), unless the **Season** switch holds one: then the panel's season has a 📌 and your real 5-hour use beside it. The tag at the silo's foot gives the week's figure, amber from 70% and red from 90% |
 | Eggs, hens in the run | Subagents that finished lately / more running than farmers can lead |
 
 **Controls.**
@@ -724,7 +725,8 @@ can hold.
   **needs you** button. Click its title to fold it away.
 - **Top right.** List, World (the list of worlds), ＋ Session, ⚙ Claude Code, Sidebar and the theme.
 - **Bottom.** Follow (keep the picked farmer in view), Resting (hide idle and stale farmers),
-  Bubbles, Sky (live, day or night), Motion, Bell, Help, and zoom.
+  Bubbles, Sky (live, day or night), Season (live, then spring, summer, autumn or winter held),
+  Motion, Bell, Help, and zoom.
 - **Mouse.** ⌘/Ctrl + scroll or a pinch zooms, drag moves around, and a minimap appears while you
   are zoomed in.
 
@@ -747,7 +749,14 @@ dialog over the farm, with Quote and the reply box as in the list. Click a build
 | Market stall | The pull requests, with links |
 
 The light follows your clock: cloud shadows by day, and lit windows, lanterns and fireflies at
-night. The farm pauses when its tab is hidden, or while the list shows (it is kept as it was, diary
+night. The season follows your plan's 5-hour limit: spring while it is fresh (blossom), then summer,
+autumn (falling leaves), and winter (snow, a frozen pond) when it is nearly used up. The **Season**
+switch holds one instead: each click moves it on (live, spring, summer, autumn, winter, then live
+again), and it is remembered, as the sky is. It only holds the look: while a season is held, the
+panel shows it with a 📌 and your real 5-hour use (for example "winter 📌 · 5-hour 42%"), and its
+tooltip says it is held, not live, and what the live season would be.
+
+The farm pauses when its tab is hidden, or while the list shows (it is kept as it was, diary
 and all, for when you come back), and follows the system's reduce-motion setting.
 
 ### Notifications and the bell

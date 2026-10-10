@@ -44,7 +44,7 @@ function load() {
   const dom = stubDom();
   const window = { Agentville: { raw: h => { window.registered = h; } } };
   const ctx = vm.createContext({ window, document: dom.document, console, Math, Date, JSON, Map, Set, Intl, ...dom.globals });
-  vm.runInContext(`${code}\n;window.sdk = { makeGrid, withDefaults, engineScene, makePixelView, ACTIVE, defaultHud };`, ctx);
+  vm.runInContext(`${code}\n;window.sdk = { makeGrid, withDefaults, engineScene, makePixelView, ACTIVE, defaultHud, PXG };`, ctx);
   return { window, dom, sdk: window.sdk };
 }
 const twoAgents = window => window.AgentvilleScene.toScene({ generatedAt: NOW, collisions: [], agents: [
@@ -132,6 +132,49 @@ test('a world with animals gets the Animals switch in its HUD; one without gets 
   assert.match(sdk.defaultHud({ animals: false }), /Animals: off/);
   assert.doesNotMatch(sdk.defaultHud({}), /data-farm-animals/);
   assert.doesNotMatch(sdk.defaultHud({ animals: null }), /data-farm-animals/);
+});
+
+/** A world mounted on a stand-in page whose HUD, dialog and click handler the test can reach. */
+function mounted(world, prefsOf = {}, saved = []) {
+  const { window, dom, sdk } = load();
+  const els = {}, host = dom.make();
+  let click = null;
+  els['.px-dlg'] = Object.assign(dom.make(), { contains: () => false }); // a closed dialog: clicks go on past it
+  host.querySelector = sel => (els[sel] ??= dom.make());
+  host.addEventListener = (type, fn) => { if (type === 'click') click = fn; };
+  const view = sdk.makePixelView(sdk.withDefaults(world), { get: k => prefsOf[k] ?? null, set: (k, v) => saved.push([k, v]) });
+  view.mount(host, { still: true });
+  view.update(sdk.engineScene(twoAgents(window)));
+  return { sdk, hud: () => String(els['.px-hud'].innerHTML), click: attr => click({ target: { closest: sel => (sel === `[${attr}]` ? {} : null) }, stopPropagation() {} }) };
+}
+
+test('a world with its own season hook gets the Season switch in the default HUD, after Sky; one without gets none', () => {
+  const hud = mounted(fourHooks({ season: () => 'autumn' })).hud();
+  assert.match(hud, /data-farm-sky[\s\S]*data-farm-season[^>]*>[\s\S]*Season: live/);
+  assert.doesNotMatch(mounted(fourHooks()).hud(), /data-farm-season/, 'the default season() is no seasons');
+});
+
+test("a held season is what the world's bg gets and PXG.season says, whatever its season() returns; live follows season()", () => {
+  const run = held => {
+    const got = [];
+    const { sdk } = mounted(fourHooks({ season: () => 'spring', bg(fill, season) { got.push(season); } }), { season: held });
+    return [got.at(-1), sdk.PXG.season];
+  };
+  assert.deepEqual(run('winter'), ['winter', 'winter']);
+  assert.deepEqual(run('live'), ['spring', 'spring']);
+  assert.deepEqual(run(null), ['spring', 'spring'], 'nothing saved: live');
+  assert.deepEqual(run('monsoon'), ['spring', 'spring'], 'not a season: live');
+});
+
+test('the Season switch goes live, spring, summer, autumn, winter and back to live: saved, shown, the ground redrawn in it', () => {
+  const got = [], saved = [];
+  const w = mounted(fourHooks({ season: () => 'summer', bg(fill, season) { got.push(season); } }), {}, saved);
+  const seen = [];
+  for (let i = 0; i < 5; i++) {
+    w.click('data-farm-season');
+    seen.push([saved.filter(([k]) => k === 'season').at(-1)?.[1], /Season: (\w+)/.exec(w.hud())?.[1], got.at(-1), w.sdk.PXG.season]);
+  }
+  assert.deepEqual(seen, [['spring', 'spring', 'spring', 'spring'], ['summer', 'summer', 'summer', 'summer'], ['autumn', 'autumn', 'autumn', 'autumn'], ['winter', 'winter', 'winter', 'winter'], ['live', 'live', 'summer', 'summer']]);
 });
 
 test('a world with animals draws them, and draws nothing more with them switched off', () => {

@@ -729,7 +729,9 @@
     let L = layoutFor([]);
     let seenCompactions = null, seenMerged = null, seenWeather = null; // what the last scene had, so news can be told
     let scene = { fields: [], farmers: [] };
-    let season = 'summer';
+    let season = 'summer'; // the live season, from your 5-hour limit: the panel and its tooltip say it
+    // The season to draw: the engine's (the Season switch may hold one), else the live one. What is drawn or emitted by season reads this.
+    const shown = () => PXG.season ?? season;
     const stOf = k => L.ST.find(s => s.key === k);
     const fieldByKey = k => scene.fields.find(f => f.key === k);
 
@@ -742,7 +744,7 @@
     }
     function drawPlot(s) {
       const f = fieldByKey(s.key), { x0, y0 } = s, st = plotState(f), T = PXG.T;
-      bed(px, s, f.worktree ? '#9aa4ad' : f.fence ?? '#c98d4f', f.soil ?? '#7a5230', season === 'winter' && st.kind !== 'grow');
+      bed(px, s, f.worktree ? '#9aa4ad' : f.fence ?? '#c98d4f', f.soil ?? '#7a5230', shown() === 'winter' && st.kind !== 'grow');
       for (let k = 0; k < 4; k++) for (let i = 0; i < 9; i++) {
         const x = x0 + 4 + i * 8, y = y0 + 3 + k * 8;
         if (st.kind === 'bare') { // fallow: weeds
@@ -784,10 +786,13 @@
       for (let i = 0; i < Math.min(4, Math.ceil(f.ahead / 4)); i++) { const x = cx - 30 + (i % 2) * 8, yy = y - 6 - Math.floor(i / 2) * 6; px(x, yy, 7, 6, '#8b5a2b'); px(x, yy, 7, 1, '#c98d4f'); px(x + 3, yy, 1, 6, '#6b4320'); px(x, yy + 6, 7, 1, '#4e3626'); }
       for (let i = 0; i < Math.min(4, Math.ceil(f.dirty / 3)); i++) { const x = cx + 12 + (i % 3) * 9, yy = y - 6 - Math.floor(i / 3) * 6; px(x, yy, 8, 6, '#e9c46a'); px(x, yy, 8, 1, '#f4d58d'); px(x + 2, yy, 1, 6, '#c9a24a'); px(x + 5, yy, 1, 6, '#c9a24a'); px(x, yy + 6, 8, 1, '#8a7140'); }
     }
-    function seasonTip() {
+    /** The panel's season tooltip: live, how it follows the 5-hour limit; held (the Season switch), that it is held and what the live one would be. */
+    function seasonTip(mode = 'live') {
       const w = scene.plan?.windows?.find(x => x.kind === 'five_hour');
+      if (mode !== 'live') return `Held at ${mode} by the Season switch, not live. The live season would be ${season} (your plan's 5-hour limit: ${w ? (w.reset ? 'just reset' : `${Math.round(w.percentUsed)}% used`) : 'no reading yet'}). The switch goes back to live after winter`;
       return `The season follows your plan's 5-hour limit${w ? `: ${w.reset ? 'just reset' : `${Math.round(w.percentUsed)}% used`}` : ' (no reading yet: summer)'}. Spring while it is fresh, then summer and autumn; winter when it is nearly used up`;
     }
+    const seasonIcon = s => (s === 'summer' ? 'day' : s);
     /** The silo's grain and lamp, the pond's ripples and duck, the henhouse's eggs and hens: each frame. */
     function drawScenery() {
       const T = PXG.T, silo = siloOf(scene.plan);
@@ -797,7 +802,7 @@
         for (const t of [0.25, 0.5, 0.75]) px(105, 73 - Math.round(46 * t), 1, 1, '#c3cbd2');
         if (silo.lamp && (silo.lamp === 'amber' || blink(2))) { px(100, 3, 4, 3, silo.lamp === 'red' ? '#e04a3a' : '#f0b429'); PXG.lights?.push([102, 6, 8, [100, 3, 4, 3]]); }
       }
-      if (season !== 'winter') { // ripples, and a duck paddling round the pond
+      if (shown() !== 'winter') { // ripples, and a duck paddling round the pond
         for (let i = 0; i < 2; i++) { const ph = (T * 0.5 + i * 0.5) % 1, r = Math.round(ph * 6); PXG.ctx.globalAlpha = 0.6 * (1 - ph); px(30 - r, 208 + i * 5, r * 2 + 1, 1, '#a9dcf7'); }
         PXG.ctx.globalAlpha = 1;
         if (!PXG.animals) { // with the animals on, the duck family lives here instead (FARM_ANIMALS)
@@ -806,7 +811,7 @@
         }
       } else if (blink(1.5)) px(36, 206, 2, 1, '#ffffff'); // ice glints
       if (PXG.animals) { // the animals' things in the yard: a trough and its bucket, a woodpile and a rock to climb
-        px(TROUGH.x - 6, TROUGH.y - 3, 12, 3, '#8b5a2b'); px(TROUGH.x - 5, TROUGH.y - 3, 10, 1, season === 'winter' ? '#d8eef8' : '#5ab4ff');
+        px(TROUGH.x - 6, TROUGH.y - 3, 12, 3, '#8b5a2b'); px(TROUGH.x - 5, TROUGH.y - 3, 10, 1, shown() === 'winter' ? '#d8eef8' : '#5ab4ff');
         if (!PXG.taken?.has('bucket')) { px(TROUGH.x + 8, TROUGH.y - 4, 3, 4, '#8a93a0'); px(TROUGH.x + 8, TROUGH.y - 4, 3, 1, '#c3cbd2'); } // unless the ostrich is wearing it
         for (let i = 0; i < 3; i++) px(WOODPILE.x - 6 + i * 1, WOODPILE.y - 2 - i * 2, 12 - i * 3, 2, i % 2 ? '#a8703c' : '#8b5a2b');
         const rock = rockAt(); px(rock.x - 4, rock.y - 3, 8, 3, '#8c96a0'); px(rock.x - 3, rock.y - 4, 6, 1, '#aab3bb');
@@ -1000,7 +1005,7 @@
        * dashboard's top bar and count cards say; top right, the dashboard's own buttons; along the
        * bottom, below the fields' fence, a slim row of switches and zoom.
        */
-      hud({ still, zoom = 1, saysOn = true, skyMode = 'live', follow = false, canFollow = false, restingHidden = null, bell = false, nav = {}, panelOpen = true, animals = null }) {
+      hud({ still, zoom = 1, saysOn = true, skyMode = 'live', seasonMode = 'live', seasons = true, follow = false, canFollow = false, restingHidden = null, bell = false, nav = {}, panelOpen = true, animals = null }) {
         const need = scene.farmers.filter(a => a.state === 'waiting' || a.question).length;
         const spent = scene.farmers.reduce((t, a) => t + (a.cost ?? 0), 0), harvested = scene.farmers.reduce((t, a) => t + (a.compactions ?? 0), 0);
         const ch = scene.chrome ?? {}, c = ch.counts ?? {};
@@ -1016,7 +1021,7 @@
         const navBtn = (what, icon, name, title, pressed) => `<button type="button" data-farm-nav="${what}" title="${esc(title)}"${pressed === undefined ? '' : ` aria-pressed="${pressed}"`}>${iconImg(icon)}${pxImg(name, '#4e3626', null)}<span class="px-sr">${esc(name)}</span></button>`;
         return `<div class="px-stats${panelOpen ? '' : ' folded'}">
             <button type="button" class="px-brand" data-farm-panel title="${panelOpen ? 'Fold this panel away' : 'Show the counts and meters'}" aria-expanded="${panelOpen}">${brandSvg()}${pxt('AGENTVILLE', '#ffe8a3', '#2a1d14')}<i class="px-live${nav.live === false ? ' off' : ''}" title="${nav.live === false ? 'Disconnected from the collector: retrying' : 'Live'}"></i>${pxt(panelOpen ? '-' : '+', '#c9b48a', null)}</button>
-            <div class="px-line"><span title="What the sessions on the farm have cost so far (each one's purse; from the mod)"><b class="coin"></b>${w(`$${spent.toFixed(2)}`)}</span><span title="Harvests: each time a session's conversation was compacted"><b class="basket"></b>${w(`${harvested} harvested`)}</span><span class="px-season" title="${esc(seasonTip())}">${iconImg(season === 'summer' ? 'day' : season)}${w(season)}</span></div>
+            <div class="px-line"><span title="What the sessions on the farm have cost so far (each one's purse; from the mod)"><b class="coin"></b>${w(`$${spent.toFixed(2)}`)}</span><span title="Harvests: each time a session's conversation was compacted"><b class="basket"></b>${w(`${harvested} harvested`)}</span><span class="px-season" title="${esc(seasonTip(seasonMode))}">${seasonMode === 'live' ? `${iconImg(seasonIcon(season))}${w(season)}` : `${iconImg(seasonIcon(seasonMode))}${w(seasonMode)} 📌 ${dim(five !== null ? `· 5-hour ${five}%` : '· no 5-hour reading')}`}</span></div>
             <div class="px-kpis">
               ${kpi('waiting', '!', 'k-wait', 'waiting on you', c.waiting, c.waiting ? `oldest ${ago(ch.oldestWaiting ?? Date.now())}` : 'all clear', c.waiting > 0, 'Agents waiting on you (a question or a permission): click for the first')}
               ${kpi('working', '>', 'k-work', 'working', c.working, ch.subagentsRunning ? `${ch.subagentsRunning} with subagents` : `${ch.agents ?? 0} agents tracked`, false, 'Agents at work: click for the first')}
@@ -1047,6 +1052,7 @@
               ${tool('data-farm-bubbles', 'bubbles', 'Bubbles', saysOn ? 'on' : 'off', 'Speech bubbles with what each farmer last said. × hides one; its 💬 shows it again')}
               ${animals === null ? '' : tool('data-farm-animals', 'animals', 'Animals', animals ? 'on' : 'off', 'Animals on the farm, just for fun: click one to pet or feed it (or the pond, for the ducks). They never stand for anything')}
               ${tool('data-farm-sky', skyMode, 'Sky', skyMode, 'The light: live follows your clock (dawn, day, dusk, night); or hold it at day or night')}
+              ${seasons ? tool('data-farm-season', seasonIcon(seasonMode === 'live' ? season : seasonMode), 'Season', seasonMode, "The season: live follows your plan's 5-hour limit (spring while it is fresh, winter when it is nearly used up); or hold one: spring, summer, autumn or winter. The panel's 📌 shows your real 5-hour use meanwhile") : ''}
               ${tool('class="px-motion" data-farm-motion', still ? 'pause' : 'play', 'Motion', still ? 'off' : 'on', 'Walking and animation on the farm')}
               ${tool('data-farm-bell', 'bell', 'Bell', bell ? 'on' : 'off', 'A chime, and a desktop notice when the page is in the background, whenever an agent starts waiting on you (in the list view too)')}
               ${tool('class="px-info" data-farm-help aria-label="How to read the farm"', 'help', 'Help', '', 'How to read the farm')}
@@ -1086,10 +1092,11 @@
       },
       /** The farm's own particles: smoke from the chimney while agents work; petals, leaves or snow by the season. */
       ambient(dt, add) {
-        if (season === 'spring' && Math.random() < dt * 3) add({ x: rand(46, 88), y: rand(228, 260), vx: rand(3, 9), vy: rand(5, 9), g: 0, life: 3, max: 3, size: 1, color: '#f4b6c2', sway: 3 });
-        if (season === 'autumn' && Math.random() < dt * 4) add({ x: rand(44, 90), y: rand(228, 262), vx: rand(2, 8), vy: rand(6, 11), g: 0, life: 3.2, max: 3.2, size: 1, color: ['#c8681a', '#e9a23b', '#b5562f'][Math.floor(rand(0, 3))], sway: 4 });
+        const seen = shown(); // the season you see, held or live
+        if (seen === 'spring' && Math.random() < dt * 3) add({ x: rand(46, 88), y: rand(228, 260), vx: rand(3, 9), vy: rand(5, 9), g: 0, life: 3, max: 3, size: 1, color: '#f4b6c2', sway: 3 });
+        if (seen === 'autumn' && Math.random() < dt * 4) add({ x: rand(44, 90), y: rand(228, 262), vx: rand(2, 8), vy: rand(6, 11), g: 0, life: 3.2, max: 3.2, size: 1, color: ['#c8681a', '#e9a23b', '#b5562f'][Math.floor(rand(0, 3))], sway: 4 });
         const e = PXG.ext ?? { x0: 0, x1: W, y0: 0, y1: L.H };
-        if (season === 'winter' && Math.random() < dt * 28 * ((e.x1 - e.x0) / W)) add({ x: rand(e.x0, e.x1), y: e.y0 - 2, vx: rand(-2, 2), vy: rand(9, 16), g: 0, life: (e.y1 - e.y0) / 10, max: (e.y1 - e.y0) / 10, size: rand(1, 1.6), color: '#ffffff', sway: 2, alpha: 0.9 });
+        if (seen === 'winter' && Math.random() < dt * 28 * ((e.x1 - e.x0) / W)) add({ x: rand(e.x0, e.x1), y: e.y0 - 2, vx: rand(-2, 2), vy: rand(9, 16), g: 0, life: (e.y1 - e.y0) / 10, max: (e.y1 - e.y0) / 10, size: rand(1, 1.6), color: '#ffffff', sway: 2, alpha: 0.9 });
         if (scene.farmers.some(a => a.state === 'working') && Math.random() < dt * 2.2) {
           add({ x: 241 + rand(-1, 1), y: 11, vx: rand(2, 6), vy: rand(-8, -5), g: 0, life: 2.6, max: 2.6, size: 2, grow: 1.4, color: '#c3cbd2', alpha: 0.55 });
         }
@@ -1108,12 +1115,12 @@
       },
       /** By day, butterflies and birds, and cloud shadows drift over the farm; at night, fireflies over the yard. */
       weather(sky) {
-        const T = PXG.T, e = PXG.ext ?? { x0: 0, x1: W, y0: 0, y1: L.H }, EW = e.x1 - e.x0 + 160;
-        if (sky.light > 0.5 && (season === 'spring' || season === 'summer')) [[40, 160, '#ffffff'], [80, 150, '#ffd43b'], [60, 186, '#f08a24']].forEach(([bx, by, c], i) => {
+        const T = PXG.T, e = PXG.ext ?? { x0: 0, x1: W, y0: 0, y1: L.H }, EW = e.x1 - e.x0 + 160, seen = shown(); // the season you see, held or live
+        if (sky.light > 0.5 && (seen === 'spring' || seen === 'summer')) [[40, 160, '#ffffff'], [80, 150, '#ffd43b'], [60, 186, '#f08a24']].forEach(([bx, by, c], i) => {
           const x = Math.round(bx + Math.sin(T * 0.5 + i * 2.1) * 22 + Math.sin(T * 1.7 + i) * 4), y = Math.round(by + Math.sin(T * 0.8 + i * 1.3) * 10 + Math.sin(T * 3 + i) * 2), open = blink(6 + i);
           px(x - (open ? 2 : 1), y, open ? 2 : 1, 2, c); px(x + 1, y, open ? 2 : 1, 2, c); px(x, y, 1, 2, '#1b1420');
         });
-        if (sky.light > 0.4 && season !== 'winter') { // birds on the fields' fence, now and then off to another post
+        if (sky.light > 0.4 && seen !== 'winter') { // birds on the fields' fence, now and then off to another post
           const posts = [[150, 88], [196, 88], [246, 88], [276, 88], [330, 88], [372, 88], [128, 140], [396, 180]];
           for (let i = 0; i < 3; i++) {
             const cycle = (T + i * 7.3) / 14, seg = Math.floor(cycle), ph = cycle - seg, [ax, ay] = posts[(seg * 3 + i * 5) % posts.length], [bx, by] = posts[((seg + 1) * 3 + i * 5) % posts.length];
@@ -1388,7 +1395,7 @@
       <b>Animals</b><span>cows, goats, a sheepdog (with a red bandana), an ostrich, a lion, a tiger and the ducks on the pond live here just for fun: they never stand for anything. Click one, or the pond, to pet or feed it: the nearest farmer that isn't waiting on you walks over and does it. Now and then they get up to something: a goat steals a hat, the ostrich runs off with the bucket, the cow naps in an empty hammock. They react to deploys, harvests and merges. Farmers idle for a while sometimes play with them. In winter they huddle, and the goats wear scarves. The Animals switch hides them</span>
       <b>Shade tree, scarecrows</b><span>idle agents nap under the tree (bottom left); stale ones stand as scarecrows (top right); the meadow by the henhouse is for agents outside any repo</span>
       <b>Silo</b><span>its grain is your plan's weekly limit used (the % under it; when it resets on hover); its lamp turns amber from 70% and blinks red from 90%</span>
-      <b>Seasons</b><span>follow your plan's 5-hour limit: spring while it is fresh (blossom), then summer, autumn (falling leaves), and winter (snow) when it is nearly used up; a new window brings spring back</span>
+      <b>Seasons</b><span>follow your plan's 5-hour limit: spring while it is fresh (blossom), then summer, autumn (falling leaves), and winter (snow) when it is nearly used up; a new window brings spring back. The Season switch holds one instead (each click moves it on, then back to live): the panel then shows the season with a 📌 and your real 5-hour use, and the animals follow the season you see</span>
       <b>Henhouse</b><span>eggs in the nest = subagents that finished lately; hens in the run and a +N sign = more subagents running than their farmers can lead</span>
       <b>Pigeons</b><span>one agent messaging another (Claude Code's SendMessage between sessions): a pigeon flies the note from one farmer to the other, and the diary says what it said; the agents' conversations show it too</span>
       <b>Day and night</b><span>the light follows your clock: cloud shadows drift over by day; at night the windows, the lamps and lanterns glow and fireflies come out. The Sky switch holds it at day or night</span>

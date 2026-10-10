@@ -301,6 +301,51 @@ test('the season follows the 5-hour limit: spring when it is fresh, winter when 
   assert.equal(seasonOf(planWith(null, 50)), 'summer', 'no 5-hour window: summer');
 });
 
+test('a held season shows in the panel with a 📌 and your real 5-hour use, its tooltip saying it is held; live, as before', () => {
+  const window = { Agentville: { raw: () => {} } };
+  vm.runInNewContext(code, { window, console, Math, Date, JSON, Map, Set });
+  const th = window.AgentvilleFarm.makeFarm();
+  th.setScene({ plan: planWith(42), chrome: {}, fields: [], farmers: [], carts: [], mail: [], henhouse: { eggs: 0, roosting: 0 } }); // 42%: summer, live
+  const line = mode => {
+    const html = th.hud({ still: true, seasonMode: mode, seasons: true });
+    const [, title, inner] = /class="px-season" title="([^"]*)">([\s\S]*?)<\/div>/.exec(html);
+    return { title: title.replace(/&#39;/g, "'"), text: inner.replace(/<[^>]*>/g, '').replace(/\s+/g, ' ').trim(), button: /data-farm-season[^>]*>[\s\S]*?Season: (\w+)/.exec(html)?.[1] };
+  };
+  const held = line('winter');
+  assert.match(held.text, /^winter 📌 · 5-hour 42%$/);
+  assert.match(held.title, /held/i);
+  assert.match(held.title, /not live/);
+  assert.match(held.title, /summer/, 'and what the live one would be');
+  assert.equal(held.button, 'winter');
+  const live = line('live');
+  assert.equal(live.text, 'summer');
+  assert.doesNotMatch(live.title, /held/i);
+  assert.match(live.title, /follows your plan's 5-hour limit: 42% used/);
+  assert.equal(live.button, 'live');
+});
+
+test('the farm draws the season shown (PXG.season), not the live one: frost, ice and snow for a held winter', () => {
+  const window = { Agentville: { raw: () => {} } };
+  const fills = [];
+  const ctx = { fillRect: (x, y, w, h) => fills.push({ x, y, w, h, c: ctx._c }), set fillStyle(c) { ctx._c = c; }, _c: null, globalAlpha: 1 };
+  vm.runInNewContext(`${code}\n;window.__PXG = PXG;`, { window, console, Math: Object.assign(Object.create(Math), { random: () => 0 }), Date, JSON, Map, Set });
+  const th = window.AgentvilleFarm.makeFarm(), PXG = window.__PXG, { ink } = window.AgentvilleFarm;
+  const trough = () => fills.find(f => f.x === 87 && f.y === 155 && f.w === 10 && f.h === 1)?.c; // the water in the animals' trough, at (92, 158)
+  th.relayout(window.AgentvilleFarm.layoutFor([]));
+  th.setScene({ plan: planWith(10), chrome: {}, fields: [], farmers: [], carts: [], mail: [], henhouse: { eggs: 0, roosting: 0 } }); // 10%: spring, live
+  Object.assign(PXG, { ctx, T: 0, animals: true, taken: new Set() });
+  const look = shown => {
+    PXG.season = shown;
+    fills.length = 0;
+    th.ground();
+    const parts = [];
+    th.ambient(1, p => parts.push(p));
+    return { ice: trough() === ink('#d8eef8'), water: trough() === ink('#5ab4ff'), snow: parts.some(p => p.color === '#ffffff'), petals: parts.some(p => p.color === '#f4b6c2') };
+  };
+  assert.deepEqual(look('winter'), { ice: true, water: false, snow: true, petals: false }, 'held winter: an icy trough, and snow');
+  assert.deepEqual(look(null), { ice: false, water: true, snow: false, petals: true }, 'nothing from the engine yet: the live season (spring)');
+});
+
 test("the farm's scene keeps a plan window's reset flag, so a window that has just reset still says so", () => {
   const { toScene } = load();
   const w = toScene({ ...snapOf([], []), plan: planWith('reset', 50) }).plan.windows;

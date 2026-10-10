@@ -142,11 +142,11 @@ function engineScene(s) {
   };
 }
 
-/** The HUD a world gets unless it draws its own: the dashboard's buttons, the sky, help and zoom. */
-function defaultHud({ zoom = 1, skyMode = 'live', still = false, nav = {}, animals = null }) {
+/** The HUD a world gets unless it draws its own: the dashboard's buttons, the sky (and the season, in a world with seasons), help and zoom. */
+function defaultHud({ zoom = 1, skyMode = 'live', seasonMode = 'live', seasons = false, still = false, nav = {}, animals = null }) {
   const btn = (attr, label, title, pressed) => `<button type="button" ${attr} title="${esc(title)}"${pressed === undefined ? '' : ` aria-pressed="${pressed}"`}>${pxImg(label, '#4e3626', null)}<span class="px-sr">${esc(label)}</span></button>`;
   return `<div class="px-nav">${btn('data-farm-nav="list"', 'List', 'The list of agents')}${btn('data-farm-nav="worlds"', 'World', 'Choose a world')}${btn('data-farm-nav="side"', 'Sidebar', 'The selected agent beside the map', Boolean(nav.side))}</div>
-    <div class="px-tools">${btn('data-farm-sky', `Sky: ${skyMode}`, 'Live follows your clock; or day, or night')}${btn('data-farm-motion', `Motion: ${still ? 'off' : 'on'}`, 'Walking and animation')}${animals === null ? '' : btn('data-farm-animals', `Animals: ${animals ? 'on' : 'off'}`, 'Animals that live here, just for fun: click one to pet or feed it', animals)}${btn('data-farm-help', 'Help', 'How to read this world')}
+    <div class="px-tools">${btn('data-farm-sky', `Sky: ${skyMode}`, 'Live follows your clock; or day, or night')}${seasons ? btn('data-farm-season', `Season: ${seasonMode}`, "Live follows this world's own seasons; or hold one: spring, summer, autumn or winter") : ''}${btn('data-farm-motion', `Motion: ${still ? 'off' : 'on'}`, 'Walking and animation')}${animals === null ? '' : btn('data-farm-animals', `Animals: ${animals ? 'on' : 'off'}`, 'Animals that live here, just for fun: click one to pet or feed it', animals)}${btn('data-farm-help', 'Help', 'How to read this world')}
       <span class="px-zoombar">${btn('data-farm-zoom="-1"', '-', 'Zoom out')}${btn('data-farm-zoom="0"', `${Math.round(zoom * 100)}%`, 'The whole world')}${btn('data-farm-zoom="1"', '+', 'Zoom in')}</span></div>`;
 }
 
@@ -186,6 +186,9 @@ function withDefaults(h) {
     setScene(next) { fields = next.fields; return ownSetScene ? ownSetScene.call(h, next) : []; },
   };
   if (!Array.isArray(out.corridors) || !out.corridors.length || !out.corridors.every(Number.isFinite)) throw new Error("A world's corridors are the x positions of its paths (at least one).");
+  // A world has seasons when it gives its own season(): the default above is none, and gets no Season switch.
+  // Not a hook (a world can't set it), and not enumerable, so check-world's list of hooks left to their defaults leaves it out.
+  Object.defineProperty(out, 'hasSeasons', { value: typeof h.season === 'function', enumerable: false });
   return out;
 }
 
@@ -230,6 +233,11 @@ function makePixelView(th, prefs) {
   // The sky: live (your clock), or held at day or night.
   const SKIES = ['live', 'day', 'night'];
   let skyMode = SKIES.includes(prefs.get('sky')) ? prefs.get('sky') : 'live';
+  // The season, in a world with seasons: live (the world's own season(): the farm's follows your 5-hour limit), or held at one.
+  const SEASONS = ['live', 'spring', 'summer', 'autumn', 'winter'];
+  let seasonMode = SEASONS.includes(prefs.get('season')) ? prefs.get('season') : 'live';
+  /** The season drawn now: the one held, else the world's own (a world without seasons always its own). */
+  const seasonNow = () => (seasonMode === 'live' || !th.hasSeasons ? th.season() : seasonMode);
   let bgSeason = null;
   let follow = false; // keep the picked farmer in the middle of the view
   let restingShown = prefs.get('resting') !== 'hidden'; // idle and stale farmers on the farm, or not
@@ -359,7 +367,7 @@ function makePixelView(th, prefs) {
     setTimeout(() => el.remove(), 1700);
   }
   function renderHud() {
-    if (hudEl) hudEl.innerHTML = th.hud({ still, zoom, saysOn, skyMode, follow, canFollow: Boolean(selectedId && bots.has(selectedId)), restingHidden: restingShown ? null : scene.farmers.filter(resting).length, bell: bellOn, nav: opts.navState?.() ?? {}, panelOpen, animals: kit ? animalsOn : null });
+    if (hudEl) hudEl.innerHTML = th.hud({ still, zoom, saysOn, skyMode, seasonMode, seasons: th.hasSeasons, follow, canFollow: Boolean(selectedId && bots.has(selectedId)), restingHidden: restingShown ? null : scene.farmers.filter(resting).length, bell: bellOn, nav: opts.navState?.() ?? {}, panelOpen, animals: kit ? animalsOn : null });
     placeMini();
   }
   /** The minimap sits just above the switches, which take more rows in a narrow frame (the sidebar open). */
@@ -691,7 +699,8 @@ function makePixelView(th, prefs) {
     PXG.T = T;
     PXG.k = backing;
     PXG.W = th.W;
-    if (th.season() !== bgSeason) bg = buildBg(); // the season turned: new grass and trees
+    PXG.season = seasonNow(); // the season to draw: held, or live
+    if (PXG.season !== bgSeason) bg = buildBg(); // the season turned (or was switched): new grass and trees
     PXG.ext = extOf();
     const sky = skyNow();
     PXG.lights = [...th.lights()];
@@ -771,13 +780,14 @@ function makePixelView(th, prefs) {
     const dt = last ? Math.min(0.1, (now - last) / 1000) : 0;
     last = now;
     T += dt;
+    PXG.season = seasonNow(); // before the ticks: what they emit (snow, petals) and the animals' winter go by the season shown
     for (const f of scene.farmers) { const b = bots.get(f.id); if (b) { step(dt, f, b); th.emit?.(f, b, dt, addPart); } }
     if (errands?.tick(T, id => bots.get(id) ?? null, id => scene.farmers.find(f => f.id === id)?.state)) sync(false);
     th.tick?.(dt, id => bots.get(id)); // what else moves, where the farmers are: the MCP carts
     th.ambient?.(dt, addPart);
     if (animalsShown()) {
       for (const f of scene.farmers) if (f.state !== 'idle') idleSince.delete(f.id); else if (!idleSince.has(f.id)) idleSince.set(f.id, T);
-      kit.tick(dt, { night: skyNow().phase === 'night', still: false, winter: th.season() === 'winter', crew });
+      kit.tick(dt, { night: skyNow().phase === 'night', still: false, winter: PXG.season === 'winter', crew });
       if ((nextPlay -= dt) <= 0) { nextPlay = 45; kit.play(crew); } // a farmer idle three minutes plays with one
     }
     stepParticles(parts, dt);
@@ -788,9 +798,10 @@ function makePixelView(th, prefs) {
   function stopLoop() { if (raf) cancelAnimationFrame(raf); raf = 0; }
   function redrawStill() {
     sync(true);
+    PXG.season = seasonNow();
     for (const f of scene.farmers) { const b = bots.get(f.id); if (b) step(0, f, b); }
     th.tick?.(0, id => bots.get(id), true); // the MCP carts too: each where it is going
-    if (animalsShown()) { const now = Date.now(); kit.tick(stillAt ? (now - stillAt) / 1000 : 0, { night: false, still: true, winter: th.season() === 'winter' }); stillAt = now; } // the lines still go after their few seconds
+    if (animalsShown()) { const now = Date.now(); kit.tick(stillAt ? (now - stillAt) / 1000 : 0, { night: false, still: true, winter: PXG.season === 'winter' }); stillAt = now; } // the lines still go after their few seconds
     draw();
   }
   function layoutLabels() {
@@ -807,7 +818,7 @@ function makePixelView(th, prefs) {
     c.height = H + pad.t + pad.b;
     const g = c.getContext('2d');
     g.translate(pad.l, pad.t);
-    bgSeason = th.season();
+    bgSeason = PXG.season = seasonNow(); // the season shown: held, or live
     PXG.W = th.W;
     th.bg((x, y, w, h, col) => { g.fillStyle = ink(col); g.fillRect(x, y, w, h); }, bgSeason, extOf());
     return c;
@@ -944,6 +955,15 @@ function makePixelView(th, prefs) {
       prefs.set('sky', skyMode);
       renderHud();
       draw();
+      return;
+    }
+    if (e.target.closest?.('[data-farm-season]')) { // live, then each season held, then live again
+      e.stopPropagation();
+      seasonMode = SEASONS[(SEASONS.indexOf(seasonMode) + 1) % SEASONS.length];
+      prefs.set('season', seasonMode);
+      renderHud();
+      if (seasonNow() !== bgSeason) bg = buildBg(); // the ground in the season shown now
+      if (still) redrawStill(); else draw(); // still: the animals' winter (scarves, the pond's ice) is set as they tick
       return;
     }
     const zoomBtn = e.target.closest?.('[data-farm-zoom]');

@@ -587,6 +587,16 @@ try {
     await zoomStep('0', 'zooming back out', false);
   }
   for (let i = 0; i < 3 && !/Sky: live/.test(await fjs("document.querySelector('[data-farm-sky]').textContent")); i++) await fjs("document.querySelector('[data-farm-sky]').click()");
+  // The Season switch: live (your 5-hour limit, 34% here: summer), then spring, summer, autumn, winter held, then live again.
+  check(/Season: live/.test(await fjs("document.querySelector('[data-farm-season]')?.textContent ?? ''")) && await fjs("PXG.season === 'summer'"), 'the Season switch starts live: summer, at 34% of the 5-hour limit');
+  for (let i = 0; i < 4; i++) await fjs("document.querySelector('[data-farm-season]').click(); true");
+  check(await funtil("/Season: winter/.test(document.querySelector('[data-farm-season]').textContent)"), 'four clicks of the Season switch hold winter');
+  check(await until("localStorage.getItem('tracker-world:farm:season') === 'winter'"), 'the season held is remembered, as the sky is');
+  check(await fjs("PXG.season === 'winter'"), 'the farm draws winter (PXG.season, in its frame)');
+  check(await fjs("/winter\\s*📌\\s*· 5-hour 34%/.test(document.querySelector('.px-season').textContent) && /held/i.test(document.querySelector('.px-season').title)"), 'the panel shows the season held with a 📌 and your real 5-hour use; its tooltip says it is held');
+  check(await funtil("window.Agentville.animalsNow().filter(a => a.kind === 'goat').every(a => a.wear.scarf)"), 'the animals follow the season you see: the goats wear scarves');
+  await fjs("document.querySelector('[data-farm-season]').click(); true");
+  check(await funtil("/Season: live/.test(document.querySelector('[data-farm-season]').textContent) && !/📌/.test(document.querySelector('.px-season').textContent) && PXG.season === 'summer'") && await until("localStorage.getItem('tracker-world:farm:season') === 'live'"), 'one more click: live again, the season back to your 5-hour limit');
   check(!/energy/i.test(await fjs("document.querySelector('.px-hud')?.textContent ?? ''")) && /34%[\s\S]*5-hour limit/.test(await fjs("document.querySelector('.px-stats').textContent")), "the farm has no vague energy bar; the plan's usage is in its panel");
   check(await js("getComputedStyle(document.querySelector('header.top')).display === 'none' && getComputedStyle(document.getElementById('kpis')).display === 'none'"), 'the farm fills the window: no top bar or count cards above it');
   check(/waiting on you[\s\S]*working[\s\S]*your turn[\s\S]*collisions/.test(await fjs("document.querySelector('.px-stats').textContent")) && /RAM[\s\S]*CPU/.test(await fjs("document.querySelector('.px-stats').textContent")), "the count cards and the top bar's meters are in the farm's panel");
