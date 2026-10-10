@@ -532,13 +532,13 @@ test('markdown renders headings, lists, code, tables and quotes, and never passe
 });
 
 test('after Send the box empties and says it was sent, right under the box', async () => {
-  const page = loadPage();
+  const page = loadPage({ replies: { '/api/actions/message': { ok: true, held: true, count: 1 } } }); // the collector holds a message to a working session
   page.push(richSnapshot([richAgent({ mod: { version: '0.3.1', live: true }, state: 'working' })]));
   await page.openAgent('r1');
   page.edit('input', { tagName: 'TEXTAREA', value: 'Also update the README', dataset: { msgAgent: 'r1' } });
   await page.clickButton('msg-send', { agent: 'r1' });
   assert.match(page.side(), /<textarea id="msg-text"[^>]*><\/textarea>/);
-  assert.match(page.side(), /id="msg-status"[^>]*>Queued for busy-one/);
+  assert.match(page.side(), /id="msg-status"[^>]*>Waiting for busy-one to finish/);
 });
 
 test('if the session did not take the message, the text stays in the box and the reason shows under it', async () => {
@@ -898,12 +898,12 @@ test('the sidebar toggle shows activity and the explorer beside the farm, and is
 
 test('a message can be sent from the farm sidebar', async () => {
   const f = fakeFarm();
-  const page = loadPage({ farm: f.farm, stored: { 'tracker-view': 'farm', 'tracker-farm-side': 'open' } });
+  const page = loadPage({ farm: f.farm, stored: { 'tracker-view': 'farm', 'tracker-farm-side': 'open' }, replies: { '/api/actions/message': { ok: true, held: true, count: 1 } } });
   page.push(richSnapshot([richAgent({ mod: { version: '0.3.1', live: true } })]));
   page.edit('input', { tagName: 'TEXTAREA', value: 'Water the pumpkins', dataset: { msgAgent: 'r1' } });
   await page.clickButton('msg-send', { agent: 'r1' });
   assert.deepEqual(page.posts, [{ path: '/api/actions/message', body: { agentId: 'r1', text: 'Water the pumpkins' } }]);
-  assert.match(page.el('fs-compose').innerHTML, /id="msg-status"[^>]*>Queued for busy-one/);
+  assert.match(page.el('fs-compose').innerHTML, /id="msg-status"[^>]*>Waiting for busy-one to finish/);
 });
 
 test("entering the farm clears the list's centre and leaving clears the sidebar, so each id exists once", async () => {
@@ -1795,6 +1795,7 @@ const talk = (from, list) => ({ total: from + list.length, from, items: list });
 const convoPage = async () => {
   const t = Date.now() - 3_600_000;
   const page = loadPage({ replies: {
+    '/api/actions/message': { ok: true, held: true, count: 1 }, // its session works: the collector holds what you send
     '/api/agent/r1/conversation': talk(0, [
       { at: t, kind: 'prompt', text: 'First question', body: 'First question', uuid: 'p-1' },
       { at: t + 60_000, kind: 'reply', text: 'The answer', body: 'The **answer**', uuid: 'r-1' },
@@ -1860,7 +1861,7 @@ test('the conversation dialog has the message box too, sharing the draft and fil
   await page.clickButton('convo-msg-send', { agent: 'r1' });
   const sent = page.posts.find(p => p.path === '/api/actions/message').body;
   assert.deepEqual(sent, { agentId: 'r1', text: 'Seen the whole thing', files: [{ name: 'notes.md', data: 'IyBOb3Rlcw==' }] });
-  assert.match(box(), /Queued for busy-one with 1 file/, 'what came of it shows in the dialog too');
+  assert.match(box(), /Waiting for busy-one to finish with 1 file/, 'what came of it shows in the dialog too');
 });
 
 test('Compact… in the session bar asks what to keep, then has the session run /compact', async () => {
@@ -2913,4 +2914,66 @@ test('Fork: the account row starts on the session\'s own account and is sent', a
   assert.equal(page.el('fork-account').value, 'zeta');
   await page.ctx.forkGo(null);
   assert.equal(page.posts.at(-1).body.account, 'zeta');
+});
+
+// ---- held messages: what you sent a working session, waiting for its turn to end ----
+const HELD = '/api/agent/r1/held';
+const heldItem = (id, text, over = {}) => ({ id, text, files: [], folders: [], at: 1, ...over });
+const heldPage = (items, { together = false, failed, agent = {} } = {}) => {
+  const page = loadPage({ replies: { [HELD]: { items, together, rev: 7 } } });
+  page.push(richSnapshot([richAgent({ mod: { live: true, version: '0.9.0' }, held: items.length ? { count: items.length, together, rev: 7, ...(failed ? { failed } : {}) } : undefined, ...agent })]));
+  return page;
+};
+
+test('Waiting to send: the held messages, read with the token, each with ✕, Edit and ⚡ Send now; the toggle says what happens', async () => {
+  const page = heldPage([heldItem('h1', 'also <b>the docs</b>'), heldItem('h2', 'and the tests', { files: ['shot.png'] })]);
+  await page.settle();
+  assert.deepEqual(page.gets.filter(g => g.path === HELD).map(g => Boolean(g.token)), [true]);
+  const side = page.side();
+  assert.match(side, /Waiting to send \(2\)/);
+  assert.match(side, /also &lt;b&gt;the docs&lt;\/b&gt;[\s\S]*and the tests/, 'in order, as text');
+  assert.match(side, /shot\.png/);
+  assert.match(side, /data-held-remove="h1"/);
+  assert.match(side, /data-held-edit="h1"/);
+  assert.match(side, /data-held-now="h2"/);
+  assert.match(side, /<input type="checkbox" data-held-together data-agent="r1">/, 'unticked');
+  assert.match(side, /Goes out when busy-one finishes its turn, one per turn/);
+  page.push(richSnapshot([richAgent({ mod: { live: true, version: '0.9.0' }, held: { count: 2, together: false, rev: 7 } })]));
+  await page.settle();
+  assert.equal(page.gets.filter(g => g.path === HELD).length, 1, 'read again only when they change');
+});
+
+test('Waiting to send: ✕, ⚡ and the toggle post their changes; Edit opens it in place and Save posts the text', async () => {
+  const page = heldPage([heldItem('h1', 'first'), heldItem('h2', 'second')]);
+  await page.settle();
+  await page.clickButton('held-x', { heldRemove: 'h1', agent: 'r1' });
+  assert.deepEqual(page.posts.at(-1), { path: '/api/actions/held', body: { agentId: 'r1', op: 'remove', id: 'h1' } });
+  await page.clickButton('held-n', { heldNow: 'h2', agent: 'r1' });
+  assert.deepEqual(page.posts.at(-1), { path: '/api/actions/held', body: { agentId: 'r1', op: 'send-now', id: 'h2' } });
+  await page.change({ dataset: { heldTogether: '', agent: 'r1' }, checked: true });
+  assert.deepEqual(page.posts.at(-1), { path: '/api/actions/held', body: { agentId: 'r1', op: 'together', on: true } });
+  await page.clickButton('held-e', { heldEdit: 'h2', agent: 'r1' });
+  assert.match(page.side(), /<textarea class="held-edit" data-held-edit-text="h2" data-agent="r1"[^>]*>second<\/textarea>/);
+  page.edit('input', { value: 'second, better', dataset: { heldEditText: 'h2', agent: 'r1' } });
+  await page.clickButton('held-s', { heldSave: 'h2', agent: 'r1' });
+  assert.deepEqual(page.posts.at(-1), { path: '/api/actions/held', body: { agentId: 'r1', op: 'edit', id: 'h2', text: 'second, better' } });
+});
+
+test('a message to a working session that is held says so; one that went says Sent; a release not taken shows in red', async () => {
+  const page = heldPage([heldItem('h1', 'first')], { failed: { at: Date.now(), error: "The session didn't take it: it is still waiting here." } });
+  await page.settle();
+  assert.match(page.side(), /class="msg-bad held-failed"[^>]*>The session didn&#39;t take it/);
+  page.ctx.fetch = (orig => async (path, init) => (path === '/api/actions/message' ? (page.posts.push({ path, body: JSON.parse(init.body) }), { ok: true, json: async () => ({ ok: true, held: true, count: 2 }) }) : orig(path, init)))(page.ctx.fetch);
+  page.edit('input', { value: 'later please', dataset: { msgAgent: 'r1' } });
+  await page.clickButton('msg-send', { agent: 'r1' });
+  await page.settle();
+  assert.match(page.side(), /Waiting for busy-one to finish: it goes out when this turn ends \(remove or edit it below\)/);
+});
+
+test('no Waiting to send when nothing is held; the hint says a message waits for the turn to end', async () => {
+  const page = heldPage([]);
+  await page.settle();
+  assert.doesNotMatch(page.side(), /Waiting to send/);
+  assert.match(page.side(), /is busy: your message waits here until its turn ends/);
+  assert.equal(page.gets.filter(g => g.path === HELD).length, 0, 'nothing to read');
 });

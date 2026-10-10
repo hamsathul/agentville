@@ -192,7 +192,7 @@ function fsComposeHtml(a) {
     : fsMode === 'note'
       ? `<div class="compose"><textarea id="note-text" data-note-agent="${id}" rows="2" placeholder="A note for later…">${esc(noteDrafts.get(a.id) ?? '')}</textarea><div class="compose-row"><span class="faint">Only you see notes</span><span class="grow"></span><button type="button" class="act primary" id="note-add" data-agent="${id}">Add note</button></div></div>`
       : composeHtml(a, 'msg', { short: true });
-  return `<div class="fs-modes-row"><div class="seg fs-modes" role="tablist" aria-label="What you are writing">${modes}</div><span class="grow"></span><span class="fs-keys">${keys}</span></div>${box}`;
+  return `<div class="fs-modes-row"><div class="seg fs-modes" role="tablist" aria-label="What you are writing">${modes}</div><span class="grow"></span><span class="fs-keys">${keys}</span></div>${box}${heldHtml(a)}`; // what waits for its turn to end, under the box
 }
 
 /* ---------- Activity, with a filter ---------- */

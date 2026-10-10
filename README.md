@@ -74,6 +74,8 @@ It listens on `127.0.0.1` only and reads what Claude Code already writes to disk
 - Answer an agent's question (with its options) or a permission prompt (**Allow** / **Deny**), or
   cancel its questions as Esc does and tell it what you want instead.
 - Message any session like a chat, with screenshots, PDFs or other files; it arrives as your own prompt.
+  What you send a working session waits until its turn ends, where you can remove, edit or send it
+  early.
   ↑ in the box brings back what you sent it before, as in its terminal.
 - Broadcast one message to several sessions at once: all of them, or the ones you tick.
 - Read a session's whole conversation, from its first message, in a dialog you can search.
@@ -296,7 +298,16 @@ These need the mod in that session.
 - **Questions in replies.** When an agent ends its turn by asking something ("Should I push?"),
   it gets an "asks you" chip and a card, with one-click **Yes** / **No…** for yes/no questions.
 - **Messages.** Type in the box under **Now** and press Enter (Shift+Enter for a new line). It
-  arrives as your own prompt; a busy agent reads it when its current step ends.
+  arrives as your own prompt.
+- **Messages to a working session wait.** Sent while it is busy (working, or waiting on you in the
+  middle of a turn), a message goes into **Waiting to send** under the box instead, until the turn
+  ends. There, each one has **✕** (don't send it), **Edit** (change it in place) and **⚡ Send now**
+  (send it at once: Claude Code hands it to Claude at its next step, so it can steer the turn).
+  When the turn ends, the first one goes out, and the next waits until that turn ends too; tick
+  **Send together** to send all of them as one message instead. A session that is gone for two
+  minutes with messages still waiting gets them as notes, so nothing is lost. (Prompts you type in
+  the session's terminal while it works go into Claude Code's own queue, which the dashboard can't
+  see or change.)
 - **↑ / ↓ recall what you sent**, as in the session's terminal. With the cursor on the box's first
   line, ↑ brings back your last message to that session, then the one before. ↓ on the last line
   goes forward again, and past the newest gives back what you were typing.
@@ -1145,6 +1156,9 @@ and can do is in [docs/worlds.md](docs/worlds.md).
   its email (a private world gets `account 1`, `account 2`). Agentville never reads or touches the
   logins themselves: it starts `claude` with the account's `CLAUDE_CONFIG_DIR`, and asks
   `claude auth status` whether each is signed in.
+- Messages waiting for a session's turn to end are kept under `state/held/` (the folder and its
+  files readable only by you). Nothing in them reaches the session until one goes out, and the
+  snapshot the page reads says only how many are waiting; the text is read with the token.
 - Your notes on a session are kept under `state/notes/` (the folder and its files readable only by
   you) until you delete them. They never leave your Mac, and nothing in one reaches the session
   until you use or send it. The snapshot the page reads every few seconds carries only how many
@@ -1177,6 +1191,7 @@ and can do is in [docs/worlds.md](docs/worlds.md).
 | Problem | Try |
 |---|---|
 | The dashboard doesn't load | `agent-tracker status`, then `agent-tracker logs`. Check that nothing else uses the port |
+| A message waits and never goes out | It goes out when the session's turn ends, through its mod: the mod must be listening (📡 dashboard answers on). Press **⚡ Send now** to send it at once. A red line on the list says when the session didn't take it; it is tried again when the session next moves |
 | A session shows "dashboard answers off" | Its mod isn't loaded. Check `CLAUDE_CODE_PLUGIN_DIRS` in `~/.claude/settings.json` (or, for another account, in that account's own `settings.json`), then type anything in the session or `/reload-plugins` |
 | An account shows "No reading yet" | Its sessions report their limits through the mod: load the mod in that account too, then send a session on it a message |
 | "runs an older tracker mod" | `/reload-plugins` in that session, or resume it |

@@ -572,6 +572,13 @@ html[data-view="farm"] .banner.show { position: fixed; top: 10px; left: 50%; tra
 .workline .stop-turn:not(:disabled) { color: var(--crit); border-color: color-mix(in srgb, var(--crit) 45%, transparent); }
 .asides-box { margin-top: 10px; }
 .notes-box { margin-top: 10px; }
+.held-box { margin-top: 10px; } /* messages waiting for the session's turn to end */
+.held { padding: 6px 8px 5px; border: 1px dashed var(--line); border-radius: 8px; background: var(--panel2, var(--panel)); }
+.held-text { display: block; white-space: pre-wrap; overflow-wrap: anywhere; }
+.held-files { display: block; font-size: 11.5px; margin-top: 2px; }
+.held-edit { width: 100%; box-sizing: border-box; font: inherit; }
+.held-how { display: flex; align-items: center; gap: 6px; font-size: 12px; }
+.held-failed { font-size: 12px; margin: 2px 0 6px; }
 .notes { list-style: none; margin: 0 0 8px; padding: 0; display: flex; flex-direction: column; gap: 6px; }
 .note { padding: 6px 8px 5px; border: 1px solid var(--line); border-radius: 8px; background: var(--panel2, var(--panel)); }
 .note-text { display: block; width: 100%; border: 0; background: none; padding: 0; color: var(--text); font: inherit; font-size: 13px; text-align: left; white-space: pre-wrap; overflow-wrap: anywhere; cursor: text; max-height: 9.5em; overflow: hidden; }

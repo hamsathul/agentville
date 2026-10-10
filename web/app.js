@@ -27,6 +27,7 @@ function overviewHtml(a) {
     ${shellsHtml(a)}
     ${questionHtml(a)}
     ${composeHtml(a)}
+    ${heldHtml(a)}
     ${notesHtml(a)}
     ${asideHtml(a)}
     ${conversationHtml(a)}
@@ -55,6 +56,7 @@ function render() {
   window.Agentville?.favicon(needs > 0); // a red light on the tab's farmhouse while an agent waits
   refreshFullFeeds();
   refreshNotes(centreAgent()); // the shown session's notes, when they changed
+  refreshHeld(centreAgent()); // and what waits for its turn to end
   refreshSubagents();
   void followConversation(); // the conversation dialog, if open, takes the new messages
   renderConvoCompose(); // and its message box
@@ -415,6 +417,11 @@ document.addEventListener('click', async e => {
   if (d.noteOpen) { openNoteEdit(d.agent, d.noteOpen); return; }
   if (d.noteSave) { await saveNote(d.agent); return; }
   if (d.noteCancel) { noteEdits.delete(d.agent); render(); return; }
+  if (d.heldRemove) { await changeHeld(d.agent, { op: 'remove', id: d.heldRemove }); return; }
+  if (d.heldNow) { el.disabled = true; await changeHeld(d.agent, { op: 'send-now', id: d.heldNow }); return; }
+  if (d.heldEdit) { const h = heldCache.get(d.agent)?.items?.find(x => x.id === d.heldEdit); if (h) { heldEdits.set(d.agent, { id: h.id, text: h.text }); render(); document.querySelector?.('.held-edit')?.focus?.(); } return; }
+  if (d.heldSave) { const edit = heldEdits.get(d.agent); if (edit) { const r = await changeHeld(d.agent, { op: 'edit', id: edit.id, text: edit.text }); if (r.ok) heldEdits.delete(d.agent); render(); } return; }
+  if (d.heldCancel) { heldEdits.delete(d.agent); render(); return; }
   if (d.quickReply !== undefined) { await sendMessage(d.agent, el, d.quickReply); return; }
   if (d.quickDraft !== undefined || d.quote !== undefined) {
     const prev = msgDrafts.get(d.agent) ?? '';
@@ -679,8 +686,18 @@ async function askAside(agentId, button) {
   document.activeElement?.blur?.();
   render();
 }
+/** A change to the messages waiting for a session's turn: the collector's answer, or why not. */
+async function changeHeld(agentId, change) {
+  const r = await post('/api/actions/held', { agentId, ...change });
+  if (!r.ok) notice(`Waiting messages: ${r.error}`);
+  const got = heldCache.get(agentId);
+  if (got) got.rev = 0; // read them again with the next snapshot
+  render();
+  return r;
+}
 document.addEventListener('change', e => {
   const t = e.target;
+  if (t?.dataset?.heldTogether !== undefined) { void changeHeld(t.dataset.agent, { op: 'together', on: Boolean(t.checked) }); return; }
   // A pick lets go of the dropdown, so refreshes go on while you confirm (and after you cancel).
   if (t?.dataset?.restartMode !== undefined) { const mode = t.value; t.value = ''; t.blur?.(); if (mode) void restartFlow(t.dataset.agent, mode); return; }
   if (t?.dataset?.switchModel !== undefined || t?.dataset?.switchEffort !== undefined) {
@@ -814,6 +831,11 @@ document.addEventListener('input', e => {
   if (t?.id === 'name-edit') { nameEdits.set(t.dataset.agent, t.value); return; }
   if (t?.dataset?.noteAgent !== undefined) {
     noteDrafts.set(t.dataset.noteAgent, t.value);
+    return;
+  }
+  if (t?.dataset?.heldEditText !== undefined) {
+    const edit = heldEdits.get(t.dataset.agent);
+    if (edit) edit.text = t.value;
     return;
   }
   if (t?.dataset?.noteEdit !== undefined) {
