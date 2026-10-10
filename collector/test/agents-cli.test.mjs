@@ -24,3 +24,12 @@ test('output that is not an array throws', () => {
 test('a failing CLI rejects with its stderr', async () => {
   await assert.rejects(readAgentsCli('claude', async () => ({ code: 1, stdout: '', stderr: 'boom' })), /boom/);
 });
+
+test('readAgentsCli runs with the account environment it is given', async () => {
+  const seen = [];
+  const runner = async (bin, args, opts) => { seen.push(opts); return { code: 0, stdout: '[]', stderr: '' }; };
+  await readAgentsCli('claude', runner, { CLAUDE_CONFIG_DIR: '/h/.claude-zeta' });
+  await readAgentsCli('claude', runner);
+  assert.deepEqual(seen[0].env, { CLAUDE_CONFIG_DIR: '/h/.claude-zeta' });
+  assert.equal(seen[1].env, undefined);
+});

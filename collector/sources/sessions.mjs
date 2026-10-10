@@ -68,31 +68,35 @@ function readSessionInfo(path, size) {
 
 /**
  * Sessions with a transcript changed in the last `maxAgeDays` (Infinity: all of them), newest first:
- * [{ id, cwd, title, firstPrompt, lastPrompt, startedAt, model, branch, size, at }]. `cache`
- * (path → { key, info }) skips files that have not changed since they were last read.
+ * [{ id, cwd, title, firstPrompt, lastPrompt, startedAt, model, branch, size, at, projectsDir }],
+ * from each projects folder (every account's that isn't shared). A session resumed elsewhere is
+ * listed once, at its newest transcript. `cache` (path → { key, info }) skips files that have not
+ * changed since they were last read.
  */
-export function listSessions({ claudeDir, now = Date.now(), maxAgeDays = 30, limit = Infinity, cache = new Map() }) {
-  const projects = join(claudeDir, 'projects');
+export function listSessions({ claudeDir, projectsDirs = [join(claudeDir, 'projects')], now = Date.now(), maxAgeDays = 30, limit = Infinity, cache = new Map() }) {
   const files = [];
-  let dirs = [];
-  try { dirs = readdirSync(projects); } catch { return []; }
-  for (const dir of dirs) {
-    let names = [];
-    try { names = readdirSync(join(projects, dir)); } catch { continue; }
-    for (const name of names) {
-      if (!name.endsWith('.jsonl') || !SESSION_ID.test(name.slice(0, -6))) continue;
-      const path = join(projects, dir, name);
-      try {
-        const st = statSync(path);
-        if (st.isFile() && now - st.mtimeMs <= maxAgeDays * 86_400_000) files.push({ id: name.slice(0, -6), path, size: st.size, at: st.mtimeMs });
-      } catch {
-        // gone since the listing
+  for (const projects of projectsDirs) {
+    let dirs = [];
+    try { dirs = readdirSync(projects); } catch { continue; }
+    for (const dir of dirs) {
+      let names = [];
+      try { names = readdirSync(join(projects, dir)); } catch { continue; }
+      for (const name of names) {
+        if (!name.endsWith('.jsonl') || !SESSION_ID.test(name.slice(0, -6))) continue;
+        const path = join(projects, dir, name);
+        try {
+          const st = statSync(path);
+          if (st.isFile() && now - st.mtimeMs <= maxAgeDays * 86_400_000) files.push({ id: name.slice(0, -6), path, size: st.size, at: st.mtimeMs, projectsDir: projects });
+        } catch {
+          // gone since the listing
+        }
       }
     }
   }
   files.sort((x, y) => y.at - x.at);
-  const out = [];
+  const out = [], taken = new Set();
   for (const f of files) {
+    if (taken.has(f.id)) continue; // an older copy of a session listed already
     if (out.length >= limit) break;
     const key = `${f.size}:${f.at}`;
     let hit = cache.get(f.path);
@@ -102,7 +106,7 @@ export function listSessions({ claudeDir, now = Date.now(), maxAgeDays = 30, lim
       hit = { key, info };
       cache.set(f.path, hit);
     }
-    if (hit.info) out.push({ id: f.id, ...hit.info, size: f.size, at: f.at });
+    if (hit.info) { taken.add(f.id); out.push({ id: f.id, ...hit.info, size: f.size, at: f.at, projectsDir: f.projectsDir }); }
   }
   return out;
 }
@@ -131,25 +135,36 @@ export const MODE_FLAGS = {
 };
 
 /**
- * The shell line that starts Claude Code in a folder (or resumes a session there) in a permission
- * mode, with a model and effort for this session only (flags, not your saved defaults). `exec` puts
- * Claude in the shell's place, so its window closes when it ends.
+ * What goes before `claude` so it runs on an account (config folder): nothing with one account
+ * (null); with several, CLAUDE_CONFIG_DIR unset for the first and set to its folder for the others.
  */
-export function claudeCommand(cwd, resume, mode = 'default', { model = 'default', effort, prefillFile } = {}) {
+export function accountPrefix(account) {
+  if (!account) return '';
+  if (account.first) return 'env -u CLAUDE_CONFIG_DIR ';
+  if (!isAbsolute(account.dir) || account.dir.endsWith('/')) throw new Error('not an account folder');
+  return `env CLAUDE_CONFIG_DIR=${shellQuote(account.dir)} `;
+}
+
+/**
+ * The shell line that starts Claude Code in a folder (or resumes a session there) in a permission
+ * mode, with a model and effort for this session only (flags, not your saved defaults), on `account`
+ * (see accountPrefix). `exec` puts Claude in the shell's place, so its window closes when it ends.
+ */
+export function claudeCommand(cwd, resume, mode = 'default', { model = 'default', effort, prefillFile, account = null } = {}) {
   if (resume !== undefined && !SESSION_ID.test(resume)) throw new Error('not a session id');
-  return `cd ${shellQuote(cwd)} && exec claude${resume ? ` --resume ${resume}` : ''}${startFlags(mode, { model, effort })}${prefillFlag(prefillFile)}`;
+  return `cd ${shellQuote(cwd)} && exec ${accountPrefix(account)}claude${resume ? ` --resume ${resume}` : ''}${startFlags(mode, { model, effort })}${prefillFlag(prefillFile)}`;
 }
 
 /**
  * The shell line that forks a conversation: Claude Code resumes the cut copy of its transcript at
  * `copy` as a new session of its own (--fork-session), in the folder, under `name`, in a permission
- * mode with a model and effort for it alone. `prefillFile` holds the text for its prompt box, read by
- * the shell (--prefill), so the text never goes into the command line.
+ * mode with a model and effort for it alone, on `account` (see accountPrefix). `prefillFile` holds the
+ * text for its prompt box, read by the shell (--prefill), so the text never goes into the command line.
  */
-export function forkCommand(cwd, copy, mode = 'default', { model = 'default', effort, name, prefillFile, sessionId } = {}) {
+export function forkCommand(cwd, copy, mode = 'default', { model = 'default', effort, name, prefillFile, sessionId, account = null } = {}) {
   if (!isAbsolute(copy) || !copy.endsWith('.jsonl')) throw new Error('not a transcript copy');
   if (sessionId !== undefined && !SESSION_ID.test(sessionId)) throw new Error('not a session id');
-  return `cd ${shellQuote(cwd)} && exec claude --resume ${shellQuote(copy)} --fork-session${sessionId ? ` --session-id ${sessionId}` : ''}${name ? ` --name ${shellQuote(name)}` : ''}${startFlags(mode, { model, effort })}${prefillFlag(prefillFile)}`;
+  return `cd ${shellQuote(cwd)} && exec ${accountPrefix(account)}claude --resume ${shellQuote(copy)} --fork-session${sessionId ? ` --session-id ${sessionId}` : ''}${name ? ` --name ${shellQuote(name)}` : ''}${startFlags(mode, { model, effort })}${prefillFlag(prefillFile)}`;
 }
 
 /** Text for the prompt box (--prefill), read from a file by the shell, so it never goes into the command line. */

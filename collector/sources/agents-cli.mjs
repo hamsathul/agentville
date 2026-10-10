@@ -18,8 +18,9 @@ export function parseAgentsJson(stdout) {
     }));
 }
 
-export async function readAgentsCli(claudeBin = 'claude', runner = run) {
-  const res = await runner(claudeBin, ['agents', '--json'], { timeoutMs: 20000 });
+/** `claude agents --json`, run in `env` (an account's, or the collector's own when undefined). */
+export async function readAgentsCli(claudeBin = 'claude', runner = run, env = undefined) {
+  const res = await runner(claudeBin, ['agents', '--json'], { timeoutMs: 20000, ...(env ? { env } : {}) });
   if (res.code !== 0) throw new Error(`claude agents --json failed: ${res.stderr.trim().slice(0, 200)}`);
   return parseAgentsJson(res.stdout);
 }
