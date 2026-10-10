@@ -67,6 +67,19 @@ writeFileSync(join(worldsDir, 'sample', 'world.js'), `(() => {
     bg: (fill, season, ext) => fill(ext.x0, ext.y0, ext.x1 - ext.x0, ext.y1 - ext.y0, '#3f7d3a'),
   });
 })();`);
+// One of yours with a cat: it can't see what agents say, so the helper's lines reach it only without names.
+mkdirSync(join(worldsDir, 'pets'), { recursive: true });
+writeFileSync(join(worldsDir, 'pets', 'world.json'), JSON.stringify({ name: 'Pets', api: 1 }));
+writeFileSync(join(worldsDir, 'pets', 'world.js'), `(() => {
+  Agentville.world({
+    W: 300,
+    slots: f => ({ group: f.state, cap: 8, at: i => [30 + i * 16, 40], zone: f.state }),
+    drawChar: (f, b) => px(b.x - 3, b.y - 10, 6, 10, f.shirt),
+    bg: (fill, season, ext) => fill(ext.x0, ext.y0, ext.x1 - ext.x0, ext.y1 - ext.y0, '#3f7d3a'),
+    animals: () => [{ kind: 'cat', name: 'Cat', actions: [{ label: 'Pet', fx: 'hearts' }, { label: 'Feed', fx: 'crumbs' }], lines: { idle: ['mrrp.'] } }],
+    roam: () => [{ x: 10, y: 80, w: 280, h: 60 }],
+  });
+})();`);
 // One that throws as it loads, and so never starts.
 mkdirSync(join(worldsDir, 'throws'));
 writeFileSync(join(worldsDir, 'throws', 'world.json'), JSON.stringify({ name: 'Throws', api: 1 }));
@@ -277,7 +290,22 @@ let answered = null;
 const USAGE = { costUsd: 1.23, rateLimits: [{ kind: 'five_hour', percentUsed: 34, resetsAt: new Date(Date.now() + 2 * 3_600_000).toISOString() }, { kind: 'seven_day', percentUsed: 61, resetsAt: new Date(Date.now() + 3 * 86_400_000).toISOString() }] };
 const received = []; // messages the fake mod took from the dashboard
 const renamed = []; // names the fake mod was asked to /rename to
+let linesOn = false; // ✨ Helper's Animal lines: ui-done-a listens on mod 0.9.0 and writes lines while this is on
 const fakeMod = setInterval(() => {
+  const linesBeacon = join(state, 'mods', 'ui-done-a.json');
+  if (linesOn) {
+    writeFileSync(linesBeacon, JSON.stringify({ sessionId: 'ui-done-a', version: '0.9.0', at: Date.now(), usage: USAGE }));
+    const inbox = join(state, 'helper', 'ui-done-a');
+    if (existsSync(inbox)) for (const name of readdirSync(inbox)) {
+      if (!name.endsWith('.json')) continue;
+      const req = JSON.parse(readFileSync(join(inbox, name), 'utf8'));
+      unlinkSync(join(inbox, name));
+      if (req.kind !== 'lines') continue;
+      const rows = (req.cast ?? []).flatMap(c => [`${c.kind}|idle|from the helper ${c.kind}`, ...(c.kind === 'cat' ? [`cat|idle|${req.agents?.[0]?.name ?? 'someone'} sat on me`, 'cat|idle|a nameless purr'] : [])]);
+      mkdirSync(join(state, 'helper-replies'), { recursive: true });
+      writeFileSync(join(state, 'helper-replies', `ui-done-a.${req.id}.json`), JSON.stringify({ id: req.id, sessionId: 'ui-done-a', kind: 'lines', ok: true, text: rows.join('\n'), at: Date.now() }));
+    }
+  } else if (existsSync(linesBeacon)) unlinkSync(linesBeacon);
   const inbox = join(state, 'messages', 'ui-asker');
   if (existsSync(inbox)) for (const name of readdirSync(inbox)) {
     if (!name.endsWith('.json')) continue;
@@ -325,7 +353,7 @@ esac
 `, { mode: 0o755 });
 writeFileSync(join(claudeDir, 'settings.json'), `${JSON.stringify({ permissions: { allow: ['Bash(npm test:*)'] } }, null, 2)}\n`);
 // Finder's folder window is stood in for: it always picks the farm repo.
-const handle = await startCollector({ root, claudeDir, claudeBin: fakeClaude, notify: () => {}, log: () => {}, home: '/nowhere', readProcs, folderRoots: [realpathSync(temp)], chooseFolder: async () => ({ path: `${join(realpathSync(temp), 'farm-repo')}/` }), scratchBase: '/nonexistent', sessionProcs, launch: async args => { launched.push(args.at(-1)); return { code: 0, stdout: '', stderr: '' }; } });
+const handle = await startCollector({ root, claudeDir, claudeBin: fakeClaude, notify: () => {}, log: () => {}, home: '/nowhere', linesGapMs: 2000, linesIdleMs: 10_000, readProcs, folderRoots: [realpathSync(temp)], chooseFolder: async () => ({ path: `${join(realpathSync(temp), 'farm-repo')}/` }), scratchBase: '/nonexistent', sessionProcs, launch: async args => { launched.push(args.at(-1)); return { code: 0, stdout: '', stderr: '' }; } });
 let chrome;
 try {
   chrome = await openChrome();
@@ -684,6 +712,11 @@ try {
   await setMotion(true);
   // Part B: habits in a real browser (a goat on the woodpile, the lion yawning, the dog rolling over), with motion on. Gags take a minute or two: the kit's tests cover them.
   check(await funtil('window.Agentville.animalsNow().some(a => a.lift > 0 || a.pose === "hide" || a.pose === "roll" || a.pose === "yawn" || a.pose === "stretch")', 150_000), 'within a couple of minutes an animal is up to one of its habits');
+  // ✨ Helper's Animal lines: ticked, the farm says its animals, a batch comes through a 0.9.0 session, and an animal says a fresh line.
+  linesOn = true;
+  check((await handle.actions.helper({ on: true, uses: { names: false, lines: true }, dailyLimit: 200 })).ok, 'Animal lines ticked');
+  check(await funtil('window.Agentville.freshLinesNow().some(t => t.startsWith("from the helper"))', 30_000), "the farm's animals get the helper's lines");
+  check(await funtil('[...document.querySelectorAll(".px-animal-say")].some(b => !b.hidden && /from the helper/.test(b.textContent))', 90_000), 'and one says a fresh line');
   await setMotion(motionWas); // as it was, for the rest
 
   check(await funtil("[...document.querySelectorAll('.px-say')].some(b => b.textContent.includes('Which crop next?'))"), "the waiting farmer's question is in a speech bubble over its head");
@@ -911,6 +944,24 @@ try {
   await until("document.getElementById('worlds-dlg').open");
   await js("document.querySelector('[data-world=\"farm\"]').click()");
   check(await until("document.querySelector('#farm .world-frame')?.src.endsWith('/world/farm/') && /Farm/.test(document.getElementById('view-farm').textContent)"), 'and back to the farm');
+  // Animal lines in one of your worlds that can't see what agents say: only the lines without names reach it.
+  await fjs("document.querySelector('[data-farm-nav=\"worlds\"]').click()");
+  await until("document.getElementById('worlds-dlg').open");
+  await js("document.querySelector('[data-world=\"u/pets\"]').click()");
+  check(await until("document.querySelector('#farm .world-frame')?.src.endsWith('/world/u/pets/')"), 'the pets world shows');
+  let petsLines = '[]';
+  for (let i = 0; i < 150 && !/a nameless purr/.test(petsLines); i++) { petsLines = (await chrome.inFrame('/world/u/pets/', 'JSON.stringify(window.Agentville.freshLinesNow())').catch(() => '[]')) ?? '[]'; await sleep(200); }
+  check(/a nameless purr/.test(petsLines) && !/sat on me/.test(petsLines), `a world that can't see what agents say gets only the nameless lines (${petsLines})`);
+  await js("document.getElementById('worlds-dlg').open || true");
+  await fjs("document.querySelector('[data-farm-nav=\"worlds\"]')?.click()");
+  await until("document.getElementById('worlds-dlg').open");
+  await js("document.querySelector('[data-world=\"farm\"]').click()");
+  check(await until("document.querySelector('#farm .world-frame')?.src.endsWith('/world/farm/')"), 'back to the farm again');
+  check(await funtil('window.Agentville.freshLinesNow().length > 0', 15_000), 'the farm has its lines again');
+  check((await handle.actions.helper({ on: false, uses: { names: false, lines: false }, dailyLimit: 200 })).ok, 'Animal lines unticked (the helper off)');
+  await handle.reloadConfig?.();
+  check(await funtil('window.Agentville.freshLinesNow().length === 0', 10_000), 'unticking clears the lines');
+  linesOn = false;
   await funtil("document.querySelectorAll('.px-tag').length >= 2");
 
   await js("document.getElementById('view-farm').click()");

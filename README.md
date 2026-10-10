@@ -85,7 +85,8 @@ It listens on `127.0.0.1` only and reads what Claude Code already writes to disk
 - Restore a session to before one of your messages, as `/rewind` does: its conversation, its code
   (the files Claude edited since), or both.
 - Name a session with one click: a small Claude model (Haiku) suggests a short name from what it is
-  working on, through your own Claude Code, only after you switch the ✨ Helper on.
+  working on, through your own Claude Code, only after you switch the ✨ Helper on. With its Animal
+  lines ticked, Haiku also writes what the farm's animals say about what is happening.
 - Start a new session in any folder of yours (type it, browse to it, or create it) or in one you've
   worked in, or find a past one (search, filter by folder, model, branch or running, sort by
   activity, start, name, folder or length) and resume it, in the permission mode, model and effort
@@ -369,7 +370,7 @@ view.
 - **How it calls Haiku:** through the Agentville mod inside one of your open Claude Code
   sessions, with your sign-in, on your Claude plan. There is no API key, nothing is added to any
   conversation, and no new session starts. With no session open, nothing is called.
-- **Name suggestions** (its one use so far):
+- **Name suggestions:**
   - When a new session (started after you switched the helper on) has replied once and still
     has Claude Code's own name (such as `agent-tracker-9c`), its sidebar offers one:
     **Name it `login-bug`?** ✓ Rename · ✎ Edit · ✕.
@@ -381,11 +382,24 @@ view.
 - **What it sends:** the session reads its own first three messages and the start of Claude's
   first reply (about 2,000 characters) and sends them to Haiku itself, as it sends its whole
   conversation to its own model. The dashboard only ever sees the name.
+- **Animal lines:** with it ticked, Haiku writes what the animals on screen say about what is
+  happening ("not my fault (it was deploy-bot)" from the ostrich after a failed deploy).
+  - **When:** a batch when something happens (a deploy fails or goes through, a harvest, a merge,
+    someone new), at most once every 5 minutes, and one every 30 minutes for idle chatter; only
+    while a dashboard shows a world with animals. Each batch is one call, counted in the daily limit.
+  - **What it sends:** the dashboard's facts only: agent and repo names, each agent's state, a word
+    for what it is doing (editing, running, searching…), how many are waiting or working, and what
+    just happened. Never code, file paths, commands, branches or anything said in a conversation.
+    One of your open sessions (idle ones first, taking turns) makes the call.
+  - **What the animals say:** each fresh line once, before their own; what you click (Pet, Feed…)
+    keeps its own line. A world of yours that can't see what agents say gets only the lines with no
+    names in them.
+  - It needs mod 0.9.0 in a session (`/reload-plugins`); ✨ Helper says when no session can run it.
 - **A daily limit** (200 to start, 1 to 2,000) caps the calls. The dialog shows today's count and
   the last error, and says when today's limit is reached (it resets at midnight). **Switch off**
   asks for nothing more at once; a call already under way finishes, and its answer is dropped.
-- It needs mod 0.8.0 in the session. For a session started before you updated, run
-  `/reload-plugins` in it.
+- Names need mod 0.8.0 in the session, animal lines 0.9.0. For a session started before you
+  updated, run `/reload-plugins` in it.
 
 ### Model, effort and permission mode
 
@@ -685,6 +699,9 @@ on the farm just for fun. They never stand for anything.
   goat, naps by the lion. Two at most.
 - In winter they huddle together, the goats wear scarves and the ducks slide on the frozen pond. They
   follow the season you see, so a winter held with the **Season** switch brings the scarves too.
+- With ✨ Helper's **Animal lines** ticked, they also say lines Haiku wrote for what is happening
+  (a failed deploy, farmers waiting on you, a merge), each once, before their own ("✨ Helper and
+  suggested names").
 - The **Animals** switch hides them all (and brings back the pond's white duck); it is remembered.
   With it off, or **Motion** off, whatever they were up to stops where it is.
 
@@ -955,7 +972,11 @@ and can do is in [docs/worlds.md](docs/worlds.md).
 - The ✨ Helper is off by default. Switched on, it calls Haiku only through `$.model.complete` in
   your own sessions' Claude Code, never with a key of its own. A request file carries no
   prompt (the mod's instruction for each job is fixed), and for a name the session sends its own
-  first messages itself: the collector and the page see only the name. Its setting (with today's
+  first messages itself: the collector and the page see only the name. For animal lines the
+  collector sends the facts listed in "✨ Helper and suggested names" (names, states, a step word,
+  counts, events; never paths, commands, branches or conversation text), and the page reports which
+  animals a world has (kinds and names only). The lines come back as plain text of 40 characters at
+  most; a world of yours that can't see what agents say gets only those with no names. Its setting (with today's
   count) and what you chose for each session's name (renamed, edited, dismissed) are kept in
   `state/helper.json` and `state/names.json`, readable only by you. No world is told the helper's setting, a suggested name or a pending offer: a world gets only the fields in the scene (see [docs/worlds.md](docs/worlds.md)).
 - **↺ Restore** is the one thing that writes to Claude Code's own files. Once the session has ended,
@@ -990,6 +1011,7 @@ and can do is in [docs/worlds.md](docs/worlds.md).
 | My world looks wrong in one situation | Open the test page at that stop: `http://localhost:7777/worlds/test?world=u/<folder>&stop=…` (the stops are listed in [docs/worlds.md](docs/worlds.md#the-test-page-and-the-tour)). It has no live reload: reload the page after saving. Or take a picture of that stop: `npm run world-shots -- <folder> --stop …` |
 | A red strip over a world | The world reported an error after it started. It keeps drawing; **×** hides the strip. The page's console has the same message |
 | The farm stays empty, or says "not found" | The farm loads in a frame of its own from the collector (`/world/farm/`). After an update, restart the service (`agent-tracker restart`) and reload the page. The page's console says what a world reported, if anything |
+| The animals never say anything new | Tick **Animal lines** in ✨ Helper (the helper on). A session with mod 0.9.0 must be open (`/reload-plugins` in it), and a world with animals on screen. ✨ Helper shows the last error and today's count |
 | **✨** says no name came, or the ✨ Helper shows a last error | No session is listening with mod 0.8.0 (`/reload-plugins` in it), today's limit is reached (it resets at midnight), or your organisation doesn't allow Haiku (the error says so) |
 
 ## Known limits
