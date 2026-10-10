@@ -601,7 +601,8 @@ of the tour in headless Chrome, on a server of its own with made-up data, and sa
 each in `.private/shots/` (`--stop <name>` for one stop, `--dir <folder>` for another place). The
 clock is frozen, so the same world gives the same pictures, which makes a change easy to compare.
 `new-world`, `check-world` and `world-shots` all take `--worlds <dir>`, to use a folder other than
-your worlds folder.
+your worlds folder. If one of yours has a built-in world's name, `check-world` and `world-shots` use the
+built-in and say so; `u/<name>` reaches yours.
 
 **Check a world without a browser:** `npm run check-world -- <name>` (or `farm`, `starter`) plays the
 same tour headless, a few frames a stop, and lists each exception with its stop, file and line, a

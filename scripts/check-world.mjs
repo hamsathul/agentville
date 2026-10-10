@@ -11,17 +11,19 @@
 // whose world.js or world.json leads out of its folder isn't run, nor is any world with a Node that can't
 // contain it.
 //
-//   npm run check-world -- <world> [--worlds <dir>]      <world>: farm, starter, u/<folder> or <folder>
+//   npm run check-world -- <world> [--worlds <dir>]
+//   <world>: a built-in world's name (a folder of web/worlds: farm, factory, starter…), u/<folder> or <folder>
+//   (one of yours). A built-in name wins over one of yours, with a line saying so: u/<folder> reaches yours.
 import { homedir } from 'node:os';
 import { join } from 'node:path';
 import { makeWorlds } from '../collector/worlds.mjs';
 import { canContain, plainLines, runContained, runnerArgs, worldFiles } from './lib/contained.mjs';
-import { ROOT, keyOf, worldsDir } from './lib/worlds-dir.mjs';
+import { ROOT, keyOf, whichWorld, worldsDir } from './lib/worlds-dir.mjs';
 
 const args = process.argv.slice(2);
 const arg = args.find((a, i) => !a.startsWith('--') && args[i - 1] !== '--worlds');
-if (!arg) { console.error('Which world? npm run check-world -- <farm | starter | your folder>'); process.exit(1); }
-const key = keyOf(arg), { dir: userDir } = worldsDir();
+if (!arg) { console.error(whichWorld('check-world')); process.exit(1); }
+const { dir: userDir } = worldsDir(), key = keyOf(arg, { userDir });
 const dir = makeWorlds({ builtinDir: join(ROOT, 'web', 'worlds'), userDir, home: homedir() }).dirOf(key);
 if (!dir) { console.error(`No world ${key}${key.startsWith('u/') ? ` in ${userDir}` : ''}.`); process.exit(1); }
 if (!canContain()) { console.error(`check-world needs a Node that can contain a world (--permission: Node 22.13 or later, or 23.5 or later); this is ${process.version}.`); process.exit(1); }

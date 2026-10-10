@@ -4,7 +4,9 @@
 // No dependencies; needs Chrome (CHROME to set its path).
 //
 //   npm run world-shots -- <world> [--stop <name>] [--dir <folder>] [--worlds <dir>]
-//   <world>: farm, starter, u/<folder> or <folder> (one of yours); pictures go to .private/shots/<world>/
+//   <world>: a built-in world's name (a folder of web/worlds: farm, factory, starter…), u/<folder> or <folder>
+//   (one of yours; a built-in name wins, with a line saying so: u/<folder> reaches yours); pictures go to
+//   .private/shots/<world>/
 import { existsSync, mkdirSync, writeFileSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { join, resolve } from 'node:path';
@@ -13,12 +15,12 @@ import { makeWorlds } from '../collector/worlds.mjs';
 import { openChrome, sleep } from './lib/cdp.mjs';
 import { freezeScript } from './lib/freeze.mjs';
 import { oneLine } from './lib/plain-text.mjs';
-import { ROOT, keyOf, worldsDir } from './lib/worlds-dir.mjs';
+import { ROOT, keyOf, whichWorld, worldsDir } from './lib/worlds-dir.mjs';
 
 const args = process.argv.slice(2), opt = name => { const i = args.indexOf(name); return i >= 0 ? args[i + 1] : null; };
 const arg = args.find((a, i) => !a.startsWith('--') && !['--stop', '--dir', '--worlds'].includes(args[i - 1]));
-if (!arg) { console.error('Which world? npm run world-shots -- <farm | starter | your folder>'); process.exit(1); }
-const key = keyOf(arg), { dir: userDir } = worldsDir();
+if (!arg) { console.error(whichWorld('world-shots')); process.exit(1); }
+const { dir: userDir } = worldsDir(), key = keyOf(arg, { userDir });
 const worlds = makeWorlds({ builtinDir: join(ROOT, 'web', 'worlds'), userDir, home: homedir() });
 if (!worlds.dirOf(key)) { console.error(`No world ${key}${key.startsWith('u/') ? ` in ${userDir}` : ''}.`); process.exit(1); }
 const OUT = resolve(opt('--dir') ?? join(ROOT, '.private', 'shots', key.replace('/', '-')));

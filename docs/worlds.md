@@ -1032,7 +1032,8 @@ needs Chrome; `CHROME` sets its path):
 npm run world-shots -- <world> [--stop <name>] [--dir <folder>] [--worlds <dir>]
 ```
 
-`<world>` is `farm`, `starter`, `u/<folder>` or just `<folder>` (one of yours). It starts a server
+`<world>` is `farm`, `starter`, `u/<folder>` or just `<folder>` (one of yours; if yours has a built-in
+world's name, the built-in is used and a line says so: `u/<folder>` reaches yours). It starts a server
 of its own on made-up data (your real sessions and your `config.json` token are not used), opens
 each stop of the tour in headless Chrome at 1280 by 820, waits for `document.body.dataset.shown`,
 and saves `<stop>.png`. `--stop` takes one stop, `--dir` says where the pictures go (the default is
@@ -1096,7 +1097,8 @@ UTC).
 npm run check-world -- <world> [--worlds <dir>]
 ```
 
-`<world>` is `farm`, `starter`, `u/<folder>` or just `<folder>` (one of yours); `--worlds` looks for
+`<world>` is `farm`, `starter`, `u/<folder>` or just `<folder>` (one of yours; as for `world-shots`, a
+built-in world's name wins, with a line saying so); `--worlds` looks for
 it in that folder instead of your worlds folder. It needs no browser, server or token: it reads the
 world's `world.js` and `world.json`, the SDK and the tour (and `config.json`, only for where your
 worlds are).
