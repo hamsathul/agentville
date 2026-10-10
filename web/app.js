@@ -182,7 +182,7 @@ function setView(next, { remember = true } = {}) {
       // A world pressing a button that raises a view or dialog arms the click guard, so it can't steer a
       // click onto what it raised. Each press calls what the button does, not a synthetic click: a click
       // would go through the guard it has just armed.
-      onNav: what => { window.TrackerFarm?.armClickGuard?.(); return ({ list: () => setView('list'), worlds: () => window.TrackerFarm.openList?.(), session: () => void openSessions(), setup: () => openSetup(), side: () => setFarmSide(!farmSide), theme: () => cycleTheme(), broadcast: () => openBroadcast() })[what]?.(); },
+      onNav: what => { window.TrackerFarm?.armClickGuard?.(); return ({ list: () => setView('list'), worlds: () => window.TrackerFarm.openList?.(), session: () => void openSessions(), setup: () => openSetup(), side: () => setFarmSide(!farmSide), theme: () => cycleTheme(), broadcast: () => openBroadcast(), chats: () => void openChats() })[what]?.(); },
       navState: () => ({ theme, side: farmSide, live: !$('live').classList.contains('off') }),
     });
   } else {

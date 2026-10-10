@@ -1306,6 +1306,7 @@
     animals: ['.k.k.k...', '.k.k.k...', '.........', 'k.kkk.k..', '.kkkkk...', '.kkkkk...', '..kkk....', '.........', '.........'],
     menu: ['.........', 'kkkkkkkkk', 'kkkkkkkkk', '.........', 'kkkkkkkkk', 'kkkkkkkkk', '.........', 'kkkkkkkkk', 'kkkkkkkkk'],
     broadcast: ['.......k.', '.....kkk.', 'k..kkyyk.', 'kkkyyyyk.', 'kkyyyyyk.', 'kkkyyyyk.', 'k..kkyyk.', '....k.kk.', '....kk...'],
+    chats: ['kkkkkk...', 'kwwwwk...', 'kwwwwkkkk', 'kkwkkyyyk', '.kk.kyyyk', '....kyyyk', '....kkykk', '......kk.', '.........'],
     cool: ['...PPP...', '...PwPP..', '...PwP...', '...PwPP..', '...PwP...', '...PBPP..', '..PBBBP..', '..PBBBP..', '...PPP...'],
     warm: ['...PPP...', '...PwPP..', '...PwP...', '...PyPP..', '...PyP...', '...PyPP..', '..PyyyP..', '..PyyyP..', '...PPP...'],
     hot: ['...PPP...', '...PwPP..', '...PoP...', '...PoPP..', '...PoP...', '...PoPP..', '..PoooP..', '..PoooP..', '...PPP...'],

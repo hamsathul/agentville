@@ -3357,3 +3357,22 @@ test("💬 All chats' box writes to the agent waiting on you longest, or the one
   assert.match(page.el('chats-to').innerHTML, /<option value="t1" selected>pusher</);
   assert.match(page.el('chats-compose').innerHTML, /data-msg-agent="t1"[^>]*>No, <\/textarea>/);
 });
+
+test("a world's Menu opens 💬 All chats, and its Allow is held a moment like any button a world raised", async () => {
+  const f = fakeFarm();
+  const page = loadPage({ farm: f.farm, stored: { 'tracker-view': 'farm' }, replies: { '/api/timeline?since=0': tl([]) } });
+  page.push(crowd());
+  f.nav('chats');
+  await page.settle();
+  assert.equal(page.el('chats').open, true);
+  assert.ok(f.calls.some(c => c[0] === 'arm'), 'the click guard is armed');
+  page.el('allow').className = 'act primary';
+  f.setBlocks(true);
+  await page.clickButton('allow', { chatsCard: '', permit: 'allow', agent: 'p1', tool: 'toolu_P1' });
+  await page.settle();
+  assert.equal(page.posts.length, 0, 'held');
+  f.setBlocks(false);
+  await page.clickButton('allow', {});
+  await page.settle();
+  assert.deepEqual(page.posts.map(p => p.path), ['/api/actions/permit']);
+});
