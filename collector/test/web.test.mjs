@@ -1536,7 +1536,8 @@ test('Send now sends a note as your own message and marks it used; a session not
   await page.settle();
   await page.clickButton('note-send', { noteSend: 'n1', agent: 'r1' });
   await page.settle();
-  assert.deepEqual(page.posts.map(x => [x.path, x.body]), [['/api/actions/message', { agentId: 'r1', text: 'ask about the cache' }], ['/api/actions/note', { agentId: 'r1', op: 'used', ids: ['n1'] }]]);
+  // Send now means now: a note sent to a working session is not held for its turn's end
+  assert.deepEqual(page.posts.map(x => [x.path, x.body]), [['/api/actions/message', { agentId: 'r1', text: 'ask about the cache', now: true }], ['/api/actions/note', { agentId: 'r1', op: 'used', ids: ['n1'] }]]);
   const off = notesPage([note('n1', 'ask about the cache')], { mod: undefined });
   await off.settle();
   const side = off.side();

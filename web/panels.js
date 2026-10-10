@@ -726,7 +726,7 @@ function removeFile(agentId, index) {
 }
 
 /** Sends the message box (with its files), or `quick` text (a one-click answer) leaving the box as it is. */
-async function sendMessage(agentId, button, quick = null) {
+async function sendMessage(agentId, button, quick = null, { now = false } = {}) { // now: sent at once, never held for the turn's end
   const text = (quick ?? msgDrafts.get(agentId) ?? '').trim();
   const attached = quick === null ? msgFiles.get(agentId) ?? [] : [];
   if (!text && !attached.length) {
@@ -748,7 +748,7 @@ async function sendMessage(agentId, button, quick = null) {
     render();
     return false;
   }
-  const r = await post('/api/actions/message', { agentId, text, ...(files.length ? { files } : {}), ...(folders.length ? { folders } : {}) });
+  const r = await post('/api/actions/message', { agentId, text, ...(files.length ? { files } : {}), ...(folders.length ? { folders } : {}), ...(now ? { now: true } : {}) });
   if (r.ok && quick === null) {
     msgDrafts.delete(agentId);
     resetRecall();

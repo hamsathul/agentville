@@ -920,7 +920,7 @@ function useNote(agentId, id) {
 async function sendNote(agentId, id, button) {
   const n = noteOf(agentId, id);
   if (!n) return;
-  if (!(await sendMessage(agentId, button, n.text))) return;
+  if (!(await sendMessage(agentId, button, n.text, { now: true }))) return; // Send now: at once, even mid-turn
   tookNotes(agentId, await post('/api/actions/note', { agentId, op: 'used', ids: [id] }));
   render();
 }
