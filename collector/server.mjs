@@ -223,7 +223,7 @@ export function createTrackerServer({ port, token, webFile, getSnapshot, getFeed
         }
       }
 
-      const isBodyAction = ['/api/actions/rm', '/api/actions/answer', '/api/actions/permit', '/api/actions/always', '/api/actions/plugin', '/api/actions/reload', '/api/actions/mcp', '/api/actions/rule', '/api/actions/message', '/api/actions/start', '/api/actions/fork', '/api/actions/restore', '/api/actions/note', '/api/actions/helper', '/api/actions/name', '/api/actions/end', '/api/actions/restart', '/api/actions/setting', '/api/actions/aside', '/api/actions/reveal', '/api/actions/reveal-worlds', '/api/actions/mkdir', '/api/actions/choose-folder', '/api/actions/stop-shell'].includes(path);
+      const isBodyAction = ['/api/actions/rm', '/api/actions/answer', '/api/actions/permit', '/api/actions/always', '/api/actions/plugin', '/api/actions/reload', '/api/actions/mcp', '/api/actions/rule', '/api/actions/message', '/api/actions/start', '/api/actions/fork', '/api/actions/restore', '/api/actions/note', '/api/actions/helper', '/api/actions/name', '/api/actions/animals', '/api/actions/end', '/api/actions/restart', '/api/actions/setting', '/api/actions/aside', '/api/actions/reveal', '/api/actions/reveal-worlds', '/api/actions/mkdir', '/api/actions/choose-folder', '/api/actions/stop-shell'].includes(path);
       if (req.method === 'POST' && (isBodyAction || /^\/api\/actions\/open\/[\w-]+$/.test(path))) {
         if (req.headers['x-tracker-token'] !== token || !isAllowedOrigin(req.headers.origin ?? '')) {
           return sendJson(res, 403, { error: 'forbidden' });
@@ -250,6 +250,7 @@ export function createTrackerServer({ port, token, webFile, getSnapshot, getFeed
         if (path === '/api/actions/note') return sendJson(res, 200, await actions.note(body));
         if (path === '/api/actions/helper') return sendJson(res, 200, await actions.helper(body));
         if (path === '/api/actions/name') return sendJson(res, 200, await actions.name(body));
+        if (path === '/api/actions/animals') return sendJson(res, 200, await actions.animals(body));
         if (path === '/api/actions/setting') return sendJson(res, 200, await actions.setting(body));
         if (path === '/api/actions/aside') return sendJson(res, 200, await actions.aside(body));
         if (path === '/api/actions/reveal') return sendJson(res, 200, await actions.reveal(body));

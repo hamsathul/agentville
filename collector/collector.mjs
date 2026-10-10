@@ -34,6 +34,7 @@ import { AlertEngine, notifyMac } from './alerts.mjs';
 import { createTrackerServer } from './server.mjs';
 import { makeWorlds, watchWorlds, worldsDirOf } from './worlds.mjs';
 import { renderTranscriptPage } from './transcript-page.mjs';
+import { checkCast, chooseSession, createLinesWatch, dueLines, factsOf, parseLines } from './sources/lines.mjs';
 
 const DOC_FILE = /\.(md|markdown|mdx)$/i;
 
@@ -106,7 +107,7 @@ async function quickLookPicture(real) {
   }
 }
 
-export async function startCollector({ root, claudeDir = join(homedir(), '.claude'), claudeBin = 'claude', home = homedir(), scratchBase = `/private/tmp/claude-${process.getuid?.() ?? 0}`, port: portOverride, deliveryTimeoutMs = 5000, helperTimeoutMs = 30_000, notify = notifyMac, launch = args => run('osascript', args, { timeoutMs: 15_000 }), sessionProcs = systemProcs, endWaitMs = 8000, readProcs = readPs, deployStatusOf = deployStatus, pullRequestsOf = pullRequests, githubSlugOf = githubSlug, ticketMs = 600_000, quickLook = quickLookPicture, folderRoots = [home, '/Volumes'], chooseFolder = chooseFolderMac, stopWaitMs = 3000, revealFile = real => run('open', ['-R', real], { timeoutMs: 10_000 }), openFolder = dir => run('open', ['-a', 'Finder', dir], { timeoutMs: 10_000 }), log = makeLogger(join(root, 'logs')) }) {
+export async function startCollector({ root, claudeDir = join(homedir(), '.claude'), claudeBin = 'claude', home = homedir(), scratchBase = `/private/tmp/claude-${process.getuid?.() ?? 0}`, port: portOverride, deliveryTimeoutMs = 5000, helperTimeoutMs = 30_000, linesGapMs = 300_000, linesIdleMs = 1_800_000, castKeepMs = 600_000, notify = notifyMac, launch = args => run('osascript', args, { timeoutMs: 15_000 }), sessionProcs = systemProcs, endWaitMs = 8000, readProcs = readPs, deployStatusOf = deployStatus, pullRequestsOf = pullRequests, githubSlugOf = githubSlug, ticketMs = 600_000, quickLook = quickLookPicture, folderRoots = [home, '/Volumes'], chooseFolder = chooseFolderMac, stopWaitMs = 3000, revealFile = real => run('open', ['-R', real], { timeoutMs: 10_000 }), openFolder = dir => run('open', ['-a', 'Finder', dir], { timeoutMs: 10_000 }), log = makeLogger(join(root, 'logs')) }) {
   // readProcs, deployStatusOf, pullRequestsOf and githubSlugOf read the machine and GitHub; a test or the demo video passes stand-ins.
   const stateDir = join(root, 'state');
   const pendingDir = join(stateDir, 'pending');
@@ -121,6 +122,12 @@ export async function startCollector({ root, claudeDir = join(homedir(), '.claud
   const helperPending = new Map(); // sessionId → { id, file, at, auto }: a name asked for, not yet answered
   const nameOffers = new Map(); // sessionId → { name, at, auto }
   const nameErrors = new Map(); // sessionId → { error, at }
+  // Animal lines (✨ Helper): the animals worlds on screen have (kind → { name, seenAt }, as pages report them),
+  // what is news, the one batch asked for, the latest batch, why none can be asked, who ran one last.
+  const casts = new Map();
+  const linesWatch = createLinesWatch();
+  let linesPending = null, linesAskedAt = null, chatter = null, linesBlocked = null;
+  const linesUsed = new Map();
   // Model and effort switches and side questions go to a session's mod as files; it writes back what came of them.
   const commandsDir = join(stateDir, 'commands'), resultsDir = join(stateDir, 'command-results');
   const asksDir = join(stateDir, 'btw'), asideAnswersDir = join(stateDir, 'asides');
@@ -372,6 +379,9 @@ export async function startCollector({ root, claudeDir = join(homedir(), '.claud
       helper: helper.view(),
       collisions,
     };
+    try { linesTick(snapshot, now); } catch (err) { markFail('helper', err); } // lines never stop the dashboard
+    snapshot.chatter = chatter;
+    if (linesBlocked) snapshot.helper = { ...snapshot.helper, linesBlocked };
     prevAgents = new Map(agents.map(a => [a.id, a]));
     alerts.process(snapshot, now, cpuHist);
     writeState(snapshot);
@@ -867,6 +877,42 @@ export async function startCollector({ root, claudeDir = join(homedir(), '.claud
     nameErrors.delete(agent.id);
     return { ok: true };
   }
+  /** Animal lines, each tick: news noted, stale casts forgotten, a request that waited too long withdrawn, a batch asked for when due. */
+  function linesTick(snap, now) {
+    linesWatch.observe(snap);
+    for (const [kind, c] of casts) if (now - c.seenAt > castKeepMs) casts.delete(kind);
+    const s = helper.settings();
+    linesBlocked = null;
+    if (!s.on || !s.uses.lines) { withdrawLines(); chatter = null; return; }
+    if (linesPending && now - linesPending.at > helperTimeoutMs) { withdrawLines(); helper.fail('The session gave no animal lines in 30 seconds.'); }
+    if (linesPending || !casts.size) return;
+    if (!dueLines({ now, lastAskedAt: linesAskedAt, eventSince: linesWatch.since(linesAskedAt ?? 0), gapMs: linesGapMs, idleMs: linesIdleMs })) return;
+    if (!helper.canCall('lines').ok) { linesBlocked = 'limit'; return; }
+    const a = chooseSession(snap.agents, linesUsed);
+    if (!a) { linesBlocked = 'no-session'; return; }
+    const cast = [...casts].map(([kind, c]) => ({ kind, name: c.name }));
+    const id = `${now}-${Math.random().toString(36).slice(2, 8)}`;
+    const file = writeRequestFile(helperDir, a.id, { id, kind: 'lines', at: now, ...factsOf(snap, cast, linesWatch.recent(), now) }, id);
+    helper.count();
+    linesPending = { sid: a.id, id, file, at: now };
+    linesAskedAt = now;
+    linesUsed.set(a.id, now);
+  }
+  function withdrawLines() {
+    if (!linesPending) return;
+    try { unlinkSync(linesPending.file); } catch { /* taken already: its answer is dropped */ }
+    linesPending = null;
+  }
+  /** A mod's lines: kept if they answer the batch asked for; the good rows become the chatter, none counts as a failure. */
+  function linesReply(sid, r, now) {
+    if (!linesPending || linesPending.sid !== sid || linesPending.id !== r.id) return; // late, or withdrawn: dropped
+    linesPending = null;
+    if (!r.ok) { helper.fail(String(r.error ?? 'no answer')); return; }
+    const lines = parseLines(r.text, [...casts.keys()]);
+    if (!lines.length) { helper.fail('Haiku gave no usable lines.'); return; }
+    helper.ok();
+    chatter = { at: now, lines };
+  }
   function withdrawName(sessionId) {
     const p = helperPending.get(sessionId);
     if (!p) return;
@@ -882,6 +928,7 @@ export async function startCollector({ root, claudeDir = join(homedir(), '.claud
     for (const [sid, list] of readReplies(helperRepliesDir, now, { perSession: 5 })) {
       for (const r of list) {
         try { unlinkSync(join(helperRepliesDir, `${sid}.${r.id}.json`)); } catch { /* gone */ }
+        if (r.kind === 'lines') { linesReply(sid, r, now); continue; }
         const p = helperPending.get(sid);
         if (!p || p.id !== r.id) continue; // late, or the helper was switched off: dropped
         helperPending.delete(sid);
@@ -974,8 +1021,18 @@ export async function startCollector({ root, claudeDir = join(homedir(), '.claud
     async helper(body) {
       const r = helper.update(body ?? {});
       if (r.ok && !r.helper.on) for (const id of [...helperPending.keys()]) withdrawName(id);
+      if (r.ok && (!r.helper.on || !r.helper.uses.lines)) { withdrawLines(); chatter = null; }
       if (r.ok) await schedule(false);
       return r;
+    },
+    /** A page's world reports its animals (kinds and names only): kept 10 minutes, for Animal lines to write for. */
+    async animals(body) {
+      const cast = checkCast(body?.cast);
+      if (!cast) return { ok: false, error: 'That is not a cast of animals.' };
+      const at = Date.now(), first = casts.size === 0;
+      for (const c of cast) casts.set(c.kind, { name: c.name, seenAt: at });
+      if (first && cast.length) await schedule(false); // the first batch goes out as soon as a cast is live
+      return { ok: true };
     },
     /** A session's name: ✨ suggest (Haiku, through its own mod), rename (/rename, as /compact runs), or dismiss the offer. */
     async name(body) {

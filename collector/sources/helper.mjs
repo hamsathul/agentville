@@ -6,8 +6,8 @@ import { join } from 'node:path';
 // switch it on and tick what it may do. Kept in state/helper.json (on, uses, the daily limit and
 // today's count) and state/names.json (what became of each session's name offer).
 export const NAME_RE = /^[\p{L}\p{N} ._-]{1,60}$/u;
-const USES = ['names'];
-const DEFAULTS = { on: false, uses: { names: false }, dailyLimit: 200, consentedAt: null, today: { day: '', calls: 0 }, lastError: null };
+const USES = ['names', 'lines'];
+const DEFAULTS = { on: false, uses: { names: false, lines: false }, dailyLimit: 200, consentedAt: null, today: { day: '', calls: 0 }, lastError: null };
 
 /**
  * What Haiku answered, as a short kebab-case name: the first line with something left once a label
@@ -61,7 +61,7 @@ export function createHelper(dir, { now = () => Date.now() } = {}) {
   return {
     settings: () => ({ ...s, uses: { ...s.uses }, today: { ...today() } }),
     view,
-    /** From the ✨ Helper dialog: { on, uses: { names }, dailyLimit }. Switching on records when you agreed. */
+    /** From the ✨ Helper dialog: { on, uses: { names, lines }, dailyLimit }. Switching on records when you agreed. */
     update(body) {
       const uses = { ...s.uses };
       for (const u of USES) if (typeof body?.uses?.[u] === 'boolean') uses[u] = body.uses[u];
