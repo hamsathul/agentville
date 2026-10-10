@@ -44,7 +44,7 @@ function load() {
   const dom = stubDom();
   const window = { Agentville: { raw: h => { window.registered = h; } } };
   const ctx = vm.createContext({ window, document: dom.document, console, Math, Date, JSON, Map, Set, Intl, ...dom.globals });
-  vm.runInContext(`${code}\n;window.sdk = { makeGrid, withDefaults, engineScene, makePixelView, ACTIVE, defaultHud, PXG, fitClear };`, ctx);
+  vm.runInContext(`${code}\n;window.sdk = { makeGrid, withDefaults, engineScene, makePixelView, ACTIVE, defaultHud, PXG, fitClear, holdHud };`, ctx);
   return { window, dom, sdk: window.sdk };
 }
 const twoAgents = window => window.AgentvilleScene.toScene({ generatedAt: NOW, collisions: [], agents: [
@@ -362,4 +362,19 @@ test('below the panel, the world keeps clear of the switches along the bottom to
   const beside = Math.min((fw - 2 - panel.w) / W, (fh - 2) / H), below = Math.min((fw - 2) / W, (fh - 2 - panel.h - tools) / H);
   assert.ok(fit >= Math.max(beside, below) * 0.99, `no smaller than it needs to be (${fit})`);
   assert.deepEqual(sdk.fitClear(1437, 898, W, H, { w: 374, h: 431 }, tools), sdk.fitClear(1437, 898, W, H, { w: 374, h: 431 }), 'beside the panel, the switches lie over the forest at its foot, as they always have');
+});
+
+// The panel's width follows its text (a CPU figure, an error line): the farm was fitted again at each
+// change, so it grew and shrank as the numbers moved. It is fitted to what the panel needs at most.
+test("the farm keeps its size while the panel's numbers change: it moves only when the panel outgrows what was kept for it", () => {
+  const { sdk } = load();
+  const first = sdk.holdHud(null, { w: 342, h: 453, tools: 30 });
+  assert.ok(first.w >= 342 + 24 && first.h === 453 && first.tools === 30, `room kept beside the panel for a longer figure (${JSON.stringify(first)})`);
+  for (const now of [{ w: 350, h: 453, tools: 30 }, { w: 342, h: 420, tools: 30 }, { w: 360, h: 453, tools: 30 }]) {
+    assert.equal(sdk.holdHud(first, now), first, `a panel within what was kept changes nothing (${JSON.stringify(now)})`);
+  }
+  const grown = sdk.holdHud(first, { w: 484, h: 470, tools: 30 });
+  assert.ok(grown !== first && grown.w >= 484 && grown.h >= 470, `a panel that outgrows it (an error line) is kept clear of (${JSON.stringify(grown)})`);
+  assert.equal(sdk.holdHud(grown, { w: 342, h: 453, tools: 30 }), grown, 'and the farm does not grow back when the line goes: only a new fit (the frame resized, the panel folded) measures afresh');
+  assert.deepEqual(plain(sdk.holdHud(null, { w: 0, h: 0, tools: 30 })), { w: 0, h: 0, tools: 30 }, 'no panel: nothing kept for one');
 });

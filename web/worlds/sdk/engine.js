@@ -180,6 +180,18 @@ function fitClear(fw, fh, W, H, panel, tools = 0) {
   return { fit, pad: { l, r: Math.floor(spareW) - l, t, b: spareH - t } };
 }
 
+/**
+ * What the world is fitted clear of: the panel and the switches as they stand (`now`: { w, h, tools },
+ * CSS pixels) against what was kept before (null on a new fit). The same object while `now` fits inside
+ * it, so the world keeps its size as the panel's figures come and go; more when the panel outgrows it
+ * (an error line, an account's row). Beside the panel, room is kept for a longer figure.
+ */
+function holdHud(kept, now) {
+  if (kept && now.w <= kept.w && now.h <= kept.h && now.tools <= kept.tools) return kept;
+  const room = w => (w ? w + 24 : 0);
+  return kept ? { w: Math.max(kept.w, room(now.w)), h: Math.max(kept.h, now.h), tools: Math.max(kept.tools, now.tools) } : { w: room(now.w), h: now.h, tools: now.tools };
+}
+
 /** A world's hooks, with the engine's default for each one it leaves out (docs/worlds.md, "Hooks"). */
 function withDefaults(h) {
   if (!(h.W > 0)) throw new Error('A world needs its width, W (in world pixels).');
@@ -281,7 +293,8 @@ function makePixelView(th, prefs) {
   const resting = f => f.state === 'idle' || f.state === 'stale';
   let glide = null; // a zoom easing in: { from: scale, start, ox, oy }
   let pad = { l: 0, r: 0, t: 0, b: 0 }; // the frame's spare room, in world pixels: more forest all round
-  let hudKey = ''; // the panel's size and the switches' height the farm was last fitted clear of
+  let hudKept = null; // the panel's size and the switches' height the farm is fitted clear of (holdHud); null: measure afresh
+  let refit = 0; // a fit waiting for the next frame: the panel outgrew what was kept for it
   const extOf = () => ({ x0: -pad.l, x1: th.W + pad.r, y0: -pad.t, y1: th.layout().H + pad.b });
   const skyNow = () => skyAt(skyMode === 'day' ? new Date(2000, 0, 1, 12) : skyMode === 'night' ? new Date(2000, 0, 1, 23) : new Date());
   let wheel = 0;
@@ -407,13 +420,14 @@ function makePixelView(th, prefs) {
   function renderHud() {
     if (hudEl) hudEl.innerHTML = th.hud({ still, zoom, saysOn, skyMode, seasonMode, seasons: th.hasSeasons, follow, canFollow: Boolean(selectedId && bots.has(selectedId)), restingHidden: restingShown ? null : scene.farmers.filter(resting).length, bell: bellOn, nav: opts.navState?.() ?? {}, panelOpen, animals: kit ? animalsOn : null, menuOpen: hudMenu });
     placeMini();
-    // a panel that grew (an account's row) or shrank, or switches on more rows: the farm moves clear of them
-    if (canvas && hudSize() !== hudKey) resize();
+    // a panel that outgrew what was kept for it: the farm moves clear of it on the next frame, not in
+    // the middle of whatever drew the HUD (a farmer's move, say)
+    if (canvas && !refit && holdHud(hudKept, hudNow()) !== hudKept) refit = requestAnimationFrame(() => { refit = 0; resize(); });
   }
   /** The panel over the frame's top left (a world's .px-stats; 0 × 0 when there is none) and the switches' height, as they stand. */
-  function hudSize() {
-    const el = hudEl?.querySelector('.px-stats'), tools = hudEl?.querySelector('.px-tools');
-    return `${el?.offsetWidth ?? 0},${el?.offsetWidth ? el.offsetHeight : 0},${tools?.offsetHeight ?? 0}`;
+  function hudNow() {
+    const el = hudEl?.querySelector('.px-stats'), tools = hudEl?.querySelector('.px-tools'), w = el?.offsetWidth ?? 0;
+    return { w, h: w ? el.offsetHeight : 0, tools: tools?.offsetHeight ?? 0 };
   }
   /** The minimap sits just above the switches, which take more rows in a narrow frame (the sidebar open). */
   function placeMini() {
@@ -878,8 +892,8 @@ function makePixelView(th, prefs) {
     // over the frame's top left (its 10px margin and a 6px gap): the farm sits clear of it.
     const fw = viewEl?.offsetWidth || th.W, fh = viewEl?.offsetHeight || 0;
     const was = `${pad.l},${pad.r},${pad.t},${pad.b}`;
-    hudKey = hudSize();
-    const [pw, ph, tools] = hudKey.split(',').map(Number);
+    hudKept = holdHud(hudKept, hudNow());
+    const { w: pw, h: ph, tools } = hudKept;
     let fit;
     ({ fit, pad } = fitClear(fw, fh, th.W, H, pw ? { w: pw + 16, h: ph + 16 } : null, tools ? tools + 12 : 0)); // the switches: 8px off the bottom, a 4px gap
     const EW = th.W + pad.l + pad.r, EH = H + pad.t + pad.b;
@@ -979,7 +993,7 @@ function makePixelView(th, prefs) {
     if (mem) { e.stopPropagation(); dlg?.close(); opts.onOpenDoc?.(mem.dataset.farmMem, mem.dataset.path); return; }
     if (e.target.closest?.('[data-farm-dlg-close]') || (dlg && e.target === dlg)) { e.stopPropagation(); dlg.close(); return; }
     if (dlg?.contains(e.target)) return;
-    if (e.target.closest?.('[data-farm-panel]')) { e.stopPropagation(); panelOpen = !panelOpen; prefs.set('panel', panelOpen ? 'open' : 'folded'); renderHud(); resize(); return; }
+    if (e.target.closest?.('[data-farm-panel]')) { e.stopPropagation(); panelOpen = !panelOpen; prefs.set('panel', panelOpen ? 'open' : 'folded'); renderHud(); hudKept = null; resize(); return; }
     const navBtn = e.target.closest?.('[data-farm-nav]');
     if (navBtn) { e.stopPropagation(); opts.onNav?.(navBtn.dataset.farmNav); renderHud(); return; } // the dashboard's own buttons
     const stateBtn = e.target.closest?.('[data-farm-state]');
@@ -1169,10 +1183,11 @@ function makePixelView(th, prefs) {
       settle(groundFor(scene.fields));
       renderHud(); // before the first fit: the panel's and switches' size place the farm
       bg = buildBg();
+      hudKept = null;
       resize();
       placed = false;
       if (got) restorePlace(); // else when the first scene has been applied and the canvas has its size
-      ro = new ResizeObserver(() => resize());
+      ro = new ResizeObserver(() => { hudKept = null; resize(); }); // a new frame size: the panel measured afresh
       ro.observe(host);
       host.addEventListener('click', onClick);
       viewEl.addEventListener('wheel', onWheel, { passive: false });

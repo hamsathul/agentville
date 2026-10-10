@@ -765,6 +765,9 @@ try {
     return JSON.stringify({ clear: beside || (below && foot <= tools + 1), farm: [...farm, foot].map(Math.round), panel: [p.right, p.bottom].map(Math.round), tools: Math.round(tools) }); })()`);
   const refitted = async () => { for (let i = 0, last = ''; i < 20; i++) { const now = await fjs("document.querySelector('#farm canvas').style.width + '|' + document.querySelector('#farm canvas').dataset.pad + '|' + document.querySelector('#farm .px-view').getBoundingClientRect().width"); if (now === last) return; last = now; await sleep(250); } };
   check(JSON.parse(await panelClear()).clear, `at 100% nothing of the farm lies under the panel (${await panelClear()})`);
+  const steady = [];
+  for (let i = 0; i < 8; i++) { steady.push(await fjs("(c => [document.querySelector('.px-stats').offsetWidth, c.dataset.pad, c.dataset.ew].join('/'))(document.querySelector('#farm canvas'))")); await sleep(500); }
+  check(new Set(steady.map(x => x.split('/').slice(1).join('/'))).size === 1, `the farm keeps its size and place while the panel's figures change (panel width / farm: ${[...new Set(steady)].join(', ')})`);
   await fjs("document.querySelector('[data-farm-nav=\"theme\"]').click()");
   check(await until("document.documentElement.dataset.theme !== 'dark'"), "the farm's own buttons work the dashboard: the theme changes");
   // Each click reaches the page as a message (wait for it before looking again), and the page takes one
