@@ -275,3 +275,20 @@ test('the real crew: play borrows a farmer idle three minutes, but never one nap
   assert.ok(run(false).size > 1, 'an idle farmer goes to play');
   assert.deepEqual([...run(true)], ['100,40'], 'a napping one stays put');
 });
+
+test('a world can name its season switch and its levels; any left out keep today\'s words', () => {
+  const { sdk } = load();
+  const named = sdk.withDefaults(fourHooks({ season: () => 'summer', seasonNames: { switch: 'Heat', spring: 'cool', summer: 'warm', autumn: 'hot', winter: 'steaming' } }));
+  assert.deepEqual(JSON.parse(JSON.stringify(named.seasonNames)), { switch: 'Heat', spring: 'cool', summer: 'warm', autumn: 'hot', winter: 'steaming' });
+  const partial = sdk.withDefaults(fourHooks({ season: () => 'summer', seasonNames: { switch: 'Weather' } }));
+  assert.deepEqual(JSON.parse(JSON.stringify(partial.seasonNames)), { switch: 'Weather', spring: 'spring', summer: 'summer', autumn: 'autumn', winter: 'winter' });
+  assert.equal(sdk.withDefaults(fourHooks()).seasonNames.switch, 'Season');
+});
+
+test("the default HUD's switch shows the world's names", () => {
+  const { sdk } = load();
+  const names = { switch: 'Heat', spring: 'cool', summer: 'warm', autumn: 'hot', winter: 'steaming' };
+  assert.match(sdk.defaultHud({ seasons: true, seasonMode: 'winter', seasonNames: names }), /Heat: steaming/);
+  assert.match(sdk.defaultHud({ seasons: true, seasonMode: 'live', seasonNames: names }), /Heat: live/);
+  assert.match(sdk.defaultHud({ seasons: true, seasonMode: 'autumn' }), /Season: autumn/);
+});

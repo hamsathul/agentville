@@ -143,10 +143,11 @@ function engineScene(s) {
 }
 
 /** The HUD a world gets unless it draws its own: the dashboard's buttons, the sky (and the season, in a world with seasons), help and zoom. */
-function defaultHud({ zoom = 1, skyMode = 'live', seasonMode = 'live', seasons = false, still = false, nav = {}, animals = null }) {
+const SEASON_DEFAULTS = { switch: 'Season', spring: 'spring', summer: 'summer', autumn: 'autumn', winter: 'winter' };
+function defaultHud({ zoom = 1, skyMode = 'live', seasonMode = 'live', seasons = false, still = false, nav = {}, animals = null, seasonNames = SEASON_DEFAULTS }) {
   const btn = (attr, label, title, pressed) => `<button type="button" ${attr} title="${esc(title)}"${pressed === undefined ? '' : ` aria-pressed="${pressed}"`}>${pxImg(label, '#4e3626', null)}<span class="px-sr">${esc(label)}</span></button>`;
   return `<div class="px-nav">${btn('data-farm-nav="list"', 'List', 'The list of agents')}${btn('data-farm-nav="worlds"', 'World', 'Choose a world')}${btn('data-farm-nav="side"', 'Sidebar', 'The selected agent beside the map', Boolean(nav.side))}</div>
-    <div class="px-tools">${btn('data-farm-sky', `Sky: ${skyMode}`, 'Live follows your clock; or day, or night')}${seasons ? btn('data-farm-season', `Season: ${seasonMode}`, "Live follows this world's own seasons; or hold one: spring, summer, autumn or winter") : ''}${btn('data-farm-motion', `Motion: ${still ? 'off' : 'on'}`, 'Walking and animation')}${animals === null ? '' : btn('data-farm-animals', `Animals: ${animals ? 'on' : 'off'}`, 'Animals that live here, just for fun: click one to pet or feed it', animals)}${btn('data-farm-help', 'Help', 'How to read this world')}
+    <div class="px-tools">${btn('data-farm-sky', `Sky: ${skyMode}`, 'Live follows your clock; or day, or night')}${seasons ? btn('data-farm-season', `${seasonNames.switch}: ${seasonMode === 'live' ? 'live' : seasonNames[seasonMode]}`, "Live follows this world's own seasons; or hold one: spring, summer, autumn or winter") : ''}${btn('data-farm-motion', `Motion: ${still ? 'off' : 'on'}`, 'Walking and animation')}${animals === null ? '' : btn('data-farm-animals', `Animals: ${animals ? 'on' : 'off'}`, 'Animals that live here, just for fun: click one to pet or feed it', animals)}${btn('data-farm-help', 'Help', 'How to read this world')}
       <span class="px-zoombar">${btn('data-farm-zoom="-1"', '-', 'Zoom out')}${btn('data-farm-zoom="0"', `${Math.round(zoom * 100)}%`, 'The whole world')}${btn('data-farm-zoom="1"', '+', 'Zoom in')}</span></div>`;
 }
 
@@ -155,6 +156,7 @@ function withDefaults(h) {
   if (!(h.W > 0)) throw new Error('A world needs its width, W (in world pixels).');
   for (const need of ['slots', 'drawChar', 'bg']) if (typeof h[need] !== 'function') throw new Error(`A world needs a ${need}() hook.`);
   const nouns = { agent: 'agent', agents: 'agents', repo: 'repo', repos: 'repos', place: 'world', ...h.nouns };
+  const seasonNames = { ...SEASON_DEFAULTS, ...(h.seasonNames && typeof h.seasonNames === 'object' ? h.seasonNames : {}) };
   // The default grid is centred on W, from the config merged over 3 × 88 × 62: columns centred, a
   // fence half a column wider each side (kept inside 0..W) unless the world gives cx0 or a fence itself.
   const g = h.grid ?? {};
@@ -181,7 +183,7 @@ function withDefaults(h) {
     labels: lab => { for (const s of out.layout().ST) lab(s.cx, s.rowTop + 50, pxt(cutMid(fields.find(f => f.key === s.key)?.name ?? '', 16)), 'zone'); },
     fieldAt: () => null, buildingAt: () => null, buildingTip: () => '', dialog: () => null, boardSessions: () => [],
     help: () => `<div class="px-key"><b>${esc(nouns.agents)}</b><span>one for each agent working on this Mac</span><b>${esc(nouns.repos)}</b><span>one for each repo an agent works in</span></div>`,
-    ...h, grid, nouns,
+    ...h, grid, nouns, seasonNames,
     // the fields are always recorded here (the default labels read them), whoever's setScene runs
     setScene(next) { fields = next.fields; return ownSetScene ? ownSetScene.call(h, next) : []; },
   };
@@ -367,7 +369,7 @@ function makePixelView(th, prefs) {
     setTimeout(() => el.remove(), 1700);
   }
   function renderHud() {
-    if (hudEl) hudEl.innerHTML = th.hud({ still, zoom, saysOn, skyMode, seasonMode, seasons: th.hasSeasons, follow, canFollow: Boolean(selectedId && bots.has(selectedId)), restingHidden: restingShown ? null : scene.farmers.filter(resting).length, bell: bellOn, nav: opts.navState?.() ?? {}, panelOpen, animals: kit ? animalsOn : null });
+    if (hudEl) hudEl.innerHTML = th.hud({ still, zoom, saysOn, skyMode, seasonMode, seasons: th.hasSeasons, follow, canFollow: Boolean(selectedId && bots.has(selectedId)), restingHidden: restingShown ? null : scene.farmers.filter(resting).length, bell: bellOn, nav: opts.navState?.() ?? {}, panelOpen, animals: kit ? animalsOn : null, seasonNames: th.seasonNames });
     placeMini();
   }
   /** The minimap sits just above the switches, which take more rows in a narrow frame (the sidebar open). */
