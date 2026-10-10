@@ -342,6 +342,7 @@ A hook you give always wins over its default.
 | `setScene` | `(scene)` | returns `[]`. May return events `{ id?, at?: [x, y], text, cls?, log?, who?, kind? }`: a pop-up with `text` over the agent `id` (or at `at`), a line in the log if `log` is set (under the agent's name; with no agent, under `who`, else "The market"), and, with a `kind`, a reaction from the animals ("Reactions", in "Creatures"). The engine records `scene.fields` itself, whether or not you give one |
 | `spawn` | `()` | `[W / 2, 0]`: where a new agent appears |
 | `follow` | `(body, k, T, kid)` | where the k-th subagent stands beside its agent (`T` the clock, `kid` the subagent's scene entry) |
+| `flight` | `(a, z, t, T)` | the engine's carrier pigeon: draws a message from one agent to another on its way, each frame for its 2.4 s (`a` and `z` the sender's and the receiver's bodies, `t` how far along, 0 to 1, `T` the clock); the ✉ that pops when it lands is the engine's either way |
 | `startText` | `(n)` | "n agents here": the first line of the log |
 | `arriveText` | | the string `'arrives'`: the log line when an agent walks in |
 | `tag`, `tip` | `(agent)` | the name, cut to 16; the name |

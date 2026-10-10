@@ -737,12 +737,17 @@ function makePixelView(th, prefs) {
       first = false;
     }
   }
-  /** Carrier pigeons: from the sender over an arc to the receiver in 2.4 s, then a ✉ pops there. */
+  /**
+   * Messages on their way, 2.4 s each, then a ✉ pops at the receiver: drawn the world's way (its flight hook:
+   * the sender's and the receiver's bodies, how far along, 0 to 1, and the clock), else as a carrier pigeon
+   * from the sender over an arc to the receiver.
+   */
   function drawFlights() {
     for (let i = flights.length - 1; i >= 0; i--) {
       const fl = flights[i], a = bots.get(fl.from), z = bots.get(fl.to), t = (T - fl.start) / 2.4;
       if (!a || !z) { flights.splice(i, 1); continue; }
       if (t >= 1) { pop(z.x, z.y - th.SH * SC - 16, '✉', 'good'); flights.splice(i, 1); continue; }
+      if (th.flight) { th.flight(a, z, t, T); continue; }
       const ay = a.y - th.SH * SC, zy = z.y - th.SH * SC, e = t < 0.5 ? 2 * t * t : 1 - (-2 * t + 2) ** 2 / 2;
       const x = Math.round(a.x + (z.x - a.x) * e), y = Math.round(ay + (zy - ay) * e - Math.sin(Math.PI * t) * 34), m = z.x >= a.x ? 1 : -1, up = Math.floor(T * 12) % 2;
       px(x - 3, y, 6, 3, '#e6eef5'); px(x + (m > 0 ? 2 : -4), y - 2, 2, 2, '#e6eef5'); px(x + (m > 0 ? 4 : -5), y - 1, 1, 1, '#f08a24'); px(x + (m > 0 ? 3 : -4), y - 2, 1, 1, '#1b1420'); // body, head, beak, eye

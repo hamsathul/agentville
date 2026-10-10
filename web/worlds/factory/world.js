@@ -139,24 +139,26 @@
   const OFF = { k: '#3a3a40', C: '#9aa4ad', c: '#8a8f96', H: '#c3cbd2', h: '#e6eef5', v: '#5f6b7a', e: '#5f6b7a', A: '#8a8f96', T: '#5f6b7a', W: '#9aa4ad', L: '#8a8f96', B: '#5f6b7a', a: '#8a8f96' };
   /**
    * Each letter's colour: the body is the agent's colour, exact (its shade made from it); a codex robot's body
-   * is slate, and its chest light the agent's colour. The rest are snapped to the pixel kit's palette.
+   * is slate, and its chest light the agent's colour; its antenna light is `light` (its model's colour) when
+   * given. The rest are snapped to the pixel kit's palette.
    */
-  function robotPalette(look, color, off = false) {
+  function robotPalette(look, color, off = false, light = null) {
     const own = /^#[0-9a-f]{6}$/i.test(color ?? '') ? color : SLATE; // a colour that isn't one (none at all): slate, rather than a throw
     const codex = look?.line === 'codex', body = codex ? SLATE : own;
-    const pal = off ? { ...OFF } : { ...METAL, C: body, c: shade(body, 0.78), B: codex ? own : METAL.B };
+    const pal = off ? { ...OFF } : { ...METAL, C: body, c: shade(body, 0.78), B: codex ? own : METAL.B, a: light ?? METAL.a };
     for (const k of Object.keys(pal)) if (off || !(k === 'C' || k === 'c' || (k === 'B' && codex))) pal[k] = ink(pal[k]);
     return pal;
   }
   const sprites = new Map();
   /**
    * A robot's sprite, a 14 × 16 canvas, made once: `view` down, up, right or left; `legs` a walking frame
-   * (s, a, b); `wave` its right arm up (from the front); `off` powered down, grey (stale).
+   * (s, a, b); `wave` its right arm up (from the front); `off` powered down, grey (stale); `light` its antenna
+   * light's colour (its model's; the default red without).
    */
-  function robotSprite(look, color, { view = 'down', legs = 's', wave = false, off = false } = {}) {
-    const key = `${look?.head}|${look?.drive}|${look?.line}|${look?.chest}|${color}|${view}|${legs}|${Boolean(wave)}|${Boolean(off)}`;
+  function robotSprite(look, color, { view = 'down', legs = 's', wave = false, off = false, light = null } = {}) {
+    const key = `${look?.head}|${look?.drive}|${look?.line}|${look?.chest}|${color}|${view}|${legs}|${Boolean(wave)}|${Boolean(off)}|${light ?? ''}`;
     if (sprites.has(key)) return sprites.get(key);
-    const pal = robotPalette(look, color, off);
+    const pal = robotPalette(look, color, off, light);
     const c = makeSprite(robotRows(look, view, legs), pal);
     if (wave && view === 'down') { // its right arm up beside its head, waving
       const g = c.getContext('2d');
@@ -784,12 +786,387 @@
     if (bank.lamp !== 'red' || blink(2)) { px(295, 15, 6, 4, LAMP_COLOURS[bank.lamp]); px(296, 15, 2, 1, '#ffffff'); } else px(295, 15, 6, 4, '#5a1f19'); // red blinks: between flashes, unlit red (no reading: grey)
   }
 
+  /* ---------- the props and drones: what robots hold, what is on and over them, drones, AGVs, capsules ---------- */
+
+  // What a robot holds for each step, drawn round its 14 × 16 sprite (rp paints in its pixels): its claws are at
+  // x 1 and 12, rows 10–11, metal (a robot has no hands); what it works on stands at its right, on the floor at
+  // row 15. The factory's own props, through the props kit; the kit's for the rest (a megaphone, a clipboard, a
+  // plug for an MCP call, whose AGV is what shows it, a scroll for a skill, and plan mode's blueprint).
+  const DARK = '#3a3a40', STEEL = '#5f6b7a', CLAW = '#9aa4ad';
+  /** A claw closed on what it holds: the arm's metal, a dark joint under it. */
+  const claw = (rp, x = 12, y = 11) => { rp(x, y, 2, 1, CLAW); rp(x, y + 1, 1, 1, STEEL); };
+  const WELD_TIP = [18, 13]; // the welder's flame, in the robot's pixels: its spark glows there at night (lights)
+  const FACTORY_PROPS = {
+    datapad(rp, T) { // reading: a datapad in both claws, its lines scrolling
+      const n = Math.floor(T * 3) % 3;
+      rp(2, 9, 10, 6, DARK); rp(3, 10, 8, 4, '#2c4a85');
+      for (let i = 0; i < 3; i++) rp(4, 11 + i, [5, 3, 4][(i + n) % 3], 1, '#a9dcf7');
+      rp(10, 10 + n, 1, 2, '#5ab4ff'); // its scroll bar
+      rp(1, 11, 1, 2, CLAW); rp(12, 11, 1, 2, CLAW);
+    },
+    scanner(rp, T) { // searching: a scanner gun, its red beam sweeping
+      const sweep = Math.round(Math.sin(T * 3) * 3);
+      rp(13, 9, 5, 3, DARK); rp(14, 10, 3, 1, STEEL); rp(13, 12, 2, 2, DARK); // its body and grip
+      rp(18, 10, 1, 1, blink(4) ? '#ff6b6b' : '#e04a3a'); // its lens
+      for (let i = 1; i <= 5; i++) rp(18 + i, 10 + Math.round((sweep * i) / 5), 1, 1, '#ff6b6b');
+      claw(rp, 12, 12);
+    },
+    antenna(rp, T) { // the web: a transmitter held up, sending out a delivery drone
+      rp(12, 8, 3, 5, STEEL); rp(12, 8, 3, 1, CLAW); rp(13, 10, 1, 1, blink(2) ? '#6cc04a' : '#2f6b2f'); // the transmitter, its light
+      rp(13, 3, 1, 5, '#c3cbd2'); rp(13, 2, 1, 1, blink(3) ? '#ff6b6b' : '#ffd43b'); // its aerial, the tip blinking
+      const n = Math.floor(T * 4) % 4;
+      for (let k = 0; k < n; k++) rp(15 + k * 2, 2 - k, 1, 3 + k * 2, '#5ab4ff'); // waves going out, one more each beat
+      claw(rp, 11, 12);
+    },
+    welder(rp, T) { // editing: a welding torch on a seam, its flame white-hot, sparks flying
+      const [x, y] = WELD_TIP, f = Math.floor(T * 12) % 3;
+      rp(15, 14, 8, 2, '#8a8f96'); rp(15, 14, 8, 1, '#c3cbd2'); rp(x - 1, 14, 3, 1, '#f08a24'); // the plates it joins, the seam glowing
+      rp(12, 10, 2, 3, DARK); rp(14, 11, 3, 1, STEEL); rp(17, 12, 1, 1, STEEL); // the torch: its grip, its neck bent down to the seam
+      rp(x, y, 1, 1, '#ffffff'); rp(x + (f !== 1 ? 1 : 0), y - (f !== 0 ? 1 : 0), 1, 1, '#a9dcf7'); // the flame, flickering
+      for (let i = 0; i < 3; i++) { const p = (T * 2.5 + i / 3) % 1; rp(x + Math.round((i - 1) * p * 4), y - Math.round(p * 5 - p * p * 6), 1, 1, i % 2 ? '#ffd43b' : '#f08a24'); } // sparks
+      claw(rp);
+    },
+    printer(rp, T) { // a new file: a part printer, a new part rising out of it layer by layer
+      const n = Math.floor(T * 2.5) % 5;
+      rp(14, 10, 7, 5, DARK); rp(15, 10, 5, 4, '#e6eef5'); rp(15, 10, 5, 1, '#ffffff'); rp(15, 13, 5, 1, '#c3cbd2'); // its case
+      if (n) rp(16, 10 - n, 3, n, '#2fa57a'); // the part, taking shape
+      rp(15 + (Math.floor(T * 8) % 5), 9 - n, 1, 1, '#e04a3a'); // its print head, to and fro over it
+      rp(19, 12, 1, 1, blink(2) ? '#6cc04a' : '#2f6b2f');
+      claw(rp);
+    },
+    multimeter(rp, T) { // tests: a meter, its probes on a circuit board, its reading changing
+      rp(13, 8, 5, 7, '#f0b429'); rp(13, 8, 5, 1, '#ffd43b'); // its case
+      rp(14, 9, 3, 2, DARK); rp(14 + (Math.floor(T * 5) % 3), 9, 1, 1, '#6cc04a'); rp(15, 12, 1, 1, DARK); // its display, its dial
+      rp(18, 10, 3, 1, '#e04a3a'); rp(21, 10, 1, 5, '#e04a3a'); rp(18, 13, 1, 1, BLACK); rp(19, 13, 1, 2, BLACK); // its leads, red and black
+      rp(18, 15, 5, 1, '#2c4a85'); rp(20, 15, 1, 1, blink(2) ? '#6cc04a' : '#2f6b2f'); // the board they test, its light
+      claw(rp);
+    },
+    polisher(rp, T) { // lint: an orbital polisher on the floor, gleaming
+      const x = 15 + Math.round(Math.sin(T * 6) * 2);
+      rp(13, 11, x - 13, 1, STEEL); // its handle
+      rp(x, 11, 4, 2, '#3d7be0'); rp(x, 11, 4, 1, '#5ab4ff'); rp(x - 1, 13, 6, 2, '#e6eef5'); rp(x - 1, 14, 6, 1, '#c3cbd2'); // its motor, its pad
+      if (blink(3)) rp(x + 6, 12, 1, 1, '#ffffff'); else rp(x - 3, 13, 1, 1, '#ffffff'); // a gleam
+      claw(rp);
+    },
+    wrench(rp) { // a build: a spanner turning a bolt on a red girder
+      rp(15, 13, 8, 2, '#e04a3a'); rp(15, 13, 8, 1, '#ff6b6b'); rp(18, 12, 2, 1, STEEL); // the girder, its bolt
+      if (blink(3)) { rp(12, 6, 1, 6, '#c3cbd2'); rp(11, 5, 3, 1, '#c3cbd2'); rp(11, 4, 1, 1, '#c3cbd2'); rp(13, 4, 1, 1, '#c3cbd2'); } // raised
+      else { rp(13, 11, 4, 1, '#c3cbd2'); rp(17, 10, 4, 1, '#c3cbd2'); rp(17, 11, 1, 1, '#c3cbd2'); rp(20, 11, 1, 1, '#c3cbd2'); rp(21, 9, 1, 1, '#ffd43b'); } // on the bolt, turning it
+      claw(rp);
+    },
+    forklift(rp, T) { // installing: a little forklift lifting a box of supplies in
+      const lift = Math.floor(T * 2) % 3;
+      rp(14, 9, 5, 5, '#f0b429'); rp(14, 9, 5, 1, '#ffd43b'); rp(15, 10, 2, 2, '#a9dcf7'); // its cab, a window
+      rp(19, 4, 1, 11, STEEL); rp(20, 13 - lift, 3, 1, CLAW); // its mast, the forks
+      rp(20, 9 - lift, 3, 4, '#c98d4f'); rp(20, 9 - lift, 3, 1, '#e2b07a'); // a box on them
+      rp(14, 14, 2, 2, DARK); rp(17, 14, 2, 2, DARK); // its wheels
+      claw(rp);
+    },
+    crate(rp) { // a commit: a crate, stamped as packed
+      const up = blink(2);
+      rp(14, 10, 7, 5, '#8b5a2b'); rp(15, 11, 5, 3, '#c98d4f'); rp(14, 10, 7, 1, '#a8703c'); // the crate
+      rp(15, 8 - up * 3, 4, 2, '#9c3b30'); rp(16, 5 - up * 3, 2, 3, STEEL); // the stamp, on its handle
+      if (!up) rp(16, 12, 3, 1, '#e04a3a'); // its mark
+      claw(rp, 12, 10);
+    },
+    ramp(rp, T) { // a push: a cart of boxes going up a ramp
+      for (let i = 0; i < 9; i++) { const h = 1 + Math.floor(i * 0.6); rp(14 + i, 16 - h, 1, h, i % 3 ? '#9aa4ad' : '#8a8f96'); } // the ramp, rising to the right
+      const p = (T * 0.8) % 1, x = 14 + Math.round(p * 5), y = 12 - Math.round(p * 3);
+      rp(x, y, 4, 2, '#3d7be0'); rp(x + 1, y - 2, 2, 2, '#c98d4f'); rp(x, y + 2, 1, 1, DARK); rp(x + 3, y + 2, 1, 1, DARK); // the cart and its box
+      rp(23, 3, 1, 5, '#2fa57a'); rp(22, 4, 3, 1, '#2fa57a'); // up
+      claw(rp);
+    },
+    rocketCrate(rp, T) { // a deploy: a crate with a rocket strapped on, lifting off
+      const lift = Math.floor(T * 3) % 3;
+      rp(15, 8 - lift, 5, 4, '#c98d4f'); rp(15, 8 - lift, 5, 1, '#e2b07a'); rp(15, 10 - lift, 5, 1, '#8b5a2b'); // the crate, its strap
+      rp(16, 3 - lift, 3, 5, '#e6eef5'); rp(17, 2 - lift, 1, 1, '#e04a3a'); rp(16, 5 - lift, 3, 1, '#3d7be0'); // the rocket
+      rp(14, 10 - lift, 1, 2, '#e04a3a'); rp(20, 10 - lift, 1, 2, '#e04a3a'); // its fins
+      rp(16, 12 - lift, 3, 1 + blink(6), '#f08a24'); rp(17, 12 - lift, 1, 1, '#ffd43b'); // its flame
+      rp(14, 14, 3, 2, '#c3cbd2'); rp(19, 14, 3, 2, '#e6eef5'); // its smoke on the floor
+      claw(rp);
+    },
+    capsule(rp, T) { // a pull: a capsule dropping out of a tube into its claw
+      const dy = Math.floor(T * 3) % 4;
+      rp(14, 0, 5, 2, '#5f7f9a'); rp(15, 0, 3, 2, '#a9dcf7'); // the tube's mouth over it
+      rp(14, 3 + dy, 5, 7, DARK); rp(15, 3 + dy, 3, 7, '#e6eef5'); rp(15, 5 + dy, 3, 1, '#f08a24'); // the capsule, its band
+      claw(rp);
+    },
+    rack(rp, T) { // a server: a rack of units beside it, their lights blinking
+      rp(15, 2, 7, 13, DARK); rp(15, 15, 7, 1, STEEL);
+      for (let r = 0; r < 4; r++) {
+        rp(16, 3 + r * 3, 5, 2, STEEL); rp(16, 3 + r * 3, 5, 1, '#8a8f96');
+        rp(20, 4 + r * 3, 1, 1, blink(2 + r) ? '#6cc04a' : '#2f6b2f'); rp(17, 4 + r * 3, 1, 1, (Math.floor(T * 5) + r) % 3 ? '#5ab4ff' : '#2c4a85');
+      }
+      claw(rp);
+    },
+    shredder(rp, T) { // deleting: scrap fed into a shredder, strips falling out
+      const ph = (T * 1.5) % 1;
+      rp(14, 10, 7, 5, STEEL); rp(14, 9, 7, 1, DARK); rp(15, 12, 5, 1, '#e04a3a'); // the shredder, its slot, a red band
+      if (ph < 0.6) rp(15, 3 + Math.round(ph * 9), 5, 2, '#f4ecd8'); // scrap going in
+      for (let i = 0; i < 3; i++) rp(15 + i * 2, 15, 1, 1 + ((Math.floor(T * 6) + i) % 2), '#f4ecd8'); // strips coming out
+      claw(rp);
+    },
+    card(rp) { // asking: a card held up with a question mark on it
+      rp(13, 5, 7, 8, DARK); rp(14, 6, 5, 6, '#ffffff');
+      rp(15, 7, 3, 1, '#3d7be0'); rp(17, 8, 1, 1, '#3d7be0'); rp(16, 9, 1, 1, '#3d7be0'); rp(16, 11, 1, 1, blink(2) ? '#3d7be0' : '#a9dcf7');
+      claw(rp);
+    },
+    terminal(rp, T) { // a command: typing at a terminal on its stand
+      rp(14, 5, 9, 7, DARK); rp(15, 6, 7, 5, '#1b1420'); rp(17, 12, 3, 2, STEEL); rp(15, 14, 7, 1, STEEL); // the screen on its stand
+      const n = Math.floor(T * 4) % 4;
+      for (let i = 0; i < 3; i++) rp(16, 7 + i, i < n ? [4, 2, 3][i] : 1, 1, '#6cc04a'); // lines typed, one after another
+      if (blink(2)) rp(20, 9, 1, 1, '#e6eef5'); // its cursor
+      claw(rp, 12, 10 + blink(4)); // tapping
+    },
+  };
+  const props = window.Agentville.props.kit({
+    steps: {
+      read: { prop: 'datapad', verb: 'reading a datapad' },
+      search: { prop: 'scanner', verb: 'scanning for parts' },
+      web: { prop: 'antenna', verb: 'sending out a delivery drone' },
+      mcp: { verb: 'calling up an AGV' },
+      skill: { verb: 'following a manual' },
+      edit: { prop: 'welder', verb: 'welding' },
+      write: { prop: 'printer', verb: 'printing a new part' },
+      test: { prop: 'multimeter', verb: 'testing the circuits' },
+      lint: { prop: 'polisher', verb: 'polishing the plating' },
+      build: { prop: 'wrench', verb: 'tightening the bolts' },
+      install: { prop: 'forklift', verb: 'forklifting in supplies' },
+      commit: { prop: 'crate', verb: 'stamping a crate' },
+      push: { prop: 'ramp', verb: 'pushing a cart up the ramp' },
+      deploy: { prop: 'rocketCrate', verb: 'launching a rocket crate' },
+      pull: { prop: 'capsule', verb: 'catching a capsule from the tubes' },
+      serve: { prop: 'rack', verb: 'running the server rack' },
+      delete: { prop: 'shredder', verb: 'shredding scrap' },
+      agent: { prop: 'megaphone', verb: 'calling up helper drones' },
+      plan: { prop: 'clipboard', verb: 'writing up a work order' },
+      ask: { prop: 'card', verb: 'holding up a question card' },
+      shell: { prop: 'terminal', verb: 'running a command on its terminal' },
+      other: { prop: 'terminal', verb: 'working on its terminal' },
+      planMode: { verb: 'drawing up blueprints (plan mode)' },
+    },
+    props: FACTORY_PROPS,
+  });
+
+  // On a robot, drawn with it (drawChar): its beacon, sitting on its head's top (the row its base is on, for each
+  // head), lit by its state; hazard stripes round its waist (bypass permissions); its cost badge on its chest.
+  const BEACON_BASE = { dome: 0, box: 1, antenna: -1, screen: 1 };
+  const BEACON = { working: '#6cc04a', waiting: '#ff6b6b', turn: '#f0b429', idle: '#5ab4ff' };
+  const FAMILY_LIGHT = { opus: '#8a5fc0', sonnet: '#3d7be0', haiku: '#2fa57a', fable: '#f08a24' }; // the antenna light: the farm's FAMILY_PIN colours
+  const BADGES = [[50, '#f0b429', '#ffe8a3'], [10, '#c3cbd2', '#ffffff'], [1, '#c8681a', '#e9a23b']]; // from $: gold, silver, copper (and a glint)
+  /** Its beacon: green working, red blinking waiting on you, amber your turn, blue idle; off (grey) when stale. */
+  function beacon(rp, look, state) {
+    const y = BEACON_BASE[look?.head] ?? 0, lit = BEACON[state], on = Boolean(lit) && !(state === 'waiting' && blink(4));
+    rp(5, y, 4, 1, DARK);
+    rp(6, y - 2, 2, 2, on ? lit : state === 'waiting' ? '#9c3b30' : STEEL);
+    if (on) rp(6, y - 2, 1, 1, '#ffffff');
+  }
+
+  // Over and beside a robot (drawFx).
+  /** Fast mode: speed lines streaming off it: behind it as it goes (on its left, unless it goes left). */
+  function speedLines(rp, b, T) {
+    const right = b.walk && b.face === 'left';
+    for (const [y, n] of [[4, 3], [8, 2], [12, 3]]) { const w = n + ((Math.floor(T * 10) + y) % 2); rp(right ? 15 : -1 - w, y, w, 1, '#5ab4ff'); }
+  }
+  /** A hot CPU: grey smoke puffing off its head, rising and thinning. */
+  function smoke(rp, T) {
+    for (let k = 0; k < 3; k++) {
+      const p = (T * 0.7 + k / 3) % 1, s = 1 + Math.round(p * 2);
+      PXG.ctx.globalAlpha = 0.9 - p * 0.5;
+      rp(2 + Math.round(Math.sin(T * 2 + k) - p * 2), -Math.round(p * 9) - s, s, s, k % 2 ? '#9aa4ad' : '#5f6b7a');
+    }
+    PXG.ctx.globalAlpha = 1;
+  }
+  /** Its task list: a little screen on a stand beside it, a tick for each done (on three rows), a bar for how far it has got. */
+  function checklistScreen(rp, t) {
+    const rows = Math.min(3, t.total), done = Math.round((t.done / t.total) * rows);
+    rp(-7, 10, 1, 5, STEEL); rp(-9, 15, 5, 1, STEEL); // its stand
+    rp(-11, 1, 9, 9, DARK); rp(-10, 2, 7, 7, '#2c4a85'); // the screen
+    for (let r = 0; r < rows; r++) { rp(-9, 3 + r * 2, 1, 1, r < done ? '#6cc04a' : '#5f7f9a'); rp(-7, 3 + r * 2, 3, 1, '#a9dcf7'); }
+    rp(-10, 8, Math.max(t.done ? 1 : 0, Math.round((7 * t.done) / t.total)), 1, '#6cc04a');
+  }
+  /** Thinking: a brass gear over its head, outlined so it shows over the bench behind, its teeth turning by an eighth each step. */
+  function thinkingGear(x, y, step) {
+    const teeth = step % 2 ? [[-3, -3], [3, -3], [-3, 3], [3, 3]] : [[0, -4], [4, 0], [0, 4], [-4, 0]];
+    for (const [dx, dy] of teeth) px(x + dx - 1, y + dy - 1, 3, 3, K);
+    px(x - 4, y - 2, 9, 5, K); px(x - 2, y - 4, 5, 9, K); px(x - 3, y - 3, 7, 7, K); // its outline
+    for (const [dx, dy] of teeth) px(x + dx, y + dy, 1, 1, '#c8681a');
+    px(x - 3, y - 1, 7, 3, '#e9a23b'); px(x - 1, y - 3, 3, 7, '#e9a23b'); px(x - 2, y - 2, 5, 5, '#e9a23b'); px(x - 2, y - 2, 3, 1, '#f4d58d'); // its body, a glint
+    px(x - 1, y - 1, 3, 3, '#6b4320'); px(x, y, 1, 1, K); // its hub
+  }
+  /** Idle: charging, a yellow bolt over it, pulsing. */
+  function chargingBolt(rp) {
+    const c = blink(1.5) ? '#ffd43b' : '#f0b429';
+    rp(12, -8, 2, 1, c); rp(11, -7, 2, 1, c); rp(11, -6, 3, 1, c); rp(12, -5, 2, 1, c); rp(12, -4, 1, 1, c);
+  }
+  /** Your turn: a crate of finished parts held in front of it (a gear and a board peeking out). */
+  function heldCrate(rp) {
+    rp(4, 8, 2, 1, '#9aa4ad'); rp(8, 8, 2, 1, '#5ab4ff');
+    rp(2, 9, 10, 5, '#8b5a2b'); rp(3, 10, 8, 3, '#c98d4f'); rp(3, 10, 8, 1, '#e2b07a'); rp(7, 10, 1, 3, '#a8703c');
+    rp(1, 10, 1, 2, CLAW); rp(12, 10, 1, 2, CLAW);
+  }
+  /**
+   * A plan for you to approve: a blueprint unrolled on your desk by its in-tray (right of the screen: the robots'
+   * name tags over the waiting queue would hide it in front of them).
+   */
+  function deskBlueprint() {
+    px(214, 55, 18, 5, '#3d7be0'); px(213, 55, 1, 5, '#2c4a85'); px(232, 55, 1, 5, '#2c4a85'); // the sheet, rolled at its ends
+    px(215, 57, 16, 1, '#a9dcf7'); px(219, 55, 1, 5, '#a9dcf7'); px(225, 56, 4, 2, '#a9dcf7'); // its lines: a frame, a part
+  }
+
+  // The drones: subagents. A mini drone hovers by its robot for each running one (follow), an Explore one a scanner
+  // drone; finished ones sit in the drone dock's slots, and the running ones no robot can lead circle over it.
+  /** A mini drone at (x, y), its middle, seen from the front: a rotor spinning at each end of its arms (a blur), a white shell with a band in `band`, a light under it. */
+  function drone(x, y, band, T, k = 0) {
+    const spin = Math.floor(T * 16 + k) % 2;
+    for (const r of [x - 4, x + 4]) { px(r - 2, y - 3, 5, 1, spin ? '#9aa4ad' : '#5f6b7a'); px(r - (spin ? 1 : 2), y - 3, spin ? 3 : 1, 1, DARK); } // its rotors
+    px(x - 4, y - 2, 9, 1, K); // its arms
+    px(x - 2, y - 1, 5, 3, K); px(x - 1, y - 1, 3, 1, '#ffffff'); px(x - 1, y, 3, 1, band); // its shell, its band
+    px(x, y + 2, 1, 1, blink(3) ? '#6cc04a' : '#2fa57a'); // its light
+  }
+  /** An Explore subagent: a scanner drone sweeping a pale-blue beam over the floor below it (at `floor`), its lens red. */
+  function scannerDrone(x, y, floor, T, k) {
+    const spot = x + Math.round(Math.sin(T * 2.4 + k) * 6), h = floor - (y + 3);
+    if (h > 2) {
+      PXG.ctx.globalAlpha = 0.35;
+      for (let j = 0; j < h; j++) { const p = j / h, w = 1 + Math.round(p * 4), cx = Math.round(x + (spot - x) * p); px(cx - (w >> 1), y + 3 + j, w, 1, '#5ab4ff'); }
+      PXG.ctx.globalAlpha = 0.6; px(spot - 3, floor, 7, 1, '#a9dcf7'); PXG.ctx.globalAlpha = 1;
+    }
+    drone(x, y, '#3d7be0', T, k);
+    px(x, y + 2, 1, 1, '#ff6b6b'); // its lens
+  }
+  /** A finished subagent's drone, docked in the dock's slot whose top left is (x, y): its rotors folded, charging. */
+  function dockedDrone(x, y) {
+    px(x + 1, y + 4, 8, 1, '#9aa4ad'); px(x + 2, y + 5, 6, 3, K); px(x + 3, y + 5, 4, 1, '#ffffff'); px(x + 3, y + 6, 4, 1, '#5ab4ff');
+    px(x + 8, y + 1, 1, 1, blink(1) ? '#ffd43b' : '#f0b429');
+  }
+
+  // The AGVs: a little floor robot for each MCP server called in the last hour (the scene's carts, six at most),
+  // each with its own bay in the rank on the left (RANK). While a robot calls its server, its AGV drives over and
+  // waits beside it until the call is done and a moment after (the farm's carts' rule), then drives home.
+  const AGV_SPEED = 55, AGV_STAY_MS = 3000;
+  const AGV_CRATES = ['#c9a46a', '#e04a3a', '#3d7be0', '#6cc04a', '#8a5fc0', '#f0b429']; // a crate colour for each server
+  /** An AGV's way between two places: along its row to the left side's path, up or down it, then along the other row. */
+  function agvRoute([x, y], [tx, ty]) {
+    if (Math.abs(y - ty) < 0.5) return [[tx, ty]];
+    const pts = [[CORR[0], y], [CORR[0], ty], [tx, ty]];
+    return pts.filter((p, i) => { const q = i ? pts[i - 1] : [x, y]; return p[0] !== q[0] || p[1] !== q[1]; });
+  }
+  /**
+   * Where an AGV heads: beside the robot calling it; once there it stays while the call goes on and a few
+   * seconds after (so a short call is seen, and a run of them keeps it there), then home. `c` is its memory:
+   * { goal, arrivedAt, lastBusy }.
+   */
+  function agvGoal(c, busyAt, home, now) {
+    if (busyAt) {
+      if (!c.goal || c.goal[0] !== busyAt[0] || c.goal[1] !== busyAt[1]) { c.goal = busyAt; c.arrivedAt = null; }
+      c.lastBusy = now;
+      return c.goal;
+    }
+    if (c.goal && (c.arrivedAt == null || now - Math.max(c.lastBusy ?? 0, c.arrivedAt) < AGV_STAY_MS)) return c.goal;
+    c.goal = null;
+    return home;
+  }
+  /** An AGV at (x, y), its middle at the floor, facing `dir` (1 right, −1 left): a low yellow body, a striped skirt, a crate in its server's colour; moving, its wheels turn and its light blinks. */
+  function drawAgv(x, y, dir, moving, crate) {
+    const step = moving ? blink(8) : 0;
+    px(x - 6, y + 1, 13, 1, SHADOW); // its shadow
+    px(x - 6, y - 5, 12, 5, DARK); px(x - 5, y - 5, 10, 4, '#f0b429'); px(x - 5, y - 5, 10, 1, '#ffd43b'); // its body
+    for (let i = 0; i < 10; i++) px(x - 5 + i, y - 2, 1, 1, (i >> 1) % 2 ? BLACK : YELLOW); // its skirt
+    px(x - 4, y, 2, 1, BLACK); px(x + 2, y, 2, 1, BLACK); px(x - 4 + step, y, 1, 1, '#9aa4ad'); px(x + 2 + step, y, 1, 1, '#9aa4ad'); // its wheels
+    px(dir > 0 ? x + 5 : x - 6, y - 4, 1, 2, '#5ab4ff'); // its sensor, at the front
+    px(x - 3, y - 9, 6, 4, crate); px(x - 3, y - 9, 6, 1, '#fff4d6'); px(x - 1, y - 9, 1, 4, '#8b5a2b'); // its crate
+    px(dir > 0 ? x - 5 : x + 4, y - 8, 1, 3, STEEL); px(dir > 0 ? x - 5 : x + 4, y - 9, 1, 1, moving && blink(4) ? '#ff6b6b' : '#f08a24'); // its light, on a post at the back
+  }
+
+  // The delivery drone: a web call going on (not a browser's: its AGV goes). It rises from its robot, flies out of
+  // the window nearest it and is away a while, then comes back with a parcel: 8 s a round, each robot on its own beat.
+  /** Where a robot's delivery drone is: { x, y, far (going through the window: seen small), parcel, away (out of sight, at its window) }, or null. */
+  function deliveryAt(f, b, T) {
+    if (!b || f.state !== 'working' || !f.service || f.step !== 'web' || String(f.tool ?? '').startsWith('mcp__')) return null;
+    const ph = (T / 8 + (hashOf(f.id) % 97) / 97) % 1;
+    const [wx, wy, ww, wh] = WINDOWS.reduce((best, w) => (Math.abs(w[0] + w[2] / 2 - b.x) < Math.abs(best[0] + best[2] / 2 - b.x) ? w : best));
+    const from = [b.x + 2, b.y - 26], to = [wx + ww / 2, wy + wh / 2];
+    if (ph >= 0.4 && ph < 0.6) return { x: to[0], y: to[1], away: true };
+    const s = ph < 0.4 ? ph / 0.4 : 1 - (ph - 0.6) / 0.4, e = s < 0.5 ? 2 * s * s : 1 - (-2 * s + 2) ** 2 / 2;
+    return { x: from[0] + (to[0] - from[0]) * e, y: from[1] + (to[1] - from[1]) * e - Math.sin(Math.PI * e) * 12, far: e > 0.85, parcel: ph >= 0.6 };
+  }
+  /** The delivery drone, drawn over the windows (top): small going through its window; out there, a speck now and then. */
+  function deliveryDrone(d, T) {
+    const x = Math.round(d.x), y = Math.round(d.y);
+    if (d.away) { if (blink(2)) px(x, y, 1, 1, DARK); return; }
+    if (d.far) { px(x - 1, y, 3, 1, DARK); px(x, y - 1, 1, 1, '#f0b429'); return; }
+    drone(x, y, '#f0b429', T);
+    if (d.parcel) { px(x, y + 3, 1, 1, '#8b5a2b'); px(x - 2, y + 4, 5, 4, '#c98d4f'); px(x - 2, y + 4, 5, 1, '#e2b07a'); px(x, y + 4, 1, 4, '#8b5a2b'); } // a parcel back
+    else px(x, y + 3, 1, 2, STEEL); // its empty hook, going out
+  }
+
+  // The pneumatic tubes overhead: a header along the walkway's edge, a downpipe from it down the left edge of each
+  // column of bays (as far as its last bay: in the gap beside the bays' plates, clear of the aisles' vents and the
+  // signs), and from the downpipe an elbow over to each bay's tube outlet (outletAt). A message between robots
+  // shoots through them in a capsule (flight). They are drawn over everything (top), so a capsule, drawn before
+  // them, shows through their glass.
+  const HEADER_Y = 90, PIPE_DX = -38, ELBOW_UP = 3;
+  const colOf = s => Math.round((s.cx - 174) / COLW);
+  const pipeX = c => 174 + c * COLW + PIPE_DX;
+  const elbowAt = s => [s.cx - 30, s.rowTop - ELBOW_UP]; // the elbow's end, over its bay's outlet
+  /** The tubes for a layout, as runs [from, to, the downpipe's column or null for the header]: the header, each downpipe, each elbow. */
+  function tubesOf(L) {
+    const deepest = new Map();
+    for (const s of L.ST) deepest.set(colOf(s), Math.max(deepest.get(colOf(s)) ?? HEADER_Y, elbowAt(s)[1]));
+    return [
+      [[pipeX(0), HEADER_Y], [pipeX(2), HEADER_Y], null],
+      ...[...deepest].map(([c, y]) => [[pipeX(c), HEADER_Y], [pipeX(c), y], c]),
+      ...L.ST.map(s => { const [x, y] = elbowAt(s); return [[pipeX(colOf(s)), y], [x, y], colOf(s)]; }),
+    ];
+  }
+  /** The tubes: glass between steel rims, 5 wide; a steel box at each joint, caps at the header's ends. */
+  function drawTubes(L) {
+    const runs = tubesOf(L).map(([[x0, y0], [x1, y1]]) => [Math.min(x0, x1) - 2, Math.min(y0, y1) - 2, Math.abs(x1 - x0) + 5, Math.abs(y1 - y0) + 5, y0 === y1]);
+    PXG.ctx.globalAlpha = 0.4;
+    for (const [x, y, w, h] of runs) px(x, y, w, h, '#a9dcf7'); // the glass
+    PXG.ctx.globalAlpha = 0.55;
+    for (const [x, y, w, h, across] of runs) if (across) px(x, y + 1, w, 1, '#ffffff'); else px(x + 1, y, 1, h, '#ffffff'); // its shine
+    PXG.ctx.globalAlpha = 0.9;
+    for (const [x, y, w, h, across] of runs) if (across) { px(x, y, w, 1, '#5f7f9a'); px(x, y + h - 1, w, 1, '#5f7f9a'); } else { px(x, y, 1, h, '#5f7f9a'); px(x + w - 1, y, 1, h, '#5f7f9a'); } // its rims
+    PXG.ctx.globalAlpha = 1;
+    const joints = tubesOf(L).slice(1).flatMap(([from, to]) => (from[1] === HEADER_Y && from[0] === to[0] ? [from] : [from, to])); // a downpipe's top; an elbow's two ends
+    for (const [x, y] of joints) { px(x - 2, y - 2, 5, 5, STEEL); px(x - 1, y - 1, 3, 3, '#8a8f96'); }
+    for (const x of [pipeX(0) - 3, pipeX(2) + 3]) px(x, HEADER_Y - 2, 1, 5, STEEL); // the header's caps
+  }
+  /**
+   * How a robot's capsule gets into the tubes: { lead, at, c }. From a robot at a bay, `lead` goes to its bay's
+   * outlet and up it, and `at` is the elbow's end over it; from anywhere else, `at` is the nearest point of the
+   * tubes. `c`: the column of the downpipe `at` hangs from (null on the header).
+   */
+  function portOf(L, b) {
+    const start = [b.x, b.y - 8], s = L.ST.find(st => Math.abs(b.x - st.cx) <= 40 && Math.abs(b.y - st.lane) <= 6);
+    if (s) { const [x, y] = outletAt(s); return { lead: [start, [x, y + 9], [x, y]], at: elbowAt(s), c: colOf(s) }; }
+    const clamp = (v, lo, hi) => Math.max(Math.min(lo, hi), Math.min(Math.max(lo, hi), v)), d = p => Math.hypot(p[0] - start[0], p[1] - start[1]);
+    const spots = tubesOf(L).map(([[x0, y0], [x1, y1], c]) => ({ lead: [start], at: [clamp(start[0], x0, x1), clamp(start[1], y0, y1)], c }));
+    return spots.reduce((best, p) => (d(p.at) < d(best.at) ? p : best));
+  }
+  /** From a point of the tubes up to the header: along its elbow to the downpipe, up the downpipe. */
+  const toHeader = n => (n.c === null ? [] : [...(n.at[0] !== pipeX(n.c) ? [[pipeX(n.c), n.at[1]]] : []), [pipeX(n.c), HEADER_Y]]);
+  /** A capsule's way from a to z: into the tubes, along them (up its downpipe, along the header, down the other's; or straight down one they share), out to z. */
+  function tubeRoute(L, a, z) {
+    const p = portOf(L, a), q = portOf(L, z), pipe = n => (n.at[0] !== pipeX(n.c) ? [[pipeX(n.c), n.at[1]]] : []);
+    const between = p.c !== null && p.c === q.c ? [...pipe(p), ...pipe(q).reverse()] : [...toHeader(p), ...toHeader(q).reverse()];
+    const pts = [...p.lead, p.at, ...between, q.at, ...[...q.lead].reverse()];
+    return pts.filter((pt, i) => i === 0 || pt[0] !== pts[i - 1][0] || pt[1] !== pts[i - 1][1]);
+  }
+  /** A capsule at (x, y), lying along its way (across or up and down): a white shell, an orange band, dark caps (it shows on the pale floor too). */
+  function capsuleAt(x, y, across) {
+    if (across) { px(x - 2, y - 1, 5, 3, '#ffffff'); px(x - 2, y - 1, 1, 3, DARK); px(x + 2, y - 1, 1, 3, DARK); px(x, y - 1, 1, 3, '#f08a24'); }
+    else { px(x - 1, y - 2, 3, 5, '#ffffff'); px(x - 1, y - 2, 3, 1, DARK); px(x - 1, y + 2, 3, 1, DARK); px(x - 1, y, 3, 1, '#f08a24'); }
+  }
+
   /* ---------- the hooks ---------- */
 
-  // What a robot holds for each step and its verb: the props kit's for now (the factory's own props come later).
-  const props = window.Agentville.props.kit();
   /** A time of day, short: 14:05. */
   const clock = at => new Date(at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+  /** How long until a time, in short: 12m, 2h. */
+  const until = at => { const m = Math.max(0, (at - Date.now()) / 60_000); return m < 1 ? 'a moment' : m < 60 ? `${Math.round(m)}m` : `${Math.round(m / 60)}h`; };
 
   function makeFactory() {
     let L = FACTORY_GRID.layoutFor([]);
@@ -803,6 +1180,40 @@
     const rolling = [], leaving = []; // finished robots rolling off to the conveyor (compactions); crates leaving the dock (merges): { …, t }
     const stOf = k => L.ST.find(s => s.key === k);
     const fieldByKey = k => scene.fields.find(f => f.key === k);
+    const rankOf = new Map(), agvs = new Map(); // server → its bay in the rank; server → its AGV: { x, y, path, to, dir, moving, goal, arrivedAt, lastBusy }
+    /** The AGVs there are now (the scene's carts), each keeping its bay in the rank while its server has one. */
+    function placeAgvs() {
+      const list = scene.carts ?? [];
+      for (const k of [...rankOf.keys()]) if (!list.some(c => c.server === k)) { rankOf.delete(k); agvs.delete(k); }
+      for (const c of list) if (!rankOf.has(c.server)) { const used = new Set(rankOf.values()); rankOf.set(c.server, RANK.findIndex((_, i) => !used.has(i))); }
+      return list;
+    }
+    /** Beside a robot (on the side away from the bays' right edge): where it is going rather than where it is, so the AGV does not chase it step by step. */
+    const besideOf = b => { const x = Number.isFinite(b.tx) ? b.tx : b.x, y = Number.isFinite(b.ty) ? b.ty : b.y; return [Math.round(x + (x > 360 ? -13 : 13)), Math.round(y)]; };
+    /** Each frame: each AGV drives towards where agvGoal sends it (or is put there, drawn still). */
+    function moveAgvs(dt, posOf, snap) {
+      const now = Date.now();
+      for (const c of placeAgvs()) {
+        const home = RANK[rankOf.get(c.server)];
+        let s = agvs.get(c.server);
+        if (!s) agvs.set(c.server, (s = { x: home[0], y: home[1], path: [], to: home, dir: 1 }));
+        const b = c.busy ? posOf(c.busy) : null;
+        const goal = agvGoal(s, b ? besideOf(b) : null, home, now);
+        if (goal[0] !== s.to[0] || goal[1] !== s.to[1]) { s.to = goal; s.path = agvRoute([s.x, s.y], goal); }
+        if (snap) { // no motion: it stands where it is going, facing the robot (or the floor, in its bay)
+          [s.x, s.y] = goal;
+          s.path = [];
+          s.dir = b && s.goal ? (goal[0] > (Number.isFinite(b.tx) ? b.tx : b.x) ? -1 : 1) : 1;
+        }
+        if (s.path.length) {
+          const [qx, qy] = s.path[0], dx = qx - s.x, dy = qy - s.y, d = Math.hypot(dx, dy), sp = AGV_SPEED * dt;
+          if (Math.abs(dx) > 0.1) s.dir = Math.sign(dx);
+          if (d <= sp) { s.x = qx; s.y = qy; s.path.shift(); } else { s.x += (dx / d) * sp; s.y += (dy / d) * sp; }
+        } else if (s.goal && s.arrivedAt == null) s.arrivedAt = now; // there: it waits (agvGoal says how long)
+        else if (!s.goal) s.dir = 1; // back in its bay, facing the floor
+        s.moving = s.path.length > 0;
+      }
+    }
     const bayLooks = new Map();
     /** The robot a bay builds: a model of its own, picked by its repo as a robot's look is by its agent. */
     const bayLook = key => { if (!bayLooks.has(key)) bayLooks.set(key, lookOf({ id: key })); return bayLooks.get(key); };
@@ -848,10 +1259,11 @@
     }
     /** A robot welding: working on an edit (the welder's step; plan mode is the blueprint). */
     const welding = f => f.state === 'working' && props.doing(f) === props.steps.edit;
-    /** What moves on the floor, or reads the scene, each frame: the beacon over your desk, the crates on the dock, the conveyor's slats, the fabricator's glow. */
+    /** What moves on the floor, or reads the scene, each frame: the beacon over your desk, the drones docked, the crates on the dock, the conveyor's slats, the fabricator's glow. */
     function drawWorkshop() {
       const T = PXG.T, waiting = scene.farmers.some(f => f.state === 'waiting'), on = waiting && !blink(2);
       px(139, 35, 7, 5, '#3a3a40'); px(140, 35, 5, 4, on ? '#ff6b6b' : waiting ? '#e04a3a' : '#9c3b30'); px(141, 36, 1, 1, on ? '#ffffff' : '#b23a2e'); // red, blinking, while a robot waits on you
+      for (let i = 0; i < Math.min(6, scene.henhouse?.eggs ?? 0); i++) dockedDrone(100 + (i % 2) * 11, 38 + (i >> 1) * 12); // subagents that finished lately, in the dock's slots
       for (const c of dockCrates(scene.fields)) {
         px(c.x, c.y, 8, 7, '#6b4320'); px(c.x + 1, c.y + 1, 6, 5, '#c98d4f'); px(c.x + 1, c.y + 1, 6, 1, '#e2b07a'); px(c.x + 1, c.y + 3, 6, 1, '#a8703c');
         px(c.x + 4, c.y + 2, 3, 3, c.qa === 'running' ? (blink(2) ? '#f0b429' : '#ffd43b') : QA[c.qa]); // its QA tag
@@ -901,6 +1313,11 @@
       layout: () => L,
       relayout(ground) { L = ground; return L; },
       spawn: () => FAB_DOOR,
+      /** Where its k-th running subagent's drone hovers: by its head, two a side; an Explore one circles it, sweeping its beam. */
+      follow: (b, k, T, kid) => (kid?.dog
+        ? [b.x + Math.cos(T * 0.8 + k) * 18, b.y - 24 + Math.sin(T * 1.6 + k) * 2]
+        : [b.x + (k % 2 ? 13 : -13) + Math.sin(T * 1.3 + k) * 1.5, b.y - 12 - (k > 1 ? 11 : 0) + Math.sin(T * 3 + k * 1.7) * 1.5]),
+      speed: f => (f.fast ? 68 : 40), // fast mode rolls faster
       /**
        * Where each robot stands: at its bay while it works there; at the open table while it works outside any repo
        * (or in one with no bay left); in a sleep pod while it waits to wake up by itself; at your desk when it needs
@@ -977,18 +1394,23 @@
         const bank = bankOf(scene.plan);
         if (bank && (bank.lamp !== 'red' || blink(2))) out.push([298, 17, 7, null]);
         if (fabGlow > 0) out.push([62, 62, Math.round(20 * fabGlow), null]);
-        for (const f of scene.farmers) { const b = welding(f) ? where(f.id) : null; if (b && !b.walk) out.push([b.x + 7, b.y - 6, 5 + 2 * blink(9), null]); }
+        for (const f of scene.farmers) { const b = welding(f) ? where(f.id) : null; if (b && !b.walk) out.push([Math.round(b.x) - 7 + WELD_TIP[0], Math.round(b.y) - 16 + WELD_TIP[1], 5 + 2 * blink(9), null]); } // at its welder's tip
         return out;
       },
-      /** Drawn among the robots, by how far down they stand: the open table (two robots behind it, two in front), and each pod's glass over its sleeper. */
-      items: () => [[TABLE_Y, openTable], ...PODS.map(([x, y]) => [y + 1, () => podGlass(x, y)])],
+      /** Drawn among the robots, by how far down they stand: the open table (two robots behind it, two in front), each pod's glass over its sleeper, and the AGVs. */
+      items: () => [[TABLE_Y, openTable], ...PODS.map(([x, y]) => [y + 1, () => podGlass(x, y)]), ...placeAgvs().map(c => {
+        const s = agvs.get(c.server), [hx, hy] = RANK[rankOf.get(c.server)], x = Math.round(s?.x ?? hx), y = Math.round(s?.y ?? hy);
+        return [y, () => drawAgv(x, y, s?.dir ?? 1, s?.moving, AGV_CRATES[hashOf(c.server) % AGV_CRATES.length])];
+      })],
       /**
-       * Each frame: is a robot rolling out of the fabricator (walking near its door)? Its door glows, and fades
-       * after. Finished robots roll on, and crates leave the dock, until they're gone. Still, nothing moves.
-       * Where the robots are is kept, for the welders' sparks at night (lights).
+       * Each frame: the AGVs drive on. Is a robot rolling out of the fabricator (walking near its door)? Its door
+       * glows, and fades after. Finished robots roll on, and crates leave the dock, until they're gone. Still,
+       * nothing moves (an AGV stands where it is going). Where the robots are is kept, for the welders' sparks at
+       * night (lights) and the delivery drones (top).
        */
       tick(dt, posOf, snap = false) {
         where = posOf;
+        moveAgvs(dt, posOf, snap);
         const out = !snap && scene.farmers.some(f => { const b = posOf(f.id); return b?.walk && Math.abs(b.x - FAB_DOOR[0]) < 30 && Math.abs(b.y - FAB_DOOR[1]) < 4; });
         fabGlow = snap ? 0 : out ? 1 : Math.max(0, fabGlow - dt * 1.5);
         if (snap) { rolling.length = 0; leaving.length = 0; return; }
@@ -1064,12 +1486,86 @@
         plus(116, 124, overflow.storage, 'stale'); plus(116, 156, overflow.charge, 'idle'); plus(116, 202, overflow.floor, 'working'); plus(116, 248, overflow.nap, 'asleep');
         if (more > 0) lab(350, L.GRID.y1 + 12, `<button type="button" class="px-more" data-farm-more>${pxt(`+${more} more bay${more === 1 ? '' : 's'}`, '#fff3d6', '#4e3626')}</button>`, 'wood');
       },
-      /** A robot: walking, it faces where it goes; waiting on you, it waves; stale, it is powered down. Its eyes go on its visor. */
+      /**
+       * A robot: walking, it faces where it goes; waiting on you, it waves; stale, it is powered down. On it: its
+       * antenna light in its model's colour, its beacon by its state; hazard stripes round its waist for bypass
+       * permissions, its cost badge on its chest, its eyes on its visor.
+       */
       drawChar(f, b) {
-        const [ox, oy] = pixelOrigin(b, 16), rp = rpAt(ox, oy), off = f.state === 'stale';
+        const [ox, oy] = pixelOrigin(b, 16), rp = rpAt(ox, oy), off = f.state === 'stale', look = f.look ?? lookOf(f);
         const view = b.walk ? b.face ?? 'down' : 'down';
-        PXG.ctx.drawImage(robotSprite(f.look ?? lookOf(f), f.shirt, { view, legs: legFrame(b), wave: f.state === 'waiting', off }), ox, oy, 14 * SC, 16 * SC);
-        if (!off && view !== 'up') eyes(f, b, rp, view);
+        PXG.ctx.drawImage(robotSprite(look, f.shirt, { view, legs: legFrame(b), wave: f.state === 'waiting', off, light: off ? null : FAMILY_LIGHT[f.family] ?? null }), ox, oy, 14 * SC, 16 * SC);
+        beacon(rp, look, f.state);
+        if (off) return; // powered down: nothing else on it
+        if (f.mode === 'bypassPermissions') for (let x = 3; x < 11; x++) rp(x, 12, 1, 1, (x >> 1) % 2 ? BLACK : YELLOW); // no permission checks: hazard stripes
+        const badge = f.cost >= 1 ? BADGES.find(([min]) => f.cost >= min) : null;
+        if (badge && view === 'down') { rp(9, 10, 2, 2, badge[1]); rp(9, 10, 1, 1, badge[2]); } // what it has cost
+        if (view !== 'up') eyes(f, b, rp, view);
+      },
+      /**
+       * Over and beside a robot: speed lines (fast mode) and smoke (a hot CPU); asleep in a pod, a zzz. Working:
+       * what it holds for its step, a gear spinning while it thinks, its task list's screen. Its drones. Waiting
+       * on you: the ! bubble (a plan's, with the blueprint on your desk) and a ring at its feet; your turn: a crate
+       * of finished parts and a ✓ (a ? for a question); idle: a charging bolt.
+       */
+      drawFx(f, b) {
+        const [ox, oy] = pixelOrigin(b, 16), rp = rpAt(ox, oy), T = PXG.T, still = !b.walk;
+        if (f.fast && f.state !== 'stale') speedLines(rp, b, T);
+        if (f.hot && f.state !== 'stale') smoke(rp, T);
+        if (b.zone === 'nap' && still) { // asleep in its pod until it wakes by itself
+          const zy = -4 - Math.floor((T * 2) % 4);
+          PXG.ctx.globalAlpha = 0.85; rp(10, zy, 3, 1, '#e6eef5'); rp(11, zy + 1, 1, 1, '#e6eef5'); rp(10, zy + 2, 3, 1, '#e6eef5'); PXG.ctx.globalAlpha = 1;
+          return;
+        }
+        if (f.state === 'working' && still) { const act = props.doing(f); if (act) props.draw(act.prop, rp, T, act.flag); }
+        if (f.thinking && still) thinkingGear(ox + 14, oy - 7, Math.floor(T * 8));
+        if (f.tasks?.total && f.state === 'working' && still) checklistScreen(rp, f.tasks);
+        b.kids.forEach((d, k) => { const x = Math.round(d.x), y = Math.round(d.y); if (f.kids[k]?.dog) scannerDrone(x, y, Math.round(b.y), T, k); else drone(x, y, f.shirt ?? '#5ab4ff', T, k); });
+        if (f.state === 'waiting') {
+          bubble(rp, 12, -7 - blink(3), f.planAsk ? 'plan' : '!');
+          if (f.planAsk && b.zone === 'desk' && still) deskBlueprint();
+          const x = Math.round(b.x), y = Math.round(b.y); // a ring at its feet that pulses: it needs you
+          PXG.ctx.globalAlpha = 0.45 + 0.35 * Math.sin(T * 5);
+          px(x - 6, y + 2, 13, 1, '#e04a3a'); px(x - 8, y + 1, 2, 1, '#e04a3a'); px(x + 7, y + 1, 2, 1, '#e04a3a'); px(x - 8, y - 1, 1, 2, '#e04a3a'); px(x + 8, y - 1, 1, 2, '#e04a3a');
+          PXG.ctx.globalAlpha = 1;
+        }
+        if (f.state === 'turn') { heldCrate(rp); if (still) bubble(rp, 12, -7 - (f.question ? blink(3) : 0), f.question ? '?' : 'v'); }
+        if (f.state === 'idle' && still) chargingBolt(rp);
+      },
+      /** Labels that move with what they name: an AGV out of the rank (its server), a delivery drone (its errand), a pod's wake-up time; and +N over the drone dock. */
+      movers(posOf) {
+        const out = [];
+        for (const c of scene.carts ?? []) {
+          const s = agvs.get(c.server);
+          if (!s || (!s.goal && !s.moving)) continue; // in its bay in the rank
+          const who = c.busy ? scene.farmers.find(f => f.id === c.busy) : null;
+          out.push({ key: `mcp:${c.server}`, x: s.x, y: s.y - 11, html: pxt(cutMid(c.server, 16), '#5a3a1a', null), title: `${c.server}, an MCP server${who ? `: ${who.name} is calling it` : ''}` });
+        }
+        for (const f of scene.farmers) {
+          const b = posOf(f.id), d = deliveryAt(f, b, PXG.T);
+          if (d) out.push({ key: `drone:${f.id}`, x: d.x, y: d.y - 5, html: pxt(clip(f.service, 18), '#5a3a1a', null), title: `${f.name}: ${f.summary || f.service}` });
+          if (f.nap && f.wakeAt && b?.zone === 'nap' && !b.walk) out.push({ key: `nap:${f.id}`, x: b.x, y: b.y - 36, html: pxt(`wakes in ${until(f.wakeAt)}`, '#5a3a1a', null), title: `${f.name} wakes up by itself at ${clock(f.wakeAt)}` });
+        }
+        const more = scene.henhouse?.roosting ?? 0;
+        if (more > 0) out.push({ key: 'dock:more', x: 111, y: 13, html: pxt(`+${more}`, '#5a3a1a', null), title: `${more} more subagent${more === 1 ? '' : 's'} running than their robots can lead` });
+        return out;
+      },
+      /** Over everything, the windows' sky too: the tubes overhead, the drones circling over the dock (more running than their robots lead), the delivery drones. */
+      top() {
+        const T = PXG.T;
+        drawTubes(L);
+        const more = Math.min(3, scene.henhouse?.roosting ?? 0);
+        for (let i = 0; i < more; i++) { const a = T * 1.4 + (i * 2 * Math.PI) / 3; drone(Math.round(111 + Math.cos(a) * 11), Math.round(21 + Math.sin(a) * 4), '#f0b429', T, i); }
+        for (const f of scene.farmers) { const d = deliveryAt(f, where(f.id), T); if (d) deliveryDrone(d, T); }
+      },
+      /** A message from one robot to another: a capsule through the tubes, from a to z, t of the way (0–1), eased. */
+      flight(a, z, t) {
+        const pts = tubeRoute(L, a, z), lens = pts.slice(1).map((p, i) => Math.hypot(p[0] - pts[i][0], p[1] - pts[i][1]));
+        const e = t < 0.5 ? 2 * t * t : 1 - (-2 * t + 2) ** 2 / 2;
+        let d = e * lens.reduce((sum, l) => sum + l, 0), i = 0;
+        while (i < lens.length - 1 && d > lens[i]) { d -= lens[i]; i++; }
+        const [x0, y0] = pts[i], [x1, y1] = pts[i + 1] ?? pts[i], k = lens[i] ? Math.min(1, d / lens[i]) : 0;
+        capsuleAt(Math.round(x0 + (x1 - x0) * k), Math.round(y0 + (y1 - y0) * k), Math.abs(x1 - x0) >= Math.abs(y1 - y0));
       },
     };
   }
@@ -1080,7 +1576,7 @@
       <b>Your desk</b><span>at the back, in front of the windows: robots waiting on you queue at its left under a red beacon, waving a red “!”; when it's your turn they bring finished parts to its right (a “?” is a question for you). A blueprint on the desk = a plan for you to approve. The stats panel's “needs you” button opens the first one</span>
       <b>Bays</b><span>one assembly bay per repo inside the yellow and black safety line, where a robot is built as the session's context fills: the frame, the wiring, the plating, the head, then its eyes light up when it is nearly full. Empty bays are bare floor until a repo needs one, up to 18. A blue flag on its sign = a branch other than main; a glass clean room = a worktree, beside its repo's bay; a painted floor zone with a sign = one project's repos</span>
       <b>Compacted</b><span>when a session's conversation is compacted, the finished robot rolls off along the conveyor with a cheer, and a new frame goes on</span>
-      <b>Tools</b><span>what a working robot holds is its current step: datapad = reading, scanner = searching, an antenna and a delivery drone = the web, welder = editing, part printer = a new file, multimeter = running tests, polisher = lint or format, wrench = a build, forklift = installing, stamped crate = a commit, a cart up a ramp = a push, rocket crate = a deploy, capsule = a pull, server rack = a server, shredder = deleting, megaphone = calling subagents, clipboard = planning, a question card = a question for you, terminal = any other command, blueprint = plan mode</span>
+      <b>Tools</b><span>what a working robot holds is its current step: datapad = reading, scanner = searching, an antenna and a delivery drone = the web, welder = editing, part printer = a new file, multimeter = running tests, polisher = lint or format, wrench = a build, forklift = installing, stamped crate = a commit, a cart up a ramp = a push, rocket crate = a deploy, capsule = a pull, server rack = a server, shredder = deleting, megaphone = calling subagents, clipboard = planning, a question card = a question for you, a plug = an MCP call (its AGV comes over), a scroll = a skill, terminal = any other command, blueprint = plan mode</span>
       <b>Above a robot</b><span>a spinning gear = thinking between steps; a little checklist screen beside it = its task list (its name says how many, e.g. 3/7)</span>
       <b>On a robot</b><span>its beacon: green working, red blinking waiting on you, amber your turn, blue idle. The light on its antenna = its model (purple Opus, blue Sonnet, green Haiku, orange Fable); speed lines = fast mode; hazard stripes = bypass permissions (no checks); a badge on its chest = what it has cost (copper, silver, gold from $50); smoke = a hot CPU. Codex robots are the slate-grey model line</span>
       <b>Drones</b><span>mini drones hovering by a robot = its subagents (a scanner drone sweeping a beam = an Explore subagent). The drone dock holds the ones that finished lately; drones circling over it, with a +N, = more running than their robots can lead</span>
@@ -1108,5 +1604,8 @@
 
   window.Agentville.world(makeFactory());
   // The factory's own pieces, for its tests.
-  window.AgentvilleFactory = { HEADS, BODIES, DRIVES, lookOf, robotRows, robotSprite, factoryScene, makeFactory, WINDOWS, RANK, CELLS, dockCrates, stackLightAt, ventsOf, bankOf, THERMOMETER, STEAM, CHARGED };
+  window.AgentvilleFactory = {
+    HEADS, BODIES, DRIVES, lookOf, robotRows, robotSprite, factoryScene, makeFactory, WINDOWS, RANK, CELLS, dockCrates, outletAt, stackLightAt, ventsOf, bankOf, THERMOMETER, STEAM, CHARGED,
+    props, FACTORY_PROPS: Object.keys(FACTORY_PROPS), WELD_TIP, agvRoute, agvGoal,
+  };
 })();

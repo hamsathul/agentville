@@ -791,11 +791,12 @@ test("lights(): the desk lamp, the screens, every bay's stack light, the fabrica
   h.tick(0.03, posOf);
   const live = shown();
   check(live, 'live');
-  assert.ok(near(live, [207, 138], 4), "the welding robot's spark (editing: a welder)");
-  assert.ok(!near(live, [297, 138], 4), 'none for a robot reading');
+  const tip = ({ x, y }) => [x - 7 + F.WELD_TIP[0], y - 16 + F.WELD_TIP[1]]; // the welder's tip, in the robot's pixels from its sprite's top left
+  assert.ok(near(live, tip(at.w), 1), "the welding robot's spark, at its welder's tip (editing: a welder)");
+  assert.ok(!near(live, tip(at.r), 4), 'none for a robot reading');
   assert.ok(!within(live, [47, 44, 30, 40]), "the fabricator's door is dark while nobody rolls out");
   at.w.walk = true;
-  assert.ok(!near(shown(), [207, 138], 4), 'nor while it walks');
+  assert.ok(!near(shown(), tip(at.w), 4), 'nor while it walks');
   at.w.walk = false;
   h.tick(0.03, () => ({ walk: true, x: 62, y: 80 }));
   assert.ok(within(shown(), [47, 44, 30, 40]), "a robot rolling out: the fabricator's door glows");
@@ -818,4 +819,317 @@ test('no plan reading: warm, the bank shows no reading, and the Heat switch can 
   const vents = plain(F.ventsOf(h.layout()));
   assert.ok(overVents(dom.calls.rects, vents).filter(r => r[0] === ink(F.STEAM)).length >= vents.length, 'held at steaming: steam over the vents');
   assert.ok(!F.CELLS.some(([x, y]) => dom.calls.rects.some(r => r[0] === ink(F.CHARGED) && inBox([x, y, 8, 10])(r))), 'no cell lit');
+});
+
+/* ---------- what robots hold, their details, their drones, the AGVs, and messages through the tubes ---------- */
+
+// The spec's table (§5): each step and the prop a robot holds for it; plan mode is the kit's blueprint.
+const HELD = {
+  read: 'datapad', search: 'scanner', web: 'antenna', edit: 'welder', write: 'printer', test: 'multimeter', lint: 'polisher', build: 'wrench',
+  install: 'forklift', commit: 'crate', push: 'ramp', deploy: 'rocketCrate', pull: 'capsule', serve: 'rack', delete: 'shredder', agent: 'megaphone',
+  plan: 'clipboard', ask: 'card', shell: 'terminal', other: 'terminal', planMode: 'blueprint',
+};
+const FAMILY_PIN = { opus: '#8a5fc0', sonnet: '#3d7be0', haiku: '#2fa57a', fable: '#f08a24' }; // the farm's pins: purple Opus, blue Sonnet, green Haiku, orange Fable
+const SKIN = ['#f1c7a1', '#e0a878', '#c68a5a', '#9c6644', '#7d5236']; // the people kit's hands: never on a robot
+/** What a prop draws at a few moments, as the props kit's test records it: its fills, with their colours. */
+function propDrawing({ ctx }, kit, prop) {
+  const PXG = vm.runInContext('PXG', ctx), rpAt = vm.runInContext('rpAt', ctx);
+  return [0.1, 0.4, 0.7].map(T => {
+    const rects = [];
+    PXG.ctx = { set fillStyle(c) { this.c = c; }, get fillStyle() { return this.c; }, fillRect(x, y, w, h) { if (w > 0 && h > 0) rects.push([this.c, x, y, w, h]); }, globalAlpha: 1 };
+    PXG.T = T; PXG.k = 1; PXG.lights = [];
+    kit.draw(prop, rpAt(0, 0), T);
+    return rects;
+  });
+}
+
+test("the factory's kit: each step of the spec's table holds its prop, in the factory's own words", () => {
+  const { F, window } = load();
+  for (const [step, prop] of Object.entries(HELD)) assert.equal(F.props.steps[step].prop, prop, step);
+  assert.equal(F.props.steps.mcp.prop, 'plug', "an MCP call keeps the kit's plug (its AGV is what shows it)");
+  const kit = { ...window.Agentville.props.STEPS, planMode: window.Agentville.props.PLAN_MODE };
+  for (const [step, a] of Object.entries(F.props.steps)) {
+    assert.ok(typeof a.verb === 'string' && a.verb.length > 3, step);
+    assert.notEqual(a.verb, kit[step]?.verb, `${step}: the factory's words, not the kit's (${a.verb})`);
+    assert.doesNotMatch(a.verb, FARM_WORDS, step);
+    assert.equal(a.spot, kit[step].spot, `${step}: where it stands at its bay, the kit's`);
+  }
+  assert.equal(F.props.doing({ state: 'working', step: 'edit' }).prop, 'welder');
+  assert.equal(F.props.doing({ state: 'working', mode: 'plan', step: 'edit' }).prop, 'blueprint', "plan mode: the kit's blueprint");
+});
+
+test('every prop a robot holds draws at three moments, no two alike, each of the factory\'s own moves, and all with metal claws (no skin)', () => {
+  const loaded = load(), { F } = loaded;
+  const used = [...new Set(Object.values(F.props.steps).map(a => a.prop))];
+  for (const own of F.FACTORY_PROPS) assert.ok(used.includes(own), `${own} is held for a step`);
+  const seen = new Map();
+  for (const prop of used) {
+    const d = propDrawing(loaded, F.props, prop);
+    assert.ok(d.every(r => r.length > 0), `${prop} draws at every moment`);
+    const sig = JSON.stringify(d);
+    assert.ok(!seen.has(sig), `${prop} looks like ${seen.get(sig)}`);
+    seen.set(sig, prop);
+    assert.ok(!d.flat().some(r => SKIN.includes(r[0])), `${prop}: a robot's claw, not a hand`);
+    if (F.FACTORY_PROPS.includes(prop)) assert.ok(new Set(d.map(r => JSON.stringify(r))).size > 1, `${prop} moves`);
+  }
+  const kitOf = prop => JSON.stringify(propDrawing(loaded, loaded.window.Agentville.props, prop));
+  for (const same of ['wrench', 'card', 'terminal']) assert.notEqual(JSON.stringify(propDrawing(loaded, F.props, same)), kitOf(same), `the factory's own ${same}, not the kit's`);
+  const flame = propDrawing(loaded, F.props, 'welder').flat().filter(r => r[0] === '#ffffff');
+  assert.ok(flame.some(r => r[1] === F.WELD_TIP[0] && r[2] === F.WELD_TIP[1]), "the welder's flame is at its tip (WELD_TIP), where its spark glows at night");
+});
+
+const OX = 193, OY = 128; // a robot standing at (200, 144): its sprite's top left
+const ROBOT = { id: 'r', name: 'r', state: 'working', shirt: '#4a7bd0', look: { head: 'box', drive: 'wheels', line: 'claude', chest: 0 }, kids: [], family: null, cost: null, mode: 'default', fast: false, hot: false, tasks: null, thinking: false, color: 0 };
+/** Fills entirely inside [x, y, w, h]. */
+const inRect = (x0, y0, w, h) => r => r[1] >= x0 && r[2] >= y0 && r[1] + r[3] <= x0 + w && r[2] + r[4] <= y0 + h;
+/** A colour, roughly: grey, red, amber, green, blue or other. */
+function hue(c) {
+  const [r, g, b] = [1, 3, 5].map(i => parseInt(String(c).slice(i, i + 2), 16));
+  if (Math.max(r, g, b) - Math.min(r, g, b) < 60) return 'grey';
+  if (r > 180 && g < 140 && b < 140) return 'red';
+  if (r > 200 && g > 120 && b < 100) return 'amber';
+  if (g > r && g > b) return 'green';
+  if (b > r && b >= g) return 'blue';
+  return 'other';
+}
+/** The factory, its canvas keeping its fills, and a robot drawn with its details (drawChar, then drawFx) at T: standing at (200, 144), or as `body` says. */
+function robots() {
+  const all = bays(), { h, dom, PXG } = all;
+  const fills = draw => { dom.calls.rects.length = 0; dom.calls.images.length = 0; draw(); return dom.calls.rects.map(r => [...r]); };
+  const drawn = (over = {}, body = {}, T = 1) => {
+    const f = { ...ROBOT, ...over }, b = { x: 200, y: 144, walk: false, face: 'down', zone: 'st:x', kids: [], ...body };
+    PXG.T = T;
+    h.drawChar(f, b); // its sprite, made once
+    return fills(() => { h.drawChar(f, b); h.drawFx(f, b); });
+  };
+  return { ...all, fills, drawn, ink: vm.runInContext('ink', all.ctx) };
+}
+
+test("a robot's beacon on top of its head: green working, red blinking waiting on you, amber your turn, blue idle; a stale one's is off", () => {
+  const { drawn, F } = robots();
+  const lamp = (state, T = 1) => drawn({ state }, {}, T).filter(inRect(OX + 5, OY - 4, 4, 6)).map(r => hue(r[0]));
+  assert.ok(lamp('working').includes('green'), 'working: green');
+  assert.ok(lamp('turn').includes('amber'), 'your turn: amber');
+  assert.ok(lamp('idle').includes('blue'), 'idle: blue');
+  const red = [0, 0.13, 0.26, 0.39].map(T => lamp('waiting', T).includes('red'));
+  assert.ok(red.includes(true) && red.includes(false), `waiting on you: red, blinking (${red})`);
+  assert.ok(lamp('stale').length > 0 && lamp('stale').every(c => c === 'grey'), 'stale: powered down, its beacon off');
+  for (const head of Object.keys(F.HEADS)) { // on top of every head, touching it
+    const look = { ...ROBOT.look, head }, rows = plain(F.robotRows(look, 'down', 's')), top = rows.findIndex(r => r.slice(5, 9) !== '....');
+    const beacon = drawn({ look }).filter(r => r[1] >= OX + 5 && r[1] + r[3] <= OX + 9 && r[2] + r[4] <= OY + top);
+    assert.ok(beacon.length > 0, `${head}: a beacon`);
+    assert.equal(Math.max(...beacon.map(r => r[2] + r[4])), OY + top, `${head}: it sits on the head's top (row ${top})`);
+  }
+});
+
+test("the light on a robot's antenna is its model's colour (the farm's pins: purple Opus, blue Sonnet, green Haiku, orange Fable)", () => {
+  const { F, h, dom, PXG } = robots();
+  const look = { head: 'antenna', drive: 'legs', line: 'claude', chest: 2 }, lights = [];
+  plain(F.robotRows(look, 'down', 's')).forEach((r, y) => [...r].forEach((ch, x) => { if (ch === 'a') lights.push(`${x},${y}`); }));
+  assert.ok(lights.length > 0);
+  for (const [family, colour] of Object.entries(FAMILY_PIN)) {
+    const sprite = pixelsOf(dom, () => F.robotSprite(look, '#d55181', { light: colour }));
+    for (const k of lights) assert.equal(sprite.get(k), colour, `${family}: its antenna light at ${k}`);
+    PXG.T = 1;
+    const made = pixelsOf(dom, () => h.drawChar({ ...ROBOT, id: family, look, shirt: '#2fa57a', family }, { x: 200, y: 144, walk: false, kids: [] })); // its sprite is made now
+    for (const k of lights) assert.equal(made.get(k), colour, `drawn for a ${family} agent`);
+  }
+});
+
+test('on a robot: hazard stripes for bypass permissions, speed lines for fast mode, a chest badge for what it has cost (copper, then silver from $10, gold from $50)', () => {
+  const { drawn, ink } = robots();
+  const base = drawn();
+  const body = rects => rects.filter(inRect(OX + 2, OY + 9, 10, 4));
+  const stripes = body(drawn({ mode: 'bypassPermissions' })).map(r => r[0]);
+  assert.ok(stripes.includes(ink('#ffd43b')) && stripes.includes(ink('#2a1d14')), 'bypass: yellow and black stripes on its body');
+  assert.ok(!body(base).some(r => r[0] === ink('#ffd43b')), 'none without');
+  const beside = rects => rects.filter(r => r[2] >= OY && r[2] < OY + 16 && (r[1] + r[3] <= OX || r[1] >= OX + 14));
+  assert.equal(beside(base).length, 0, 'nothing beside a plain robot');
+  assert.ok(beside(drawn({ fast: true })).length >= 2, 'fast mode: speed lines beside it');
+  assert.ok(beside(drawn({ fast: true }, { walk: true, face: 'right' })).length >= 2, '… and behind it as it goes');
+  const badge = cost => body(drawn({ cost })).map(r => r[0]);
+  assert.deepEqual(badge(0.5), body(base).map(r => r[0]), 'under $1: no badge');
+  const [copper, silver, gold] = [5, 20, 80].map(badge);
+  assert.ok(copper.length > 0 && silver.length > 0 && gold.length > 0, 'a badge');
+  assert.equal(new Set([copper, silver, gold].map(c => JSON.stringify(c))).size, 3, 'copper, silver and gold differ');
+  assert.ok(silver.some(c => hue(c) === 'grey') && gold.some(c => hue(c) === 'amber'), 'silver is grey, gold is gold');
+});
+
+test('over and beside a robot: a spinning gear while it thinks, a checklist screen for its task list, smoke from a hot CPU, a charging bolt while idle', () => {
+  const { drawn, ink } = robots();
+  const above = rects => rects.filter(r => r[2] + r[4] <= OY - 1 && Math.abs(r[1] - 200) < 24);
+  assert.equal(above(drawn()).length, 0, 'nothing over a plain robot');
+  const gear = T => above(drawn({ thinking: true }, {}, T));
+  assert.ok(gear(1).some(r => r[0] === ink('#e9a23b')), 'thinking: a brass gear over its head');
+  assert.notDeepEqual(gear(1), gear(1.13), 'spinning');
+  const left = rects => rects.filter(r => r[1] + r[3] <= OX && r[2] < OY + 16);
+  assert.equal(left(drawn()).length, 0);
+  const ticks = done => left(drawn({ tasks: { done, total: 3 } })).filter(r => r[0] === ink('#6cc04a')).length;
+  assert.ok(left(drawn({ tasks: { done: 0, total: 3 } })).length > 0 && ticks(1) > ticks(0) && ticks(3) > ticks(1), `a checklist screen beside it, ticked as tasks are done (${ticks(0)}, ${ticks(1)}, ${ticks(3)})`);
+  const smoke = T => above(drawn({ hot: true }, {}, T));
+  assert.ok(smoke(1).some(r => hue(r[0]) === 'grey'), 'a hot CPU: grey smoke');
+  assert.notDeepEqual(smoke(1), smoke(1.4), 'rising');
+  const bolt = rects => rects.filter(r => r[0] === ink('#ffd43b') || r[0] === ink('#f0b429'));
+  assert.ok(bolt(above(drawn({ state: 'idle' }))).length > 0, 'idle: a charging bolt');
+  assert.equal(bolt(above(drawn({ state: 'idle' }, { walk: true, face: 'left' }))).length, 0, 'not while it walks');
+});
+
+test("waiting on you: a red ! bubble and a ring at its feet; a plan to approve: a blueprint on your desk; your turn: a crate of finished parts, with a ✓ (a ? for a question)", () => {
+  const { drawn, ink } = robots();
+  const desk = { x: 170, y: 80, zone: 'desk' }, colours = rects => new Set(rects.map(r => r[0]));
+  const waiting = drawn({ state: 'waiting' }, desk);
+  assert.ok(colours(waiting).has(ink('#d03b3b')), 'the ! bubble');
+  assert.ok(waiting.some(r => r[0] === ink('#e04a3a') && r[2] >= 80 && r[2] <= 82 && r[3] >= 9), 'a red ring at its feet');
+  const onDesk = rects => rects.filter(inRect(140, 50, 120, 12)).filter(r => hue(r[0]) === 'blue'); // the desk's top
+  assert.equal(onDesk(waiting).length, 0, 'a permission: no blueprint');
+  const plan = onDesk(drawn({ state: 'waiting', planAsk: true }, desk));
+  assert.ok(plan.length >= 2, 'a plan to approve: a blueprint on the desk');
+  assert.ok(plan.every(r => r[1] >= 205), "by its in-tray, clear of the waiting queue's name tags (150–190 ± a name)");
+  assert.equal(onDesk(drawn({ state: 'waiting', planAsk: true }, { ...desk, walk: true, face: 'up' })).length, 0, 'not until it gets there');
+  const turn = drawn({ state: 'turn' }, { x: 230, y: 80, zone: 'turn' });
+  assert.ok(turn.filter(inRect(223, 70, 14, 10)).some(r => r[0] === ink('#c98d4f')), 'your turn: a crate held in front of it');
+  assert.ok(colours(turn).has(ink('#0ca30c')), 'a ✓ bubble');
+  assert.ok(colours(drawn({ state: 'turn', question: 'Ship it?' }, { x: 230, y: 80, zone: 'turn' })).has(ink('#c98500')), 'a ? for a question');
+});
+
+test('drones: each running subagent hovers by its robot (four at most), an Explore one circles it sweeping a beam; drawn where they hover', () => {
+  const { h, drawn } = robots();
+  const b = { x: 200, y: 144 };
+  const at = (k, T, dog = false) => plain(h.follow(b, k, T, { id: `c${k}`, dog }));
+  const spots = [0, 1, 2, 3].map(k => at(k, 1));
+  for (const [x, y] of spots) assert.ok(Math.abs(x - 200) <= 20 && y < 144 - 8 && y > 144 - 40, `${x},${y}: hovering by its robot`);
+  for (let i = 0; i < 4; i++) for (let j = i + 1; j < 4; j++) assert.ok(Math.hypot(spots[i][0] - spots[j][0], spots[i][1] - spots[j][1]) >= 8, `drones ${i} and ${j} apart`);
+  assert.notDeepEqual(at(0, 1), at(0, 1.4), 'they bob');
+  const sweep = [0, 1, 2, 3, 4, 5, 6, 7].map(T => at(0, T, true)[0] - 200);
+  assert.ok(Math.min(...sweep) < -8 && Math.max(...sweep) > 8, `an Explore drone circles its robot (${sweep.map(Math.round)})`);
+  const kids = [{ x: 186, y: 132 }, { x: 214, y: 120 }];
+  const two = drawn({ kids: [{ id: 'c1', dog: false }, { id: 'c2', dog: true }] }, { kids });
+  for (const d of kids) assert.ok(two.some(r => Math.abs(r[1] - d.x) <= 6 && Math.abs(r[2] - d.y) <= 4), `a drone at ${d.x},${d.y}`);
+  const below = rects => rects.filter(r => r[1] >= OX + 14 && r[1] < 232 && r[2] > 124 && r[2] < 145 && hue(r[0]) === 'blue');
+  assert.ok(below(two).length >= 6, `the Explore drone's beam, down to the floor (${below(two).length} fills)`);
+  assert.equal(below(drawn({ kids: [{ id: 'c1', dog: false }, { id: 'c2', dog: false }] }, { kids })).length, 0, 'a plain drone has no beam');
+});
+
+test('the drone dock: finished subagents docked in its six slots; more running than their robots lead circle over it, with +N', () => {
+  const { h, sceneOf, fills, PXG } = robots();
+  const kids = (done, running) => [...Array.from({ length: done }, (_, i) => ({ id: `d${i}`, kind: 'subagent', state: 'done', startedAt: TOUR_NOW })), ...Array.from({ length: running }, (_, i) => ({ id: `r${i}`, kind: 'subagent', state: 'running', startedAt: TOUR_NOW }))];
+  const scene = (done, running) => { const s = sceneOf(bay({}, [person('p', { children: kids(done, running) })])); h.relayout(h.grid.layoutFor(s.fields)); h.setScene(s); };
+  const SLOTS = [100, 38, 21, 34]; // the dock's slots, two across, three down
+  const docked = done => { scene(done, 0); PXG.T = 1; return fills(() => h.ground()).filter(inRect(...SLOTS)).length; };
+  const [none, one, three, six] = [0, 1, 3, 6].map(docked);
+  assert.ok(none < one && one < three && three < six, `a drone a slot (${none}, ${one}, ${three}, ${six})`);
+  assert.equal(docked(9), six, 'six at most');
+  const over = rects => rects.filter(inRect(92, 4, 40, 28));
+  scene(0, 4);
+  assert.equal(over(fills(() => h.top())).length, 0, 'four running: their robot leads them all');
+  assert.equal(h.movers(() => null).filter(m => /\+\d/.test(m.html)).length, 0);
+  scene(0, 6);
+  assert.ok(over(fills(() => h.top())).length > 0, 'six running: two circle over the dock');
+  const sign = h.movers(() => null).find(m => m.html.includes('+2'));
+  assert.ok(sign && Math.abs(sign.x - 111) <= 16 && sign.y < 34, 'with +2 over it');
+  assert.match(sign.title, /2 more subagents/);
+  assert.doesNotMatch(sign.title, FARM_WORDS);
+});
+
+test("an AGV's way: along its row to the left side's path, up or down it, and along the robot's row; and back", () => {
+  const { F } = load();
+  assert.deepEqual(plain(F.agvRoute([14, 284], [187, 144])), [[116, 284], [116, 144], [187, 144]], 'from the rank to a bay in the first row');
+  assert.deepEqual(plain(F.agvRoute([187, 144], [14, 284])), [[116, 144], [116, 284], [14, 284]], 'and home');
+  assert.deepEqual(plain(F.agvRoute([14, 284], [163, 80])), [[116, 284], [116, 80], [163, 80]], 'to your desk');
+  assert.deepEqual(plain(F.agvRoute([150, 144], [300, 144])), [[300, 144]], 'along a row');
+  assert.deepEqual(plain(F.agvRoute([116, 200], [53, 204])), [[116, 204], [53, 204]], 'from the path');
+});
+
+test('an AGV stays with its robot while the call goes on, and a few seconds after it has got there, then heads home', () => {
+  const { F } = load();
+  const home = [14, 284], robot = [213, 144], c = {};
+  assert.deepEqual(plain(F.agvGoal(c, robot, home, 0)), robot, 'called: it goes');
+  assert.deepEqual(plain(F.agvGoal(c, null, home, 1000)), robot, 'a short call ended on the way: it still gets there');
+  c.arrivedAt = 3000;
+  assert.deepEqual(plain(F.agvGoal(c, null, home, 5000)), robot, 'there: it waits a moment');
+  assert.deepEqual(plain(F.agvGoal(c, null, home, 7000)), home, 'then home');
+  const busy = {};
+  F.agvGoal(busy, robot, home, 0);
+  assert.deepEqual(plain(F.agvGoal(busy, robot, home, 60_000)), robot, 'a long call: it stays');
+});
+
+test('AGVs: one in the rank for each MCP server called lately; the one a robot calls drives over and waits beside it, with its name; drawn still, it is already there', () => {
+  const { h, sceneOf, F } = robots();
+  const caller = person('m', { now: { tool: 'mcp__tickets__search', summary: 'open tickets', step: 'mcp', service: 'tickets', startedAt: Date.now() - 2000 }, mcp: [{ server: 'tickets', at: Date.now() - 2000 }, { server: 'gmail', at: Date.now() - 60_000 }] });
+  const scene = sceneOf(bay({}, [caller]));
+  h.relayout(h.grid.layoutFor(scene.fields));
+  h.setScene(scene);
+  const [x, y] = h.slots(scene.farmers[0]).at([]), posOf = id => (id === 'm' ? { x, y, tx: x, ty: y, walk: false } : null);
+  const ys = () => h.items().slice(3).map(it => it[0]), home = new Set(F.RANK.map(p => p[1])); // after the open table and the two pods' glass
+  h.tick(0.03, posOf);
+  assert.equal(ys().length, 2, 'two AGVs, one for each server');
+  assert.ok(ys().every(v => home.has(v)), 'in the rank');
+  assert.deepEqual(plain(h.movers(posOf).filter(m => m.key.startsWith('mcp:')).map(m => m.key)), ['mcp:tickets'], 'the one called sets off, with its name');
+  for (let i = 0; i < 400; i++) h.tick(0.05, posOf);
+  const label = h.movers(posOf).find(m => m.key === 'mcp:tickets');
+  assert.ok(label?.html.includes('tickets'), 'its name on it');
+  assert.ok(Math.abs(label.x - x) >= 8 && Math.abs(label.x - x) <= 14 && Math.abs(label.y - (y - 11)) <= 2, `it waits beside the robot (${label.x},${label.y} by ${x},${y})`);
+  assert.ok(ys().includes(y) && ys().some(v => home.has(v)), 'one beside the robot, drawn among the robots by where it stands; the other still in the rank');
+  assert.match(label.title, /tickets/);
+  assert.doesNotMatch(label.title, FARM_WORDS);
+  const still = robots();
+  still.h.relayout(still.h.grid.layoutFor(scene.fields));
+  still.h.setScene(scene);
+  still.h.tick(0, posOf, true);
+  const snapped = still.h.movers(posOf).find(m => m.key === 'mcp:tickets');
+  assert.ok(snapped && Math.abs(snapped.x - x) <= 14 && Math.abs(snapped.y - (y - 11)) <= 2, 'motion off: it stands beside the robot at once');
+});
+
+test('a web call: a delivery drone flies from its robot out of a window and back, its errand on it; none for a browser (its AGV goes)', () => {
+  const { h, sceneOf, fills, PXG, F } = robots();
+  const caller = tool => person('w', { now: { tool, summary: 'the docs', step: 'web', service: tool === 'WebFetch' ? 'docs.example.com' : 'playwright', startedAt: Date.now() - 2000 } });
+  const withCall = sceneOf(bay({}, [caller('WebFetch')])), without = sceneOf(bay({}, [person('w')]));
+  h.relayout(h.grid.layoutFor(withCall.fields));
+  const [x, y] = h.slots(withCall.farmers[0]).at([]), posOf = () => ({ x, y, tx: x, ty: y, walk: false });
+  h.setScene(without);
+  h.tick(0, posOf, true);
+  const base = new Set(fills(() => h.top()).map(r => JSON.stringify(r))); // the tubes overhead
+  const drone = (scene, T) => { h.setScene(scene); h.tick(0, posOf, true); PXG.T = T; return fills(() => h.top()).filter(r => !base.has(JSON.stringify(r))); };
+  const inWindow = r => F.WINDOWS.some(([wx, wy, ww, wh]) => r[1] >= wx - 2 && r[1] < wx + ww + 2 && r[2] >= wy - 2 && r[2] < wy + wh + 2);
+  const seen = Array.from({ length: 80 }, (_, i) => drone(withCall, i / 10));
+  assert.ok(seen.some(d => d.length && d.every(r => Math.abs(r[1] - x) < 20 && r[2] > y - 44 && r[2] < y)), 'by its robot, setting off or back');
+  assert.ok(seen.some(d => d.some(inWindow)), 'at a window: going out of it, over the sky (top() is drawn after the windows)');
+  assert.ok(seen.some(d => d.length === 0 || d.every(inWindow)), 'and away out there a while');
+  assert.ok(seen.filter(d => d.length).length > 40, 'drawn most of its round');
+  h.setScene(withCall);
+  const label = h.movers(posOf).find(m => m.key.startsWith('drone:'));
+  assert.ok(label?.html.includes('docs.example.com'), 'its errand on it');
+  assert.doesNotMatch(label.title, FARM_WORDS);
+  const browser = sceneOf(bay({}, [caller('mcp__playwright__browser_click')]));
+  assert.equal(Array.from({ length: 80 }, (_, i) => drone(browser, i / 10).length).reduce((a, n) => a + n, 0), 0, "a browser's web step: no delivery drone");
+});
+
+test("messages: a capsule goes from one robot into its bay's tube outlet, through the overhead tubes, and out of the other's to it; the tubes come down to every bay's outlet", () => {
+  const { h, fills, PXG, F, window } = robots();
+  const fields = Array.from({ length: 5 }, (_, i) => ({ key: `/r/${i}`, name: `r${i}` }));
+  const L = h.relayout(h.grid.layoutFor(fields));
+  h.setScene(F.factoryScene(window.AgentvilleScene.toScene({ generatedAt: TOUR_NOW, agents: [], collisions: [], repos: fields.map(f => ({ path: f.key, name: f.name, agentIds: [] })) })));
+  PXG.T = 1;
+  const tubes = fills(() => h.top());
+  const covered = (x, y) => tubes.some(r => x >= r[1] && x < r[1] + r[3] && y >= r[2] && y < r[2] + r[4]);
+  for (const s of L.ST) { const [ox, oy] = F.outletAt(s); assert.ok(covered(ox, oy - 1), `${s.key}: a tube comes down to its outlet (${ox},${oy})`); }
+  /** Where the capsule is (the middle of what flight draws) on its way from a to z, t along. */
+  const capsule = (a, z, t) => {
+    const d = fills(() => h.flight(a, z, t, 1 + t * 2.4));
+    assert.ok(d.length > 0, `t ${t}: drawn`);
+    const xs = d.flatMap(r => [r[1], r[1] + r[3]]), ys = d.flatMap(r => [r[2], r[2] + r[4]]);
+    return [(Math.min(...xs) + Math.max(...xs)) / 2, (Math.min(...ys) + Math.max(...ys)) / 2];
+  };
+  const [s0, s4] = [L.ST[0], L.ST[4]], a = { x: s0.cx + 26, y: s0.lane }, z = { x: s4.cx - 26, y: s4.lane };
+  assert.ok(s4.rowTop > s0.rowTop, 'the receiver is a row further down');
+  const path = Array.from({ length: 400 }, (_, i) => capsule(a, z, i / 400));
+  const near = ([x, y], [px, py], d) => Math.hypot(x - px, y - py) <= d;
+  assert.ok(near(path[0], [a.x, a.y - 8], 3), `it sets off from the sender (${path[0]})`);
+  assert.ok(near(capsule(a, z, 0.9999), [z.x, z.y - 8], 3), 'and comes to the receiver');
+  for (let i = 1; i < path.length; i++) assert.ok(near(path[i], path[i - 1], 4), `no jump at t ${i / 400}`);
+  const into = path.findLastIndex(p => near(p, F.outletAt(s0), 2)), out = path.findIndex((p, i) => i > into && near(p, F.outletAt(s4), 2));
+  assert.ok(into > 0 && out > into, `through the sender's bay outlet (${into}), then the receiver's (${out})`);
+  for (let i = into + 1; i < out; i++) assert.ok(covered(Math.round(path[i][0]), Math.round(path[i][1])), `in between, inside the tubes (t ${i / 400}: ${path[i]})`);
+  const desk = { x: 170, y: 80 };
+  assert.ok(near(capsule(a, desk, 0.9999), [desk.x, desk.y - 8], 3), 'a robot away from the bays gets one too (at your desk)');
 });

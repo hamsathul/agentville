@@ -476,8 +476,10 @@ function flying(extra = {}) {
   const window = { Agentville: { raw: h => { window.registered = h; } } };
   const ctx = vm.createContext({ window, document: dom.document, console, Math, Date, JSON, Map, Set, Intl, ...dom.globals });
   vm.runInContext(`${code}\n;window.sdk = { withDefaults, engineScene, makePixelView, PXG };`, ctx);
-  const sdk = window.sdk, frames = [];
-  const world = fourHooks({ drawFx() { dom.calls.record = []; }, weather() { frames.push({ T: sdk.PXG.T, fills: dom.calls.record ?? [] }); dom.calls.record = null; }, ...extra });
+  const sdk = window.sdk, frames = [], pops = [];
+  const createElement = dom.document.createElement;
+  dom.document.createElement = (...a) => { const el = createElement(...a); pops.push(el); return el; };
+  const world = fourHooks({ drawFx() { dom.calls.record = []; }, weather() { frames.push({ T: sdk.PXG.T, fills: dom.calls.record ?? [] }); dom.calls.record = null; }, ...(typeof extra === 'function' ? extra(sdk) : extra) });
   const view = sdk.makePixelView(sdk.withDefaults(world), { get: k => (k === 'sky' ? 'day' : null), set() {} });
   view.mount(dom.make(), { still: false });
   const at = Date.now();
@@ -487,7 +489,9 @@ function flying(extra = {}) {
   let now = 1000;
   /** Runs n frames; what the last one drew while the message travelled: { T, fills }. */
   const run = n => { for (let i = 0; i < n && pending; i++) { const cb = pending; pending = null; cb(now += 100); } return plain(frames.at(-1)); };
-  return { run };
+  /** The ✉ that pops when it lands: the pop-ups made so far, by their class. */
+  const landed = () => pops.filter(el => String(el.className) === 'px-pop good').length;
+  return { run, landed };
 }
 
 // The pigeon as the engine drew it before a world could draw its own way (recorded on that code, 2026-10-10):
@@ -507,4 +511,25 @@ test("the engine's carrier pigeon, call for call: a world with no flight hook dr
   assert.deepEqual(seen, PIGEON);
   const after = run(2); // 2.5 s: it has landed (a ✉ pops, with a few sparks of its own)
   assert.equal(after.fills.filter(r => PIGEON_COLOURS.has(r[0])).length, 0, 'gone once it lands');
+});
+
+test("a world's own flight draws how a message travels: given the sender's and receiver's bodies, how far along it is (0 to 1) and the clock; no pigeon then, and the ✉ still pops", () => {
+  const got = [];
+  const { run, landed } = flying(sdk => ({
+    flight(a, z, t, T) { got.push({ a: [a.x, a.y], z: [z.x, z.y], t, T }); sdk.PXG.ctx.fillStyle = '#123456'; sdk.PXG.ctx.fillRect(1, 2, 3, 4); },
+  }));
+  const frames = [run(1), run(5), run(12)];
+  for (const f of frames) assert.deepEqual(f.fills, [['#123456', 1, 2, 3, 4]], `T ${f.T}: only the world's drawing`);
+  assert.ok(got.length >= 3);
+  for (const g of got) {
+    assert.deepEqual([g.a, g.z], [[60, 90], [100, 40]], 'the sender (working, at 60,90) and the receiver (on the porch, at 100,40)');
+    assert.ok(g.t >= 0 && g.t < 1, `t ${g.t}`);
+    assert.ok(Math.abs(g.t - g.T / 2.4) < 1e-9, 'how far along: the clock over its 2.4 s');
+  }
+  assert.ok(got.some(g => g.t > 0.7), 'it got far along');
+  assert.equal(landed(), 0, 'on its way: no ✉ yet');
+  const n = got.length;
+  run(10);
+  assert.equal(got.length - n, 6, 'drawn on until 2.4 s (T 1.8 to 2.3), then no more: it has landed');
+  assert.equal(landed(), 1, 'a ✉ pops where it lands, as with the pigeon');
 });
