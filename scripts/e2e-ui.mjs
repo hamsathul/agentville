@@ -495,6 +495,13 @@ try {
   await js("document.querySelector('#center-body [data-name-rename]').click()");
   for (let i = 0; i < 40 && !renamed.length; i++) await sleep(150);
   check(renamed[0] === 'plan-the-crops' && await until("!document.querySelector('#center-body .name-offer')"), `✓ Rename runs /rename in the session (got ${JSON.stringify(renamed)})`);
+  // ✎ renames by hand, no Haiku: the box opens with its name, and Rename runs /rename with yours
+  await js("document.querySelector('#center-body .name-pen').click()");
+  check(await until("document.getElementById('name-edit')?.value === 'ui-asker'"), '✎ beside the name opens the name box with its current name');
+  await js("(e => { e.value = 'crop-plan'; e.dispatchEvent(new Event('input', { bubbles: true })); })(document.getElementById('name-edit'))");
+  await js("document.querySelector('#center-body [data-name-save]').click()");
+  for (let i = 0; i < 40 && renamed.at(-1) !== 'crop-plan'; i++) await sleep(150);
+  check(renamed.at(-1) === 'crop-plan' && await until("!document.getElementById('name-edit')"), `its Rename runs /rename with the name you typed, and the box closes (got ${JSON.stringify(renamed)})`);
   await js("document.querySelector('#center-body [data-fork=\"ui-r1\"]').click()");
   check(await until("document.getElementById('fork-dlg').open && document.getElementById('fork-mode').options.length === 5 && document.getElementById('fork-model').value === 'haiku'"), "⑂ Fork on a reply asks in what mode, model and effort, the session's own to start with");
   await js("document.getElementById('fork-go').click()");

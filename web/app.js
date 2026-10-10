@@ -15,7 +15,7 @@ function overviewHtml(a) {
     ? `CPU <b>${Math.round(a.proc.cpu)}%</b> · RAM <b>${gb(a.proc.rssMb)}</b> · ${a.proc.childCount} child process${a.proc.childCount === 1 ? '' : 'es'}${a.proc.children.length ? ` <span class="muted">(${esc(a.proc.children.join(', '))})</span>` : ''}`
     : '<span class="muted">No process found.</span>';
   const resume = a.kind === 'codex' ? '' : `cd ${shellQuote(a.cwd)} && claude --resume ${a.id}`;
-  return `<div class="ov"><div class="head"><span class="swatch" style="background:${color}"></span><span class="name">${esc(a.name)}</span>${acctTag(a)}${suggestBtn(a, snap?.helper)}<span class="chip c-${a.state}">${STATE_CHIP[a.state] ?? esc(a.state)} · <span data-since="${a.stateSince}"></span></span></div>${nameLineHtml(a)}
+  return `<div class="ov"><div class="head"><span class="swatch" style="background:${color}"></span><span class="name">${esc(a.name)}</span>${acctTag(a)}${suggestBtn(a, snap?.helper)}${renameBtn(a)}<span class="chip c-${a.state}">${STATE_CHIP[a.state] ?? esc(a.state)} · <span data-since="${a.stateSince}"></span></span></div>${nameLineHtml(a)}
     ${askHtml(a)}
     <div class="muted where" style="margin-top:6px">${esc(short(a.cwd))} · ${esc(a.kind)}${modelOf(a) ? ` · ${esc(modelOf(a))}` : ''}
       ${a.kind === 'codex' ? '' : a.mod?.live

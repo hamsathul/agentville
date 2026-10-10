@@ -92,8 +92,9 @@ It listens on `127.0.0.1` only and reads what Claude Code already writes to disk
   just before one of your messages, which then waits in the new session's prompt box for you to change.
 - Restore a session to before one of your messages, as `/rewind` does: its conversation, its code
   (the files Claude edited since), or both.
-- Name a session with one click: a small Claude model (Haiku) suggests a short name from what it is
-  working on, through your own Claude Code, only after you switch the ✨ Helper on. With its Animal
+- Name a session from the dashboard: ✎ renames it yourself, or a small Claude model (Haiku) suggests
+  a short name from what it is working on, through your own Claude Code, only after you switch the
+  ✨ Helper on. With its Animal
   lines ticked, Haiku also writes what the farm's animals say about what is happening.
 - Start a new session in any folder of yours (type it, browse to it, or create it) or in one you've
   worked in, or find a past one (search, filter by folder, model, branch, account or running, sort by
@@ -427,6 +428,9 @@ tick there. The farm's Menu has no ✨ Helper yet: to change it from the farm, g
     also how other sessions address it.
   - **✎ Edit** lets you change the name first. **✕** keeps its name, and it isn't offered again.
   - **✨** beside any session's name asks for a name at any time.
+- **Renaming it yourself:** **✎** beside any session's name opens the same box with its name, with
+  the helper on or off and no Haiku involved. Type a name and **Rename** (or ↩) runs `/rename` in
+  the session; **Cancel** (or Esc) leaves it. It needs the session's mod listening (0.8.0 or later).
 - **What it sends:** the session reads its own first three messages and the start of Claude's
   first reply (about 2,000 characters) and sends them to Haiku itself, as it sends its whole
   conversation to its own model. The dashboard only ever sees the name.
@@ -941,7 +945,7 @@ dialog over the farm, with Quote and the reply box as in the list. Click a build
   your turn, idle and stale, with what each asks or is doing. Type to find one by name, folder or
   branch; ↑ ↓ and ↩ pick, Esc closes. **‹ ›** step through them in that order, the book opens the
   diary and the last button hides the sidebar. Under the name: its state, its permission mode when it is
-  Bypass or Plan, its account, ✨ (suggest a name) and **Session**; then its folder, branch, model,
+  Bypass or Plan, its account, ✨ (suggest a name), ✎ (rename it) and **Session**; then its folder, branch, model,
   effort and any other permission mode (or "background" or "Codex").
 - **Who else needs you.** A red line names the other agents waiting on you, longest waiting
   first, with **Next ›** to open that one. Below it, a card for each, answered without leaving the

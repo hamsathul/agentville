@@ -1782,6 +1782,29 @@ test('✨ beside the name asks for one while the helper is on, and opens ✨ Hel
   assert.doesNotMatch(codex.side(), /name-suggest|name-offer/);
 });
 
+test("✎ beside every session's name renames it by hand, the helper on or off: the box opens with its name, Rename runs /rename; it only opens the box, so the click guard never holds it; disabled while the session isn't listening, none on Codex", async () => {
+  const page = loadPage({ replies: { '/api/actions/name': { ok: true } } });
+  page.push(helperSnap({ on: false, uses: { names: false }, dailyLimit: 200, today: 0 }));
+  assert.match(page.side(), /data-name-suggest="r1"[^>]*>✨<\/button><button type="button" class="name-pen" data-name-edit data-agent="r1"[^>]*aria-label="Rename busy-one"/, 'beside ✨, with no Haiku offer and the helper off');
+  assert.doesNotMatch(page.side(), /<button[^>]*class="[^"]*\bact\b[^"]*"[^>]*class="name-pen"|class="act[^"]*name-pen/, 'not an action button: the click guard lets it be');
+  assert.doesNotMatch(page.side(), /id="name-edit"/);
+  await page.clickButton('name-pen', { nameEdit: '', agent: 'r1' });
+  assert.match(page.side(), /<input type="text" id="name-edit" data-agent="r1" maxlength="60" value="busy-one"/, 'the box opens with its current name');
+  page.edit('input', { id: 'name-edit', value: 'login-bug', dataset: { agent: 'r1' } });
+  await page.clickButton('name-save', { nameSave: '', agent: 'r1' });
+  assert.deepEqual(page.posts.at(-1), { path: '/api/actions/name', body: { agentId: 'r1', op: 'rename', name: 'login-bug', edited: true } });
+  assert.doesNotMatch(page.side(), /id="name-edit"/, 'renamed: the box closes');
+  const deaf = loadPage();
+  deaf.push(helperSnap({ on: true, uses: { names: true }, dailyLimit: 200, today: 0 }, { mod: { live: false, version: '0.8.0' } }));
+  assert.match(deaf.side(), /class="name-pen" data-name-edit data-agent="r1"[^>]*disabled/, "a session that isn't listening can't run /rename from here");
+  const codex = loadPage();
+  codex.push(helperSnap({ on: true, uses: { names: true }, dailyLimit: 200, today: 0 }, { kind: 'codex' }));
+  assert.doesNotMatch(codex.side(), /name-pen/);
+  const f = fakeFarm(), farm = loadPage({ farm: f.farm, stored: { 'tracker-view': 'farm', 'tracker-farm-side': 'open' } });
+  farm.push(helperSnap({ on: false, uses: { names: false }, dailyLimit: 200, today: 0 }));
+  assert.match(farm.el('fs-head').innerHTML, /class="name-pen" data-name-edit data-agent="r1"/, "in the farm's sidebar too");
+});
+
 // The sessions dialog: past sessions to resume, with search, filters and sorting.
 const H = 3_600_000;
 const pastSessions = () => {

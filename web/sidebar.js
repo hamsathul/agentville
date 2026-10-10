@@ -82,7 +82,7 @@ function fsHeadHtml(a, order) {
       <button type="button" class="fs-icon" id="fs-diary" aria-label="${esc(noun)}" data-tip="${esc(noun)}: what happened, newest first">${FS_ICON.book}</button>
       <button type="button" class="fs-icon" id="fs-hide" aria-label="Hide the sidebar" data-tip="Hide the sidebar">${FS_ICON.hide}</button>
     </div>
-    <div class="fs-row fs-wrap"><span class="chip c-${a.state}">${STATE_CHIP[a.state] ?? esc(a.state)}${a.stateSince ? ` · ${fsSince(a.stateSince)}` : ''}</span>${modeChip}${acctTag(a)}${suggestBtn(a, snap?.helper)}${a.kind === 'codex' ? ''
+    <div class="fs-row fs-wrap"><span class="chip c-${a.state}">${STATE_CHIP[a.state] ?? esc(a.state)}${a.stateSince ? ` · ${fsSince(a.stateSince)}` : ''}</span>${modeChip}${acctTag(a)}${suggestBtn(a, snap?.helper)}${renameBtn(a)}${a.kind === 'codex' ? ''
       : `<button type="button" class="fs-session" id="fs-session" data-fs-pop="session" aria-haspopup="dialog" aria-expanded="${fsPop === 'session'}" data-tip="Model, effort, permissions, compact, end the session…">${FS_ICON.sliders}Session</button>`}</div>
     <div class="fs-meta" data-tip="${esc(meta)}">${esc(meta)}</div>${setting}${nameLineHtml(a)}
   </div>`;

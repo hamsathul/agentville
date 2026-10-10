@@ -547,12 +547,21 @@ function suggestBtn(a, h) {
   const on = Boolean(h?.on && h.uses?.names);
   return `<button type="button" class="act mini name-suggest" data-name-suggest="${esc(a.id)}" data-tip="${on ? 'Suggest a name for this session (Haiku, through its own Claude Code)' : 'Suggest a name: the helper is off, so this opens ✨ Helper'}"${a.naming?.asking ? ' disabled' : ''}>✨</button>`;
 }
-/** Under the name: the offer (Name it …? ✓ Rename · ✎ Edit · ✕), its edit box, asking…, or why there is none. */
+/**
+ * ✎ beside a session's name: rename it by hand (no Haiku) in the box under the name, where Rename runs /rename
+ * in the session. It only opens the box, so it isn't an action button: the click guard lets it be.
+ */
+function renameBtn(a) {
+  if (a.kind === 'codex') return '';
+  const can = modCan(a, '0.8.0');
+  return `<button type="button" class="name-pen" data-name-edit data-agent="${esc(a.id)}" aria-label="Rename ${esc(a.name)}" data-tip="${can ? 'Rename this session (runs /rename in it)' : esc(modWhy(a))}"${can ? '' : ' disabled'}>✎</button>`;
+}
+/** Under the name: its edit box (✎, or ✎ Edit on an offer), the offer (Name it …? ✓ Rename · ✎ Edit · ✕), asking…, or why there is none. */
 function nameLineHtml(a) {
-  const n = a.naming;
-  if (!n || a.kind === 'codex') return '';
-  const ids = `data-agent="${esc(a.id)}"`;
+  if (a.kind === 'codex') return '';
+  const n = a.naming, ids = `data-agent="${esc(a.id)}"`;
   if (nameEdits.has(a.id)) return `<div class="name-offer"><input type="text" id="name-edit" ${ids} maxlength="60" value="${esc(nameEdits.get(a.id))}" aria-label="New name"><button type="button" class="act mini primary" data-name-save ${ids}>Rename</button><button type="button" class="act mini" data-name-cancel ${ids}>Cancel</button></div>`;
+  if (!n) return '';
   if (n.offer) return `<div class="name-offer">Name it <code>${esc(n.offer.name)}</code>? <button type="button" class="act mini primary" data-name-rename="${esc(n.offer.name)}" ${ids}>✓ Rename</button><button type="button" class="act mini" data-name-edit ${ids}>✎ Edit</button><button type="button" class="act mini" data-name-dismiss ${ids} aria-label="No, keep its name" data-tip="No, keep its name">✕</button></div>`;
   if (n.asking) return '<div class="name-offer faint"><span class="spinner"></span> Asking Haiku for a name…</div>';
   return n.error ? `<div class="name-offer msg-bad">No name: ${esc(n.error)}</div>` : '';
