@@ -797,7 +797,8 @@ game's.
 ![The farm at night](docs/farm-night.png)
 
 **The layout.** Along the top are the barn, the silo and your farmhouse, with **your porch** in
-front of it. Below them are the fields, one raised bed per repo, in a fenced grid that grows to 18
+front of it: a modern farmstead, with a black barn with a glass door, a black steel silo and a
+timber house with glass walls, its deck your porch. At night their glass glows from inside. Below them are the fields, one raised bed per repo, in a fenced grid that grows to 18
 beds. While you look, a field keeps its bed: a new repo takes a free one (a worktree right after
 its repo, a project's repo beside the others), and nothing else moves. A repo that goes away
 leaves its bed empty, held for it for a day. An empty bed is fallow ground, a patch of darker
