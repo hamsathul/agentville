@@ -194,7 +194,7 @@ export class SessionModel {
         const kept = item => item.at < from.at && item !== from;
         this.said = this.said.filter(kept);
         this.feed = this.feed.filter(kept);
-        this.said.unshift({ at: from.at, kind: 'restored', text: from.text });
+        this.said.unshift({ at: from.at, kind: 'restored', text: from.text, restoredAt: when }); // at: where it went back to; restoredAt: when (💬 All chats places it there)
         this.lastReply = this.said.find(s => s.kind === 'reply')?.text ?? null;
         this.finalReply = null;
         break;
