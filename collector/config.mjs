@@ -19,6 +19,7 @@ export const DEFAULTS = Object.freeze({
   deployRepos: Object.freeze({}),
   worldsDir: null, // your own worlds, a folder each (null: ~/.agentville/worlds)
   terminal: 'Terminal', // where New session / Resume open: 'Terminal' or 'iTerm'
+  accounts: Object.freeze({}), // your Claude accounts' names: { "~/.claude": "work", "~/.claude-home": "home" }
 });
 
 export function mergeConfig(user) {
@@ -27,6 +28,7 @@ export function mergeConfig(user) {
     ...user,
     notify: { ...DEFAULTS.notify, ...(user.notify ?? {}) },
     deployRepos: { ...(user.deployRepos ?? DEFAULTS.deployRepos) },
+    accounts: user.accounts && typeof user.accounts === 'object' && !Array.isArray(user.accounts) ? { ...user.accounts } : {},
   };
 }
 
