@@ -26,7 +26,7 @@ const DASHBOARD_REASON = 'Answered from the Agentville dashboard'
 type Offer = { stateDir: string; sessionId: string; isLive: boolean; windowSec: number; now: number }
 type Waited = { kind: 'answer'; text: string } | { kind: 'withdrawn' } | { kind: 'timeout' }
 
-const MOD_VERSION = '0.8.0'
+const MOD_VERSION = '0.9.0'
 
 let latest: TrackerView = EMPTY
 // The terminal's working line (Slithering… while thinking), for the dashboard: when the turn began,
@@ -202,7 +202,7 @@ export async function answerAsides($: any, stateDir: string, sessionId: string) 
   }
 }
 
-// The helper: small writing jobs for the dashboard with Haiku, through $.model.complete in this
+// The helper: small writing jobs for the dashboard with Haiku (names and animal lines), through $.model.complete in this
 // session (your sign-in, your plan; nothing added to the conversation). A request names only its
 // kind: the prompt for each kind is fixed here, so a file in state/ can't make the model do
 // anything else. The collector only asks while the helper is on; a request found after it was
@@ -218,25 +218,61 @@ export function namePrompt(messages: any[]): string {
   return [...yours.map(t => `The person: ${t}`), ...(reply ? [`Claude: ${reply}`] : [])].join('\n\n').slice(0, 2000)
 }
 
-/** Runs the helper's requests for this session (names only, for now), each on its own. */
+// Animal lines: the collector sends facts only (the animals on screen, agents' names, states, a step word, counts,
+// events); this prompt is fixed here, so a request can't make the model do anything else.
+export const LINES_SYSTEM = 'You write short, funny, kind lines for animals on a pixel farm where coding agents work as farmers. Reply only with rows of the form kind|when|text: kind is one of the animals given, when is one of idle, deployFailed, deployOk, harvest, merged, arrive, and text is what that animal says, 40 characters or fewer, plain words, no quotes. Write two idle rows for every animal, and rows for an event only if it is in what just happened. At most 40 rows. Use only the names given and never invent names. Never mention files, code or secrets.'
+const LINE_KINDS = ['cow', 'goat', 'sheepdog', 'ostrich', 'lion', 'tiger', 'duck', 'cat', 'dog', 'pigeon', 'mouse', 'fish']
+const LINE_EVENTS = ['deployFailed', 'deployOk', 'harvest', 'merged', 'arrive']
+
+/** The facts of a lines request, as plain lines for the model; null when it names no animal from the library. */
+export function linesPrompt(req: any): string | null {
+  const s = (v: any, n: number) => String(v ?? '').replace(/[\u0000-\u001f\u007f-\u009f]/g, '').trim().slice(0, n)
+  const num = (v: any) => (Number.isFinite(v) && v >= 0 ? Math.round(v) : 0)
+  const list = (v: any, n: number) => (Array.isArray(v) ? v.slice(0, n) : [])
+  const cast = list(req?.cast, 12).filter((c: any) => LINE_KINDS.includes(c?.kind))
+  if (!cast.length) return null
+  const agents = list(req?.agents, 12).filter((a: any) => a && typeof a === 'object')
+  const events = list(req?.events, 5).filter((e: any) => LINE_EVENTS.includes(e?.kind))
+  const c = req?.counts ?? {}
+  return [
+    `Animals: ${cast.map((x: any) => `${x.kind} (${s(x.name, 30)})`).join(', ')}`,
+    `Farmers: ${agents.length ? agents.map((a: any) => `${s(a.name, 40)} is ${s(a.state, 10)}${a.step ? `, ${s(a.step, 12)}` : ''}${a.repo ? ` in ${s(a.repo, 40)}` : ''}`).join('; ') : 'none'}`,
+    `Waiting on the person: ${num(c.waiting)}; working: ${num(c.working)}; idle: ${num(c.idle)}`,
+    `What just happened: ${events.length ? events.map((e: any) => `${e.kind}${e.agent ? ` (${s(e.agent, 40)})` : ''}${e.repo ? ` in ${s(e.repo, 40)}` : ''}, ${num(e.ago)} min ago`).join('; ') : 'nothing'}`,
+  ].join('\n')
+}
+
+const USE_OF: Record<string, string> = { name: 'names', lines: 'lines' }
+
+/** Runs the helper's requests for this session (names, animal lines), each on its own. */
 export async function runHelper($: any, stateDir: string, sessionId: string, snapshot: any) {
   for (const req of await claimRequests($, `${stateDir}/helper/${sessionId}`)) {
     const id = String(req?.id ?? '')
-    if (!SAFE_ID.test(id) || req?.kind !== 'name') continue
-    if (snapshot?.helper?.on !== true || snapshot?.helper?.uses?.names !== true) continue
+    const kind = typeof req?.kind === 'string' && Object.hasOwn(USE_OF, req.kind) ? req.kind : null
+    if (!SAFE_ID.test(id) || !kind) continue
+    if (snapshot?.helper?.on !== true || snapshot?.helper?.uses?.[USE_OF[kind]] !== true) continue
     void (async () => {
       let out: { ok: boolean; text?: string; error?: string }
       try {
-        const prompt = namePrompt(await $.session.messages())
-        if (!prompt) out = { ok: false, error: 'nothing said yet' }
-        else {
-          const r = await $.model.complete({ model: 'haiku', system: NAME_SYSTEM, prompt, maxTokens: 30, timeoutMs: 20000 })
-          out = r?.isAnswered ? { ok: true, text: String(r.text ?? '').slice(0, 200) } : { ok: false, error: String(r?.error ?? r?.reason ?? 'no answer') }
+        if (kind === 'lines') {
+          const prompt = linesPrompt(req)
+          if (!prompt) out = { ok: false, error: 'no animals to write for' }
+          else {
+            const r = await $.model.complete({ model: 'haiku', system: LINES_SYSTEM, prompt, maxTokens: 700, timeoutMs: 25000 })
+            out = r?.isAnswered ? { ok: true, text: String(r.text ?? '').slice(0, 8000) } : { ok: false, error: String(r?.error ?? r?.reason ?? 'no answer') }
+          }
+        } else {
+          const prompt = namePrompt(await $.session.messages())
+          if (!prompt) out = { ok: false, error: 'nothing said yet' }
+          else {
+            const r = await $.model.complete({ model: 'haiku', system: NAME_SYSTEM, prompt, maxTokens: 30, timeoutMs: 20000 })
+            out = r?.isAnswered ? { ok: true, text: String(r.text ?? '').slice(0, 200) } : { ok: false, error: String(r?.error ?? r?.reason ?? 'no answer') }
+          }
         }
       } catch (err) {
         out = { ok: false, error: String(err) }
       }
-      await writeReply($, `${stateDir}/helper-replies/${sessionId}.${id}.json`, { id, sessionId, kind: 'name', ...out, at: await $.clock.now() })
+      await writeReply($, `${stateDir}/helper-replies/${sessionId}.${id}.json`, { id, sessionId, kind, ...out, at: await $.clock.now() })
     })()
   }
 }
