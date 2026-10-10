@@ -944,10 +944,15 @@ dialog over the farm, with Quote and the reply box as in the list. Click a build
   yes or no question. **No…**, **Reply…** and questions with several parts open that agent instead.
   The line folds the cards away, and that is remembered. Like every action button, a card's
   buttons ignore clicks for a moment after a world swaps or raises part of the page.
-- **Its own question** or permission prompt, on every tab.
+- **Its own question** or permission prompt, on every tab. It takes at most 40% of the sidebar's
+  height (a long one scrolls inside, and keeps its place as the page updates), so the chat always
+  has room. **Fold** shrinks it to one line that says what it asks, to read the whole chat before
+  you answer; a click on the line shows it again, and a new question always comes unfolded.
 - **Chat, Activity, Subagents, Files.** **Chat** has **Now** (the working line with ■ Stop, its
   step, and its commands, folded until you open them), the conversation with the newest message at
-  the bottom (⤢ Read the whole conversation is at the top), and one box with three modes. The chat
+  the bottom, and one box with three modes. **⤢ Read the whole conversation** sits in a bar above
+  the chat, outside what scrolls, so it is always in view (with **Show less** beside it after Show
+  all). The chat
   always goes to the newest message: when it opens, and whenever a new one comes, even if you had
   scrolled up to read (with nothing new, it stays where you are). The three modes are
   **Message**, **Side question** and **Note**. **Activity** has a filter: All, Commands, Edits,
