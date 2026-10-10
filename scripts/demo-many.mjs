@@ -405,7 +405,7 @@ try {
   await until(`document.querySelectorAll('.px-tag').length >= ${SESSIONS.length}`, 20000);
   await sleep(3000); // the repos, deploys and pull requests come in; everyone reaches their spot
 
-  const ui = await stage(browser, VW, VH);
+  const ui = await stage(browser, VW, VH, { text: true }); // this one keeps its captions and its closing card
   const { moveTo, where, q, byText, point, click, say, raise, spot } = ui;
   const hold = sleep;
   const tag = key => `document.querySelector('[data-farmer="${S[key].id}"]')`;

@@ -1441,10 +1441,11 @@ npm run golden              # reference pictures of the list, the farm and the f
 claude plugin test mod      # the Claude Code mod
 scripts/e2e-answer.sh       # answering and messaging real sessions
 npm start                   # run the collector in the foreground (stop the service first)
-npm run demo [out.mp4]      # record the demo video, made-up sessions only (Chrome, ffmpeg; ~8 min),
-                            # a copy under 10 MB for GitHub (out-small.mp4), and one short video per
-                            # chapter in out-chapters/ (01-the-farm.mp4, …);
-                            # it follows docs/demo-script.md; STILLS=docs STILLS_ONLY=1 remakes docs/farm.png
+npm run demo [out.mp4]      # record the demo video, made-up sessions only (Chrome, ffmpeg; ~12 min, no
+                            # text on screen), a copy under 10 MB for GitHub (out-small.mp4), one short
+                            # video per chapter in out-chapters/ (01-the-farm.mp4, …), and its captions,
+                            # timed in both, in out-captions.md; it follows docs/demo-script.md;
+                            # STILLS=docs STILLS_ONLY=1 remakes docs/farm.png and docs/farm-night.png
 npm run demo:many [out.mp4] # a short video of sixteen made-up sessions: their terminal windows, then the
                             # farm (~80 s, and a copy under 10 MB)
 ```
