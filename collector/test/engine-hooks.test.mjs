@@ -16,7 +16,7 @@ const tiny = { W: 200, slots: () => ({ group: 'all', cap: 9, at: i => [20 + i * 
 function stubDom() {
   const rects = { left: 0, top: 0, width: 400, height: 300, right: 400, bottom: 300 };
   const numbers = new Set(['offsetWidth', 'offsetHeight', 'clientWidth', 'clientHeight', 'scrollLeft', 'scrollTop', 'scrollWidth', 'scrollHeight', 'width', 'height', 'length', 'size']);
-  const calls = { fillRect: 0 };
+  const calls = { fillRect: 0, record: null }; // record: an array to keep each fill in, [its colour, x, y, w, h], while a test wants them
   const make = () => new Proxy(function () {}, {
     get: (t, k) => {
       if (k === Symbol.toPrimitive) return () => 0;
@@ -28,7 +28,7 @@ function stubDom() {
       if (k === 'classList') return { add() {}, remove() {}, toggle() {}, contains: () => false };
       if (k === 'isConnected') return true;
       if (k === 'hidden' || k === 'open') return t[k] ?? false;
-      if (k === 'fillRect') return () => { calls.fillRect++; };
+      if (k === 'fillRect') return (x, y, w, h) => { calls.fillRect++; calls.record?.push([t.fillStyle, x, y, w, h]); };
       if (k === 'querySelectorAll') return () => [];
       if (k === 'getContext') return () => ctx;
       if (k === 'measureText') return () => ({ width: 0 });
@@ -459,4 +459,52 @@ test('with the Animals switch off, the world reports no animals (so no lines are
   const view = sdk.makePixelView(sdk.withDefaults(fourHooks({ animals: () => [{ kind: 'cow', name: 'Cow' }], roam: () => [{ x: 10, y: 50, w: 150, h: 40 }] })), { get: k => (k === 'animals' ? 'off' : null), set() {} });
   view.mount(dom.make(), { still: true, onCast: list => casts.push(list) });
   assert.deepEqual(plain(casts), [[]]);
+});
+
+/* ---------- messages between agents: how one travels ---------- */
+
+/**
+ * The engine running frame by frame (100 ms each) with a message from a (working, at 60,90) to b (on the
+ * porch, at 100,40), and what each frame draws while it travels: the fills between the last agent's
+ * drawFx and the world's weather, which the engine calls just before and just after drawing it (nothing
+ * else is drawn between them here: no particles). `extra` goes in the world's hooks.
+ */
+function flying(extra = {}) {
+  const dom = stubDom();
+  let pending = null;
+  dom.globals.requestAnimationFrame = cb => { pending = cb; return 1; };
+  const window = { Agentville: { raw: h => { window.registered = h; } } };
+  const ctx = vm.createContext({ window, document: dom.document, console, Math, Date, JSON, Map, Set, Intl, ...dom.globals });
+  vm.runInContext(`${code}\n;window.sdk = { withDefaults, engineScene, makePixelView, PXG };`, ctx);
+  const sdk = window.sdk, frames = [];
+  const world = fourHooks({ drawFx() { dom.calls.record = []; }, weather() { frames.push({ T: sdk.PXG.T, fills: dom.calls.record ?? [] }); dom.calls.record = null; }, ...extra });
+  const view = sdk.makePixelView(sdk.withDefaults(world), { get: k => (k === 'sky' ? 'day' : null), set() {} });
+  view.mount(dom.make(), { still: false });
+  const at = Date.now();
+  view.update(sdk.engineScene(window.AgentvilleScene.toScene({ generatedAt: at, collisions: [], repos: [{ path: '/c/x', name: 'x' }], agents: [
+    { id: 'a', name: 'a', kind: 'interactive', cwd: '/c/x', state: 'working', feed: [{ kind: 'peer', dir: 'out', other: 'b', at: at - 1000, text: 'The API is ready' }], children: [], touching: [] },
+    { id: 'b', name: 'b', kind: 'interactive', cwd: '/c/x', state: 'waiting', ask: 'ok?', feed: [], children: [], touching: [] }] })));
+  let now = 1000;
+  /** Runs n frames; what the last one drew while the message travelled: { T, fills }. */
+  const run = n => { for (let i = 0; i < n && pending; i++) { const cb = pending; pending = null; cb(now += 100); } return plain(frames.at(-1)); };
+  return { run };
+}
+
+// The pigeon as the engine drew it before a world could draw its own way (recorded on that code, 2026-10-10):
+// at T 0, 0.3, 1.2, 2.0 and 2.3 of its 2.4 s (its wing down, up, down, down, up), each fill's colour and rectangle.
+const PIGEON = [
+  { T: 0, fills: [['#e6eef5', 57, 74, 6, 3], ['#e6eef5', 62, 72, 2, 2], ['#f08a24', 64, 73, 1, 1], ['#1b1420', 63, 72, 1, 1], ['#9aa4ad', 58, 75, 4, 1], ['#f4ecd8', 59, 77, 3, 2], ['#e04a3a', 60, 78, 1, 1]] },
+  { T: 0.3, fills: [['#e6eef5', 58, 59, 6, 3], ['#e6eef5', 63, 57, 2, 2], ['#f08a24', 65, 58, 1, 1], ['#1b1420', 64, 57, 1, 1], ['#9aa4ad', 59, 57, 4, 1], ['#f4ecd8', 60, 62, 3, 2], ['#e04a3a', 61, 63, 1, 1]] },
+  { T: 1.2, fills: [['#e6eef5', 77, 15, 6, 3], ['#e6eef5', 82, 13, 2, 2], ['#f08a24', 84, 14, 1, 1], ['#1b1420', 83, 13, 1, 1], ['#9aa4ad', 78, 16, 4, 1], ['#f4ecd8', 79, 18, 3, 2], ['#e04a3a', 80, 19, 1, 1]] },
+  { T: 2, fills: [['#e6eef5', 95, 10, 6, 3], ['#e6eef5', 100, 8, 2, 2], ['#f08a24', 102, 9, 1, 1], ['#1b1420', 101, 8, 1, 1], ['#9aa4ad', 96, 11, 4, 1], ['#f4ecd8', 97, 13, 3, 2], ['#e04a3a', 98, 14, 1, 1]] },
+  { T: 2.3, fills: [['#e6eef5', 97, 20, 6, 3], ['#e6eef5', 102, 18, 2, 2], ['#f08a24', 104, 19, 1, 1], ['#1b1420', 103, 18, 1, 1], ['#9aa4ad', 98, 18, 4, 1], ['#f4ecd8', 99, 23, 3, 2], ['#e04a3a', 100, 24, 1, 1]] },
+];
+const PIGEON_COLOURS = new Set(PIGEON.flatMap(f => f.fills.map(r => r[0])));
+
+test("the engine's carrier pigeon, call for call: a world with no flight hook draws today's", () => {
+  const { run } = flying();
+  const seen = [run(1), run(3), run(9), run(8), run(3)].map(f => ({ T: Math.round(f.T * 10) / 10, fills: f.fills }));
+  assert.deepEqual(seen, PIGEON);
+  const after = run(2); // 2.5 s: it has landed (a ✉ pops, with a few sparks of its own)
+  assert.equal(after.fills.filter(r => PIGEON_COLOURS.has(r[0])).length, 0, 'gone once it lands');
 });
