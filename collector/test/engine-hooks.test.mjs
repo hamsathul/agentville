@@ -292,3 +292,21 @@ test("the default HUD's switch shows the world's names", () => {
   assert.match(sdk.defaultHud({ seasons: true, seasonMode: 'live', seasonNames: names }), /Heat: live/);
   assert.match(sdk.defaultHud({ seasons: true, seasonMode: 'autumn' }), /Season: autumn/);
 });
+
+test('season names that are not usable fall back to today\'s words', () => {
+  const { sdk } = load();
+  const defaults = { switch: 'Season', spring: 'spring', summer: 'summer', autumn: 'autumn', winter: 'winter' };
+  for (const bad of ['Heat', ['Heat'], null, 5, undefined]) {
+    assert.deepEqual(JSON.parse(JSON.stringify(sdk.withDefaults(fourHooks({ seasonNames: bad })).seasonNames)), defaults);
+  }
+  const odd = sdk.withDefaults(fourHooks({ seasonNames: { switch: 5, spring: undefined, summer: null, autumn: '   ', winter: 'x'.repeat(40) } })).seasonNames;
+  assert.deepEqual(JSON.parse(JSON.stringify(odd)), { ...defaults, winter: 'x'.repeat(24) });
+});
+
+test('a season name holding HTML is escaped in the default HUD', () => {
+  const { sdk } = load();
+  const names = sdk.withDefaults(fourHooks({ seasonNames: { switch: '<b>x</b>' } })).seasonNames;
+  const html = sdk.defaultHud({ seasons: true, seasonMode: 'live', seasonNames: names });
+  assert.ok(!html.includes('<b>x'));
+  assert.match(html, /&lt;b&gt;x&lt;\/b&gt;: live/);
+});

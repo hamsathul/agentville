@@ -348,7 +348,7 @@ A hook you give always wins over its default.
 | `onMove` | `(agent, zone, prevZone, pop)` | nothing; `pop(text, cls)` shows a pop-up over the agent |
 | `speed` | `(agent)` | `40`: walking speed |
 | `zoneText` | `(agent, zone)` | `'moves'`: the log line when an agent changes zone |
-| `hud` | `(state)` | the dashboard's buttons: list, world, sidebar, sky, season (in a world with seasons), motion, help, zoom. `state` is `{ still, zoom, saysOn, skyMode, seasonMode, seasons, follow, canFollow, restingHidden, bell, nav, panelOpen, animals }` (`animals`: `true` or `false` for a world with animals, its Animals switch with `data-farm-animals`; `null` for one without. `seasons`: `true` for a world with seasons, whose Season switch is a button with `data-farm-season`, right after the Sky's `data-farm-sky`, saying `seasonMode`: `'live'`, `'spring'`, `'summer'`, `'autumn'` or `'winter'`; the engine moves it on when it is clicked). Your own should keep List and World: an engine world gets no corner control from the page |
+| `hud` | `(state)` | the dashboard's buttons: list, world, sidebar, sky, season (in a world with seasons), motion, help, zoom. `state` is `{ still, zoom, saysOn, skyMode, seasonMode, seasonNames, seasons, follow, canFollow, restingHidden, bell, nav, panelOpen, animals }` (`animals`: `true` or `false` for a world with animals, its Animals switch with `data-farm-animals`; `null` for one without. `seasons`: `true` for a world with seasons, whose Season switch is a button with `data-farm-season`, right after the Sky's `data-farm-sky`, saying `seasonMode`: `'live'`, `'spring'`, `'summer'`, `'autumn'` or `'winter'`; the engine moves it on when it is clicked). Your own should keep List and World: an engine world gets no corner control from the page |
 | `ground`, `shadows(body)`, `top`, `drawFx(agent, body)` | | nothing: drawn under the agents, under each agent, over everything, and over each agent |
 | `season` | `()` | `'summer'`, and no seasons. A world that gives its own has seasons ("Seasons", below): it returns the live season (`'spring'`, `'summer'`, `'autumn'` or `'winter'`), and the HUD gets the Season switch |
 | `seasonNames` | | a field, not a function: `{ switch, spring, summer, autumn, winter }`, what the world calls its Season switch and its four levels ("Seasons", below). Any you leave out keep today's word (`'Season'`, `'spring'`…). The default HUD's button reads `Heat: warm` with them; `hud(state)` gets the object as `state.seasonNames`. The setting still saves `live`, `spring`, `summer`, `autumn` or `winter`, and `PXG.season` holds those too |
@@ -394,8 +394,8 @@ The factory's follow the 5-hour limit as floor heat:
 seasonNames: { switch: 'Heat', spring: 'cool', summer: 'warm', autumn: 'hot', winter: 'steaming' },
 ```
 
-The default HUD then shows `Heat: steaming` (and `Heat: live`). A name left out keeps today's word
-(`Season`, `spring`…), and the farm gives none. Only the words change: the saved setting and
+The default HUD then shows `Heat: steaming` (and `Heat: live`). A name left out, empty or not a string keeps today's word
+(`Season`, `spring`…); names are trimmed and cut to 24 characters, and the farm gives none. Only the words change: the saved setting and
 `PXG.season` stay `live`, `spring`, `summer`, `autumn` and `winter`, and an own `hud` gets the names
 as `state.seasonNames`.
 

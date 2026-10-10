@@ -156,7 +156,11 @@ function withDefaults(h) {
   if (!(h.W > 0)) throw new Error('A world needs its width, W (in world pixels).');
   for (const need of ['slots', 'drawChar', 'bg']) if (typeof h[need] !== 'function') throw new Error(`A world needs a ${need}() hook.`);
   const nouns = { agent: 'agent', agents: 'agents', repo: 'repo', repos: 'repos', place: 'world', ...h.nouns };
-  const seasonNames = { ...SEASON_DEFAULTS, ...(h.seasonNames && typeof h.seasonNames === 'object' ? h.seasonNames : {}) };
+  const given = h.seasonNames && typeof h.seasonNames === 'object' && !Array.isArray(h.seasonNames) ? h.seasonNames : {};
+  const seasonNames = Object.fromEntries(Object.entries(SEASON_DEFAULTS).map(([k, word]) => {
+    const v = typeof given[k] === 'string' ? given[k].trim().slice(0, 24) : '';
+    return [k, v || word];
+  }));
   // The default grid is centred on W, from the config merged over 3 × 88 × 62: columns centred, a
   // fence half a column wider each side (kept inside 0..W) unless the world gives cx0 or a fence itself.
   const g = h.grid ?? {};
