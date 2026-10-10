@@ -519,7 +519,8 @@ hud: p => panelHud({ ...p, scene, season: liveSeason() }, { place: 'workshop', a
 
 - `scene`: the engine's scene (`engineScene`'s, or your `fromScene`'s): its `farmers`, `plan`, `accounts`
   and `chrome`. With two or more `accounts`, the meters show one for each account (its name, cut to 6, in
-  capitals; its week used, and its 5 hours beside it) in place of the plan's 5H and WEEK; keep
+  capitals, and `account N` for one with no name, N its place from 1, as the private scene names
+  accounts; its week used, and its 5 hours beside it) in place of the plan's 5H and WEEK; keep
   `accounts` in a scene of your own, or the panel shows the first account's plan only;
 - `season`: the live season (`'spring'` … `'winter'`), shown on the panel by its `seasonNames` word;
 - `iconImg(name)`: HTML for one of your icons (`''` for none, the default). The names it is asked

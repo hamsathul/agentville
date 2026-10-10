@@ -438,6 +438,22 @@ test("panelHud: a world's words holding HTML or quotes stay text", () => {
   assert.match(html, /title="a &quot;quoted&quot; &lt;b&gt;tip&lt;\/b&gt;"/);
 });
 
+test('panelHud: an account with no name is "account N" (its place, from 1) on its gauge, as the private scene names one; a named one keeps its name', () => {
+  const { sdk } = load();
+  const plan = (five, week) => ({ windows: [{ kind: 'five_hour', percentUsed: five }, { kind: 'seven_day', percentUsed: week }] });
+  const html = sdk.panelHud({ scene: { farmers: [], accounts: [{ key: 'a', name: 'work', plan: plan(30, 40) }, { key: 'b', plan: plan(95, 92) }, { key: 'c', name: '', plan: null }] } });
+  const gauges = [...html.matchAll(/<span class="px-gauge" title="(Your [^"]*)">/g)].map(m => m[1]);
+  assert.deepEqual(gauges, [
+    'Your work account: 40% of its week, 30% of its 5 hours (from the mod)',
+    'Your account 2 account: 92% of its week, 95% of its 5 hours (from the mod)',
+    'Your account 3 account: no weekly reading, no 5-hour reading (from the mod)',
+  ]);
+  assert.ok(html.includes('>WORK<') && (html.match(/>ACCOUN</g) ?? []).length === 2, 'each gauge labelled with its name, cut to six letters, as a named one is');
+  const named = { scene: { farmers: [], accounts: [{ key: 'a', name: 'work', plan: plan(30, 40) }, { key: 'b', name: 'account 2', plan: plan(95, 92) }] } };
+  const unnamed = { scene: { farmers: [], accounts: [{ key: 'a', name: 'work', plan: plan(30, 40) }, { key: 'b', plan: plan(95, 92) }] } };
+  assert.equal(sdk.panelHud(unnamed), sdk.panelHud(named), 'the same as an account named "account 2"');
+});
+
 test('mounting a world with animals reports its cast through opts.onCast; the view hands chatter to the kit', () => {
   const { dom, sdk } = load();
   const casts = [];
