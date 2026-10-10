@@ -394,3 +394,8 @@ test("the kit's gag check is called as world code: under the timeout, and only a
   assert.equal(guardedGagCheck(ctx.fine, call)({ id: 'a' }), '');
   assert.equal(guardedGagCheck(undefined, call), null, 'no kit: no gag checks');
 });
+
+test("the starter draws several accounts (a meter for each), so check-world doesn't flag the item", async () => {
+  const r = await checkWorld({ dir: builtIn('starter') });
+  assert.ok(!r.same.some(s => s.includes('several accounts')), r.same.join('\n'));
+});

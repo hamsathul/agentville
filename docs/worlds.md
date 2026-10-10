@@ -194,6 +194,7 @@ own pictures (the farm into hats, crops and weather).
 ```
 { version: 1, generatedAt, private: false,
   plan: { windows: [{ kind, pct, resetsAt, reset }], fiveHour: window|null, weekly: window|null } | null,
+  accounts: [{ key, name, plan }],
   chrome: { counts, asking, agents, oldestWaiting, subagentsRunning, ram, cpu, collector, errors },
   subagents: [{ id, label, type, state, parent, startedAt }],
   subagentCounts: { done, overflow },
@@ -202,7 +203,7 @@ own pictures (the farm into hats, crops and weather).
   repos: [{ key, name, branch, onMain, dirty, ahead, behind, deploy, collision, worktree, main, project, projectName, prs }],
   agents: [{ id, name, kind, cwd, state, repo, tool, summary, step, contextPct, hot, ask, askKind, question, reply, said,
              colorIndex, color, cost, mode, kids, tasks, compactions, thinking, turn, effort, model, family, fast, planAsk,
-             service, jobs, wakeAt, nap }] }
+             service, jobs, wakeAt, nap, account }] }
 ```
 
 Times are milliseconds since 1970, as `Date.now()` gives them.
@@ -216,7 +217,12 @@ Times are milliseconds since 1970, as `Date.now()` gives them.
 - `plan`: the plan's usage limits, from the mod; `null` without a reading. `windows` lists every
   window: `kind` (`five_hour`, `seven_day`, …), `pct` (0–100 used; 0 once it has reset), `resetsAt`
   (when it resets, or `null`) and `reset` (it has reset since it was read). `fiveHour` and `weekly`
-  are two of them by name, or `null`.
+  are two of them by name, or `null`. With several Claude accounts it is the first account's.
+- `accounts`: your Claude accounts (config folders), the first first, each `{ key, name, plan }`:
+  `key` is short and stable (`main` for `~/.claude`, `zeta` for `~/.claude-zeta`), `name` is what you
+  call it (`config.json`'s `accounts`, else the key), and `plan` is its limits in `plan`'s shape, or
+  `null` without a reading. With one account the list has one. No email or organization is ever in
+  it. A world can draw each account's limits: the farm gives each its own silo, the starter a meter.
 - `chrome`: what the dashboard's top bar and count cards say, for a world that draws its own panel
   (the farm fills the window, so it does). `counts`: agents per state (`waiting`, `working`,
   `yourTurn`, `idle`, `stale`) and `collisions`. `asking`: agents that asked you something. `agents`:
@@ -271,6 +277,7 @@ Times are milliseconds since 1970, as `Date.now()` gives them.
   the dashboard shows it.
 - `cost`: what the session has cost so far in US dollars, or `null`. `mode`: its permission mode
   (`default`, `plan`, `acceptEdits`, `bypassPermissions`…), or `null`.
+- `account`: the `key` of the Claude account it runs on (one of `accounts`), or `null` (a Codex session).
 - `kids`: its running subagents, up to four: `{ id, dog }`, `dog: true` for an Explore one.
 - `tasks`: its task list, `{ done, total, current?, items }`, or `null`. `compactions`: how many times
   its context was compacted.
@@ -380,7 +387,8 @@ page's ＋ Session (starting a session) and `'board'` opens the notice board, bu
 
 A world has seasons when it gives its own `season()` hook; the default (`'summer'`) is none. Yours
 returns the live season, `'spring'`, `'summer'`, `'autumn'` or `'winter'`, by a rule of your own (the
-farm's follows your plan's 5-hour limit, from the scene's `plan`). A world with seasons gets the
+farm's follows your plan's 5-hour limit, from the scene's `plan`: the first account's, when you have
+several). A world with seasons gets the
 **Season switch** in its HUD (the default HUD's, or your own `hud`'s, from `seasons` and
 `seasonMode`): live, then spring, summer, autumn and winter held, then live again, saved as the
 world's `season` setting. A world without seasons gets no switch, and is always drawn in its own
@@ -470,7 +478,9 @@ column wider on each side (kept inside 0 to `W`).
 The engine's scene, from the version 1 scene: `farmers` (the agents, each with `field`, its repo;
 `pct`, the context used; `hearts`, left of 4; `shirt`, its colour), `fields` (the repos, with
 `lastDeploy`: the repo's `deploy`, or `null` when there is none or it is a bare GitHub Actions run),
-`plan.windows` (each with `percentUsed`), `henhouse`, `carts`, `mail`, `subagents` and `chrome`. A
+`plan.windows` (each with `percentUsed`), `accounts` (each `{ key, name, plan }`, its `plan.windows`
+with `percentUsed` too, or `plan: null`), `henhouse`, `carts`, `mail`, `subagents` and `chrome`. Each
+farmer keeps its `account`. A
 world's `fromScene` can call it and add its own looks (the farm adds each farmer's `look` and each
 field's crop, fence, soil, pennant and weather).
 
@@ -879,7 +889,7 @@ what agents say gets only lines with no names in them.
 ## The starter world
 
 `web/worlds/starter/` is a plain world with everything a world needs, short enough to read at once
-(about 90 lines). It shows:
+(about 100 lines). It shows:
 
 - plots: the engine's repo grid, three across inside a fence, one bed for each repo;
 - the door: agents waiting on you, or on their turn, stand at it with a bubble (a waiting one has a
@@ -889,6 +899,8 @@ what agents say gets only lines with no names in them.
 - every step's prop from the props kit (`props.kit()`, `doing(f)`, `draw`);
 - the context filling each plot with green, and the last deploy as a flag on it (green ok, red failed,
   blinking amber running, grey for any other state);
+- with two or more Claude accounts, a meter for each in the top left: its week used (green, amber from
+  70%, red from 90%), from `scene.accounts`;
 - a cat from the creature library (`animals()`, `roam()`, `avoid()`; see "Creatures"), just for fun: it
   yawns, chases its tail and pounces now and then (`habits`), and once in a while jumps at nothing (a
   gag, `pounce`: "Gags and play").
@@ -1035,6 +1047,7 @@ The stops, in the order the tour plays them:
 | `subagents` | Subagents running and done |
 | `limits-low` | The 5-hour and weekly limits: barely used |
 | `limits-high` | The 5-hour and weekly limits: nearly used up |
+| `accounts` | Two Claude accounts: one fresh, one nearly used up (`work` and `home`) |
 | `day` | By day |
 | `night` | By night (the stop's sky is `night`) |
 | `private` | Privacy mode: no words, paths or names |
@@ -1139,6 +1152,7 @@ show you each stop.
 | deploy skipped | `deploy-ok`, `deploy-skipped` | no weather | a grey flag |
 | subagents | `working`, `subagents` | chickens, and a dog for an Explore one | left out |
 | the limits | `limits-low`, `limits-high` | winter (the live season), and the silo's grain | left out |
+| several accounts | `working`, `accounts` | a silo for each account, its name on the tag | a meter for each, top left |
 | an MCP call | `working`, `mcp` | its cart drives to the farmer | the step's prop (props kit) |
 | messages between agents | `two-working`, `pigeon` | a pigeon | a pigeon (the engine's) |
 | a collision | `two-working`, `collision` | rope with orange flags round the field | left out |
@@ -1209,7 +1223,10 @@ whole scene (`private: false`). On the test page the tour's stop decides instead
   makes from the conversation, and its folder can name a client). `subagents[].parent` is the
   parent's `agent N`. `summary`, `ask`, `reply` and
   `said` are `''`; `question`, `cwd` and `service` (a web host) are `null`; `tasks` is
-  `{ done, total }`; `turn` is `{ word, startedAt, outTokens, mode }`; `repo` is a stand-in.
+  `{ done, total }`; `turn` is `{ word, startedAt, outTokens, mode }`; `repo` is a stand-in;
+  `account` is its account's stand-in.
+- Accounts: `key` is `a1`, `a2`, … and `name` is `account 1`, `account 2`, … in their order (the
+  first account is always `a1`); each agent's `account` matches. Their plans stay.
 - Repos: `key` and `main` are stand-ins (`r1`, `r2`, … the same for the same repo while the page is
   open) and `name` is `repo N` to match (`r3` is `repo 3`); `project` is a stand-in (`p1`, …) and
   `projectName` is `project N` to match (`null` when there is no project); `branch` is `null` (`onMain` stays);
