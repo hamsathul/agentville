@@ -3280,3 +3280,44 @@ test("💬 All chats says when it couldn't read them, with Try again; on an empt
   assert.match(chatsBody(page), /Nothing has been said yet/);
   assert.equal(page.el('chats-sub').textContent, '0 agents');
 });
+
+test('while open, 💬 All chats reads what is new when an agent does something, only since its newest, and adds each item once', async () => {
+  const page = await chatsPage({ items: [said(1, 'r1', 'busy-one', 'reply', 'First.')], replies: {
+    [`/api/timeline?since=${T + 1000}`]: tl([said(1, 'r1', 'busy-one', 'reply', 'First.'), said(2, 'r1', 'busy-one', 'reply', 'Second.')]),
+  } });
+  const reads = () => page.gets.filter(g => g.path.startsWith('/api/timeline')).map(g => g.path);
+  page.push(crowd()); // nothing moved
+  await page.settle();
+  assert.deepEqual(reads(), ['/api/timeline?since=0']);
+  page.push(crowd({ lastActivityAt: T + 2000 }));
+  await page.settle();
+  assert.deepEqual(reads(), ['/api/timeline?since=0', `/api/timeline?since=${T + 1000}`]);
+  assert.equal(chatsBody(page).split('First.').length - 1, 1, 'what it had is not added again');
+  assert.match(chatsBody(page), /Second\./);
+  await page.clickButton('chats-x', { chatsClose: '' });
+  page.push(crowd({ lastActivityAt: T + 9000 }));
+  await page.settle();
+  assert.equal(reads().length, 2, 'shut, it reads nothing');
+});
+
+test('scrolled up to read, new messages leave you where you are and ↓ N new takes you down; at the bottom it follows', async () => {
+  const page = await chatsPage({ items: [said(1, 'r1', 'busy-one', 'reply', 'First.')], replies: {
+    [`/api/timeline?since=${T + 1000}`]: tl([said(2, 'r1', 'busy-one', 'reply', 'Second.'), said(3, 'q1', 'asker', 'reply', 'Third.')]),
+    [`/api/timeline?since=${T + 3000}`]: tl([said(4, 'r1', 'busy-one', 'reply', 'Fourth.')]),
+  } });
+  const box = page.el('chats-body');
+  Object.assign(box, { scrollHeight: 900, clientHeight: 300, scrollTop: 100 }); // you scrolled up to read
+  page.push(crowd({ lastActivityAt: T + 3000 }));
+  await page.settle();
+  assert.equal(box.scrollTop, 100, 'the view stays');
+  assert.equal(page.el('chats-down').hidden, false);
+  assert.equal(page.el('chats-down').textContent, '↓ 2 new');
+  await page.click('chats-down');
+  assert.equal(box.scrollTop, 900);
+  assert.equal(page.el('chats-down').hidden, true);
+  page.push(crowd({ lastActivityAt: T + 4000 }));
+  await page.settle();
+  assert.match(chatsBody(page), /Fourth\./);
+  assert.equal(box.scrollTop, 900, 'at the bottom: it follows the newest');
+  assert.equal(page.el('chats-down').hidden, true);
+});

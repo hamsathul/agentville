@@ -7,6 +7,7 @@
 
 const CHATS_LOOK = 'tracker-chats-look'; // the time of the newest item seen, when it last shut
 const CHATS_LONG = 900; // a message longer than this, or than 12 lines, folds with Show more
+const CHATS_GAP_MS = 1000; // while following: at most one read a second
 let chats = null; // while open: what it holds (chatsState)
 const chatsPicked = new Set(); // the agents whose chips are picked; none picked shows everyone
 const chatsOpenRuns = new Set(); // runs of steps opened with ▸
@@ -213,9 +214,34 @@ function drawChats() {
   $('chats-down').textContent = `↓ ${chats.unseen} new`;
 }
 
-/** On each render (app.js): redrawn while open. */
+/** Whether any agent has done something (or come or gone) since the last read. */
+function chatsMoved() {
+  const now = chatsActivity();
+  return now.size !== chats.seen.size || [...now].some(([id, at]) => chats.seen.get(id) !== at);
+}
+
+/** While open: what was said since the newest item is read in once an agent has done something; one read at a time, at most one a second. */
+async function chatsFollow(force = false) {
+  if (!chats || chats.loading || !$('chats').open || !chatsMoved()) return;
+  const wait = CHATS_GAP_MS - (Date.now() - chats.fetchedAt);
+  if (!force && wait > 0) {
+    if (!chats.timer) chats.timer = setTimeout(() => { if (chats) chats.timer = 0; void chatsFollow(true); }, wait);
+    return;
+  }
+  const mine = chats;
+  chats.seen = chatsActivity();
+  chats.loading = true;
+  chats.fetchedAt = Date.now();
+  const r = await chatsFetch(chats.items.at(-1)?.at ?? 0);
+  if (chats !== mine) return; // shut meanwhile
+  chatsTake(r);
+  drawChats();
+}
+
+/** On each render (app.js): what is new is read in, and it is redrawn, while open. */
 function renderChats() {
   if (!chats || !$('chats').open) return;
+  void chatsFollow();
   drawChats();
 }
 
