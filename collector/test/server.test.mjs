@@ -657,3 +657,19 @@ test('the helper’s setting and a session’s name are changed only with the to
     await srv.close();
   }
 });
+
+// A browser that resolves "localhost" to ::1 first (Windows does) found nothing listening there.
+// The server also listens on the IPv6 loopback, and still on no other address.
+test('the page is reachable on http://localhost and http://[::1], which are loopback; other hosts are refused', async t => {
+  const { srv, port } = await start();
+  t.after(() => srv.close());
+  const get = (host, hostHeader) => new Promise((resolve, reject) => {
+    const req = httpRequest({ host, port, path: '/', headers: { host: hostHeader } }, res => { res.resume(); res.on('end', () => resolve(res.statusCode)); });
+    req.on('error', reject);
+    req.end();
+  });
+  assert.equal(await get('::1', `[::1]:${port}`).catch(e => e.code), 200);
+  assert.equal(await get('localhost', `localhost:${port}`), 200);
+  assert.equal(await get('::1', `evil.example:${port}`), 403);
+  assert.deepEqual(srv.addresses().sort(), ['127.0.0.1', '::1']);
+});

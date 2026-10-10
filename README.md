@@ -20,7 +20,7 @@ repo. Three farmers wait on your porch, one has finished, and the rest work in t
 the tool for their current step.</sub>
 
 Everything runs on your machine. The collector is a small Node program with no dependencies.
-It listens on `127.0.0.1` only and reads what Claude Code already writes to disk.
+It listens on the loopback addresses only (`127.0.0.1`, and `::1` where the machine has it) and reads what Claude Code already writes to disk.
 
 ## Contents
 
