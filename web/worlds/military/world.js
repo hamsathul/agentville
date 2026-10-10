@@ -994,12 +994,13 @@
       if (n === 3) { rp(15, 8, 4, 1, WOOD[1]); return; } // full: tied off
       rp(11, 8, 1, 2, WOOD[2]); rp(12, 7, 4, 1, TIN); rp(15, 6, 2, 1, TIN); rp(16, 8 + (Math.floor(T * 8) % 2), 1, 1, SAND_EDGE); // the scoop tipped over it, sand pouring
     },
-    mineDetector(rp, T) { // tests: a mine detector swept to and fro over the practice range, headphones on; over the training marker, its light shows green
-      const sx = Math.round(Math.sin(T * 2.4) * 3), hx = 18 + sx;
+    mineDetector(rp, T) { // tests: a mine detector swept to and fro over the practice range, headphones on: its round search ring flat on the ground at its feet, on a pole steeply down from its hands; over the training marker, its light shows green
+      const c = 15 + Math.round(Math.sin(T * 2.4) * 2); // the ring's middle, swept from x 13 to 17
       rp(2, 5, 2, 2, DARK); rp(10, 5, 2, 2, DARK); // its headphones
-      rp(17, 15, 3, 1, '#ffd43b'); rp(18, 15, 1, 1, K); // a training marker, half buried
-      line(rp, 11, 11, hx - 1, 14, STEEL); rp(12, 10, 2, 2, OLIVE[1]); rp(12, 10, 1, 1, Math.abs(sx) <= 1 ? '#6cc04a' : '#2f6b2f'); // its pole, its control box and light
-      rp(hx - 2, 14, 5, 1, DARK); rp(hx - 1, 13, 3, 1, OLIVE[2]); // its search head
+      rp(14, 14, 3, 1, '#ffd43b'); rp(15, 14, 1, 1, K); // a training marker, half buried
+      line(rp, 12, 9, c, 14, STEEL); // its pole, from its hands down to the ring's middle
+      rp(c - 2, 13, 5, 1, DARK); rp(c - 3, 14, 1, 1, DARK); rp(c + 3, 14, 1, 1, DARK); rp(c - 2, 15, 5, 1, DARK); // the search ring, an open loop lying flat round the pole's foot
+      rp(10, 8, 2, 2, OLIVE[1]); rp(10, 8, 1, 1, Math.abs(c - 15) <= 1 ? '#6cc04a' : '#2f6b2f'); // its control box at its hands, its light
     },
     brush(rp) { // lint: cleaning its kit, brushing a helmet on the ground till it shines
       rp(13, 14, 3, 2, TIN); rp(13, 14, 3, 1, '#e6eef5'); // the cleaning kit's tin

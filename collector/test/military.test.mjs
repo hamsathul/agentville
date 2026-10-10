@@ -1249,6 +1249,29 @@ test("every prop a soldier holds draws at three moments, no two alike, each of i
   assert.ok(over.flat().some(r => hue(r[0]) === 'green'), 'bursting green: a signal');
 });
 
+test("the mine detector reads as one at a glance, never as a long gun: a wide open ring lying flat on the ground at its feet, swept to and fro, on a steep pole from its hands down to the ring's middle; headphones on, a yellow marker", () => {
+  const loaded = load(), { M, ctx } = loaded, ink = vm.runInContext('ink', ctx), COIL = ink('#3a3a40'), POLE = ink('#5f6b7a');
+  const middles = new Set();
+  for (const rects of propDrawing(loaded, M.props, 'mineDetector', Array.from({ length: 12 }, (_, i) => i / 6))) {
+    const px = new Map();
+    for (const [c, x, y, w, h] of rects) for (let i = 0; i < w; i++) for (let j = 0; j < h; j++) px.set(`${x + i},${y + j}`, c);
+    const at = (x, y) => px.get(`${x},${y}`), of = c => [...px].filter(([, k]) => k === c).map(([xy]) => xy.split(',').map(Number));
+    const coil = of(COIL).filter(([, y]) => y >= 12), xs = coil.map(([x]) => x), x0 = Math.min(...xs), x1 = Math.max(...xs), cx = (x0 + x1) / 2;
+    assert.ok(x1 - x0 + 1 >= 6 && x1 - x0 + 1 <= 8, `a wide ring (${x1 - x0 + 1} px across)`);
+    assert.ok(coil.every(([, y]) => y >= 13 && y <= 15), 'lying flat on the ground, at its feet (rows 13–15)');
+    assert.ok(at(x0, 14) === COIL && at(x1, 14) === COIL && at(cx, 13) === COIL && at(cx, 15) === COIL, 'a loop: its two sides, its far and near rims');
+    for (let x = x0 + 1; x < x1; x++) assert.notEqual(at(x, 14), COIL, `open in the middle (${x},14)`);
+    const pole = of(POLE), top = pole.reduce((a, p) => (p[1] < a[1] ? p : a));
+    assert.ok(pole.some(([x, y]) => x === cx && y === 14), "the pole ends at the ring's middle");
+    assert.ok(top[1] <= 9 && top[0] >= 10 && top[0] <= 13, `from its hands (${top})`);
+    assert.ok(Math.abs(cx - top[0]) <= 14 - top[1], `steeply down (${Math.abs(cx - top[0])} across, ${14 - top[1]} down)`);
+    assert.ok(at(2, 5) === COIL && at(10, 5) === COIL, 'headphones on');
+    assert.ok(rects.some(r => r[0] === ink('#ffd43b')), 'the yellow training marker');
+    middles.add(cx);
+  }
+  assert.ok(middles.size >= 3, `swept to and fro (its middle at ${[...middles]})`);
+});
+
 test("chevrons on its sleeve for what it has cost: one from $1, two from $10, three from $50; none below $1 or with no cost", () => {
   const { M, drawn } = soldiers();
   assert.deepEqual([null, undefined, Number.NaN, 0, 0.99, 1, 9.99, 10, 49.99, 50, 400].map(M.chevronsOf), [0, 0, 0, 0, 0, 1, 1, 2, 2, 3, 3]);
