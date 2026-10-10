@@ -25,13 +25,40 @@ const resetText = ms => (!ms ? '' : ms - Date.now() < 86_400_000 ? `at ${hhmm(ms
 const agoText = ms => { const m = Math.round((Date.now() - ms) / 60_000); return m < 1 ? 'just now' : m < 60 ? `${m} min ago` : m < 1440 ? `${Math.round(m / 60)} h ago` : `${Math.round(m / 1440)} d ago`; };
 
 /** The plan's usage (the 5-hour and weekly limits), from Claude Code's last API response in any session. */
+/** Your Claude accounts, when there are two or more (with one, the page is as it always was). */
+const accountsOn = () => (snap?.accounts?.length ?? 0) > 1;
+const accountName = key => snap?.accounts?.find(x => x.key === key)?.name ?? key;
+/** An agent's account, as a small tag (only with two or more accounts). */
+function acctTag(a) {
+  if (!accountsOn() || !a.account) return '';
+  const acc = snap.accounts.find(x => x.key === a.account);
+  return `<span class="chip acct" data-tip="${esc(`On the ${acc?.name ?? a.account} account${acc?.email ? ` (${acc.email})` : ''}`)}">${esc(acc?.name ?? a.account)}</span>`;
+}
+/** An account as the pickers show it: its name and how much of each limit it has used. */
+function acctChoice(acc) {
+  const w = kind => acc.plan?.windows?.find(x => x.kind === kind);
+  const pct = x => (x ? `${x.reset ? 0 : Math.round(x.percentUsed)}%` : '–');
+  if (acc.signedIn === false) return `${acc.name} · signed out`;
+  if (!acc.plan) return `${acc.name} · no reading yet`;
+  return `${acc.name} · 5h ${pct(w('five_hour'))} · week ${pct(w('seven_day'))}`;
+}
+/** An account at 90% or more of either limit. */
+const acctFull = acc => Boolean(acc.plan?.windows?.some(w => !w.reset && w.percentUsed >= 90));
+
+/** Your plan's usage: one block, or one per account when you have two or more. */
 function planHtml() {
-  const plan = snap.plan;
-  if (!plan?.windows?.length) return '';
   const said = w => `${windowName(w.kind)} limit: ${w.reset ? 'reset since the last reading' : `${Math.round(w.percentUsed)}% used${w.resetsAt ? `, resets ${resetText(w.resetsAt)}` : ''}`}`;
-  const read = ` (Claude Code's reading, ${agoText(plan.at)})`;
-  const meters = plan.windows.map(w => { const r = w.percentUsed / 100; return `${meter(r, severityOf(r, 0.7, 0.9), said(w) + read)}<b>${esc(windowName(w.kind))} ${Math.round(w.percentUsed)}%</b>`; }).join(' ');
-  return `<span class="hstat" data-tip="${esc(`Your Claude plan: ${plan.windows.map(said).join(' · ')}${read}`)}"><span class="ml">Plan</span>${meters}</span>`;
+  const block = (label, plan, about, faint = false) => {
+    const read = plan ? ` (Claude Code's reading, ${agoText(plan.at)})` : '';
+    const meters = (plan?.windows ?? []).map(w => { const r = w.percentUsed / 100; return `${meter(r, severityOf(r, 0.7, 0.9), said(w) + read)}<b>${esc(windowName(w.kind))} ${Math.round(w.percentUsed)}%</b>`; }).join(' ');
+    return `<span class="hstat" data-tip="${esc(`${about}${plan?.windows?.length ? `: ${plan.windows.map(said).join(' · ')}${read}` : ''}`)}"><span class="ml${faint ? ' faint' : ''}">${esc(label)}</span>${meters}</span>`;
+  };
+  if (!accountsOn()) return snap.plan?.windows?.length ? block('Plan', snap.plan, 'Your Claude plan') : '';
+  return snap.accounts.map(acc => {
+    const open = `${acc.open} session${acc.open === 1 ? '' : 's'} open${acc.costUsd ? `, $${acc.costUsd.toFixed(2)} so far` : ''}`;
+    const about = `${acc.name}${acc.email ? ` (${acc.email})` : ''} · ${open}${acc.signedIn === false ? ' · Signed out: run /login in a session on it' : ''}${acc.plan?.windows?.length ? '' : ' · No reading yet: open a session on it'}`;
+    return block(acc.name, acc.plan, about, acc.signedIn === false);
+  }).join('\n    ');
 }
 
 function hstatsHtml() {
@@ -82,7 +109,7 @@ function rowHtml(a) {
   const nums = a.state === 'stale' ? `<span class="rn">${ago(a.lastActivityAt)}</span>`
     : a.proc ? `<span class="rn">${Math.round(a.proc.cpu)}%</span><span class="rn">${gb(a.proc.rssMb)}</span>` : '';
   return `<button class="row ${a.state}${a.id === selected ? ' sel' : ''}" data-id="${esc(a.id)}" data-tip="${esc(`${short(a.cwd)}${a.kind === 'background' ? ' · background' : ''}`)}">
-    <span class="rtop"><span class="swatch" style="background:${colorOf(a.id)}"></span><span class="name">${esc(a.name)}</span>${a.ask ? '<span class="chip c-waiting live-dot">answer here</span>' : a.question ? '<span class="chip c-yourTurn">asks you</span>' : ''}<span class="grow"></span>${nums}</span>${sub ? `<span class="rsub">${sub}</span>` : ''}</button>`;
+    <span class="rtop"><span class="swatch" style="background:${colorOf(a.id)}"></span><span class="name">${esc(a.name)}</span>${acctTag(a)}${a.ask ? '<span class="chip c-waiting live-dot">answer here</span>' : a.question ? '<span class="chip c-yourTurn">asks you</span>' : ''}<span class="grow"></span>${nums}</span>${sub ? `<span class="rsub">${sub}</span>` : ''}</button>`;
 }
 
 function listHtml() {

@@ -2563,3 +2563,38 @@ test('✨ Helper has an Animal lines box that says what it sends; ticked alone i
   await blocked.clickButton('helper-open');
   assert.match(blocked.el('helper-body').innerHTML, /Animal lines need a session with mod 0\.9\.0: run \/reload-plugins in one\./);
 });
+
+// ---- several Claude accounts ----
+const ACCOUNTS = [
+  { key: 'main', name: 'nco', email: 'me@nco.example', signedIn: true, open: 1, costUsd: 3.5, plan: { at: Date.now(), windows: [{ kind: 'five_hour', percentUsed: 40, resetsAt: Date.now() + 3_600_000 }, { kind: 'seven_day', percentUsed: 22, resetsAt: Date.now() + 86_400_000 }] } },
+  { key: 'zeta', name: 'zeta', email: 'me@zeta.example', signedIn: false, open: 0, costUsd: 0, plan: null },
+];
+const onAccount = (account, accounts = ACCOUNTS) => { const s = snapshot('worker'); return { ...s, accounts, plan: accounts[0].plan, agents: [{ ...s.agents[0], account }] }; };
+
+test('top bar: one plan block per account, with the email, signed out and no reading on hover', () => {
+  const page = loadPage();
+  page.push(onAccount('main'));
+  const bar = page.el('hstats').innerHTML;
+  assert.match(bar, /<span class="ml">nco<\/span>/);
+  assert.match(bar, /<span class="ml faint">zeta<\/span>/);
+  assert.match(bar, /me@zeta\.example/);
+  assert.match(bar, /Signed out/);
+  assert.match(bar, /No reading yet/);
+  assert.match(bar, /1 session open, \$3\.50 so far/);
+  assert.doesNotMatch(bar, /<span class="ml">Plan<\/span>/);
+});
+
+test('top bar with one account: the Plan block as before, and no account tags', () => {
+  const page = loadPage();
+  page.push(onAccount('main', [ACCOUNTS[0]]));
+  assert.match(page.el('hstats').innerHTML, /<span class="ml">Plan<\/span>/);
+  assert.doesNotMatch(page.list(), /chip acct/);
+});
+
+test('agents carry their account tag with two accounts, in the list and the side panel', async () => {
+  const page = loadPage();
+  page.push(onAccount('zeta'));
+  assert.match(page.list(), /<span class="chip acct" data-tip="On the zeta account \(me@zeta\.example\)">zeta<\/span>/);
+  await page.openAgent('s1');
+  assert.match(page.side(), /class="chip acct"[^>]*>zeta</);
+});
