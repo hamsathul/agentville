@@ -324,6 +324,32 @@ test('no farm words: the help, every building tip, dialog, log line, pop-up and 
   for (const [where, t] of texts) assert.doesNotMatch(String(t).replace(/<[^>]*>/g, ' '), FARM, `${where}: ${t}`);
 });
 
+test("the private scene: what a person reads has no undefined, NaN or [object], and none of the snapshot's real names, titles, branches or services", () => {
+  const { window, F } = load();
+  const h = window.hooks, snap = goldenSnapshot();
+  const scene = F.factoryScene(window.AgentvilleScene.privateScene(window.AgentvilleScene.toScene(snap)));
+  h.relayout(h.grid.layoutFor(scene.fields));
+  h.setScene(scene);
+  const texts = [['help', h.help()]];
+  for (const k of ['barn', 'drones', 'desk', 'board', 'bank', 'dock']) { texts.push([`buildingTip ${k}`, h.buildingTip(k)]); const d = h.dialog(k); if (d) texts.push([`dialog ${k}`, `${d.title}\n${d.html}`]); }
+  h.labels((x, y, html, cls = '', title = '') => texts.push([`label at ${x},${y}`, `${html}\n${title}`]), { desk: 2, turn: 1, storage: 1, charge: 1, floor: 1, nap: 1 });
+  for (const f of scene.farmers) {
+    texts.push([`tip ${f.id}`, h.tip(f)]);
+    const z = h.slots(f).zone;
+    texts.push([`zoneText ${z}`, h.zoneText(f, z)]);
+    h.onMove(f, z, 'somewhere', t => texts.push([`pop ${z}`, t]));
+  }
+  assert.ok(texts.some(([, t]) => /Open pull requests: #41/.test(String(t))), 'the open pull requests sign has a tip to check');
+  // the snapshot's real words (MCP server names stay in a private scene, so Gmail is not among them)
+  const real = [...snap.agents.map(a => a.name), ...snap.repos.map(r => r.name), 'New basket', 'Footer copy', 'feature/cart', 'example.com', 'Build step failed', 'Deploy #212', 'rsync', 'Ship the new cart', 'npm publish', 'Basket.tsx', 'The post is drafted', 'Keep the old footer', '/Users/sam']
+    .map(w => new RegExp(`(^|[^\\w-])${w.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}($|[^\\w-])`, 'i'));
+  for (const [where, t] of texts) {
+    const read = String(t).replace(/<[^>]*>/g, ' ');
+    assert.doesNotMatch(read, /\bundefined\b|\bNaN\b|\[object/, `${where}: ${read}`);
+    if (where !== 'help') for (const re of real) assert.doesNotMatch(read, re, `${where}: ${read}`); // the help is static, and names tools (Gmail, Codex robots) a snapshot may share
+  }
+});
+
 test('the floor: no hole in the ground, the walkway across it, the safety line round the bays, the conveyor at GRID.y1 + 12', () => {
   const { window, ctx } = load();
   const h = window.hooks, ink = vm.runInContext('ink', ctx);

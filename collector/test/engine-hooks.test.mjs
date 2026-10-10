@@ -478,10 +478,10 @@ test('panelHud: an account with no name is "account N" (its place, from 1) on it
   const gauges = [...html.matchAll(/<span class="px-gauge" title="(Your [^"]*)">/g)].map(m => m[1]);
   assert.deepEqual(gauges, [
     'Your work account: 40% of its week, 30% of its 5 hours (from the mod)',
-    'Your account 2 account: 92% of its week, 95% of its 5 hours (from the mod)',
-    'Your account 3 account: no weekly reading, no 5-hour reading (from the mod)',
+    'Your account 2: 92% of its week, 95% of its 5 hours (from the mod)',
+    'Your account 3: no weekly reading, no 5-hour reading (from the mod)',
   ]);
-  assert.ok(html.includes('>WORK<') && (html.match(/>ACCOUN</g) ?? []).length === 2, 'each gauge labelled with its name, cut to six letters, as a named one is');
+  assert.ok(html.includes('>WORK<') && html.includes('>ACC 2<') && html.includes('>ACC 3<'), 'each gauge labelled with its name, cut to six letters; a numbered one ACC N');
   const named = { scene: { farmers: [], accounts: [{ key: 'a', name: 'work', plan: plan(30, 40) }, { key: 'b', name: 'account 2', plan: plan(95, 92) }] } };
   const unnamed = { scene: { farmers: [], accounts: [{ key: 'a', name: 'work', plan: plan(30, 40) }, { key: 'b', plan: plan(95, 92) }] } };
   assert.equal(sdk.panelHud(unnamed), sdk.panelHud(named), 'the same as an account named "account 2"');
@@ -644,4 +644,53 @@ test("the farm keeps its size while the panel's numbers change: it moves only wh
   assert.ok(grown !== first && grown.w >= 484 && grown.h >= 470, `a panel that outgrows it (an error line) is kept clear of (${JSON.stringify(grown)})`);
   assert.equal(sdk.holdHud(grown, { w: 342, h: 453, tools: 30 }), grown, 'and the farm does not grow back when the line goes: only a new fit (the frame resized, the panel folded) measures afresh');
   assert.deepEqual(plain(sdk.holdHud(null, { w: 0, h: 0, tools: 30 })), { w: 0, h: 0, tools: 30 }, 'no panel: nothing kept for one');
+});
+
+test("panelHud: words that are not an object are none, and a noun that is not a short string is today's (a null, a number, an object or a huge string never garbles or throws)", () => {
+  const { sdk } = load();
+  const plain0 = sdk.panelHud({ scene: { farmers: [] } });
+  for (const bad of [null, undefined, 42, 'workshop', true, [], () => 1]) assert.equal(sdk.panelHud({ scene: { farmers: [] } }, bad), plain0, `words ${String(bad)}`);
+  const tip = w => /data-farm-menu aria-expanded="\w+" title="([^"]*)"/.exec(sdk.panelHud({ scene: { farmers: [] } }, w))[1];
+  const today = "The dashboard's buttons, the world's switches, the bell, help and zoom";
+  for (const bad of [42, null, {}, [], '', '   ', true]) assert.equal(tip({ place: bad }), today, `place ${JSON.stringify(bad)}`);
+  assert.equal(tip({ place: '  workshop ' }), "The dashboard's buttons, the workshop's switches, the bell, help and zoom", 'trimmed');
+  const long = tip({ place: 'x'.repeat(500) });
+  assert.ok(long.includes(`the ${'x'.repeat(40)}'s`) && !long.includes('x'.repeat(41)), 'a noun is cut to 40');
+  for (const k of ['agent', 'agents']) {
+    const html = sdk.panelHud({ scene: { farmers: [] }, canFollow: true }, { [k]: { a: 1 } });
+    assert.ok(!html.includes('[object'), `${k}: an object`);
+    assert.equal(html, sdk.panelHud({ scene: { farmers: [] }, canFollow: true }), `${k}: an object is the default`);
+  }
+  const huge = sdk.panelHud({ scene: { farmers: [] } }, { costTip: 'y'.repeat(5000), helpTip: 'z'.repeat(5000), compactedWord: 'w'.repeat(5000) });
+  assert.ok(huge.includes('y'.repeat(300)) && !huge.includes('y'.repeat(301)), 'a tip is cut to 300');
+  assert.ok(huge.includes('z'.repeat(300)) && !huge.includes('z'.repeat(301)), 'the help tip too');
+  assert.ok(!huge.includes('w'.repeat(301)), 'a word too');
+});
+
+test("the default HUD's Season tooltip lists the world's season names; with the default names it is today's", () => {
+  const { sdk } = load();
+  const title = names => /data-farm-season title="([^"]*)"/.exec(sdk.defaultHud({ seasons: true, seasonNames: names }))[1];
+  assert.equal(title(undefined), 'Live follows this world&#39;s own seasons; or hold one: spring, summer, autumn or winter', "today's, byte for byte");
+  const heat = sdk.withDefaults(fourHooks({ seasonNames: { switch: 'Heat', spring: 'cool', summer: 'warm', autumn: 'hot', winter: 'steaming' } })).seasonNames;
+  assert.equal(title(heat), "Live follows this world&#39;s own seasons; or hold one: cool, warm, hot or steaming");
+  const esc = sdk.withDefaults(fourHooks({ seasonNames: { spring: '<i>a</i>' } })).seasonNames;
+  assert.ok(!title(esc).includes('<i>'), 'escaped');
+});
+
+test('a flight that is not a function is ignored: the pigeon is drawn, nothing throws', () => {
+  for (const bad of [true, 'yes', 1, {}, null]) {
+    const { run, landed } = flying({ flight: bad });
+    assert.deepEqual(run(1).fills, PIGEON[0].fills, `flight ${JSON.stringify(bad)}: the pigeon`);
+    run(30);
+    assert.equal(landed(), 1, 'and the ✉ pops');
+  }
+});
+
+test('panelHud: a numbered account ("account N", as the private scene names them) reads ACC N on its gauge and "Your account N:" in its tip; a named one is unchanged', () => {
+  const { sdk } = load();
+  const plan = { windows: [{ kind: 'five_hour', percentUsed: 30 }, { kind: 'seven_day', percentUsed: 40 }] };
+  const html = sdk.panelHud({ scene: { farmers: [], accounts: [{ key: 'a1', name: 'account 1', plan }, { key: 'a2', name: 'account 2', plan }, { key: 'w', name: 'work', plan }, { key: 'x', name: 'account 10', plan }] } });
+  assert.deepEqual([...html.matchAll(/<span class="px-gauge" title="(Your [^"]*)">/g)].map(m => m[1].split(':')[0]), ['Your account 1', 'Your account 2', 'Your work account', 'Your account 10']);
+  assert.ok(html.includes('>ACC 1<') && html.includes('>ACC 2<') && html.includes('>WORK<'), 'labels');
+  assert.ok(html.includes('>ACC 10<'), 'any number');
 });

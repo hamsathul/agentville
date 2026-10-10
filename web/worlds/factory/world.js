@@ -1721,7 +1721,7 @@
         lab(200, 31, sign('YOUR DESK'), 'zone'); lab(56, 95, sign('STORAGE'), 'zone'); lab(56, 132, sign('CHARGING'), 'zone'); lab(56, 177, sign('OPEN TABLE'), 'zone');
         for (const g of L.groups) { const [r, cols] = rowsOfGroup(g)[0]; lab(174 + Math.min(...cols) * COLW + 44, 100 + r * ROWH - 1, sign(clip(g.name, 16)), 'zone proj', `The ${g.name} project: its repos side by side`); }
         const open = scene.fields.flatMap(fl => fl.prs?.open ?? []);
-        if (open.length) lab(357, 91, cnt(`${open.length} PR${open.length === 1 ? '' : 's'}`), 'cnt', `Open pull requests: ${open.slice(0, 6).map(pr => `#${pr.number} ${pr.title}`).join(' · ')}${open.length > 6 ? ' …' : ''}. Click the loading dock for them all`);
+        if (open.length) lab(357, 91, cnt(`${open.length} PR${open.length === 1 ? '' : 's'}`), 'cnt', `Open pull requests: ${open.slice(0, 6).map(pr => `#${pr.number}${pr.title ? ` ${pr.title}` : ''}`).join(' · ')}${open.length > 6 ? ' …' : ''}. Click the loading dock for them all`);
         const plus = (x, y, n, what) => n > 0 && lab(x, y, cnt(`+${n} ${what}`), 'cnt');
         plus(QUEUE.from, 91, overflow.desk, 'waiting'); plus(QUEUE.to, 91, overflow.turn, 'your turn'); // under each queue's first robot
         plus(116, 124, overflow.storage, 'stale'); plus(116, 156, overflow.charge, 'idle'); plus(116, 202, overflow.floor, 'working'); plus(116, 248, overflow.nap, 'asleep');

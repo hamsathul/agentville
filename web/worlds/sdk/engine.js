@@ -153,7 +153,7 @@ function defaultHud({ zoom = 1, skyMode = 'live', seasonMode = 'live', seasons =
   return `<div class="px-nav">${btn(`data-farm-menu aria-expanded="${menuOpen}"`, 'Menu', "The dashboard's buttons, the switches and zoom")}
     <div class="px-menu" role="group" aria-label="Menu"${menuOpen ? '' : ' hidden'}>
       <div class="px-menu-grid">${btn('data-farm-nav="list"', 'List', 'The list of agents')}${btn('data-farm-nav="worlds"', 'World', 'Choose a world')}${btn('data-farm-nav="side"', 'Sidebar', 'The selected agent beside the map', Boolean(nav.side))}${btn('data-farm-nav="broadcast"', 'Broadcast', 'Message several agents at once')}</div>
-      ${btn('data-farm-sky', `Sky: ${skyMode}`, 'Live follows your clock; or day, or night')}${seasons ? btn('data-farm-season', `${seasonNames.switch}: ${seasonMode === 'live' ? 'live' : seasonNames[seasonMode]}`, "Live follows this world's own seasons; or hold one: spring, summer, autumn or winter") : ''}${btn('data-farm-motion', `Motion: ${still ? 'off' : 'on'}`, 'Walking and animation')}${animals === null ? '' : btn('data-farm-animals', `Animals: ${animals ? 'on' : 'off'}`, 'Animals that live here, just for fun: click one to pet or feed it', animals)}${btn('data-farm-help', 'Help', 'How to read this world')}
+      ${btn('data-farm-sky', `Sky: ${skyMode}`, 'Live follows your clock; or day, or night')}${seasons ? btn('data-farm-season', `${seasonNames.switch}: ${seasonMode === 'live' ? 'live' : seasonNames[seasonMode]}`, `Live follows this world's own seasons; or hold one: ${seasonNames.spring}, ${seasonNames.summer}, ${seasonNames.autumn} or ${seasonNames.winter}`) : ''}${btn('data-farm-motion', `Motion: ${still ? 'off' : 'on'}`, 'Walking and animation')}${animals === null ? '' : btn('data-farm-animals', `Animals: ${animals ? 'on' : 'off'}`, 'Animals that live here, just for fun: click one to pet or feed it', animals)}${btn('data-farm-help', 'Help', 'How to read this world')}
       <span class="px-zoombar">${btn('data-farm-zoom="-1"', '-', 'Zoom out')}${btn('data-farm-zoom="0"', `${Math.round(zoom * 100)}%`, 'The whole world')}${btn('data-farm-zoom="1"', '+', 'Zoom in')}</span>
     </div></div>`;
 }
@@ -172,7 +172,10 @@ function defaultHud({ zoom = 1, skyMode = 'live', seasonMode = 'live', seasons =
 function panelHud({ still, zoom = 1, saysOn = true, skyMode = 'live', seasonMode = 'live', seasons = true, seasonNames, follow = false, canFollow = false, restingHidden = null, bell = false, nav = {}, panelOpen = true, animals = null, menuOpen = false,
   scene = { farmers: [] }, season = 'summer', iconImg = () => '', seasonIcon = s => s, seasonTip = () => '' }, words = {}) {
   const names = { ...SEASON_DEFAULTS, ...seasonNames }, named = s => (Object.hasOwn(names, s) ? names[s] : s);
-  const { place = 'world', agent = 'agent', agents = 'agents' } = words;
+  // A world's words can be wrong: not an object, a noun that is not a string, a tip of a megabyte. Nouns are short non-empty strings (cut to 40), other words are strings (cut to 300); else the plain ones.
+  const given = words && typeof words === 'object' && !Array.isArray(words) ? words : {};
+  const noun = (v, plain) => (typeof v === 'string' && v.trim() ? v.trim().slice(0, 40) : plain);
+  const place = noun(given.place, 'world'), agent = noun(given.agent, 'agent'), agents = noun(given.agents, 'agents');
   words = {
     costTip: `What the sessions in the ${place} have cost so far (from the mod)`, costIcon: 'coin',
     compactedWord: 'compacted', compactedTip: "Each time a session's conversation was compacted", compactedIcon: 'basket',
@@ -191,7 +194,7 @@ function panelHud({ still, zoom = 1, saysOn = true, skyMode = 'live', seasonMode
     zoomAllTip: `Show the whole ${place}`,
     menuTip: `The dashboard's buttons, the ${place}'s switches, the bell, help and zoom`,
     menuHead: `IN THE ${String(place).toUpperCase()}`,
-    ...Object.fromEntries(Object.entries(words).filter(([, v]) => typeof v === 'string')),
+    ...Object.fromEntries(Object.entries(given).filter(([, v]) => typeof v === 'string').map(([k, v]) => [k, v.slice(0, 300)])),
   };
   // In an attribute: & < > " escaped, an apostrophe left as it is (the farm's tooltips have them).
   const attr = s => String(s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
@@ -225,7 +228,8 @@ function panelHud({ still, zoom = 1, saysOn = true, skyMode = 'live', seasonMode
               <span class="px-gauge" title="${esc(`CPU used by the agents: ${Math.round(ch.cpu?.used ?? 0)}% of one core, ${ch.cpu?.cores ?? 1} cores`)}">${label('CPU')}${bar(cpuRatio, tone(cpuRatio))}${w(`${Math.round(cpuRatio * 100)}%`)}${dim('of this Mac')}</span>
               ${accs.length > 1 ? accs.map((a, i) => { // with two or more Claude accounts: each one's week, and its 5 hours beside it; one with no name is "account N", as the private scene names it
                 const ws = a.plan?.windows ?? [], f5 = pctOf(ws.find(x => x.kind === 'five_hour')), wk = pctOf(ws.find(x => x.kind === 'seven_day')), name = typeof a.name === 'string' && a.name ? a.name : `account ${i + 1}`;
-                return `<span class="px-gauge" title="${esc(`Your ${name} account: ${wk === null ? 'no weekly reading' : `${wk}% of its week`}, ${f5 === null ? 'no 5-hour reading' : `${f5}% of its 5 hours`} (from the mod)`)}">${label(name.toUpperCase().slice(0, 6))}${bar((wk ?? 0) / 100, tone((wk ?? 0) / 100))}${w(wk === null ? '–' : `${wk}%`)}${dim(`week · 5h ${f5 === null ? '–' : `${f5}%`}`)}</span>`;
+                const num = /^account (\d+)$/.exec(name)?.[1]; // a numbered one (the private scene's) reads ACC N: cut to six letters, two would both be ACCOUN
+                return `<span class="px-gauge" title="${esc(`Your ${num ? `account ${num}` : `${name} account`}: ${wk === null ? 'no weekly reading' : `${wk}% of its week`}, ${f5 === null ? 'no 5-hour reading' : `${f5}% of its 5 hours`} (from the mod)`)}">${label(num ? `ACC ${num}` : name.toUpperCase().slice(0, 6))}${bar((wk ?? 0) / 100, tone((wk ?? 0) / 100))}${w(wk === null ? '–' : `${wk}%`)}${dim(`week · 5h ${f5 === null ? '–' : `${f5}%`}`)}</span>`;
               }).join('') : `${five !== null ? `<span class="px-gauge" title="Your plan's 5-hour limit (from the mod)">${label('5H')}${bar(five / 100, tone(five / 100))}${w(`${five}%`)}${dim('5-hour limit')}</span>` : ''}
               ${week !== null ? `<span class="px-gauge" title="Your plan's weekly limit (from the mod)">${label('WEEK')}${bar(week / 100, tone(week / 100))}${w(`${week}%`)}${dim('this week')}</span>` : ''}`}
               ${ch.collector ? `<span class="px-gauge" title="The tracker itself">${dim(`tracker ${ch.collector.cpu ?? 0}% CPU · ${ch.collector.rssMb ?? 0} MB`)}</span>` : ''}
@@ -818,7 +822,7 @@ function makePixelView(th, prefs) {
       const fl = flights[i], a = bots.get(fl.from), z = bots.get(fl.to), t = (T - fl.start) / 2.4;
       if (!a || !z) { flights.splice(i, 1); continue; }
       if (t >= 1) { pop(z.x, z.y - th.SH * SC - 16, '✉', 'good'); flights.splice(i, 1); continue; }
-      if (th.flight) { th.flight(a, z, t, T); continue; }
+      if (typeof th.flight === 'function') { th.flight(a, z, t, T); continue; }
       const ay = a.y - th.SH * SC, zy = z.y - th.SH * SC, e = t < 0.5 ? 2 * t * t : 1 - (-2 * t + 2) ** 2 / 2;
       const x = Math.round(a.x + (z.x - a.x) * e), y = Math.round(ay + (zy - ay) * e - Math.sin(Math.PI * t) * 34), m = z.x >= a.x ? 1 : -1, up = Math.floor(T * 12) % 2;
       px(x - 3, y, 6, 3, '#e6eef5'); px(x + (m > 0 ? 2 : -4), y - 2, 2, 2, '#e6eef5'); px(x + (m > 0 ? 4 : -5), y - 1, 1, 1, '#f08a24'); px(x + (m > 0 ? 3 : -4), y - 2, 1, 1, '#1b1420'); // body, head, beak, eye
