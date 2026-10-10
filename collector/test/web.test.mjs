@@ -3376,3 +3376,21 @@ test("a world's Menu opens 💬 All chats, and its Allow is held a moment like a
   await page.settle();
   assert.deepEqual(page.posts.map(p => p.path), ['/api/actions/permit']);
 });
+
+test('a read that lands while you type in 💬 All chats waits: the box is not drawn again under you, and it catches up when you leave it', async () => {
+  const page = await chatsPage({ snap: crowd({ lastActivityAt: T + 1000 }), items: [said(1, 'r1', 'busy-one', 'reply', 'First.')], replies: {
+    [`/api/timeline?since=${T + 1000}`]: tl([said(2, 'r1', 'busy-one', 'reply', 'Second.')]),
+  } });
+  page.push(crowd({ lastActivityAt: T + 2000 })); // its read starts
+  const box = page.el('chats-msg-text');
+  box.tagName = 'TEXTAREA';
+  page.focus(box); // you click into the box and type while the read is on its way
+  page.el('chats-compose').innerHTML = 'TYPING';
+  await page.settle();
+  assert.equal(page.el('chats-compose').innerHTML, 'TYPING', 'the box you type in is left alone');
+  assert.doesNotMatch(chatsBody(page), /Second\./);
+  page.focus(null);
+  page.fire('focusout');
+  await page.settle();
+  assert.match(chatsBody(page), /Second\./, 'out of the box, it catches up');
+});

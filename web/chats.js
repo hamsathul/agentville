@@ -35,7 +35,7 @@ async function openChats() {
   const r = await chatsFetch(0);
   if (chats !== mine) return; // shut meanwhile
   chatsTake(r);
-  drawChats();
+  requestRender(); // drawn as the page is: not under a box you type in, a selection or a press
 }
 
 /** Shuts it: the newest item seen becomes your last look. */
@@ -92,7 +92,7 @@ async function chatsRetry() {
   const r = await chatsFetch(chats.items.at(-1)?.at ?? 0);
   if (chats !== mine) return;
   chatsTake(r);
-  drawChats();
+  requestRender(); // drawn as the page is: not under a box you type in, a selection or a press
 }
 
 /** Each agent's messages since your last look (not your own), on the chip of whoever said them. */
@@ -241,7 +241,7 @@ async function chatsFollow(force = false) {
   const r = await chatsFetch(chats.items.at(-1)?.at ?? 0);
   if (chats !== mine) return; // shut meanwhile
   chatsTake(r);
-  drawChats();
+  requestRender(); // drawn as the page is: not under a box you type in, a selection or a press
 }
 
 /** The sidebar's card for an agent that needs you, its buttons marked as the modal's: handled here, once. */
