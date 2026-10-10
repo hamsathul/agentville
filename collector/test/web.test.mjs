@@ -79,7 +79,7 @@ function loadPage({ stored = {}, storageThrows = false, files = {}, replies = {}
     el: id => ctx.document.getElementById(id),
     side: () => ctx.document.getElementById('center-body').innerHTML,
     // the farm sidebar's drawn parts, top to bottom: its header, the agents that need you and its question; Now; the chat; the box
-    farmSide: () => ['fs-head', 'fs-now', 'farm-agent', 'fs-compose'].map(id => ctx.document.getElementById(id).innerHTML).join('\n'),
+    farmSide: () => ['fs-head', 'fs-ask-box', 'fs-now', 'fs-chat-bar', 'farm-agent', 'fs-compose'].map(id => ctx.document.getElementById(id).innerHTML).join('\n'),
     tabs: () => ctx.document.getElementById('center-tabs').innerHTML,
     tree: () => ctx.document.getElementById('tree').innerHTML,
     settle: async () => { for (let i = 0; i < 40; i++) await Promise.resolve(); },
@@ -1010,8 +1010,57 @@ test('the farm sidebar has the conversation as a chat: oldest at the top, the ne
   const chat = page.el('farm-agent').innerHTML;
   const at = [chat.indexOf('class="bub you">Fix the build'), chat.indexOf('Plan:'), chat.indexOf('class="fs-latest"'), chat.indexOf('Done. All')];
   assert.ok(at.every((v, i) => v >= 0 && (i === 0 || v > at[i - 1])), at.join(' '));
-  assert.match(chat, /data-convo="r1"[^>]*>⤢ Read the whole conversation/);
+  assert.doesNotMatch(chat, /data-convo=/, 'the button to read it all is not in the chat, which scrolls');
+  assert.match(page.el('fs-chat-bar').innerHTML, /data-convo="r1"[^>]*>⤢ Read the whole conversation/, 'it is in the bar above it, always in view');
   assert.doesNotMatch(chat, /npm test/, 'the tool steps are on the Activity tab');
+});
+
+test("the farm sidebar's ⤢ Read the whole conversation sits in a bar above the chat, outside what scrolls; Show less beside it; none for a side question or a note", async () => {
+  assert.match(html, /<div id="fs-now"><\/div><div id="fs-chat-bar"><\/div><div id="fs-chat"><div id="farm-agent"><\/div><\/div>/, 'the bar is between Now and the chat, not in it');
+  const f = fakeFarm();
+  const page = loadPage({ farm: f.farm, stored: { 'tracker-view': 'farm', 'tracker-farm-side': 'open' } });
+  page.push(richSnapshot([chatty()]));
+  await page.settle();
+  assert.match(page.el('fs-chat-bar').innerHTML, /class="fs-chat-top"[\s\S]*data-convo="r1"/);
+  assert.doesNotMatch(page.el('fs-chat-bar').innerHTML, /Show less/, 'Show less only once Show all has loaded it all');
+  await page.clickButton('mode-btw', { fsMode: 'btw' });
+  assert.equal(page.el('fs-chat-bar').innerHTML, '', 'a side question: no conversation to read');
+  await page.clickButton('mode-msg', { fsMode: 'message' });
+  assert.match(page.el('fs-chat-bar').innerHTML, /data-convo="r1"/);
+  page.push(richSnapshot([richAgent({ kind: 'codex' })]));
+  await page.settle();
+  assert.equal(page.el('fs-chat-bar').innerHTML, '', 'Codex: none');
+});
+
+test("the farm sidebar's own question keeps to a box of its own (at most 40% of the height, scrolling inside), folds to one line, and a new question comes unfolded", async () => {
+  assert.match(html, /<div id="fs-head"><\/div><div id="fs-ask-box"><\/div>/, 'the question has its own box, under the head, kept as snapshots come: its scroll stays where you left it');
+  assert.match(html, /#fs-ask-box \{[^}]*max-height: 40vh;[^}]*overflow-y: auto;/, 'at most 40% of the height; a long one scrolls inside');
+  const f = fakeFarm();
+  const page = loadPage({ farm: f.farm, stored: { 'tracker-view': 'farm', 'tracker-farm-side': 'open' } });
+  const waiting = ask => richSnapshot([richAgent({ state: 'waiting', now: undefined, ask, ...live7 })]);
+  page.push(waiting(PERMIT));
+  await page.settle();
+  const box = () => page.el('fs-ask-box').innerHTML;
+  assert.match(box(), /Permission needed[\s\S]*id="ask-allow"/);
+  assert.doesNotMatch(page.el('fs-head').innerHTML, /Permission needed/, 'not in the head, which is drawn again with each snapshot');
+  assert.match(box(), /data-fs-ask-fold aria-expanded="true"/);
+  assert.doesNotMatch(box(), /<button[^>]*class="[^"]*\bact\b[^"]*"[^>]*data-fs-ask-fold/, 'a fold only changes the view: not an action button, so the click guard (after a world raises part of the page) never swallows it');
+  await page.clickButton('fold', { fsAskFold: '' });
+  assert.doesNotMatch(box(), /id="ask-allow"/, 'folded: the card is out of the way');
+  assert.match(box(), /data-fs-ask-fold aria-expanded="false"[^>]*>[\s\S]*Allow Bash: ssh prod \.\/deploy\.sh/, 'one line says what it asks; a click shows it again');
+  page.push(waiting(PERMIT));
+  await page.settle();
+  assert.match(box(), /aria-expanded="false"/, 'it stays folded as snapshots come');
+  page.push(waiting(QUESTION));
+  await page.settle();
+  assert.match(box(), /aria-expanded="true"[\s\S]*Pick a colour\?/, 'a new question comes unfolded: you never miss one');
+  await page.clickButton('fold', { fsAskFold: '' });
+  assert.match(box(), /aria-expanded="false"[^>]*>[\s\S]*Pick a colour\?/);
+  await page.clickButton('fold', { fsAskFold: '' });
+  assert.match(box(), /aria-expanded="true"[\s\S]*Pick a colour\?[\s\S]*id="ask-send"/, 'and unfolds again');
+  page.push(richSnapshot([richAgent({ state: 'working' })]));
+  await page.settle();
+  assert.equal(box(), '', 'nothing asked: an empty box');
 });
 
 const asking = (over = {}) => richAgent({ state: 'yourTurn', stateReason: 'turn finished', now: undefined, lastReply: 'Done.', question: 'Should I push them to main?', mod: { version: '0.3.1', live: true }, ...over });
@@ -1111,7 +1160,7 @@ test('the farm sidebar shows the question card too', () => {
   const f = fakeFarm();
   const page = loadPage({ farm: f.farm, stored: { 'tracker-view': 'farm', 'tracker-farm-side': 'open' } });
   page.push(turnSnapshot([asking()]));
-  assert.match(page.el('fs-head').innerHTML, /class="qcard"[\s\S]*Should I push them to main\?/, 'above the tabs, so it shows on every tab');
+  assert.match(page.el('fs-ask-box').innerHTML, /class="qcard"[\s\S]*Should I push them to main\?/, 'above the tabs, so it shows on every tab');
 });
 
 test('in the farm sidebar: its question on top, then Now, the conversation, and the message box at the bottom', () => {
@@ -2502,7 +2551,7 @@ test('the cards fold away (remembered), and Next opens the one waiting longest',
   assert.match(page.el('fs-head').innerHTML, /data-pick-agent="q1"[^>]*>Next ›</);
   await page.clickButton('next', { pickAgent: 'q1' });
   assert.equal(shownName(page), 'asker');
-  assert.match(page.el('fs-head').innerHTML, /id="ask-send"/, 'its own question, above the tabs');
+  assert.match(page.el('fs-ask-box').innerHTML, /id="ask-send"/, 'its own question, above the tabs');
 });
 
 test('the picker lists every agent, what needs you first, finds one by name and opens it; Esc closes it', async () => {

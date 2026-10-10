@@ -915,7 +915,7 @@ try {
   check(await js("/ui-asker/.test(document.querySelector('#fs-head .fs-queue')?.textContent ?? '') && [...document.querySelectorAll('#fs-head .fs-card [data-fs-answer]')].map(b => b.textContent).join() === 'Wheat,Pumpkins'"), 'on another farmer, the one waiting on you shows as a card above, its options ready to answer in place');
   await sleep(400); // the page takes a world's picks at most every 250 ms: the next one must not come sooner
   await fjs("document.querySelector('[data-farm-need]').click()");
-  check(await until("document.getElementById('main').dataset.side === 'open' && /Which crop next/.test(document.querySelector('#fs-head .fs-ask')?.textContent ?? '')"), "the farm's “needs you” button opens the waiting farmer in the sidebar, with its question");
+  check(await until("document.getElementById('main').dataset.side === 'open' && /Which crop next/.test(document.querySelector('#fs-ask-box .fs-ask')?.textContent ?? '')"), "the farm's “needs you” button opens the waiting farmer in the sidebar, with its question");
   await refitted();
   check(JSON.parse(await panelClear()).clear, `with the sidebar open, the narrower farm moves clear of the panel too (${await panelClear()})`);
   const scale = () => fjs("(c => c.getBoundingClientRect().width / Number(c.dataset.ew))(document.querySelector('#farm canvas'))");
@@ -930,9 +930,22 @@ try {
   await js("document.getElementById('tab-subagents').click()");
   check(await until("/Survey the fields/.test(document.querySelector('#farm-subagents .sub-card')?.textContent ?? '')"), 'the Subagents tab shows its card');
   await js("document.getElementById('tab-agent').click()");
-  await until("/Which crop next/.test(document.getElementById('fs-head').textContent)");
+  await until("/Which crop next/.test(document.getElementById('fs-ask-box').textContent)");
+  // ⤢ Read the whole conversation in a bar above the chat, in view however far the chat is scrolled; its question in a box of its
+  // own (at most 40% of the height, scrolling inside) that folds to one line, so the chat gets the room.
+  const sideBox = () => js(`JSON.stringify((b => ({ ask: Math.round(b('fs-ask-box').height), chat: Math.round(b('fs-chat').height), chatTop: Math.round(b('fs-chat').top), read: (r => r && [r.top, r.bottom].map(Math.round))(document.querySelector('#fs-chat-bar [data-convo]')?.getBoundingClientRect()), max: getComputedStyle(document.getElementById('fs-ask-box')).maxHeight, inner: innerHeight }))(id => document.getElementById(id).getBoundingClientRect()))`);
+  await js("document.getElementById('fs-chat').scrollTop = document.getElementById('fs-chat').scrollHeight");
+  const room = JSON.parse(await sideBox());
+  check(Boolean(room.read) && room.read[0] >= 0 && room.read[1] <= room.chatTop + 1 && !(await js("!!document.querySelector('#fs-chat [data-convo]')")), `⤢ Read the whole conversation is in a bar above the chat, in view with the chat at its newest (${JSON.stringify(room)})`);
+  check(Math.abs(parseFloat(room.max) - room.inner * 0.4) < 2 && room.ask <= room.inner * 0.4 + 1, `the question keeps to at most 40% of the height, scrolling inside past that (${JSON.stringify(room)})`);
+  await js("document.querySelector('#fs-ask-box [data-fs-ask-fold]').click()");
+  await until("document.querySelector('#fs-ask-box [data-fs-ask-fold]')?.getAttribute('aria-expanded') === 'false'");
+  const folded = JSON.parse(await sideBox());
+  check(folded.ask < 50 && folded.chat > room.chat && /Which crop next/.test(await js("document.getElementById('fs-ask-box').textContent")), `folded to one line that says what it asks, the chat gets its room (${room.chat} → ${folded.chat}px)`);
+  await js("document.querySelector('#fs-ask-box [data-fs-ask-fold]').click()");
+  check(await until("document.querySelector('#fs-ask-box [data-fs-ask-fold]')?.getAttribute('aria-expanded') === 'true' && !!document.querySelector('#fs-ask-box .ask legend')"), 'a click on its line shows the question again');
   check(await js("document.getElementById('center-body').innerHTML === ''"), 'the hidden centre holds no second answer form');
-  await js("(() => { const r = document.querySelector('#fs-head input[value=\"Pumpkins\"]'); r.checked = true; r.dispatchEvent(new Event('change', { bubbles: true })); })()");
+  await js("(() => { const r = document.querySelector('#fs-ask-box input[value=\"Pumpkins\"]'); r.checked = true; r.dispatchEvent(new Event('change', { bubbles: true })); })()");
   // The click guard: a world raising the sidebar holds its action controls for about a second.
   await until("!document.documentElement.dataset.guard", 3000);
   await fjs("document.querySelector('[data-farm-need]').click()"); // the world raises it again

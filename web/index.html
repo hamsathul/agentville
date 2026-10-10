@@ -436,7 +436,14 @@ table.sheet thead th:first-child { left: 0; z-index: 2; }
 .fs-card-acts .act { margin: 0; }
 .fs-card-note { font-size: 11.5px; }
 /* its own question, above the tabs */
-.fs-ask { padding: 0 10px; border-bottom: 1px solid var(--line); }
+#fs-ask-box { flex: none; max-height: 40vh; overflow-y: auto; } /* at most 40% of the height: a long one scrolls inside, and the chat keeps the rest */
+.fs-ask { position: relative; padding: 0 10px; border-bottom: 1px solid var(--line); }
+.fs-ask-fold { position: absolute; top: 8px; right: 10px; display: inline-flex; align-items: center; gap: 2px; padding: 2px 7px; border: 1px solid var(--line); border-radius: 6px; background: var(--panel-2); color: var(--muted); font: inherit; font-size: 11.5px; font-weight: 600; cursor: pointer; } /* a view toggle, not an action: the click guard leaves it be */
+.fs-ask-fold:hover { color: var(--text); }
+.fs-ask.folded { padding: 4px 10px; }
+.fs-ask-line { display: flex; align-items: center; gap: 4px; width: 100%; min-height: 30px; padding: 0; border: 0; background: none; color: var(--text); font: inherit; font-size: 12.5px; font-weight: 600; text-align: left; cursor: pointer; }
+.fs-ask-line span { min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.fs-ask-line:hover span { text-decoration: underline; }
 .fs-ask .ask, .fs-ask .qcard { margin: 10px 0; }
 /* the tabs */
 #farm-tabs { flex: none; display: flex; gap: 2px; padding: 2px 6px 0; border-bottom: 1px solid var(--line); }
@@ -463,7 +470,8 @@ table.sheet thead th:first-child { left: 0; z-index: 2; }
 .fs-rest { margin: 10px 12px 0; font-size: 12px; }
 #fs-chat { flex: 1; min-height: 0; overflow-y: auto; }
 #farm-agent { min-height: 100%; box-sizing: border-box; display: flex; flex-direction: column; justify-content: flex-end; padding: 12px; }
-.fs-chat-top { display: flex; justify-content: center; flex-wrap: wrap; gap: 6px; margin-bottom: 12px; }
+#fs-chat-bar { flex: none; } /* above the chat, outside what scrolls: always in view */
+.fs-chat-top { display: flex; justify-content: center; flex-wrap: wrap; gap: 6px; padding: 6px 10px; border-bottom: 1px solid var(--line); }
 .fs-latest { display: flex; align-items: center; gap: 8px; margin: 2px 0; font-size: 10.5px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; color: var(--latest); }
 .fs-latest::before, .fs-latest::after { content: ''; flex: 1; height: 1px; background: color-mix(in srgb, var(--latest) 30%, transparent); }
 .fs-intro { margin-bottom: 10px; font-size: 12px; color: var(--muted); }
@@ -667,10 +675,10 @@ html[data-guard="on"] .app .act, html[data-guard="on"] dialog[open] .act { opaci
   </aside>
   <section id="farm" aria-label="Pixel farm"></section>
   <aside id="farm-sidebar" aria-label="Sidebar">
-    <div id="fs-head"></div>
+    <div id="fs-head"></div><div id="fs-ask-box"></div>
     <div id="farm-tabs" role="tablist" aria-label="This agent"><button type="button" id="tab-agent" role="tab" data-farm-tab="agent">Chat</button><button type="button" id="tab-activity" role="tab" data-farm-tab="activity">Activity</button><button type="button" id="tab-subagents" role="tab" data-farm-tab="subagents">Subagents</button><button type="button" id="tab-files" role="tab" data-farm-tab="files">Files</button></div>
     <div id="fs-body">
-      <section id="farm-side" aria-label="Chat"><div id="fs-now"></div><div id="fs-chat"><div id="farm-agent"></div></div><div id="fs-compose"></div></section>
+      <section id="farm-side" aria-label="Chat"><div id="fs-now"></div><div id="fs-chat-bar"></div><div id="fs-chat"><div id="farm-agent"></div></div><div id="fs-compose"></div></section>
       <section id="farm-activity-pane" aria-label="Activity"><div id="farm-activity"></div></section>
       <section id="farm-subagents-pane" aria-label="Subagents"><div id="farm-subagents"></div></section>
     </div>

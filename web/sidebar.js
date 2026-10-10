@@ -19,6 +19,7 @@ let fsLatest = ''; // what the chat's newest entry was: a new one scrolls to it,
 let fsPinned = true; // the chat sits at its newest message (you scrolling up lets go; back at the bottom holds again)
 let fsQueueOpen = fsSaved('tracker-fs-queue') !== 'closed'; // the cards of the agents that need you
 let fsShellsOpen = fsSaved('tracker-fs-shells') === 'open'; // the commands running, under Now
+let fsAskFolded = ''; // the question folded to one line (fsAskKey): a new one comes unfolded
 
 const FS_ICON = {
   down: '<svg viewBox="0 0 16 16" aria-hidden="true"><path d="M4 6l4 4 4-4"/></svg>',
@@ -134,10 +135,28 @@ function fsCardHtml(x) {
   return `<div class="fs-card ${kind}">${head}${body}</div>`;
 }
 
-/** This agent's own question or permission prompt, above the tabs so it shows on every tab. */
+/**
+ * This agent's own question or permission prompt, above the tabs so it shows on every tab, in a box of
+ * its own (at most 40% of the height: the chat keeps the rest). It folds to one line, to read the chat.
+ */
 function fsAskHtml(a) {
   const html = askHtml(a) + questionHtml(a);
-  return html ? `<div class="fs-ask">${html}</div>` : '';
+  if (!html) return '';
+  if (fsAskFolded === fsAskKey(a)) return `<div class="fs-ask folded"><button type="button" class="fs-ask-line" data-fs-ask-fold aria-expanded="false" data-tip="Show the question">${FS_ICON.next}<span>${esc(fsAskLine(a))}</span></button></div>`;
+  return `<div class="fs-ask"><button type="button" class="fs-ask-fold" data-fs-ask-fold aria-expanded="true" data-tip="Fold it to one line, to read the chat">${FS_ICON.down}Fold</button>${html}</div>`;
+}
+/** Which question this is: another one (a new prompt, its Always allow… options, a new end-of-turn question) comes unfolded. */
+function fsAskKey(a) {
+  return [a.id, a.ask?.toolUseId ?? '', a.ask?.kind ?? '', a.question ?? '', a.ask || a.question ? '' : (a.stateSince ?? '')].join('|');
+}
+/** The question folded: one line of what it asks. */
+function fsAskLine(a) {
+  const ask = a.ask;
+  if (ask?.kind === 'permission') return `🔐 Allow ${ask.tool}: ${ask.summary}`;
+  if (ask?.kind === 'always') return `🔐 Always allow ${ask.tool}: pick an option`;
+  if (ask?.kind === 'question') { const qs = ask.questions ?? []; return `❓ ${qs[0]?.question ?? 'A question'}${qs.length > 1 ? ` (and ${qs.length - 1} more)` : ''}`; }
+  if (a.question) return `↩ ${a.question}`;
+  return `${a.stateReason === 'question pending' ? '❓' : '🔐'} Waiting on you: answer it in its terminal`;
 }
 
 /* ---------- Chat: now, the conversation, the box ---------- */
@@ -162,8 +181,13 @@ function fsChatHtml(a) {
   const said = saidOf(a, 12);
   if (!said.length) return '<div class="empty">No messages yet.</div>';
   const cut = latestCut(said), bubble = f => bubbleHtml(a, f);
-  const top = a.kind === 'codex' ? '' : `<div class="fs-chat-top"><button type="button" class="act mini" data-convo="${esc(a.id)}" data-tip="The whole conversation, from its first message, with search">⤢ Read the whole conversation</button>${fullFeeds.has(a.id) ? `<button type="button" class="act mini" data-full-feed="${esc(a.id)}">Show less</button>` : ''}</div>`;
-  return `${top}<div class="chat">${said.slice(cut).reverse().map(bubble).join('')}<div class="fs-latest" role="separator">Latest</div>${said.slice(0, cut).reverse().map(bubble).join('')}</div>`;
+  return `<div class="chat">${said.slice(cut).reverse().map(bubble).join('')}<div class="fs-latest" role="separator">Latest</div>${said.slice(0, cut).reverse().map(bubble).join('')}</div>`;
+}
+
+/** Over the chat, outside what scrolls (always in view): ⤢ Read the whole conversation, and Show less once Show all loaded it all. */
+function fsChatBarHtml(a) {
+  if (fsMode !== 'message' || a.kind === 'codex' || !saidOf(a, 1).length) return '';
+  return `<div class="fs-chat-top"><button type="button" class="act mini" data-convo="${esc(a.id)}" data-tip="The whole conversation, from its first message, with search">⤢ Read the whole conversation</button>${fullFeeds.has(a.id) ? `<button type="button" class="act mini" data-full-feed="${esc(a.id)}">Show less</button>` : ''}</div>`;
 }
 
 function fsAsidesHtml(a) {
@@ -295,20 +319,22 @@ function renderFarmSidebar(a) {
     $('farm-agent').innerHTML = '<div class="empty">No agents are running.</div>';
     return;
   }
-  $('fs-head').innerHTML = fsHeadHtml(a, fsOrder()) + fsQueueHtml(a) + fsAskHtml(a);
+  $('fs-head').innerHTML = fsHeadHtml(a, fsOrder()) + fsQueueHtml(a);
+  $('fs-ask-box').innerHTML = fsAskHtml(a); // a box kept from one snapshot to the next: a long question stays scrolled where you left it
   if (farmTab === 'agent') {
     refreshNotes(a, fsMode === 'note');
     $('fs-now').innerHTML = fsNowHtml(a);
     // Always at the newest message: when it opens, for another agent or mode, and whenever a new one
     // comes, even if you had scrolled up to read. Scrolled up with nothing new, it stays where you are.
     const key = `${a.id}|${fsMode}`, latest = fsLatestOf(a);
+    $('fs-chat-bar').innerHTML = fsChatBarHtml(a);
     $('farm-agent').innerHTML = fsChatHtml(a);
     if (key !== fsChatKey || latest !== fsLatest || fsPinned) fsToNewest();
     fsChatKey = key;
     fsLatest = latest;
     $('fs-compose').innerHTML = fsComposeHtml(a);
   } else {
-    for (const id of ['fs-now', 'farm-agent', 'fs-compose']) $(id).innerHTML = ''; // one message box at a time, and only where it shows
+    for (const id of ['fs-now', 'fs-chat-bar', 'farm-agent', 'fs-compose']) $(id).innerHTML = ''; // one message box at a time, and only where it shows
     fsChatKey = '';
   }
   if (farmTab === 'activity') $('farm-activity').innerHTML = fsActivityHtml(a);
@@ -338,7 +364,7 @@ if (typeof ResizeObserver === 'function' && $('farm-agent')) new ResizeObserver(
 
 /** Empties what the sidebar drew, so the list view's centre is the only place with its ids (msg-text, ask-send…). */
 function clearFarmSidebar() {
-  for (const id of ['fs-head', 'fs-now', 'farm-agent', 'fs-compose', 'farm-activity', 'farm-subagents']) $(id).innerHTML = '';
+  for (const id of ['fs-head', 'fs-ask-box', 'fs-now', 'fs-chat-bar', 'farm-agent', 'fs-compose', 'farm-activity', 'farm-subagents']) $(id).innerHTML = '';
   fsClosePop();
   fsChatKey = '';
   fsLatest = '';
@@ -399,6 +425,7 @@ document.addEventListener('click', async e => {
   if (el.id === 'fs-hide') { setFarmSide(false); return; }
   if (d.fsQueue !== undefined) { fsQueueOpen = !fsQueueOpen; fsSave('tracker-fs-queue', fsQueueOpen ? 'open' : 'closed'); render(); return; }
   if (d.fsShells !== undefined) { fsShellsOpen = !fsShellsOpen; fsSave('tracker-fs-shells', fsShellsOpen ? 'open' : 'closed'); render(); return; }
+  if (d.fsAskFold !== undefined) { const a = centreAgent(), key = a ? fsAskKey(a) : ''; fsAskFolded = fsAskFolded === key ? '' : key; render(); return; }
   if (d.fsMode) {
     fsMode = d.fsMode;
     render();
