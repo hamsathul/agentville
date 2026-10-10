@@ -11,7 +11,7 @@
   const PREF_NAME = /^[a-z][a-z0-9-]{0,31}$/;
   // The creature library's kinds (sdk/creatures.js) and the situations the helper writes for (collector/sources/lines.mjs):
   // a world's cast names only these. Copies: worlds.test.mjs fails when they drift.
-  const CREATURE_KINDS = ['cow', 'goat', 'sheepdog', 'ostrich', 'lion', 'tiger', 'duck', 'cat', 'dog', 'pigeon', 'mouse', 'fish'];
+  const CREATURE_KINDS = ['cow', 'goat', 'sheepdog', 'ostrich', 'lion', 'tiger', 'duck', 'cat', 'dog', 'pigeon', 'mouse', 'fish', 'robodog', 'vacuum'];
   const SITUATIONS = ['idle', 'deployFailed', 'deployOk', 'harvest', 'merged', 'arrive'];
   const CONTROL = /[\x00-\x1f\x7f-\x9f]/g;
   const PREF_MAX = 16_384, DIARY_MAX = 20, IN_FLIGHT_MAX = 4, ID_MAX = 200, PATH_MAX = 4096;

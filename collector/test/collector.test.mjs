@@ -1415,6 +1415,12 @@ test('Animal lines: a live cast and a 0.9.0 session get a batch; the reply’s g
     assert.deepEqual(Object.keys(asked[0]).sort(), ['agents', 'at', 'cast', 'counts', 'events', 'id', 'kind']);
     assert.equal(JSON.stringify(asked[0]).includes('/w'), false, 'no path in a request');
     assert.equal(snap().helper.today >= 1, true, 'counted');
+    assert.deepEqual(await handle.actions.animals({ cast: [{ kind: 'robodog', name: 'Robot dog' }] }), { ok: true });
+    assert.ok(await until(() => snap().helper.linesBlocked === 'no-session'), 'a robot dog on screen: mod 0.9.0 would drop it, so no session runs the batch');
+    const beforeNewer = asked.length;
+    version = '0.9.1';
+    assert.ok(await until(() => asked.length > beforeNewer), 'mod 0.9.1 runs it');
+    assert.deepEqual(asked.at(-1).cast, [{ kind: 'cow' }, { kind: 'robodog' }]);
     reply = { ok: false, error: 'model_not_found' };
     assert.ok(await until(() => snap().helper.lastError === 'model_not_found'), 'a failed batch: the error is said');
     assert.equal(snap().chatter.lines.length, 1, '…and the last good batch stays');

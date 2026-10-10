@@ -804,7 +804,9 @@ A creature in `animals()`:
 
 The library's creatures, each drawn on its feet, facing either way: `cow`, `goat`, `sheepdog` (with a
 red bandana), `ostrich`, `lion`, `tiger`, `duck` (looks `drake`, `hen`, `duckling`), `cat`, `dog`,
-`pigeon`, `mouse` and `fish`. Their poses: `stand`, `walk`, `run`, `eat`, `sleep`, `happy`, `yawn`,
+`pigeon`, `mouse`, `fish`, `robodog` (a chrome robot terrier, its tail an antenna with a blinking red
+tip; asleep, a green standby light) and `vacuum` (a round robot vacuum with a blue ring light, its
+brush turning as it goes). Their poses: `stand`, `walk`, `run`, `eat`, `sleep`, `happy`, `yawn`,
 `startled`, `stretch`, `roll`; the duck's `swim`, `dabble` and `slide` (on ice); the ostrich's `hide`.
 What they can wear (the kit puts it on): a goat's scarf and a hat (a farmer's, in a gag), the
 ostrich's bucket.

@@ -5,7 +5,10 @@ import { modAtLeast } from './pending.mjs';
 // step word, counts, events; never a path, a command, a branch or anyone's words), which session runs a
 // call, when a batch is due, and which reply rows are kept (docs/worlds.md, README "✨ Helper").
 export const SITUATIONS = ['idle', 'deployFailed', 'deployOk', 'harvest', 'merged', 'arrive'];
-export const CREATURE_KINDS = ['cow', 'goat', 'sheepdog', 'ostrich', 'lion', 'tiger', 'duck', 'cat', 'dog', 'pigeon', 'mouse', 'fish']; // creatures.js (a test fails when they drift)
+export const CREATURE_KINDS = ['cow', 'goat', 'sheepdog', 'ostrich', 'lion', 'tiger', 'duck', 'cat', 'dog', 'pigeon', 'mouse', 'fish', 'robodog', 'vacuum']; // creatures.js (a test fails when they drift)
+// The mod that first knew a kind (its LINE_KINDS); the rest, 0.9.0. An older mod drops a kind it doesn't know from
+// the cast, so that animal gets no lines, and a cast of only such kinds comes back as an error, counted as a call.
+const KIND_SINCE = { robodog: '0.9.1', vacuum: '0.9.1' };
 const CONTROLS = /[\x00-\x1f\x7f-\x9f\p{Bidi_Control}]/gu;
 const plain = (v, max) => String(v ?? '').replace(CONTROLS, '').trim().slice(0, max);
 const EVENT_KEEP_MS = 30 * 60_000;
@@ -120,9 +123,13 @@ export function parseLines(text, castKinds, names = []) {
 }
 
 const RANK = { idle: 0, yourTurn: 1, working: 2 };
-/** The session to run a batch: listening, mod 0.9.0, not codex; idle first, then on its turn, then working; least recently used first. */
-export function chooseSession(agents, lastUsed = new Map()) {
-  const ok = (agents ?? []).filter(a => a.kind !== 'codex' && a.mod?.live && modAtLeast(a.mod.version, '0.9.0') && a.state in RANK);
+/**
+ * The session to run a batch for this cast: listening, with a mod that knows every kind in it (0.9.0, or 0.9.1 for
+ * the robot dog and the vacuum), not codex; idle first, then on its turn, then working; least recently used first.
+ */
+export function chooseSession(agents, lastUsed = new Map(), cast = []) {
+  const need = (cast ?? []).map(c => (Object.hasOwn(KIND_SINCE, c?.kind) ? KIND_SINCE[c.kind] : '0.9.0')).reduce((v, w) => (modAtLeast(v, w) ? v : w), '0.9.0');
+  const ok = (agents ?? []).filter(a => a.kind !== 'codex' && a.mod?.live && modAtLeast(a.mod.version, need) && a.state in RANK);
   ok.sort((x, y) => RANK[x.state] - RANK[y.state] || (lastUsed.get(x.id) ?? 0) - (lastUsed.get(y.id) ?? 0));
   return ok[0] ?? null;
 }

@@ -513,6 +513,10 @@ test('linesPrompt: the facts as plain lines, only library kinds and known events
   ].join('\n'))
 })
 
+test('linesPrompt: the robot dog and the robot vacuum are library kinds too (from 0.9.1)', () => {
+  expect(linesPrompt({ ...LINES_REQ, cast: [{ kind: 'robodog', name: 'Robot dog' }, { kind: 'vacuum', name: 'Robot vacuum' }, { kind: 'cat', name: 'Cat' }] })).toContain('Animals: robodog, vacuum, cat\n')
+})
+
 test('a lines request asks Haiku with the fixed lines prompt and the facts, and the text goes back', async () => {
   const f = helper$({ '2-b.json': JSON.stringify(LINES_REQ) }, { complete: async () => ({ isAnswered: true, text: 'cow|idle|MOO' }) })
   await runHelper(f.$, '/repo/state', 's1', LINES_ON)

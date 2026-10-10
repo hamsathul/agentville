@@ -33,6 +33,13 @@ test('the farm passes clean too', async () => {
   assert.deepEqual(r.creatures, [], 'its animals keep the kit\'s rules');
 });
 
+test("the factory's creatures pass clean: its robot dog, vacuum and cat, its gag and play, as the kit reads them", async () => {
+  const r = await checkWorld({ dir: builtIn('factory') });
+  assert.deepEqual(r.errors, []);
+  assert.deepEqual(r.creatures, [], 'no creature problem');
+  assert.deepEqual(r.notes.filter(n => /creature|roam/.test(n)), [], 'no pointer about them either');
+});
+
 test('an exception is reported with its stop, and world.js with the line', async () => {
   const r = await checkWorld({ dir: fixture('throws') });
   const e = r.errors.find(x => x.stop === 'waiting');

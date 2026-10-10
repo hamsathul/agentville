@@ -100,6 +100,16 @@ test('chooseSession: mod 0.9.0, listening, not codex; idle first, then turn, the
   assert.equal(chooseSession(agents.slice(4), new Map()), null);
 });
 
+test('chooseSession: a cast with a kind mod 0.9.0 drops (the robot dog, the vacuum) needs mod 0.9.1; the older kinds still go to 0.9.0', () => {
+  const old = agent('old'), now = agent('new', { mod: { live: true, version: '0.9.1' } });
+  assert.equal(chooseSession([old], new Map(), [{ kind: 'cat' }, { kind: 'cow' }])?.id, 'old', 'kinds 0.9.0 knows: it will do');
+  assert.equal(chooseSession([old], new Map())?.id, 'old', 'no cast given: as before');
+  assert.equal(chooseSession([old], new Map(), [{ kind: 'cat' }, { kind: 'robodog' }]), null, 'it would write for the cat only');
+  assert.equal(chooseSession([old], new Map(), [{ kind: 'vacuum' }]), null, 'it would find no animal to write for: an error, and a call counted');
+  assert.equal(chooseSession([old, now], new Map(), [{ kind: 'cat' }, { kind: 'robodog' }, { kind: 'vacuum' }])?.id, 'new');
+  assert.equal(chooseSession([old, now], new Map([['old', 5]]), [{ kind: 'cat' }])?.id, 'new', 'a newer mod runs the older kinds too, taking turns');
+});
+
 test('dueLines: the first at once; an event once 5 minutes have passed; else every 30', () => {
   const g = { gapMs: 300_000, idleMs: 1_800_000 };
   assert.equal(dueLines({ now: 0, lastAskedAt: null, eventSince: false, ...g }), true);

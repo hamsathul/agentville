@@ -888,9 +888,9 @@ export async function startCollector({ root, claudeDir = join(homedir(), '.claud
     if (linesPending || !casts.size) return;
     if (!dueLines({ now, lastAskedAt: linesAskedAt, eventSince: linesWatch.since(linesAskedAt ?? 0), gapMs: linesGapMs, idleMs: linesIdleMs })) return;
     if (!helper.canCall('lines').ok) { linesBlocked = 'limit'; return; }
-    const a = chooseSession(snap.agents, linesUsed);
-    if (!a) { linesBlocked = 'no-session'; return; }
     const cast = [...casts].map(([kind, c]) => ({ kind, name: c.name }));
+    const a = chooseSession(snap.agents, linesUsed, cast); // a mod that knows every kind on screen
+    if (!a) { linesBlocked = 'no-session'; return; }
     const id = `${now}-${Math.random().toString(36).slice(2, 8)}`;
     const facts = factsOf(snap, cast, linesWatch.recent(), now);
     const file = writeRequestFile(helperDir, a.id, { id, kind: 'lines', at: now, ...facts }, id);

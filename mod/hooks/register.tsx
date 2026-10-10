@@ -26,7 +26,7 @@ const DASHBOARD_REASON = 'Answered from the Agentville dashboard'
 type Offer = { stateDir: string; sessionId: string; isLive: boolean; windowSec: number; now: number }
 type Waited = { kind: 'answer'; text: string } | { kind: 'withdrawn' } | { kind: 'timeout' }
 
-const MOD_VERSION = '0.9.0'
+const MOD_VERSION = '0.9.1'
 
 let latest: TrackerView = EMPTY
 // The terminal's working line (Slithering… while thinking), for the dashboard: when the turn began,
@@ -221,7 +221,7 @@ export function namePrompt(messages: any[]): string {
 // Animal lines: the collector sends facts only (the animals on screen, agents' names, states, a step word, counts,
 // events); this prompt is fixed here, so a request can't make the model do anything else.
 export const LINES_SYSTEM = 'You write short, funny, kind lines for animals on a pixel farm where coding agents work as farmers. Reply only with rows of the form kind|when|text: kind is one of the animals given, when is one of idle, deployFailed, deployOk, harvest, merged, arrive, and text is what that animal says, 40 characters or fewer, plain words, no quotes. Write two idle rows for every animal, and rows for an event only if it is in what just happened. At most 40 rows. Use only the names given and never invent names. Never mention files, code or secrets.'
-const LINE_KINDS = ['cow', 'goat', 'sheepdog', 'ostrich', 'lion', 'tiger', 'duck', 'cat', 'dog', 'pigeon', 'mouse', 'fish']
+const LINE_KINDS = ['cow', 'goat', 'sheepdog', 'ostrich', 'lion', 'tiger', 'duck', 'cat', 'dog', 'pigeon', 'mouse', 'fish', 'robodog', 'vacuum']
 const LINE_EVENTS = ['deployFailed', 'deployOk', 'harvest', 'merged', 'arrive']
 
 /** The facts of a lines request, as plain lines for the model; null when it names no animal from the library. */

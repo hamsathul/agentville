@@ -1161,6 +1161,65 @@
     else { px(x - 1, y - 2, 3, 5, '#ffffff'); px(x - 1, y - 2, 3, 1, DARK); px(x - 1, y + 2, 3, 1, DARK); px(x - 1, y, 3, 1, '#f08a24'); }
   }
 
+  /* ---------- the creatures: a robot dog, a robot vacuum and a cat on the conveyor (sdk/animals.js) ---------- */
+
+  // Just for fun, never data. The dog and the vacuum go about the walkway, the left side and the conveyor: never
+  // into the bays (inside the safety line), the queue at your desk or the AGVs' rank, nor through the left side's
+  // shelf, open table, sleep pods and cabinets. The cat keeps to the belt (its home, as the farm's ducks keep to
+  // their pond), napping and ambling along it, and a robot pets it from behind the belt. No drone: drones are
+  // subagents (world.json's "taken"). The heat doesn't make them act cold: a steaming floor tells the kit
+  // 'winter', which dresses only goats and freezes only ponds; with no huddle spot here, all it does is keep them
+  // from their habits and rest them twice as long (too hot to play).
+  const FACTORY_ANIMALS = [
+    { kind: 'robodog', name: 'Robot dog', habits: ['roll'], reacts: { merged: 'run', arrive: 'run' },
+      actions: [{ label: 'Pet', fx: 'hearts', line: 'petted' }, { label: 'Oil', fx: 'crumbs', pose: 'happy', line: 'oiled' }, { label: 'Fetch', pose: 'run', run: true, fx: 'dust', line: 'fetch' }],
+      lines: { idle: ['Bark.exe running', 'Bolt detected!', 'beep boop woof', 'wag.wag()'], petted: ['woof ♥ (beep)'], oiled: ['so smooth'], fetch: ['BOLT!'],
+        merged: ['SHIPPED! woof!'], arrive: ['new friend detected'], deployFailed: ['woof?! error 500'], deployOk: ['good deploy! good!'] } },
+    { kind: 'vacuum', name: 'Robot vacuum', actions: [{ label: 'Pet', fx: 'hearts', line: 'petted' }, { label: 'Empty it', fx: 'dust', line: 'emptied' }],
+      lines: { idle: ['dust. so much dust.', 'vrrrr', 'crumb located', 'clean floor = happy floor'], petted: ['vrr ♥'], emptied: ['ahh. lighter.'], stuck: ['help. stuck. beep.', 'corner: 1, me: 0'], free: ['freedom! vrrr'] } },
+    { kind: 'cat', name: 'Cat', habits: ['yawn', 'stretch'], actions: [{ label: 'Pet', fx: 'hearts', line: 'petted' }, { label: 'Feed', fx: 'crumbs', pose: 'eat', line: 'fed' }],
+      lines: { idle: ['mrrp.', 'this belt is warm', 'I supervise.'], petted: ['purr ♥'], fed: ['MEOW (thanks)'], chased: ['HISS'] } },
+  ];
+  // Now and then the vacuum chases the cat (all the way to it: it is slow), then wedges itself in the storage shelf's
+  // corner and beeps until a robot frees it. It goes along the belt to the foot of the left side's path first: the
+  // corner is straight up the path from there.
+  const FACTORY_GAGS = [
+    { id: 'chase', needs: { vacuum: 1, cat: 1, farmer: 'idle', spot: 'corner' }, steps: [
+      { go: 'vacuum', to: 'cat', run: true }, { say: 'cat', line: 'chased' }, { go: 'cat', to: 'away', run: true, ms: 2500 },
+      { go: 'vacuum', to: 'spot:path' }, { go: 'vacuum', to: 'spot:corner' }, { say: 'vacuum', line: 'stuck' }, { stay: 'vacuum', is: 'stand', ms: 6000, while: 'spot:corner' },
+      { go: 'farmer', to: 'vacuum' }, { say: 'vacuum', line: 'free' } ] },
+  ];
+  // A robot idle three minutes or more sometimes plays: fetch with the dog, a pat for the vacuum.
+  const FACTORY_PLAY = [
+    { id: 'fetch', needs: { farmer: 'idle', robodog: 1 }, steps: [{ go: 'farmer', to: 'robodog' }, { go: 'robodog', to: 'away', run: true, ms: 3000 }, { go: 'robodog', to: 'farmer', run: true }, { say: 'robodog', line: 'fetch' }] },
+    { id: 'pet', needs: { farmer: 'idle', vacuum: 1 }, steps: [{ go: 'farmer', to: 'vacuum' }, { fx: 'hearts', at: 'vacuum' }, { say: 'vacuum', line: 'petted' }, { wait: 2000 }] },
+  ];
+  const SHELF_CORNER = [112, 136]; // on the floor at the storage shelf's front right foot (its leg x 104–108, down to y 131)
+  /** The belt's strip the cat keeps to (its feet on the belt), and where a robot stands behind the belt to pet it, for a layout. */
+  function catBelt(L) {
+    const cy = L.GRID.y1 + 12;
+    return { home: { x: 6, y: cy + 1, w: W - 12, h: 3 }, bank: Array.from({ length: 17 }, (_, i) => [8 + 24 * i, cy - 8]) };
+  }
+  /** Where the dog and the vacuum may walk: the walkway, the left side with its path down beside the bays, and on the belt. */
+  function roamOf(L) {
+    const cy = L.GRID.y1 + 12;
+    return [{ x: 4, y: WALK.y0, w: W - 8, h: WALK.y1 - WALK.y0 }, { x: 4, y: WALK.y1, w: CORR[0] + 2, h: cy - WALK.y1 }, { x: 4, y: cy, w: W - 8, h: 4 }];
+  }
+  /** What they keep off (besides the bays and buildings themselves: fieldAt, buildingAt): the bays' floor, the desk queue, the rank, the left side's furniture. */
+  function avoidOf(L) {
+    const G = L.GRID, more = [];
+    for (let r = 3; r < L.rows; r++) { const y = 100 + r * ROWH, cab = r % 2 ? 60 : 14, plant = r % 2 ? 24 : 90; more.push({ x: cab - 1, y: y + 15, w: 32, h: 28 }, { x: plant - 7, y: y + 26, w: 14, h: 20 }); } // a fourth row's tool cabinet and plant, and on
+    return [
+      { x: G.x0, y: G.y0, w: G.x1 - G.x0, h: G.y1 - G.y0 }, // the bays, inside the safety line
+      { x: 142, y: DESK_Y - 18, w: 116, h: 22 }, // the queue at your desk, both sides
+      { x: RANK[0][0] - 10, y: RANK[0][1] - 16, w: RANK.at(-1)[0] - RANK[0][0] + 20, h: 20 }, // the AGVs' rank
+      { x: 2, y: 94, w: 108, h: 38 }, // the storage shelf
+      { x: 24, y: 164, w: 64, h: 28 }, // the open table
+      { x: PODS[0][0] - 12, y: PODS[0][1] - 36, w: PODS.at(-1)[0] - PODS[0][0] + 24, h: 44 }, // the sleep pods
+      ...more,
+    ];
+  }
+
   /* ---------- the hooks ---------- */
 
   /** A time of day, short: 14:05. */
@@ -1181,6 +1240,11 @@
     const stOf = k => L.ST.find(s => s.key === k);
     const fieldByKey = k => scene.fields.find(f => f.key === k);
     const rankOf = new Map(), agvs = new Map(); // server → its bay in the rank; server → its AGV: { x, y, path, to, dir, moving, goal, arrivedAt, lastBusy }
+    // The cat's home and bank: the kit keeps the cast it was given, so when the bays' rows move the belt, they move in place.
+    const catHome = {}, catBank = [];
+    const fitBelt = () => { const b = catBelt(L); Object.assign(catHome, b.home); catBank.splice(0, catBank.length, ...b.bank); };
+    fitBelt();
+    const cast = FACTORY_ANIMALS.map(c => (c.kind === 'cat' ? { ...c, home: catHome, bank: catBank } : c));
     /** The AGVs there are now (the scene's carts), each keeping its bay in the rank while its server has one. */
     function placeAgvs() {
       const list = scene.carts ?? [];
@@ -1311,7 +1375,7 @@
         return events;
       },
       layout: () => L,
-      relayout(ground) { L = ground; return L; },
+      relayout(ground) { L = ground; fitBelt(); return L; },
       spawn: () => FAB_DOOR,
       /** Where its k-th running subagent's drone hovers: by its head, two a side; an Explore one circles it, sweeping its beam. */
       follow: (b, k, T, kid) => (kid?.dog
@@ -1371,6 +1435,12 @@
       ground() { drawLimits(); drawWorkshop(); drawBays(); },
       /** The floor's heat, live: the engine shows it (or the level the Heat switch holds) as PXG.season. */
       season: () => heat,
+      /** The robot dog, the robot vacuum and the cat (the creatures, above): just for fun, never data. */
+      animals: () => ({ cast, gags: FACTORY_GAGS, play: FACTORY_PLAY }),
+      roam: () => roamOf(L),
+      avoid: () => avoidOf(L),
+      /** Where the chase goes: the storage shelf's corner, by way of the foot of the left side's path, on the belt. No huddle: a hot floor is no place to huddle. */
+      spots: () => ({ corner: SHELF_CORNER, path: [CORR[0], L.GRID.y1 + 14] }),
       /**
        * Steaming: steam puffs rising from the floor vents, and now and then a burst of sparks off a machine (the
        * fabricator, a bay's assembly frame). Only for the heat shown.
@@ -1592,7 +1662,7 @@
       <b>Power-cell bank</b><span>its lit cells are what is left of your plan's weekly limit: they drain as the week is used (the % on hover, and when it resets); its lamp turns amber from 70% and blinks red from 90%</span>
       <b>Floor heat</b><span>follows your plan's 5-hour limit, on the thermometer by your desk and in the floor vents between the bays: cool while it is fresh (blue, the vents' fans turning slowly), then warm (the fans faster), hot (the fans racing, a shimmer over the vents), and steaming (steam from the vents, sparks off the machines) when it is nearly used up; a new window cools it again. The Heat switch holds one instead (each click moves it on, then back to live): the panel then shows the heat with a 📌 and your real 5-hour use</span>
       <b>Capsules</b><span>one agent messaging another (Claude Code's SendMessage between sessions): a capsule shoots through the pneumatic tubes overhead from one robot to the other, and the floor log says what it said; the agents' conversations show it too</span>
-      <b>Animals</b><span>a robot dog, a robot vacuum and a cat that naps on the conveyor live here just for fun: they never stand for anything. Click one to pet it: the nearest robot that isn't waiting on you rolls over and does it. The Animals switch hides them</span>
+      <b>Animals</b><span>a robot dog, a robot vacuum and a cat that naps on the conveyor live here just for fun: they never stand for anything. Click one (or the belt, for the cat) to pet it, oil the dog, empty the vacuum or feed the cat: the nearest robot that isn't waiting on you rolls over and does it. Now and then the vacuum chases the cat and wedges itself in a corner until a robot frees it; the dog runs to meet a new robot and to the loading dock when a pull request ships. The Animals switch hides them</span>
       <b>Day and night</b><span>the windows show the sky by your clock; at night the lights dim, and desk lamps, screens, stack lights and welding sparks glow. The Sky switch holds it at day or night</span>
       <b>Click</b><span>a robot to answer or message it in the sidebar; a bay's sign for the files robots touched there</span>
       <b>Zoom</b><span>+ / − (or ⌘/Ctrl + scroll, or pinch) zooms the factory inside its frame; drag or scroll to move around (the map in the corner shows where you are; click it to go somewhere); the % button shows the whole factory again</span>

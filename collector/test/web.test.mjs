@@ -2561,5 +2561,5 @@ test('✨ Helper has an Animal lines box that says what it sends; ticked alone i
   const blocked = loadPage();
   blocked.push(helperSnap({ on: true, uses: { names: false, lines: true }, dailyLimit: 200, today: 0, linesBlocked: 'no-session' }));
   await blocked.clickButton('helper-open');
-  assert.match(blocked.el('helper-body').innerHTML, /Animal lines need a session with mod 0\.9\.0: run \/reload-plugins in one\./);
+  assert.match(blocked.el('helper-body').innerHTML, /Animal lines need a session with mod 0\.9\.0 \(0\.9\.1 for the robot dog and the robot vacuum\): run \/reload-plugins in one\./);
 });

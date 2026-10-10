@@ -397,12 +397,13 @@ view.
   - **What the animals say:** each fresh line once, before their own; what you click (Pet, Feed…)
     keeps its own line. A world of yours that can't see what agents say gets only the lines with no
     names in them.
-  - It needs mod 0.9.0 in a session (`/reload-plugins`); ✨ Helper says when no session can run it.
+  - It needs mod 0.9.0 in a session (0.9.1 for the robot dog and the robot vacuum: an older mod
+    leaves them out); `/reload-plugins`. ✨ Helper says when no session can run it.
 - **A daily limit** (200 to start, 1 to 2,000) caps the calls. The dialog shows today's count and
   the last error, and says when today's limit is reached (it resets at midnight). **Switch off**
   asks for nothing more at once; a call already under way finishes, and its answer is dropped.
-- Names need mod 0.8.0 in the session, animal lines 0.9.0. For a session started before you
-  updated, run `/reload-plugins` in it.
+- Names need mod 0.8.0 in the session, animal lines 0.9.0 (0.9.1 for the robot dog and the robot
+  vacuum). For a session started before you updated, run `/reload-plugins` in it.
 
 ### Model, effort and permission mode
 
@@ -1019,7 +1020,7 @@ and can do is in [docs/worlds.md](docs/worlds.md).
 | My world looks wrong in one situation | Open the test page at that stop: `http://localhost:7777/worlds/test?world=u/<folder>&stop=…` (the stops are listed in [docs/worlds.md](docs/worlds.md#the-test-page-and-the-tour)). It has no live reload: reload the page after saving. Or take a picture of that stop: `npm run world-shots -- <folder> --stop …` |
 | A red strip over a world | The world reported an error after it started. It keeps drawing; **×** hides the strip. The page's console has the same message |
 | The farm stays empty, or says "not found" | The farm loads in a frame of its own from the collector (`/world/farm/`). After an update, restart the service (`agent-tracker restart`) and reload the page. The page's console says what a world reported, if anything |
-| The animals never say anything new | Tick **Animal lines** in ✨ Helper (the helper on). A session with mod 0.9.0 must be open (`/reload-plugins` in it), and a world with animals on screen. ✨ Helper shows the last error and today's count |
+| The animals never say anything new | Tick **Animal lines** in ✨ Helper (the helper on). A session with mod 0.9.0 must be open (0.9.1 for the robot dog and the robot vacuum; `/reload-plugins` in it), and a world with animals on screen. ✨ Helper shows the last error and today's count |
 | **✨** says no name came, or the ✨ Helper shows a last error | No session is listening with mod 0.8.0 (`/reload-plugins` in it), today's limit is reached (it resets at midnight), or your organisation doesn't allow Haiku (the error says so) |
 
 ## Known limits

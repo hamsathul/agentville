@@ -8,6 +8,7 @@ import { fileURLToPath } from 'node:url';
 import vm from 'node:vm';
 import { checkWorldJson } from '../worlds.mjs';
 import { goldenSnapshot } from '../../scripts/golden/fixture.mjs';
+import { creatureProblems } from '../../scripts/lib/world-vm.mjs';
 
 const web = f => readFileSync(fileURLToPath(new URL(`../../web/${f}`, import.meta.url)), 'utf8');
 const plain = v => JSON.parse(JSON.stringify(v));
@@ -297,6 +298,9 @@ test('no farm words: the help, every building tip, dialog, log line, pop-up and 
   assert.equal(h.boardTitle, 'The manuals shelf: what your projects remember', "the manuals shelf's dialog title (the engine's board)");
   const texts = [['help', h.help()], ['startText', h.startText(1)], ['startText', h.startText(7)], ['arriveText', h.arriveText], ['boardTitle', h.boardTitle]];
   for (const k of ['barn', 'drones', 'desk', 'board', 'bank', 'dock']) { assert.ok(h.buildingTip(k), `${k} has a tip`); texts.push([`buildingTip ${k}`, h.buildingTip(k)]); }
+  const animals = plain(h.animals()); // the creatures' names, menus and lines (the gags' role "farmer" is the kit's word, never shown)
+  for (const c of animals.cast) texts.push([`creature ${c.kind}`, [c.name, ...c.actions.map(a => a.label), ...Object.values(c.lines).flat()].join('\n')]);
+  for (const g of [...animals.gags, ...animals.play]) texts.push([`gag ${g.id}`, Object.values(g.lines ?? {}).flat().join('\n')]);
   const busy = crowd({ prs: { open: [{ number: 12, title: 'New cart', url: 'https://github.com/you/shop/pull/12', checks: 'ok', draft: false }], merged: [{ number: 9, title: 'Old cart', url: 'https://github.com/you/shop/pull/9', at: TOUR_NOW }] },
     plan: { windows: [{ kind: 'five_hour', percentUsed: 40, resetsAt: TOUR_NOW + 3_600_000 }, { kind: 'seven_day', percentUsed: 75, resetsAt: TOUR_NOW + 86_400_000 }] },
     children: [{ id: 'c1', kind: 'subagent', state: 'running', label: 'Look around', agentType: 'Explore', startedAt: TOUR_NOW }] });
@@ -1132,4 +1136,160 @@ test("messages: a capsule goes from one robot into its bay's tube outlet, throug
   for (let i = into + 1; i < out; i++) assert.ok(covered(Math.round(path[i][0]), Math.round(path[i][1])), `in between, inside the tubes (t ${i / 400}: ${path[i]})`);
   const desk = { x: 170, y: 80 };
   assert.ok(near(capsule(a, desk, 0.9999), [desk.x, desk.y - 8], 3), 'a robot away from the bays gets one too (at your desk)');
+});
+
+/* ---------- the creatures: a robot dog, a robot vacuum and a cat on the conveyor (sdk/animals.js) ---------- */
+
+/** The factory with n repos' bays, and the animals kit from its frame; `animals(seed)` is a fresh kit placed on its floor, as the engine places it. */
+function creatureFloor(n = 3) {
+  const { window, ctx, F } = load();
+  const h = window.hooks, L = h.relayout(h.grid.layoutFor(Array.from({ length: n }, (_, i) => ({ key: `/r/${i}`, name: `r${i}` }))));
+  const kit = vm.runInContext('({ makeAnimals, seededRandom, CREATURES, gagProblem })', ctx);
+  const place = a => a.place({ roam: h.roam(), avoid: h.avoid(), perches: h.perches?.() ?? [], spots: h.spots(), blocked: (x, y) => Boolean(h.fieldAt(x, y) || h.buildingAt(x, y)) });
+  const animals = seed => { const a = kit.makeAnimals(h.animals(), { random: kit.seededRandom(seed) }); place(a); return a; };
+  return { h, L, F, kit, place, animals };
+}
+const inArea = (r, x, y, slack = 0) => x >= r.x - slack && x <= r.x + r.w + slack && y >= r.y - slack && y <= r.y + r.h + slack;
+/** A creature's whole body (w × h above its feet, a pixel in from each side: list() rounds) inside a rectangle. */
+const bodyIn = (c, o, r) => o.x + c.w / 2 - 1 > r.x && o.x - c.w / 2 + 1 < r.x + r.w && o.y - 1 > r.y && o.y - c.h + 1 < r.y + r.h;
+/** The engine's crew, stood in for: robots that are where they're sent at once (animals.test.mjs's). */
+function fakeCrew(farmers) {
+  const log = [];
+  return {
+    log, farmers,
+    idle: () => farmers.filter(f => f.state === 'idle' && !f.sent),
+    busy: () => farmers.filter(f => f.state === 'working'),
+    longIdle: () => [],
+    at: id => farmers.find(f => f.id === id) ?? null,
+    state: id => farmers.find(f => f.id === id)?.state,
+    send: (id, [x, y]) => { const f = farmers.find(z => z.id === id); f.sent = true; f.x = x; f.y = y; log.push(['send', id, x, y]); },
+    release: id => { const f = farmers.find(z => z.id === id); if (f) f.sent = false; log.push(['release', id]); },
+    flag() {}, chickens: () => [], spotFree: () => true, fx: kind => log.push(['fx', kind]),
+  };
+}
+
+test("the factory's animals: a robot dog, a robot vacuum and a cat, held to the kit's own rules (check-world's), with a gag and play", () => {
+  const { h, kit } = creatureFloor();
+  const world = plain(h.animals());
+  assert.deepEqual(Object.keys(world).sort(), ['cast', 'gags', 'play']);
+  assert.deepEqual(world.cast.map(c => [c.kind, c.name, c.count ?? 1]), [['robodog', 'Robot dog', 1], ['vacuum', 'Robot vacuum', 1], ['cat', 'Cat', 1]]);
+  const [dog, vacuum, cat] = world.cast;
+  assert.deepEqual(dog.actions.map(a => a.label), ['Pet', 'Oil', 'Fetch']);
+  assert.deepEqual(dog.habits, ['roll']);
+  assert.deepEqual(dog.reacts, { merged: 'run', arrive: 'run' }, 'it runs to a merged pull request, and to meet a new robot');
+  assert.deepEqual(vacuum.actions.map(a => a.label), ['Pet', 'Empty it']);
+  assert.deepEqual(cat.actions.map(a => a.label), ['Pet', 'Feed']);
+  assert.deepEqual(cat.habits, ['yawn', 'stretch']);
+  assert.deepEqual(world.gags.map(g => g.id), ['chase']);
+  assert.deepEqual(world.play.map(g => g.id), ['fetch', 'pet']);
+  const taken = JSON.parse(web('worlds/factory/world.json')).taken;
+  assert.deepEqual(creatureProblems(world, { kinds: Object.keys(kit.CREATURES), taken, gagProblem: kit.gagProblem, spots: plain(h.spots()) }), { problems: [], pointers: [] }, 'nothing the kit would drop or do its own way');
+});
+
+test("where they may go: the walkway, the left side and the conveyor; never the bays, the queue at your desk, the AGV rank, or into the left side's shelf, table and pods", () => {
+  for (const n of [3, 18]) {
+    const { h, L, F } = creatureFloor(n), cy = L.GRID.y1 + 12;
+    const roam = plain(h.roam()), avoid = plain(h.avoid());
+    const roams = (x, y) => roam.some(r => inArea(r, x, y)), avoids = (x, y) => avoid.some(r => inArea(r, x, y));
+    for (const [x, y, where] of [[20, 88, 'the walkway by the fabricator'], [300, 90, 'the walkway by the bank'], [60, 140, 'under the storage shelf'], [104, 168, 'beside the charging pads'], [116, 200, "the left side's path"], [90, 240, 'beside the pods'], [20, cy + 2, 'the belt, at the left'], [380, cy + 2, 'the belt, at the right']]) {
+      assert.ok(roams(x, y), `${n} bays: ${where} (${x},${y}) is theirs`);
+      assert.ok(!avoids(x, y), `${n} bays: ${where} (${x},${y}) isn't kept off`);
+    }
+    assert.ok(!roams(200, 40) && !roams(200, 200) && !roams(200, cy + 14), `${n} bays: not the buildings, the bays' floor or under the belt`);
+    const queue = [0, 1, 2].flatMap(i => [[150 + 20 * i, 78], [250 - 20 * i, 78]]);
+    for (const [x, y, what] of [[L.GRID.x0 + 4, L.GRID.y0 + 4, 'the bays'], [L.GRID.x1 - 4, L.GRID.y1 - 4, 'the bays'], ...queue.map(([x, y]) => [x, y, 'the queue at your desk']), ...F.RANK.map(([x, y]) => [x, y - 4, 'the AGV rank']), [56, 115, 'the storage shelf'], [56, 176, 'the open table'], [24, 240, 'a sleep pod'], [54, 240, 'a sleep pod']]) assert.ok(avoids(x, y), `${n} bays: ${what} (${x},${y}) is kept off`);
+    const { corner } = plain(h.spots());
+    assert.ok(roams(...corner) && !avoids(...corner), `${n} bays: the gag's corner (${corner}) is floor they may stand on`);
+    assert.ok(Math.abs(corner[0] - 108) <= 6 && Math.abs(corner[1] - 131) <= 6, `the storage shelf's corner, at its foot (${corner})`);
+  }
+});
+
+test('placement: whatever they do, no creature stands in what avoid() keeps off, or on a bay or a building; the dog and the vacuum stay where they may roam, the cat on the belt', () => {
+  const regions = new Set();
+  for (const n of [3, 18]) for (const seed of [1, 2, 3]) {
+    const { h, L, kit, animals } = creatureFloor(n), a = animals(seed), crew = fakeCrew([{ id: 'r1', state: 'idle', x: 18, y: 158 }]);
+    const avoid = plain(h.avoid()), roam = plain(h.roam()), home = plain(h.animals()).cast.find(c => c.kind === 'cat').home, cy = L.GRID.y1 + 12;
+    const events = [['merged', [357, 44]], ['arrive', [62, 80]], ['deployFailed', [174, 130]], ['harvest', [262, 160]], ['deployOk', [350, 160]]];
+    for (let i = 0; i < 6000; i++) {
+      if (i % 400 === 0) { a.perform('robodog-0', 2, null); a.perform('vacuum-0', 1, null); a.perform('cat-0', 1, null); } // Fetch (a run), Empty it, Feed
+      if (i % 900 === 300) a.react(...events[Math.floor(i / 900) % events.length]);
+      a.tick(0.1, { crew });
+      for (const o of plain(a.list())) {
+        const c = kit.CREATURES[o.kind], at = `${n} bays, seed ${seed}, t ${i / 10}: ${o.id} at ${o.x},${o.y}`;
+        if (o.kind === 'cat') { assert.ok(inArea(home, o.x, o.y, 1), `${at}: on the belt`); continue; }
+        assert.ok(roam.some(r => inArea(r, o.x, o.y, 1)), `${at}: where it may roam`);
+        for (const r of avoid) assert.ok(!bodyIn(c, o, r), `${at}: in ${JSON.stringify(r)}`);
+        for (const [px, py] of [[o.x - c.w / 2 + 1, o.y - c.h + 1], [o.x + c.w / 2 - 1, o.y - c.h + 1], [o.x - c.w / 2 + 1, o.y - 1], [o.x + c.w / 2 - 1, o.y - 1]]) assert.ok(!h.fieldAt(px, py) && !h.buildingAt(px, py), `${at}: on a bay or a building`);
+        regions.add(o.y <= 92 ? 'the walkway' : o.y >= cy ? 'the belt' : 'the left side');
+      }
+    }
+  }
+  assert.deepEqual([...regions].sort(), ['the belt', 'the left side', 'the walkway']);
+});
+
+test("the cat naps on the conveyor and rides along it: its home is the belt's strip, which moves down with the bays' rows; a robot pets it from behind the belt", () => {
+  const { h, L, place, animals } = creatureFloor(3);
+  const a = animals(5), cat = () => plain(a.list()).find(o => o.kind === 'cat'), beltOf = G => [G.y1 + 12 - 3, G.y1 + 12 + 5];
+  const xs = new Set(), poses = new Set();
+  for (let i = 0; i < 4000; i++) {
+    a.tick(0.1);
+    const c = cat(), [top, bottom] = beltOf(L.GRID);
+    assert.ok(c.y >= top && c.y <= bottom, `t ${i / 10}: the cat at ${c.x},${c.y}, on the belt (${top}–${bottom})`);
+    xs.add(Math.floor(c.x / 40));
+    poses.add(c.pose);
+  }
+  assert.ok(xs.size >= 4, `it gets about along the belt (${[...xs]})`);
+  assert.ok(poses.has('sleep'), 'it naps there');
+  const L6 = h.relayout(h.grid.layoutFor(Array.from({ length: 18 }, (_, i) => ({ key: `/r/${i}`, name: `r${i}` }))));
+  assert.ok(L6.GRID.y1 > L.GRID.y1, 'six rows of bays: the conveyor is further down');
+  place(a); // the engine places them again after a new layout
+  for (let i = 0; i < 20; i++) a.tick(0.1);
+  const [top, bottom] = beltOf(L6.GRID), c = cat();
+  assert.ok(c.y >= top && c.y <= bottom, `the cat is on the moved belt (${c.y})`);
+  const stand = plain(a.where('cat-0').stand);
+  assert.equal(stand[1], L6.GRID.y1 + 4, 'a robot stands behind the belt to pet it');
+  assert.ok(Math.abs(stand[0] - c.x) <= 20, `beside it (${stand})`);
+});
+
+test('the gag: the vacuum chases the cat, which hisses and runs; it wedges itself in the shelf corner and beeps until a robot comes to free it', () => {
+  const STUCK = ['help. stuck. beep.', 'corner: 1, me: 0'];
+  let done = false;
+  for (const seed of [1, 2, 3, 4, 5, 6, 7, 8]) {
+    const { h, animals } = creatureFloor(3), a = animals(seed), corner = plain(h.spots()).corner;
+    const crew = fakeCrew([{ id: 'r1', state: 'idle', x: 18, y: 158 }]);
+    let said = null; // during a chase: each line first said → where the vacuum and the cat were, and how many robots had been sent
+    for (let i = 0; i < 40000 && !done; i++) {
+      a.tick(0.1, { crew });
+      const on = a.gagNow()?.id === 'chase';
+      if (on && !said) said = new Map();
+      if (said) {
+        const at = Object.fromEntries(plain(a.list()).map(o => [o.kind, o]));
+        for (const b of plain(a.bubbles())) if (!said.has(b.text)) said.set(b.text, { vacuum: at.vacuum, cat: at.cat, sent: crew.log.filter(l => l[0] === 'send').length });
+      }
+      if (on || !said) continue;
+      const stuck = STUCK.find(t => said.has(t));
+      if (said.has('HISS') && stuck && said.has('freedom! vrrr')) { // a chase played out, every line said: check where everyone was
+        const hiss = said.get('HISS'), beep = said.get(stuck), free = said.get('freedom! vrrr');
+        assert.ok(Math.hypot(hiss.vacuum.x - hiss.cat.x, hiss.vacuum.y - hiss.cat.y) <= 30, `seed ${seed}: the vacuum is at the cat when it hisses (${JSON.stringify(hiss)})`);
+        assert.deepEqual([beep.vacuum.x, beep.vacuum.y], corner, `seed ${seed}: it beeps from the corner`);
+        assert.equal(beep.sent, 0, 'before any robot comes');
+        assert.deepEqual([free.vacuum.x, free.vacuum.y], corner, 'freed where it was stuck');
+        assert.ok(free.sent >= 1, 'a robot came');
+        const sent = crew.log.find(l => l[0] === 'send');
+        assert.ok(Math.hypot(sent[2] - corner[0], sent[3] - corner[1]) <= 12, `beside the vacuum (${sent})`);
+        assert.ok(crew.log.some(l => l[0] === 'release' && l[1] === 'r1'), 'and is let go after');
+        done = true;
+      }
+      said = null;
+    }
+    if (done) break;
+  }
+  assert.ok(done, 'a chase played out with every line');
+});
+
+test("a steaming floor (the kit hears winter) doesn't make them act cold: nothing they wear changes, and there is no huddle spot", () => {
+  const { h, animals } = creatureFloor(3), a = animals(4);
+  for (let i = 0; i < 600; i++) a.tick(0.1, { winter: true });
+  for (const o of plain(a.list())) assert.deepEqual(o.wear, {}, `${o.id} wears nothing for the cold`);
+  assert.ok(!('huddle' in plain(h.spots())), 'no huddle on a hot floor');
 });
