@@ -638,7 +638,28 @@ test("season(): the floor's heat by the 5-hour limit, at the farm's bounds (cool
   assert.deepEqual([0, 24, 25, 59, 60, 84, 85, 100].map(p => heatOf(planned(p, 20))), ['spring', 'spring', 'summer', 'summer', 'autumn', 'autumn', 'winter', 'winter'], "the farm's seasonOf bounds: 25, 60, 85");
   assert.equal(heatOf({ ...bay(), plan: null }), 'summer', 'no plan reading: warm');
   assert.equal(heatOf(planned(null, 50)), 'summer', 'no 5-hour window: warm');
+  assert.equal(heatOf(planned(undefined, 50)), 'summer', 'a 5-hour window with no number is no reading: warm, not steaming');
   assert.equal(heatOf(planned(95, 50, { reset: true })), 'spring', 'a new 5-hour window: cool again');
+});
+
+test("the floor vents sit on top of a project's painted zone: a project of bays side by side paints across the aisle, the vent stays", () => {
+  const { window, ctx, F } = load();
+  const h = window.hooks, ink = vm.runInContext('ink', ctx), project = '/Users/you/work/shop';
+  const fields = ['api', 'web', 'admin'].map(name => ({ key: `${project}/${name}`, name, project, projectName: 'shop' }));
+  const L = h.relayout(h.grid.layoutFor(fields));
+  assert.deepEqual(plain(L.groups[0].slots), [0, 1, 2], 'one project, its three bays side by side on the first row');
+  const ZONES = new Set(['#a9dcf7', '#c6e89a', '#f4b6c2', '#ffe8a3'].map(ink)); // the projects' floor paints
+  const pix = new Map(), painted = new Set(); // the last colour at each point; the points a zone's paint ever covered
+  h.bg((x, y, w, hh, c) => {
+    for (let yy = y; yy < y + hh; yy++) for (let xx = x; xx < x + w; xx++) { pix.set(`${xx},${yy}`, ink(c)); if (ZONES.has(ink(c))) painted.add(`${xx},${yy}`); }
+  }, 'summer', { x0: 0, x1: h.W, y0: 0, y1: L.H });
+  const firstRow = plain(F.ventsOf(L)).filter(([, y]) => y < 100 + 62);
+  assert.equal(firstRow.length, 2);
+  for (const [x, y] of firstRow) {
+    assert.ok(painted.has(`${x},${y + 3}`), `${x},${y}: the project's zone paint reaches the vent (the case under test)`);
+    assert.equal(pix.get(`${x - 4},${y + 3}`), ink('#5f6b7a'), `${x},${y}: its steel frame, over the paint`);
+    assert.equal(pix.get(`${x},${y + 3}`), ink('#3a3a40'), `${x},${y}: its dark shaft, over the paint`);
+  }
 });
 
 test('the heat drawn is the one shown (PXG.season, which the Heat switch may hold), else the live one: steam over the floor vents only when steaming', () => {
@@ -656,6 +677,9 @@ test('the heat drawn is the one shown (PXG.season, which the Heat switch may hol
   assert.ok(steam(ground().rects).length >= vents.length, 'held at steaming while the live level is cool: steam over every vent');
   const rising = puffs();
   assert.ok(rising.length > 0 && rising.every(p => p.vy < 0), 'and puffs of it rising (ambient)');
+  const sparks = []; for (let i = 0; i < 60; i++) h.ambient(1, p => { if (p.color !== F.STEAM) sparks.push(p); });
+  assert.ok(sparks.length > 0, 'now and then, sparks');
+  for (const p of sparks) assert.ok(h.buildingAt(p.x, p.y) === 'barn' || h.fieldAt(p.x, p.y), `a spark at ${p.x},${p.y}: off a machine (the fabricator, a bay's frame)`);
   for (const level of ['spring', 'summer', 'autumn']) { PXG.season = level; assert.equal(steam(ground().rects).length + puffs().length, 0, `${level}: no steam`); }
   PXG.season = 'autumn';
   assert.ok(overVents(ground().rects, vents).length >= vents.length, 'hot: a shimmer over the vents');
@@ -695,12 +719,12 @@ test('the power-cell bank: 8 cells, round(8 × (1 − week)) lit; its lamp green
   const { F, PXG, ground, ctx } = bays();
   const ink = vm.runInContext('ink', ctx);
   const weekly = (pct, over = {}) => ({ windows: [{ kind: 'seven_day', percentUsed: pct, resetsAt: RESETS, ...over }] });
-  for (const [week, lit, lamp] of [[0, 8, 'green'], [50, 4, 'green'], [69, 2, 'green'], [70, 2, 'amber'], [89, 1, 'amber'], [90, 1, 'red'], [100, 0, 'red']]) {
+  for (const [week, lit, lamp, pct = week] of [[0, 8, 'green'], [50, 4, 'green'], [69, 2, 'green'], [69.6, 2, 'amber', 70], [70, 2, 'amber'], [89, 1, 'amber'], [89.6, 1, 'red', 90], [90, 1, 'red'], [100, 0, 'red']]) {
     const b = plain(F.bankOf(weekly(week)));
-    assert.deepEqual([b.lit, b.lamp, b.pct], [lit, lamp, week], `${week}% of the week`);
+    assert.deepEqual([b.lit, b.lamp, b.pct], [lit, lamp, pct], `${week}% of the week: the cells and the lamp go by the % it shows`);
   }
   assert.equal(F.bankOf(weekly(95, { reset: true })).lit, 8, 'a new week: every cell charged');
-  for (const plan of [null, { windows: [] }, { windows: [{ kind: 'five_hour', percentUsed: 50 }] }]) assert.equal(F.bankOf(plan), null, `no reading: ${JSON.stringify(plan)}`);
+  for (const plan of [null, { windows: [] }, { windows: [{ kind: 'five_hour', percentUsed: 50 }] }, weekly(undefined), weekly(null), weekly('lots')]) assert.equal(F.bankOf(plan), null, `no reading: ${JSON.stringify(plan)}`);
   const LAMP = [295, 15, 6, 4];
   const drawn = (week, T = 0) => {
     PXG.T = T;
@@ -715,6 +739,8 @@ test('the power-cell bank: 8 cells, round(8 × (1 − week)) lit; its lamp green
   assert.ok(red.includes(true) && red.includes(false), `red, blinking (${red})`);
   const none = drawn(null);
   assert.deepEqual([none.lit, none.lamp.length], [0, 0], 'no reading: no cell lit, the lamp off');
+  const bad = drawn(undefined);
+  assert.deepEqual([bad.lit, bad.lamp.length], [0, 0], 'a weekly window with no number: as no reading');
 });
 
 test("the bank's tooltip gives the week's % and when it resets; with no reading it says so", () => {
@@ -727,6 +753,14 @@ test("the bank's tooltip gives the week's % and when it resets; with no reading 
   assert.ok(tip.includes(`resets ${resets}`), tip);
   h.setScene(sceneOf(planned(30, 72, { reset: true })));
   assert.match(h.buildingTip('bank'), /just reset/);
+  h.setScene(sceneOf(planned(30, 69.6)));
+  assert.match(h.buildingTip('bank'), /70% used, 2 of 8 cells left/, 'the % it shows is the one the lamp and cells go by');
+  h.setScene(sceneOf(planned(30, undefined)));
+  const bad = h.buildingTip('bank');
+  assert.match(bad, /no reading/, 'a weekly window with no number: no reading');
+  assert.doesNotMatch(bad, /NaN/);
+  assert.doesNotMatch(h.dialog('bank').html, /NaN/, 'nor in its dialog');
+  assert.match(h.dialog('bank').html, /no reading/);
   h.setScene(sceneOf({ ...bay(), plan: null }));
   const none = h.buildingTip('bank');
   assert.match(none, /no reading/);

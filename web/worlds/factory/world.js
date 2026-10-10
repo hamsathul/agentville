@@ -252,11 +252,14 @@
     f(21, 36, 8, 8, '#ffffff'); f(21, 36, 8, 1, '#c3cbd2'); f(24, 37, 2, 6, '#2fa57a'); f(22, 39, 6, 2, '#2fa57a'); f(21, 44, 8, 1, '#9aa4ad'); // a first-aid box
     f(314, 0, 2, 64, '#9aa4ad'); f(314, 0, 1, 64, '#c3cbd2'); for (let y = 8; y < 64; y += 14) f(313, y, 4, 2, '#5f6b7a'); // a pipe up the wall
   }
+  // The fabricator's hopper (the middle of its mouth, on top) and the elbow of its pipe from the wall: steaming, sparks fly off them.
+  const FAB_HOPPER = [60, 8], FAB_PIPE = [86, 11];
   /** The fabricator: a big friendly red machine; parts go in its hopper, and new robots roll out of its door onto the walkway. */
   function fabricator(f) {
+    const [hx, hy] = FAB_HOPPER, [px0, py0] = FAB_PIPE;
     f(89, 22, 3, 52, WALL_SEAM); f(36, 76, 56, 2, WALK_SHADOW); // its shadow on the wall and the walkway
-    for (let j = 0; j < 12; j++) { const d = Math.round((j * 8) / 11); f(41 + d, 8 + j, 38 - 2 * d, 1, '#5f6b7a'); f(42 + d, 8 + j, 36 - 2 * d, 1, j < 2 ? '#e6eef5' : '#c3cbd2'); f(72 - d, 8 + j, 6, 1, '#9aa4ad'); } // the hopper
-    f(78, 11, 10, 3, '#9aa4ad'); f(78, 11, 10, 1, '#c3cbd2'); f(86, 11, 2, 12, '#9aa4ad'); // a pipe from the wall
+    for (let j = 0; j < 12; j++) { const d = Math.round((j * 8) / 11); f(hx - 19 + d, hy + j, 38 - 2 * d, 1, '#5f6b7a'); f(hx - 18 + d, hy + j, 36 - 2 * d, 1, j < 2 ? '#e6eef5' : '#c3cbd2'); f(hx + 12 - d, hy + j, 6, 1, '#9aa4ad'); } // the hopper
+    f(px0 - 8, py0, 10, 3, '#9aa4ad'); f(px0 - 8, py0, 10, 1, '#c3cbd2'); f(px0, py0, 2, 12, '#9aa4ad'); // a pipe from the wall
     f(33, 20, 54, 1, '#5a1f19'); f(32, 21, 56, 53, '#5a1f19'); f(33, 21, 54, 52, '#e04a3a');
     f(33, 21, 54, 2, '#ff6b6b'); f(33, 21, 2, 52, '#ff6b6b'); f(83, 21, 4, 52, '#b23a2e'); f(33, 70, 54, 3, '#9c3b30'); f(33, 73, 54, 1, '#5a1f19');
     f(32, 74, 6, 2, '#3a3a40'); f(82, 74, 6, 2, '#3a3a40'); // its feet
@@ -423,7 +426,6 @@
     // the paths down: the left side's, and the aisles between the bays' columns
     f(CORR[0] - 6, WALK.y1, 12, G.y1 - WALK.y1, WALKWAY); f(CORR[0] + 5, WALK.y1, 1, G.y1 - WALK.y1, WALK_SHADOW);
     for (const c of CORR.slice(1)) f(c - 5, G.y0, 10, G.y1 - G.y0, WALKWAY);
-    for (const [x, y] of ventsOf(L)) floorVent(f, x, y);
     // a project's bays: a painted floor zone round them (its sign is a label)
     for (const g of L.groups) {
       const [paint, edge] = PAINTS[hashOf(g.name ?? '') % PAINTS.length];
@@ -436,6 +438,7 @@
     }
     for (const s of L.ST) f(s.x0, s.y0, 72, 30, BAY); // each bay's floor plate (the bays draw on it)
     for (const s of L.empty) emptyBay(f, s);
+    for (const [x, y] of ventsOf(L)) floorVent(f, x, y); // over a project's paint, which runs across the aisle between its bays
     // the safety line round the bays, with gaps where the paths come in: from the walkway down the aisles, and from the left side's path along each row's lane
     const lanes = [...new Set(L.slots.map(s => s.lane))], open = (v, gaps) => gaps.some(([a, b]) => v >= a && v < b);
     for (let x = G.x0; x < G.x1; x++) {
@@ -700,19 +703,27 @@
     autumn: { fan: 11, fill: 0.75, fluid: '#f08a24' }, // hot: fans racing, a shimmer over the vents
     winter: { fan: 14, fill: 1, fluid: '#e04a3a' }, // steaming: steam from the vents, sparks off the machines now and then
   };
-  /** The floor's heat by the plan's 5-hour limit, at the farm's seasonOf bounds: cool while it is fresh, then warm and hot, steaming when it is nearly used up; warm with no reading, cool again in a new window. */
+  /** A limit's % used, from its window: 0 in a new window; null with no window, or one without a number (no reading). */
+  const usedOf = w => (!w ? null : w.reset ? 0 : Number.isFinite(w.percentUsed) ? w.percentUsed : null);
+  /**
+   * The floor's heat by the plan's 5-hour limit, at the farm's seasonOf bounds: cool while it is fresh, then warm
+   * and hot, steaming when it is nearly used up; warm with no reading, cool again in a new window.
+   */
   function heatOf(plan) {
-    const w = plan?.windows?.find(x => x.kind === 'five_hour');
-    if (!w) return 'summer';
-    const p = w.reset ? 0 : w.percentUsed;
+    const p = usedOf(plan?.windows?.find(x => x.kind === 'five_hour'));
+    if (p === null) return 'summer';
     return p < 25 ? 'spring' : p < 60 ? 'summer' : p < 85 ? 'autumn' : 'winter';
   }
-  /** The power-cell bank, by the plan's weekly limit: the cells still lit (8 in a fresh week, none when it is used up), its lamp (green; amber from 70%; red, blinking, from 90%), the % used and when it resets; null with no reading. */
+  /**
+   * The power-cell bank, by the plan's weekly limit, all from the whole % it shows: the cells still lit (8 in a
+   * fresh week, none when it is used up), its lamp (green; amber from 70%; red, blinking, from 90%), and when it
+   * resets; null with no reading.
+   */
   function bankOf(plan) {
-    const w = plan?.windows?.find(x => x.kind === 'seven_day');
-    if (!w) return null;
-    const p = w.reset ? 0 : Math.max(0, Math.min(100, w.percentUsed));
-    return { lit: Math.round(8 * (1 - p / 100)), lamp: p >= 90 ? 'red' : p >= 70 ? 'amber' : 'green', pct: Math.round(p), resetsAt: w.resetsAt ?? null, reset: Boolean(w.reset) };
+    const w = plan?.windows?.find(x => x.kind === 'seven_day'), used = usedOf(w);
+    if (used === null) return null;
+    const pct = Math.round(Math.max(0, Math.min(100, used)));
+    return { lit: Math.round(8 * (1 - pct / 100)), lamp: pct >= 90 ? 'red' : pct >= 70 ? 'amber' : 'green', pct, resetsAt: w.resetsAt ?? null, reset: Boolean(w.reset) };
   }
   /** When a limit resets, short: Tue 09:00. */
   const resetAt = at => new Date(at).toLocaleString([], { weekday: 'short', hour: '2-digit', minute: '2-digit' });
@@ -951,7 +962,7 @@
         if (shown() !== 'winter') return;
         for (const [x, y] of ventsOf(L)) if (Math.random() < dt * 2) add({ x: x + rand(-2, 2), y: y + 1, vx: rand(-2, 2), vy: rand(-12, -7), g: 0, life: 1.8, max: 1.8, size: 2, grow: 1.2, color: STEAM, alpha: 0.6, sway: 2 });
         if (Math.random() < dt * 0.6) {
-          const spots = [[60, 9], [86, 12], ...L.ST.map(s => [s.cx + 11, s.rowTop + 3])], [x, y] = spots[Math.floor(Math.random() * spots.length)];
+          const spots = [[FAB_HOPPER[0], FAB_HOPPER[1] + 1], [FAB_PIPE[0], FAB_PIPE[1] + 1], ...L.ST.map(s => [s.cx + 11, s.rowTop + 3])], [x, y] = spots[Math.floor(Math.random() * spots.length)];
           for (let i = 0; i < 6; i++) add({ x, y, vx: rand(-28, 28), vy: rand(-34, -10), g: 90, life: 0.45, max: 0.45, size: 1, color: i % 3 ? '#ffd43b' : '#ffe8a3' });
         }
       },
@@ -1004,7 +1015,7 @@
         }
         if (k === 'bank') {
           const ws = scene.plan?.windows ?? [], name = w => ({ five_hour: '5-hour limit', seven_day: 'Weekly limit' })[w.kind] ?? w.kind;
-          return { title: 'The power-cell bank: your plan', html: ws.length ? ws.map(w => { const pct = w.reset ? 0 : Math.round(w.percentUsed); return `<div class="px-meter"><b>${esc(name(w))}</b><span class="bar"><i style="width:${Math.min(100, pct)}%"></i></span><span>${w.reset ? 'just reset' : `${pct}% used`}${w.resetsAt ? ` · resets ${esc(resetAt(w.resetsAt))}` : ''}</span></div>`; }).join('') + '<p class="muted">The cells are the week; the floor heat is the 5-hour limit (steaming when it is nearly used up).</p>' : '<p class="muted">No reading of your plan yet: it comes from the mod in a running session.</p>' };
+          return { title: 'The power-cell bank: your plan', html: ws.length ? ws.map(w => { const used = usedOf(w), pct = used === null ? 0 : Math.round(used); return `<div class="px-meter"><b>${esc(name(w))}</b><span class="bar"><i style="width:${Math.min(100, pct)}%"></i></span><span>${w.reset ? 'just reset' : used === null ? 'no reading' : `${pct}% used`}${w.resetsAt ? ` · resets ${esc(resetAt(w.resetsAt))}` : ''}</span></div>`; }).join('') + '<p class="muted">The cells are the week; the floor heat is the 5-hour limit (steaming when it is nearly used up).</p>' : '<p class="muted">No reading of your plan yet: it comes from the mod in a running session.</p>' };
         }
         if (k === 'drones') {
           const subs = scene.subagents ?? [];
