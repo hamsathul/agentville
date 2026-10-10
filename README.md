@@ -39,6 +39,7 @@ It listens on `127.0.0.1` only and reads what Claude Code already writes to disk
   - [Starting, resuming, forking, ending and restarting sessions](#starting-resuming-forking-ending-and-restarting-sessions)
   - [Several Claude accounts](#several-claude-accounts)
     - [Setting up a second account](#setting-up-a-second-account)
+    - [Using several accounts](#using-several-accounts)
   - [Going back to an earlier point (↺ Restore)](#going-back-to-an-earlier-point--restore)
   - [⚙ Claude Code: plugins, MCP servers and permission rules](#-claude-code-plugins-mcp-servers-and-permission-rules)
   - [Files, documents and quoting](#files-documents-and-quoting)
@@ -233,10 +234,10 @@ To remove it completely, also delete the `CLAUDE_CODE_PLUGIN_DIRS` entry from
 
 Open <http://localhost:7777>. **☰ List** at the top and the button beside it switch between the
 two views: the list, and the world you chose (**🌾 Farm** until you choose another); the small **▾**
-after them opens the list of worlds from either view. Both show the
-same live data, updated every few seconds. A world fills the window, so it has its own **List**
-button to come back; where one might not (any world of yours, and a built-in one that draws itself),
-the page adds **World ▾** and **☰ List** in a corner.
+after them opens the list of worlds. Both show the same live data, updated every few seconds. A
+world fills the window, so its **Menu** (top right) has **List** to come back and **World** for the
+list of worlds; where a world might not have them (any world of yours, and a built-in one that draws
+itself), the page adds **World ▾** and **☰ List** in a corner.
 
 ### The list view
 
@@ -412,8 +413,7 @@ the session until you use it.
 The **✨ Helper** does small writing jobs for the dashboard with Haiku, a small, fast Claude
 model. It is **off until you switch it on**, in **✨ Helper** in the list view's header (or with ✨
 beside a session's name while it is off, in the list or the farm's sidebar), and does only what you
-tick there. The farm's own buttons have no ✨ Helper yet: to change it from the farm, go to the list
-view.
+tick there. The farm's Menu has no ✨ Helper yet: to change it from the farm, go to the list view.
 
 - **How it calls Haiku:** through the Agentville mod inside one of your open Claude Code
   sessions, with your sign-in, on your Claude plan. There is no API key, nothing is added to any
@@ -602,7 +602,7 @@ own.
 - **What you see.** The top bar shows a plan block for each account, with its email and how many
   sessions it has open on hover, or "Signed out" (checked again each minute until you log in).
   Every agent carries its account's tag. The farm gives the second account a silo of its own, left
-  of the barn (see [The farm](#the-farm)).
+  of the barn (see [The farm](#the-farm)); with three or more, the first two have one.
 - **Starting.** ＋ Session, ⑂ Fork and Restart in… let you pick the account, each choice with how
   much of its limits it has used. A new session starts on the account its folder's last session
   ran on, a resumed one on the account it last ran on, and a fork on the original's.
@@ -825,7 +825,7 @@ two heights so none covers another. A name that is too long is shortened in the 
 name. When two bubbles would cover each other, one moves up with a line down to its farmer. If
 there is no room above, as on a busy porch at the top of a small window, it moves to the side
 instead and its line slants across to the name. Bubbles stay inside the farm, and at 100% they
-keep clear of the panel and the buttons too.
+keep clear of the panel and the Menu too.
 
 **Animals.** Two cows, two goats, a sheepdog (with a red bandana, so it is never taken for the
 Explore dog), an ostrich, a lion, a tiger and a duck family (a mallard pair and three ducklings) live
@@ -869,8 +869,8 @@ on the farm just for fun. They never stand for anything.
 - The **Animals** switch hides them all (and brings back the pond's white duck); it is remembered.
   With it off, or **Motion** off, whatever they were up to stops where it is.
 
-**Reading the farm.** The **i** button opens the full legend, including every tool a farmer
-can hold.
+**Reading the farm.** **Help**, in the Menu, opens the full legend, including every tool a
+farmer can hold.
 
 | You see | It means |
 |---|---|
@@ -903,11 +903,12 @@ can hold.
 
 **Controls.**
 - **Top left, the panel.** The money spent and harvests, then waiting on you, working, your turn
-  and collisions (click one to open its first agent), then RAM, CPU and plan gauges (each account's
+  and collisions (click one of the first three to open its first agent), then RAM, CPU and plan gauges (each account's
   week and 5 hours when you have several) and a
   **needs you** button. Click its title to fold it away. At 100% the farm sits beside the panel,
   or below it when that leaves it bigger, so the panel never covers a silo or a building. In a
-  narrow window (the sidebar open) the farm is smaller then: **+** zooms in.
+  narrow window (the sidebar open) the farm is smaller then: **+** under Zoom in the Menu (or
+  ⌘/Ctrl + scroll) zooms in.
 - **Top right, Menu.** One button holds every other control. **Dashboard:** List, World (the list
   of worlds), ＋ Session, ⚙ Claude Code, Sidebar, 📣 Broadcast and the theme. **On the farm:** Follow
   (keep the picked farmer in view), Resting (hide idle and stale farmers), Bubbles, Animals, Sky
@@ -934,17 +935,19 @@ dialog over the farm, with Quote and the reply box as in the list. Click a build
 | Notice board | Each project's CLAUDE.md and memory |
 | Market stall | The pull requests, with links |
 
-**The sidebar.** **Sidebar** (top right) opens one panel beside the farm, on the farmer you picked
+**The sidebar.** **Sidebar**, in the Menu, opens one panel beside the farm, on the farmer you picked
 (or the first one at work). Top to bottom:
 - **Who.** The agent's name: click it for every agent, those that need you first, then working,
   your turn, idle and stale, with what each asks or is doing. Type to find one by name, folder or
   branch; ↑ ↓ and ↩ pick, Esc closes. **‹ ›** step through them in that order, the book opens the
   diary and the last button hides the sidebar. Under the name: its state, its permission mode when it is
-  Bypass or Plan, its account, and **Session**; then its folder, branch, model and effort.
+  Bypass or Plan, its account, ✨ (suggest a name) and **Session**; then its folder, branch, model,
+  effort and any other permission mode (or "background" or "Codex").
 - **Who else needs you.** A red line names the other agents waiting on you, longest waiting
   first, with **Next ›** to open that one. Below it, a card for each, answered without leaving the
   agent you are on: **Allow** or **Deny** a command, pick one of a question's options, **Yes** to a
-  yes or no question. **No…**, **Reply…** and questions with several parts open that agent instead.
+  yes or no question. **No…**, **Reply…** and **Answer…** (several questions, more than four options,
+  or several picks) open that agent instead.
   The line folds the cards away, and that is remembered. Like every action button, a card's
   buttons ignore clicks for a moment after a world swaps or raises part of the page.
 - **Its own question** or permission prompt, on every tab. It takes at most 40% of the sidebar's
@@ -1086,7 +1089,7 @@ reduce-motion setting.
 - **macOS notifications** come from the collector: an agent needs you, finished its turn,
   collides with another in the same repo, or runs hot on CPU or memory. Each event notifies
   once; turn types on or off with `notify`.
-- **The bell** (the farm's Bell switch) chimes in the page whenever an agent starts waiting on
+- **The bell** (**Bell** in a world's Menu) chimes in the page whenever an agent starts waiting on
   you, in either view. When the page is in the background, it also sends a desktop notice.
 
 ### Inside Claude Code: the mod
@@ -1099,9 +1102,10 @@ In every session that loads it:
 The mod also does the dashboard's work inside the session:
 - delivers your answers and messages;
 - stops a turn when you press **■ Stop**;
-- runs model and effort switches, and renames (`/rename`);
+- runs model and effort switches, compacting, plugin reloads and renames (`/rename`);
 - answers side questions;
-- asks Haiku for a session's name when the ✨ Helper is on;
+- asks Haiku for a session's name when the ✨ Helper is on, and for the animals' lines when its
+  Animal lines are ticked;
 - reports the session's cost, plan usage and working line.
 
 ## Configuration
@@ -1382,8 +1386,8 @@ web/         the dashboard: index.html, app.js, panels.js, scene.js, worlds.js�
 mod/         the Claude Code mod: hooks/register.tsx; its tests in tests/
 bin/         the agent-tracker command and the launchd entry point
 launchd/     the service definition
-scripts/     end-to-end checks, the world tools (new-world, check-world, world-shots) and the demo
-             videos (their shared recorder in scripts/demo/)
+scripts/     end-to-end checks, the world tools (new-world, check-world, world-shots), the reference
+             pictures (world-golden) and the demo videos (their shared recorder in scripts/demo/)
 docs/        screenshots, and worlds.md: the guide to making a world, and what a world gets and can do
 ```
 
@@ -1394,13 +1398,15 @@ npm run test:ui             # the dashboard, the farm and other worlds in headle
 npm run kit-sheet           # redraw docs/kits.png, the picture of the people and props kits
 npm run world-shots -- <world>  # a picture of a world at every stop of its test tour (.private/shots/)
 npm run check-world -- <world>  # the test tour run headless against a world: exceptions, loops, creatures, pointers
+npm run golden              # reference pictures of the list, the farm and the factory on a fixed snapshot,
+                            # compared byte for byte (.private/golden/); --record saves them
 claude plugin test mod      # the Claude Code mod
 scripts/e2e-answer.sh       # answering and messaging real sessions
 npm start                   # run the collector in the foreground (stop the service first)
 npm run demo [out.mp4]      # record the demo video, made-up sessions only (Chrome, ffmpeg; ~8 min),
                             # a copy under 10 MB for GitHub (out-small.mp4), and one short video per
                             # chapter in out-chapters/ (01-the-farm.mp4, …);
-                            # it follows docs/demo-script.md; STILLS=docs STILLS_ONLY=1 remakes the farm pictures
+                            # it follows docs/demo-script.md; STILLS=docs STILLS_ONLY=1 remakes docs/farm.png
 npm run demo:many [out.mp4] # a short video of sixteen made-up sessions: their terminal windows, then the
                             # farm (~80 s, and a copy under 10 MB)
 ```

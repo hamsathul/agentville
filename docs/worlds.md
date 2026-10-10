@@ -346,7 +346,7 @@ A hook you give always wins over its default.
 | `fromScene` | `(sceneV1)` | `engineScene` |
 | `help` | `()` | the info dialog's HTML: a short key naming your `nouns` |
 | `nouns` | | `{ agent, agents, repo, repos, place }`: `agent`, `agents`, `repo`, `repos`, and `place`, `'world'`: the world's name for itself, which the engine uses in its own words ("Loading the …", "How to read the …", "The whole … : click to go there"). The close-up's legend and the engine's help default say `agents` and `agent` too. Give them all, so no word of the farm's is left (the farm's are `farmer`, `farmers`, `field`, `fields` and `farm`) |
-| `key` | | `'world'`: a short name for the world. The engine doesn't read it today (the farm gives `'farm'`), so check-world's list of hooks left to their defaults starts with it |
+| `key` | | `'world'`: a short name for the world. The engine doesn't read it today (the farm gives `'farm'`), so check-world lists it among the hooks left to their defaults (first, in a world that gives `drawFx`) |
 | `SH` | | `16`: a character's height |
 | `layout`, `relayout` | `()`, `(ground)` | the grid's current ground; `relayout` keeps the new one and returns it |
 | `setScene` | `(scene)` | returns `[]`. May return events `{ id?, at?: [x, y], text, cls?, log?, who?, kind? }`: a pop-up with `text` over the agent `id` (or at `at`), a line in the log if `log` is set (under the agent's name; with no agent, under `who`, else "The market"), and, with a `kind`, a reaction from the animals ("Reactions", in "Creatures"). The engine records `scene.fields` itself, whether or not you give one |
@@ -359,7 +359,7 @@ A hook you give always wins over its default.
 | `onMove` | `(agent, zone, prevZone, pop)` | nothing; `pop(text, cls)` shows a pop-up over the agent |
 | `speed` | `(agent)` | `40`: walking speed |
 | `zoneText` | `(agent, zone)` | `'moves'`: the log line when an agent changes zone |
-| `hud` | `(state)` | one **Menu** button at the top right (`data-farm-menu`), and under it the menu (`.px-menu`, `hidden` while shut): the dashboard's buttons (list, world, sidebar, broadcast), then sky, season (in a world with seasons), motion, animals, help and zoom. The engine opens and shuts the menu: its button, Esc, or a click anywhere else; inside it, a switch or zoom leaves it open and a button that takes you elsewhere (`data-farm-nav` but `theme`, help) shuts it. `state` is `{ still, zoom, saysOn, skyMode, seasonMode, seasonNames, seasons, follow, canFollow, restingHidden, bell, nav, panelOpen, animals, menuOpen }` (`menuOpen`: draw your own menu open, as `menuOpen ? '' : ' hidden'` on it; a HUD of your own may also lay its buttons out without one. `animals`: `true` or `false` for a world with animals, its Animals switch with `data-farm-animals`; `null` for one without. `seasons`: `true` for a world with seasons, whose Season switch is a button with `data-farm-season`, right after the Sky's `data-farm-sky`, saying `seasonMode`: `'live'`, `'spring'`, `'summer'`, `'autumn'` or `'winter'`; the engine moves it on when it is clicked). Your own should keep List and World: an engine world gets no corner control from the page. Or use `panelHud(params, words)`, the farm's panel and Menu in your own words (see the factory, and "`panelHud(params, words)`", below). A panel at the top left with the class `px-stats` (panelHud's, as the farm's, or your own) never covers the world: at 100% the engine fits the world beside it, or below it (and then above a row of `px-tools` switches, if your HUD has one: the default and panelHud's have none) when that leaves it bigger. It fits it again when the panel folds or unfolds, the frame changes size, or the panel outgrows the room kept for it (an error line, say), never as its figures change |
+| `hud` | `(state)` | one **Menu** button at the top right (`data-farm-menu`), and under it the menu (`.px-menu`, `hidden` while shut): the dashboard's buttons (list, world, sidebar, broadcast), then sky, season (in a world with seasons), motion, animals, help and zoom. The engine opens and shuts the menu: its button, Esc, or a click anywhere else; inside it, a switch or zoom leaves it open and a button that takes you elsewhere (`data-farm-nav` but `theme`, help) shuts it. `state` is `{ still, zoom, saysOn, skyMode, seasonMode, seasonNames, seasons, follow, canFollow, restingHidden, bell, nav, panelOpen, animals, menuOpen }` (`menuOpen`: draw your own menu open, as `menuOpen ? '' : ' hidden'` on it; a HUD of your own may also lay its buttons out without one. `animals`: `true` or `false` for a world with animals, its Animals switch with `data-farm-animals`; `null` for one without. `seasons`: `true` for a world with seasons, whose Season switch is a button with `data-farm-season`, right after the Sky's `data-farm-sky`, saying `seasonMode`: `'live'`, `'spring'`, `'summer'`, `'autumn'` or `'winter'`; the engine moves it on when it is clicked). Your own should keep List and World: the page adds no corner control to a built-in engine world (a world of yours gets one, top left). Or use `panelHud(params, words)`, the farm's panel and Menu in your own words (see the factory, and "`panelHud(params, words)`", below). A panel at the top left with the class `px-stats` (panelHud's, as the farm's, or your own) never covers the world: at 100% the engine fits the world beside it, or below it (and then above a row of `px-tools` switches, if your HUD has one: the default and panelHud's have none) when that leaves it bigger. It fits it again when the panel folds or unfolds, the frame changes size, or the panel outgrows the room kept for it (an error line, say), never as its figures change |
 | `ground`, `shadows(body)`, `top`, `drawFx(agent, body)` | | nothing: drawn under the agents, under each agent, over everything, and over each agent |
 | `season` | `()` | `'summer'`, and no seasons. A world that gives its own has seasons ("Seasons", below): it returns the live season (`'spring'`, `'summer'`, `'autumn'` or `'winter'`), and the HUD gets the Season switch |
 | `seasonNames` | | a field, not a function: `{ switch, spring, summer, autumn, winter }`, what the world calls its Season switch and its four levels ("Seasons", below). Any you leave out keep today's word (`'Season'`, `'spring'`…). The default HUD's button reads `Heat: warm` with them, and its tooltip lists them ("…or hold one: cool, warm, hot or steaming"); `hud(state)` gets the object as `state.seasonNames`. The setting still saves `live`, `spring`, `summer`, `autumn` or `winter`, and `PXG.season` holds those too |
@@ -845,7 +845,7 @@ brush turning as it goes). Their poses: `stand`, `walk`, `run`, `eat`, `sleep`, 
 What they can wear (the kit puts it on): a goat's scarf and a hat (a farmer's, in a gag), the
 ostrich's bucket.
 
-The starter's cat, in its hooks (`web/worlds/starter/world.js`). `roam` is the grass below its path,
+The starter's cat at its plainest, in its hooks (the starter's own `animals` in `web/worlds/starter/world.js` adds habits and a gag: "Gags and play"). `roam` is the grass below its path,
 down to the fence's foot, and `avoid` the fence with its plots, so the cat walks beside the fence and
 never at the door or on the bench (both above the path). `W`, `DOOR_Y` (the path's line) and `L` (the
 grid's current layout; `L.GRID` is the fence) are the starter's own.
@@ -963,8 +963,10 @@ on the test page.
 ### The helper's lines
 
 With ✨ Helper's **Animal lines** ticked (off by default), Haiku writes fresh lines for the animals on
-screen, from the dashboard's facts (names, states, what just happened), and the page sends them to the
-world as `chatter` ("Messages"). The kit says them first, each once:
+screen, from the dashboard's facts (names, states, what just happened) and, for the farm or the
+factory, which world it is, and the page sends them to the world as `chatter` ("Messages"). While a
+`robodog` or a `vacuum` is on screen, only a session with mod 0.9.1 is asked. The kit says them
+first, each once:
 
 - for `idle` (now and then) and for the five reactions (`deployFailed`, `deployOk`, `harvest`,
   `merged`, `arrive`), as `lines` keys of the same names;
@@ -1255,8 +1257,8 @@ show you each stop.
 | **Creatures (optional)** | none: check-world reads `animals()` once | thirteen animals, six gags and three plays, all within the rules | a robot dog, a robot vacuum and a cat, a gag and two plays, within the rules | one cat and its gag, within the rules |
 
 A world with seasons (its own `season()`: "Seasons", in "Hooks") should also follow the Season
-switch, which the tour leaves live. On the test page, click it through spring, summer, autumn and
-winter: everything seasonal should change with it (draw from `bg`'s `season` and `PXG.season`, never
+switch, which the tour leaves live. On the test page, open the Menu and click the Season switch
+through spring, summer, autumn and winter (the Menu stays open while you do): everything seasonal should change with it (draw from `bg`'s `season` and `PXG.season`, never
 your own state), and whatever shows the person's real limit should still show it.
 
 The creature rules (see "Creatures"). A cross for each one broken:
@@ -1381,7 +1383,7 @@ gaps").
 | `bell { on }` | Turns the page's bell on or off (`on` must be `true` or `false`) |
 | `motion { still }` | The world stood still, or moves again (`true` or `false`); the page keeps it for `settings` |
 | `diary { entries }` | Shows the world's diary in the sidebar: at most 20 entries `{ at, state, who, text }`, in the order given (the farm puts the newest first), with `state` one of the agents' states and `at` a time. `who` is cut to 80 characters and `text` to 300, and both are shown as text, never as HTML. One bad entry drops the whole message. Drawn at most every quarter second: the newest entries are drawn when their turn comes |
-| `cast { animals }` | The world's animals, for the ✨ Helper's lines: at most 12 `{ kind, name }`, each `kind` one of the creature library's, each `name` 30 characters or fewer (others are dropped). The engine sends it when a world with animals starts. While ✨ Helper's Animal lines is ticked, the page tells the collector which kinds are on screen, then every 5 minutes. Only the kinds reach Haiku (its names for them stay on the page), and nothing else changes: not what is sent (the dashboard's facts) nor how often. The page takes one `cast` per second at most, and none while the world is out of sight. The engine sends an empty one while the Animals switch is off |
+| `cast { animals }` | The world's animals, for the ✨ Helper's lines: at most 12 `{ kind, name }`, each `kind` one of the creature library's, each `name` 30 characters or fewer (others are dropped). The engine sends it when a world with animals starts. While ✨ Helper's Animal lines is ticked, the page tells the collector which kinds are on screen, then every 5 minutes. Only the kinds reach Haiku (its names for them stay on the page). For the farm and the factory the page also sends the world's key (`farm` or `factory`), so the lines are in that world's words; the starter and your own worlds are never named. Nothing else changes: not how often. The page takes one `cast` per second at most, and none while the world is out of sight. The engine sends an empty one while the Animals switch is off |
 | `store { key, value }` | Saves one of the world's settings in the page's storage, as `tracker-world:<world>:<key>`. Names match `^[a-z][a-z0-9-]{0,31}$`; values are strings of 16384 characters at most. A world keeps at most 64 settings, 64 KB in all (names and values, what it saved before included): a `store` past either is refused (the page says so once, in its console). `migrated` is the page's own |
 | `request { id, kind, agentId? \| repo? }` | Reads one of two things with the token and answers with `reply`: `agentFiles` (an agent's files and memory; `agentId` must be in the scene) or `repoTouched` (the files agents touched in a repo; `repo` must be a repo's `key` in the scene). At most four are answered at a time, counting any still running for a frame this one replaced: a fifth is refused at once (the bridge keeps a world under that: see below). One the collector hasn't answered in 30 seconds is cut off (`status: 0`). One that can't be done is refused, and still answered |
 
@@ -1406,6 +1408,7 @@ Agentville.raw({
   start({ el, opts, prefs }) { /* draw into el */ },
   scene(scene) { /* every snapshot */ },
   select(id) { /* the agent picked in the page's sidebar, or null (optional) */ },
+  chatter(lines) { /* the ✨ Helper's animal lines, as the chatter message has them (optional) */ },
 });
 ```
 
@@ -1416,7 +1419,7 @@ where a layer first lay to the fraction of a pixel: this keeps the farm looking 
 
 `Agentville.send(message)` sends any of the messages above itself. A click on a link (`<a href>`)
 in the world goes through the page as `openLink`. Script errors, scripts that fail to load and
-errors thrown by `start`, `scene` or `select` reach the page as `error`, each once (20 at most). A
+errors thrown by `start`, `scene`, `select` or `chatter` reach the page as `error`, each once (20 at most). A
 `world.js` that registers nothing is reported too.
 
 **Give a way back.** While a world shows, the page hides its own top bar: the world fills the
@@ -1451,6 +1454,7 @@ can't keep you from choosing another world there.
 | `onBell(on)` | `bell` |
 | `onMotion(still)` | `motion` |
 | `onDiary(entries)` | `diary`, with the first 20 entries; the same diary twice is sent once |
+| `onCast(animals)` | `cast`, with the first 12 `{ kind, name }` |
 
 `prefs.get(name)` and `prefs.set(name, value)` keep the world's own settings: the page stores them
 (a frame has no storage) and hands them back in the next `start`. Values are strings. `bell` is the

@@ -739,7 +739,7 @@ html[data-guard="on"] .app .act, html[data-guard="on"] dialog[open] .act { opaci
 </dialog>
 <dialog id="broadcast" class="broadcast-dlg" aria-labelledby="bc-title">
   <div class="sess-head"><h3 id="bc-title">📣 Message several agents</h3><span class="grow"></span><button type="button" class="act mini" data-bc-close aria-label="Close">×</button></div>
-  <p class="faint bc-about">Each one you tick gets it as your own message, as its message box would send it (a busy one reads it when its current step ends). Text only: send files from an agent's own box.</p>
+  <p class="faint bc-about">Each one you tick gets it as your own message, as its message box would send it (a busy one gets it when its turn ends: it waits under that agent's box till then). Text only: send files from an agent's own box.</p>
   <div class="bc-picks" role="group" aria-label="Pick"><span class="faint">Pick:</span><button type="button" class="act mini" data-bc-pick="all">All</button><button type="button" class="act mini" data-bc-pick="needs">Need you</button><button type="button" class="act mini" data-bc-pick="working">Working</button><button type="button" class="act mini" data-bc-pick="resting">Your turn &amp; idle</button><button type="button" class="act mini" data-bc-pick="none">None</button><span class="grow"></span><span id="bc-count" class="faint"></span></div>
   <div id="bc-list" class="bc-list" role="group" aria-label="Agents"></div>
   <label for="bc-text" class="bc-label">Message</label>
