@@ -204,7 +204,7 @@ test("the command refuses a world whose world.js leads out of its folder, before
     symlinkSync(join('src', 'main.js'), join(worlds, 'inside', 'world.js'));
     const ok = run('inside', '--worlds', worlds);
     assert.equal(ok.status, 0, ok.stdout + ok.stderr);
-    assert.match(ok.stdout, /✓ 33 stops of the tour/);
+    assert.match(ok.stdout, /✓ 34 stops of the tour/);
   } finally { rmSync(tmp, { recursive: true, force: true }); }
 });
 

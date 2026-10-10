@@ -1107,7 +1107,7 @@ spelt `hardhatt`), its path shortened and some lines left out (`…`):
 ```
 check-world: u/my-bakery (/Users/you/.agentville/worlds/my-bakery)
   · contained: it can read only the SDK and this world's world.js and world.json, and can't write or start programs (it can still reach the network)
-  ✗ 33 stops of the tour, a few frames each: 9 problems
+  ✗ 34 stops of the tour, a few frames each: 9 problems
   ✗ everyone: Error: no door here (world.js:44)
   ✗ waiting: Error: no door here (world.js:44)
   …
