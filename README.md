@@ -37,6 +37,7 @@ It listens on `127.0.0.1` only and reads what Claude Code already writes to disk
   - [Model, effort and permission mode](#model-effort-and-permission-mode)
   - [Starting, resuming, forking, ending and restarting sessions](#starting-resuming-forking-ending-and-restarting-sessions)
   - [Several Claude accounts](#several-claude-accounts)
+    - [Setting up a second account](#setting-up-a-second-account)
   - [Going back to an earlier point (↺ Restore)](#going-back-to-an-earlier-point--restore)
   - [⚙ Claude Code: plugins, MCP servers and permission rules](#-claude-code-plugins-mcp-servers-and-permission-rules)
   - [Files, documents and quoting](#files-documents-and-quoting)
@@ -476,58 +477,101 @@ before you updated, run `/reload-plugins` in it.
 
 ### Several Claude accounts
 
-If you have more than one Claude account, give each its own config folder and Agentville shows
-them all. Claude Code keeps its login, settings and history in `~/.claude`, or in the folder
-`CLAUDE_CONFIG_DIR` names. For example, in `~/.zshrc`:
+Claude Code keeps its login, settings and history in one config folder: `~/.claude`, or the folder
+`CLAUDE_CONFIG_DIR` names. Give each Claude account its own folder and you can use them side by
+side, each logged in, with no logging out and in. Agentville then shows them all, and lets you
+start, resume or move a session on the account you pick.
 
-```bash
-alias claude-work='env -u CLAUDE_CONFIG_DIR claude'           # ~/.claude
-alias claude-home='CLAUDE_CONFIG_DIR="$HOME/.claude-home" claude'
-```
+#### Setting up a second account
 
-Start `claude-home` once and `/login` there with the other account. From then on, each alias opens
-on its own account, and both can run at the same time.
+The examples call the accounts `work` (the `~/.claude` you have now) and `home` (a new
+`~/.claude-home`). Use your own names.
+
+1. **An alias for each account**, in `~/.zshrc` (or `~/.bashrc`):
+
+   ```bash
+   alias claude-work='env -u CLAUDE_CONFIG_DIR claude'              # ~/.claude
+   alias claude-home='CLAUDE_CONFIG_DIR="$HOME/.claude-home" claude' # ~/.claude-home
+   ```
+
+   Then `source ~/.zshrc`. Plain `claude` stays on `~/.claude`.
+
+2. **Share what both should have.** Before its first start, link your instructions, settings,
+   skills and commands into the new folder, so both accounts work the same way (in a folder that
+   already has them, move those aside first). The settings carry the Agentville mod
+   (`CLAUDE_CODE_PLUGIN_DIRS`), so the new account's sessions can be answered from the dashboard
+   and report their limits:
+
+   ```bash
+   mkdir -p ~/.claude-home
+   for f in CLAUDE.md settings.json settings.local.json skills commands agents; do
+     [ -e ~/.claude/$f ] && ln -s ~/.claude/$f ~/.claude-home/$f
+   done
+   ```
+
+   Don't link `.claude.json` (it holds the folder's login and its MCP servers) or `plugins`
+   (plugins your organization syncs belong to its account).
+
+3. **Share the history, to move conversations between accounts.** Link the new account's
+   `projects` and `file-history` folders to yours, before it has made either:
+
+   ```bash
+   ln -s ~/.claude/projects ~/.claude-home/projects
+   ln -s ~/.claude/file-history ~/.claude-home/file-history
+   ```
+
+   Every account then sees every conversation (Claude Code's own `/resume` list and project memory
+   too), a conversation can go on under another account with the same id, and ↺ Restore still
+   finds its checkpoints. Skip this to keep the accounts' work fully apart: then a session resumes
+   only on the account that ran it.
+
+4. **Log in.** Run `claude-home`, type `/login` and sign in with the other account. `/status` shows
+   which account a session is on. From now on, each alias opens on its own account, and both can
+   run at once.
+
+5. **MCP servers and plugins**, if you want them in the new account too, are added there:
+
+   ```bash
+   CLAUDE_CONFIG_DIR="$HOME/.claude-home" claude mcp add -s user <name> -- <command…>
+   CLAUDE_CONFIG_DIR="$HOME/.claude-home" claude plugin install <plugin>@<marketplace>
+   ```
+
+6. **Name them in Agentville** (optional), in `config.json`:
+   `"accounts": { "~/.claude": "work", "~/.claude-home": "home" }`. Without names, `~/.claude` is
+   `main` and the others go by their suffix (`home`). Agentville finds a new `~/.claude-<name>`
+   folder with a login in it within a minute, and `config.json` is read again when you save it:
+   no restart needed. The top bar then shows a block for each account.
+
+Use the same path every time: the login is kept in the macOS keychain under the folder's exact
+path, so `~/.claude-home/` with a slash, or another way to reach the same folder, asks you to log
+in again. The aliases are for terminals. The VS Code extension and the desktop app sign in on their
+own.
+
+#### Using several accounts
 
 - **Which accounts.** `~/.claude` is the first. Every `~/.claude-<name>` folder with a login in it
-  is another. Any other folder can be added in `config.json`.
-- **Their names.** By default, `~/.claude` is called `main` and the others by their suffix
-  (`~/.claude-home` is `home`). Name them in `config.json`:
-  `"accounts": { "~/.claude": "work", "~/.claude-home": "home" }`.
+  is another. `config.json`'s `accounts` can add any other folder.
 - **What you see.** The top bar shows a plan block for each account, with its email and how many
-  sessions it has open on hover, or "Signed out". Every agent carries its account's tag. The farm
-  gives the second account a silo of its own, left of the barn (see [The farm](#the-farm)).
-- **Starting.** ＋ Session, ⑂ Fork and Restart in… let you pick the account. A new session starts on
-  the account its folder's last session ran on, a resumed one on the account it last ran on, and a
-  fork on the original's.
+  sessions it has open on hover, or "Signed out" (checked again each minute until you log in).
+  Every agent carries its account's tag. The farm gives the second account a silo of its own, left
+  of the barn (see [The farm](#the-farm)).
+- **Starting.** ＋ Session, ⑂ Fork and Restart in… let you pick the account, each choice with how
+  much of its limits it has used. A new session starts on the account its folder's last session
+  ran on, a resumed one on the account it last ran on, and a fork on the original's.
 - **Moving a conversation.** **Restart in… → Move to another account** ends a running session and
-  resumes it on the other account under the same id. In ＋ Session, pick the account and press
-  **Resume** on a past one. For a conversation to move, the accounts must share their history:
-  link the other account's `projects` and `file-history` folders to yours, before it has made
-  either:
-
-  ```bash
-  ln -s ~/.claude/projects ~/.claude-home/projects
-  ln -s ~/.claude/file-history ~/.claude-home/file-history
-  ```
-
-  Then every account sees every conversation (Claude Code's own `/resume` list and project memory
-  too), and ↺ Restore still finds a moved session's checkpoints. The login, MCP servers, plugins
-  and prompt history stay each account's own. Without the links, a session resumes only on the
-  account that ran it, and ＋ Session greys out **Resume** for the others.
-- **The mod in each account.** Each account reads its own `settings.json`, so add the mod's
-  `CLAUDE_CODE_PLUGIN_DIRS` there too (see [Load the mod](#3-load-the-mod-in-claude-code-recommended)),
-  or link that account's `settings.json` to `~/.claude/settings.json`. Without it, the account's
-  sessions can't be answered from the dashboard and its plan never shows.
+  resumes it on the other account, in the same mode and under the same id. In ＋ Session, pick the
+  account and press **Resume** on a past one. This needs the shared history of step 3: without
+  it, ＋ Session greys out **Resume** for the accounts that can't see the conversation.
+- **The mod in each account.** Each account reads its own `settings.json`. If you didn't link it
+  (step 2), add the mod's `CLAUDE_CODE_PLUGIN_DIRS` to it too (see
+  [Load the mod](#3-load-the-mod-in-claude-code-recommended)). Without it, the account's sessions
+  can't be answered from the dashboard and its plan never shows.
 - **How it knows.** A running session is on the account whose `sessions/` folder lists it. An
-  ended one is on the account it last ran on, which Agentville remembers. A session it never saw
-  running counts as the first account's.
+  ended one is on the account it last ran on, which Agentville remembers. One it never saw running
+  counts as the first account whose history holds it.
 - **What stays on the first account.** The ⚙ Claude Code dialog (plugins, MCP servers and
   permission rules) shows the first account's. The ✨ Helper calls Haiku through whichever open
   session it picks, so it counts against that session's account.
-
-Keep each folder's path exactly as you first logged in with it: the login is stored under that
-path, so `~/.claude-home/` with a slash, or another spelling of the same folder, would ask you to
-log in again.
 
 ### Going back to an earlier point (↺ Restore)
 
