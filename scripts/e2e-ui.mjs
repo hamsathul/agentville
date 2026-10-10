@@ -787,7 +787,7 @@ try {
   await js("document.getElementById('convo').close()");
   await sleep(400); // the page lets one pick from a world through per 250 ms and drops a faster second one
   await fjs(`document.querySelector('.px-say[data-say="ui-asker"] span').click()`);
-  check(await until("!document.getElementById('convo').open && /Which crop next\\?/.test(document.getElementById('farm-agent')?.textContent ?? '')"), 'a bubble waiting on you opens the sidebar instead, where you answer it');
+  check(await until("!document.getElementById('convo').open && /Which crop next\\?/.test(document.getElementById('farm-sidebar')?.textContent ?? '')"), 'a bubble waiting on you opens the sidebar instead, where you answer it');
   if (sideBefore !== 'open') { // the sidebar as it was, for the size checks that follow
     await js("document.getElementById('side-toggle').click()");
     await until("document.getElementById('main').dataset.side === 'closed'");
@@ -877,18 +877,19 @@ try {
   // Farmers come first: a click on a farmer's sprite opens that farmer, never an animal's menu (the next step opens the sidebar anyway).
   await fjs(`(() => { const c = document.querySelector('#farm canvas'), t = document.querySelector('.px-tag[data-farmer="ui-worker"]').getBoundingClientRect(), cs = c.getBoundingClientRect().width / Number(c.dataset.ew);
     c.dispatchEvent(new MouseEvent('click', { bubbles: true, clientX: t.left + t.width / 2, clientY: t.bottom + 10 * cs })); })()`);
-  check(await until("/ui-worker/.test(document.getElementById('farm-agent')?.textContent ?? '')") && !(await fjs("!!document.querySelector('.px-animal-menu')")), 'a click on a farmer picks the farmer, not an animal');
+  check(await until("/ui-worker/.test(document.getElementById('fs-head')?.textContent ?? '')") && !(await fjs("!!document.querySelector('.px-animal-menu')")), 'a click on a farmer picks the farmer, not an animal');
+  check(await js("/ui-asker/.test(document.querySelector('#fs-head .fs-queue')?.textContent ?? '') && [...document.querySelectorAll('#fs-head .fs-card [data-fs-answer]')].map(b => b.textContent).join() === 'Wheat,Pumpkins'"), 'on another farmer, the one waiting on you shows as a card above, its options ready to answer in place');
   await sleep(400); // the page takes a world's picks at most every 250 ms: the next one must not come sooner
   await fjs("document.querySelector('[data-farm-need]').click()");
-  check(await until("document.getElementById('main').dataset.side === 'open' && /Which crop next/.test(document.getElementById('farm-agent').textContent)"), "the farm's “needs you” button opens the waiting farmer in the sidebar, with its question");
+  check(await until("document.getElementById('main').dataset.side === 'open' && /Which crop next/.test(document.querySelector('#fs-head .fs-ask')?.textContent ?? '')"), "the farm's “needs you” button opens the waiting farmer in the sidebar, with its question");
   check(await fits('#farm-side'), `in the narrower farm sidebar too, the wide code block scrolls inside its bubble (${await sideways('#farm-side')})`);
   check(await js("/^Subagents\\s*1/.test(document.getElementById('tab-subagents').textContent) && !document.querySelector('#farm-agent .sub-card')"), "the farm sidebar's Subagents tab says how many; its Agent tab has no cards");
   await js("document.getElementById('tab-subagents').click()");
   check(await until("/Survey the fields/.test(document.querySelector('#farm-subagents .sub-card')?.textContent ?? '')"), 'the Subagents tab shows its card');
   await js("document.getElementById('tab-agent').click()");
-  await until("/Which crop next/.test(document.getElementById('farm-agent').textContent)");
+  await until("/Which crop next/.test(document.getElementById('fs-head').textContent)");
   check(await js("document.getElementById('center-body').innerHTML === ''"), 'the hidden centre holds no second answer form');
-  await js("(() => { const r = document.querySelector('#farm-agent input[value=\"Pumpkins\"]'); r.checked = true; r.dispatchEvent(new Event('change', { bubbles: true })); })()");
+  await js("(() => { const r = document.querySelector('#fs-head input[value=\"Pumpkins\"]'); r.checked = true; r.dispatchEvent(new Event('change', { bubbles: true })); })()");
   // The click guard: a world raising the sidebar holds its action controls for about a second.
   await until("!document.documentElement.dataset.guard", 3000);
   await fjs("document.querySelector('[data-farm-need]').click()"); // the world raises it again
@@ -900,6 +901,34 @@ try {
   await js("document.getElementById('ask-send').click()");
   check(await until("/Answer sent to ui-asker/.test(document.getElementById('notice').textContent)"), 'the answer is sent from the farm sidebar');
   check(answered?.answers?.['Which crop next?'] === 'Pumpkins', 'the session received the answer');
+
+  // The sidebar's layout, as only a browser can tell: it fits, its chat opens at the newest message by the
+  // box, and the picker and the diary open over it and close again.
+  for (let i = 0; i < 8 && !/ui-worker/.test(await js("document.querySelector('#fs-head .fs-name')?.textContent ?? ''")); i++) { // › steps to the working farmer
+    await js("document.querySelector('[data-fs-step=\"1\"]').click()");
+    await sleep(150);
+  }
+  await js("document.getElementById('tab-agent').click()");
+  check(await until("/ui-worker/.test(document.querySelector('#fs-head .fs-name')?.textContent ?? '') && !!document.getElementById('msg-text')") && await js(`(() => {
+    const side = document.getElementById('farm-sidebar'), s = side.getBoundingClientRect(), b = document.getElementById('msg-text').getBoundingClientRect();
+    return side.scrollWidth <= side.clientWidth + 1 && s.bottom <= innerHeight + 1 && b.top >= s.top && b.bottom <= s.bottom + 1;
+  })()`), '› steps to another farmer; the sidebar fits beside the farm, nothing wider than it, and its message box is in view at the bottom');
+  check(await js("(c => c.scrollHeight - c.scrollTop - c.clientHeight < 2)(document.getElementById('fs-chat'))"), 'the chat shows its newest message, next to the box');
+  await js("document.getElementById('fs-switch').click()");
+  check(await until("!!document.querySelector('#fs-pop .fs-pick') && document.activeElement?.id === 'fs-find'"), "the agent's name opens the picker, its search box ready");
+  check(await js("(p => { const r = p.getBoundingClientRect(), s = document.getElementById('farm-sidebar').getBoundingClientRect(); return r.left >= s.left - 1 && r.right <= s.right + 1 && r.bottom <= s.bottom + 1; })(document.querySelector('#fs-pop .fs-pop'))"), 'the picker fits inside the sidebar');
+  await js("document.getElementById('fs-find').dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }))");
+  check(await until("!document.querySelector('#fs-pop .fs-pop') && document.activeElement?.id === 'fs-switch'"), 'Esc closes it, back on the name');
+  await js("document.getElementById('fs-session').click()");
+  check(await until("!!document.querySelector('#fs-pop [data-end-session], #fs-pop #fs-list')"), 'Session opens its menu');
+  await js("document.getElementById('tab-activity').click()");
+  check(await until("!document.querySelector('#fs-pop .fs-pop') && document.getElementById('main').dataset.sideTab === 'activity'"), 'a click elsewhere closes the menu (and does what it was for)');
+  await js("document.getElementById('fs-diary').click()");
+  check(await until("document.getElementById('main').dataset.sideTab === 'diary' && getComputedStyle(document.getElementById('farm-diary-pane')).display === 'flex'"), 'the book opens the diary over the tabs');
+  await js("document.getElementById('diary-back').click()");
+  check(await until("document.getElementById('main').dataset.sideTab === 'activity'"), "the diary's Back returns to the tab you were on");
+  await js("document.getElementById('tab-agent').click()");
+  await shot('farm-sidebar');
 
   check(await js("!document.querySelector('#farm .world-strip') && !document.querySelector('#farm .world-panel')"), "the farm broke nothing: no error strip or panel (an error its bridge caught would show here)");
   check(await js("!document.querySelector('#farm .world-corner')"), "the farm has its own buttons: the page adds no corner control");
@@ -1002,7 +1031,7 @@ try {
     "the same picture loads in the page itself: the world's frame is what stops it, not the network");
   check(/private: yes/.test(diaryText), 'one of your worlds sees no words or paths by default');
   check(JSON.stringify(answered ?? null) === answeredBefore, 'a message the page does not accept (an answer) reached no session');
-  check(await js("!/nobody-here/.test(document.getElementById('farm-agent').textContent)"), 'a pick for an agent not on the dashboard was dropped');
+  check(await js("!/nobody-here/.test(document.getElementById('farm-sidebar').textContent)"), 'a pick for an agent not on the dashboard was dropped');
   check(await js("document.querySelector('#farm .world-frame')?.src.endsWith('/world/u/probe/') && !document.querySelector('#farm .world-panel') && document.getElementById('main').dataset.view === 'farm'"), 'and the page is still itself, the probe still in its frame');
   // The probe draws no buttons: the page gives it a way back, in a corner over its frame.
   check(await until("!!document.querySelector('#farm .world-corner')"), "a world that draws itself gets the page's corner control");

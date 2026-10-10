@@ -78,6 +78,8 @@ function loadPage({ stored = {}, storageThrows = false, files = {}, replies = {}
     click: id => clickWith({ closest: sel => (sel === 'button' ? ctx.document.getElementById(id) : null) }),
     el: id => ctx.document.getElementById(id),
     side: () => ctx.document.getElementById('center-body').innerHTML,
+    // the farm sidebar's drawn parts, top to bottom: its header, the agents that need you and its question; Now; the chat; the box
+    farmSide: () => ['fs-head', 'fs-now', 'farm-agent', 'fs-compose'].map(id => ctx.document.getElementById(id).innerHTML).join('\n'),
     tabs: () => ctx.document.getElementById('center-tabs').innerHTML,
     tree: () => ctx.document.getElementById('tree').innerHTML,
     settle: async () => { for (let i = 0; i < 40; i++) await Promise.resolve(); },
@@ -825,7 +827,7 @@ test('clicking a farmer opens the farm sidebar on that agent, with its answer fo
   assert.equal(page.el('main').dataset.view, 'farm');
   assert.equal(page.el('main').dataset.side, 'open');
   assert.deepEqual(f.calls.filter(c => c[0] === 'select').at(-1), ['select', 'w1']);
-  const side = page.el('farm-agent').innerHTML;
+  const side = page.farmSide();
   assert.match(side, /Pick a colour\?/);
   assert.match(side, /id="ask-send"/);
   pick(page, 'Blue');
@@ -864,7 +866,7 @@ test('without the farm script, the toggle stays on the list and says why', async
 
 test('the page loads its mark, the scene and the host of its worlds (deferred), then its token, then its own scripts in order', () => {
   const tags = [...html.matchAll(/<script(?: src="\/([a-z]+)\.js"( defer)?)?>/g)].map(m => (m[1] ? `${m[1]}${m[2] ? ' defer' : ''}` : 'inline'));
-  assert.deepEqual(tags, ['inline', 'brand', 'scene defer', 'worlds defer', 'inline', 'core', 'charts', 'panels', 'markdown', 'viewer', 'explorer', 'conversation', 'app', 'sessions', 'setup']);
+  assert.deepEqual(tags, ['inline', 'brand', 'scene defer', 'worlds defer', 'inline', 'core', 'charts', 'panels', 'markdown', 'viewer', 'explorer', 'conversation', 'sidebar', 'app', 'sessions', 'setup']);
   assert.match(html, /<script>const TOKEN = '__TRACKER_TOKEN__';<\/script>/);
 });
 
@@ -878,7 +880,7 @@ test('the sidebar toggle shows activity and the explorer beside the farm, and is
   assert.equal(page.el('main').dataset.side, 'open');
   assert.equal(page.stored['tracker-farm-side'], 'open');
   assert.equal(page.el('side-toggle').attrs['aria-pressed'], 'true');
-  const side = page.el('farm-agent').innerHTML;
+  const side = page.farmSide();
   assert.match(side, /busy-one/);
   assert.match(side, /id="msg-text"/);
   await page.clickButton('tab-activity', { farmTab: 'activity' });
@@ -901,7 +903,7 @@ test('a message can be sent from the farm sidebar', async () => {
   page.edit('input', { tagName: 'TEXTAREA', value: 'Water the pumpkins', dataset: { msgAgent: 'r1' } });
   await page.clickButton('msg-send', { agent: 'r1' });
   assert.deepEqual(page.posts, [{ path: '/api/actions/message', body: { agentId: 'r1', text: 'Water the pumpkins' } }]);
-  assert.match(page.el('farm-agent').innerHTML, /id="msg-status"[^>]*>Queued for busy-one/);
+  assert.match(page.el('fs-compose').innerHTML, /id="msg-status"[^>]*>Queued for busy-one/);
 });
 
 test("entering the farm clears the list's centre and leaving clears the sidebar, so each id exists once", async () => {
@@ -912,9 +914,9 @@ test("entering the farm clears the list's centre and leaving clears the sidebar,
   await page.click('view-farm');
   assert.equal(page.side(), '');
   assert.equal(page.tabs(), '');
-  assert.match(page.el('farm-agent').innerHTML, /id="msg-text"/);
+  assert.match(page.farmSide(), /id="msg-text"/);
   await page.click('view-list');
-  assert.equal(page.el('farm-agent').innerHTML, '');
+  assert.equal(page.farmSide().trim(), '');
   assert.match(page.side(), /id="msg-text"/);
 });
 
@@ -1001,11 +1003,15 @@ test('the newest message is framed as the latest, with your message when it is r
   assert.doesNotMatch(page.side().match(/<div class="latest"[\s\S]*?<\/div><\/div><div class="bub/)[0], /Deploy it|Writing the files/);
 });
 
-test('the farm sidebar has the conversation too', async () => {
+test('the farm sidebar has the conversation as a chat: oldest at the top, the newest at the bottom after a Latest line', async () => {
   const f = fakeFarm();
   const page = loadPage({ farm: f.farm, stored: { 'tracker-view': 'farm', 'tracker-farm-side': 'open' } });
   page.push(richSnapshot([chatty()]));
-  assert.match(page.el('farm-agent').innerHTML, />Conversation<[\s\S]*class="bub you"/);
+  const chat = page.el('farm-agent').innerHTML;
+  const at = [chat.indexOf('class="bub you">Fix the build'), chat.indexOf('Plan:'), chat.indexOf('class="fs-latest"'), chat.indexOf('Done. All')];
+  assert.ok(at.every((v, i) => v >= 0 && (i === 0 || v > at[i - 1])), at.join(' '));
+  assert.match(chat, /data-convo="r1"[^>]*>⤢ Read the whole conversation/);
+  assert.doesNotMatch(chat, /npm test/, 'the tool steps are on the Activity tab');
 });
 
 const asking = (over = {}) => richAgent({ state: 'yourTurn', stateReason: 'turn finished', now: undefined, lastReply: 'Done.', question: 'Should I push them to main?', mod: { version: '0.3.1', live: true }, ...over });
@@ -1086,7 +1092,7 @@ test('clicking a speech bubble opens the whole conversation over the farm, its f
   await page.settle();
   assert.equal(page.el('convo').open, true);
   assert.match(page.el('convo-body').innerHTML, /THE END/);
-  assert.ok(f.farm && page.el('farm-agent').innerHTML.includes('busy-one'), 'its farmer is the one in the sidebar behind it');
+  assert.ok(f.farm && page.farmSide().includes('busy-one'), 'its farmer is the one in the sidebar behind it');
 });
 
 test('a bubble waiting on you, or asking a question you answer with a button, opens the sidebar where you answer; so does a Codex one', async () => {
@@ -1097,7 +1103,7 @@ test('a bubble waiting on you, or asking a question you answer with a button, op
     f.pickSay('r1');
     await page.settle();
     assert.notEqual(page.el('convo').open, true, JSON.stringify(over));
-    assert.match(page.el('farm-agent').innerHTML, /busy-one/, JSON.stringify(over));
+    assert.match(page.farmSide(), /busy-one/, JSON.stringify(over));
   }
 });
 
@@ -1105,24 +1111,25 @@ test('the farm sidebar shows the question card too', () => {
   const f = fakeFarm();
   const page = loadPage({ farm: f.farm, stored: { 'tracker-view': 'farm', 'tracker-farm-side': 'open' } });
   page.push(turnSnapshot([asking()]));
-  assert.match(page.el('farm-agent').innerHTML, /class="qcard"[\s\S]*Should I push them to main\?/);
+  assert.match(page.el('fs-head').innerHTML, /class="qcard"[\s\S]*Should I push them to main\?/, 'above the tabs, so it shows on every tab');
 });
 
-test('in the farm sidebar too: Now, the question, the message box, then the conversation (activity has its own tab)', () => {
+test('in the farm sidebar: its question on top, then Now, the conversation, and the message box at the bottom', () => {
   const f = fakeFarm();
   const page = loadPage({ farm: f.farm, stored: { 'tracker-view': 'farm', 'tracker-farm-side': 'open' } });
   page.push(turnSnapshot([asking({ feed: chatty().feed })]));
-  const side = page.el('farm-agent').innerHTML;
-  const at = [side.indexOf('>Now<'), side.indexOf('class="qcard"'), side.indexOf('id="msg-text"'), side.indexOf('>Conversation<')];
+  const side = page.farmSide();
+  const at = [side.indexOf('class="qcard"'), side.indexOf('class="fs-rest"'), side.indexOf('class="bub'), side.indexOf('id="msg-text"')];
   assert.ok(at.every((v, i) => v >= 0 && (i === 0 || v > at[i - 1])), at.join(' '));
 });
 
-test('the farm sidebar has Agent, Files and Diary tabs; the choice is remembered, and picking a farmer shows Agent', async () => {
+test('the farm sidebar has Chat, Activity, Subagents and Files tabs and the diary over them; the tab is remembered, and picking a farmer shows Chat', async () => {
   const f = fakeFarm();
   const page = loadPage({ farm: f.farm, stored: { 'tracker-view': 'farm', 'tracker-farm-side': 'open' }, listing: LISTING });
   page.push(richSnapshot([richAgent({ mod: { version: '0.3.1', live: true } })]));
   assert.equal(page.el('main').dataset.sideTab, 'agent');
-  assert.match(page.el('farm-agent').innerHTML, /id="msg-text"/);
+  assert.match(html, /id="tab-agent" role="tab" data-farm-tab="agent">Chat</);
+  assert.match(page.el('fs-compose').innerHTML, /id="msg-text"/);
   assert.equal(page.el('tab-agent').attrs['aria-selected'], 'true');
   await page.clickButton('tab-files', { farmTab: 'files' });
   assert.equal(page.el('main').dataset.sideTab, 'files');
@@ -1130,9 +1137,14 @@ test('the farm sidebar has Agent, Files and Diary tabs; the choice is remembered
   assert.equal(page.el('tab-files').attrs['aria-selected'], 'true');
   await page.settle();
   assert.match(page.tree(), /data-file="README\.md"/);
-  await page.clickButton('tab-diary', { farmTab: 'diary' });
+  assert.equal(page.el('fs-compose').innerHTML, '', 'off the Chat tab there is no message box');
+  await page.click('fs-diary');
   assert.equal(page.el('main').dataset.sideTab, 'diary');
-  assert.equal(f.farm.diaryId(), 'farm-diary', 'the farm writes its diary into the Diary tab');
+  assert.equal(f.farm.diaryId(), 'farm-diary', 'the farm writes its diary into the diary pane');
+  assert.match(page.el('diary-back').innerHTML, /Back to busy-one/);
+  await page.click('diary-back');
+  assert.equal(page.el('main').dataset.sideTab, 'files', 'Back goes to the tab you were on');
+  await page.click('fs-diary');
   f.pick('r1');
   assert.equal(page.el('main').dataset.sideTab, 'agent');
 });
@@ -1170,7 +1182,7 @@ test("Activity is its own tab in the farm sidebar, and the Agent tab no longer r
   const page = loadPage({ farm: f.farm, stored: { 'tracker-view': 'farm', 'tracker-farm-side': 'open' } });
   page.push(richSnapshot([chatty()]));
   assert.doesNotMatch(page.el('farm-agent').innerHTML, />Activity/);
-  assert.match(page.el('farm-agent').innerHTML, />Conversation</);
+  assert.match(page.el('farm-agent').innerHTML, /class="bub agent"/);
   await page.clickButton('tab-activity', { farmTab: 'activity' });
   assert.equal(page.el('main').dataset.sideTab, 'activity');
   assert.equal(page.stored['tracker-farm-tab'], 'activity');
@@ -2397,12 +2409,169 @@ test('the commands it runs now: each with its time, CPU and memory; Output follo
   assert.match(page.el('notice').textContent, /Stopped “npm test”/);
 });
 
-test("the farm's sidebar shows the commands running too", async () => {
+test("the farm's sidebar shows the commands running too, folded under Now until you open them (remembered)", async () => {
   const f = fakeFarm();
   const page = loadPage({ farm: f.farm, stored: { 'tracker-view': 'farm', 'tracker-farm-side': 'open' } });
   page.push(richSnapshot([richAgent({ shells: [{ pid: 5003, command: 'npm test', startedAt: Date.now() - 5000, cpu: 0, rssMb: 1, background: false, output: false }] })]));
   await page.settle();
-  assert.match(page.el('farm-agent').innerHTML, /Commands running[\s\S]*data-shell-stop="5003"/);
+  assert.match(page.el('fs-now').innerHTML, /data-fs-shells aria-expanded="false">[\s\S]*1 command running/);
+  assert.doesNotMatch(page.el('fs-now').innerHTML, /data-shell-stop/);
+  await page.clickButton('shells', { fsShells: '' });
+  assert.match(page.el('fs-now').innerHTML, /1 command running[\s\S]*data-shell-stop="5003"/);
+  assert.equal(page.stored['tracker-fs-shells'], 'open');
+});
+
+/* ---------- the farm sidebar: the picker, the agents that need you, the box's modes, Activity's filter, the Session menu ---------- */
+
+const PERMIT = { kind: 'permission', toolUseId: 'toolu_P1', tool: 'Bash', summary: 'ssh prod ./deploy.sh', expiresAt: Date.now() + 60_000 };
+const live7 = { mod: { version: '0.7.0', live: true } };
+/** Five agents: one working (shown first), three that need you (asked at 1000, 2000 and 3000), one idle. */
+const crowd = (over = {}) => richSnapshot([
+  richAgent({ ...live7, ...over }),
+  richAgent({ id: 'p1', name: 'deployer', state: 'waiting', stateReason: 'permission', stateSince: 2000, now: undefined, ask: PERMIT, ...live7 }),
+  richAgent({ id: 'q1', name: 'asker', state: 'waiting', stateReason: 'question pending', stateSince: 1000, now: undefined, ask: QUESTION, ...live7 }),
+  richAgent({ id: 't1', name: 'pusher', state: 'yourTurn', stateReason: 'turn finished', stateSince: 3000, now: undefined, question: 'Should I push them to main?', ...live7 }),
+  richAgent({ id: 'i1', name: 'sleeper', state: 'idle', stateReason: 'idle', now: undefined }),
+]);
+function farmPage({ stored = {}, ...opts } = {}) {
+  const f = fakeFarm();
+  return { f, page: loadPage({ farm: f.farm, stored: { 'tracker-view': 'farm', 'tracker-farm-side': 'open', ...stored }, ...opts }) };
+}
+const shownName = page => page.el('fs-head').innerHTML.match(/class="fs-name">([^<]*)</)?.[1];
+
+test("the sidebar's header names the agent and its place among them; ‹ › step through them in the picker's order", async () => {
+  const { page } = farmPage();
+  page.push(crowd());
+  assert.equal(shownName(page), 'busy-one');
+  assert.match(page.el('fs-head').innerHTML, /class="fs-pos">4 of 5</, 'what needs you comes first: three, then the working one');
+  assert.match(page.el('fs-head').innerHTML, /▶ Working/);
+  await page.clickButton('step', { fsStep: '1' });
+  assert.equal(shownName(page), 'sleeper');
+  await page.clickButton('step', { fsStep: '1' });
+  assert.equal(shownName(page), 'asker', 'it goes round');
+  await page.clickButton('step', { fsStep: '-1' });
+  assert.equal(shownName(page), 'sleeper');
+  await page.click('fs-hide');
+  assert.equal(page.el('main').dataset.side, 'closed');
+});
+
+test('the other agents that need you are cards, longest waiting first, answered without leaving the agent you are on', async () => {
+  const { page } = farmPage();
+  page.push(crowd());
+  const head = page.el('fs-head').innerHTML;
+  assert.match(head, /class="fs-badge">3<\/span><span class="fs-queue-label">asker, deployer and pusher need you</);
+  const cards = head.slice(head.indexOf('class="fs-cards"'));
+  assert.ok(cards.indexOf('asker') < cards.indexOf('deployer') && cards.indexOf('deployer') < cards.indexOf('pusher'), 'longest waiting first');
+  assert.match(cards, /<b>Bash<\/b> ssh prod \.\/deploy\.sh[\s\S]*class="act primary" data-permit="allow" data-agent="p1" data-tool="toolu_P1"/);
+  assert.match(cards, /data-fs-answer="Red" data-agent="q1" data-tool="toolu_Q1" data-tip="warm">Red</);
+  assert.match(cards, /data-quick-reply="Yes\." data-agent="t1">Yes</);
+
+  await page.clickButton('allow', { permit: 'allow', agent: 'p1', tool: 'toolu_P1' });
+  assert.deepEqual(page.posts.at(-1), { path: '/api/actions/permit', body: { agentId: 'p1', toolUseId: 'toolu_P1', decision: 'allow' } });
+  await page.clickButton('red', { fsAnswer: 'Red', agent: 'q1', tool: 'toolu_Q1' });
+  assert.deepEqual(page.posts.at(-1), { path: '/api/actions/answer', body: { agentId: 'q1', toolUseId: 'toolu_Q1', answers: { 'Pick a colour?': 'Red' } } });
+  await page.clickButton('yes', { quickReply: 'Yes.', agent: 't1' });
+  assert.deepEqual(page.posts.at(-1), { path: '/api/actions/message', body: { agentId: 't1', text: 'Yes.' } });
+  assert.equal(shownName(page), 'busy-one', 'still on the agent you were looking at');
+
+  await page.clickButton('no', { quickDraft: 'No, ', agent: 't1' });
+  assert.equal(shownName(page), 'pusher', 'a reply in your own words opens that agent');
+  assert.match(page.el('fs-compose').innerHTML, /<textarea id="msg-text" data-msg-agent="t1"[^>]*>No, <\/textarea>/);
+  assert.match(page.el('fs-head').innerHTML, /asker and deployer also need you/);
+});
+
+test("a stale or many-part question opens its agent; Allow for a request that is gone isn't sent", async () => {
+  const { page } = farmPage();
+  const snap = crowd();
+  snap.agents[2].ask = { ...QUESTION, questions: [{ ...QUESTION.questions[0], multiSelect: true }] };
+  page.push(snap);
+  assert.match(page.el('fs-head').innerHTML, /data-pick-agent="q1">Answer…</);
+  await page.clickButton('allow', { permit: 'allow', agent: 'p1', tool: 'toolu_OLD' });
+  assert.equal(page.posts.length, 0);
+  assert.match(page.el('notice').textContent, /no longer waiting/);
+});
+
+test('the cards fold away (remembered), and Next opens the one waiting longest', async () => {
+  const { page } = farmPage();
+  page.push(crowd());
+  await page.clickButton('fold', { fsQueue: '' });
+  assert.doesNotMatch(page.el('fs-head').innerHTML, /fs-card/);
+  assert.equal(page.stored['tracker-fs-queue'], 'closed');
+  assert.match(page.el('fs-head').innerHTML, /data-pick-agent="q1"[^>]*>Next ›</);
+  await page.clickButton('next', { pickAgent: 'q1' });
+  assert.equal(shownName(page), 'asker');
+  assert.match(page.el('fs-head').innerHTML, /id="ask-send"/, 'its own question, above the tabs');
+});
+
+test('the picker lists every agent, what needs you first, finds one by name and opens it; Esc closes it', async () => {
+  const { page } = farmPage();
+  page.push(crowd());
+  await page.clickButton('fs-switch', { fsPop: 'switcher' });
+  assert.match(page.el('fs-pop').innerHTML, /id="fs-find"/);
+  const list = page.el('fs-find-list').innerHTML;
+  const at = ['>Needs you<', 'data-pick-agent="q1"', 'data-pick-agent="p1"', 'data-pick-agent="t1"', '>Working<', 'data-pick-agent="r1" aria-current="true"', '>Idle<', 'data-pick-agent="i1"'].map(s => list.indexOf(s));
+  assert.ok(at.every((v, i) => v >= 0 && (i === 0 || v > at[i - 1])), at.join(' '));
+  assert.match(list, /Asks: Pick a colour\?/);
+  page.edit('input', { id: 'fs-find', value: 'sleep' });
+  assert.match(page.el('fs-find-list').innerHTML, /sleeper/);
+  assert.doesNotMatch(page.el('fs-find-list').innerHTML, /asker/);
+  await page.clickButton('pick', { pickAgent: 'i1' });
+  assert.equal(shownName(page), 'sleeper');
+  assert.equal(page.el('fs-pop').innerHTML, '');
+  await page.clickButton('fs-switch', { fsPop: 'switcher' });
+  assert.equal(page.key('Escape', { id: 'fs-find' }), true);
+  assert.equal(page.el('fs-pop').innerHTML, '');
+});
+
+test('one box writes a message, a side question or a note, and the chat shows what goes with it', async () => {
+  const { page } = farmPage();
+  page.push(crowd({ asides: [{ question: 'Which file?', answer: 'app.ts' }], notes: { rev: 0, unused: 0 } }));
+  assert.match(page.el('fs-compose').innerHTML, /data-fs-mode="message"[^>]*>Message<|aria-selected="true" data-fs-mode="message"/);
+  assert.match(page.el('fs-compose').innerHTML, /id="msg-text"/);
+  await page.clickButton('mode', { fsMode: 'btw' });
+  assert.match(page.el('fs-compose').innerHTML, /<textarea id="aside-text" data-aside-agent="r1"/);
+  assert.match(page.el('fs-compose').innerHTML, /Side question<span class="grp-n">1</);
+  assert.match(page.el('farm-agent').innerHTML, /answered from busy-one's conversation[\s\S]*Which file\?[\s\S]*app\.ts/);
+  page.edit('input', { dataset: { asideAgent: 'r1' }, value: 'Why the retry?' });
+  page.key('Enter', { id: 'aside-text', dataset: { asideAgent: 'r1' } });
+  await page.settle();
+  assert.deepEqual(page.posts.at(-1), { path: '/api/actions/aside', body: { agentId: 'r1', question: 'Why the retry?' } });
+  await page.clickButton('mode', { fsMode: 'note' });
+  assert.match(page.el('fs-compose').innerHTML, /<textarea id="note-text" data-note-agent="r1"/);
+  assert.match(page.el('farm-agent').innerHTML, /Only you see notes[\s\S]*No notes yet/);
+  await page.clickButton('mode', { fsMode: 'message' });
+  assert.match(page.el('fs-compose').innerHTML, /id="msg-text"/);
+});
+
+test("Activity's filter keeps to commands, edits, reads or the steps that failed", async () => {
+  const { page } = farmPage({ stored: { 'tracker-farm-tab': 'activity' } });
+  const agent = chatty();
+  agent.feed = [{ at: Date.now() - 500, kind: 'tool', tool: 'Bash', text: 'npm run lint', ok: false, durationMs: 300 }, ...agent.feed];
+  page.push(richSnapshot([agent]));
+  const act = () => page.el('farm-activity').innerHTML;
+  assert.match(act(), /aria-pressed="true">All<span class="grp-n">3</);
+  assert.match(act(), /Failed<span class="grp-n">1</);
+  await page.clickButton('filter', { fsSteps: 'fail' });
+  assert.match(act(), /npm run lint/);
+  assert.doesNotMatch(act(), /npm test|web\/index\.html/);
+  await page.clickButton('filter', { fsSteps: 'edit' });
+  assert.match(act(), /web\/index\.html/);
+  assert.doesNotMatch(act(), /npm/);
+});
+
+test('the Session menu has the model, effort and permissions, its actions, and End session apart; a click outside closes it', async () => {
+  const { page } = farmPage();
+  page.push(crowd({ pid: 4242, mode: 'acceptEdits', effort: 'high', model: 'claude-opus-5-5' }));
+  assert.match(page.el('fs-head').innerHTML, /~?\/w · Opus 5\.5 · high effort · Accept edits/);
+  await page.clickButton('fs-session', { fsPop: 'session' });
+  const menu = page.el('fs-pop').innerHTML;
+  assert.match(menu, /<select id="fs-model" data-switch-model data-agent="r1"><option value="">Opus 5\.5 \(now\)/);
+  assert.match(menu, /<select id="fs-effort" data-switch-effort data-agent="r1"><option value="">high \(now\)/);
+  assert.match(menu, /<select id="fs-mode" data-restart-mode data-agent="r1"><option value="">Accept edits \(now\)/);
+  assert.match(menu, /data-compact="r1"[\s\S]*id="act-copy"[\s\S]*href="\/agent\/r1\/transcript"[\s\S]*id="fs-list"/);
+  assert.match(menu, /class="fs-sep"><\/div><button type="button" class="act fs-item danger" data-end-session="r1"><b>End session…/);
+  await page.clickButton('tab-activity', { farmTab: 'activity' });
+  assert.equal(page.el('fs-pop').innerHTML, '');
 });
 
 /* ---------- files an agent names in its replies ---------- */

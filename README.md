@@ -124,6 +124,9 @@ It listens on `127.0.0.1` only and reads what Claude Code already writes to disk
   fills, weather shows the last deploy, the season follows your 5-hour limit (or hold one with the
   **Season** switch), a cart runs to town for each web call, each MCP server's cart drives to the
   farmer calling it, and you click the barn to start a session.
+- A sidebar beside the farm for any agent: pick one from a list or step through them, answer the
+  others that need you from their cards without leaving the one you are on (Allow, Yes, an option),
+  and chat with it, the newest message by one box for a message, a side question or a note.
 - Animals on the farm, just for fun: cows, goats, a sheepdog, an ostrich, a lion, a tiger and a duck
   family on the pond. Click one to pet or feed it, and a farmer walks over to do it. Now and then they
   get up to something (a goat steals a hat), react to deploys and merges, and huddle in winter.
@@ -323,7 +326,8 @@ Esc does in its terminal:
 - A message you sent while it worked isn't lost: it becomes the session's next prompt. That's the
   way to stop it and steer it at once.
 - A command the model put in the background on purpose keeps running. Stop that one under
-  **Commands running**, whose **■ Stop** ends a single command.
+  **Commands running** (in the farm's sidebar, open **N commands running** under Now), whose
+  **■ Stop** ends a single command.
 - There is no confirm, as Esc has none. It takes up to 2 seconds, since the mod checks for
   requests every 2 seconds.
 
@@ -336,9 +340,10 @@ The **Side question** box asks the session something on the side, like `/btw` in
 It is answered from the conversation so far, with no tools, even while the session is busy, and
 nothing is added to the conversation. The answer appears under the box.
 
-Click the **Side question** heading to fold the whole section away, or to bring it back. Folded,
-the heading shows how many side questions the session has. The choice holds for every session,
-in the list and in the farm's sidebar, and is remembered.
+In the list, click the **Side question** heading to fold the whole section away, or to bring it
+back. Folded, the heading shows how many side questions the session has. The choice holds for every
+session, and is remembered. In the farm's sidebar, **Side question** is one of the message box's three
+modes instead: pick it above the box, and the chat shows the side questions and their answers.
 
 ### Notes for later
 
@@ -361,6 +366,8 @@ the session until you use it.
   and how many.
 - A session holds up to 200 notes of up to 4,000 characters each.
 - Like Side question, the heading folds the section away and, folded, says how many notes are unused.
+  In the farm's sidebar, **Note** is one of the message box's modes: pick it to write notes in the
+  box and see them above it, with **↳ Use** turning the box back into a message box.
 
 ### ✨ Helper and suggested names
 
@@ -862,9 +869,8 @@ can hold.
 - **Mouse.** ⌘/Ctrl + scroll or a pinch zooms, drag moves around, and a minimap appears while you
   are zoomed in.
 
-**Click things.** Click a farmer to open its sidebar, with Agent, Activity, Subagents (its
-subagents' cards, as in the list), Files and Diary tabs, or a field for a close-up of the files
-agents touched there. Click a farmer's speech bubble to read its whole conversation over the farm
+**Click things.** Click a farmer to open it in the sidebar (below), or a field for a close-up of
+the files agents touched there. Click a farmer's speech bubble to read its whole conversation over the farm
 (⤢ Read all, with search and a message box), the farmer picked in the sidebar behind it. A bubble
 waiting on you (a question or a permission prompt), or asking a question you can answer with a
 button, opens the sidebar instead, where you answer it. A bubble's tooltip says which: "click to read the whole conversation", or "click to open it in the sidebar".
@@ -879,6 +885,30 @@ dialog over the farm, with Quote and the reply box as in the list. Click a build
 | Henhouse | The subagents and how each is going |
 | Notice board | Each project's CLAUDE.md and memory |
 | Market stall | The pull requests, with links |
+
+**The sidebar.** **Sidebar** (top right) opens one panel beside the farm, on the farmer you picked
+(or the first one at work). Top to bottom:
+- **Who.** The agent's name: click it for every agent, those that need you first, then working,
+  your turn, idle and stale, with what each asks or is doing. Type to find one by name, folder or
+  branch; ↑ ↓ and ↩ pick, Esc closes. **‹ ›** step through them in that order, the book opens the
+  diary and the last button hides the sidebar. Under the name: its state, its permission mode when it is
+  Bypass or Plan, its account, and **Session**; then its folder, branch, model and effort.
+- **Who else needs you.** A red line names the other agents waiting on you, longest waiting
+  first, with **Next ›** to open that one. Below it, a card for each, answered without leaving the
+  agent you are on: **Allow** or **Deny** a command, pick one of a question's options, **Yes** to a
+  yes or no question. **No…**, **Reply…** and questions with several parts open that agent instead.
+  The line folds the cards away, and that is remembered. Like every action button, a card's
+  buttons ignore clicks for a moment after a world swaps or raises part of the page.
+- **Its own question** or permission prompt, on every tab.
+- **Chat, Activity, Subagents, Files.** **Chat** has **Now** (the working line with ■ Stop, its
+  step, and its commands, folded until you open them), the conversation with the newest message at
+  the bottom (⤢ Read the whole conversation is at the top), and one box with three modes:
+  **Message**, **Side question** and **Note**. **Activity** has a filter: All, Commands, Edits,
+  Reads or Failed. **Subagents** has a card for each, and **Files** is its folder.
+- **Session** opens its settings: the model and effort (switched after its current turn), the
+  permission mode or account to restart it in, then Compact, Copy the resume command, the full
+  transcript and Show it in the list view, with **End session** set apart at the bottom.
+- **The diary** covers the tabs, with **Back** to the tab you were on.
 
 The light follows your clock: cloud shadows by day, and lit windows, lanterns and fireflies at
 night. The season follows your plan's 5-hour limit: spring while it is fresh (blossom), then summer,

@@ -313,19 +313,29 @@ const restoreBtn = (a, m) => (a.kind === 'codex' || !m.uuid || m.kind !== 'promp
 /** Where the session was restored to (the messages after it are no longer its conversation). */
 const restoredHtml = m => `<div class="restored-line" title="The messages from here on were dropped by a restore; they stay in the transcript file">↺ Restored to before “${esc(m.text)}”</div>`;
 
-function conversationHtml(a) {
-  const all = fullFeeds.has(a.id);
-  const said = feedOf(a).filter(f => f.kind === 'prompt' || f.kind === 'reply' || f.kind === 'peer' || f.kind === 'restored').slice(0, all ? Infinity : 10); // newest first, under the box
-  if (!said.length) return '';
-  // Replies are markdown (rendered by the escape-everything renderer); your prompts stay as typed.
-  // Reply on an agent message quotes it into the message box.
-  const peer = f => `<div class="bub peer ${f.dir === 'in' ? 'in' : 'out'}"><div class="peer-head">✉ ${f.dir === 'in' ? `from ${esc(f.other)}` : f.helper ? 'to a helper agent' : `to ${esc(f.other)}`}${f.summary ? ` · ${esc(f.summary)}` : ''}</div><div class="bub-md">${renderMarkdown(f.body || f.text)}</div>${moreHtml(a, f)}<time>${hhmm(f.at)}</time></div>`;
-  const bubble = f => (f.kind === 'peer' ? peer(f) : f.kind === 'restored' ? restoredHtml(f) : f.kind === 'prompt'
+/** What was said (your prompts, its replies, messages between sessions, restores), newest first: the latest 10, or all of it after Show all. */
+function saidOf(a, limit = 10) {
+  return feedOf(a).filter(f => f.kind === 'prompt' || f.kind === 'reply' || f.kind === 'peer' || f.kind === 'restored').slice(0, fullFeeds.has(a.id) ? Infinity : limit);
+}
+/** The newest message is framed as the latest, with your message when it is right below it: a quick exchange frames the pair, a long working turn only its newest note. */
+const latestCut = said => (said[0].kind !== 'prompt' && said[1]?.kind === 'prompt' ? 2 : 1);
+/**
+ * One message of a conversation as a bubble. Replies are markdown (rendered by the escape-everything
+ * renderer); your prompts stay as typed. Reply on an agent message quotes it into the message box.
+ */
+function bubbleHtml(a, f) {
+  if (f.kind === 'peer') return `<div class="bub peer ${f.dir === 'in' ? 'in' : 'out'}"><div class="peer-head">✉ ${f.dir === 'in' ? `from ${esc(f.other)}` : f.helper ? 'to a helper agent' : `to ${esc(f.other)}`}${f.summary ? ` · ${esc(f.summary)}` : ''}</div><div class="bub-md">${renderMarkdown(f.body || f.text)}</div>${moreHtml(a, f)}<time>${hhmm(f.at)}</time></div>`;
+  if (f.kind === 'restored') return restoredHtml(f);
+  return f.kind === 'prompt'
     ? `<div class="bub you">${esc(f.body || f.text)}${moreHtml(a, f)}<time>${hhmm(f.at)}${forkBtn(a, f)}${restoreBtn(a, f)}</time></div>`
-    : `<div class="bub agent"><div class="bub-md">${renderMarkdown(f.body || f.text)}</div>${namedSlotHtml(a.id, f.body || f.text)}${moreHtml(a, f)}<time>${hhmm(f.at)}<button type="button" class="bub-reply" data-quote="${esc(f.body || f.text)}" data-agent="${esc(a.id)}" title="Quote this in your reply">↩ Reply</button>${forkBtn(a, f)}</time></div>`);
-  // The newest message is framed as the latest, with your message when it is right below it: a quick
-  // exchange frames the pair, a long working turn only its newest note.
-  const cut = said[0].kind !== 'prompt' && said[1]?.kind === 'prompt' ? 2 : 1;
+    : `<div class="bub agent"><div class="bub-md">${renderMarkdown(f.body || f.text)}</div>${namedSlotHtml(a.id, f.body || f.text)}${moreHtml(a, f)}<time>${hhmm(f.at)}<button type="button" class="bub-reply" data-quote="${esc(f.body || f.text)}" data-agent="${esc(a.id)}" title="Quote this in your reply">↩ Reply</button>${forkBtn(a, f)}</time></div>`;
+}
+
+function conversationHtml(a) {
+  const said = saidOf(a); // newest first, under the box
+  if (!said.length) return '';
+  const bubble = f => bubbleHtml(a, f);
+  const cut = latestCut(said);
   const readAll = a.kind === 'codex' ? '' : `<span class="grow"></span><button type="button" class="act mini" data-convo="${esc(a.id)}" data-tip="The whole conversation, from its first message, with search">⤢ Read all</button>`;
   return `<div class="sec">Conversation${readAll}</div><div class="chat"><div class="latest" role="group" aria-label="The latest message"><span class="latest-tag">Latest</span>${said.slice(0, cut).map(bubble).join('')}</div>${said.slice(cut).map(bubble).join('')}</div>`;
 }
@@ -355,12 +365,13 @@ function questionHtml(a) {
  * Chat box: sends a message, with any attached files, into the session as the person's own words (queued if it is busy).
  * `ids` names its parts: msg-text, msg-send… in the side panel; convo-msg-… in the conversation dialog, which shares its draft and files.
  */
-function composeHtml(a, ids = 'msg') {
+function composeHtml(a, ids = 'msg', { short = false } = {}) {
   if (a.kind === 'codex') return '';
   const live = Boolean(a.mod?.live);
-  const hint = !live ? "This session isn't listening for dashboard messages yet. Send it anything in its terminal once, or start a new session."
-    : a.state === 'working' ? `${esc(a.name)} is busy: your message waits until its current step ends. ↩ sends, ⇧↩ new line, ↑ your earlier messages.`
-    : 'Sent as your own message. Paste or drop files on the box. ↩ sends, ⇧↩ new line, ↑ your earlier messages.';
+  // short: the farm sidebar says the keys once, beside its modes, so its hint is just the state
+  const hint = !live ? (short ? "Not listening yet: send it anything in its terminal once" : "This session isn't listening for dashboard messages yet. Send it anything in its terminal once, or start a new session.")
+    : a.state === 'working' ? (short ? 'Busy: it gets this when its current step ends' : `${esc(a.name)} is busy: your message waits until its current step ends. ↩ sends, ⇧↩ new line, ↑ your earlier messages.`)
+    : short ? 'Sent as your own message' : 'Sent as your own message. Paste or drop files on the box. ↩ sends, ⇧↩ new line, ↑ your earlier messages.';
   const sent = msgStatus.get(a.id);
   const status = sent && Date.now() - sent.at < 20_000
     ? `<span id="${ids}-status" class="${sent.bad ? 'msg-bad' : 'msg-ok'}">${esc(sent.text)}</span>`
@@ -425,10 +436,13 @@ function restHtml(a) {
 function shellsHtml(a) {
   const shells = a.shells ?? [];
   if (!shells.length) return '';
-  return `<div class="sec">Commands running <span class="tab-n">${shells.length}</span></div>${shells.map(s => `<div class="shell-row">
+  return `<div class="sec">Commands running <span class="tab-n">${shells.length}</span></div>${shells.map(s => shellRowHtml(a, s)).join('')}`;
+}
+function shellRowHtml(a, s) {
+  return `<div class="shell-row">
     <div class="shell-main"><code class="shell-cmd"${s.about ? ` data-tip="${esc(s.about)}"` : ''}>$ ${esc(s.command)}</code>
       <span class="faint shell-meta">${s.background ? 'background · ' : ''}<span data-lasted="${s.startedAt}">${lasted(s.startedAt)}</span> · ${Math.round(s.cpu)}% CPU · ${gb(s.rssMb)}</span></div>
-    ${s.output ? `<button type="button" class="act mini" data-shell-output="${s.pid}" data-agent="${esc(a.id)}" data-tip="Its output so far, followed as it grows">Output</button>` : ''}<button type="button" class="act mini" data-shell-stop="${s.pid}" data-agent="${esc(a.id)}" data-tip="Stop it, with everything it started">■ Stop</button></div>`).join('')}`;
+    ${s.output ? `<button type="button" class="act mini" data-shell-output="${s.pid}" data-agent="${esc(a.id)}" data-tip="Its output so far, followed as it grows">Output</button>` : ''}<button type="button" class="act mini" data-shell-stop="${s.pid}" data-agent="${esc(a.id)}" data-tip="Stop it, with everything it started">■ Stop</button></div>`;
 }
 
 /** A background command's output, in a dialog, followed every 2 seconds while it is open. */
@@ -554,9 +568,9 @@ const noteDrafts = new Map(); // agentId → the note being written
 const noteEdits = new Map(); // agentId → { id, text }: the note being edited
 const notesInDraft = new Map(); // agentId → ids of the notes put in its message box
 
-/** Reads the shown session's notes when they changed since they were last read. */
-function refreshNotes(a) {
-  if (!a || a.kind === 'codex' || !isOpen('notes') || notesLoading.has(a.id)) return;
+/** Reads the shown session's notes when they changed since they were last read (while they show: `force` for the farm sidebar's Note mode). */
+function refreshNotes(a, force = false) {
+  if (!a || a.kind === 'codex' || (!isOpen('notes') && !force) || notesLoading.has(a.id)) return;
   const rev = a.notes?.rev ?? 0, got = notesCache.get(a.id);
   if (!got && !rev) { notesCache.set(a.id, { rev: 0, notes: [] }); return; } // never had any: nothing to read
   if (got && rev <= got.rev) return;
@@ -600,13 +614,16 @@ function notesHtml(a) {
     <div class="note-add"><textarea id="note-text" data-note-agent="${esc(a.id)}" rows="1" placeholder="A note for later… (↩ adds, ⇧↩ new line)">${esc(noteDrafts.get(a.id) ?? '')}</textarea><button type="button" class="act" id="note-add" data-agent="${esc(a.id)}">Add</button>${clear}</div></div>`;
 }
 
+/** One side question and its answer (or that it is thinking, or why there is none). */
+const asideItemHtml = x => `<div class="aside"><div class="aside-q"><b>btw</b> ${esc(x.question)}</div>${x.pending
+  ? '<div class="aside-a muted"><span class="spinner"></span> thinking…</div>'
+  : x.answer ? `<div class="aside-a md">${renderMarkdown(x.answer)}</div>` : `<div class="aside-a msg-bad">No answer: ${esc(x.reason ?? 'unknown')}</div>`}</div>`;
+
 /** Side questions (/btw): asked of the session from its conversation so far, answered without adding to it, even while it works. */
 function asideHtml(a) {
   if (a.kind === 'codex') return '';
   const live = modCan(a);
-  const list = (a.asides ?? []).map(x => `<div class="aside"><div class="aside-q"><b>btw</b> ${esc(x.question)}</div>${x.pending
-    ? '<div class="aside-a muted"><span class="spinner"></span> thinking…</div>'
-    : x.answer ? `<div class="aside-a md">${renderMarkdown(x.answer)}</div>` : `<div class="aside-a msg-bad">No answer: ${esc(x.reason ?? 'unknown')}</div>`}</div>`).join('');
+  const list = (a.asides ?? []).map(asideItemHtml).join('');
   // Its heading folds the whole section away (remembered, for every session); folded, it says how many it holds.
   const open = isOpen('btw'), count = (a.asides ?? []).length;
   const head = `<button class="sec sec-fold" type="button" data-group="btw" aria-expanded="${open}" data-tip="${open ? 'Hide' : 'Show'} side questions (/btw): answered from its conversation, not added to it; they work while it is busy"><span class="tw">${open ? '▾' : '▸'}</span>Side question${!open && count ? `<span class="grp-n">${count}</span>` : ''}</button>`;
