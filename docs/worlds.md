@@ -361,7 +361,7 @@ A hook you give always wins over its default.
 | `lights` | `()` | `[]`; each `[x, y, r, colour]` glows at night |
 | `items` | `()` | `[]`; each `[y, draw]`, drawn among the agents in order of `y`. Return a fresh array each call: the engine pushes its own into it |
 | `movers` | `(posOf)` | `[]`; each `{ key, html, title, x, y }`, an HTML label that moves; `posOf(id)` gives an agent's body |
-| `labels` | `(lab, overflow)` | each field's name under its bed. `lab(x, y, html, cls, title)` places HTML at a world position; `overflow` counts the agents over each group's `cap` |
+| `labels` | `(lab, overflow)` | each field's name under its bed. `lab(x, y, html, cls, title)` places HTML at a world position; `overflow` counts the agents over each group's `cap`. Drawn again when the fields, the overflow, `plan` or `accounts` change |
 | `fieldAt` | `(x, y)` | `null`: the field under that point, which opens its close-up |
 | `buildingAt` | `(x, y)` | `null`: the building under that point (a key, below) |
 | `buildingTip` | `(key)` | `''` |

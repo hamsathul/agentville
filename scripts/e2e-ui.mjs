@@ -7,7 +7,7 @@
 // No dependencies; needs Chrome (set CHROME to
 // its path if it isn't in the usual place). Exits 1 if a check fails.
 import { execFileSync, spawn } from 'node:child_process';
-import { appendFileSync, cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, realpathSync, rmSync, unlinkSync, utimesSync, writeFileSync } from 'node:fs';
+import { appendFileSync, cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, realpathSync, rmSync, symlinkSync, unlinkSync, utimesSync, writeFileSync } from 'node:fs';
 import { createSocket } from 'node:dgram';
 import { createServer } from 'node:http';
 import { createServer as createTcpServer } from 'node:net';
@@ -1149,6 +1149,53 @@ try {
   check(await until("document.getElementById('confirm').open && /End ui-done-b\\?/.test(document.getElementById('confirm-text').textContent)") && ended.length === 0, 'End session asks first, and does nothing until you confirm');
   await js("document.getElementById('confirm-yes').click()");
   check(await until("/Ended ui-done-b/.test(document.getElementById('notice').textContent)") && ended[0] === doneB.pid && launched.at(-1) === '/dev/ttys042', `confirmed, it ends that session and closes its window by its tty (ended ${JSON.stringify(ended)}, last ${launched.at(-1)})`);
+  console.log('Two Claude accounts');
+  // A collector of its own: two accounts, work (its claudeDir) and home (a sibling, its projects linked
+  // to work's), a live session on each, a past one, and a reading of each one's plan.
+  const acct = join(temp, 'accounts'), workDir = join(acct, 'claude'), homeDir = join(acct, 'claude-home'), field = join(acct, 'field'), acctRoot = join(acct, 'root');
+  for (const d of [join(workDir, 'sessions'), join(workDir, 'projects', '-field'), join(homeDir, 'sessions'), field, join(acctRoot, 'state', 'mods')]) mkdirSync(d, { recursive: true });
+  cpSync(join(ROOT, 'web'), join(acctRoot, 'web'), { recursive: true });
+  symlinkSync(join(workDir, 'projects'), join(homeDir, 'projects'));
+  writeFileSync(`${workDir}.json`, JSON.stringify({ oauthAccount: { emailAddress: 'farm@work.example' } }));
+  writeFileSync(join(homeDir, '.claude.json'), JSON.stringify({ oauthAccount: { emailAddress: 'farm@home.example' } }));
+  writeFileSync(join(acctRoot, 'config.json'), JSON.stringify({ port: 0, pollMs: 300, accounts: { [workDir]: 'work', [homeDir]: 'home' } }));
+  const A = { work: 'aaaaaaaa-1111-4111-8111-111111111111', home: 'bbbbbbbb-2222-4222-8222-222222222222', past: 'cccccccc-3333-4333-8333-333333333333' };
+  const onWork = spawn('sleep', ['600'], { stdio: 'ignore' }), onHome = spawn('sleep', ['600'], { stdio: 'ignore' });
+  writeFileSync(join(workDir, 'sessions', `${onWork.pid}.json`), JSON.stringify({ pid: onWork.pid, sessionId: A.work, cwd: field, name: 'work-farmer', kind: 'interactive', status: 'idle' }));
+  writeFileSync(join(homeDir, 'sessions', `${onHome.pid}.json`), JSON.stringify({ pid: onHome.pid, sessionId: A.home, cwd: field, name: 'home-farmer', kind: 'interactive', status: 'idle' }));
+  for (const [id, text, ago] of [[A.work, 'Work on the field', 9000], [A.home, 'Home on the field', 8000], [A.past, 'Plan the orchard', 86_400_000]]) {
+    writeFileSync(join(workDir, 'projects', '-field', `${id}.jsonl`), `${JSON.stringify({ type: 'user', timestamp: iso(Date.now() - ago), cwd: field, message: { role: 'user', content: text } })}\n`);
+  }
+  for (const [id, five, week] of [[A.work, 30, 40], [A.home, 95, 92]]) {
+    writeFileSync(join(acctRoot, 'state', 'mods', `${id}.json`), JSON.stringify({ sessionId: id, version: '0.9.0', at: Date.now(), usage: { costUsd: 1, rateLimits: [{ kind: 'five_hour', percentUsed: five, resetsAt: Date.now() + 3_600_000 }, { kind: 'seven_day', percentUsed: week, resetsAt: Date.now() + 86_400_000 }] } }));
+  }
+  const acctCli = join(acct, 'claude-cli');
+  writeFileSync(acctCli, `#!/bin/sh\ncase "$1 $2" in\n  "agents --json") echo '[]' ;;\n  "auth status") echo '{"loggedIn":true}' ;;\nesac\n`, { mode: 0o755 });
+  const acctLaunched = [];
+  const acctHandle = await startCollector({ root: acctRoot, claudeDir: workDir, claudeBin: acctCli, notify: () => {}, log: () => {}, home: '/nowhere', scratchBase: '/nonexistent', folderRoots: [realpathSync(acct)], launch: async args => { acctLaunched.push(args.at(-1)); return { code: 0, stdout: '', stderr: '' }; } });
+  try {
+    await send('Page.navigate', { url: `http://127.0.0.1:${acctHandle.port}/` });
+    check(await until("document.querySelectorAll('.row').length === 2"), 'both accounts\' sessions are listed');
+    check(await until("/work.*5-hour 30%.*week 40%.*home.*5-hour 95%.*week 92%/.test(document.getElementById('hstats').textContent.replace(/\\s+/g, ' '))"), `the top bar shows each account's plan (${await js("document.getElementById('hstats').textContent.replace(/\\s+/g, ' ')")})`);
+    check(await js("/farm@home\\.example/.test([...document.querySelectorAll('#hstats .hstat')].map(h => h.dataset.tip).join(' '))"), "each block's tip names its account's email");
+    check(await js("[...document.querySelectorAll('.row')].some(r => r.textContent.includes('home-farmer') && r.querySelector('.chip.acct')?.textContent === 'home')"), 'each agent carries its account\'s tag');
+    await js(`document.querySelector('.row[data-id="${A.work}"]')?.click()`);
+    check(await until(`(s => !!s && /account:home/.test(s.innerHTML) && /Move to another account/.test(s.innerHTML))(document.querySelector('#center-body [data-restart-mode]'))`), "Restart in… offers to move the work session to home");
+    await js("document.getElementById('sessions-open').click()");
+    check(await until("document.getElementById('sessions').open && !document.getElementById('sess-account-row').hidden && /home · 5h 95% · week 92%/.test(document.getElementById('sess-account').textContent)"), '＋ Session has the Account picker, with each account\'s room left');
+    check(await until(`[...document.querySelectorAll('#sessions [data-sess-resume="${A.past}"]')].length === 1`), 'and the past session to resume');
+    await js("(s => { s.value = 'home'; s.dispatchEvent(new Event('change', { bubbles: true })); })(document.getElementById('sess-account'))");
+    await js(`document.querySelector('#sessions [data-sess-resume="${A.past}"]').click()`);
+    check(await until("!document.getElementById('sessions').open") && acctLaunched.at(-1) === `cd '${field}' && exec env CLAUDE_CONFIG_DIR='${homeDir}' claude --resume ${A.past}`, `Resume on home runs it with home's config folder (got ${JSON.stringify(acctLaunched.at(-1))})`);
+    await js("document.getElementById('view-farm').click()");
+    check(await until("document.getElementById('main').dataset.view === 'farm'") && await funtil("[...document.querySelectorAll('.px-lab')].some(l => l.title.startsWith('The silo of home')) && [...document.querySelectorAll('.px-lab')].some(l => l.title.startsWith('The silo of work'))"), `the farm has a silo for each account (tags: ${await fjs("[...document.querySelectorAll('.px-lab.cnt')].map(l => l.title.slice(0, 40)).join(' | ')")})`);
+    await shot('two-accounts-farm');
+    await js("document.getElementById('view-list').click()");
+  } finally {
+    onWork.kill();
+    onHome.kill();
+    await acctHandle.stop();
+  }
   check(errors.length === 0, `no page errors${errors.length ? `: ${errors.join(' | ')}` : ''}`);
 } finally {
   await chrome?.close();

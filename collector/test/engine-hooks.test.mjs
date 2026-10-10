@@ -298,3 +298,19 @@ test('with the Animals switch off, the world reports no animals (so no lines are
   view.mount(dom.make(), { still: true, onCast: list => casts.push(list) });
   assert.deepEqual(plain(casts), [[]]);
 });
+
+test("labels are drawn again when the plan or the accounts change, not only the fields (the farm's silo tags show them)", () => {
+  const { window, dom, sdk } = load();
+  let drawn = 0;
+  const view = sdk.makePixelView(sdk.withDefaults(fourHooks({ labels() { drawn++; } })), prefs);
+  const withAccounts = week => sdk.engineScene(window.AgentvilleScene.toScene({ generatedAt: NOW, collisions: [], agents: [], repos: [{ path: '/c/x', name: 'x' }],
+    plan: { windows: [{ kind: 'seven_day', percentUsed: 10, resetsAt: 1 }] },
+    accounts: [{ key: 'main', name: 'work', plan: { windows: [{ kind: 'seven_day', percentUsed: 10, resetsAt: 1 }] } }, { key: 'home', name: 'home', plan: { windows: [{ kind: 'seven_day', percentUsed: week, resetsAt: 1 }] } }] }));
+  view.mount(dom.make(), { still: true });
+  view.update(withAccounts(40));
+  const before = drawn;
+  view.update(withAccounts(40));
+  assert.equal(drawn, before, 'nothing changed: not drawn again');
+  view.update(withAccounts(92));
+  assert.ok(drawn > before, "home's week changed: drawn again");
+});

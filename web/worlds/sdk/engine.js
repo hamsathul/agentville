@@ -808,7 +808,7 @@ function makePixelView(th, prefs) {
     draw();
   }
   function layoutLabels() {
-    const key = JSON.stringify([th.layout().key, scene.fields, overflow]);
+    const key = JSON.stringify([th.layout().key, scene.fields, overflow, scene.plan, scene.accounts]); // the farm's silo tags read the plan and the accounts
     if (key === labelKey) return;
     labelKey = key;
     ov.querySelectorAll('.px-lab').forEach(n => n.remove());
