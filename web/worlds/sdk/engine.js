@@ -312,6 +312,8 @@ function withDefaults(h) {
     const v = typeof given[k] === 'string' ? given[k].trim().slice(0, 24) : '';
     return [k, v || word];
   }));
+  // Which level the animals feel as cold (scarves, huddling, longer rests): a season name, or null for none; else winter.
+  const coldSeason = h.coldSeason === null ? null : typeof h.coldSeason === 'string' && Object.hasOwn(SEASON_DEFAULTS, h.coldSeason) && h.coldSeason !== 'switch' ? h.coldSeason : 'winter';
   // The notice board's dialog title (what a world's 'board' building opens): a string with words in it, cut to 80; else today's.
   const boardTitle = (typeof h.boardTitle === 'string' ? h.boardTitle.trim().slice(0, 80).trim() : '') || BOARD_TITLE;
   // The default grid is centred on W, from the config merged over 3 × 88 × 62: columns centred, a
@@ -340,7 +342,7 @@ function withDefaults(h) {
     labels: lab => { for (const s of out.layout().ST) lab(s.cx, s.rowTop + 50, pxt(cutMid(fields.find(f => f.key === s.key)?.name ?? '', 16)), 'zone'); },
     fieldAt: () => null, buildingAt: () => null, buildingTip: () => '', dialog: () => null, boardSessions: () => [],
     help: () => `<div class="px-key"><b>${esc(nouns.agents)}</b><span>one for each agent working on this Mac</span><b>${esc(nouns.repos)}</b><span>one for each repo an agent works in</span></div>`,
-    ...h, grid, nouns, seasonNames, boardTitle,
+    ...h, grid, nouns, seasonNames, coldSeason, boardTitle,
     // the fields are always recorded here (the default labels read them), whoever's setScene runs
     setScene(next) { fields = next.fields; return ownSetScene ? ownSetScene.call(h, next) : []; },
   };
@@ -968,7 +970,7 @@ function makePixelView(th, prefs) {
     th.ambient?.(dt, addPart);
     if (animalsShown()) {
       for (const f of scene.farmers) if (f.state !== 'idle') idleSince.delete(f.id); else if (!idleSince.has(f.id)) idleSince.set(f.id, T);
-      kit.tick(dt, { night: skyNow().phase === 'night', still: false, winter: PXG.season === 'winter', crew });
+      kit.tick(dt, { night: skyNow().phase === 'night', still: false, winter: th.coldSeason !== null && PXG.season === th.coldSeason, crew });
       if ((nextPlay -= dt) <= 0) { nextPlay = 45; kit.play(crew); } // a farmer idle three minutes plays with one
     }
     stepParticles(parts, dt);
@@ -982,7 +984,7 @@ function makePixelView(th, prefs) {
     PXG.season = seasonNow();
     for (const f of scene.farmers) { const b = bots.get(f.id); if (b) step(0, f, b); }
     th.tick?.(0, id => bots.get(id), true); // the MCP carts too: each where it is going
-    if (animalsShown()) { const now = Date.now(); kit.tick(stillAt ? (now - stillAt) / 1000 : 0, { night: false, still: true, winter: PXG.season === 'winter' }); stillAt = now; } // the lines still go after their few seconds
+    if (animalsShown()) { const now = Date.now(); kit.tick(stillAt ? (now - stillAt) / 1000 : 0, { night: false, still: true, winter: th.coldSeason !== null && PXG.season === th.coldSeason }); stillAt = now; } // the lines still go after their few seconds
     draw();
   }
   function layoutLabels() {

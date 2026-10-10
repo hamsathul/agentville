@@ -363,6 +363,7 @@ A hook you give always wins over its default.
 | `ground`, `shadows(body)`, `top`, `drawFx(agent, body)` | | nothing: drawn under the agents, under each agent, over everything, and over each agent |
 | `season` | `()` | `'summer'`, and no seasons. A world that gives its own has seasons ("Seasons", below): it returns the live season (`'spring'`, `'summer'`, `'autumn'` or `'winter'`), and the HUD gets the Season switch |
 | `seasonNames` | | a field, not a function: `{ switch, spring, summer, autumn, winter }`, what the world calls its Season switch and its four levels ("Seasons", below). Any you leave out keep today's word (`'Season'`, `'spring'`…). The default HUD's button reads `Heat: warm` with them, and its tooltip lists them ("…or hold one: cool, warm, hot or steaming"); `hud(state)` gets the object as `state.seasonNames`. The setting still saves `live`, `spring`, `summer`, `autumn` or `winter`, and `PXG.season` holds those too |
+| `coldSeason` | | a field, not a function: the level the animals feel as cold (scarves, huddling, longer rests): `'spring'`, `'summer'`, `'autumn'` or `'winter'`, or `null` for none. `'winter'` by default (anything else is the default too), so the farm and the factory are as they were. See "Seasons" |
 | `boardTitle` | | a field, not a function: the title of the notice board's dialog, which the `'board'` building opens (below); `'The notice board: what your projects remember'` unless you give one. A string with words in it, trimmed and cut to 80 characters; anything else keeps today's. It is shown as text, never HTML. The factory's is `'The manuals shelf: what your projects remember'` |
 | `lights` | `()` | `[]`; each `[x, y, r, colour]` glows at night |
 | `items` | `()` | `[]`; each `[y, draw]`, drawn among the agents in order of `y`. Return a fresh array each call: the engine pushes its own into it |
@@ -418,6 +419,10 @@ before the first). The animals go by it too: a held winter brings the goats' sca
 pond. Keep your own live season only for what tells the person their real numbers: while a season is
 held, the farm's panel shows it with a 📌 and the real 5-hour use, and its tooltip says it is held,
 not live.
+
+The animals feel the cold in `winter` unless the world says otherwise: its `coldSeason` field names the level they
+treat as cold (scarves, huddling, longer rests), or is `null` for none. A world whose levels are not weather
+(an alert level, say, whose top is `winter`) sets `coldSeason: null` so its animals never act cold.
 
 Seasons for the starter, by the 5-hour limit as on the farm (its `scene`, `W` and `DOOR_Y` are its
 own names):
@@ -1226,8 +1231,8 @@ check-world: u/my-bakery (/Users/you/.agentville/worlds/my-bakery)
 ```
 
 The starter, the farm and the factory pass with no cross. The farm and the factory draw no item the
-same; their only dots are hooks left to their defaults (the farm's `seasonNames` and `boardTitle`, the
-factory's `tag` and `shadows`). The starter's dots are explained below the checklist.
+same; their only dots are hooks left to their defaults (the farm's `seasonNames`, `coldSeason` and `boardTitle`, the
+factory's `tag`, `shadows` and `coldSeason`). The starter's dots are explained below the checklist.
 
 ### The checklist
 

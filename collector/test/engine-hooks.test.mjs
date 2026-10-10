@@ -694,3 +694,34 @@ test('panelHud: a numbered account ("account N", as the private scene names them
   assert.ok(html.includes('>ACC 1<') && html.includes('>ACC 2<') && html.includes('>WORK<'), 'labels');
   assert.ok(html.includes('>ACC 10<'), 'any number');
 });
+
+test('coldSeason: winter by default; null, or another level, when the world says; anything else is winter', () => {
+  assert.equal(load().sdk.withDefaults(fourHooks()).coldSeason, 'winter');
+  assert.equal(load().sdk.withDefaults(fourHooks({ coldSeason: null })).coldSeason, null);
+  assert.equal(load().sdk.withDefaults(fourHooks({ coldSeason: 'autumn' })).coldSeason, 'autumn');
+  for (const bad of [5, 'frosty', '__proto__', 'switch', undefined, {}, ['winter']]) assert.equal(load().sdk.withDefaults(fourHooks({ coldSeason: bad })).coldSeason, 'winter', `${String(bad)}: winter`);
+});
+
+test('the animals kit hears winter only when the shown level is the world’s cold one', () => {
+  const heard = extra => {
+    const dom = stubDom();
+    let pending = null;
+    dom.globals.requestAnimationFrame = cb => { pending = cb; return 1; };
+    const window = { Agentville: { raw: () => {} } };
+    const ctx = vm.createContext({ window, document: dom.document, console, Math, Date, JSON, Map, Set, Intl, ...dom.globals });
+    vm.runInContext(`${code}\n;window.sdk = { withDefaults, makePixelView };`, ctx);
+    const sdk = window.sdk, got = [];
+    const held = { sky: 'day', season: 'winter' };
+    const view = sdk.makePixelView(sdk.withDefaults(fourHooks({ animals: () => ({ cast: [{ kind: 'goat' }] }), roam: PEN, avoid: () => [], season: () => 'summer', ...extra })), { get: k => held[k] ?? null, set() {} });
+    view.mount(dom.make(), { still: false });
+    const kit = view.animalsKit(), tick = kit.tick;
+    kit.tick = (dt, o) => { got.push(o.winter); return tick.call(kit, dt, o); };
+    let now = 1000;
+    for (let i = 0; i < 5 && pending; i++) { const cb = pending; pending = null; cb(now += 100); }
+    return got;
+  };
+  const byDefault = heard({}), none = heard({ coldSeason: null }), autumn = heard({ coldSeason: 'autumn' });
+  assert.ok(byDefault.length > 0 && byDefault.every(w => w === true), 'winter held, default: cold');
+  assert.ok(none.length > 0 && none.every(w => w === false), 'coldSeason null: never cold');
+  assert.ok(autumn.length > 0 && autumn.every(w => w === false), 'winter held, autumn is the cold one: not cold');
+});
