@@ -20,3 +20,9 @@ done until the docs match it. Fixes that change what the dashboard shows or does
 
 The demo video is on demand, not part of this: update its tour (`scripts/demo-video.mjs`) or
 record it (`npm run demo`) only when asked.
+
+## Several sessions at once
+
+When `.private/WHO-IS-DOING-WHAT.md` exists (it is git-ignored), other Claude sessions may be working
+in this repo too. Before starting, read it and `.private/coordination.md`: don't start what another
+session has claimed, claim yours there, and add a dated line to the log when you start and land.
