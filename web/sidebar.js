@@ -15,6 +15,8 @@ let fsFind = ''; // what the picker's search box holds
 let fsMode = 'message'; // what the box writes: a message, a side question (btw) or a note
 let fsSteps = 'all'; // the Activity tab's filter
 let fsChatKey = ''; // the agent and mode the chat last showed: a new one starts at its newest message
+let fsLatest = ''; // what the chat's newest entry was: a new one scrolls to it, wherever you were
+let fsPinned = true; // the chat sits at its newest message (you scrolling up lets go; back at the bottom holds again)
 let fsQueueOpen = fsSaved('tracker-fs-queue') !== 'closed'; // the cards of the agents that need you
 let fsShellsOpen = fsSaved('tracker-fs-shells') === 'open'; // the commands running, under Now
 
@@ -297,12 +299,13 @@ function renderFarmSidebar(a) {
   if (farmTab === 'agent') {
     refreshNotes(a, fsMode === 'note');
     $('fs-now').innerHTML = fsNowHtml(a);
-    // Kept at its newest message while you are there; scrolled up to read, it stays where you are.
-    const box = $('fs-chat'), key = `${a.id}|${fsMode}`;
-    const atEnd = !(box.scrollHeight > 0) || box.scrollHeight - box.scrollTop - box.clientHeight < 60;
+    // Always at the newest message: when it opens, for another agent or mode, and whenever a new one
+    // comes, even if you had scrolled up to read. Scrolled up with nothing new, it stays where you are.
+    const key = `${a.id}|${fsMode}`, latest = fsLatestOf(a);
     $('farm-agent').innerHTML = fsChatHtml(a);
-    if (key !== fsChatKey || atEnd) box.scrollTop = box.scrollHeight ?? 0;
+    if (key !== fsChatKey || latest !== fsLatest || fsPinned) fsToNewest();
     fsChatKey = key;
+    fsLatest = latest;
     $('fs-compose').innerHTML = fsComposeHtml(a);
   } else {
     for (const id of ['fs-now', 'farm-agent', 'fs-compose']) $(id).innerHTML = ''; // one message box at a time, and only where it shows
@@ -315,11 +318,30 @@ function renderFarmSidebar(a) {
   fsRenderPop(a);
 }
 
+/** What the chat's newest entry is, in the mode it shows: a message, a side question (or its answer), a note. */
+function fsLatestOf(a) {
+  if (fsMode === 'btw') return (a.asides ?? []).map(x => `${x.question}|${x.pending ? '…' : x.answer ? 'a' : 'x'}`).join('\n');
+  if (fsMode === 'note') { const got = notesCache.get(a.id); return `${got?.rev ?? ''}|${got?.notes?.length ?? ''}`; }
+  const f = saidOf(a, 1)[0];
+  return f ? `${f.at}|${f.kind}|${String(f.body ?? f.text ?? '').length}` : '';
+}
+/** Scrolls the chat to its newest message, and keeps it there as pictures in it load. */
+function fsToNewest() {
+  const box = $('fs-chat');
+  box.scrollTop = box.scrollHeight ?? 0;
+  fsPinned = true;
+}
+// You scrolling up lets go of the newest message; back near the bottom, the chat holds it again.
+$('fs-chat')?.addEventListener?.('scroll', () => { const b = $('fs-chat'); fsPinned = b.scrollHeight - b.scrollTop - b.clientHeight < 60; }, { passive: true });
+// A picture (a screenshot a reply names) or a long message drawn after the scroll grows the chat: held at the newest, it follows.
+if (typeof ResizeObserver === 'function' && $('farm-agent')) new ResizeObserver(() => { if (fsPinned) $('fs-chat').scrollTop = $('fs-chat').scrollHeight; }).observe($('farm-agent'));
+
 /** Empties what the sidebar drew, so the list view's centre is the only place with its ids (msg-text, ask-send…). */
 function clearFarmSidebar() {
   for (const id of ['fs-head', 'fs-now', 'farm-agent', 'fs-compose', 'farm-activity', 'farm-subagents']) $(id).innerHTML = '';
   fsClosePop();
   fsChatKey = '';
+  fsLatest = '';
 }
 
 /** Shows another agent in the sidebar (your own click: the picker, ‹ ›, a card's Open). */

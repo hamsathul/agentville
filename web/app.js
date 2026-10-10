@@ -58,6 +58,7 @@ function render() {
   refreshSubagents();
   void followConversation(); // the conversation dialog, if open, takes the new messages
   renderConvoCompose(); // and its message box
+  renderBroadcast(); // the agents to broadcast to, if that dialog is open
   if (view === 'farm') {
     // The farm draws the agents; the list and the centre are not drawn (so their ids don't exist twice).
     // The sidebar (web/sidebar.js) shows the selected farmer, the others that need you, and its tabs.
@@ -178,7 +179,7 @@ function setView(next, { remember = true } = {}) {
       // A world pressing a button that raises a view or dialog arms the click guard, so it can't steer a
       // click onto what it raised. Each press calls what the button does, not a synthetic click: a click
       // would go through the guard it has just armed.
-      onNav: what => { window.TrackerFarm?.armClickGuard?.(); return ({ list: () => setView('list'), worlds: () => window.TrackerFarm.openList?.(), session: () => void openSessions(), setup: () => openSetup(), side: () => setFarmSide(!farmSide), theme: () => cycleTheme() })[what]?.(); },
+      onNav: what => { window.TrackerFarm?.armClickGuard?.(); return ({ list: () => setView('list'), worlds: () => window.TrackerFarm.openList?.(), session: () => void openSessions(), setup: () => openSetup(), side: () => setFarmSide(!farmSide), theme: () => cycleTheme(), broadcast: () => openBroadcast() })[what]?.(); },
       navState: () => ({ theme, side: farmSide, live: !$('live').classList.contains('off') }),
     });
   } else {

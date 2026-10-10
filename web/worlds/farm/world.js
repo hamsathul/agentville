@@ -720,6 +720,8 @@
     bell: ['....k....', '...kyk...', '..kyyyk..', '..kyyyk..', '..kyyyk..', '.kyyyyyk.', 'kkkkkkkkk', '...kyk...', '....k....'],
     winter: ['....b....', '.b..b..b.', '..b.b.b..', '...bbb...', 'bbbbbbbbb', '...bbb...', '..b.b.b..', '.b..b..b.', '....b....'],
     animals: ['.k.k.k...', '.k.k.k...', '.........', 'k.kkk.k..', '.kkkkk...', '.kkkkk...', '..kkk....', '.........', '.........'],
+    menu: ['.........', 'kkkkkkkkk', 'kkkkkkkkk', '.........', 'kkkkkkkkk', 'kkkkkkkkk', '.........', 'kkkkkkkkk', 'kkkkkkkkk'],
+    broadcast: ['.......k.', '.....kkk.', 'k..kkyyk.', 'kkkyyyyk.', 'kkyyyyyk.', 'kkkyyyyk.', 'k..kkyyk.', '....k.kk.', '....kk...'],
   };
   // Agentville's mark (the farmhouse, from brand.js), for the farm's panel.
   const brandSvg = () => (typeof window !== 'undefined' && window.Agentville?.svg ? window.Agentville.svg({ size: 18, cls: 'px-logo' }) : ''); // brand.js, loaded in the frame after the bridge
@@ -1014,10 +1016,10 @@
       },
       /**
        * The farm's controls, laid over it so it fills the window: top left, the panel with what the
-       * dashboard's top bar and count cards say; top right, the dashboard's own buttons; along the
-       * bottom, below the fields' fence, a slim row of switches and zoom.
+       * dashboard's top bar and count cards say; top right, one Menu holding the dashboard's own
+       * buttons, the farm's switches, the bell, help and zoom.
        */
-      hud({ still, zoom = 1, saysOn = true, skyMode = 'live', seasonMode = 'live', seasons = true, follow = false, canFollow = false, restingHidden = null, bell = false, nav = {}, panelOpen = true, animals = null }) {
+      hud({ still, zoom = 1, saysOn = true, skyMode = 'live', seasonMode = 'live', seasons = true, follow = false, canFollow = false, restingHidden = null, bell = false, nav = {}, panelOpen = true, animals = null, menuOpen = false }) {
         const need = scene.farmers.filter(a => a.state === 'waiting' || a.question).length;
         const spent = scene.farmers.reduce((t, a) => t + (a.cost ?? 0), 0), harvested = scene.farmers.reduce((t, a) => t + (a.compactions ?? 0), 0);
         const ch = scene.chrome ?? {}, c = ch.counts ?? {};
@@ -1029,7 +1031,8 @@
         const ramRatio = ch.ram?.totalMb ? ch.ram.usedMb / ch.ram.totalMb : 0, cpuRatio = (ch.cpu?.used ?? 0) / ((ch.cpu?.cores || 1) * 100);
         const windows = scene.plan?.windows ?? [], win = kind => windows.find(x => x.kind === kind), pctOf = x => (x ? (x.reset ? 0 : Math.round(x.percentUsed)) : null);
         const five = pctOf(win('five_hour')), week = pctOf(win('seven_day')), accs = scene.accounts ?? [];
-        const tool = (attr, icon, name, state, title, disabled = false) => `<button type="button" ${attr}${disabled ? ' disabled' : ''} title="${esc(title)}">${iconImg(icon)}${pxImg(name, '#4e3626', null)}${state ? pxImg(state, '#8b5a2b', null) : ''}<span class="px-sr">${esc(state ? `${name}: ${state}` : name)}</span></button>`;
+        const tool = (attr, icon, name, state, title, disabled = false) => `<button type="button" ${attr}${disabled ? ' disabled' : ''} title="${esc(title)}">${iconImg(icon)}${pxImg(name, '#4e3626', null)}${state ? `<span class="px-mi-s">${pxImg(state, '#8b5a2b', null)}</span>` : ''}<span class="px-sr">${esc(state ? `${name}: ${state}` : name)}</span></button>`;
+        const head = text => `<div class="px-menu-h">${pxt(text, '#8b5a2b', null)}</div>`;
         const navBtn = (what, icon, name, title, pressed) => `<button type="button" data-farm-nav="${what}" title="${esc(title)}"${pressed === undefined ? '' : ` aria-pressed="${pressed}"`}>${iconImg(icon)}${pxImg(name, '#4e3626', null)}<span class="px-sr">${esc(name)}</span></button>`;
         return `<div class="px-stats${panelOpen ? '' : ' folded'}">
             <button type="button" class="px-brand" data-farm-panel title="${panelOpen ? 'Fold this panel away' : 'Show the counts and meters'}" aria-expanded="${panelOpen}">${brandSvg()}${pxt('AGENTVILLE', '#ffe8a3', '#2a1d14')}<i class="px-live${nav.live === false ? ' off' : ''}" title="${nav.live === false ? 'Disconnected from the collector: retrying' : 'Live'}"></i>${pxt(panelOpen ? '-' : '+', '#c9b48a', null)}</button>
@@ -1054,14 +1057,19 @@
             ${need ? `<button type="button" class="px-need" data-farm-need title="Open the first agent that needs you">${pxt(`${need} need${need > 1 ? '' : 's'} you`, '#ffffff', '#5a1f19')}</button>` : ''}
           </div>
           <div class="px-nav">
-            ${navBtn('list', 'list', 'LIST', 'Back to the list view')}
-            ${navBtn('worlds', 'world', 'WORLD', 'Choose a world')}
-            ${navBtn('session', 'plus', 'SESSION', 'Start a new Claude Code session in a folder, or resume a past one')}
-            ${navBtn('setup', 'gear', 'CLAUDE CODE', 'Your Claude Code setup: plugins and skills (and what each costs in context), MCP servers, permission rules')}
-            ${navBtn('side', 'side', 'SIDEBAR', "Show the selected farmer's answer box, activity and files beside the farm", Boolean(nav.side))}
-            ${navBtn('theme', nav.theme === 'light' ? 'day' : nav.theme === 'auto' ? 'live' : 'night', String(nav.theme ?? 'dark').toUpperCase(), 'Theme: dark, light, or auto (as macOS is): click to change')}
-          </div>
-          <div class="px-tools">
+            <button type="button" data-farm-menu aria-expanded="${menuOpen}" title="The dashboard's buttons, the farm's switches, the bell, help and zoom">${iconImg('menu')}${pxImg('MENU', '#4e3626', null)}<span class="px-sr">Menu</span></button>
+            <div class="px-menu" role="group" aria-label="Menu"${menuOpen ? '' : ' hidden'}>
+              ${head('DASHBOARD')}
+              <div class="px-menu-grid">
+                ${navBtn('list', 'list', 'LIST', 'Back to the list view')}
+                ${navBtn('worlds', 'world', 'WORLD', 'Choose a world')}
+                ${navBtn('session', 'plus', 'SESSION', 'Start a new Claude Code session in a folder, or resume a past one')}
+                ${navBtn('setup', 'gear', 'CLAUDE CODE', 'Your Claude Code setup: plugins and skills (and what each costs in context), MCP servers, permission rules')}
+                ${navBtn('side', 'side', 'SIDEBAR', "Show the selected farmer's answer box, activity and files beside the farm", Boolean(nav.side))}
+                ${navBtn('broadcast', 'broadcast', 'BROADCAST', 'Message several agents at once: all of them, or the ones you pick')}
+                ${navBtn('theme', nav.theme === 'light' ? 'day' : nav.theme === 'auto' ? 'live' : 'night', String(nav.theme ?? 'dark').toUpperCase(), 'Theme: dark, light, or auto (as macOS is): click to change')}
+              </div>
+              ${head('ON THE FARM')}
               ${tool('data-farm-follow', 'follow', 'Follow', follow ? 'on' : 'off', canFollow ? 'Keep the farmer you picked in the middle of the view (zooms in); dragging the view turns it off' : 'Pick a farmer first, then Follow keeps it in view', !canFollow)}
               ${tool('data-farm-resting', 'resting', 'Resting', restingHidden === null ? 'shown' : `hidden (${restingHidden})`, 'Idle farmers (under the tree) and stale ones (scarecrows): show them, or hide them to keep the farm to the agents at work')}
               ${tool('data-farm-bubbles', 'bubbles', 'Bubbles', saysOn ? 'on' : 'off', 'Speech bubbles with what each farmer last said. × hides one; its 💬 shows it again')}
@@ -1069,9 +1077,11 @@
               ${tool('data-farm-sky', skyMode, 'Sky', skyMode, 'The light: live follows your clock (dawn, day, dusk, night); or hold it at day or night')}
               ${seasons ? tool('data-farm-season', seasonIcon(seasonMode === 'live' ? season : seasonMode), 'Season', seasonMode, "The season: live follows your plan's 5-hour limit (spring while it is fresh, winter when it is nearly used up); or hold one: spring, summer, autumn or winter. The panel's 📌 shows your real 5-hour use meanwhile") : ''}
               ${tool('class="px-motion" data-farm-motion', still ? 'pause' : 'play', 'Motion', still ? 'off' : 'on', 'Walking and animation on the farm')}
+              <div class="px-menu-sep"></div>
               ${tool('data-farm-bell', 'bell', 'Bell', bell ? 'on' : 'off', 'A chime, and a desktop notice when the page is in the background, whenever an agent starts waiting on you (in the list view too)')}
               ${tool('class="px-info" data-farm-help aria-label="How to read the farm"', 'help', 'Help', '', 'How to read the farm')}
-              <span class="px-zoombar" title="Zoom the farm inside its frame (or ⌘/Ctrl + scroll, or pinch); drag to move around when zoomed in"><button type="button" data-farm-zoom="-1" aria-label="Zoom out">${pxt('-', '#4e3626', null)}</button><button type="button" data-farm-zoom="0" title="Show the whole farm">${pxt(`${Math.round(zoom * 100)}%`, '#4e3626', null)}</button><button type="button" data-farm-zoom="1" aria-label="Zoom in">${pxt('+', '#4e3626', null)}</button></span>
+              <div class="px-menu-zoom">${pxt('ZOOM', '#8b5a2b', null)}<span class="px-zoombar" title="Zoom the farm inside its frame (or ⌘/Ctrl + scroll, or pinch); drag to move around when zoomed in"><button type="button" data-farm-zoom="-1" aria-label="Zoom out">${pxt('-', '#4e3626', null)}</button><button type="button" data-farm-zoom="0" title="Show the whole farm">${pxt(`${Math.round(zoom * 100)}%`, '#4e3626', null)}</button><button type="button" data-farm-zoom="1" aria-label="Zoom in">${pxt('+', '#4e3626', null)}</button></span></div>
+            </div>
           </div>`;
       },
       bg(f, season, ext) { drawLand(f, L, season, ext); },

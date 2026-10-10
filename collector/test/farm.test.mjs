@@ -301,6 +301,25 @@ test('the season follows the 5-hour limit: spring when it is fresh, winter when 
   assert.equal(seasonOf(planWith(null, 50)), 'summer', 'no 5-hour window: summer');
 });
 
+test("the farm's buttons are in one Menu, top right: the dashboard's (with Broadcast), the farm's switches, the bell, help and zoom; nothing along the bottom", () => {
+  const window = { Agentville: { raw: () => {} } };
+  vm.runInNewContext(code, { window, console, Math, Date, JSON, Map, Set });
+  const th = window.AgentvilleFarm.makeFarm();
+  th.setScene({ plan: planWith(42), chrome: {}, fields: [], farmers: [], carts: [], mail: [], henhouse: { eggs: 0, roosting: 0 } });
+  const shut = th.hud({ still: true, seasons: true, animals: true }), open = th.hud({ still: true, seasons: true, animals: true, menuOpen: true });
+  const nav = shut.slice(shut.indexOf('<div class="px-nav">'));
+  assert.match(nav, /^<div class="px-nav">\s*<button type="button" data-farm-menu aria-expanded="false"/);
+  assert.match(nav, /class="px-menu" role="group" aria-label="Menu" hidden>/);
+  const menu = nav.slice(nav.indexOf('class="px-menu"'));
+  for (const attr of ['list', 'worlds', 'session', 'setup', 'side', 'broadcast', 'theme'].map(n => `data-farm-nav="${n}"`)
+    .concat(['data-farm-follow', 'data-farm-resting', 'data-farm-bubbles', 'data-farm-animals', 'data-farm-sky', 'data-farm-season', 'data-farm-motion', 'data-farm-bell', 'data-farm-help', 'data-farm-zoom="-1"', 'data-farm-zoom="0"', 'data-farm-zoom="1"'])) {
+    assert.ok(menu.includes(attr), `${attr} is in the menu`);
+  }
+  assert.doesNotMatch(shut, /px-tools/, 'no row along the bottom');
+  assert.match(open, /data-farm-menu aria-expanded="true"/);
+  assert.doesNotMatch(open, /class="px-menu"[^>]*hidden/);
+});
+
 test('a held season shows in the panel with a 📌 and your real 5-hour use, its tooltip saying it is held; live, as before', () => {
   const window = { Agentville: { raw: () => {} } };
   vm.runInNewContext(code, { window, console, Math, Date, JSON, Map, Set });

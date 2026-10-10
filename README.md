@@ -30,6 +30,7 @@ It listens on `127.0.0.1` only and reads what Claude Code already writes to disk
 - [Using it](#using-it)
   - [The list view](#the-list-view)
   - [Answering and messaging agents](#answering-and-messaging-agents)
+  - [📣 Broadcast: one message to several agents](#-broadcast-one-message-to-several-agents)
   - [Stopping a turn (■ Stop)](#stopping-a-turn--stop)
   - [Side questions (/btw)](#side-questions-btw)
   - [Notes for later](#notes-for-later)
@@ -74,6 +75,7 @@ It listens on `127.0.0.1` only and reads what Claude Code already writes to disk
   cancel its questions as Esc does and tell it what you want instead.
 - Message any session like a chat, with screenshots, PDFs or other files; it arrives as your own prompt.
   ↑ in the box brings back what you sent it before, as in its terminal.
+- Broadcast one message to several sessions at once: all of them, or the ones you tick.
 - Read a session's whole conversation, from its first message, in a dialog you can search.
 - Ask a session a side question (`/btw`) without interrupting or adding to its conversation.
 - Keep notes on a session: things you may want to tell it later, or not. Put one in the message
@@ -311,9 +313,24 @@ These need the mod in that session.
 - **⤢ Read all**, on the Conversation heading, opens the whole conversation in a dialog: every
   message from the first, oldest first, read from the transcript however long it is. **Search**
   highlights every match in place, with "1 of 12" and ↑ ↓ (Enter for older, Shift+Enter for
-  newer); it starts at the newest. While the dialog is open, new messages appear at the bottom.
+  newer); it starts at the newest. While the dialog is open, new messages appear at the bottom,
+  and it goes down to each one as it comes, unless you are searching.
   You can reply from it too: it has the same message box, with 📎 Attach and 📁 Folder, sharing the side
   panel's draft and files.
+
+### 📣 Broadcast: one message to several agents
+
+**📣 Broadcast** (in the list view's top bar, and in the farm's Menu) sends one message to every
+agent you tick:
+- The list has every agent, those that need you first. Tick them one by one, or pick **All**, **Need
+  you**, **Working**, **Your turn & idle** or **None**.
+- Each one gets it as your own message, as its own message box would send it: a busy one reads it
+  when its current step ends.
+- A session that isn't listening for the dashboard yet (send it anything in its terminal once), and
+  Codex, can't be ticked; the list says why.
+- **⌘↩** sends (a plain ↩ is a new line, so one key can't reach several agents by accident). Under the
+  box, a line for each says whether it was sent.
+- It is text only: send files and folders from an agent's own box.
 
 ### Stopping a turn (■ Stop)
 
@@ -864,10 +881,12 @@ can hold.
   **needs you** button. Click its title to fold it away. At 100% the farm sits beside the panel,
   or below it when that leaves it bigger, so the panel never covers a silo or a building. In a
   narrow window (the sidebar open) the farm is smaller then: **+** zooms in.
-- **Top right.** List, World (the list of worlds), ＋ Session, ⚙ Claude Code, Sidebar and the theme.
-- **Bottom.** Follow (keep the picked farmer in view), Resting (hide idle and stale farmers),
-  Bubbles, Sky (live, day or night), Season (live, then spring, summer, autumn or winter held),
-  Motion, Bell, Help, and zoom.
+- **Top right, Menu.** One button holds every other control. **Dashboard:** List, World (the list
+  of worlds), ＋ Session, ⚙ Claude Code, Sidebar, 📣 Broadcast and the theme. **On the farm:** Follow
+  (keep the picked farmer in view), Resting (hide idle and stale farmers), Bubbles, Animals, Sky
+  (live, day or night), Season (live, then spring, summer, autumn or winter held) and Motion. Then
+  Bell, Help and zoom. A switch or zoom leaves the menu open, to change several; a button that takes
+  you elsewhere shuts it, as do Esc and a click on the farm. Nothing lies along the farm's foot.
 - **Mouse.** ⌘/Ctrl + scroll or a pinch zooms, drag moves around, and a minimap appears while you
   are zoomed in.
 
@@ -904,7 +923,9 @@ dialog over the farm, with Quote and the reply box as in the list. Click a build
 - **Its own question** or permission prompt, on every tab.
 - **Chat, Activity, Subagents, Files.** **Chat** has **Now** (the working line with ■ Stop, its
   step, and its commands, folded until you open them), the conversation with the newest message at
-  the bottom (⤢ Read the whole conversation is at the top), and one box with three modes:
+  the bottom (⤢ Read the whole conversation is at the top), and one box with three modes. The chat
+  always goes to the newest message: when it opens, and whenever a new one comes, even if you had
+  scrolled up to read (with nothing new, it stays where you are). The three modes are
   **Message**, **Side question** and **Note**. **Activity** has a filter: All, Commands, Edits,
   Reads or Failed. **Subagents** has a card for each, and **Files** is its folder.
 - **Session** opens its settings: the model and effort (switched after its current turn), the

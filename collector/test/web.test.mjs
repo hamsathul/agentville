@@ -866,7 +866,7 @@ test('without the farm script, the toggle stays on the list and says why', async
 
 test('the page loads its mark, the scene and the host of its worlds (deferred), then its token, then its own scripts in order', () => {
   const tags = [...html.matchAll(/<script(?: src="\/([a-z]+)\.js"( defer)?)?>/g)].map(m => (m[1] ? `${m[1]}${m[2] ? ' defer' : ''}` : 'inline'));
-  assert.deepEqual(tags, ['inline', 'brand', 'scene defer', 'worlds defer', 'inline', 'core', 'charts', 'panels', 'markdown', 'viewer', 'explorer', 'conversation', 'sidebar', 'app', 'sessions', 'setup']);
+  assert.deepEqual(tags, ['inline', 'brand', 'scene defer', 'worlds defer', 'inline', 'core', 'charts', 'panels', 'markdown', 'viewer', 'explorer', 'conversation', 'sidebar', 'broadcast', 'app', 'sessions', 'setup']);
   assert.match(html, /<script>const TOKEN = '__TRACKER_TOKEN__';<\/script>/);
 });
 
@@ -2557,6 +2557,85 @@ test("Activity's filter keeps to commands, edits, reads or the steps that failed
   await page.clickButton('filter', { fsSteps: 'edit' });
   assert.match(act(), /web\/index\.html/);
   assert.doesNotMatch(act(), /npm/);
+});
+
+test('the chat goes to the newest message whenever one comes, even scrolled up', () => {
+  const { page } = farmPage();
+  const agent = chatty();
+  page.push(richSnapshot([agent]));
+  const box = page.el('fs-chat');
+  Object.assign(box, { scrollHeight: 900, clientHeight: 300, scrollTop: 0 }); // you scrolled to the top to read
+  page.push(richSnapshot([{ ...agent, feed: [{ at: Date.now(), kind: 'reply', text: 'All done.', body: 'All done.' }, ...agent.feed] }]));
+  assert.match(page.el('farm-agent').innerHTML, /All done\./);
+  assert.equal(box.scrollTop, 900, 'at the newest message');
+});
+
+test('📣 Broadcast sends one message to each agent you tick; one not listening, or Codex, cannot be ticked', async () => {
+  const page = loadPage();
+  const snap = crowd();
+  snap.agents.push(richAgent({ id: 'c1', name: 'codexer', kind: 'codex', ...live7 }));
+  snap.agents[4].mod = undefined; // sleeper: not listening
+  page.push(snap);
+  assert.match(html, /<button class="act" id="broadcast-open"[^>]*>📣 Broadcast</);
+  await page.click('broadcast-open');
+  assert.equal(page.el('broadcast').open, true);
+  const list = page.el('bc-list').innerHTML;
+  assert.match(list, /data-bc-agent="i1" disabled>[\s\S]*Not listening yet/);
+  assert.match(list, /data-bc-agent="c1" disabled>[\s\S]*Codex takes no messages/);
+  assert.ok(list.indexOf('data-bc-agent="q1"') < list.indexOf('data-bc-agent="r1"'), 'what needs you first, as in the picker');
+  await page.clickButton('pick-all', { bcPick: 'all' });
+  assert.equal(page.el('bc-send').textContent, 'Send to 4');
+  assert.match(page.el('bc-count').textContent, /^4 of 4 picked$/);
+  await page.clickButton('pick-needs', { bcPick: 'needs' });
+  assert.equal(page.el('bc-send').textContent, 'Send to 3');
+  await page.change({ dataset: { bcAgent: 'p1' }, checked: false });
+  assert.equal(page.el('bc-send').textContent, 'Send to 2');
+  await page.clickButton('bc-send', {});
+  assert.match(page.el('bc-status').textContent, /Write the message first/);
+  assert.equal(page.posts.length, 0);
+  page.el('bc-text').value = 'Please wrap up and commit.';
+  await page.clickButton('bc-send', {});
+  await page.settle();
+  assert.deepEqual(page.posts.map(p => [p.path, p.body.agentId, p.body.text]).sort(), [['/api/actions/message', 'q1', 'Please wrap up and commit.'], ['/api/actions/message', 't1', 'Please wrap up and commit.']]);
+  assert.match(page.el('bc-results').innerHTML, /✓ asker[\s\S]*✓ pusher/);
+  assert.match(page.el('bc-status').textContent, /Sent to 2 agents/);
+  assert.equal(page.el('bc-text').value, '', 'sent: the box is empty again');
+  await page.clickButton('pick-none', { bcPick: 'none' });
+  await page.clickButton('bc-send', {});
+  assert.match(page.el('bc-status').textContent, /Pick at least one agent/);
+});
+
+test('⌘↩ sends a broadcast; ↩ alone is a new line', async () => {
+  const page = loadPage();
+  page.push(crowd());
+  await page.click('broadcast-open');
+  await page.clickButton('pick-all', { bcPick: 'working' });
+  page.el('bc-text').value = 'Status?';
+  assert.equal(page.key('Enter', { id: 'bc-text' }), false);
+  assert.equal(page.posts.length, 0);
+  assert.equal(page.key('Enter', { id: 'bc-text' }, { metaKey: true }), true);
+  await page.settle();
+  assert.deepEqual(page.posts.map(p => p.body.agentId), ['r1']);
+});
+
+test("the farm's Menu opens Broadcast, and its Send is held a moment like any button a world raised", async () => {
+  const f = fakeFarm();
+  const page = loadPage({ farm: f.farm, stored: { 'tracker-view': 'farm' } });
+  page.push(crowd());
+  f.nav('broadcast');
+  assert.equal(page.el('broadcast').open, true);
+  assert.ok(f.calls.some(c => c[0] === 'arm'), 'the click guard is armed');
+  await page.clickButton('pick-all', { bcPick: 'all' });
+  page.el('bc-text').value = 'Hello all';
+  f.setBlocks(true);
+  page.el('bc-send').className = 'act primary';
+  await page.clickButton('bc-send', {});
+  await page.settle();
+  assert.equal(page.posts.length, 0, 'held');
+  f.setBlocks(false);
+  await page.clickButton('bc-send', {});
+  await page.settle();
+  assert.equal(page.posts.length, 4);
 });
 
 test('the Session menu has the model, effort and permissions, its actions, and End session apart; a click outside closes it', async () => {

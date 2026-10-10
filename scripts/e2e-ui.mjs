@@ -755,9 +755,9 @@ try {
     c.dispatchEvent(new PointerEvent('pointerleave', { bubbles: true, pointerId: 1 })); document.querySelector('#farm .px-view').dispatchEvent(new PointerEvent('pointerleave', { pointerId: 1 }));
     return on && !document.querySelector('.px-tag.hover'); })()`);
   check(hovered, 'hovering a farmer shows its name, and leaving hides it again');
-  const corners = JSON.parse(await fjs(`(() => { const r = s => document.querySelector(s).getBoundingClientRect(), v = r('#farm .px-host'), st = r('.px-stats'), z = r('.px-zoombar'), t = r('.px-tools'), n = r('.px-nav');
-    return JSON.stringify({ stats: st.left - v.left < 20 && st.top - v.top < 20, nav: v.right - n.right < 20 && n.top - v.top < 20, zoom: v.bottom - z.bottom < 20 && z.height < 40, tools: (b => v.bottom - b.bottom < 20 && b.height < 40 && Math.abs((b.left + b.right) / 2 - (v.left + v.right) / 2) < 40)((r => ({ left: Math.min(...r.map(x => x.left)), right: Math.max(...r.map(x => x.right)), bottom: Math.max(...r.map(x => x.bottom)), height: Math.max(...r.map(x => x.bottom)) - Math.min(...r.map(x => x.top)) }))([...document.querySelectorAll('.px-tools > button, .px-tools > .px-zoombar')].map(x => x.getBoundingClientRect()))) }); })()`));
-  check(corners.stats && corners.nav && corners.zoom && corners.tools, `the controls lie over the farm: the panel top left, the dashboard's buttons top right, a slim row of switches and zoom along the bottom (${JSON.stringify(corners)})`);
+  const corners = JSON.parse(await fjs(`(() => { const r = s => document.querySelector(s).getBoundingClientRect(), v = r('#farm .px-host'), st = r('.px-stats'), n = r('.px-nav'), m = document.querySelector('.px-menu');
+    return JSON.stringify({ stats: st.left - v.left < 20 && st.top - v.top < 20, nav: v.right - n.right < 20 && n.top - v.top < 20 && n.height < 50, shut: !!m && m.hidden, bottom: !document.querySelector('.px-tools') }); })()`));
+  check(corners.stats && corners.nav && corners.shut && corners.bottom, `the controls lie over the farm: the panel top left, one Menu button top right (shut), nothing along the bottom (${JSON.stringify(corners)})`);
   // At 100% the panel never lies over the farm (it hid the silos' figures): the farm sits beside it or below it.
   const panelClear = () => fjs(`(() => { const c = document.querySelector('#farm canvas'), r = c.getBoundingClientRect(), cs = r.width / Number(c.dataset.ew), [pl, pt] = c.dataset.pad.split(',').map(Number), p = document.querySelector('.px-stats').getBoundingClientRect();
     const farm = [r.left + pl * cs, r.top + pt * cs], foot = r.bottom - Number(c.dataset.foot) * cs, tools = Math.min(...[...document.querySelectorAll('.px-tools > button, .px-tools > .px-zoombar')].map(b => b.getBoundingClientRect().top));
@@ -779,6 +779,23 @@ try {
   await fjs("document.querySelector('[data-farm-nav=\"setup\"]')?.click()");
   check(await until("document.getElementById('setup').open"), "the farm's buttons have ⚙ Claude Code too, opening its dialog");
   await js("document.getElementById('setup').close()");
+  // The farm's buttons are in one Menu: it opens over the farm, in view; a switch in it leaves it open to
+  // change another; Esc shuts it; a button that leaves the farm (Broadcast) shuts it behind what it opens.
+  await fjs("document.querySelector('[data-farm-menu]').click()");
+  check(await funtil("(m => !!m && !m.hidden && (r => r.top >= 0 && r.bottom <= innerHeight + 1 && r.right <= innerWidth + 1 && r.left >= 0)(m.getBoundingClientRect()))(document.querySelector('.px-menu'))"), 'Menu opens the menu over the farm, all of it in view');
+  const bubblesWas = await fjs("document.querySelector('[data-farm-bubbles]').textContent");
+  await fjs("document.querySelector('[data-farm-bubbles]').click()");
+  check(await funtil(`document.querySelector('[data-farm-bubbles]').textContent !== ${JSON.stringify(bubblesWas)} && !document.querySelector('.px-menu').hidden`), 'a switch in it changes, and the menu stays open to change another');
+  await fjs("document.querySelector('[data-farm-bubbles]').click()");
+  await funtil(`document.querySelector('[data-farm-bubbles]').textContent === ${JSON.stringify(bubblesWas)}`);
+  await fjs("document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }))");
+  check(await funtil("document.querySelector('.px-menu').hidden && document.activeElement?.hasAttribute('data-farm-menu')"), 'Esc shuts it, back on its button');
+  await sleep(300); // the page takes one press of the top bar's buttons a quarter second
+  await fjs("document.querySelector('[data-farm-menu]').click()");
+  await fjs("document.querySelector('[data-farm-nav=\"broadcast\"]').click()");
+  check(await until("document.getElementById('broadcast').open && document.querySelectorAll('#bc-list [data-bc-agent]').length > 0"), "its Broadcast opens the dashboard's Broadcast over the farm, with the agents to tick");
+  check(await funtil("document.querySelector('.px-menu').hidden"), 'and the menu shuts behind it');
+  await js("document.getElementById('broadcast').close()");
   await shot('farm-bubbles');
   check(await fjs("[...document.querySelectorAll('.px-say')].some(b => b.textContent.includes('One question before I go on'))") === false, 'a waiting farmer shows its question, not its older reply');
   await fjs(`document.querySelector('.px-say[data-say="ui-asker"] [data-say-close]').click()`);
@@ -817,7 +834,7 @@ try {
   await fjs("document.querySelector('[data-farm-zoom=\"1\"]').click()");
   check(await width() > fit && (await frameBox()) === frame, `zooming in makes the farm bigger inside the same frame (${frame} → ${await frameBox()})`);
   check(await view('v.scrollLeft > 0 && v.scrollTop > 0 && v.scrollWidth > v.clientWidth'), 'it zooms around the middle of the view, which now scrolls');
-  check(await funtil("(m => !!m && !m.hidden && (a => [...document.querySelectorAll('.px-tools > button, .px-tools > .px-zoombar')].every(b => (r => r.right <= a.left || r.left >= a.right || r.bottom <= a.top || r.top >= a.bottom)(b.getBoundingClientRect())))(m.getBoundingClientRect()))(document.querySelector('.px-mini'))"), 'zoomed in, the minimap shows, above the toolbar rather than over its buttons');
+  check(await funtil("(m => !!m && !m.hidden && (a => (r => r.right <= a.left || r.left >= a.right || r.bottom <= a.top || r.top >= a.bottom)(document.querySelector('[data-farm-menu]').getBoundingClientRect()))(m.getBoundingClientRect()))(document.querySelector('.px-mini'))"), 'zoomed in, the minimap shows, clear of the Menu');
   const picked = () => fjs("document.querySelector('.px-tag.sel')?.dataset.farmer ?? ''");
   const pickedBefore = await picked(), left0 = await view('v.scrollLeft');
   const [mx, my] = JSON.parse(await view('JSON.stringify((r => [Math.round(r.left + r.width / 2), Math.round(r.top + r.height / 2)])(v.getBoundingClientRect()))'));
@@ -838,7 +855,7 @@ try {
   const followed = await funtil(`(() => { const v = document.querySelector('#farm .px-view').getBoundingClientRect(), t = document.querySelector('.px-tag[data-farmer="ui-worker"]').getBoundingClientRect(), cx = t.left + t.width / 2, cy = t.bottom;
     return v.width > 0 && Math.abs(cx - (v.left + v.width / 2)) < v.width / 5 && Math.abs(cy - (v.top + v.height / 2)) < v.height / 3 && parseFloat(document.querySelector('#farm canvas').style.width) > v.width; })()`, 4000);
   check(followed && /Follow: on/.test(await fjs("document.querySelector('[data-farm-follow]').textContent")), 'Follow zooms in and keeps the picked farmer in the middle of the view');
-  check(await funtil("(m => !!m && !m.hidden && (a => [...document.querySelectorAll('.px-tools > button, .px-tools > .px-zoombar')].every(b => (r => r.right <= a.left || r.left >= a.right || r.bottom <= a.top || r.top >= a.bottom)(b.getBoundingClientRect())))(m.getBoundingClientRect()))(document.querySelector('.px-mini'))"), 'with the sidebar open too, the minimap stays clear of the toolbar (Follow can be clicked)');
+  check(await funtil("(m => !!m && !m.hidden && (a => (r => r.right <= a.left || r.left >= a.right || r.bottom <= a.top || r.top >= a.bottom)(document.querySelector('[data-farm-menu]').getBoundingClientRect()))(m.getBoundingClientRect()))(document.querySelector('.px-mini'))"), 'with the sidebar open too, the minimap stays clear of the Menu');
   {
     const [fx, fy] = JSON.parse(await view('JSON.stringify((r => [Math.round(r.left + r.width / 2), Math.round(r.top + r.height / 2)])(v.getBoundingClientRect()))'));
     const [ox, oy] = await frameAt();
@@ -930,6 +947,10 @@ try {
     return side.scrollWidth <= side.clientWidth + 1 && s.bottom <= innerHeight + 1 && b.top >= s.top && b.bottom <= s.bottom + 1;
   })()`), '› steps to another farmer; the sidebar fits beside the farm, nothing wider than it, and its message box is in view at the bottom');
   check(await js("(c => c.scrollHeight - c.scrollTop - c.clientHeight < 2)(document.getElementById('fs-chat'))"), 'the chat shows its newest message, next to the box');
+  await js("document.getElementById('fs-chat').scrollTop = 0; true"); // scrolled up to read
+  await sleep(200);
+  appendFileSync(join(claudeDir, 'projects', '-farm-repo', 'ui-worker.jsonl'), `${line(Date.now(), { model: 'claude-haiku', content: [{ type: 'text', text: 'Fresh news from the north field.' }] })}\n`);
+  check(await until("/Fresh news from the north field/.test(document.getElementById('farm-agent').textContent) && (c => c.scrollHeight - c.scrollTop - c.clientHeight < 2)(document.getElementById('fs-chat'))", 8000), 'a new message brings the chat down to it, even scrolled up');
   await js("document.getElementById('fs-switch').click()");
   check(await until("!!document.querySelector('#fs-pop .fs-pick') && document.activeElement?.id === 'fs-find'"), "the agent's name opens the picker, its search box ready");
   check(await js("(p => { const r = p.getBoundingClientRect(), s = document.getElementById('farm-sidebar').getBoundingClientRect(); return r.left >= s.left - 1 && r.right <= s.right + 1 && r.bottom <= s.bottom + 1; })(document.querySelector('#fs-pop .fs-pop'))"), 'the picker fits inside the sidebar');

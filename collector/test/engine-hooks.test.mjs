@@ -148,6 +148,23 @@ function mounted(world, prefsOf = {}, saved = []) {
   return { sdk, hud: () => String(els['.px-hud'].innerHTML), click: attr => click({ target: { closest: sel => (sel === `[${attr}]` ? {} : null) }, stopPropagation() {} }) };
 }
 
+test("the default HUD is one Menu at the top right: its button opens and shuts it, and it holds the dashboard's buttons (Broadcast too), the switches and zoom", () => {
+  const w = mounted(fourHooks());
+  const at = s => w.hud().indexOf(s);
+  assert.match(w.hud(), /^<div class="px-nav"><button type="button" data-farm-menu aria-expanded="false"/);
+  assert.match(w.hud(), /class="px-menu" role="group" aria-label="Menu" hidden>/);
+  for (const attr of ['data-farm-nav="list"', 'data-farm-nav="worlds"', 'data-farm-nav="side"', 'data-farm-nav="broadcast"', 'data-farm-sky', 'data-farm-motion', 'data-farm-help', 'data-farm-zoom="1"']) assert.ok(at(attr) > at('class="px-menu"'), `${attr} is in the menu`);
+  assert.doesNotMatch(w.hud(), /px-tools/, 'no row of switches along the bottom: the world has its foot back');
+  w.click('data-farm-menu');
+  assert.match(w.hud(), /data-farm-menu aria-expanded="true"/);
+  assert.doesNotMatch(w.hud(), /class="px-menu"[^>]*hidden/);
+  w.click('data-farm-menu');
+  assert.match(w.hud(), /class="px-menu"[^>]*hidden/);
+  w.click('data-farm-menu');
+  w.click('data-farm-sky'); // in the harness a click is never inside the menu: one elsewhere shuts it
+  assert.match(w.hud(), /class="px-menu"[^>]*hidden/);
+});
+
 test('a world with its own season hook gets the Season switch in the default HUD, after Sky; one without gets none', () => {
   const hud = mounted(fourHooks({ season: () => 'autumn' })).hud();
   assert.match(hud, /data-farm-sky[\s\S]*data-farm-season[^>]*>[\s\S]*Season: live/);
