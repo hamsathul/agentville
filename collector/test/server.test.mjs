@@ -43,6 +43,7 @@ async function start(opts = {}) {
     getSnapshot: () => ({ generatedAt: 1, agents: [], collisions: [] }),
     getFeed: id => (id === 's1' ? [{ at: 1, kind: 'prompt', text: 'hi' }] : null),
     getConversation: async (id, from) => (id === 's1' ? { total: 2, from, items: [{ at: 1, kind: 'prompt', body: 'hi' }, { at: 2, kind: 'reply', body: 'hello' }].slice(from) } : null),
+    getTimeline: since => { calls.push(['timeline', since]); return { now: 9, since, truncated: false, items: [{ at: 5, agent: 's1', name: 'one', kind: 'reply', body: 'hello' }].filter(i => i.at >= since) }; },
     getPrompts: async id => (id === 's1' ? { prompts: ['and then?', 'hi'] } : null),
     getNotes: id => (id === 's1' ? { notes: [{ id: 'n1', text: 'ask about the cache', at: 1 }] } : null),
     getTranscriptHtml: async id => (id === 's1' ? renderTranscriptPage('s1', [{ at: 1, kind: 'prompt', text: '<script>alert(1)</script>' }]) : null),
@@ -550,6 +551,23 @@ test("a session's whole conversation needs the token, like files", async () => {
     assert.deepEqual(JSON.parse(all.body).items.map(m => m.body), ['hi', 'hello']);
     assert.deepEqual(JSON.parse((await request(port, { path: '/api/agent/s1/conversation?from=1', headers })).body), { total: 2, from: 1, items: [{ at: 2, kind: 'reply', body: 'hello' }] });
     assert.equal((await request(port, { path: '/api/agent/nobody/conversation', headers })).status, 404);
+  } finally {
+    await srv.close();
+  }
+});
+
+test('every conversation at once (💬 All chats) needs the token; since is a whole number, 0 when missing or nonsense', async () => {
+  const { srv, port, calls } = await start();
+  try {
+    assert.equal((await request(port, { path: '/api/timeline' })).status, 403);
+    const headers = { 'x-tracker-token': 'tok' };
+    const all = await request(port, { path: '/api/timeline', headers });
+    assert.equal(all.status, 200);
+    assert.deepEqual(JSON.parse(all.body).items.map(i => i.body), ['hello']);
+    assert.deepEqual(JSON.parse((await request(port, { path: '/api/timeline?since=6', headers })).body).items, []);
+    await request(port, { path: '/api/timeline?since=abc', headers });
+    await request(port, { path: '/api/timeline?since=-5', headers });
+    assert.deepEqual(calls.filter(c => c[0] === 'timeline').map(c => c[1]), [0, 6, 0, 0]);
   } finally {
     await srv.close();
   }

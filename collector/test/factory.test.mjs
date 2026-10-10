@@ -1017,7 +1017,7 @@ test("the panel and buttons are the engine's panelHud in the factory's words: ro
     assert.match(html, /class="px-stats"/, `${mode}: the panel`);
     assert.match(html, />\$15\.90</, `${mode}: what the sessions cost (31 robots at $0.40, one at $3.50)`);
     assert.match(html, />3 built</, `${mode}: three compactions, three robots built`);
-    for (const attr of ['data-farm-panel', 'data-farm-need', 'data-farm-menu', 'data-farm-nav="list"', 'data-farm-nav="worlds"', 'data-farm-nav="session"', 'data-farm-nav="broadcast"', 'data-farm-follow', 'data-farm-resting', 'data-farm-bubbles', 'data-farm-animals', 'data-farm-sky', 'data-farm-season', 'data-farm-motion', 'data-farm-bell', 'data-farm-help', 'data-farm-zoom="0"']) assert.ok(html.includes(attr), `${mode}: ${attr}`);
+    for (const attr of ['data-farm-panel', 'data-farm-need', 'data-farm-menu', 'data-farm-nav="list"', 'data-farm-nav="worlds"', 'data-farm-nav="session"', 'data-farm-nav="broadcast"', 'data-farm-nav="chats"', 'data-farm-follow', 'data-farm-resting', 'data-farm-bubbles', 'data-farm-animals', 'data-farm-sky', 'data-farm-season', 'data-farm-motion', 'data-farm-bell', 'data-farm-help', 'data-farm-zoom="0"']) assert.ok(html.includes(attr), `${mode}: ${attr}`);
     assert.doesNotMatch(html.replace(/data-farm-[\w-]+(="[^"]*")?/g, ''), FARM_WORDS, mode); // anywhere, the engine's click attributes aside
     const read = [...html.matchAll(/(?:title|aria-label)="([^"]*)"|class="px-sr">([^<]*)</g)].map(m => m[1] ?? m[2]).join('\n'); // what a person reads: the tooltips and the words
     assert.doesNotMatch(read, /\bseasons?\b/i, `${mode}: the switch and its tooltips say heat`);
@@ -1037,8 +1037,9 @@ test("its buttons are in the engine's Menu, top right, in the factory's words: t
   const heads = [...menu.matchAll(/<div class="px-menu-h">[\s\S]*?class="px-sr">([^<]*)</g)].map(m => m[1]);
   assert.deepEqual(heads, ['DASHBOARD', 'ON THE FLOOR'], "its headings: the dashboard's, then the factory's own");
   assert.ok(/data-farm-nav="broadcast"[^>]*>[\s\S]*?<\/button>/.exec(menu)[0].includes(icon('broadcast')), "Broadcast: the factory's icon");
+  assert.ok(/data-farm-nav="chats"[^>]*>[\s\S]*?<\/button>/.exec(menu)[0].includes(icon('chats')), "Chats: the factory's icon");
   const at = s => menu.indexOf(s);
-  for (const attr of ['data-farm-nav="list"', 'data-farm-nav="broadcast"', 'data-farm-follow', 'data-farm-season', 'data-farm-bell', 'data-farm-help', 'data-farm-zoom="1"']) assert.ok(at(attr) > 0, `${attr} is in the menu`);
+  for (const attr of ['data-farm-nav="list"', 'data-farm-nav="broadcast"', 'data-farm-nav="chats"', 'data-farm-follow', 'data-farm-season', 'data-farm-bell', 'data-farm-help', 'data-farm-zoom="1"']) assert.ok(at(attr) > 0, `${attr} is in the menu`);
   assert.ok(at('DASHBOARD') < at('data-farm-nav="list"') && at('ON THE FLOOR') < at('data-farm-follow') && at('data-farm-nav="theme"') < at('ON THE FLOOR'), 'each heading over its buttons');
   assert.doesNotMatch(shut, /px-tools/, 'no row along the bottom');
   assert.match(open, /data-farm-menu aria-expanded="true"/);

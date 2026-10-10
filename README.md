@@ -31,6 +31,7 @@ It listens on `127.0.0.1` only and reads what Claude Code already writes to disk
   - [The list view](#the-list-view)
   - [Answering and messaging agents](#answering-and-messaging-agents)
   - [📣 Broadcast: one message to several agents](#-broadcast-one-message-to-several-agents)
+  - [💬 All chats: every conversation in one timeline](#-all-chats-every-conversation-in-one-timeline)
   - [Stopping a turn (■ Stop)](#stopping-a-turn--stop)
   - [Side questions (/btw)](#side-questions-btw)
   - [Notes for later](#notes-for-later)
@@ -80,6 +81,8 @@ It listens on `127.0.0.1` only and reads what Claude Code already writes to disk
   early.
   ↑ in the box brings back what you sent it before, as in its terminal.
 - Broadcast one message to several sessions at once: all of them, or the ones you tick.
+- Read every session's conversation in one live timeline (💬 All chats): catch up on what is new
+  since you last looked, follow sessions messaging each other, and answer them from there.
 - Read a session's whole conversation, from its first message, in a dialog you can search.
 - Ask a session a side question (`/btw`) without interrupting or adding to its conversation.
 - Keep notes on a session: things you may want to tell it later, or not. Put one in the message
@@ -354,6 +357,32 @@ agent you tick:
 - **⌘↩** sends (a plain ↩ is a new line, so one key can't reach several agents by accident). Under the
   box, a line for each says whether it was sent.
 - It is text only: send files and folders from an agent's own box.
+
+### 💬 All chats: every conversation in one timeline
+
+![💬 All chats: every agent's conversation in one timeline](docs/chats.png)
+
+**💬 All chats** (in the list view's top bar, and in a world's Menu) shows every Claude session's
+conversation as one live timeline, oldest first, like a group chat:
+- Your messages, the agents' replies, and the messages sessions send each other (once, as
+  *A → B*). When a subagent finishes, its result shows as its own message.
+- Each agent's steps between two of its messages fold into one line (`▸ api · 14 steps · Edit
+  login.ts, Bash npm test…`); ▸ opens them. A working agent's line sits at the bottom and says what
+  it is doing now.
+- An agent waiting on you shows the sidebar's card: **Allow** / **Deny**, a question's options, or
+  **Yes**, answered from here.
+- **Chips** along the top: one per agent, with its state's dot and how many of its messages are new.
+  Click some to show only them (a message between two agents shows for either), **All** for everyone
+  again, **⚠ Needs you** for the agents waiting on you.
+- It opens at **new since you last looked**: the browser remembers the newest message you saw when
+  you shut it. Scrolled up to read, new messages leave you where you are; **↓ N new** takes you down.
+- The box at the bottom writes to the agent in **To**: the one whose message you clicked last, else
+  the one that has waited on you longest, else whoever spoke last. It is that agent's own message
+  box, so a working agent's message waits for its turn to end.
+- Long messages fold with **Show more**. It reaches back over each session's latest 200 messages and
+  200 steps; anything older, and the whole of a very long message, is in that agent's **⤢ Read all**.
+- A session restored to an earlier message gets a line, "↺ went back", and what it dropped is greyed.
+- Codex sessions have no transcript, so they aren't in it.
 
 ### Stopping a turn (■ Stop)
 
@@ -914,7 +943,7 @@ farmer can hold.
   narrow window (the sidebar open) the farm is smaller then: **+** under Zoom in the Menu (or
   ⌘/Ctrl + scroll) zooms in.
 - **Top right, Menu.** One button holds every other control. **Dashboard:** List, World (the list
-  of worlds), ＋ Session, ⚙ Claude Code, Sidebar, 📣 Broadcast and the theme. **On the farm:** Follow
+  of worlds), ＋ Session, ⚙ Claude Code, Sidebar, 📣 Broadcast, 💬 Chats and the theme. **On the farm:** Follow
   (keep the picked farmer in view), Resting (hide idle and stale farmers), Bubbles, Animals, Sky
   (live, day or night), Season (live, then spring, summer, autumn or winter held) and Motion. Then
   Bell, Help and zoom. A switch or zoom leaves the menu open, to change several; a button that takes
@@ -1070,7 +1099,7 @@ for anything, and there are no drones among them (every drone here is data).
 **Controls and clicks.** The panel is top left (the money spent and the robots built, the floor
 heat, the counts and meters, **needs you**; at 100% the factory sits beside it or below it). Top
 right, the **Menu** holds every other control, as on the farm: the dashboard's buttons (List, World,
-＋ Session, ⚙ Claude Code, Sidebar, 📣 Broadcast, the theme), then **On the floor**: Follow, Resting
+＋ Session, ⚙ Claude Code, Sidebar, 📣 Broadcast, 💬 Chats, the theme), then **On the floor**: Follow, Resting
 (hide the robots charging and those powered down), Bubbles, Animals, Sky, Heat and Motion; then Bell,
 Help and zoom. Nothing lies along the factory's foot. Click a robot to open it
 in the sidebar, a bay (or its sign) for a close-up of the files agents touched there, a speech bubble
@@ -1200,6 +1229,10 @@ and can do is in [docs/worlds.md](docs/worlds.md).
   The page takes each of those at most once a quarter second and four reads at a time, and keeps at
   most 64 settings (64 KB) for a world, so a misbehaving world can't flood the dashboard or fill your
   browser's storage. While the list view shows, a world can't make the page do anything.
+- **💬 All chats** reads every session's messages from the collector with the dashboard's token, as
+  ⤢ Read all does; the collector stores nothing new for it. The browser keeps one time, the newest
+  message you saw, for its "new since you last looked" line. Worlds get none of it: a world's Menu
+  only asks the page to open it.
 - Your worlds' files are served without the token, like the farm's, to anything on this Mac that
   asks for them by path (so keep nothing secret in a world's folder), and never from outside the
   world's own folder. The list of their names and the folder's path needs the token. The collector
@@ -1326,6 +1359,7 @@ and can do is in [docs/worlds.md](docs/worlds.md).
 |---|---|
 | The dashboard doesn't load | `agent-tracker status`, then `agent-tracker logs`. Check that nothing else uses the port |
 | A message waits and never goes out | It goes out when the session's turn ends, through its mod: the mod must be listening (📡 dashboard answers on). Press **⚡ Send now** to send it at once. A red line on the list says when the session didn't take it; it is tried again when the session next moves |
+| 💬 All chats misses older messages, or a session | It holds each session's latest 200 messages and 200 steps: older ones are in that agent's **⤢ Read all**. Codex sessions have no transcript, so they aren't shown, and a new session shows once its transcript has been read |
 | A session shows "dashboard answers off" | Its mod isn't loaded. Check `CLAUDE_CODE_PLUGIN_DIRS` in `~/.claude/settings.json` (or, for another account, in that account's own `settings.json`), then type anything in the session or `/reload-plugins` |
 | An account shows "No reading yet" | Its sessions report their limits through the mod: load the mod in that account too, then send a session on it a message |
 | "runs an older tracker mod" | `/reload-plugins` in that session, or resume it |

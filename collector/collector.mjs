@@ -28,6 +28,7 @@ import { createHeld } from './sources/held.mjs';
 import { NAME_RE, cleanName, createHelper } from './sources/helper.mjs';
 import { parseMcpList, parsePluginDetails, projectServersOf, readOwnSkills, readRules, removeRule } from './sources/claude-setup.mjs';
 import { applySince, buildAgent, countStates, sortAgents } from './derive/agent.mjs';
+import { buildTimeline } from './derive/timeline.mjs';
 import { findCollisions } from './derive/collisions.mjs';
 import { reposFor } from './derive/repos.mjs';
 import { planReadings, planUsage } from './derive/plan.mjs';
@@ -600,6 +601,11 @@ export async function startCollector({ root, claudeDir = join(homedir(), '.claud
     convo.usedAt = now;
     await convo.update();
     return convo.messages(from);
+  }
+
+  /** 💬 All chats: what every Claude session on the dashboard said and did since `since`, oldest first. */
+  function getTimeline(since) {
+    return buildTimeline({ agents: snapshot?.agents ?? [], recordOf: id => sessions.get(id), since });
   }
 
   /**
@@ -1616,7 +1622,7 @@ export async function startCollector({ root, claudeDir = join(homedir(), '.claud
     worlds: makeWorlds({ builtinDir: join(root, 'web', 'worlds'), userDir: worldsDir, home }),
     getSnapshot: () => snapshot,
     getFeed: (id, limit) => modelFor(id)?.history(limit) ?? null,
-    getConversation, getPrompts, getNotes, getHeld, getSubagent, claudePlugins, claudeMcp, claudeRules, fileTicket, rawFile, officeView, shellOutput, namedFiles,
+    getConversation, getTimeline, getPrompts, getNotes, getHeld, getSubagent, claudePlugins, claudeMcp, claudeRules, fileTicket, rawFile, officeView, shellOutput, namedFiles,
     getTranscriptHtml, getDoc: readDoc, listFiles, readFile, repoTouched, actions, pastSessions, listDirs: dirsFor, log,
   });
   const port = await server.listen();

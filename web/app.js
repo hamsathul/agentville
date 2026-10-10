@@ -61,6 +61,7 @@ function render() {
   void followConversation(); // the conversation dialog, if open, takes the new messages
   renderConvoCompose(); // and its message box
   renderBroadcast(); // the agents to broadcast to, if that dialog is open
+  renderChats(); // 💬 All chats, if open: its chips and timeline
   if (view === 'farm') {
     // The farm draws the agents; the list and the centre are not drawn (so their ids don't exist twice).
     // The sidebar (web/sidebar.js) shows the selected farmer, the others that need you, and its tabs.
@@ -181,7 +182,7 @@ function setView(next, { remember = true } = {}) {
       // A world pressing a button that raises a view or dialog arms the click guard, so it can't steer a
       // click onto what it raised. Each press calls what the button does, not a synthetic click: a click
       // would go through the guard it has just armed.
-      onNav: what => { window.TrackerFarm?.armClickGuard?.(); return ({ list: () => setView('list'), worlds: () => window.TrackerFarm.openList?.(), session: () => void openSessions(), setup: () => openSetup(), side: () => setFarmSide(!farmSide), theme: () => cycleTheme(), broadcast: () => openBroadcast() })[what]?.(); },
+      onNav: what => { window.TrackerFarm?.armClickGuard?.(); return ({ list: () => setView('list'), worlds: () => window.TrackerFarm.openList?.(), session: () => void openSessions(), setup: () => openSetup(), side: () => setFarmSide(!farmSide), theme: () => cycleTheme(), broadcast: () => openBroadcast(), chats: () => void openChats() })[what]?.(); },
       navState: () => ({ theme, side: farmSide, live: !$('live').classList.contains('off') }),
     });
   } else {
@@ -396,7 +397,7 @@ document.addEventListener('click', async e => {
     await openFile(agentId, path);
     return;
   }
-  if (el.id === 'msg-send' || el.id === 'convo-msg-send') { await sendMessage(d.agent, el); return; }
+  if (el.id === 'msg-send' || el.id === 'convo-msg-send' || el.id === 'chats-msg-send') { await sendMessage(d.agent, el); return; }
   if (el.id === 'aside-send') { await askAside(d.agent, el); return; }
   if (el.id === 'helper-open') { openHelper(); return; }
   if (d.helperOn !== undefined) { await saveHelper(true); return; }
@@ -441,10 +442,10 @@ document.addEventListener('click', async e => {
   if (d.shellOutput) { await openShellOutput(d.agent, Number(d.shellOutput)); return; }
   if (d.shellStop) { void stopShellFlow(d.agent, Number(d.shellStop)); return; } // not awaited: the confirm box waits for you
   if (d.shellClose !== undefined) { closeShellOutput(); return; }
-  if (el.id === 'msg-folder' || el.id === 'convo-msg-folder') { await attachFolder(d.agent, el); return; }
-  if (el.id === 'msg-attach' || el.id === 'convo-msg-attach') {
+  if (el.id === 'msg-folder' || el.id === 'convo-msg-folder' || el.id === 'chats-msg-folder') { await attachFolder(d.agent, el); return; }
+  if (el.id === 'msg-attach' || el.id === 'convo-msg-attach' || el.id === 'chats-msg-attach') {
     pickerFor = d.agent;
-    const picker = $(el.id === 'msg-attach' ? 'file-picker' : 'convo-file-picker'); // the dialog's own: a modal dialog makes the page behind it inert
+    const picker = $({ 'msg-attach': 'file-picker', 'convo-msg-attach': 'convo-file-picker', 'chats-msg-attach': 'chats-file-picker' }[el.id]); // a dialog's own: a modal dialog makes the page behind it inert
     picker.value = '';
     picker.click?.();
     return;
@@ -728,7 +729,7 @@ document.addEventListener('change', e => {
     if (value) void switchFlow(t.dataset.agent, what, value);
     return;
   }
-  if (t?.id === 'file-picker' || t?.id === 'convo-file-picker') {
+  if (t?.id === 'file-picker' || t?.id === 'convo-file-picker' || t?.id === 'chats-file-picker') {
     if (pickerFor) addFiles(pickerFor, [...(t.files ?? [])]);
     t.value = '';
     return;
@@ -808,8 +809,8 @@ function showRecalled(box, agentId, at) {
 const sendKey = e => e.key === 'Enter' && !e.shiftKey && !e.altKey && !e.isComposing && e.keyCode !== 229;
 document.addEventListener('keydown', e => {
   window.TrackerFarm?.clickGuardKeyDown?.(); // input in the guard's window re-arms it, so it holds until a quiet second
-  if (e.target?.id === 'msg-text' || e.target?.id === 'convo-msg-text') recallKey(e);
-  if (sendKey(e) && (e.target?.id === 'msg-text' || e.target?.id === 'convo-msg-text')) {
+  if (e.target?.id === 'msg-text' || e.target?.id === 'convo-msg-text' || e.target?.id === 'chats-msg-text') recallKey(e);
+  if (sendKey(e) && (e.target?.id === 'msg-text' || e.target?.id === 'convo-msg-text' || e.target?.id === 'chats-msg-text')) {
     e.preventDefault();
     sendMessage(e.target.dataset.msgAgent, $(e.target.id.replace(/text$/, 'send')));
   }

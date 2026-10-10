@@ -156,6 +156,15 @@ test('Broadcast is one of the buttons a world may press', async () => {
   assert.deepEqual(p.calls, [['nav', 'broadcast']]);
 });
 
+test('💬 All chats is one of the buttons a world may press', async () => {
+  const p = await page();
+  p.calls.length = 0;
+  p.farm.update(snap);
+  p.from({ type: 'loaded' });
+  p.from({ type: 'nav', what: 'chats' });
+  assert.deepEqual(p.calls, [['nav', 'chats']]);
+});
+
 test('what the frame may ask for is done; anything else is dropped', async () => {
   const p = await page();
   p.calls.length = 0; // the world announcement is not what is tested here

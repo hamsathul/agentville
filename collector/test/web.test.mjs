@@ -926,7 +926,7 @@ test('without the farm script, the toggle stays on the list and says why', async
 
 test('the page loads its mark, the scene and the host of its worlds (deferred), then its token, then its own scripts in order', () => {
   const tags = [...html.matchAll(/<script(?: src="\/([a-z]+)\.js"( defer)?)?>/g)].map(m => (m[1] ? `${m[1]}${m[2] ? ' defer' : ''}` : 'inline'));
-  assert.deepEqual(tags, ['inline', 'brand', 'scene defer', 'worlds defer', 'inline', 'core', 'charts', 'panels', 'markdown', 'viewer', 'explorer', 'conversation', 'sidebar', 'broadcast', 'app', 'sessions', 'setup']);
+  assert.deepEqual(tags, ['inline', 'brand', 'scene defer', 'worlds defer', 'inline', 'core', 'charts', 'panels', 'markdown', 'viewer', 'explorer', 'conversation', 'chats', 'sidebar', 'broadcast', 'app', 'sessions', 'setup']);
   assert.match(html, /<script>const TOKEN = '__TRACKER_TOKEN__';<\/script>/);
 });
 
@@ -3137,4 +3137,313 @@ test("📣 Broadcast says which agents' copies wait for their turn to end (the c
   assert.match(results, /waits for its turn to end: remove or edit it under its message box/);
   assert.doesNotMatch(results, /queued: it reads it/);
   assert.match(page.el('bc-status').textContent, /Sent to 4 agents \(4 wait for their turn to end\)/);
+});
+
+/* ---------- 💬 All chats ---------- */
+
+const T = Date.UTC(2026, 9, 10, 18, 0, 0);
+const tl = (items, extra = {}) => ({ now: T + 600_000, since: 0, truncated: false, items, ...extra });
+const said = (sec, agent, name, kind, body, extra = {}) => ({ at: T + sec * 1000, agent, name, kind, body, ...extra });
+const step = (sec, agent, name, tool, text) => ({ at: T + sec * 1000, agent, name, kind: 'tool', tool, step: 'run', text });
+/** A page with `snap`, and 💬 All chats opened on `items` (the answer to ?since=0). */
+async function chatsPage({ items = [], snap = crowd(), replies = {}, ...opts } = {}) {
+  const page = loadPage({ replies: { '/api/timeline?since=0': tl(items), ...replies }, ...opts });
+  page.push(snap);
+  await page.click('chats-open');
+  await page.settle();
+  return page;
+}
+const chatsBody = page => page.el('chats-body').innerHTML;
+
+test('💬 All chats opens from the top bar with every conversation, oldest first, read with the token', async () => {
+  assert.match(html, /<button class="act" id="chats-open"[^>]*>💬 All chats</);
+  const page = await chatsPage({ items: [
+    said(1, 'r1', 'busy-one', 'prompt', 'Fix the login'),
+    said(2, 'q1', 'asker', 'reply', 'Which colour?'),
+    said(3, 'r1', 'busy-one', 'reply', 'Fixed **it**.'),
+  ] });
+  assert.equal(page.el('chats').open, true);
+  assert.deepEqual(page.gets.filter(g => g.path.startsWith('/api/timeline')), [{ path: '/api/timeline?since=0', token: '__TRACKER_TOKEN__' }]);
+  const body = chatsBody(page);
+  assert.ok(body.indexOf('Fix the login') < body.indexOf('Which colour?') && body.indexOf('Which colour?') < body.indexOf('Fixed'), 'oldest first');
+  assert.match(body, /class="bub you" data-chats-agent="r1"><div class="ch-who">You → busy-one</);
+  assert.match(body, /<strong>it<\/strong>/, 'a reply is drawn as markdown');
+  assert.equal(page.el('chats-sub').textContent, '5 agents');
+});
+
+test('in 💬 All chats, names and messages are text, never markup', async () => {
+  const snap = crowd();
+  snap.agents[0].name = '<img src=x onerror=alert(1)>';
+  const page = await chatsPage({ snap, items: [said(1, 'r1', '<img src=x onerror=alert(1)>', 'prompt', '<script>alert(2)</script>')] });
+  assert.doesNotMatch(chatsBody(page) + page.el('chats-chips').innerHTML, /<img src=x|<script>/);
+  assert.match(chatsBody(page), /&lt;script&gt;alert\(2\)&lt;\/script&gt;/);
+});
+
+test("an agent's steps between two of its messages fold into one line; a working agent's last run says what it does now", async () => {
+  const page = await chatsPage({ items: [
+    said(1, 'i1', 'sleeper', 'prompt', 'Tidy up'),
+    step(2, 'i1', 'sleeper', 'Edit', 'held.mjs'), step(3, 'i1', 'sleeper', 'Bash', 'npm test'), step(4, 'i1', 'sleeper', 'Edit', 'held.mjs'),
+    step(5, 'i1', 'sleeper', 'Edit', 'collector.mjs'), step(6, 'i1', 'sleeper', 'Read', 'README.md'),
+    said(7, 'i1', 'sleeper', 'reply', 'Tidied.'),
+    step(8, 'r1', 'busy-one', 'Bash', 'npm test'),
+  ] });
+  const body = chatsBody(page);
+  assert.match(body, /sleeper<\/b> · 5 steps · Edit held\.mjs, Bash npm test, Edit collector\.mjs…/);
+  assert.ok(body.indexOf('5 steps') < body.indexOf('Tidied.'), 'the run sits just above the reply that ended it');
+  assert.match(body, /class="ch-run ch-live"[\s\S]*busy-one<\/b> · working · 1 step · <span class="ch-now">now: Bash npm test</);
+  assert.doesNotMatch(body, /README\.md/, 'folded: its steps are not listed');
+  const run = body.match(/data-chats-run="([^"]+)"/)[1];
+  await page.clickButton('run-1', { chatsRun: run });
+  assert.match(chatsBody(page), /README\.md/, '▸ opens the run');
+});
+
+test("💬 All chats opens at what is new since your last look, each chip counting its agent's new messages; shut, it remembers the newest", async () => {
+  const items = [said(1, 'r1', 'busy-one', 'reply', 'Old news.'), said(5, 'r1', 'busy-one', 'prompt', 'And now?'), said(6, 'r1', 'busy-one', 'reply', 'Done.'), said(7, 'q1', 'asker', 'reply', 'Pick one.')];
+  const page = await chatsPage({ items, stored: { 'tracker-chats-look': String(T + 3000) } });
+  const body = chatsBody(page);
+  assert.ok(body.indexOf('Old news.') < body.indexOf('id="chats-new"') && body.indexOf('id="chats-new"') < body.indexOf('And now?'), 'the line where you stopped');
+  assert.match(page.el('chats-chips').innerHTML, /data-chats-chip="r1"[^>]*>[\s\S]*?busy-one<span class="ch-n">1<\/span>/, 'your own message is not news');
+  assert.match(page.el('chats-chips').innerHTML, /asker<span class="ch-n">1</);
+  assert.match(page.el('chats-sub').textContent, /^5 agents · 2 new since /);
+  await page.clickButton('chats-x', { chatsClose: '' });
+  assert.equal(page.el('chats').open, false);
+  assert.equal(page.stored['tracker-chats-look'], String(T + 7000));
+});
+
+test('without storage, 💬 All chats has no "new" line, and still opens and shuts', async () => {
+  const page = await chatsPage({ items: [said(1, 'r1', 'busy-one', 'reply', 'Hi.')], storageThrows: true });
+  assert.match(chatsBody(page), /Hi\./);
+  assert.doesNotMatch(chatsBody(page), /chats-new/);
+  await page.clickButton('chats-x', { chatsClose: '' });
+  assert.equal(page.el('chats').open, false);
+});
+
+test('chips pick whose messages show (one between two agents shows for either); Needs you picks those waiting; a gone agent is greyed; Codex is said to be missing', async () => {
+  const snap = crowd();
+  snap.agents.push(richAgent({ id: 'c1', name: 'codexer', kind: 'codex' }));
+  const page = await chatsPage({ snap, items: [
+    said(1, 'r1', 'busy-one', 'reply', 'From busy.'),
+    said(2, 'i1', 'sleeper', 'peer', 'Hold the deploy.', { from: 'sleeper', to: 'deployer', fromId: 'i1', toId: 'p1' }),
+    said(3, 'x9', 'old-one', 'reply', 'From a gone one.'),
+    said(4, 'q1', 'asker', 'reply', 'From asker.'),
+  ] });
+  const chips = page.el('chats-chips').innerHTML;
+  assert.match(chips, /class="ch-chip gone" data-chats-chip="x9"[\s\S]*?old-one <span class="faint">gone<\/span>/);
+  assert.match(chips, /⚠ Needs you · 3/);
+  assert.match(chips, /Codex agents have no transcript/);
+  assert.doesNotMatch(chips, /codexer/);
+  assert.match(chatsBody(page), /✉ sleeper → deployer/);
+  const shown = texts => texts.map(t => chatsBody(page).includes(t));
+  await page.clickButton('chip-p1', { chatsChip: 'p1' });
+  assert.deepEqual(shown(['From busy.', 'Hold the deploy.', 'From a gone one.', 'From asker.']), [false, true, false, false], 'deployer: the message sent to it');
+  await page.clickButton('chip-r1', { chatsChip: 'r1' });
+  assert.deepEqual(shown(['From busy.', 'Hold the deploy.', 'From asker.']), [true, true, false], 'and busy-one too');
+  await page.clickButton('chip-all', { chatsChip: '' });
+  assert.ok(chatsBody(page).includes('From asker.'), 'All shows everyone again');
+  await page.clickButton('chip-needs', { chatsNeeds: '' });
+  assert.deepEqual(shown(['From busy.', 'From asker.']), [false, true]);
+});
+
+test('a long message folds with Show more; one the collector cut opens the rest in ⤢ Read all', async () => {
+  const long = Array.from({ length: 20 }, (_, k) => `line ${k}`).join('\n');
+  const page = await chatsPage({ items: [said(1, 'r1', 'busy-one', 'reply', long), said(2, 'q1', 'asker', 'reply', 'y'.repeat(4000), { more: true })] });
+  assert.equal((chatsBody(page).match(/class="bub agent ch-long"/g) ?? []).length, 2);
+  const keys = [...chatsBody(page).matchAll(/data-chats-long="([a-z0-9]+)"/g)].map(m => m[1]);
+  await page.clickButton('more-2', { chatsLong: keys[1] });
+  assert.match(chatsBody(page), /class="bub agent ch-long open"[\s\S]*data-convo="q1"[^>]*>The rest: ⤢ Read all/);
+});
+
+test('a restore is a line at the time it happened, and what it took back is greyed', async () => {
+  const page = await chatsPage({ items: [
+    said(1, 'r1', 'busy-one', 'prompt', 'Plan it'), said(2, 'r1', 'busy-one', 'reply', 'Planned.'),
+    said(3, 'r1', 'busy-one', 'prompt', 'Ship it'), said(5, 'r1', 'busy-one', 'reply', 'Shipped.'),
+    { at: T + 5000, agent: 'r1', name: 'busy-one', kind: 'restored', text: 'Ship it', back: T + 3000 },
+  ] });
+  const body = chatsBody(page);
+  assert.match(body, /↺ <b[^>]*>busy-one<\/b> went back to an earlier message/);
+  assert.match(body, /class="bub you ch-taken"[^>]*>[\s\S]*?Ship it/);
+  assert.match(body, /class="bub agent ch-taken"[^>]*>[\s\S]*?Shipped\./);
+  assert.match(body, /class="bub agent"[^>]*>[\s\S]*?Planned\./, 'what came before stays');
+  assert.equal((body.match(/ch-taken/g) ?? []).length, 2);
+});
+
+test("💬 All chats says when it couldn't read them, with Try again; on an empty dashboard it says nothing has been said", async () => {
+  const page = loadPage();
+  page.push(richSnapshot([]));
+  page.ctx.fetch = async () => ({ ok: false, status: 500, json: async () => ({ error: 'collector restarting' }) });
+  await page.click('chats-open');
+  await page.settle();
+  assert.match(chatsBody(page), /Couldn't read the chats: collector restarting[\s\S]*data-chats-retry/);
+  page.ctx.fetch = async () => ({ ok: true, json: async () => tl([]) });
+  await page.clickButton('retry', { chatsRetry: '' });
+  await page.settle();
+  assert.match(chatsBody(page), /Nothing has been said yet/);
+  assert.equal(page.el('chats-sub').textContent, '0 agents');
+});
+
+test('while open, 💬 All chats reads what is new when an agent does something, only since its newest, and adds each item once', async () => {
+  const page = await chatsPage({ snap: crowd({ lastActivityAt: T + 1000 }), items: [said(1, 'r1', 'busy-one', 'reply', 'First.')], replies: {
+    [`/api/timeline?since=${T + 1000}`]: tl([said(1, 'r1', 'busy-one', 'reply', 'First.'), said(2, 'r1', 'busy-one', 'reply', 'Second.')]),
+  } });
+  const reads = () => page.gets.filter(g => g.path.startsWith('/api/timeline')).map(g => g.path);
+  page.push(crowd({ lastActivityAt: T + 1000 })); // nothing moved
+  await page.settle();
+  assert.deepEqual(reads(), ['/api/timeline?since=0']);
+  page.push(crowd({ lastActivityAt: T + 2000 }));
+  await page.settle();
+  assert.deepEqual(reads(), ['/api/timeline?since=0', `/api/timeline?since=${T + 1000}`]);
+  assert.equal(chatsBody(page).split('First.').length - 1, 1, 'what it had is not added again');
+  assert.match(chatsBody(page), /Second\./);
+  await page.clickButton('chats-x', { chatsClose: '' });
+  page.push(crowd({ lastActivityAt: T + 9000 }));
+  await page.settle();
+  assert.equal(reads().length, 2, 'shut, it reads nothing');
+});
+
+test('scrolled up to read, new messages leave you where you are and ↓ N new takes you down; at the bottom it follows', async () => {
+  const page = await chatsPage({ snap: crowd({ lastActivityAt: T + 1000 }), items: [said(1, 'r1', 'busy-one', 'reply', 'First.')], replies: {
+    [`/api/timeline?since=${T + 1000}`]: tl([said(2, 'r1', 'busy-one', 'reply', 'Second.'), said(3, 'q1', 'asker', 'reply', 'Third.')]),
+    [`/api/timeline?since=${T + 3000}`]: tl([said(4, 'r1', 'busy-one', 'reply', 'Fourth.')]),
+  } });
+  const box = page.el('chats-body');
+  Object.assign(box, { scrollHeight: 900, clientHeight: 300, scrollTop: 100 }); // you scrolled up to read
+  page.push(crowd({ lastActivityAt: T + 3000 }));
+  await page.settle();
+  assert.equal(box.scrollTop, 100, 'the view stays');
+  assert.equal(page.el('chats-down').hidden, false);
+  assert.equal(page.el('chats-down').textContent, '↓ 2 new');
+  await page.click('chats-down');
+  assert.equal(box.scrollTop, 900);
+  assert.equal(page.el('chats-down').hidden, true);
+  page.push(crowd({ lastActivityAt: T + 4000 }));
+  await page.settle();
+  assert.match(chatsBody(page), /Fourth\./);
+  assert.equal(box.scrollTop, 900, 'at the bottom: it follows the newest');
+  assert.equal(page.el('chats-down').hidden, true);
+});
+
+test("in 💬 All chats, an agent that needs you is the sidebar's card; Allow is sent once from the modal, in the list and on the farm", async () => {
+  for (const farm of [false, true]) {
+    const f = fakeFarm();
+    const page = await chatsPage(farm ? { farm: f.farm, stored: { 'tracker-view': 'farm', 'tracker-farm-side': 'open' } } : {});
+    const body = chatsBody(page);
+    assert.match(body, /class="ch-ask"><div class="fs-card perm">[\s\S]*data-chats-card class="act primary" data-permit="allow" data-agent="p1" data-tool="toolu_P1"/);
+    assert.match(body, /data-chats-card class="act" data-fs-answer="Red" data-agent="q1"/);
+    page.el('allow').className = 'act primary';
+    await page.clickButton('allow', { chatsCard: '', permit: 'allow', agent: 'p1', tool: 'toolu_P1' });
+    await page.settle();
+    assert.deepEqual(page.posts.map(p => [p.path, p.body.agentId, p.body.decision]), [['/api/actions/permit', 'p1', 'allow']], `once (${farm ? 'farm' : 'list'})`);
+  }
+});
+
+test("a card's Open › shuts 💬 All chats and shows that agent", async () => {
+  const page = await chatsPage();
+  await page.clickButton('open-q1', { chatsCard: '', pickAgent: 'q1' });
+  assert.equal(page.el('chats').open, false);
+  assert.match(page.side(), /asker/);
+});
+
+test("💬 All chats' box writes to the agent waiting on you longest, or the one you pick, and sends as its own box does; a card's No… starts the words, once", async () => {
+  const page = await chatsPage({ items: [said(9, 'r1', 'busy-one', 'reply', 'Done.')] });
+  assert.match(page.el('chats-to').innerHTML, /<option value="q1" selected>asker</, 'asker has waited longest');
+  assert.match(page.el('chats-compose').innerHTML, /id="chats-msg-text" data-msg-agent="q1"/);
+  await page.change({ id: 'chats-to', value: 'r1' });
+  assert.match(page.el('chats-compose').innerHTML, /id="chats-msg-text" data-msg-agent="r1"/);
+  page.edit('input', { id: 'chats-msg-text', value: 'Ship it.', dataset: { msgAgent: 'r1' } });
+  await page.clickButton('chats-msg-send', { agent: 'r1' });
+  await page.settle();
+  assert.deepEqual(page.posts.map(p => [p.path, p.body.agentId, p.body.text]), [['/api/actions/message', 'r1', 'Ship it.']]);
+  await page.clickButton('no-t1', { chatsCard: '', quickDraft: 'No, ', agent: 't1' });
+  assert.match(page.el('chats-to').innerHTML, /<option value="t1" selected>pusher</);
+  assert.match(page.el('chats-compose').innerHTML, /data-msg-agent="t1"[^>]*>No, <\/textarea>/);
+});
+
+test("a world's Menu opens 💬 All chats, and its Allow is held a moment like any button a world raised", async () => {
+  const f = fakeFarm();
+  const page = loadPage({ farm: f.farm, stored: { 'tracker-view': 'farm' }, replies: { '/api/timeline?since=0': tl([]) } });
+  page.push(crowd());
+  f.nav('chats');
+  await page.settle();
+  assert.equal(page.el('chats').open, true);
+  assert.ok(f.calls.some(c => c[0] === 'arm'), 'the click guard is armed');
+  page.el('allow').className = 'act primary';
+  f.setBlocks(true);
+  await page.clickButton('allow', { chatsCard: '', permit: 'allow', agent: 'p1', tool: 'toolu_P1' });
+  await page.settle();
+  assert.equal(page.posts.length, 0, 'held');
+  f.setBlocks(false);
+  await page.clickButton('allow', {});
+  await page.settle();
+  assert.deepEqual(page.posts.map(p => p.path), ['/api/actions/permit']);
+});
+
+test('a read that lands while you type in 💬 All chats waits: the box is not drawn again under you, and it catches up when you leave it', async () => {
+  const page = await chatsPage({ snap: crowd({ lastActivityAt: T + 1000 }), items: [said(1, 'r1', 'busy-one', 'reply', 'First.')], replies: {
+    [`/api/timeline?since=${T + 1000}`]: tl([said(2, 'r1', 'busy-one', 'reply', 'Second.')]),
+  } });
+  page.push(crowd({ lastActivityAt: T + 2000 })); // its read starts
+  const box = page.el('chats-msg-text');
+  box.tagName = 'TEXTAREA';
+  page.focus(box); // you click into the box and type while the read is on its way
+  page.el('chats-compose').innerHTML = 'TYPING';
+  await page.settle();
+  assert.equal(page.el('chats-compose').innerHTML, 'TYPING', 'the box you type in is left alone');
+  assert.doesNotMatch(chatsBody(page), /Second\./);
+  page.focus(null);
+  page.fire('focusout');
+  await page.settle();
+  assert.match(chatsBody(page), /Second\./, 'out of the box, it catches up');
+});
+
+test('a restore reaches an open 💬 All chats even when another agent spoke after it: an agent that moved is read from where it was', async () => {
+  const snap = crowd({ lastActivityAt: T + 5000 });
+  snap.agents.find(a => a.id === 'q1').lastActivityAt = T + 8000;
+  const page = await chatsPage({ snap, items: [
+    said(1, 'r1', 'busy-one', 'prompt', 'Plan it'), said(3, 'r1', 'busy-one', 'prompt', 'Ship it'), said(5, 'r1', 'busy-one', 'reply', 'Shipped.'),
+    said(8, 'q1', 'asker', 'reply', 'Pick one.'),
+  ], replies: {
+    [`/api/timeline?since=${T + 5000}`]: tl([{ at: T + 5000, agent: 'r1', name: 'busy-one', kind: 'restored', text: 'Ship it', back: T + 3000 }, said(8, 'q1', 'asker', 'reply', 'Pick one.'), said(9, 'r1', 'busy-one', 'prompt', 'Ship it to staging')]),
+  } });
+  const moved = crowd({ lastActivityAt: T + 9000 }); // busy-one was restored, then resumed with your message
+  moved.agents.find(a => a.id === 'q1').lastActivityAt = T + 8000;
+  page.push(moved);
+  await page.settle();
+  assert.ok(page.gets.some(g => g.path === `/api/timeline?since=${T + 5000}`), "read from where busy-one was, not from the newest item (asker's, later)");
+  const body = chatsBody(page);
+  assert.match(body, /went back to an earlier message/);
+  assert.match(body, /class="bub agent ch-taken"[^>]*>[\s\S]*?Shipped\./);
+  assert.match(body, /Ship it to staging/);
+});
+
+test("in 💬 All chats a message's HTML is made once: drawn again, it isn't run through markdown again", async () => {
+  const page = await chatsPage({ items: [said(1, 'r1', 'busy-one', 'reply', 'One **a**.'), said(2, 'q1', 'asker', 'reply', 'Two **b**.')] });
+  const real = page.ctx.renderMarkdown;
+  let calls = 0;
+  page.ctx.renderMarkdown = text => { calls++; return real(text); };
+  await page.clickButton('chip-r1', { chatsChip: 'r1' });
+  await page.clickButton('chip-all', { chatsChip: '' });
+  assert.match(chatsBody(page), /Two <strong>b<\/strong>/);
+  assert.equal(calls, 0);
+});
+
+test("a working agent's live line says its newest step, so a snapshot that changes nothing else leaves the timeline as it is", async () => {
+  const page = await chatsPage({ snap: crowd({ lastActivityAt: T + 2000 }), items: [said(1, 'r1', 'busy-one', 'prompt', 'Go'), step(2, 'r1', 'busy-one', 'Bash', 'npm test')] });
+  assert.match(chatsBody(page), /now: Bash npm test/);
+  page.el('chats-body').innerHTML = 'UNCHANGED';
+  page.push(crowd({ lastActivityAt: T + 2000, now: { tool: 'Bash', summary: 'npm test -- --watch', startedAt: Date.now() } }));
+  await page.settle();
+  assert.equal(page.el('chats-body').innerHTML, 'UNCHANGED');
+});
+
+test('💬 All chats keeps the newest 2,000 items as it follows, and says older ones are not shown', async () => {
+  const msg = k => said(k, 'r1', 'busy-one', 'reply', `msg-${String(k).padStart(4, '0')}`);
+  const page = await chatsPage({ snap: crowd({ lastActivityAt: T + 1_500_000 }), items: Array.from({ length: 1500 }, (_, k) => msg(k + 1)), replies: {
+    [`/api/timeline?since=${T + 1_500_000}`]: tl(Array.from({ length: 601 }, (_, k) => msg(k + 1500))),
+  } });
+  page.push(crowd({ lastActivityAt: T + 2_100_000 }));
+  await page.settle();
+  const body = chatsBody(page);
+  assert.equal((body.match(/class="bub agent/g) ?? []).length, 2000);
+  assert.ok(!body.includes('msg-0100<') && body.includes('msg-0101<') && body.includes('msg-2100<'), 'the oldest go');
+  assert.match(body, /Older messages not shown/);
 });

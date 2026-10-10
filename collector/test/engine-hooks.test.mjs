@@ -153,7 +153,7 @@ test("the default HUD is one Menu at the top right: its button opens and shuts i
   const at = s => w.hud().indexOf(s);
   assert.match(w.hud(), /^<div class="px-nav"><button type="button" data-farm-menu aria-expanded="false"/);
   assert.match(w.hud(), /class="px-menu" role="group" aria-label="Menu" hidden>/);
-  for (const attr of ['data-farm-nav="list"', 'data-farm-nav="worlds"', 'data-farm-nav="side"', 'data-farm-nav="broadcast"', 'data-farm-sky', 'data-farm-motion', 'data-farm-help', 'data-farm-zoom="1"']) assert.ok(at(attr) > at('class="px-menu"'), `${attr} is in the menu`);
+  for (const attr of ['data-farm-nav="list"', 'data-farm-nav="worlds"', 'data-farm-nav="side"', 'data-farm-nav="broadcast"', 'data-farm-nav="chats"', 'data-farm-sky', 'data-farm-motion', 'data-farm-help', 'data-farm-zoom="1"']) assert.ok(at(attr) > at('class="px-menu"'), `${attr} is in the menu`);
   assert.doesNotMatch(w.hud(), /px-tools/, 'no row of switches along the bottom: the world has its foot back');
   w.click('data-farm-menu');
   assert.match(w.hud(), /data-farm-menu aria-expanded="true"/);
@@ -413,7 +413,7 @@ test('a season name holding HTML is escaped in the default HUD', () => {
 });
 
 // panelHud: the farm's panel and buttons, for any world, in its words. The engine's clicks find the buttons by these.
-const PANEL_ATTRS = ['data-farm-panel', 'data-farm-state="waiting"', 'data-farm-state="working"', 'data-farm-need', 'data-farm-menu', 'data-farm-nav="list"', 'data-farm-nav="worlds"', 'data-farm-nav="session"', 'data-farm-nav="setup"', 'data-farm-nav="side"', 'data-farm-nav="broadcast"', 'data-farm-nav="theme"',
+const PANEL_ATTRS = ['data-farm-panel', 'data-farm-state="waiting"', 'data-farm-state="working"', 'data-farm-need', 'data-farm-menu', 'data-farm-nav="list"', 'data-farm-nav="worlds"', 'data-farm-nav="session"', 'data-farm-nav="setup"', 'data-farm-nav="side"', 'data-farm-nav="broadcast"', 'data-farm-nav="chats"', 'data-farm-nav="theme"',
   'data-farm-follow', 'data-farm-resting', 'data-farm-bubbles', 'data-farm-animals', 'data-farm-sky', 'data-farm-season', 'data-farm-motion', 'data-farm-bell', 'data-farm-help', 'data-farm-zoom="-1"', 'data-farm-zoom="0"', 'data-farm-zoom="1"'];
 const panelOf = (sdk, seasonMode, words) => sdk.panelHud({
   seasonMode, seasons: true, animals: true, seasonNames: { switch: 'Heat', spring: 'cool', summer: 'warm', autumn: 'hot', winter: 'steaming' },

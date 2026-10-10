@@ -358,6 +358,17 @@ test('a restore drops the messages and steps from the restored message on, and s
   assert.deepEqual(m.said.map(s => s.text), ['On staging.', 'Ship it to staging', 'Ship it', 'Planned.', 'Plan it'], 'and it goes on from there');
 });
 
+test("a restore's marker says when it happened (its row has no time: the last one before it), as well as where it went back to", () => {
+  const m = modelOf(
+    prompt(0, 'Plan it', { uuid: 'p-1' }), reply(1, 'Planned.'),
+    prompt(2, 'Ship it', { uuid: 'p-2', parentUuid: 'r-1' }), reply(5, 'Shipped.'),
+    rewound('r-1'),
+  );
+  const marker = m.said.find(s => s.kind === 'restored');
+  assert.equal(marker.at, at(2), 'where it went back to: the message it took back');
+  assert.equal(marker.restoredAt, at(5), 'when: the last time the transcript gave before its row');
+});
+
 test('a restore to a message it never saw changes nothing', () => {
   const m = modelOf(prompt(0, 'Plan it', { uuid: 'p-1' }), rewound('zzz'));
   assert.deepEqual(m.said.map(s => s.text), ['Plan it']);

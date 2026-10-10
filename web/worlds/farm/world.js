@@ -724,6 +724,7 @@
     animals: ['.k.k.k...', '.k.k.k...', '.........', 'k.kkk.k..', '.kkkkk...', '.kkkkk...', '..kkk....', '.........', '.........'],
     menu: ['.........', 'kkkkkkkkk', 'kkkkkkkkk', '.........', 'kkkkkkkkk', 'kkkkkkkkk', '.........', 'kkkkkkkkk', 'kkkkkkkkk'],
     broadcast: ['.......k.', '.....kkk.', 'k..kkyyk.', 'kkkyyyyk.', 'kkyyyyyk.', 'kkkyyyyk.', 'k..kkyyk.', '....k.kk.', '....kk...'],
+    chats: ['kkkkkk...', 'kwwwwk...', 'kwwwwkkkk', 'kkwkkyyyk', '.kk.kyyyk', '....kyyyk', '....kkykk', '......kk.', '.........'],
   };
   // The farm's words and colours in the engine's panel and buttons (panelHud): its stats line, its tooltips, its cream and wood.
   const FARM_WORDS = {

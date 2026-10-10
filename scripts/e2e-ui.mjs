@@ -813,6 +813,28 @@ try {
   check(await until("document.getElementById('broadcast').open && document.querySelectorAll('#bc-list [data-bc-agent]').length > 0"), "its Broadcast opens the dashboard's Broadcast over the farm, with the agents to tick");
   check(await funtil("document.querySelector('.px-menu').hidden"), 'and the menu shuts behind it');
   await js("document.getElementById('broadcast').close()");
+  // 💬 All chats, from the Menu: every session's conversation in one timeline (a message between two sessions
+  // once, the question waiting on you as its card, steps folded), a click on a message to write to its agent,
+  // a chip to show one agent; then from the top bar.
+  await sleep(300); // the page takes one press of the top bar's buttons a quarter second
+  await fjs("document.querySelector('[data-farm-menu]').click()");
+  await fjs("document.querySelector('[data-farm-nav=\"chats\"]').click()");
+  check(await until("document.getElementById('chats').open && document.querySelectorAll('#chats-body .bub').length >= 4"), "its Chats opens 💬 All chats over the farm, with the sessions' messages");
+  check(await funtil("document.querySelector('.px-menu').hidden"), 'and the menu shuts behind it');
+  await shot('chats');
+  check(await js("[...document.querySelectorAll('#chats-body .bub.peer')].filter(b => /ui-done-a → ui-done-b/.test(b.textContent) && /release notes can link/.test(b.textContent)).length === 1"), 'a message from one session to another shows once, from → to');
+  check(await js("[...document.querySelectorAll('#chats-body .ch-ask [data-fs-answer]')].map(b => b.textContent).join() === 'Wheat,Pumpkins'"), 'the question waiting on you is its card, its options ready to answer');
+  check(await js("[...document.querySelectorAll('#chats-body .ch-run-btn')].some(b => /ui-asker/.test(b.textContent) && /step/.test(b.textContent))"), "an agent's steps fold into one line");
+  await js("document.querySelector('#chats-body .bub[data-chats-agent=\"ui-done-b\"]').click()");
+  check(await until("document.getElementById('chats-to').value === 'ui-done-b' && document.getElementById('chats-msg-text')?.dataset.msgAgent === 'ui-done-b'"), 'a click on a message writes to its agent');
+  await js("document.querySelector('#chats-chips [data-chats-chip=\"ui-done-b\"]').click()");
+  check(await until("[...document.querySelectorAll('#chats-body .bub')].every(b => b.dataset.chatsAgent === 'ui-done-b' || /ui-done-b/.test(b.textContent)) && !document.querySelector('#chats-body .ch-ask')"), 'a chip shows only that agent, and what was said to it');
+  await js("document.getElementById('chats').close()");
+  check(await until("!document.getElementById('chats').open && document.getElementById('chats-body').innerHTML === ''"), 'shut, it empties');
+  await sleep(1100); // the click guard a world's button armed has let go
+  await js("document.getElementById('chats-open').click()");
+  check(await until("document.getElementById('chats').open && document.querySelectorAll('#chats-body .bub').length >= 4"), 'the top bar opens it too');
+  await js("document.getElementById('chats').close()");
   await shot('farm-bubbles');
   check(await fjs("[...document.querySelectorAll('.px-say')].some(b => b.textContent.includes('One question before I go on'))") === false, 'a waiting farmer shows its question, not its older reply');
   await fjs(`document.querySelector('.px-say[data-say="ui-asker"] [data-say-close]').click()`);

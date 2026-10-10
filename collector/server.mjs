@@ -60,7 +60,7 @@ function clampInt(value, min, max, fallback) {
   return Number.isFinite(n) ? Math.min(max, Math.max(min, n)) : fallback;
 }
 
-export function createTrackerServer({ port, token, webFile, getSnapshot, getFeed, getConversation, getPrompts, getNotes, getHeld = () => null, getSubagent, claudePlugins, claudeMcp, claudeRules, fileTicket, rawFile, officeView, listDirs, shellOutput, namedFiles, getTranscriptHtml, getDoc, listFiles, readFile, repoTouched, actions, pastSessions, worlds, log = () => {} }) {
+export function createTrackerServer({ port, token, webFile, getSnapshot, getFeed, getConversation, getTimeline = () => ({ now: Date.now(), since: 0, truncated: false, items: [] }), getPrompts, getNotes, getHeld = () => null, getSubagent, claudePlugins, claudeMcp, claudeRules, fileTicket, rawFile, officeView, listDirs, shellOutput, namedFiles, getTranscriptHtml, getDoc, listFiles, readFile, repoTouched, actions, pastSessions, worlds, log = () => {} }) {
   const clients = new Set();
   let server;
   const actualPort = () => server.address()?.port ?? port;
@@ -197,6 +197,10 @@ export function createTrackerServer({ port, token, webFile, getSnapshot, getFeed
         if (path === '/api/sessions') { // past sessions' titles and messages: token only, like files
           if (req.headers['x-tracker-token'] !== token) return sendJson(res, 403, { error: 'forbidden' });
           return sendJson(res, 200, await pastSessions({ all: url.searchParams.get('days') === 'all' }));
+        }
+        if (path === '/api/timeline') { // 💬 All chats: every session's conversation, merged: token only, like a conversation
+          if (req.headers['x-tracker-token'] !== token) return sendJson(res, 403, { error: 'forbidden' });
+          return sendJson(res, 200, getTimeline(clampInt(url.searchParams.get('since'), 0, Number.MAX_SAFE_INTEGER, 0)));
         }
         if ((m = path.match(/^\/api\/agent\/([\w:-]+)\/named$/))) { // files named in its replies, checked: token only, like files
           if (req.headers['x-tracker-token'] !== token) return sendJson(res, 403, { error: 'forbidden' });
