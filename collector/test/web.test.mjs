@@ -3414,3 +3414,36 @@ test('a restore reaches an open 💬 All chats even when another agent spoke aft
   assert.match(body, /class="bub agent ch-taken"[^>]*>[\s\S]*?Shipped\./);
   assert.match(body, /Ship it to staging/);
 });
+
+test("in 💬 All chats a message's HTML is made once: drawn again, it isn't run through markdown again", async () => {
+  const page = await chatsPage({ items: [said(1, 'r1', 'busy-one', 'reply', 'One **a**.'), said(2, 'q1', 'asker', 'reply', 'Two **b**.')] });
+  const real = page.ctx.renderMarkdown;
+  let calls = 0;
+  page.ctx.renderMarkdown = text => { calls++; return real(text); };
+  await page.clickButton('chip-r1', { chatsChip: 'r1' });
+  await page.clickButton('chip-all', { chatsChip: '' });
+  assert.match(chatsBody(page), /Two <strong>b<\/strong>/);
+  assert.equal(calls, 0);
+});
+
+test("a working agent's live line says its newest step, so a snapshot that changes nothing else leaves the timeline as it is", async () => {
+  const page = await chatsPage({ snap: crowd({ lastActivityAt: T + 2000 }), items: [said(1, 'r1', 'busy-one', 'prompt', 'Go'), step(2, 'r1', 'busy-one', 'Bash', 'npm test')] });
+  assert.match(chatsBody(page), /now: Bash npm test/);
+  page.el('chats-body').innerHTML = 'UNCHANGED';
+  page.push(crowd({ lastActivityAt: T + 2000, now: { tool: 'Bash', summary: 'npm test -- --watch', startedAt: Date.now() } }));
+  await page.settle();
+  assert.equal(page.el('chats-body').innerHTML, 'UNCHANGED');
+});
+
+test('💬 All chats keeps the newest 2,000 items as it follows, and says older ones are not shown', async () => {
+  const msg = k => said(k, 'r1', 'busy-one', 'reply', `msg-${String(k).padStart(4, '0')}`);
+  const page = await chatsPage({ snap: crowd({ lastActivityAt: T + 1_500_000 }), items: Array.from({ length: 1500 }, (_, k) => msg(k + 1)), replies: {
+    [`/api/timeline?since=${T + 1_500_000}`]: tl(Array.from({ length: 601 }, (_, k) => msg(k + 1500))),
+  } });
+  page.push(crowd({ lastActivityAt: T + 2_100_000 }));
+  await page.settle();
+  const body = chatsBody(page);
+  assert.equal((body.match(/class="bub agent/g) ?? []).length, 2000);
+  assert.ok(!body.includes('msg-0100<') && body.includes('msg-0101<') && body.includes('msg-2100<'), 'the oldest go');
+  assert.match(body, /Older messages not shown/);
+});

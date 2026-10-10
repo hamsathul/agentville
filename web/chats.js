@@ -8,10 +8,12 @@
 const CHATS_LOOK = 'tracker-chats-look'; // the time of the newest item seen, when it last shut
 const CHATS_LONG = 900; // a message longer than this, or than 12 lines, folds with Show more
 const CHATS_GAP_MS = 1000; // while following: at most one read a second
+const CHATS_MAX = 2000; // the newest items kept, as the collector sends them (older ones are in ⤢ Read all)
 let chats = null; // while open: what it holds (chatsState)
 const chatsPicked = new Set(); // the agents whose chips are picked; none picked shows everyone
 const chatsOpenRuns = new Set(); // runs of steps opened with ▸
 const chatsOpenLong = new Set(); // long messages opened with Show more
+const chatsHtmlMade = new Map(); // each item's HTML, made once (by item, Show more open or not, greyed or not)
 let chatsTo = null; // who the box writes to, once you pick (a message clicked, the To list, a card's Reply…)
 
 /** Every agent's last activity, to tell when one has done something since. */
@@ -46,6 +48,7 @@ function closeChats() {
   chatsPicked.clear();
   chatsOpenRuns.clear();
   chatsOpenLong.clear();
+  chatsHtmlMade.clear();
   chatsTo = null;
   $('chats-compose').innerHTML = '';
   $('chats-body').innerHTML = '';
@@ -80,6 +83,12 @@ function chatsTake(r) {
     added++;
   }
   if (added) chats.items.sort(chByTime);
+  if (chats.items.length > CHATS_MAX) { // the newest only, so a modal left open for hours stays as light
+    chats.items.splice(0, chats.items.length - CHATS_MAX);
+    chats.keys = new Set(chats.items.map(chKey));
+    chatsHtmlMade.clear();
+    chats.truncated = true;
+  }
   return added;
 }
 
@@ -125,8 +134,14 @@ function chatsChipsHtml() {
     + ((snap?.agents ?? []).some(a => a.kind === 'codex') ? '<span class="faint ch-codex">Codex agents have no transcript, so they aren\'t here.</span>' : '');
 }
 
-/** One message (or a restore's line), tagged with who said it, in its agent's colour. */
+/** One message (or a restore's line), tagged with who said it, in its agent's colour: made once, then kept. */
 function chatsItemHtml(i, taken) {
+  const key = `${chKey(i)}|${chatsOpenLong.has(chId(i))}|${Boolean(taken)}`;
+  let html = chatsHtmlMade.get(key);
+  if (html === undefined) chatsHtmlMade.set(key, html = chatsItemMade(i, taken));
+  return html;
+}
+function chatsItemMade(i, taken) {
   const color = fsColor({ id: chSpeaker(i) }), dim = taken ? ' ch-taken' : '';
   if (i.kind === 'restored') return `<div class="ch-line">↺ <b style="color:${color}">${esc(i.name)}</b> went back to an earlier message (${esc(convoWhen(i.back))})</div>`;
   const body = String(i.body ?? ''), id = chId(i), open = chatsOpenLong.has(id);
@@ -142,13 +157,13 @@ function chatsItemHtml(i, taken) {
   return `<div class="bub agent${i.kind === 'subagent' ? ' ch-sub' : ''}${fold}${dim}" ${tag}><div class="ch-who" style="color:${color}">${who}</div><div class="bub-md cv-text ch-text">${renderMarkdown(body)}</div>${more}${when}</div>`;
 }
 
-/** An agent's steps between two of its messages, as one line (▸ opens them). A working agent's last run says what it does now. */
-function chatsRunHtml(run, live, agent) {
+/** An agent's steps between two of its messages, as one line (▸ opens them). A working agent's last run says its newest step: what it does now. */
+function chatsRunHtml(run, live) {
   const key = `${run.agent}|${run.steps[0].at}`, open = chatsOpenRuns.has(key), n = run.steps.length;
   const line = s => `${s.tool} ${s.text ?? ''}`.trim();
   const distinct = [...new Set(run.steps.map(line))];
   const what = live
-    ? `<span class="ch-now">now: ${esc(agent?.now ? `${agent.now.tool} ${agent.now.summary ?? ''}`.trim() : line(run.steps.at(-1)))}</span>`
+    ? `<span class="ch-now">now: ${esc(line(run.steps.at(-1)))}</span>`
     : `${esc(distinct.slice(0, 3).join(', '))}${distinct.length > 3 ? '…' : ''}`;
   const list = open ? `<div class="ch-steps">${run.steps.map(s => `<div class="mono"><time>${esc(clock(s.at))}</time>${esc(line(s))}</div>`).join('')}</div>` : '';
   return `<div class="ch-run${live ? ' ch-live' : ''}"><button type="button" class="ch-run-btn" data-chats-run="${esc(key)}" aria-expanded="${open}">${open ? '▾' : '▸'} <b style="color:${fsColor({ id: run.agent })}">${esc(run.name)}</b> · ${live ? 'working · ' : ''}${n} step${n === 1 ? '' : 's'} · ${what}</button>${list}</div>`;
@@ -182,7 +197,7 @@ function chatsView() {
   for (const e of entries) {
     if (e === firstNew) html += `<div class="ch-new" id="chats-new">new since you last looked · ${esc(convoWhen(look))}</div>`;
     if (e.ask) html += `<div class="ch-ask">${chatsCardHtml(e.ask)}</div>`;
-    else if (e.run) html += chatsRunHtml(e.run, e.live, agents.get(e.run.agent));
+    else if (e.run) html += chatsRunHtml(e.run, e.live);
     else {
       html += chatsItemHtml(e.item, taken(e.item));
       if (chSaid(e.item)) said++;
