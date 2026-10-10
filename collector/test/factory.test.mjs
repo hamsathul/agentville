@@ -13,7 +13,7 @@ const web = f => readFileSync(fileURLToPath(new URL(`../../web/${f}`, import.met
 const plain = v => JSON.parse(JSON.stringify(v));
 function stubDom() { // as in starter.test.mjs, and each fillRect is kept with its colour: a sprite's pixels
   const numbers = new Set(['offsetWidth', 'offsetHeight', 'clientWidth', 'clientHeight', 'scrollLeft', 'scrollTop', 'scrollWidth', 'scrollHeight', 'width', 'height', 'length', 'size']);
-  const calls = { fillRect: 0, drawImage: 0, rects: [] };
+  const calls = { fillRect: 0, drawImage: 0, rects: [], images: [] }; // images: where each drawImage put its picture, [x, y, w, h]
   const make = () => new Proxy(function () {}, {
     get: (t, k) => {
       if (k === Symbol.toPrimitive) return () => 0;
@@ -28,7 +28,7 @@ function stubDom() { // as in starter.test.mjs, and each fillRect is kept with i
       if (k === 'hidden' || k === 'open') return t[k] ?? false;
       if (k === 'fillRect') return (x, y, w, h) => { calls.fillRect++; calls.rects.push([t.fillStyle, x, y, w, h]); };
       if (k === 'clearRect') return (x, y, w, h) => { calls.rects.push([null, x, y, w, h]); };
-      if (k === 'drawImage') return () => { calls.drawImage++; };
+      if (k === 'drawImage') return (img, ...a) => { calls.drawImage++; calls.images.push(a.length === 8 ? a.slice(4) : a.slice(0, 4)); };
       if (k === 'querySelectorAll') return () => [];
       if (k === 'getContext') return () => ctx;
       if (k === 'measureText') return () => ({ width: 0 });
@@ -417,4 +417,202 @@ test("items: the open table between its back and front places, the pods' glass o
   assert.ok(backY < frontY && table[0][1] === frontY, 'two behind the table, two in front (filled first)');
   assert.ok(ys.some(y => y > backY && y < frontY), 'the table is drawn after the robots behind it, before the ones in front');
   for (let i = 0; i < 2; i++) { const [, y] = placeOf(h, 'nap', i); assert.ok(ys.some(v => v > y && v <= y + 4), `pod ${i}: its glass over its sleeper`); }
+});
+
+/* ---------- the bays: a robot built as the context fills, and what its repo's state puts round it ---------- */
+
+const FARM_WORDS = /\b(farm|field|crop|harvest|porch|barn|silo|henhouse|stall|scarecrow|meadow|hammock|pigeon|market)/i;
+/** A snapshot of the shop's bay and its robots, in the collector's shapes; `collision` is the collision's severity. */
+function bay({ collision = null, ...over } = {}, agents = []) {
+  return {
+    generatedAt: Date.now(), agents, collisions: collision ? [{ repo: SHOP, severity: collision, reason: 'two agents edit the same files', since: 0, agentIds: [] }] : [],
+    repos: [{ path: SHOP, name: 'shop', branch: 'main', dirty: 0, ahead: 0, behind: 0, lastDeploy: null, agentIds: agents.map(a => a.id), ...over }],
+  };
+}
+const deployed = (state, label = state, detail = undefined) => ({ lastDeploy: { state, source: 'actions', label, detail, at: TOUR_NOW } });
+/** The factory with a canvas to draw on, and the floor's drawing each frame (ground) for a snapshot: its fills and pictures. */
+function bays() {
+  const { window, dom, ctx, F } = load();
+  const h = window.hooks, PXG = vm.runInContext('PXG', ctx);
+  PXG.ctx = dom.document.createElement('canvas').getContext('2d');
+  PXG.T = 1.3;
+  const sceneOf = snap => F.factoryScene(window.AgentvilleScene.toScene(snap));
+  const ground = snap => {
+    if (snap) { const scene = sceneOf(snap); h.relayout(h.grid.layoutFor(scene.fields)); h.setScene(scene); }
+    dom.calls.rects.length = 0; dom.calls.images.length = 0;
+    h.ground();
+    return { rects: dom.calls.rects.map(r => [...r]), images: dom.calls.images.map(i => [...i]) };
+  };
+  return { window, dom, ctx, F, h, PXG, sceneOf, ground };
+}
+
+test('a bay builds its robot as the context fills: the frame, wiring (30%), plating (50%), the head (70%), its eyes lit (85%)', () => {
+  const { sceneOf } = bays();
+  const buildAt = (...pcts) => sceneOf(bay({}, pcts.map((p, i) => person(`p${i}`, { contextTokens: Math.round(p * 200_000) })))).fields[0].build;
+  assert.deepEqual([0, 0.3, 0.5, 0.7, 0.9].map(p => buildAt(p)), [0, 1, 2, 3, 4]);
+  assert.deepEqual([0.29, 0.49, 0.69, 0.84, 0.85, 1].map(p => buildAt(p)), [0, 1, 2, 3, 4, 4], 'at the edges');
+  assert.equal(buildAt(0.2, 0.6), 2, 'the fullest robot at work there');
+  const as = (state, p) => sceneOf(bay({}, [person('x', { state, contextTokens: p * 200_000, now: null })])).fields[0].build;
+  assert.equal(as('waiting', 0.9), 4, 'waiting on you: still its robot');
+  assert.equal(as('yourTurn', 0.9), 4, 'your turn: still its robot');
+  assert.equal(as('idle', 0.9), 0, 'idle: nobody builds there, a bare frame');
+  assert.equal(as('stale', 0.9), 0, 'stale: nobody builds there');
+  assert.equal(sceneOf(bay()).fields[0].build, 0, 'no robots: the frame');
+});
+
+test("a bay's flag is a branch other than main; its stack light is its last deploy's state; each robot keeps its look", () => {
+  const { sceneOf, F } = bays();
+  const field = over => sceneOf(bay(over)).fields[0];
+  for (const [branch, flag] of [['feature/cart', true], ['main', false], ['master', false], ['(detached)', false], [null, false]]) assert.equal(field({ branch }).flag, flag, String(branch));
+  for (const state of ['ok', 'failed', 'running', 'blocked', 'other']) assert.equal(field(deployed(state)).light, state);
+  assert.equal(field(deployed('cancelled')).light, 'other', "a state it doesn't name: drawn one way");
+  assert.equal(field({}).light, null, 'no deploy: no stack light');
+  assert.equal(field({ lastDeploy: undefined, deploy: { status: 'in_progress' } }).light, 'running', 'a bare Actions run (no words)');
+  assert.deepEqual(plain(sceneOf(bay({}, [person('x')])).farmers[0].look), plain(F.lookOf({ id: 'x' })));
+});
+
+test('a bare bay (no deploy, pull requests, git counts or project) draws only its bench and the frame; each thing its repo has adds to it', () => {
+  const { ground, ctx } = bays();
+  const none = ground({ generatedAt: Date.now(), agents: [], repos: [], collisions: [] }).rects.length;
+  const fills = (over = {}, agents = []) => { let n = 0; assert.doesNotThrow(() => { n = ground(bay(over, agents)).rects.length - none; }, JSON.stringify(over)); return n; };
+  const bare = fills();
+  assert.ok(bare > 0, 'it draws its bench and frame');
+  assert.ok(bare <= 120, `only those: ${bare} fills`);
+  const worker = [person('w')], job = [person('w', { children: [{ id: 'j1', kind: 'bgjob', state: 'running', startedAt: TOUR_NOW }] })];
+  const more = {
+    'a deploy (its stack light)': deployed('ok', '✓ deployed'),
+    'uncommitted files (loose parts)': { dirty: 3 },
+    'unpushed commits (boxed parts)': { ahead: 2 },
+    'behind its remote (a capsule at the tube outlet)': { behind: 1 },
+    'a collision (hazard tape)': { collision: 'low' },
+  };
+  for (const [what, over] of Object.entries(more)) assert.ok(fills(over) > bare, `${what}: ${fills(over)} fills, bare ${bare}`);
+  const ink = vm.runInContext('ink', ctx), colours = over => ground(bay(over)).rects.map(r => r[0]);
+  const open = colours({}), glass = colours({ worktree: true, main: '/Users/you/code/other' });
+  assert.ok(glass.includes(ink('#a9dcf7')) && !open.includes(ink('#a9dcf7')), 'a worktree: pale-blue glass round the bench');
+  assert.ok(glass.filter(c => c === ink('#ffd43b')).length < open.filter(c => c === ink('#ffd43b')).length, '… in place of the yellow frame');
+  assert.ok(fills({}, job) > fills({}, worker), 'a background command (a part printer)');
+  assert.ok(fills({ dirty: 6 }) > fills({ dirty: 3 }) && fills({ dirty: 9 }) === fills({ dirty: 6 }), 'one loose part a file, up to 6');
+  assert.ok(fills({ ahead: 4 }) > fills({ ahead: 2 }) && fills({ ahead: 9 }) === fills({ ahead: 4 }), 'one box a commit, up to 4');
+  assert.equal(fills({ behind: 5 }), fills({ behind: 1 }), 'one capsule, however far behind');
+});
+
+test('the robot on the bench differs at each stage, and each stack light differs', () => {
+  const { ground } = bays();
+  const sig = snap => JSON.stringify(ground(snap));
+  const stages = [0, 0.3, 0.5, 0.7, 0.9].map(p => sig(bay({}, [person('a', { contextTokens: p * 200_000 })])));
+  assert.equal(new Set(stages).size, 5, 'five stages, five pictures');
+  const lights = ['ok', 'failed', 'running', 'blocked', 'other'].map(state => sig(bay(deployed(state))));
+  assert.equal(new Set(lights).size, 5, 'ok, failed, running, blocked and other: five stack lights');
+});
+
+test('setScene tells what happened: Built! for a compaction, Shipped! at the loading dock for a newly merged pull request, a deploy failing or going through', () => {
+  const { h, sceneOf } = bays();
+  const a = n => [person('a', { compactions: n })];
+  h.relayout(h.grid.layoutFor(sceneOf(bay()).fields));
+  assert.deepEqual(plain(h.setScene(sceneOf(bay({}, a(1))))), [], 'the first scene: nothing has happened yet');
+  const built = plain(h.setScene(sceneOf(bay({}, a(2)))));
+  assert.deepEqual(built.map(e => [e.kind, e.id, e.text, e.cls]), [['harvest', 'a', 'Built!', 'good']]);
+  assert.match(built[0].log, /compacted/);
+  assert.deepEqual(plain(h.setScene(sceneOf(bay({}, a(2))))), [], 'nothing new');
+  const pr = (number, at) => ({ number, title: 'New cart', url: '', at });
+  assert.deepEqual(plain(h.setScene(sceneOf(bay({ prs: { open: [], merged: [pr(9, Date.now() - 3 * 3_600_000)] } }, a(2))))), [], 'merged hours ago: old news');
+  const shipped = plain(h.setScene(sceneOf(bay({ prs: { open: [], merged: [pr(9, Date.now() - 3 * 3_600_000), pr(12, Date.now())] } }, a(2)))));
+  assert.deepEqual(shipped.map(e => [e.kind, e.text, e.cls]), [['merged', 'Shipped! #12', 'good']]);
+  assert.equal(h.buildingAt(...shipped[0].at), 'dock', 'it pops at the loading dock');
+  assert.equal(shipped[0].who, 'The loading dock', 'the floor log names the dock');
+  assert.match(shipped[0].log, /#12 merged/);
+  assert.deepEqual(plain(h.setScene(sceneOf(bay({ prs: { open: [], merged: [pr(12, Date.now())] } }, a(2))))), [], 'seen');
+  const [s] = h.layout().ST, at = plain([s.cx, s.rowTop + 30]);
+  const kinds = over => plain(h.setScene(sceneOf(bay(over, a(2))))).map(e => [e.kind, e.at, e.text]);
+  assert.deepEqual(kinds(deployed('failed')), [['deployFailed', at, '']], 'a deploy fails: for the animals, no words');
+  assert.deepEqual(kinds(deployed('failed')), [], 'not again while it stays failed');
+  assert.deepEqual(kinds(deployed('running')), []);
+  assert.deepEqual(kinds(deployed('ok')), [['deployOk', at, '']], 'it goes through');
+  for (const e of [...built, ...shipped]) assert.doesNotMatch(`${e.text} ${e.log} ${e.who ?? ''}`, FARM_WORDS, 'in factory words');
+});
+
+test('a compaction rolls the finished robot from its bay down the aisle onto the conveyor, which carries it off; with motion off nothing rolls', () => {
+  const { h, sceneOf, ground } = bays();
+  const robot = n => [person('a', { compactions: n, contextTokens: n % 2 ? 190_000 : 10_000 })];
+  const L = h.relayout(h.grid.layoutFor(sceneOf(bay()).fields)), [s] = L.ST, belt = L.GRID.y1 + 12;
+  const rolling = () => ground().images.filter(([, , w, hh]) => w === 14 && hh === 16); // the bench's robot is a bare frame now: any robot drawn is the one rolling
+  h.setScene(sceneOf(bay({}, robot(1))));
+  h.setScene(sceneOf(bay({}, robot(2))));
+  const seen = [];
+  for (let i = 0; i < 1200 && (seen.length < 2 || rolling().length); i++) {
+    const r = rolling();
+    assert.ok(r.length <= 1, 'one robot');
+    if (r.length) seen.push(r[0]);
+    h.tick(0.05, () => null);
+  }
+  assert.ok(seen.length > 20, 'it rolls a while');
+  const feet = ([x, y]) => [x + 7, y + 16];
+  assert.ok(seen.some(r => { const [x, y] = feet(r); return Math.abs(x - 218) <= 1 && y > s.rowTop + 30 && y < belt - 8; }), 'down the aisle beside its bay');
+  const onBelt = seen.filter(r => Math.abs(feet(r)[1] - (belt + 3)) <= 1);
+  assert.ok(onBelt.length > 5, 'then on the conveyor');
+  assert.ok(onBelt.every((r, i) => i === 0 || r[0] >= onBelt[i - 1][0]) && onBelt.at(-1)[0] > onBelt[0][0], 'carried along it');
+  assert.equal(rolling().length, 0, 'and off the edge');
+  h.setScene(sceneOf(bay({}, robot(3))));
+  h.setScene(sceneOf(bay({}, robot(4))));
+  h.tick(0, () => null, true);
+  assert.equal(rolling().length, 0, 'drawn still (motion off): nothing rolls');
+});
+
+test("a bay's sign: its name, a blue flag for a branch other than main, the deploy's words (why its stack light shows), a worktree's repo, a collision, and its git counts", () => {
+  const { h, window } = bays();
+  const signs = (snap, priv = false) => {
+    let scene = window.AgentvilleScene.toScene(snap);
+    if (priv) scene = window.AgentvilleScene.privateScene(scene);
+    scene = window.AgentvilleFactory.factoryScene(scene);
+    h.relayout(h.grid.layoutFor(scene.fields)); h.setScene(scene);
+    const labs = [];
+    h.labels((x, y, html, cls = '', title = '') => labs.push({ x, y, html: String(html), cls, title }), {});
+    return labs;
+  };
+  const words = html => html.replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim();
+  const signOf = labs => labs.find(l => l.html.includes('data-farm-field'));
+  const titleOf = l => l.html.match(/title="([^"]*)"/)?.[1] ?? '';
+  const branch = signOf(signs(bay({ branch: 'feature/cart', ...deployed('failed', '✗ deploy failed', 'Build step failed') })));
+  assert.match(branch.html, /px-flag/, 'a blue flag on the sign');
+  assert.match(words(branch.html), /shop/);
+  assert.match(words(branch.html), /feature\/cart/);
+  assert.match(words(branch.html), /✗ deploy failed/, 'the deploy, in words, under the name');
+  assert.match(titleOf(branch), /Build step failed/, 'and why, on hover');
+  assert.match(titleOf(branch), /on feature\/cart/);
+  assert.doesNotMatch(signOf(signs(bay({ branch: 'main' }))).html, /px-flag/, 'on main: no flag');
+  assert.match(words(signOf(signs(bay({ worktree: true, main: '/Users/you/code/api' }))).html), /worktree of api/);
+  const crowded = signOf(signs(bay({ collision: 'high' })));
+  assert.match(words(crowded.html), /⚠ crowded/);
+  assert.equal(crowded.cls, 'bad');
+  const counts = signs(bay({ dirty: 3, ahead: 2, behind: 1 })).filter(l => l.cls === 'cnt').map(l => [words(l.html), l.title]);
+  assert.deepEqual(counts, [['↓1', '1 commit behind the remote'], ['↑2', '2 unpushed commits'], ['+3', '3 uncommitted files']]);
+  const priv = signOf(signs(bay({ branch: 'feature/cart', ...deployed('failed', '✗ deploy failed', 'Build step failed') }), true));
+  assert.doesNotMatch(priv.html, /px-flag|feature|Build step|deploy failed|shop/, 'privacy mode: no branch, no words, no name');
+  for (const l of [branch, crowded, priv]) assert.doesNotMatch(`${words(l.html)} ${titleOf(l)}`, FARM_WORDS);
+});
+
+test('fieldAt: a point on a bay is its key (a click opens its close-up); the aisle, the walkway and an empty slot are none', () => {
+  const { h } = bays();
+  const L = h.relayout(h.grid.layoutFor([{ key: SHOP, name: 'shop' }])), [s] = L.ST;
+  for (const [x, y] of [[s.cx, s.rowTop + 20], [s.cx - 36, s.rowTop + 12], [s.cx + 36, s.rowTop + 42], [s.cx, s.rowTop + 50]]) assert.equal(h.fieldAt(x, y), SHOP, `${x},${y}`);
+  for (const [x, y] of [[218, s.rowTop + 20], [s.cx, 84], [s.cx + 88, s.rowTop + 20], [56, 160]]) assert.equal(h.fieldAt(x, y), null, `${x},${y}`);
+});
+
+test('an empty slot is bare floor with a faint outline', () => {
+  const { window, ctx } = load();
+  const h = window.hooks, ink = vm.runInContext('ink', ctx);
+  const L = h.relayout(h.grid.layoutFor([{ key: SHOP, name: 'shop' }]));
+  const ext = { x0: 0, x1: h.W, y0: 0, y1: L.H }, pix = new Map();
+  h.bg((x, y, w, hh, c) => { for (let yy = y; yy < y + hh; yy++) for (let xx = x; xx < x + w; xx++) pix.set(`${xx},${yy}`, ink(c)); }, 'summer', ext);
+  const plainFloor = new Set([ink('#f4ecd8'), ink('#e8d8b0')]); // the tiles and their grout (and scuffs)
+  assert.ok(L.empty.length >= 8);
+  for (const s of L.empty) {
+    const edge = [];
+    for (let x = s.x0; x < s.x0 + 72; x++) edge.push(pix.get(`${x},${s.y0}`), pix.get(`${x},${s.y0 + 29}`));
+    for (let y = s.y0; y < s.y0 + 30; y++) edge.push(pix.get(`${s.x0},${y}`), pix.get(`${s.x0 + 71},${y}`));
+    const marked = edge.filter(c => !plainFloor.has(c)).length;
+    assert.ok(marked >= edge.length * 0.3, `slot ${s.i}: an outline (${marked} of ${edge.length})`);
+    for (let y = s.y0 + 3; y < s.y0 + 27; y++) for (let x = s.x0 + 3; x < s.x0 + 69; x++) assert.ok(plainFloor.has(pix.get(`${x},${y}`)), `slot ${s.i}: bare floor inside (${x},${y})`);
+  }
 });

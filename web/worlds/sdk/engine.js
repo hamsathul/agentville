@@ -991,7 +991,7 @@ function makePixelView(th, prefs) {
     for (const ev of news) { // a harvest over its farmer, a sale at the stall
       const b = ev.id ? bots.get(ev.id) : null, at = ev.at ?? (b ? [b.x, b.y - th.SH * SC - 14] : null);
       if (at && ev.text) pop(at[0], at[1], ev.text, ev.cls);
-      if (ev.log) addLog(next.farmers.find(f => f.id === ev.id) ?? { name: 'The market', state: 'turn' }, ev.log);
+      if (ev.log) addLog(next.farmers.find(f => f.id === ev.id) ?? { name: typeof ev.who === 'string' ? ev.who : 'The market', state: 'turn' }, ev.log); // news with no agent: its world names who tells it
     }
     for (const ev of news) if (ev.kind && animalsShown()) { const b = ev.id ? bots.get(ev.id) : null; kit.react(ev.kind, ev.at ?? (b ? [b.x, b.y] : null) ?? [th.W / 2, 100]); } // the animals' reactions: a failed deploy scatters them
     layoutLabels();

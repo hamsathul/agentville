@@ -213,6 +213,20 @@ test('a world event with no text pops nothing; one with text still pops', () => 
   assert.equal(made.filter(el => String(el.className).startsWith('px-pop')).length, 1);
 });
 
+test("a world event's log line is its agent's; one with no agent is its `who`'s, else the market's (the farm's)", () => {
+  const { window, dom, sdk } = load();
+  let diary = [];
+  const world = fourHooks({ setScene: () => [{ at: [70, 70], text: 'x', log: 'a pull request merged', who: 'The loading dock' }, { at: [70, 70], text: 'y', log: 'another merged' }, { id: 'a', text: 'z', log: 'its own news', who: 'not this' }, { at: [70, 70], text: 'w', log: 'odd', who: 42 }] });
+  const view = sdk.makePixelView(sdk.withDefaults(world), prefs);
+  view.mount(dom.make(), { still: true, onDiary: entries => { diary = entries; } });
+  view.update(sdk.engineScene(twoAgents(window)));
+  const who = text => diary.find(e => e.text === text)?.who;
+  assert.equal(who('a pull request merged'), 'The loading dock');
+  assert.equal(who('another merged'), 'The market', "no who: today's name");
+  assert.equal(who('its own news'), 'a', "an agent's news is its own");
+  assert.equal(who('odd'), 'The market', 'a who that is not text: today\'s name');
+});
+
 test('a world whose animals() gives { cast, gags, play } gets its creatures and its gags', () => {
   const { dom, sdk } = load();
   const gag = { id: 'baa', needs: { cow: 1 }, steps: [{ wait: 100 }] };

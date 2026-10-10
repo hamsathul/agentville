@@ -339,7 +339,7 @@ A hook you give always wins over its default.
 | `key` | | `'world'`: a short name for the world. The engine doesn't read it today (the farm gives `'farm'`), so check-world's list of hooks left to their defaults starts with it |
 | `SH` | | `16`: a character's height |
 | `layout`, `relayout` | `()`, `(ground)` | the grid's current ground; `relayout` keeps the new one and returns it |
-| `setScene` | `(scene)` | returns `[]`. May return events `{ id?, at?: [x, y], text, cls?, log?, kind? }`: a pop-up with `text` over the agent `id` (or at `at`), a line in the log if `log` is set, and, with a `kind`, a reaction from the animals ("Reactions", in "Creatures"). The engine records `scene.fields` itself, whether or not you give one |
+| `setScene` | `(scene)` | returns `[]`. May return events `{ id?, at?: [x, y], text, cls?, log?, who?, kind? }`: a pop-up with `text` over the agent `id` (or at `at`), a line in the log if `log` is set (under the agent's name; with no agent, under `who`, else "The market"), and, with a `kind`, a reaction from the animals ("Reactions", in "Creatures"). The engine records `scene.fields` itself, whether or not you give one |
 | `spawn` | `()` | `[W / 2, 0]`: where a new agent appears |
 | `follow` | `(body, k, T, kid)` | where the k-th subagent stands beside its agent (`T` the clock, `kid` the subagent's scene entry) |
 | `startText` | `(n)` | "n agents here": the first line of the log |

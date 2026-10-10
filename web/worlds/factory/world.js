@@ -9,9 +9,19 @@
 
   /* ---------- the scene: what the factory draws, from the snapshot ---------- */
 
-  /** The factory's scene: the engine's, with each robot's look. */
+  /** The build stage by the context used: 0 the frame, 1 wiring (from 30%), 2 plating (50%), 3 the head (70%), 4 its eyes lit (85%: nearly full). */
+  const stageOf = p => (p >= 0.85 ? 4 : p >= 0.7 ? 3 : p >= 0.5 ? 2 : p >= 0.3 ? 1 : 0);
+  /** Whose robot a bay builds: of the robots at work on its repo (working, waiting on you, your turn; not idle or stale), the one whose context is fullest; null if none. */
+  const builderOf = (farmers, key) => farmers.filter(a => a.field === key && ACTIVE.has(a.state)).reduce((best, a) => (best && (best.pct ?? 0) >= (a.pct ?? 0) ? best : a), null);
+  /** The stack light, from a bay's last deploy: ok, failed, running, blocked (Actions didn't run), or other for any state it doesn't name; null with none. */
+  const lightOf = d => (d ? (['ok', 'failed', 'running', 'blocked'].includes(d.state) ? d.state : 'other') : null);
+  /**
+   * The factory's scene: the engine's, with each robot's look, and each bay's `build` stage (by its fullest robot
+   * at work), its `flag` (a branch other than main) and its stack `light` (its last deploy).
+   */
   function factoryScene(s) {
     const e = engineScene(s);
+    e.fields = e.fields.map(f => ({ ...f, build: stageOf(builderOf(e.farmers, f.key)?.pct ?? 0), flag: Boolean(f.branch) && f.branch !== '(detached)' && !f.onMain, light: lightOf(f.deploy) }));
     e.farmers = e.farmers.map(f => ({ ...f, look: lookOf(f) }));
     return e;
   }
@@ -380,6 +390,11 @@
     f(x - 3, y - 6, 7, 6, '#c8681a'); f(x - 3, y - 6, 7, 1, '#e9a23b'); f(x - 1, y, 7, 1, SHADOW);
     f(x - 5, y - 14, 11, 8, '#3f9b3a'); f(x - 3, y - 17, 6, 4, '#6cc04a'); f(x - 6, y - 10, 2, 2, '#6cc04a'); f(x + 4, y - 12, 2, 3, '#2f6b2f');
   }
+  /** An empty slot, where no repo has a bay yet: bare floor, a faint dashed outline. */
+  function emptyBay(f, { x0, y0 }) {
+    for (let x = x0; x < x0 + 72; x += 4) { f(x, y0, 2, 1, SHADOW); f(x, y0 + 29, 2, 1, SHADOW); }
+    for (let y = y0; y < y0 + 30; y += 4) { f(x0, y, 1, 2, SHADOW); f(x0 + 71, y, 1, 2, SHADOW); }
+  }
   /** The conveyor along the bottom, centred on cy, across the whole ground: a pale-blue belt between rails, on legs (its slats move each frame). */
   function conveyor(f, x0, x1, cy) {
     f(x0, cy + 8, x1 - x0, 2, SHADOW);
@@ -419,6 +434,7 @@
       }
     }
     for (const s of L.ST) f(s.x0, s.y0, 72, 30, BAY); // each bay's floor plate (the bays draw on it)
+    for (const s of L.empty) emptyBay(f, s);
     // the safety line round the bays, with gaps where the paths come in: from the walkway down the aisles, and from the left side's path along each row's lane
     const lanes = [...new Set(L.slots.map(s => s.lane))], open = (v, gaps) => gaps.some(([a, b]) => v >= a && v < b);
     for (let x = G.x0; x < G.x1; x++) {
@@ -476,6 +492,203 @@
     }
   }
 
+  /* ---------- the bays: a robot built on each bench as the context fills, and what its repo's state puts round it ---------- */
+
+  // A bay at its slot s (s.cx its middle, s.rowTop its row's top, t below): the floor plate is cx ± 36, t + 12 to
+  // t + 42 (drawFloor paints it), and the robots working there stand on t + 44, in front of it. On the plate,
+  // back to front: the tube outlet (back left, the overhead tube comes down to it), the bench in the middle with
+  // the robot being built standing on it in its yellow frame (a glass clean room for a worktree), the part
+  // printer and the boxed parts at the bench's right, the stack light (back right); the loose parts lie on the
+  // floor at the front left. The sign under it is a label (labels()).
+  const BUILD_Y = 23; // the robot being built stands here, on the bench (from the row's top)
+  /** Where a bay's overhead tube comes down: the top of its outlet's pipe. And where its stack light's lamps are (their middle). */
+  const outletAt = s => [s.cx - 30, s.rowTop];
+  const stackLightAt = s => [s.cx + 31, s.rowTop + 6];
+
+  /** The bench under the robot being built: a steel top, a yellow and black front edge, two legs, its shadow. */
+  function bench(cx, t) {
+    px(cx - 15, t + 33, 31, 1, '#9aa4ad');
+    px(cx - 16, t + 20, 32, 10, K);
+    px(cx - 15, t + 21, 30, 1, '#ffffff'); px(cx - 15, t + 22, 30, 3, '#e6eef5'); // the top, lit along its back
+    px(cx - 15, t + 25, 30, 2, BLACK); for (let x = cx - 15; x < cx + 15; x += 4) px(x, t + 25, 2, 2, YELLOW);
+    px(cx - 15, t + 27, 30, 2, '#9aa4ad'); px(cx + 11, t + 27, 4, 2, '#8a8f96'); // its front, in shade at the right
+    px(cx - 14, t + 30, 2, 3, '#5f6b7a'); px(cx + 12, t + 30, 2, 3, '#5f6b7a');
+  }
+  /** The open assembly frame on the bench: two yellow posts and a beam over the robot, a hoist under it. */
+  function assemblyFrame(cx, t) {
+    px(cx - 12, t + 2, 24, 5, K); px(cx - 11, t + 3, 22, 3, YELLOW); px(cx - 11, t + 3, 22, 1, '#ffe8a3'); px(cx - 11, t + 5, 22, 1, '#f0b429');
+    for (const x of [cx - 12, cx + 8]) { px(x, t + 6, 4, 17, K); px(x + 1, t + 6, 2, 16, YELLOW); px(x + 1, t + 6, 1, 16, '#ffe8a3'); }
+    px(cx - 1, t + 6, 2, 1, '#5f6b7a');
+  }
+  /** A worktree's clean room in place of the open frame: pale-blue glass in a white frame, a filter unit on its roof, glints. Drawn over the robot. */
+  function cleanRoom(cx, t) {
+    PXG.ctx.globalAlpha = 0.3; px(cx - 12, t + 3, 24, 18, '#a9dcf7'); PXG.ctx.globalAlpha = 1;
+    px(cx - 13, t + 1, 26, 2, '#9aa4ad'); px(cx - 13, t + 1, 26, 1, '#e6eef5'); px(cx - 6, t - 1, 12, 2, '#c3cbd2'); px(cx - 4, t - 1, 8, 1, '#5f6b7a'); // its roof, the filter unit
+    px(cx - 13, t + 3, 1, 19, '#e6eef5'); px(cx + 12, t + 3, 1, 19, '#c3cbd2'); px(cx - 13, t + 12, 26, 1, '#e6eef5'); // its corners, a rail
+    PXG.ctx.globalAlpha = 0.75; px(cx - 10, t + 5, 1, 3, '#ffffff'); px(cx - 9, t + 4, 1, 2, '#ffffff'); px(cx + 9, t + 15, 1, 3, '#ffffff'); PXG.ctx.globalAlpha = 1;
+  }
+  const FRAME_K = '#8a8f96', FRAME_H = '#c3cbd2';
+  /**
+   * The robot being built, standing on the bench, at its stage: 0 its frame (a ring for the head, shoulders, a
+   * spine, hips, two struts), 1 wired (red, yellow and blue wires, a circuit board), 2 plated (its body and drive
+   * in its robot's colour, wires in its empty head), 3 its head on (the visor dark), 4 its eyes lit, a sparkle now and then.
+   */
+  function builtRobot(cx, t, stage, look, color, T) {
+    const ox = cx - 7, oy = t + BUILD_Y - 16, rp = rpAt(ox, oy);
+    if (stage >= 3) {
+      PXG.ctx.drawImage(robotSprite(look, color), ox, oy, 14, 16);
+      if (stage === 4) {
+        rp(5, 5, 1, 2, METAL.e); rp(8, 5, 1, 2, METAL.e);
+        if (Math.floor(T * 3 + cx) % 11 === 0) { rp(13, -3, 1, 3, '#ffffff'); rp(12, -2, 3, 1, '#ffffff'); }
+      }
+      return;
+    }
+    if (stage === 2) PXG.ctx.drawImage(robotSprite(look, color), 0, 9, 14, 7, ox, oy + 9, 14, 7);
+    else {
+      rp(2, 9, 10, 1, FRAME_K); rp(6, 9, 2, 4, FRAME_K); rp(3, 12, 8, 1, FRAME_K); rp(1, 10, 1, 2, FRAME_K); rp(12, 10, 1, 2, FRAME_K);
+      rp(4, 13, 1, 2, FRAME_K); rp(9, 13, 1, 2, FRAME_K); rp(3, 15, 3, 1, '#3a3a40'); rp(8, 15, 3, 1, '#3a3a40'); rp(6, 9, 1, 3, FRAME_H);
+      if (stage === 1) { rp(5, 9, 1, 5, '#e04a3a'); rp(8, 10, 1, 4, '#ffd43b'); rp(9, 10, 2, 2, '#2fa57a'); rp(10, 10, 1, 1, '#ffd43b'); }
+    }
+    rp(3, 3, 8, 1, FRAME_K); rp(2, 4, 1, 4, FRAME_K); rp(11, 4, 1, 4, FRAME_K); rp(3, 8, 8, 1, FRAME_K); rp(3, 3, 3, 1, FRAME_H);
+    if (stage >= 1) { rp(7, 4, 1, 5, '#3d7be0'); rp(6, 4, 1, 1, '#3d7be0'); rp(5, 6, 1, 3, '#e04a3a'); rp(8, 7, 2, 1, '#ffd43b'); }
+  }
+
+  // The stack light's lamps, top to bottom, [lit, its glint, off]: red (failed), amber (running), green (ok).
+  const LAMPS = [['failed', '#e04a3a', '#ff6b6b', '#5a1f19'], ['running', '#f0b429', '#ffd43b', '#6b4320'], ['ok', '#2fa57a', '#6cc04a', '#2f6b2f']];
+  // "SHIPPED" in a 3 × 5 font, for the stack light's flash: each letter's rows, a bit a pixel (4 its left).
+  const MINI = { S: [7, 4, 7, 1, 7], H: [5, 5, 7, 5, 5], I: [7, 2, 2, 2, 7], P: [6, 5, 6, 4, 4], E: [7, 4, 6, 4, 7], D: [6, 5, 5, 5, 6] };
+  const mini = (text, x, y, c) => [...text].forEach((ch, i) => MINI[ch].forEach((bits, r) => { for (let b = 0; b < 3; b++) if (bits & (4 >> b)) px(x + i * 4 + b, y + r, 1, 1, c); }));
+  /** A brass gear at (x, y): a round body, a hub, and teeth that turn by an eighth each step (straight, then slanted). */
+  function gear(x, y, r, step) {
+    px(x - r + 1, y - r + 2, 2 * r - 1, 2 * r - 3, '#e9a23b'); px(x - r + 2, y - r + 1, 2 * r - 3, 2 * r - 1, '#e9a23b');
+    const teeth = step % 2 ? [[r - 1, r - 1], [r - 1, 1 - r], [1 - r, r - 1], [1 - r, 1 - r]] : [[0, -r], [r, 0], [0, r], [-r, 0]];
+    for (const [dx, dy] of teeth) px(x + dx, y + dy, 1, 1, '#c8681a');
+    px(x - r + 2, y - r + 1, 2 * r - 3, 1, '#f4d58d'); px(x, y, 1, 1, '#6b4320');
+  }
+  /**
+   * The stack light at the back right, for the bay's last deploy: red, amber and green lamps on a pole, the
+   * deploy's one lit. ok: green, a "SHIPPED" flash now and then; failed: red, blinking, with alarm rays and
+   * sparks, the tower wobbling; running: amber, pulsing, gears turning on the pole; blocked (Actions didn't
+   * run): a grey pause light; another state: every lamp off.
+   */
+  function stackLight(cx, t, light, T) {
+    const x = cx + 29 + (light === 'failed' ? Math.round(Math.sin(T * 16)) : 0);
+    px(cx + 28, t + 25, 7, 2, '#3a3a40'); px(cx + 30, t + 13, 1, 12, '#9aa4ad'); px(cx + 31, t + 13, 1, 12, '#5f6b7a'); // its foot and pole
+    if (light === 'running') { const step = Math.floor(T * 4); gear(cx + 31, t + 17, 3, step); gear(cx + 33, t + 22, 2, step + 1); } // two gears turning, meshed
+    px(x - 1, t, 7, 14, K); px(x, t + 1, 5, 1, '#5f6b7a'); px(x, t + 11, 5, 2, '#5f6b7a'); px(x, t + 11, 5, 1, '#9aa4ad'); // the tower: a cap, its lamps, a collar
+    LAMPS.forEach(([state, lit, glint, off], i) => {
+      const y = t + 2 + i * 3, on = light === state && !(state === 'failed' && blink(4)), bright = on && !(state === 'running' && blink(1.5));
+      px(x, y, 5, 2, on ? (bright ? lit : glint) : light === 'blocked' ? '#8a8f96' : off);
+      if (on) px(x + 1, y, 1, 1, '#ffffff');
+    });
+    if (light === 'blocked') { px(x, t + 5, 5, 2, '#c3cbd2'); px(x + 1, t + 5, 1, 2, '#3a3a40'); px(x + 3, t + 5, 1, 2, '#3a3a40'); } // pause
+    if (light === 'ok' && T % 3 < 1.4) { // the flash: SHIPPED
+      px(cx - 3, t - 7, 31, 9, K); px(cx - 2, t - 6, 29, 7, '#2fa57a'); px(cx - 2, t - 6, 29, 1, '#6cc04a');
+      mini('SHIPPED', cx, t - 5, '#ffffff');
+      px(x - 3, t + 8, 2, 1, '#6cc04a'); px(x + 6, t + 8, 2, 1, '#6cc04a');
+    }
+    if (light === 'failed') {
+      if (!blink(4)) for (const [dx, dy] of [[-4, 2], [6, 2], [-3, -1], [5, -1]]) px(x + dx, t + dy, 3, 1, '#ff6b6b'); // the alarm's rays
+      for (let i = 0; i < 4; i++) { // sparks from its foot
+        const p = (T * 1.7 + i * 0.29) % 1, dir = i % 2 ? 1 : -1;
+        if (p < 0.85) px(Math.round(cx + 31 + dir * (1 + p * 7)), Math.round(t + 24 - p * 9 + p * p * 12), 1, 1, i % 3 ? '#ffd43b' : '#ffffff');
+      }
+    }
+  }
+  /** The tube outlet at the back left: the overhead tube comes down its glass pipe into a receiver; a capsule waits on it while the repo is behind its remote, a light blinking. */
+  function tubeOutlet(cx, t, waiting) {
+    const [x] = outletAt({ cx, rowTop: t });
+    px(x - 1, t, 3, 7, '#5f7f9a'); px(x, t, 1, 7, '#e6eef5');
+    px(x - 4, t + 6, 9, 6, K); px(x - 3, t + 7, 7, 4, '#9aa4ad'); px(x - 3, t + 7, 7, 1, '#c3cbd2'); px(x - 1, t + 7, 3, 1, '#3a3a40');
+    if (!waiting) return;
+    px(x - 4, t + 3, 9, 4, K); px(x - 3, t + 4, 7, 2, '#e6eef5'); px(x - 3, t + 4, 7, 1, '#ffffff'); px(x - 3, t + 4, 1, 2, '#5f6b7a'); px(x + 3, t + 4, 1, 2, '#5f6b7a'); px(x, t + 4, 1, 2, '#f08a24');
+    px(x + 3, t + 9, 1, 1, blink(2) ? '#ffd43b' : '#f0b429');
+  }
+  // One loose part for each uncommitted file (6 at most), on the floor in front of the outlet: a gear, a bolt, a spring, a chip, a wheel, a plate.
+  const PARTS = [
+    [-34, 19, (x, y) => { px(x, y + 1, 4, 2, '#9aa4ad'); px(x + 1, y, 2, 4, '#9aa4ad'); px(x + 1, y + 1, 1, 1, '#5f6b7a'); }],
+    [-28, 20, (x, y) => { px(x, y, 3, 1, '#c3cbd2'); px(x + 1, y + 1, 1, 3, '#9aa4ad'); }],
+    [-23, 19, (x, y) => { px(x, y, 3, 1, '#5ab4ff'); px(x + 2, y + 1, 1, 1, '#5ab4ff'); px(x, y + 2, 3, 1, '#5ab4ff'); px(x, y + 3, 1, 1, '#3d7be0'); }],
+    [-33, 25, (x, y) => { px(x, y, 4, 2, '#2fa57a'); px(x + 1, y, 1, 1, '#ffd43b'); px(x, y + 2, 1, 1, '#c3cbd2'); px(x + 3, y + 2, 1, 1, '#c3cbd2'); }],
+    [-27, 26, (x, y) => { px(x, y, 3, 3, '#3a3a40'); px(x + 1, y + 1, 1, 1, '#c3cbd2'); }],
+    [-22, 25, (x, y) => { px(x, y, 4, 2, '#e04a3a'); px(x, y, 4, 1, '#ff6b6b'); }],
+  ];
+  // One box of parts for each unpushed commit (4 at most), at the bench's right end: two on the floor, two on them.
+  const BOXES = [[16, 21], [22, 21], [16, 15], [22, 15]];
+  function box(x, y) { px(x, y, 6, 6, '#8b5a2b'); px(x, y, 5, 5, '#c98d4f'); px(x, y, 5, 1, '#e2b07a'); px(x + 2, y, 1, 5, '#f4d58d'); }
+  /** A part printer humming by the bench while a background command runs: its head runs to and fro over the part taking shape, its light blinks. */
+  function partPrinter(cx, t, T) {
+    const x = cx + 15, y = t + 3;
+    px(x, y, 11, 11, K); px(x + 1, y + 1, 9, 9, '#e6eef5'); px(x + 1, y + 1, 9, 1, '#ffffff'); px(x + 8, y + 2, 2, 8, '#c3cbd2');
+    px(x + 2, y + 3, 6, 5, '#3a3a40'); px(x + 3, y + 7, 4, 1, '#5ab4ff');
+    px(x + 2 + Math.round((Math.sin(T * 5) + 1) * 2), y + 3, 2, 1, '#e04a3a');
+    px(x + 8, y + 1, 1, 1, blink(2) ? '#6cc04a' : '#2f6b2f');
+    if (blink(10)) { px(x - 2, y + 4, 1, 2, '#9aa4ad'); px(x + 12, y + 4, 1, 2, '#9aa4ad'); }
+  }
+  /** Hazard tape round a bay two robots are writing at once, red and white (the floor's safety line is yellow and black), on posts at its corners, pulsing (faster when it's serious). */
+  function hazardTape(cx, t, high, T) {
+    const x0 = cx - 38, x1 = cx + 38, y0 = t - 1, y1 = t + 45;
+    PXG.ctx.globalAlpha = 0.7 + 0.3 * Math.sin(T * (high ? 14 : 6));
+    for (let x = x0; x < x1; x += 3) { const c = ((x - x0) / 3) % 2 ? '#ffffff' : '#e04a3a'; px(x, y0, Math.min(3, x1 - x), 2, c); px(x, y1, Math.min(3, x1 - x), 2, c); }
+    for (let y = y0 + 2; y < y1; y += 3) { const c = ((y - y0 - 2) / 3) % 2 ? '#ffffff' : '#e04a3a'; px(x0, y, 2, 3, c); px(x1 - 2, y, 2, 3, c); }
+    PXG.ctx.globalAlpha = 1;
+    for (const [x, y] of [[x0, y0], [x1 - 2, y0], [x0, y1], [x1 - 2, y1]]) { px(x, y - 4, 2, 6, '#3a3a40'); px(x, y - 5, 2, 1, YELLOW); }
+  }
+  /** A bay, each frame: its stack light, tube outlet, printer, bench, frame (or clean room) and robot, its parts and boxes, and the tape. `color`: whose robot it builds. */
+  function drawBay(s, f, { look, color, jobs = 0, T = 0 }) {
+    const { cx, rowTop: t } = s;
+    if (f.light) stackLight(cx, t, f.light, T);
+    tubeOutlet(cx, t, f.behind > 0);
+    if (jobs > 0) partPrinter(cx, t, T);
+    bench(cx, t);
+    if (!f.worktree) assemblyFrame(cx, t);
+    builtRobot(cx, t, f.build ?? 0, look, color, T);
+    if (f.worktree) cleanRoom(cx, t);
+    PARTS.slice(0, Math.min(6, f.dirty ?? 0)).forEach(([dx, dy, part]) => part(cx + dx, t + dy));
+    BOXES.slice(0, Math.min(4, f.ahead ?? 0)).forEach(([dx, dy]) => box(cx + dx, t + dy));
+    if (f.collision) hazardTape(cx, t, f.collision === 'high', T);
+  }
+
+  // A compaction: the finished robot waves on its bench (a cheer, confetti over it), rolls off to the aisle
+  // beside its bay, down it onto the conveyor, and rides the belt off the floor. A merged pull request's crate
+  // rolls up the dock plate into the trailer.
+  const CHEER = 0.8, ROLL = 48, BELT_SPEED = 12, LEAVE = 1.6; // seconds; px a second (the belt's: its slats' speed); seconds
+  const CONFETTI = ['#ff6b6b', '#ffd43b', '#6cc04a', '#5ab4ff', '#d55181'];
+  const DOCK_DOOR = [357, 44];
+  /** Where a finished robot is, t seconds after its bay's compaction: its feet, which way it faces, and whether it cheers or rides the belt. */
+  function rollAt(s, cy, t) {
+    const aisle = s.cx + 44 <= CORR[2] ? s.cx + 44 : s.cx - 44, y0 = s.rowTop + BUILD_Y, y1 = cy + 3;
+    const a = CHEER, b = a + Math.abs(aisle - s.cx) / ROLL, c = b + (y1 - y0) / ROLL;
+    if (t < a) return { x: s.cx, y: y0, view: 'down', cheer: true };
+    if (t < b) return { x: s.cx + Math.sign(aisle - s.cx) * (t - a) * ROLL, y: y0, view: aisle > s.cx ? 'right' : 'left' };
+    if (t < c) return { x: aisle, y: y0 + (t - b) * ROLL, view: 'down' };
+    return { x: aisle + (t - c) * BELT_SPEED, y: y1, view: 'right', riding: true };
+  }
+  /** A finished robot rolling off: its eyes lit; waving with confetti over it while it cheers, then rolling, then carried still. */
+  function rollingRobot({ look, color, t }, at, T) {
+    const ox = Math.round(at.x) - 7, oy = Math.round(at.y) - 16, rp = rpAt(ox, oy);
+    PXG.ctx.drawImage(robotSprite(look, color, { view: at.view, legs: at.cheer || at.riding ? 's' : walkFrame(T).legs, wave: at.cheer }), ox, oy, 14, 16);
+    if (at.view === 'down') { rp(5, 5, 1, 2, METAL.e); rp(8, 5, 1, 2, METAL.e); } else rp(at.view === 'right' ? 10 : 3, 5, 1, 2, METAL.e);
+    if (t < CHEER + 1) for (let i = 0; i < 6; i++) { const p = (t * 1.5 + i / 6) % 1; px(ox + ((i * 5 + Math.round(t * 8)) % 15), oy - 7 + Math.round(p * 9), 1, 1, CONFETTI[i % CONFETTI.length]); }
+  }
+  /** A merged pull request's crate leaving: up the dock plate into the trailer, fading as it goes in. */
+  function leavingCrate(t) {
+    const p = Math.min(1, t / LEAVE), y = Math.round(64 - p * 12);
+    PXG.ctx.globalAlpha = 1 - Math.max(0, p - 0.6) / 0.4;
+    px(353, y, 8, 7, '#6b4320'); px(354, y + 1, 6, 5, '#c98d4f'); px(354, y + 1, 6, 1, '#e2b07a'); px(357, y + 2, 2, 3, '#2fa57a');
+    PXG.ctx.globalAlpha = 1;
+  }
+  /** Drops what `ok` turns down from a list, in place. */
+  const keep = (list, ok) => { for (let i = list.length - 1; i >= 0; i--) if (!ok(list[i])) list.splice(i, 1); };
+  // The sign's blue flag (a branch other than main): an image the pixel font's height, before the bay's name.
+  const FLAG = ['pbbbbb', 'plllbb', 'pbbbbb', 'pbbb..', 'p.....', 'p.....', 'p.....', 'p.....', '......', '......'];
+  let flagUrl = null;
+  function flagImg() {
+    flagUrl ??= makeSprite(FLAG, { p: '#e6eef5', b: '#3d7be0', l: '#5ab4ff' }).toDataURL();
+    const k = fontPx();
+    return `<i class="pxt px-flag" aria-hidden="true" style="width:${(6 * k).toFixed(1)}px;height:${(10 * k).toFixed(1)}px;background-image:url(${flagUrl})"></i>`;
+  }
+
   /* ---------- the hooks ---------- */
 
   // What a robot holds for each step and its verb: the props kit's for now (the factory's own props come later).
@@ -487,8 +700,25 @@
     let L = FACTORY_GRID.layoutFor([]);
     let scene = { fields: [], farmers: [] };
     let fabGlow = 0; // the fabricator's door, lit while a robot rolls out (0–1)
+    let seenCompactions = null, seenMerged = null, seenLights = null; // what the last scene had, so news can be told
+    const rolling = [], leaving = []; // finished robots rolling off to the conveyor (compactions); crates leaving the dock (merges): { …, t }
     const stOf = k => L.ST.find(s => s.key === k);
     const fieldByKey = k => scene.fields.find(f => f.key === k);
+    const bayLooks = new Map();
+    /** The robot a bay builds: a model of its own, picked by its repo as a robot's look is by its agent. */
+    const bayLook = key => { if (!bayLooks.has(key)) bayLooks.set(key, lookOf({ id: key })); return bayLooks.get(key); };
+    /** The bays, each frame: each bench and what is round it; then the finished robots rolling off, the crates leaving the dock. */
+    function drawBays() {
+      const T = PXG.T, cy = L.GRID.y1 + 12;
+      for (const s of L.ST) {
+        const f = fieldByKey(s.key);
+        if (!f) continue;
+        const here = scene.farmers.filter(a => a.field === f.key);
+        drawBay(s, f, { look: bayLook(f.key), color: builderOf(here, f.key)?.shirt, jobs: here.reduce((n, a) => n + (a.jobs ?? 0), 0), T });
+      }
+      for (const r of rolling) { const s = stOf(r.key); if (s) rollingRobot(r, rollAt(s, cy, r.t), T); }
+      for (const c of leaving) leavingCrate(c.t);
+    }
     /** Its eyes on its visor (rows 5–7), as the farm draws its farmers': shut while idle or asleep in a pod, wide while waiting on you, smiling on your turn, looking down at its work. */
     const eyes = (f, b, rp, view) => {
       const E = METAL.e, DIM = '#5f7f9a', down = f.state === 'working' && !b.walk;
@@ -520,8 +750,34 @@
       nouns: { agent: 'robot', agents: 'robots', repo: 'bay', repos: 'bays', place: 'factory' },
       seasonNames: { switch: 'Heat', spring: 'cool', summer: 'warm', autumn: 'hot', winter: 'steaming' },
       boardTitle: 'The manuals shelf: what your projects remember', // the engine opens it (the 'board' building)
-      /** A new scene, kept for the dialogs, tips and the floor's details. */
-      setScene(next) { scene = next; return []; },
+      /**
+       * A new scene; returns what happened since the last one: a robot finished (a compaction: it rolls off along
+       * the conveyor), a pull request shipped (merged in the last 30 minutes: its crate leaves the dock), a deploy
+       * failing or going through (for the animals only).
+       */
+      setScene(next) {
+        const events = [];
+        const comp = new Map(next.farmers.map(f => [f.id, f.compactions ?? 0]));
+        if (seenCompactions) for (const f of next.farmers) if (seenCompactions.has(f.id) && comp.get(f.id) > seenCompactions.get(f.id)) {
+          events.push({ id: f.id, kind: 'harvest', text: 'Built!', cls: 'good', log: 'finishes its robot: its conversation was compacted, and a fresh frame goes on' });
+          if (f.field) { rolling.push({ key: f.field, look: bayLook(f.field), color: f.shirt, t: 0 }); if (rolling.length > 6) rolling.shift(); }
+        }
+        seenCompactions = comp;
+        const merged = next.fields.flatMap(fl => (fl.prs?.merged ?? []).map(m => ({ ...m, repo: fl.name, key: `${fl.key}#${m.number}` })));
+        if (seenMerged) for (const m of merged) if (!seenMerged.has(m.key) && (m.at ?? 0) > Date.now() - 30 * 60_000) {
+          events.push({ at: DOCK_DOOR, kind: 'merged', text: `Shipped! #${m.number}`, cls: 'good', who: 'The loading dock', log: `${m.repo}: pull request #${m.number} merged${m.title ? ` (${clip(m.title, 50)})` : ''}` });
+          if (leaving.length < 4) leaving.push({ t: 0 });
+        }
+        seenMerged = new Set(merged.map(m => m.key));
+        const lights = new Map(next.fields.map(fl => [fl.key, fl.light ?? null]));
+        if (seenLights) for (const [key, l] of lights) {
+          const s = stOf(key), kind = l === 'failed' ? 'deployFailed' : l === 'ok' ? 'deployOk' : null;
+          if (kind && s && seenLights.get(key) !== l) events.push({ kind, at: [s.cx, s.rowTop + 30], text: '' });
+        }
+        seenLights = lights;
+        scene = next;
+        return events;
+      },
       layout: () => L,
       relayout(ground) { L = ground; return L; },
       spawn: () => FAB_DOOR,
@@ -575,14 +831,24 @@
         return `${props.doing(f)?.verb ?? 'working'} at the ${fieldByKey(f.field)?.name ?? ''} bay`;
       },
       bg(fill, season, ext) { drawFloor(fill, L, ext); },
-      ground() { drawWorkshop(); },
+      ground() { drawWorkshop(); drawBays(); },
       /** Drawn among the robots, by how far down they stand: the open table (two robots behind it, two in front), and each pod's glass over its sleeper. */
       items: () => [[TABLE_Y, openTable], ...PODS.map(([x, y]) => [y + 1, () => podGlass(x, y)])],
-      /** Each frame: is a robot rolling out of the fabricator (walking near its door)? Its door glows, and fades after. Still, nothing rolls out. */
+      /**
+       * Each frame: is a robot rolling out of the fabricator (walking near its door)? Its door glows, and fades
+       * after. Finished robots roll on, and crates leave the dock, until they're gone. Still, nothing moves.
+       */
       tick(dt, posOf, snap = false) {
         const out = !snap && scene.farmers.some(f => { const b = posOf(f.id); return b?.walk && Math.abs(b.x - FAB_DOOR[0]) < 30 && Math.abs(b.y - FAB_DOOR[1]) < 4; });
         fabGlow = snap ? 0 : out ? 1 : Math.max(0, fabGlow - dt * 1.5);
+        if (snap) { rolling.length = 0; leaving.length = 0; return; }
+        const cy = L.GRID.y1 + 12, edge = (PXG.ext?.x1 ?? W) + 10;
+        for (const r of [...rolling, ...leaving]) r.t += dt;
+        keep(rolling, r => { const s = stOf(r.key); return Boolean(s) && rollAt(s, cy, r.t).x < edge; });
+        keep(leaving, c => c.t < LEAVE);
       },
+      /** The bay at a point of the floor, if any: a click there opens its close-up. */
+      fieldAt(x, y) { return L.ST.find(s => Math.abs(x - s.cx) <= 40 && y >= s.rowTop && y <= s.rowTop + 56)?.key ?? null; },
       /** The sky by your clock, in the back wall's windows. */
       weather(sky) { drawWindows(sky); },
       /** The building at a point of the floor, if any: each opens something. */
@@ -615,14 +881,28 @@
       },
       /** The projects whose memory the manuals shelf shows: one session in each folder. */
       boardSessions: () => [...new Map(scene.farmers.filter(f => f.kind !== 'codex' && f.cwd).map(f => [f.cwd, f])).values()].slice(0, 8),
-      /** The signs: each bay's name (click it for the files robots touched there), the places' names, each project's, the open pull requests, and "+N" for whoever doesn't fit their place. */
+      /**
+       * The signs: each bay's (click it for the files robots touched there): its name, a blue flag and the branch
+       * when it isn't main, then a worktree's repo, the last deploy in words and a collision; why the stack light
+       * shows on hover; its git counts along its back edge. The places' names, each project's, the open pull
+       * requests, and "+N" for whoever doesn't fit their place.
+       */
       labels(lab, overflow) {
         const { ST, more } = L;
         const cnt = t => pxt(t, '#5a3a1a', null), sign = t => pxt(t, '#fff3d6', '#4e3626');
         for (const s of ST) {
           const f = fieldByKey(s.key);
           if (!f) continue;
-          lab(s.cx, s.rowTop + 49, `<button type="button" class="px-field" data-farm-field="${esc(f.key)}" title="${esc(`${f.key} · Click to see the files robots touched here`)}"><span class="px-fl">${pxt(cutMid(f.name, 16), '#e6eef5')}</span></button>`);
+          const branch = f.branch === '(detached)' ? ` ${pxt('?', '#c3cbd2')}` : f.flag ? ` ${pxt(clip(f.branch, 12), '#a9dcf7')}` : '';
+          const d = f.lastDeploy, deploy = d?.label ? pxt(d.label, { ok: '#8ef0a0', failed: '#ff8a80', running: '#ffd166' }[d.state] ?? '#c9b48a') : '';
+          const second = [f.worktree && f.main ? pxt(`worktree of ${f.main.split('/').pop()}`, '#a9dcf7') : '', deploy, f.collision ? pxt('⚠ crowded', '#ffd166') : ''].filter(Boolean).join(' ');
+          const tip = [f.key, f.branch && `on ${f.branch}`, d && [d.label, d.detail].filter(Boolean).join(': '), 'Click to see the files robots touched here'].filter(Boolean).join(' · ');
+          lab(s.cx, s.rowTop + 49, `<button type="button" class="px-field" data-farm-field="${esc(f.key)}" title="${esc(tip)}"><span class="px-fl">${f.flag ? flagImg() : ''}${pxt(cutMid(f.name, 16), f.collision ? '#ffd166' : '#e6eef5')}${branch}</span>${second ? `<span class="px-fl">${second}</span>` : ''}</button>`, f.collision ? 'bad' : '');
+          // the counts, along the bay's back edge as the farm's are over its beds: behind over the tube outlet, uncommitted on the loose parts' side,
+          // unpushed over the stack light, on the boxes' side (clear of the SHIPPED flash)
+          if (f.behind > 0) lab(outletAt(s)[0], s.rowTop, cnt(`↓${f.behind}`), 'cnt', `${f.behind} commit${f.behind === 1 ? '' : 's'} behind the remote`);
+          if (f.ahead > 0) lab(stackLightAt(s)[0] + 1, s.rowTop, cnt(`↑${f.ahead}`), 'cnt', `${f.ahead} unpushed commit${f.ahead === 1 ? '' : 's'}`);
+          if (f.dirty > 0) lab(s.cx - 17, s.rowTop, cnt(`+${f.dirty}`), 'cnt', `${f.dirty} uncommitted file${f.dirty === 1 ? '' : 's'}`);
         }
         if (!ST.length) lab(262, 150, pxt('No bays yet: no robot has touched a repo in the last 30 minutes', '#fff3d6', '#4e3626'), 'zone');
         lab(200, 31, sign('YOUR DESK'), 'zone'); lab(56, 95, sign('STORAGE'), 'zone'); lab(56, 132, sign('CHARGING'), 'zone'); lab(56, 177, sign('OPEN TABLE'), 'zone');
