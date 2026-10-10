@@ -188,6 +188,11 @@
     slot: (cx, rowTop) => ({ lane: rowTop + 44, x0: cx - 36, y0: rowTop + 12 }),
     fence: rows => ({ x0: 128, x1: 396, y0: 96, y1: 104 + rows * ROWH }), height: fence => fence.y1 + 28,
   });
+  // The power-cell banks (24 wide, their shadow 2 more): the first account's where it always stood; a second
+  // account's on the back wall left of the fabricator, in front of the first window (banksOf).
+  const BANK_X = [286, 4];
+  /** A bank's click box, from its left. */
+  const bankBox = x => ['bank', x, 14, x + 24, 78];
   /**
    * The buildings and their click boxes, [key, x0, y0, x1, y1]. The engine opens two itself: the fabricator
    * ('barn': it starts or resumes a session) and the manuals shelf ('board': CLAUDE.md and memory); the rest
@@ -198,7 +203,7 @@
     ['drones', 96, 30, 126, 78], // the drone dock: subagents
     ['desk', 140, 34, 260, 76], // your desk: who is waiting on you
     ['board', 262, 26, 278, 78], // the manuals shelf
-    ['bank', 286, 14, 310, 78], // the power-cell bank: your plan
+    bankBox(BANK_X[0]), // the power-cell bank: your plan (a second account's comes and goes with it: buildingAt)
     ['dock', 320, 12, 394, 78], // the loading dock: pull requests
   ];
   // The back wall's windows, [x, y, w, h]: the sky by your clock shows in them (drawn each frame, by weather()).
@@ -219,8 +224,9 @@
   const TABLE = [[40, 204], [72, 204], [40, 178], [72, 178]], TABLE_Y = 186; // TABLE_Y: where the table is sorted among the robots
   const PODS = [[24, 250], [54, 250]];
   const RANK = [0, 1, 2, 3, 4, 5].map(i => [14 + 16 * i, 284]);
-  // The power-cell bank's eight cells, [x, y] each (8 × 10): the weekly limit lights them.
-  const CELLS = Array.from({ length: 8 }, (_, i) => [289 + (i % 2) * 10, 29 + (i >> 1) * 11]);
+  // A power-cell bank's eight cells, [x, y] each (8 × 10), for the bank at x: the weekly limit lights them. CELLS: the first bank's.
+  const cellsOf = x => Array.from({ length: 8 }, (_, i) => [x + 3 + (i % 2) * 10, 29 + (i >> 1) * 11]);
+  const CELLS = cellsOf(BANK_X[0]);
   // Colours: warm pale tiles (so the robots' white heads stand out), cream walls over a pale-blue skirting, a cool walkway.
   const FLOOR = '#f4ecd8', GROUT = '#e8d8b0', SHADOW = '#d4c294', WALL = '#e8d8b0', WALL_SEAM = '#d4c294', SKIRT = '#a9dcf7', SKIRT_TOP = '#5ab4ff', BASEBOARD = '#5f7f9a';
   const WALKWAY = '#e6eef5', WALK_SHADOW = '#c3cbd2', YELLOW = '#ffd43b', BLACK = '#2a1d14', BELT = '#a9dcf7';
@@ -249,7 +255,10 @@
   function hazard(f, x, y, w, h) {
     for (let j = 0; j < h; j++) for (let i = 0; i < w; i++) f(x + i, y + j, 1, 1, (x + i + y + j) % 6 < 3 ? YELLOW : BLACK);
   }
-  /** The back wall across the ground: cream panels, a pale-blue skirting, the window frames (their glass is the sky's), an extinguisher and a first-aid box. */
+  /**
+   * The back wall across the ground: cream panels, a pale-blue skirting, the window frames (their glass is the
+   * sky's), an extinguisher and a first-aid box (a second account's bank, drawn each frame, stands in front of them).
+   */
   function backWall(f, x0, x1, y0) {
     f(x0, y0, x1 - x0, 64 - y0, WALL);
     for (let x = Math.floor(x0 / 40) * 40; x < x1; x += 40) f(x, y0, 1, 46 - y0, WALL_SEAM);
@@ -326,14 +335,14 @@
       f(263, y, 14, 2, '#8a8f96'); f(263, y, 14, 1, '#c3cbd2');
     });
   }
-  /** The power-cell bank: a cabinet of eight cells under a lamp (the weekly limit lights them). */
-  function powerBank(f) {
-    f(310, 22, 2, 52, WALL_SEAM); f(287, 76, 25, 1, WALK_SHADOW);
-    f(297, 4, 2, 10, '#3a3a40'); f(294, 14, 8, 6, '#5f6b7a'); f(295, 15, 6, 4, '#c3cbd2'); // its cable, its lamp
-    f(286, 20, 24, 55, '#3a3a40'); f(287, 21, 22, 53, '#c3cbd2'); f(287, 21, 22, 1, '#e6eef5'); f(287, 21, 1, 53, '#e6eef5'); f(306, 21, 3, 53, '#9aa4ad');
-    f(287, 23, 19, 3, '#2fa57a'); f(296, 23, 2, 1, YELLOW); f(295, 24, 2, 1, YELLOW); f(294, 25, 2, 1, YELLOW); // a bolt on its green band
-    for (const [x, y] of CELLS) { f(x, y + 1, 8, 9, '#3a3a40'); f(x + 3, y, 2, 1, '#3a3a40'); f(x + 1, y + 2, 6, 7, '#5f6b7a'); }
-    f(287, 74, 3, 2, '#3a3a40'); f(306, 74, 3, 2, '#3a3a40');
+  /** A power-cell bank, its left at x: a cabinet of eight cells under a lamp (the weekly limit lights them: powerCells). */
+  function powerBank(f, x = BANK_X[0]) {
+    f(x + 24, 22, 2, 52, WALL_SEAM); f(x + 1, 76, 25, 1, WALK_SHADOW);
+    f(x + 11, 4, 2, 10, '#3a3a40'); f(x + 8, 14, 8, 6, '#5f6b7a'); f(x + 9, 15, 6, 4, '#c3cbd2'); // its cable, its lamp
+    f(x, 20, 24, 55, '#3a3a40'); f(x + 1, 21, 22, 53, '#c3cbd2'); f(x + 1, 21, 22, 1, '#e6eef5'); f(x + 1, 21, 1, 53, '#e6eef5'); f(x + 20, 21, 3, 53, '#9aa4ad');
+    f(x + 1, 23, 19, 3, '#2fa57a'); f(x + 10, 23, 2, 1, YELLOW); f(x + 9, 24, 2, 1, YELLOW); f(x + 8, 25, 2, 1, YELLOW); // a bolt on its green band
+    for (const [cx, cy] of cellsOf(x)) { f(cx, cy + 1, 8, 9, '#3a3a40'); f(cx + 3, cy, 2, 1, '#3a3a40'); f(cx + 1, cy + 2, 6, 7, '#5f6b7a'); }
+    f(x + 1, 74, 3, 2, '#3a3a40'); f(x + 20, 74, 3, 2, '#3a3a40');
   }
   /** The loading dock: a roll-up door half up in a hazard-striped frame, a trailer's dark inside, the dock plate in front (the crates are drawn each frame). */
   function loadingDock(f) {
@@ -487,6 +496,13 @@
     }));
   }
   const QA = { ok: '#2fa57a', failed: '#e04a3a', draft: '#9aa4ad', none: '#e8d8b0' }; // running: amber, blinking
+  /** A painter that paints with f only inside the windows' glass. */
+  const inWindows = f => (x, y, w, h, c) => {
+    for (const [wx, wy, ww, wh] of WINDOWS) {
+      const a = Math.max(x, wx), b = Math.max(y, wy), e = Math.min(x + w, wx + ww), g = Math.min(y + h, wy + wh);
+      if (e > a && g > b) f(a, b, e - a, g - b, c);
+    }
+  };
   /**
    * The sky in the windows, by your clock (the engine's sky, which the Sky switch can hold at day or night):
    * blue by day with the sun and clouds going by, rose at dawn and dusk, dark with stars and the moon at night.
@@ -494,13 +510,7 @@
   function drawWindows(sky) {
     const T = PXG.T, night = sky.phase === 'night', dusk = sky.phase === 'dawn' || sky.phase === 'dusk';
     const [hi, mid, lo] = night ? ['#1b1420', '#2c4a85', '#3d7be0'] : dusk ? ['#5a3b85', '#d55181', '#f4b6c2'] : ['#3d7be0', '#5ab4ff', '#a9dcf7'];
-    /** A rectangle of the sky, only where it shows: inside the windows. */
-    const pane = (x, y, w, h, c) => {
-      for (const [wx, wy, ww, wh] of WINDOWS) {
-        const a = Math.max(x, wx), b = Math.max(y, wy), e = Math.min(x + w, wx + ww), g = Math.min(y + h, wy + wh);
-        if (e > a && g > b) px(a, b, e - a, g - b, c);
-      }
-    };
+    const pane = inWindows(px); // a rectangle of the sky, only where it shows
     pane(0, 6, W, 8, hi); pane(0, 14, W, 8, mid); pane(0, 22, W, 8, lo);
     if (night) for (let i = 0; i < 24; i++) if ((i + Math.floor(T * 0.7 + i * 0.3)) % 5) pane((i * 53 + 7) % W, 7 + ((i * 17) % 20), 1, 1, i % 3 ? '#ffffff' : '#ffe8a3'); // stars, twinkling
     if (sky.sun) { const x = Math.round(sky.sun.x), y = 10 + Math.round(sky.sun.y); pane(x - 2, y - 3, 5, 7, '#ffd43b'); pane(x - 3, y - 2, 7, 5, '#ffd43b'); pane(x - 1, y - 2, 3, 3, '#ffe8a3'); }
@@ -745,6 +755,17 @@
     const pct = Math.round(Math.max(0, Math.min(100, used)));
     return { lit: Math.round(8 * (1 - pct / 100)), lamp: pct >= 90 ? 'red' : pct >= 70 ? 'amber' : 'green', pct, resetsAt: w.resetsAt ?? null, reset: Boolean(w.reset) };
   }
+  /** An account's name, or its number when it has none (account 1, account 2). */
+  const accountName = (a, i) => a?.name || `account ${i + 1}`;
+  /**
+   * A power-cell bank per Claude account (two at most), as the farm's silosOf: [{ x, name, bank }]. With fewer than
+   * two accounts, the plan's bank and no name on it. The floor heat stays the plan's: the first account's.
+   */
+  function banksOf(scene) {
+    const accs = scene.accounts ?? [];
+    if (accs.length < 2) return [{ x: BANK_X[0], name: null, bank: bankOf(scene.plan) }];
+    return accs.slice(0, 2).map((a, i) => ({ x: BANK_X[i], name: accountName(a, i), bank: bankOf(a.plan) }));
+  }
   /** When a limit resets, short: Tue 09:00. */
   const resetAt = at => new Date(at).toLocaleString([], { weekday: 'short', hour: '2-digit', minute: '2-digit' });
 
@@ -794,14 +815,15 @@
     }
     PXG.ctx.globalAlpha = 1;
   }
-  // The power-cell bank's cells fill from the bottom row up (CELLS: two a row, top to bottom).
+  // A power-cell bank's cells fill from the bottom row up (cellsOf: two a row, top to bottom).
   const FILL_ORDER = [6, 7, 4, 5, 2, 3, 0, 1], CHARGED = '#2fa57a';
   const LAMP_COLOURS = { green: '#6cc04a', amber: '#f0b429', red: '#e04a3a' };
-  /** The bank's cells and lamp, for its reading (none: every cell dark, the lamp off). */
-  function powerCells(bank) {
+  /** A bank's cells and lamp, its left at x, for its reading (none: every cell dark, the lamp off); f paints. */
+  function powerCells(bank, x = BANK_X[0], f = px) {
     if (!bank) return;
-    for (const i of FILL_ORDER.slice(0, bank.lit)) { const [x, y] = CELLS[i]; px(x + 1, y + 2, 6, 7, CHARGED); px(x + 1, y + 2, 6, 1, '#6cc04a'); px(x + 2, y + 3, 1, 5, '#9ed36a'); }
-    if (bank.lamp !== 'red' || blink(2)) { px(295, 15, 6, 4, LAMP_COLOURS[bank.lamp]); px(296, 15, 2, 1, '#ffffff'); } else px(295, 15, 6, 4, '#5a1f19'); // red blinks: between flashes, unlit red (no reading: grey)
+    const cells = cellsOf(x);
+    for (const i of FILL_ORDER.slice(0, bank.lit)) { const [cx, cy] = cells[i]; f(cx + 1, cy + 2, 6, 7, CHARGED); f(cx + 1, cy + 2, 6, 1, '#6cc04a'); f(cx + 2, cy + 3, 1, 5, '#9ed36a'); }
+    if (bank.lamp !== 'red' || blink(2)) { f(x + 9, 15, 6, 4, LAMP_COLOURS[bank.lamp]); f(x + 10, 15, 2, 1, '#ffffff'); } else f(x + 9, 15, 6, 4, '#5a1f19'); // red blinks: between flashes, unlit red (no reading: grey)
   }
 
   /* ---------- the props and drones: what robots hold, what is on and over them, drones, AGVs, capsules ---------- */
@@ -1098,12 +1120,13 @@
   }
 
   // The delivery drone: a web call going on (not a browser's: its AGV goes). It rises from its robot, flies out of
-  // the window nearest it and is away a while, then comes back with a parcel: 8 s a round, each robot on its own beat.
+  // the window nearest it (of `windows`: those no bank stands in front of) and is away a while, then comes back with
+  // a parcel: 8 s a round, each robot on its own beat.
   /** Where a robot's delivery drone is: { x, y, far (going through the window: seen small), parcel, away (out of sight, at its window) }, or null. */
-  function deliveryAt(f, b, T) {
+  function deliveryAt(f, b, T, windows = WINDOWS) {
     if (!b || f.state !== 'working' || !f.service || f.step !== 'web' || String(f.tool ?? '').startsWith('mcp__')) return null;
     const ph = (T / 8 + (hashOf(f.id) % 97) / 97) % 1;
-    const [wx, wy, ww, wh] = WINDOWS.reduce((best, w) => (Math.abs(w[0] + w[2] / 2 - b.x) < Math.abs(best[0] + best[2] / 2 - b.x) ? w : best));
+    const [wx, wy, ww, wh] = windows.reduce((best, w) => (Math.abs(w[0] + w[2] / 2 - b.x) < Math.abs(best[0] + best[2] / 2 - b.x) ? w : best));
     const from = [b.x + 2, b.y - 26], to = [wx + ww / 2, wy + wh / 2];
     if (ph >= 0.4 && ph < 0.6) return { x: to[0], y: to[1], away: true };
     const s = ph < 0.4 ? ph / 0.4 : 1 - (ph - 0.6) / 0.4, e = s < 0.5 ? 2 * s * s : 1 - (-2 * s + 2) ** 2 / 2;
@@ -1331,7 +1354,10 @@
       if (f.state === 'turn' && !b.walk) { rp(4, 5, 2, 1, E); rp(8, 5, 2, 1, E); rp(6, 7, 2, 1, E); return; } // pleased: a squint and a grin
       rp(5, down ? 6 : 5, 1, 2, E); rp(8, down ? 6 : 5, 1, 2, E);
     };
-    /** The limits, each frame: the thermometer and the floor vents at the heat shown (fans, a shimmer, steam), the power-cell bank's cells and lamp. */
+    /**
+     * The limits, each frame: the thermometer and the floor vents at the heat shown (fans, a shimmer, steam), each
+     * power-cell bank's cells and lamp (a second account's bank is drawn here too, the floor having only the first).
+     */
     function drawLimits() {
       const level = shown(), T = PXG.T, fan = (HEAT[level] ?? HEAT.summer).fan;
       thermometer(level);
@@ -1341,16 +1367,26 @@
         if (level === 'autumn') shimmer(x, y, T);
         if (level === 'winter') steamPuffs(x, y, T, i);
       });
-      powerCells(bankOf(scene.plan));
+      for (const { x, bank } of banksOf(scene)) {
+        if (x !== BANK_X[0]) powerBank(px, x);
+        powerCells(bank, x);
+      }
     }
-    /** The power-cell bank's tooltip: the week's % used, the cells left and when it resets; or that there is no reading. */
+    /**
+     * The power-cell bank's tooltip: the week's % used, the cells left and when it resets; or that there is no
+     * reading. With two accounts, that there is a bank for each, and each one's week.
+     */
     function bankTip() {
-      const b = bankOf(scene.plan);
+      const banks = banksOf(scene);
+      if (banks.length > 1) return `The power-cell banks, one for each of your Claude accounts (the week used: ${banks.map(({ name, bank }) => `${name} ${bank ? `${bank.pct}%` : 'no reading'}`).join(', ')}). Click for their plans`;
+      const b = banks[0].bank;
       if (!b) return "The power-cell bank: your plan's weekly limit, no reading yet (it comes from the mod in a running session)";
       return `The power-cell bank: your plan's weekly limit, ${b.reset ? 'just reset' : `${b.pct}% used`}, ${b.lit} of 8 cells left${b.resetsAt ? `; resets ${resetAt(b.resetsAt)}` : ''}. Click for your plan`;
     }
     /** A robot welding: working on an edit (the welder's step; plan mode is the blueprint). */
     const welding = f => f.state === 'working' && props.doing(f) === props.steps.edit;
+    /** The windows a delivery drone can fly out of: those no bank stands in front of. */
+    const openWindows = () => WINDOWS.filter(([wx, , ww]) => !banksOf(scene).some(({ x }) => wx < x + 24 && x < wx + ww));
     /** What moves on the floor, or reads the scene, each frame: the beacon over your desk, the drones docked, the crates on the dock, the conveyor's slats, the fabricator's glow. */
     function drawWorkshop() {
       const T = PXG.T, waiting = scene.farmers.some(f => f.state === 'waiting'), on = waiting && !blink(2);
@@ -1485,14 +1521,13 @@
       },
       /**
        * Lights that glow at night, [x, y, reach, the lit shape or null]: the desk lamp (its bulb lit), your desk's
-       * screen and the fabricator's, every stack light with a lamp on, the bank's lamp, the fabricator's door while a
+       * screen and the fabricator's, every stack light with a lamp on, each bank's lamp, the fabricator's door while a
        * robot rolls out, and each welding robot's spark. The rest (the robots waiting on you) the engine adds.
        */
       lights() {
         const out = [[158, 49, 14, [156, 46, 5, 1]], [201, 47, 12, null], [47, 33, 9, null]];
         for (const s of L.ST) { const f = fieldByKey(s.key); if (f?.light && f.light !== 'other') out.push([...stackLightAt(s), 9, null]); } // 'other': every lamp off
-        const bank = bankOf(scene.plan);
-        if (bank && (bank.lamp !== 'red' || blink(2))) out.push([298, 17, 7, null]);
+        for (const { x, bank } of banksOf(scene)) if (bank && (bank.lamp !== 'red' || blink(2))) out.push([x + 12, 17, 7, null]);
         if (fabGlow > 0) out.push([62, 62, Math.round(20 * fabGlow), null]);
         for (const f of scene.farmers) { const b = welding(f) ? where(f.id) : null; if (b && !b.walk) out.push([Math.round(b.x) - 7 + WELD_TIP[0], Math.round(b.y) - 16 + WELD_TIP[1], 5 + 2 * blink(9), null]); } // at its welder's tip
         return out;
@@ -1521,10 +1556,17 @@
       },
       /** The bay at a point of the floor, if any: a click there opens its close-up. */
       fieldAt(x, y) { return L.ST.find(s => Math.abs(x - s.cx) <= 40 && y >= s.rowTop && y <= s.rowTop + 56)?.key ?? null; },
-      /** The sky by your clock, in the back wall's windows. */
-      weather(sky) { drawWindows(sky); },
+      /**
+       * The sky by your clock, in the back wall's windows. A second account's bank stands in front of the first
+       * window: what of it is in the glass is painted again, over the sky.
+       */
+      weather(sky) {
+        drawWindows(sky);
+        const glass = inWindows(px);
+        for (const { x, bank } of banksOf(scene).slice(1)) { powerBank(glass, x); powerCells(bank, x, glass); }
+      },
       /** The building at a point of the floor, if any: each opens something. */
-      buildingAt(x, y) { return BUILDINGS.find(([, x0, y0, x1, y1]) => x >= x0 && x <= x1 && y >= y0 && y <= y1)?.[0] ?? null; },
+      buildingAt(x, y) { return [...BUILDINGS, ...banksOf(scene).slice(1).map(b => bankBox(b.x))].find(([, x0, y0, x1, y1]) => x >= x0 && x <= x1 && y >= y0 && y <= y1)?.[0] ?? null; },
       buildingTip: k => (k === 'bank' ? bankTip() : {
         barn: 'The fabricator: start a new session or resume one (a new robot rolls out of its door)', drones: 'The drone dock: subagents', desk: 'Your desk: who is waiting on you',
         board: 'The manuals shelf: what your projects remember (CLAUDE.md and memory)', dock: 'The loading dock: pull requests',
@@ -1535,9 +1577,13 @@
           const list = scene.farmers.filter(f => f.state === 'waiting' || f.state === 'turn');
           return { title: 'Your desk', html: list.length ? `<ul class="px-dl">${list.map(f => `<li><button type="button" class="act" data-farm-pick="${esc(f.id)}">Open</button><span><b>${esc(f.name)}</b> ${esc(f.state === 'waiting' ? (f.planAsk ? 'has a plan for you to approve' : `needs you: ${f.ask}`) : f.question ? `asks: ${f.question}` : `finished${f.reply ? `: ${f.reply}` : ''}`)}</span></li>`).join('')}</ul>` : '<p class="muted">No robot is waiting on you.</p>' };
         }
-        if (k === 'bank') {
-          const ws = scene.plan?.windows ?? [], name = w => ({ five_hour: '5-hour limit', seven_day: 'Weekly limit' })[w.kind] ?? w.kind;
-          return { title: 'The power-cell bank: your plan', html: ws.length ? ws.map(w => { const used = usedOf(w), pct = used === null ? 0 : Math.round(used); return `<div class="px-meter"><b>${esc(name(w))}</b><span class="bar"><i style="width:${Math.min(100, pct)}%"></i></span><span>${w.reset ? 'just reset' : used === null ? 'no reading' : `${pct}% used`}${w.resetsAt ? ` · resets ${esc(resetAt(w.resetsAt))}` : ''}</span></div>`; }).join('') + '<p class="muted">The cells are the week; the floor heat is the 5-hour limit (steaming when it is nearly used up).</p>' : '<p class="muted">No reading of your plan yet: it comes from the mod in a running session.</p>' };
+        if (k === 'bank') { // with two accounts or more, each one's meters under its name (as the farm's silo dialog)
+          const name = w => ({ five_hour: '5-hour limit', seven_day: 'Weekly limit' })[w.kind] ?? w.kind;
+          const meters = ws => ws.map(w => { const used = usedOf(w), pct = used === null ? 0 : Math.round(used); return `<div class="px-meter"><b>${esc(name(w))}</b><span class="bar"><i style="width:${Math.min(100, pct)}%"></i></span><span>${w.reset ? 'just reset' : used === null ? 'no reading' : `${pct}% used`}${w.resetsAt ? ` · resets ${esc(resetAt(w.resetsAt))}` : ''}</span></div>`; }).join('');
+          const accs = scene.accounts ?? [];
+          if (accs.length > 1) return { title: "The power-cell banks: your accounts' plans", html: accs.map((a, i) => `<h4>${esc(accountName(a, i))}</h4>${a.plan?.windows?.length ? meters(a.plan.windows) : '<p class="muted">No reading yet: it comes from the mod in a session running on it.</p>'}`).join('') + `<p class="muted">Each bank's cells are its account's week. The floor heat follows ${esc(accountName(accs[0], 0))}'s 5-hour limit (steaming when it is nearly used up).</p>` };
+          const ws = scene.plan?.windows ?? [];
+          return { title: 'The power-cell bank: your plan', html: ws.length ? meters(ws) + '<p class="muted">The cells are the week; the floor heat is the 5-hour limit (steaming when it is nearly used up).</p>' : '<p class="muted">No reading of your plan yet: it comes from the mod in a running session.</p>' };
         }
         if (k === 'drones') {
           const subs = scene.subagents ?? [];
@@ -1556,8 +1602,8 @@
       /**
        * The signs: each bay's (click it for the files robots touched there): its name, a blue flag and the branch
        * when it isn't main, then a worktree's repo, the last deploy in words and a collision; why the stack light
-       * shows on hover; its git counts along its back edge. The places' names, each project's, the open pull
-       * requests, and "+N" for whoever doesn't fit their place.
+       * shows on hover; its git counts along its back edge. With two accounts, each power-cell bank's tag. The
+       * places' names, each project's, the open pull requests, and "+N" for whoever doesn't fit their place.
        */
       labels(lab, overflow) {
         const { ST, more } = L;
@@ -1577,6 +1623,11 @@
           if (f.dirty > 0) lab(s.cx - 17, s.rowTop, cnt(`+${f.dirty}`), 'cnt', `${f.dirty} uncommitted file${f.dirty === 1 ? '' : 's'}`);
         }
         if (!ST.length) lab(262, 150, pxt('No bays yet: no robot has touched a repo in the last 30 minutes', '#fff3d6', '#4e3626'), 'zone');
+        for (const { x, name, bank } of banksOf(scene)) { // with two accounts, each bank's tag on the walkway at its foot: its account's name and week (the engine's tag colours near the limit)
+          if (!name) continue;
+          const text = `${name} ${bank ? `${bank.pct}%` : '–'}`, near = bank?.lamp === 'green' ? null : bank?.lamp;
+          lab(x + 12, 87, near === 'red' ? pxt(text, '#ffffff', null) : cnt(text), `cnt${near ? ` silo-${near}` : ''}`, `The power-cell bank of ${name}: ${bank ? `its plan's weekly limit, ${bank.reset ? 'just reset' : `${bank.pct}% used`}, ${bank.lit} of 8 cells left${bank.resetsAt ? `; resets ${resetAt(bank.resetsAt)}` : ''}` : 'no reading of its plan yet'}`);
+        }
         lab(200, 31, sign('YOUR DESK'), 'zone'); lab(56, 95, sign('STORAGE'), 'zone'); lab(56, 132, sign('CHARGING'), 'zone'); lab(56, 177, sign('OPEN TABLE'), 'zone');
         for (const g of L.groups) { const [r, cols] = rowsOfGroup(g)[0]; lab(174 + Math.min(...cols) * COLW + 44, 100 + r * ROWH - 1, sign(clip(g.name, 16)), 'zone proj', `The ${g.name} project: its repos side by side`); }
         const open = scene.fields.flatMap(fl => fl.prs?.open ?? []);
@@ -1641,8 +1692,9 @@
           const who = c.busy ? scene.farmers.find(f => f.id === c.busy) : null;
           out.push({ key: `mcp:${c.server}`, x: s.x, y: s.y - 11, html: pxt(cutMid(c.server, 16), '#5a3a1a', null), title: `${c.server}, an MCP server${who ? `: ${who.name} is calling it` : ''}` });
         }
+        const windows = openWindows();
         for (const f of scene.farmers) {
-          const b = posOf(f.id), d = deliveryAt(f, b, PXG.T);
+          const b = posOf(f.id), d = deliveryAt(f, b, PXG.T, windows);
           if (d) out.push({ key: `drone:${f.id}`, x: d.x, y: d.y - 5, html: pxt(clip(f.service, 18), '#5a3a1a', null), title: `${f.name}: ${f.summary || f.service}` });
           if (f.nap && f.wakeAt && b?.zone === 'nap' && !b.walk) out.push({ key: `nap:${f.id}`, x: b.x, y: b.y - 36, html: pxt(`wakes in ${until(f.wakeAt)}`, '#5a3a1a', null), title: `${f.name} wakes up by itself at ${clock(f.wakeAt)}` });
         }
@@ -1656,7 +1708,8 @@
         drawTubes(L);
         const more = Math.min(3, scene.henhouse?.roosting ?? 0);
         for (let i = 0; i < more; i++) { const a = T * 1.4 + (i * 2 * Math.PI) / 3; drone(Math.round(111 + Math.cos(a) * 11), Math.round(21 + Math.sin(a) * 4), '#f0b429', T, i); }
-        for (const f of scene.farmers) { const d = deliveryAt(f, where(f.id), T); if (d) deliveryDrone(d, T); }
+        const windows = openWindows();
+        for (const f of scene.farmers) { const d = deliveryAt(f, where(f.id), T, windows); if (d) deliveryDrone(d, T); }
       },
       /** A message from one robot to another: a capsule through the tubes, from a to z, t of the way (0–1), eased. */
       flight(a, z, t) {
@@ -1686,10 +1739,10 @@
       <b>Stack light</b><span>the repo's last deploy, from GitHub Actions or a deploy an agent ran itself (a deploy script over ssh, rsync, vercel…), whichever is newer: green with a SHIPPED flash = deployed, red with sparks = deploy failed (hover its sign for why; the close-up links to the run), amber with turning gears = deploying, a grey pause light = Actions didn't run (billing, a spending limit). Hazard tape round a bay = two agents writing one repo, pulsing faster when it's serious</span>
       <b>Loading dock</b><span>a crate for each open pull request, its QA tag the checks (green pass, red failed, amber running, grey draft); “Shipped!” = one merged, rolling out of the door</span>
       <b>Charging pads, storage, the open table</b><span>idle robots charge on the pads on the left (eyes shut, a charging bolt); stale ones stand powered down and grey on the storage shelf; robots working outside any repo work at the open table. When more come than a place holds, a +N says how many more</span>
-      <b>Buildings</b><span>click the fabricator to start or resume a session, your desk for who is waiting on you, the power-cell bank for your plan's usage, the drone dock for subagents, the manuals shelf for CLAUDE.md and memory, the loading dock for pull requests</span>
+      <b>Buildings</b><span>click the fabricator to start or resume a session, your desk for who is waiting on you, the power-cell bank for your plan's usage (a bank for each Claude account, when you have two), the drone dock for subagents, the manuals shelf for CLAUDE.md and memory, the loading dock for pull requests</span>
       <b>Robots</b><span>one per agent, put together from a head, a body and a drive picked by its agent, so the same agent is always the same robot; its body is the agent's colour in the list. Hover one for its name; names always show for the robot you picked and those at your desk</span>
       <b>Speech bubbles</b><span>what a robot asked or last said; × hides one to a 💬 (click it to show the bubble again); a new message brings it back by itself. The Bubbles switch hides or shows them all</span>
-      <b>Power-cell bank</b><span>its lit cells are what is left of your plan's weekly limit: they drain as the week is used (the % on hover, and when it resets); its lamp turns amber from 70% and blinks red from 90%</span>
+      <b>Power-cell bank</b><span>its lit cells are what is left of your plan's weekly limit: they drain as the week is used (the % on hover, and when it resets); its lamp turns amber from 70% and blinks red from 90%. With two Claude accounts, each has a power-cell bank (the second on the back wall, left of the fabricator), its name and week on the tag at its foot; the floor heat follows the first account's 5-hour limit</span>
       <b>Floor heat</b><span>follows your plan's 5-hour limit, on the thermometer by your desk and in the floor vents between the bays: cool while it is fresh (blue, the vents' fans turning slowly), then warm (the fans faster), hot (the fans racing, a shimmer over the vents), and steaming (steam from the vents, sparks off the machines) when it is nearly used up; a new window cools it again. The Heat switch holds one instead (each click moves it on, then back to live): the panel then shows the heat with a 📌 and your real 5-hour use</span>
       <b>Capsules</b><span>one agent messaging another (Claude Code's SendMessage between sessions): a capsule shoots through the pneumatic tubes overhead from one robot to the other, and the floor log says what it said; the agents' conversations show it too</span>
       <b>Animals</b><span>a robot dog, a robot vacuum and a cat that naps on the conveyor live here just for fun: they never stand for anything. Click one (or the belt, for the cat) to pet it, oil the dog, empty the vacuum or feed the cat: the nearest robot that isn't waiting on you rolls over and does it. Now and then the vacuum chases the cat and wedges itself in a corner until a robot frees it; the dog runs to meet a new robot and to the loading dock when a pull request ships. The Animals switch hides them</span>
@@ -1705,7 +1758,7 @@
   window.Agentville.world(makeFactory());
   // The factory's own pieces, for its tests.
   window.AgentvilleFactory = {
-    HEADS, BODIES, DRIVES, lookOf, robotRows, robotSprite, factoryScene, makeFactory, WINDOWS, RANK, CELLS, dockCrates, outletAt, stackLightAt, ventsOf, bankOf, THERMOMETER, STEAM, CHARGED,
+    HEADS, BODIES, DRIVES, lookOf, robotRows, robotSprite, factoryScene, makeFactory, WINDOWS, RANK, CELLS, dockCrates, outletAt, stackLightAt, ventsOf, bankOf, banksOf, BANK_X, THERMOMETER, STEAM, CHARGED,
     props, FACTORY_PROPS: Object.keys(FACTORY_PROPS), WELD_TIP, agvRoute, agvGoal,
   };
 })();

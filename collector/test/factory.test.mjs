@@ -825,6 +825,142 @@ test('no plan reading: warm, the bank shows no reading, and the Heat switch can 
   assert.ok(!F.CELLS.some(([x, y]) => dom.calls.rects.some(r => r[0] === ink(F.CHARGED) && inBox([x, y, 8, 10])(r))), 'no cell lit');
 });
 
+/* ---------- several Claude accounts: a power-cell bank for each (two at most) ---------- */
+
+/** A Claude account as the collector sends it: its name, and its plan's 5-hour and weekly % (both null: no reading). */
+const account = (name, five, week) => ({ key: name, name, plan: five === null && week === null ? null : planned(five, week).plan });
+/** The shop's bay, the plan the first account's (as the collector sends it), and these accounts. */
+const accounts = (...list) => ({ ...planned(30, 40), accounts: list });
+const TWO = accounts(account('work', 30, 40), account('home', 95, 92));
+/** The colour last painted at a point, of these fills. */
+const lastAt = (rects, x, y) => rects.reduce((c, [col, rx, ry, w, hh]) => (x >= rx && x < rx + w && y >= ry && y < ry + hh ? col : c), null);
+
+test('banksOf: a power-cell bank for each Claude account, two at most, the first where it always stood; with one account, the plan\'s and no name', () => {
+  const { F, sceneOf } = bays();
+  const banks = snap => plain(F.banksOf(sceneOf(snap)).map(b => [b.x, b.name, b.bank?.pct ?? null, b.bank?.lit ?? null]));
+  const [first, second] = F.BANK_X;
+  assert.equal(first, 286, 'the first where it always stood');
+  assert.ok(second + 26 <= 30, `the second on the back wall left of the fabricator (x ${second}–${second + 24}, its shadow 2 more)`);
+  assert.deepEqual(banks(planned(30, 40)), [[first, null, 40, 5]], 'no accounts (an older collector): the plan\'s bank');
+  assert.deepEqual(banks(accounts(account('work', 30, 40))), [[first, null, 40, 5]], 'one account: no name on it');
+  assert.deepEqual(banks(TWO), [[first, 'work', 40, 5], [second, 'home', 92, 1]], "two: each its own account's week");
+  assert.deepEqual(banks(accounts(account('work', 30, 40), account('home', 95, 92), account('lab', 5, 5))), [[first, 'work', 40, 5], [second, 'home', 92, 1]], 'three: the first two');
+  assert.deepEqual(banks(accounts(account('work', 30, 40), account('home', null, null))), [[first, 'work', 40, 5], [second, 'home', null, null]], 'a missing plan: no reading');
+  assert.deepEqual(banks(accounts({ key: 'a', plan: null }, { key: 'b', name: '', plan: null })).map(b => b[1]), ['account 1', 'account 2'], 'a nameless account: by its number');
+  assert.deepEqual(banks({ ...bay(), plan: null }), [[first, null, null, null]], 'no plan reading');
+});
+
+test('buildingAt: with two accounts, the second bank is a bank too; with one, the wall there is none', () => {
+  const { h, sceneOf, F } = bays();
+  const scene = sceneOf(planned(30, 40)), x = F.BANK_X[1];
+  h.relayout(h.grid.layoutFor(scene.fields));
+  h.setScene(scene);
+  const inside = [[x + 12, 50], [x, 14], [x + 24, 78], [x + 12, 20]];
+  for (const [px, py] of inside) assert.equal(h.buildingAt(px, py), null, `one account: ${px},${py} is the wall`);
+  h.setScene(sceneOf(TWO));
+  for (const [px, py] of inside) assert.equal(h.buildingAt(px, py), 'bank', `two accounts: ${px},${py} is the second bank`);
+  assert.equal(h.buildingAt(298, 50), 'bank', 'the first where it stood');
+  assert.equal(h.buildingAt(60, 50), 'barn', 'the fabricator beside it');
+  assert.equal(h.buildingAt(x + 25, 50), null, 'a gap between the second bank and the fabricator');
+});
+
+test("the second bank: drawn only with two accounts, its cells lit from its own account's week, its lamp by it", () => {
+  const { F, PXG, ground, ctx } = bays();
+  const ink = vm.runInContext('ink', ctx), [first, second] = F.BANK_X;
+  const cellsOf = x => F.CELLS.map(([cx, cy]) => [cx - first + x, cy]);
+  const lit = (rects, x) => cellsOf(x).filter(([cx, cy]) => rects.some(r => r[0] === ink(F.CHARGED) && inBox([cx, cy, 8, 10])(r))).length;
+  const lamp = (rects, x) => lastAt(rects, x + 10, 16);
+  PXG.T = 0;
+  const one = ground(accounts(account('work', 30, 40))).rects;
+  assert.equal(one.filter(inBox([second - 2, 0, 32, 80])).length, 0, 'one account: nothing drawn left of the fabricator each frame');
+  assert.equal(lit(one, first), 5, "the bank: the plan's week, 40%");
+  const two = ground(accounts(account('work', 30, 40), account('home', 30, 75))).rects;
+  assert.ok(two.some(r => r[0] === ink('#c3cbd2') && inBox([second, 20, 24, 56])(r)), 'two: the second cabinet drawn');
+  assert.equal(lit(two, first), 5, "the first: work's week, 40%");
+  assert.equal(lit(two, second), 2, "the second: home's week, 75%");
+  assert.equal(lamp(two, first), ink('#6cc04a'), 'the first lamp green');
+  assert.equal(lamp(two, second), ink('#f0b429'), 'the second amber');
+  const none = ground(accounts(account('work', 30, 40), account('home', null, null))).rects;
+  assert.ok(none.some(inBox([second, 20, 24, 56])), 'a second account with no reading still has its bank');
+  assert.deepEqual([lit(none, second), lamp(none, second)], [0, ink('#c3cbd2')], 'no cell lit, its lamp off');
+});
+
+test('the second bank stands in front of its window: the sky goes behind its cable, lamp and cabinet; delivery drones use another window', () => {
+  const { h, F, PXG, dom, ground, ctx, sceneOf } = bays();
+  const ink = vm.runInContext('ink', ctx), x = F.BANK_X[1], CABLE = [x + 11, 8], LAMP = [x + 10, 16], CABINET = [x + 5, 27];
+  const [wx, wy, ww, wh] = F.WINDOWS[0];
+  assert.ok([CABLE, LAMP, CABINET].every(([px, py]) => px >= wx && px < wx + ww && py >= wy && py < wy + wh), 'the points looked at are in the first window');
+  const sky = rects => { dom.calls.rects.length = 0; h.weather({ phase: 'day', light: 1, sun: null, moon: null }); return [...rects, ...dom.calls.rects.map(r => [...r])]; };
+  PXG.T = 0;
+  const one = sky(ground(accounts(account('work', 30, 40))).rects);
+  assert.notEqual(lastAt(one, ...CABLE), ink('#3a3a40'), 'one account: the window is sky');
+  const two = sky(ground(accounts(account('work', 30, 40), account('home', 30, 75))).rects);
+  assert.equal(lastAt(two, ...CABLE), ink('#3a3a40'), 'its cable, over the sky');
+  assert.equal(lastAt(two, ...LAMP), ink('#f0b429'), 'its lamp, amber');
+  assert.equal(lastAt(two, ...CABINET), ink('#c3cbd2'), 'its cabinet');
+  dom.calls.rects.length = 0;
+  h.weather({ phase: 'night', light: 0, sun: null, moon: { x: 230, y: 8 } });
+  for (const [c, rx, ry, w, hh] of dom.calls.rects) assert.ok(F.WINDOWS.some(([a, b, c2, d]) => rx >= a && ry >= b && rx + w <= a + c2 && ry + hh <= b + d), `weather draws only in the windows (${c} at ${rx},${ry})`);
+  // a robot at the open table, on a web call: its delivery drone flies out of the nearest window, the first; not while a bank stands in front of it
+  const caller = person('w', { cwd: '/Users/you/elsewhere', now: { tool: 'WebFetch', summary: 'the docs', step: 'web', service: 'docs.example.com', startedAt: Date.now() - 2000 } });
+  const posOf = () => ({ x: 40, y: 204, tx: 40, ty: 204, walk: false });
+  const farthest = snap => {
+    h.setScene(sceneOf({ ...snap, agents: [caller] }));
+    return Math.min(...Array.from({ length: 160 }, (_, i) => { PXG.T = i / 20; return h.movers(posOf).find(m => m.key === 'drone:w')?.x ?? Infinity; }));
+  };
+  assert.ok(farthest(accounts(account('work', 30, 40))) < wx + ww, 'one account: out of the first window');
+  assert.ok(farthest(TWO) >= x + 26, 'two: never in front of the second bank');
+});
+
+test("with two accounts: each bank's tag at its foot, its account's name and week; the tip says there is one for each account; the dialog each account's meters, and whose 5-hour limit heats the floor", () => {
+  const { h, sceneOf, F } = bays();
+  const tags = snap => {
+    const scene = sceneOf(snap);
+    h.relayout(h.grid.layoutFor(scene.fields));
+    h.setScene(scene);
+    const out = [];
+    h.labels((x, y, html, cls = '', title = '') => out.push({ x, y, html: String(html), cls, title }), {});
+    return out.filter(l => /power-cell bank/.test(l.title));
+  };
+  assert.deepEqual(tags(planned(30, 40)), [], 'one account: no tag (the cells show the week, the tip its %)');
+  const oneTip = h.buildingTip('bank'), oneDialog = plain(h.dialog('bank'));
+  assert.equal(oneDialog.title, 'The power-cell bank: your plan');
+  tags(accounts(account('work', 30, 40)));
+  assert.deepEqual([h.buildingTip('bank'), plain(h.dialog('bank'))], [oneTip, oneDialog], "one account: today's tip and dialog");
+  const [work, home] = tags(TWO);
+  for (const [tag, x, name, pct] of [[work, F.BANK_X[0], 'work', 40], [home, F.BANK_X[1], 'home', 92]]) {
+    assert.ok(tag && Math.abs(tag.x - (x + 12)) <= 2 && tag.y >= 80 && tag.y <= 90, `${name}'s tag on the walkway under its bank (${tag?.x},${tag?.y})`);
+    assert.ok(tag.html.includes(`${name} ${pct}%`), `${name}'s tag: its name and week (${tag.html})`);
+    assert.match(tag.title, new RegExp(`power-cell bank of ${name}: its plan's weekly limit, ${pct}% used`));
+  }
+  assert.match(home.cls, /\bcnt\b/);
+  assert.match(home.cls, /red/, 'nearly used up: the red tag');
+  assert.doesNotMatch(work.cls, /red|amber/);
+  const tip = h.buildingTip('bank');
+  assert.match(tip, /power-cell banks, one for each of your Claude accounts/);
+  assert.match(tip, /work 40%, home 92%/);
+  const d = h.dialog('bank'), [, first, second] = d.html.split('<h4>');
+  assert.equal(d.title, "The power-cell banks: your accounts' plans");
+  assert.ok(first.startsWith('work</h4>') && /30% used/.test(first) && /40% used/.test(first), "work's meters under its name");
+  assert.ok(second.startsWith('home</h4>') && /95% used/.test(second) && /92% used/.test(second), "home's under its");
+  assert.match(d.html, /floor heat follows work's 5-hour limit/);
+  tags(accounts(account('work', 30, 40), { key: 'b', plan: null }));
+  assert.match(h.dialog('bank').html, /<h4>account 2<\/h4><p class="muted">No reading yet/, 'a nameless account with no reading: by its number, and says so');
+  assert.match(h.buildingTip('bank'), /account 2 no reading/);
+  const help = h.help();
+  assert.match(help, /two Claude accounts, each has a power-cell bank \(the second on the back wall, left of the fabricator\)/);
+  for (const t of [tip, d.title, d.html, help, ...[work, home].flatMap(l => [l.html, l.title])]) assert.doesNotMatch(String(t).replace(/<[^>]*>/g, ' '), FARM_WORDS);
+});
+
+test("lights(): with two accounts, each bank's lamp glows at night", () => {
+  const { h, F, sceneOf } = bays();
+  const near = (lights, [x, y]) => lights.some(([lx, ly]) => Math.abs(lx - x) <= 3 && Math.abs(ly - y) <= 3);
+  h.setScene(sceneOf(accounts(account('work', 30, 40))));
+  assert.ok(near(plain(h.lights()), [F.BANK_X[0] + 12, 17]) && !near(plain(h.lights()), [F.BANK_X[1] + 12, 17]), 'one account: one lamp');
+  h.setScene(sceneOf(accounts(account('work', 30, 40), account('home', 30, 75))));
+  for (const x of F.BANK_X) assert.ok(near(plain(h.lights()), [x + 12, 17]), `the lamp of the bank at ${x}`);
+});
+
 /* ---------- what robots hold, their details, their drones, the AGVs, and messages through the tubes ---------- */
 
 // The spec's table (§5): each step and the prop a robot holds for it; plan mode is the kit's blueprint.
