@@ -53,7 +53,8 @@ function planHtml() {
     const meters = (plan?.windows ?? []).map(w => { const r = w.percentUsed / 100; return `${meter(r, severityOf(r, 0.7, 0.9), said(w) + read)}<b>${esc(windowName(w.kind))} ${Math.round(w.percentUsed)}%</b>`; }).join(' ');
     return `<span class="hstat" data-tip="${esc(`${about}${plan?.windows?.length ? `: ${plan.windows.map(said).join(' · ')}${read}` : ''}`)}"><span class="ml${faint ? ' faint' : ''}">${esc(label)}</span>${meters}</span>`;
   };
-  if (!accountsOn()) return snap.plan?.windows?.length ? block('Plan', snap.plan, 'Your Claude plan') : '';
+  // no reading yet: say why, so an empty meter is not mistaken for a broken one (the readings come from the mod)
+  if (!accountsOn()) return snap.plan?.windows?.length ? block('Plan', snap.plan, 'Your Claude plan') : `<span class="hstat" data-tip="Usage appears once one Claude Code session runs the Agentville mod (the readings come from the mod, not from a log file)"><span class="ml">Plan</span><span class="faint">no reading yet</span></span>`;
   return snap.accounts.map(acc => {
     const open = `${acc.open} session${acc.open === 1 ? '' : 's'} open${acc.costUsd ? `, $${acc.costUsd.toFixed(2)} so far` : ''}`;
     const about = `${acc.name}${acc.email ? ` (${acc.email})` : ''} · ${open}${acc.signedIn === false ? ' · Signed out: run /login in a session on it' : ''}${acc.plan?.windows?.length ? '' : ' · No reading yet: open a session on it'}`;

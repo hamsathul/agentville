@@ -1258,7 +1258,12 @@ test("the top bar shows the plan's limits (5-hour, weekly) and when they reset; 
   assert.match(stats, /5-hour limit: 6% used, resets at/);
   assert.match(stats, /class="[^"]*\bbad\b[^"]*"[\s\S]*92%|92%/);
   page.push(richSnapshot([richAgent()]));
-  assert.doesNotMatch(page.el('hstats').innerHTML, />Plan</);
+  // no reading yet: say why, instead of showing nothing (the readings come from the Agentville mod in a session)
+  const none = page.el('hstats').innerHTML;
+  assert.match(none, />Plan</);
+  assert.match(none, /no reading yet/);
+  assert.match(none, /Usage appears once one Claude Code session runs the Agentville mod/);
+  assert.doesNotMatch(none, /5-hour/);
 });
 
 test("an agent's panel shows what its session has cost so far", async () => {
