@@ -735,6 +735,27 @@ async function sendMessage(agentId, button, quick = null, { now = false } = {}) 
     return false;
   }
   const agent = snap?.agents.find(a => a.id === agentId);
+  // The message leaves the box as it goes: the collector answers only once the session has taken it, and a
+  // send in that moment (Enter again, a folder and Send) would otherwise go out with this text again.
+  const draft = quick === null ? msgDrafts.get(agentId) ?? '' : '';
+  const used = quick === null ? [...(notesInDraft.get(agentId) ?? [])] : []; // notes put in this message
+  if (quick === null) {
+    msgDrafts.delete(agentId);
+    msgFiles.delete(agentId);
+    notesInDraft.delete(agentId);
+    resetRecall();
+    render();
+    if (button?.id) button = $(button.id) ?? button; // the box was drawn again: its new button
+  }
+  /** Not sent: the message goes back in the box, ahead of anything typed since, with its files and notes. */
+  const putBack = () => {
+    if (quick !== null) return;
+    const typed = msgDrafts.get(agentId) ?? '';
+    const back = !draft.trim() ? typed : typed.trim() ? `${draft.replace(/\s*$/, '')}\n\n${typed}` : draft;
+    if (back) msgDrafts.set(agentId, back);
+    msgFiles.set(agentId, [...attached, ...(msgFiles.get(agentId) ?? [])]);
+    if (used.length) notesInDraft.set(agentId, new Set([...used, ...(notesInDraft.get(agentId) ?? [])]));
+  };
   if (button) {
     button.disabled = true;
     button.textContent = 'Sending…';
@@ -744,18 +765,15 @@ async function sendMessage(agentId, button, quick = null, { now = false } = {}) 
   try {
     files = await Promise.all(attached.filter(f => f.file).map(async f => ({ name: f.name, data: toBase64(new Uint8Array(await f.file.arrayBuffer())) })));
   } catch (err) {
+    putBack();
     msgStatus.set(agentId, { at: Date.now(), bad: true, text: `Could not read a file: ${err?.message ?? err}` });
     render();
     return false;
   }
   const r = await post('/api/actions/message', { agentId, text, ...(files.length ? { files } : {}), ...(folders.length ? { folders } : {}), ...(now ? { now: true } : {}) });
-  if (r.ok && quick === null) {
-    msgDrafts.delete(agentId);
-    resetRecall();
+  if (!r.ok) putBack();
+  else if (quick === null) {
     for (const f of attached) if (f.url) URL.revokeObjectURL(f.url);
-    msgFiles.delete(agentId);
-    const used = [...(notesInDraft.get(agentId) ?? [])]; // notes put in this message: used now
-    notesInDraft.delete(agentId);
     if (used.length) tookNotes(agentId, await post('/api/actions/note', { agentId, op: 'used', ids: used }));
   }
   const counted = [[files.length, 'file'], [folders.length, 'folder']].filter(([n]) => n).map(([n, what]) => `${n} ${what}${n > 1 ? 's' : ''}`);

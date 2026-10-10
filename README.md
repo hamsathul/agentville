@@ -304,7 +304,9 @@ These need the mod in that session.
 - **Questions in replies.** When an agent ends its turn by asking something ("Should I push?"),
   it gets an "asks you" chip and a card, with one-click **Yes** / **No…** for yes/no questions.
 - **Messages.** Type in the box under **Now** and press Enter (Shift+Enter for a new line). It
-  arrives as your own prompt.
+  arrives as your own prompt. It leaves the box as you send it, so pressing Enter again can't send
+  it twice; if it can't be delivered, it comes back to the box (with its files) and the line under
+  the box says why.
 - **Messages to a working session wait.** Sent while it is busy (working, or waiting on you in the
   middle of a turn), a message goes into **Waiting to send** under the box instead, until the turn
   ends. There, each one has **✕** (don't send it), **Edit** (change it in place) and **⚡ Send now**

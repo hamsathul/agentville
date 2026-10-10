@@ -551,6 +551,66 @@ test('if the session did not take the message, the text stays in the box and the
   assert.match(page.side(), /id="msg-status"[^>]*>Not sent: The session didn(&#39;|')t pick up the message\./);
 });
 
+// The collector answers a message to a session that isn't busy only once the session has taken it, so a
+// send is on its way for a moment: the box must already be empty then, or the next send repeats it.
+const onItsWay = () => { let answer; const reply = new Promise(r => { answer = r; }); return { reply, answer }; };
+const box = { id: 'msg-text', tagName: 'TEXTAREA', dataset: { msgAgent: 'r1' } };
+
+test('a message leaves the box as it is sent: Enter again while it is on its way sends nothing more', async () => {
+  const way = onItsWay();
+  const page = loadPage({ replies: { '/api/actions/message': way.reply } });
+  page.push(richSnapshot([richAgent({ mod: { version: '0.3.1', live: true }, state: 'idle' })]));
+  await page.openAgent('r1');
+  const idle = richSnapshot([richAgent({ mod: { version: '0.3.1', live: true }, state: 'idle' })]);
+  page.edit('input', { ...box, value: 'Only once, please' });
+  page.push(idle); // redrawn with the text in the box
+  assert.match(page.side(), />Only once, please<\/textarea>/);
+  page.key('Enter', box);
+  await page.settle();
+  assert.match(page.side(), /<textarea id="msg-text"[^>]*><\/textarea>/, 'empty while it is on its way');
+  page.key('Enter', box);
+  way.answer({ ok: true });
+  await page.settle();
+  assert.deepEqual(page.posts.filter(p => p.path === '/api/actions/message').map(p => p.body.text), ['Only once, please']);
+});
+
+test('a folder sent while the last message is on its way goes without that message\'s text', async () => {
+  const way = onItsWay();
+  const page = loadPage({ replies: { '/api/actions/message': way.reply, '/api/actions/choose-folder': { ok: true, path: '/w/site' } } });
+  page.push(richSnapshot([richAgent({ mod: { version: '0.3.1', live: true }, state: 'idle' })]));
+  await page.openAgent('r1');
+  page.edit('input', { ...box, value: 'Sent from the conversation dialog' });
+  page.key('Enter', box);
+  await page.settle();
+  await page.clickButton('msg-folder', { agent: 'r1' });
+  const second = page.clickButton('msg-send', { agent: 'r1' });
+  way.answer({ ok: true });
+  await second;
+  await page.settle();
+  assert.deepEqual(page.posts.filter(p => p.path === '/api/actions/message').map(p => p.body), [
+    { agentId: 'r1', text: 'Sent from the conversation dialog' },
+    { agentId: 'r1', text: '', folders: ['/w/site'] },
+  ]);
+});
+
+test('a message that fails on its way comes back to the box, ahead of what was typed since, with its files', async () => {
+  const way = onItsWay();
+  const page = loadPage({ replies: { '/api/actions/message': way.reply, '/api/actions/choose-folder': { ok: true, path: '/w/site' } } });
+  page.push(richSnapshot([richAgent({ mod: { version: '0.3.1', live: true }, state: 'idle' })]));
+  await page.openAgent('r1');
+  await page.clickButton('msg-folder', { agent: 'r1' });
+  page.edit('input', { ...box, value: 'First thought' });
+  page.key('Enter', box);
+  await page.settle();
+  assert.doesNotMatch(page.side(), /thumb-folder/, 'its folder left with it');
+  page.edit('input', { ...box, value: 'second thought' });
+  way.answer({ ok: false, error: "The session didn't pick up the message." });
+  await page.settle();
+  assert.match(page.side(), />First thought\n\nsecond thought<\/textarea>/);
+  assert.match(page.side(), /thumb-folder/);
+  assert.match(page.side(), /id="msg-status"[^>]*>Not sent: /);
+});
+
 const crew = () => richSnapshot([
   richAgent(),
   richAgent({ id: 'i1', name: 'idler', state: 'idle', now: undefined }),
