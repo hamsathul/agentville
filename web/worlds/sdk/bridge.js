@@ -56,7 +56,7 @@
     if (String(a.href).startsWith('https://github.com/')) send({ type: 'openLink', url: String(a.href) });
   }, true);
 
-  let world = null, started = false, live = false, prefs = {}, latest = null, selected = null, nextId = 1, lastDiary = '';
+  let world = null, started = false, live = false, prefs = {}, latest = null, chatterLatest = null, selected = null, nextId = 1, lastDiary = '';
   let settings = { still: false, theme: 'auto', nav: {}, bell: false };
   const waiting = new Map(); // request id → its resolve
   // A world's settings, kept by the page (a frame has no storage). The bell is the page's own.
@@ -93,6 +93,7 @@
     onNav: what => send({ type: 'nav', what }),
     onBell: on => { settings.bell = on; send({ type: 'bell', on }); },
     onMotion: still => { settings.still = still; send({ type: 'motion', still }); },
+    onCast: animals => send({ type: 'cast', animals: (Array.isArray(animals) ? animals : []).slice(0, 12).map(a => ({ kind: String(a?.kind ?? ''), name: String(a?.name ?? '') })) }), // the world's animals, for the helper's lines
     onDiary: entries => {
       const list = entries.slice(0, 20).map(l => ({ at: l.at, state: l.state, who: String(l.who ?? ''), text: String(l.text ?? '') }));
       const key = JSON.stringify(list);
@@ -119,6 +120,7 @@
       done = live = true;
       if (latest) run(() => world.scene(latest), 'scene');
       if (selected !== null) run(() => world.select?.(selected), 'select');
+      if (chatterLatest) run(() => world.chatter?.(chatterLatest), 'chatter');
     };
     requestAnimationFrame(() => requestAnimationFrame(go));
     setTimeout(go, 500);
@@ -143,6 +145,9 @@
     } else if (m.type === 'select') {
       selected = m.id ?? null;
       if (live) run(() => world.select?.(selected), 'select');
+    } else if (m.type === 'chatter') { // the helper's lines for the animals (the page checked them)
+      chatterLatest = Array.isArray(m.lines) ? m.lines : [];
+      if (live) run(() => world.chatter?.(chatterLatest), 'chatter');
     } else if (m.type === 'reply' && waiting.has(m.id)) {
       const resolve = waiting.get(m.id);
       waiting.delete(m.id);

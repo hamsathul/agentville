@@ -275,3 +275,18 @@ test('the real crew: play borrows a farmer idle three minutes, but never one nap
   assert.ok(run(false).size > 1, 'an idle farmer goes to play');
   assert.deepEqual([...run(true)], ['100,40'], 'a napping one stays put');
 });
+
+test('mounting a world with animals reports its cast through opts.onCast; the view hands chatter to the kit', () => {
+  const { dom, sdk } = load();
+  const casts = [];
+  const view = sdk.makePixelView(sdk.withDefaults(fourHooks({ animals: () => [{ kind: 'cow', name: 'Cow' }], roam: () => [{ x: 10, y: 50, w: 150, h: 40 }] })), prefs);
+  view.mount(dom.make(), { still: true, onCast: list => casts.push(list) });
+  assert.deepEqual(plain(casts), [[{ kind: 'cow', name: 'Cow' }]]);
+  view.chatter([{ kind: 'cow', when: 'idle', text: 'hi from the helper' }]);
+  assert.deepEqual(plain(view.animalsKit().freshLines()), ['hi from the helper']);
+  const none = sdk.makePixelView(sdk.withDefaults(fourHooks()), prefs);
+  const noCasts = [];
+  none.mount(dom.make(), { still: true, onCast: list => noCasts.push(list) });
+  assert.deepEqual(noCasts, [], 'no animals: no cast');
+  none.chatter([{ kind: 'cow', when: 'idle', text: 'x' }]); // no kit: nothing happens, nothing throws
+});

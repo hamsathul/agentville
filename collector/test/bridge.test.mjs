@@ -248,3 +248,16 @@ test('a world asks at most four things at once; the rest wait their turn, and ev
   assert.deepEqual(got.map(([i]) => i), order.map(id => id - 1), 'each resolves when its answer comes');
   assert.ok(got.every(([i, n]) => n === i + 1), 'with its own answer');
 });
+
+test('the bridge carries the world’s cast to the page, and the page’s chatter to the world (held until it is live)', () => {
+  const f = frame(), got = [];
+  f.A.raw({ start({ opts }) { opts.onCast([{ kind: 'cow', name: 'Cow' }, { kind: 'cat', name: 7 }]); }, scene() {}, chatter: lines => got.push(lines) }, { engine: true });
+  f.fromPage({ type: 'start', world: 'farm', prefs: {}, settings: {} });
+  assert.deepEqual(f.sent.find(m => m.type === 'cast'), { type: 'cast', animals: [{ kind: 'cow', name: 'Cow' }, { kind: 'cat', name: '7' }] });
+  f.fromPage({ type: 'chatter', lines: [{ kind: 'cow', when: 'idle', text: 'moo' }] });
+  assert.deepEqual(got, [], 'not live yet: held');
+  f.draw(); f.draw();
+  assert.deepEqual(got, [[{ kind: 'cow', when: 'idle', text: 'moo' }]]);
+  f.fromPage({ type: 'chatter', lines: [] });
+  assert.deepEqual(got.at(-1), []);
+});

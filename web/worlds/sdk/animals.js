@@ -138,10 +138,19 @@
       }
       return null;
     }
+    const FRESH = new Set(['idle', 'deployFailed', 'deployOk', 'harvest', 'merged', 'arrive']); // what the helper may write (actions keep their own)
+    let fresh = new Map(); // `${kind}|${when}` → [text]: the helper's lines (✨ Helper, Animal lines), each said once
     function say(o, key) {
-      const list = o.def.lines?.[key];
-      if (!list?.length || says.length >= LINES_AT_ONCE || says.some(s => s.id === o.id)) return false;
-      says.push({ id: o.id, text: String(list[Math.floor(random() * list.length)]).slice(0, LINE_MAX), until: T + LINE_S });
+      if (says.length >= LINES_AT_ONCE || says.some(s => s.id === o.id)) return false;
+      const q = FRESH.has(key) ? fresh.get(`${o.kind}|${key}`) : null;
+      let text;
+      if (q?.length) text = q.shift(); // the helper's, fresh, first
+      else {
+        const list = o.def.lines?.[key];
+        if (!list?.length) return false;
+        text = list[Math.floor(random() * list.length)];
+      }
+      says.push({ id: o.id, text: String(text).slice(0, LINE_MAX), until: T + LINE_S });
       return true;
     }
     /** One step toward (x, y); true once there. */
@@ -539,6 +548,23 @@
       gagNow() { const g = running.find(r => !r.play); return g ? { id: g.def.id } : null; },
       /** What the animals have taken just now ('bucket'): the world doesn't draw it where it was. */
       taken() { return new Set(taken); },
+      /** The helper's lines (docs/worlds.md, "Messages"): kept per kind and situation, for kinds this world has; a new batch replaces the last. */
+      chatter(lines) {
+        const kinds = new Set(ones.map(o => o.kind));
+        fresh = new Map();
+        for (const l of Array.isArray(lines) ? lines.slice(0, 40) : []) {
+          if (!l || !kinds.has(l.kind) || !FRESH.has(l.when) || typeof l.text !== 'string') continue;
+          const t = l.text.trim();
+          if (!t || t.length > LINE_MAX) continue;
+          const key = `${l.kind}|${l.when}`;
+          if (!fresh.has(key)) fresh.set(key, []);
+          fresh.get(key).push(t);
+        }
+      },
+      /** The fresh lines not said yet (tests and the browser check). */
+      freshLines() { return [...fresh.values()].flat(); },
+      /** The kinds this world has, each once with its name: what the page tells the collector. */
+      cast() { return [...new Map(ones.map(o => [o.kind, { kind: o.kind, name: String(o.def.name ?? o.kind) }])).values()]; },
       list() { return ones.map(o => ({ id: o.id, kind: o.kind, x: Math.round(o.x), y: Math.round(o.y), pose: o.pose, lift: o.lift || 0, wear: { ...o.wear }, ...(o.away ? { away: true } : {}) })); },
     };
   }
