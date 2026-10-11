@@ -8,10 +8,10 @@ import { join } from 'node:path';
 import { listDirs, makeDir, startPlace } from '../sources/folders.mjs';
 
 function fixture() {
-  const home = realpathSync(mkdtempSync(join(tmpdir(), 'tracker-home-')));
+  const home = realpathSync.native(mkdtempSync(join(tmpdir(), 'tracker-home-')));
   for (const d of ['code/app', 'code/api', 'Docs', '.hidden', 'Volumes-like']) mkdirSync(join(home, d), { recursive: true });
   writeFileSync(join(home, 'notes.txt'), 'x');
-  symlinkSync('/etc', join(home, 'out')); // a link to a folder outside
+  symlinkSync(mkdtempSync(join(tmpdir(), 'tracker-out-')), join(home, 'out')); // a link to a folder outside (one that exists: a link to a missing one is just missing)
   symlinkSync(join(home, 'code'), join(home, 'work')); // a link to one inside
   return { home, roots: [home] };
 }

@@ -47,7 +47,7 @@ const identOf = p => { try { const s = statSync(p); return `${s.dev}:${s.ino}`; 
  */
 function holds(target, folder) {
   let r;
-  try { r = realpathSync(folder); } catch { return false; }
+  try { r = realpathSync.native(folder); } catch { return false; }
   const id = identOf(r);
   if (!id) return false;
   const parts = r.split(sep).filter(Boolean);
@@ -82,7 +82,7 @@ export function makeWorlds({ builtinDir, userDir = null, home = null }) {
   /** Does the folder hold a regular world.json that really is inside it? */
   function holdsJson(dir) {
     try {
-      const root = realpathSync(dir), r = realpathSync(join(dir, 'world.json'));
+      const root = realpathSync.native(dir), r = realpathSync.native(join(dir, 'world.json'));
       return r.startsWith(root + sep) && statSync(r).isFile();
     } catch { return false; }
   }
@@ -107,7 +107,7 @@ export function makeWorlds({ builtinDir, userDir = null, home = null }) {
     if (!dir || !type || rel.split('/').some(p => p === '' || p === '..' || p.startsWith('.'))) return NOT_FOUND;
     if (key === 'sdk' && rel === 'frame.html') return NOT_FOUND;
     try {
-      const root = realpathSync(dir), real = realpathSync(join(dir, rel)), st = statSync(real);
+      const root = realpathSync.native(dir), real = realpathSync.native(join(dir, rel)), st = statSync(real);
       if (!real.startsWith(root + sep) || !st.isFile()) return NOT_FOUND;
       return { real, type, size: st.size };
     } catch {

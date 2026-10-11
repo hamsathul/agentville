@@ -432,7 +432,7 @@ test("a repo's close-up lists the files its sessions touched, with git status, o
   mkdirSync(join(root, 'web'));
   writeFileSync(join(root, 'web', 'index.html'), '<html></html>');
   writeFileSync(join(root, 'config.json'), JSON.stringify({ port: 0, deployRepos: {}, pollMs: 200 }));
-  const work = realpathSync(mkdtempSync(join(tmpdir(), 'tracker-work-touched-')));
+  const work = realpathSync.native(mkdtempSync(join(tmpdir(), 'tracker-work-touched-')));
   const git = (...args) => execFileSync('git', ['-C', work, '-c', 'user.email=t@t', '-c', 'user.name=t', ...args]);
   git('init', '-q', '-b', 'main');
   mkdirSync(join(work, 'src'));
@@ -473,7 +473,7 @@ test("an agent's own repo stays on the dashboard even when it touched no files l
   mkdirSync(join(root, 'web'));
   writeFileSync(join(root, 'web', 'index.html'), '<html></html>');
   writeFileSync(join(root, 'config.json'), JSON.stringify({ port: 0, deployRepos: {}, pollMs: 200 }));
-  const work = realpathSync(mkdtempSync(join(tmpdir(), 'tracker-work-cwdrepo-')));
+  const work = realpathSync.native(mkdtempSync(join(tmpdir(), 'tracker-work-cwdrepo-')));
   execFileSync('git', ['-C', work, 'init', '-q', '-b', 'main']);
   mkdirSync(join(work, 'src'));
   const claudeDir = mkdtempSync(join(tmpdir(), 'tracker-claude-cwdrepo-'));
@@ -595,7 +595,7 @@ test("a session's conversation is forked at one of its messages into a new sessi
   mkdirSync(join(root, 'web'));
   writeFileSync(join(root, 'web', 'index.html'), '<html>__TRACKER_TOKEN__</html>');
   writeFileSync(join(root, 'config.json'), JSON.stringify({ port: 0, deployRepos: {}, terminal: 'iTerm' }));
-  const work = realpathSync(mkdtempSync(join(tmpdir(), 'tracker-work-fork-')));
+  const work = realpathSync.native(mkdtempSync(join(tmpdir(), 'tracker-work-fork-')));
   const claudeDir = mkdtempSync(join(tmpdir(), 'tracker-claude-fork-'));
   const dir = join(claudeDir, 'projects', work.replace(/[^a-zA-Z0-9]/g, '-'));
   mkdirSync(join(claudeDir, 'sessions'));
@@ -639,7 +639,7 @@ test("your notes on a session: added, edited, used, deleted; counted in its snap
   mkdirSync(join(root, 'web'));
   writeFileSync(join(root, 'web', 'index.html'), '<html>__TRACKER_TOKEN__</html>');
   writeFileSync(join(root, 'config.json'), JSON.stringify({ port: 0, deployRepos: {} }));
-  const work = realpathSync(mkdtempSync(join(tmpdir(), 'tracker-work-notes-')));
+  const work = realpathSync.native(mkdtempSync(join(tmpdir(), 'tracker-work-notes-')));
   const claudeDir = mkdtempSync(join(tmpdir(), 'tracker-claude-notes-'));
   const dir = join(claudeDir, 'projects', work.replace(/[^a-zA-Z0-9]/g, '-'));
   mkdirSync(join(claudeDir, 'sessions'));
@@ -681,7 +681,7 @@ test('a session is restored to before one of your messages: ended, its files and
   mkdirSync(join(root, 'web'));
   writeFileSync(join(root, 'web', 'index.html'), '<html>__TRACKER_TOKEN__</html>');
   writeFileSync(join(root, 'config.json'), JSON.stringify({ port: 0, deployRepos: {}, terminal: 'iTerm' }));
-  const work = realpathSync(mkdtempSync(join(tmpdir(), 'tracker-work-restore-')));
+  const work = realpathSync.native(mkdtempSync(join(tmpdir(), 'tracker-work-restore-')));
   const claudeDir = mkdtempSync(join(tmpdir(), 'tracker-claude-restore-'));
   const dir = join(claudeDir, 'projects', work.replace(/[^a-zA-Z0-9]/g, '-'));
   mkdirSync(join(claudeDir, 'sessions'));
@@ -757,7 +757,7 @@ test('a session starts or resumes in a terminal only in a listed folder, or from
   mkdirSync(join(root, 'web'));
   writeFileSync(join(root, 'web', 'index.html'), '<html>__TRACKER_TOKEN__</html>');
   writeFileSync(join(root, 'config.json'), JSON.stringify({ port: 0, deployRepos: {}, terminal: 'iTerm' }));
-  const work = realpathSync(mkdtempSync(join(tmpdir(), 'tracker-work-')));
+  const work = realpathSync.native(mkdtempSync(join(tmpdir(), 'tracker-work-')));
   const claudeDir = mkdtempSync(join(tmpdir(), 'tracker-claude-'));
   const dir = join(claudeDir, 'projects', work.replace(/[^a-zA-Z0-9]/g, '-'));
   mkdirSync(join(claudeDir, 'sessions'));
@@ -801,7 +801,7 @@ test("Finder's own folder window picks a folder: one at a time, starting where a
   mkdirSync(join(root, 'web'));
   writeFileSync(join(root, 'web', 'index.html'), '<html></html>');
   writeFileSync(join(root, 'config.json'), JSON.stringify({ port: 0, deployRepos: {} }));
-  const home = realpathSync(mkdtempSync(join(tmpdir(), 'tracker-home-')));
+  const home = realpathSync.native(mkdtempSync(join(tmpdir(), 'tracker-home-')));
   mkdirSync(join(home, 'code'));
   const asked = [];
   let answer = { path: `${join(home, 'code')}/` }, release;
@@ -829,7 +829,7 @@ test('a new session starts in any folder of yours, made first if it is new, and 
   mkdirSync(join(root, 'web'));
   writeFileSync(join(root, 'web', 'index.html'), '<html>__TRACKER_TOKEN__</html>');
   writeFileSync(join(root, 'config.json'), JSON.stringify({ port: 0, deployRepos: {}, terminal: 'Terminal' }));
-  const home = realpathSync(mkdtempSync(join(tmpdir(), 'tracker-home-')));
+  const home = realpathSync.native(mkdtempSync(join(tmpdir(), 'tracker-home-')));
   mkdirSync(join(home, 'code'));
   const claudeDir = mkdtempSync(join(tmpdir(), 'tracker-claude-'));
   mkdirSync(join(claudeDir, 'sessions'));
@@ -854,7 +854,7 @@ test('a session is ended (SIGTERM, then its window closed by its tty) or restart
   mkdirSync(join(root, 'web'));
   writeFileSync(join(root, 'web', 'index.html'), '<html>__TRACKER_TOKEN__</html>');
   writeFileSync(join(root, 'config.json'), JSON.stringify({ port: 0, deployRepos: {}, terminal: 'iTerm' }));
-  const work = realpathSync(mkdtempSync(join(tmpdir(), 'tracker-work-')));
+  const work = realpathSync.native(mkdtempSync(join(tmpdir(), 'tracker-work-')));
   const claudeDir = mkdtempSync(join(tmpdir(), 'tracker-claude-'));
   mkdirSync(join(claudeDir, 'sessions'));
   mkdirSync(join(claudeDir, 'projects', '-w'), { recursive: true });
@@ -897,7 +897,7 @@ test('files an agent names in its replies: only those the dashboard may show, ea
   mkdirSync(join(root, 'web'));
   writeFileSync(join(root, 'web', 'index.html'), '<html></html>');
   writeFileSync(join(root, 'config.json'), JSON.stringify({ port: 0, deployRepos: {} }));
-  const work = realpathSync(mkdtempSync(join(tmpdir(), 'tracker-named-')));
+  const work = realpathSync.native(mkdtempSync(join(tmpdir(), 'tracker-named-')));
   mkdirSync(join(work, 'docs'));
   writeFileSync(join(work, 'shot.png'), Buffer.from('89504e470d0a1a0a0000000d49484452', 'hex'));
   writeFileSync(join(work, 'demo.mov'), 'not really a video');
@@ -935,8 +935,8 @@ test("a session's shell commands: one is stopped with everything it started (its
   mkdirSync(join(root, 'web'));
   writeFileSync(join(root, 'web', 'index.html'), '<html></html>');
   writeFileSync(join(root, 'config.json'), JSON.stringify({ port: 0, deployRepos: {} }));
-  const work = realpathSync(mkdtempSync(join(tmpdir(), 'tracker-work-')));
-  const scratch = realpathSync(mkdtempSync(join(tmpdir(), 'tracker-scratch-')));
+  const work = realpathSync.native(mkdtempSync(join(tmpdir(), 'tracker-work-')));
+  const scratch = realpathSync.native(mkdtempSync(join(tmpdir(), 'tracker-scratch-')));
   const claudeDir = mkdtempSync(join(tmpdir(), 'tracker-claude-'));
   mkdirSync(join(claudeDir, 'sessions'));
   mkdirSync(join(claudeDir, 'projects', '-w'), { recursive: true });
@@ -1068,7 +1068,7 @@ test("Claude Code's setup for the ⚙ dialog: plugins with their costs, MCP serv
   mkdirSync(join(root, 'web'));
   writeFileSync(join(root, 'web', 'index.html'), '<html></html>');
   writeFileSync(join(root, 'config.json'), JSON.stringify({ port: 0, deployRepos: {} }));
-  const home = realpathSync(mkdtempSync(join(tmpdir(), 'tracker-home-setup-')));
+  const home = realpathSync.native(mkdtempSync(join(tmpdir(), 'tracker-home-setup-')));
   const claudeDir = join(home, '.claude');
   mkdirSync(join(claudeDir, 'sessions'), { recursive: true });
   mkdirSync(join(claudeDir, 'skills', 'mine'), { recursive: true });
@@ -1121,7 +1121,7 @@ test('files that are not text: a short-lived link to the bytes, for one file or 
   mkdirSync(join(root, 'web'));
   writeFileSync(join(root, 'web', 'index.html'), '<html></html>');
   writeFileSync(join(root, 'config.json'), JSON.stringify({ port: 0, deployRepos: {} }));
-  const work = realpathSync(mkdtempSync(join(tmpdir(), 'tracker-view-work-')));
+  const work = realpathSync.native(mkdtempSync(join(tmpdir(), 'tracker-view-work-')));
   mkdirSync(join(work, 'css'));
   writeFileSync(join(work, 'picture.png'), Buffer.from('89504e470d0a1a0a0000000d49484452', 'hex'));
   writeFileSync(join(work, 'page.html'), '<link rel="stylesheet" href="css/site.css"><h1>Hi</h1>');
@@ -1177,7 +1177,7 @@ test('Open the worlds folder makes the folder, opens it in Finder only, and says
   const root = mkdtempSync(join(tmpdir(), 'tracker-root-worlds-'));
   mkdirSync(join(root, 'web'));
   writeFileSync(join(root, 'web', 'index.html'), '<html></html>');
-  const worldsDir = join(realpathSync(mkdtempSync(join(tmpdir(), 'tracker-worlds-'))), 'mine');
+  const worldsDir = join(realpathSync.native(mkdtempSync(join(tmpdir(), 'tracker-worlds-'))), 'mine');
   writeFileSync(join(root, 'config.json'), JSON.stringify({ port: 0, deployRepos: {}, worldsDir }));
   const claudeDir = mkdtempSync(join(tmpdir(), 'tracker-claude-worlds-'));
   const opened = [];

@@ -114,8 +114,8 @@ export async function checkFolderFile(cwd, path, { runner = run } = {}) {
   const outside = { status: 403, error: "That file is outside the agent's folder." };
   if (typeof path !== 'string' || !isAbsolute(path)) return outside;
   try {
-    const root = realpathSync(cwd);
-    const real = realpathSync(path);
+    const root = realpathSync.native(cwd);
+    const real = realpathSync.native(path);
     const rel = relative(root, real);
     if (!rel || rel.startsWith('..') || isAbsolute(rel)) return outside;
     const parts = rel.split(sep);

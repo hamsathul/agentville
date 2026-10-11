@@ -9,7 +9,7 @@ import { replaceFile } from '../platform/replace.mjs';
 
 const KEY = /[^a-z0-9_-]/g;
 const isDir = p => { try { return statSync(p).isDirectory(); } catch { return false; } };
-const realOrNull = p => { try { return realpathSync(p); } catch { return null; } };
+const realOrNull = p => { try { return realpathSync.native(p); } catch { return null; } };
 // A trailing separator is dropped (a backslash too on Windows, where it is one; a drive root like C:\ keeps its own).
 const TRAILING = process.platform === 'win32' ? /[\\/]+$/ : /\/+$/;
 const trim = p => (p.length > 1 && !/^[A-Za-z]:[\\/]*$/.test(p) ? p.replace(TRAILING, '') : p);

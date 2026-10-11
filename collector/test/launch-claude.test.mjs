@@ -26,7 +26,7 @@ test('every argument arrives as one argument, whatever it holds (quotes, a trail
   const [cwd, ...got] = JSON.parse(r.stdout);
   assert.deepEqual(got, args);
   // macOS reports a temp folder through its /private symlink, so compare the real folders
-  assert.equal(realpathSync(cwd).toLowerCase(), realpathSync(dir).toLowerCase(), 'started in the session\'s folder');
+  assert.equal(realpathSync.native(cwd).toLowerCase(), realpathSync.native(dir).toLowerCase(), 'started in the session\'s folder');
 });
 
 test('the prefill file\'s text arrives as ONE --prefill argument, and the spec file is gone afterwards', () => {

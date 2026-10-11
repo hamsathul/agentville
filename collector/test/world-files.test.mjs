@@ -167,7 +167,7 @@ test("a linked world folder is followed, unless it is the worlds folder, above i
 const spellings = p => [p.toUpperCase(), join('/System/Volumes/Data', p)].filter(s => s !== p && existsSync(s));
 
 test("a world folder linked to your home, the worlds folder or above them is refused however the link is spelled", { skip: NO_FILE_LINKS }, () => {
-  const base = realpathSync(mkdtempSync(join(tmpdir(), 'wt-'))), dir = join(base, 'worlds'), home = join(base, 'home');
+  const base = realpathSync.native(mkdtempSync(join(tmpdir(), 'wt-'))), dir = join(base, 'worlds'), home = join(base, 'home');
   mkdirSync(dir); mkdirSync(home);
   const targets = [home, dir, base, parse(base).root, '/System/Volumes/Data', join(dir, '..'), ...spellings(home), ...spellings(dir), ...spellings(base)].filter(t => existsSync(t));
   targets.forEach((t, i) => symlinkSync(t, join(dir, `l${i}`)));
@@ -224,7 +224,7 @@ test('worldsDir: default, ~, relative to home, absolute', () => {
   assert.equal(worldsDirOf({ worldsDir: 'x' }, '/h'), normalize('/h/x'));
   assert.equal(worldsDirOf({ worldsDir: '~' + String.fromCharCode(92) + 'y' }, '/h'), normalize('/h/y'));
   assert.equal(worldsDirOf({ worldsDir: '/x' }, '/h'), normalize('/x'));
-  const home = realpathSync(mkdtempSync(join(tmpdir(), 'wt-'))), notes = [];
+  const home = realpathSync.native(mkdtempSync(join(tmpdir(), 'wt-'))), notes = [];
   mkdirSync(join(home, 'sub'));
   for (const bad of [home, '/', dirname(home), '../x', '~', ...spellings(home)]) {
     assert.equal(worldsDirOf({ worldsDir: bad }, home, n => notes.push(n)), join(home, '.agentville', 'worlds'), String(bad));

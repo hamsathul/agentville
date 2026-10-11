@@ -195,7 +195,7 @@ export async function startCollector({ root, system = null, claudeDir = join(hom
   function canRunOnPath(path) {
     const folder = dirname(dirname(path));
     let real = folder;
-    try { real = realpathSync(folder); } catch { /* compared as it is */ }
+    try { real = realpathSync.native(folder); } catch { /* compared as it is */ }
     return projectsFolders().find(p => p.real === real || p.path === folder)?.keys ?? [];
   }
   /** The account a session is on: where a registry lists it, else where it last ran, else the first. */
@@ -635,7 +635,7 @@ export async function startCollector({ root, system = null, claudeDir = join(hom
     const agent = snapshot?.agents.find(a => a.id === agentId);
     if (!agent?.docs?.some(d => d.path === path)) return { status: 404, error: 'That document is not one this agent has opened.' };
     try {
-      const real = realpathSync(path);
+      const real = realpathSync.native(path);
       const st = statSync(real);
       if (!DOC_FILE.test(real) || !st.isFile()) return { status: 403, error: 'Only markdown files can be shown here.' };
       if (st.size > DOC_MAX_BYTES) return { status: 413, error: 'That file is too large to show here (2 MB at most).' };
@@ -717,7 +717,7 @@ export async function startCollector({ root, system = null, claudeDir = join(hom
     for (const [k, t] of tickets) if (t.until < now) tickets.delete(k);
     const id = randomBytes(16).toString('hex');
     tickets.set(id, { root, file: folder ? null : ok.real, until: now + ticketMs });
-    const rel = folder ? relative(realpathSync(root), ok.real) : basename(ok.real);
+    const rel = folder ? relative(realpathSync.native(root), ok.real) : basename(ok.real);
     return { url: `/raw/${id}/${rel.split(sep).map(encodeURIComponent).join('/')}`, type: contentTypeOf(ok.real), size: ok.size };
   }
   /** What a link opens: { real, type, size } of the file, or { status, error }. `rel` is the path after the link's id, decoded. */
@@ -770,9 +770,9 @@ export async function startCollector({ root, system = null, claudeDir = join(hom
     const call = [rec?.model, ...(rec?.childModels?.values() ?? [])].filter(Boolean).flatMap(m => m.bashCalls()).find(c => c.id === shell.toolUseId);
     if (!shell.output || !call?.outputPath) return { status: 404, error: 'Only a background command writes its output where it can be read; this one hands it to the session when it ends.' };
     let real;
-    try { real = realpathSync(call.outputPath); } catch { return { status: 404, error: 'Its output file is gone.' }; }
+    try { real = realpathSync.native(call.outputPath); } catch { return { status: 404, error: 'Its output file is gone.' }; }
     let base = scratchBase;
-    try { base = realpathSync(scratchBase); } catch { /* none */ }
+    try { base = realpathSync.native(scratchBase); } catch { /* none */ }
     if (!isInside(base, real) || !real.endsWith('.output')) return { status: 403, error: 'That output file is outside the scratch folder.' };
     const size = statSync(real).size;
     const fd = openSync(real, 'r');

@@ -83,7 +83,7 @@ test('on Windows the folder is left plain when it is plain (a backslash, a drive
 });
 
 test('the command, run with --worlds: it prints those steps, and the check-world it prints checks the new world', () => {
-  const root = realpathSync(temp()), worlds = join(root, 'worlds');
+  const root = realpathSync.native(temp()), worlds = join(root, 'worlds');
   try {
     const script = n => fileURLToPath(new URL(`../../scripts/${n}.mjs`, import.meta.url));
     const made = spawnSync(process.execPath, [script('new-world'), 'farm', '--worlds', worlds], { encoding: 'utf8', timeout: 60_000 });

@@ -431,7 +431,7 @@ test('the list of worlds needs the token, and says where your folder is', async 
 });
 
 test("a world folder linked to your home or above is never served, however the link is spelled", async () => {
-  const home = realpathSync(mkdtempSync(join(tmpdir(), 'home-')));
+  const home = realpathSync.native(mkdtempSync(join(tmpdir(), 'home-')));
   writeFileSync(join(home, 'world.json'), JSON.stringify({ name: 'Home', api: 1 }));
   writeFileSync(join(home, 'world.js'), '// the whole home folder');
   const { srv, port, userDir } = await start({ home });

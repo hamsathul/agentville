@@ -149,7 +149,7 @@ test("the command prints a world's words plain: no control sequence of the world
 });
 
 test("what a contained run prints reaches you a line at a time through plain()", () => {
-  const tmp = realpathSync(mkdtempSync(join(tmpdir(), 'check-world-'))), dir = join(tmp, 'world');
+  const tmp = realpathSync.native(mkdtempSync(join(tmpdir(), 'check-world-'))), dir = join(tmp, 'world');
   try {
     mkdirSync(dir);
     writeFileSync(join(dir, 'world.js'), '// a world\n');
@@ -166,7 +166,7 @@ test("what a contained run prints reaches you a line at a time through plain()",
 
 test("contained as the command runs a world: it reads the SDK and the world's two files, nothing else (not through a link in its folder), and writes and starts nothing", { skip: NO_FILE_LINKS }, () => {
   // Real paths throughout (macOS's temp folder is behind a link): Node judges a path as it is given.
-  const tmp = realpathSync(mkdtempSync(join(tmpdir(), 'check-world-'))), outside = join(tmp, 'outside.txt'), target = join(tmp, 'written.txt'), dir = join(tmp, 'world');
+  const tmp = realpathSync.native(mkdtempSync(join(tmpdir(), 'check-world-'))), outside = join(tmp, 'outside.txt'), target = join(tmp, 'written.txt'), dir = join(tmp, 'world');
   try {
     writeFileSync(outside, 'not for worlds');
     mkdirSync(dir);
@@ -227,7 +227,7 @@ test("worldFiles: each of the two files a regular file inside the folder's real 
     mkdirSync(dir);
     assert.throws(() => worldFiles(dir), { message: 'world.js is missing.' });
     writeFileSync(join(dir, 'world.js'), '// a world\n');
-    const real = realpathSync(dir);
+    const real = realpathSync.native(dir);
     assert.deepEqual(worldFiles(dir), { dir: real, js: join(real, 'world.js'), json: join(real, 'world.json') }, 'no world.json: let through, for the check to report');
     symlinkSync(join(tmp, 'gone.json'), join(dir, 'world.json'));
     assert.throws(() => worldFiles(dir), { message: "world.json is a link to something that isn't there." });
