@@ -1,10 +1,11 @@
+import { NO_FILE_LINKS } from './win-links.mjs';
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, symlinkSync, writeFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { tmpdir } from 'node:os';
-import { dirname, join } from 'node:path';
-import { FRAME_CSP, checkWorldJson, makeWorlds, watchWorlds, worldsDirOf } from '../worlds.mjs';
+import { dirname, join, normalize, parse } from 'node:path';
+import { FRAME_CSP, checkWorldJson, driveOf, makeWorlds, watchWorlds, worldsDirOf } from '../worlds.mjs';
 
 const plain = v => JSON.parse(JSON.stringify(v));
 
@@ -25,7 +26,7 @@ function builtins() {
   return dir;
 }
 
-test("a world's own files are served, typed; nothing outside its folder, hidden, of an unknown kind, or linked out", () => {
+test("a world's own files are served, typed; nothing outside its folder, hidden, of an unknown kind, or linked out", { skip: NO_FILE_LINKS }, () => {
   const w = makeWorlds({ builtinDir: builtins() });
   assert.equal(w.file('farm', 'world.js').type, 'text/javascript; charset=utf-8');
   assert.equal(w.file('farm', 'art/barn.png').type, 'image/png');
@@ -35,7 +36,7 @@ test("a world's own files are served, typed; nothing outside its folder, hidden,
   }
 });
 
-test("a world's frame page: the SDK's template with its name (escaped) and its own address; none for an unknown world", () => {
+test("a world's frame page: the SDK's template with its name (escaped) and its own address; none for an unknown world", { skip: NO_FILE_LINKS }, () => {
   const w = makeWorlds({ builtinDir: builtins() });
   assert.equal(w.frame('farm'), '<title>The &lt;farm&gt;</title><script src="/world/farm/world.js"></script>');
   assert.equal(w.frame('nope'), null);
@@ -43,7 +44,7 @@ test("a world's frame page: the SDK's template with its name (escaped) and its o
   assert.equal(w.frame('starter'), null);
 });
 
-test("a world.json that is a link to a file outside its folder is not read: no frame, no file", () => {
+test("a world.json that is a link to a file outside its folder is not read: no frame, no file", { skip: NO_FILE_LINKS }, () => {
   const dir = builtins();
   const outside = join(mkdtempSync(join(tmpdir(), 'outside-')), 'x.json');
   writeFileSync(outside, JSON.stringify({ name: 'LEAKED-NAME' }));
@@ -97,7 +98,7 @@ function users() {
   return dir;
 }
 
-test('your worlds are listed after the built-in ones, each with what is wrong with it, if anything', () => {
+test('your worlds are listed after the built-in ones, each with what is wrong with it, if anything', { skip: NO_FILE_LINKS }, () => {
   const w = makeWorlds({ builtinDir: builtins(), userDir: users() });
   const all = w.list(), byKey = Object.fromEntries(all.map(x => [x.key ?? x.name, x]));
   assert.deepEqual(all.map(x => x.key ?? x.name), ['farm', 'Bad_Name', 'u/broken', 'u/escape', 'u/farm', 'u/linked', 'u/linkjson', 'u/newer', 'u/nojs', 'u/space']);
@@ -114,7 +115,7 @@ test('your worlds are listed after the built-in ones, each with what is wrong wi
   assert.equal(byKey['u/escape'].error, null);
 });
 
-test("your world's files come from inside its folder only: a link out of it is refused", () => {
+test("your world's files come from inside its folder only: a link out of it is refused", { skip: NO_FILE_LINKS }, () => {
   const w = makeWorlds({ builtinDir: builtins(), userDir: users() });
   assert.equal(w.file('u/space', 'world.js').type, 'text/javascript; charset=utf-8');
   assert.equal(w.file('u/escape', 'art/secret.png').status, 404);
@@ -125,7 +126,7 @@ test("your world's files come from inside its folder only: a link out of it is r
   assert.deepEqual(makeWorlds({ builtinDir: builtins(), userDir: '/nowhere/at/all' }).list().map(x => x.key), ['farm'], 'no folder yet: just the farm');
 });
 
-test('a broken link in your folder is listed with its error and hides nothing', () => {
+test('a broken link in your folder is listed with its error and hides nothing', { skip: NO_FILE_LINKS }, () => {
   const dir = users();
   symlinkSync('/nowhere/at/all/gone', join(dir, 'old-dev-world'));
   symlinkSync(join(dir, 'loop-b'), join(dir, 'loop-a'));
@@ -139,7 +140,7 @@ test('a broken link in your folder is listed with its error and hides nothing', 
   assert.ok(w.frame('u/space'));
 });
 
-test("a linked world folder is followed, unless it is the worlds folder, above it, or your home", () => {
+test("a linked world folder is followed, unless it is the worlds folder, above it, or your home", { skip: NO_FILE_LINKS }, () => {
   const base = mkdtempSync(join(tmpdir(), 'wt-')), dir = join(base, 'worlds'), home = join(base, 'home');
   mkdirSync(dir); mkdirSync(home);
   const elsewhere = mkdtempSync(join(tmpdir(), 'dev-world-'));
@@ -165,10 +166,10 @@ test("a linked world folder is followed, unless it is the worlds folder, above i
 // Other spellings of a folder that exist on this machine: capitals (on a disk that ignores them) and macOS's data volume.
 const spellings = p => [p.toUpperCase(), join('/System/Volumes/Data', p)].filter(s => s !== p && existsSync(s));
 
-test("a world folder linked to your home, the worlds folder or above them is refused however the link is spelled", () => {
-  const base = realpathSync(mkdtempSync(join(tmpdir(), 'wt-'))), dir = join(base, 'worlds'), home = join(base, 'home');
+test("a world folder linked to your home, the worlds folder or above them is refused however the link is spelled", { skip: NO_FILE_LINKS }, () => {
+  const base = realpathSync.native(mkdtempSync(join(tmpdir(), 'wt-'))), dir = join(base, 'worlds'), home = join(base, 'home');
   mkdirSync(dir); mkdirSync(home);
-  const targets = [home, dir, base, '/', '/System/Volumes/Data', join(dir, '..'), ...spellings(home), ...spellings(dir), ...spellings(base)].filter(t => existsSync(t));
+  const targets = [home, dir, base, parse(base).root, '/System/Volumes/Data', join(dir, '..'), ...spellings(home), ...spellings(dir), ...spellings(base)].filter(t => existsSync(t));
   targets.forEach((t, i) => symlinkSync(t, join(dir, `l${i}`)));
   const w = makeWorlds({ builtinDir: builtins(), userDir: dir, home });
   const by = Object.fromEntries(w.list().map(x => [x.key, x]));
@@ -179,7 +180,7 @@ test("a world folder linked to your home, the worlds folder or above them is ref
   });
 });
 
-test('a world folder with no world.json inside it serves nothing', () => {
+test('a world folder with no world.json inside it serves nothing', { skip: NO_FILE_LINKS }, () => {
   const base = mkdtempSync(join(tmpdir(), 'wt-')), dir = join(base, 'worlds');
   mkdirSync(dir); mkdirSync(join(dir, 'empty'));
   writeFileSync(join(dir, 'empty', 'world.js'), 'x');
@@ -189,7 +190,7 @@ test('a world folder with no world.json inside it serves nothing', () => {
   assert.match(w.list()[1].error, /world\.json is missing/);
 });
 
-test('only the exact folder name is your world, whatever the disk thinks of capitals', () => {
+test('only the exact folder name is your world, whatever the disk thinks of capitals', { skip: NO_FILE_LINKS }, () => {
   const dir = mkdtempSync(join(tmpdir(), 'my-worlds-'));
   mkdirSync(join(dir, 'Space'));
   writeFileSync(join(dir, 'Space', 'world.json'), JSON.stringify({ name: 'S', api: 1 }));
@@ -200,7 +201,7 @@ test('only the exact folder name is your world, whatever the disk thinks of capi
   assert.equal(w.frame('u/space'), null);
 });
 
-test('a huge world.json is refused, only the known nouns are kept, and an empty icon falls back', () => {
+test('a huge world.json is refused, only the known nouns are kept, and an empty icon falls back', { skip: NO_FILE_LINKS }, () => {
   const dir = mkdtempSync(join(tmpdir(), 'my-worlds-'));
   const make = (n, json) => { mkdirSync(join(dir, n)); writeFileSync(join(dir, n, 'world.json'), json); writeFileSync(join(dir, n, 'world.js'), 'x'); };
   make('big', JSON.stringify({ name: 'Big', api: 1, description: 'x'.repeat(70000) }));
@@ -219,10 +220,11 @@ test('worldsDir: default, ~, relative to home, absolute', () => {
   const d = join('/h', '.agentville', 'worlds');
   assert.equal(worldsDirOf({}, '/h'), d);
   for (const bad of [null, '', '  ', 7, {}]) assert.equal(worldsDirOf({ worldsDir: bad }, '/h'), d);
-  assert.equal(worldsDirOf({ worldsDir: '~/x' }, '/h'), '/h/x');
-  assert.equal(worldsDirOf({ worldsDir: 'x' }, '/h'), '/h/x');
-  assert.equal(worldsDirOf({ worldsDir: '/x' }, '/h'), '/x');
-  const home = realpathSync(mkdtempSync(join(tmpdir(), 'wt-'))), notes = [];
+  assert.equal(worldsDirOf({ worldsDir: '~/x' }, '/h'), normalize('/h/x'));
+  assert.equal(worldsDirOf({ worldsDir: 'x' }, '/h'), normalize('/h/x'));
+  assert.equal(worldsDirOf({ worldsDir: '~' + String.fromCharCode(92) + 'y' }, '/h'), normalize('/h/y'));
+  assert.equal(worldsDirOf({ worldsDir: '/x' }, '/h'), normalize('/x'));
+  const home = realpathSync.native(mkdtempSync(join(tmpdir(), 'wt-'))), notes = [];
   mkdirSync(join(home, 'sub'));
   for (const bad of [home, '/', dirname(home), '../x', '~', ...spellings(home)]) {
     assert.equal(worldsDirOf({ worldsDir: bad }, home, n => notes.push(n)), join(home, '.agentville', 'worlds'), String(bad));
@@ -230,6 +232,15 @@ test('worldsDir: default, ~, relative to home, absolute', () => {
   assert.equal(notes.length, 5 + spellings(home).length, 'says why, once each');
   assert.equal(worldsDirOf({ worldsDir: join(home, 'sub') }, home), join(home, 'sub'));
   assert.equal(worldsDirOf({ worldsDir: ' ' }, home, n => notes.push(n)), join(home, '.agentville', 'worlds'));
+});
+
+test('a root with no drive is on the home folder drive, so a bare slash is above a home on another drive than this process', { skip: process.platform !== 'win32' ? 'Windows only' : false }, () => {
+  const b = String.fromCharCode(92);
+  const home = `Z:${b}Users${b}me`; // a drive this process is not on
+  assert.equal(driveOf(normalize('/'), home), `Z:${b}`);
+  assert.equal(driveOf(normalize('/worlds'), home), `Z:${b}worlds`);
+  assert.equal(driveOf(`D:${b}x`, home), `D:${b}x`, 'a path with its own drive is left alone');
+  assert.equal(driveOf(`${b}${b}server${b}share${b}x`, home), `${b}${b}server${b}share${b}x`, 'a share is left alone');
 });
 
 test("world.json's rules", () => {
@@ -240,7 +251,7 @@ test("world.json's rules", () => {
   }
 });
 
-test('a change to a world is told once per burst, by its key; the SDK as "*"', async () => {
+test('a change to a world is told once per burst, by its key; the SDK as "*"', { skip: NO_FILE_LINKS }, async () => {
   const builtinDir = builtins(), userDir = users(), seen = [];
   const stop = watchWorlds({ builtinDir, userDir }, key => seen.push(key), { quietMs: 100 });
   await new Promise(r => setTimeout(r, 500)); // macOS replays what the setup just wrote: let it be told, then start counting

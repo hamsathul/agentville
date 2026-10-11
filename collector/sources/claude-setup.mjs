@@ -1,5 +1,6 @@
-import { readFileSync, readdirSync, renameSync, statSync, writeFileSync } from 'node:fs';
+import { readFileSync, readdirSync, statSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
+import { replaceFile } from '../platform/replace.mjs';
 
 // Claude Code's own setup, for the ⚙ Claude Code dialog: what `claude plugin details` and `claude
 // mcp list` print (neither has a JSON form), your own skills, each project's MCP servers from
@@ -86,7 +87,7 @@ export function readOwnSkills(home) {
     const path = join(dir, folder, 'SKILL.md');
     let text;
     try { text = readFileSync(path, 'utf8'); } catch { continue; }
-    const front = text.match(/^---\n([\s\S]*?)\n---/)?.[1] ?? '';
+    const front = text.match(/^---\r?\n([\s\S]*?)\r?\n---/)?.[1] ?? '';
     const field = key => front.match(new RegExp(`^${key}:\\s*(.*)$`, 'm'))?.[1].trim().replace(/^(["'])(.*)\1$/, '$2') ?? '';
     out.push({ name: field('name') || folder, description: field('description'), path, tokens: Math.round(text.length / 4) }); // about 4 characters a token
   }
@@ -128,6 +129,6 @@ export function removeRule(path, list, value) {
   const indent = text.match(/^\{\n( +)"/)?.[1].length ?? 2;
   const tmp = `${path}.agentville-${process.pid}.tmp`;
   writeFileSync(tmp, `${JSON.stringify(settings, null, indent)}\n`, { mode: statSync(path).mode });
-  renameSync(tmp, path);
+  replaceFile(tmp, path);
   return { ok: true };
 }

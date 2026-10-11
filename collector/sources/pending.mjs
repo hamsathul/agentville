@@ -1,5 +1,6 @@
-import { existsSync, mkdirSync, readFileSync, readdirSync, renameSync, statSync, unlinkSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, readdirSync, statSync, unlinkSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
+import { replaceFile } from '../platform/replace.mjs';
 
 // The mod writes state/pending/<toolUseId>.json when it offers a question or a permission
 // prompt to the dashboard; the collector writes state/answers/<toolUseId>.json to answer it.
@@ -117,7 +118,7 @@ export function writeAnswerFile(dir, toolUseId, payload) {
   mkdirSync(dir, { recursive: true });
   const file = join(dir, `${toolUseId}.json`);
   writeFileSync(`${file}.tmp`, JSON.stringify(payload));
-  renameSync(`${file}.tmp`, file);
+  replaceFile(`${file}.tmp`, file);
 }
 
 const BEACON_LIVE_MS = 10_000;
@@ -191,7 +192,7 @@ export function writeRequestFile(dir, sessionId, value, id = `${Date.now()}-${Ma
   mkdirSync(inbox, { recursive: true });
   const file = join(inbox, `${id}.json`);
   writeFileSync(`${file}.tmp`, JSON.stringify(value));
-  renameSync(`${file}.tmp`, file);
+  replaceFile(`${file}.tmp`, file);
   return file;
 }
 

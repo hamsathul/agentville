@@ -173,7 +173,7 @@ writeFileSync(join(worldsDir, 'leaves-open', 'world.js'), `Agentville.raw({
   scene() {},
 });`);
 
-const repo = join(realpathSync(temp), 'farm-repo');
+const repo = join(realpathSync.native(temp), 'farm-repo');
 mkdirSync(join(repo, 'src'), { recursive: true });
 const git = (...args) => execFileSync('git', ['-C', repo, '-c', 'user.email=t@t', '-c', 'user.name=t', ...args]);
 git('init', '-q', '-b', 'main');
@@ -353,7 +353,7 @@ esac
 `, { mode: 0o755 });
 writeFileSync(join(claudeDir, 'settings.json'), `${JSON.stringify({ permissions: { allow: ['Bash(npm test:*)'] } }, null, 2)}\n`);
 // Finder's folder window is stood in for: it always picks the farm repo.
-const handle = await startCollector({ root, claudeDir, claudeBin: fakeClaude, notify: () => {}, log: () => {}, home: '/nowhere', linesGapMs: 2000, linesIdleMs: 10_000, readProcs, folderRoots: [realpathSync(temp)], chooseFolder: async () => ({ path: `${join(realpathSync(temp), 'farm-repo')}/` }), scratchBase: '/nonexistent', sessionProcs, launch: async args => { launched.push(args.at(-1)); return { code: 0, stdout: '', stderr: '' }; } });
+const handle = await startCollector({ root, claudeDir, claudeBin: fakeClaude, notify: () => {}, log: () => {}, home: '/nowhere', linesGapMs: 2000, linesIdleMs: 10_000, readProcs, folderRoots: [realpathSync.native(temp)], chooseFolder: async () => ({ path: `${join(realpathSync.native(temp), 'farm-repo')}/` }), scratchBase: '/nonexistent', sessionProcs, launch: async args => { launched.push(args.at(-1)); return { code: 0, stdout: '', stderr: '' }; } });
 let chrome;
 try {
   chrome = await openChrome();
@@ -463,6 +463,7 @@ try {
   await js("document.getElementById('msg-text').focus()"); // sending leaves the box (so the page can update): back in it
   await arrow('ArrowUp', 38);
   check(await until("document.getElementById('msg-text')?.value === 'Plan the next crop'"), `↑ in the message box brings back what you said to the session (got ${JSON.stringify(await js("document.getElementById('msg-text')?.value"))})`);
+  await js("document.getElementById('msg-text').focus()"); // ↑ may have redrawn the pane: back in the box, as after sending
   await arrow('ArrowDown', 40);
   check(await until("document.getElementById('msg-text')?.value === ''"), '↓ goes back to what you were typing');
   // Notes: written for later, used into the message box, sent from there; Send now; a fork gets a copy
@@ -1204,7 +1205,7 @@ try {
   await js("document.querySelector('#sessions [data-sess-new]').click()");
   check(await until('!document.getElementById(\'sessions\').open') && launched.at(-1) === `cd '${repo}' && exec claude --permission-mode plan --model 'sonnet' --effort high`, `New session opens a terminal running claude in the folder, in the mode, model and effort you picked (got ${launched.at(-1)})`);
   // A folder you haven't worked in: typed, with suggestions and Tab, or made, then started in.
-  const places = realpathSync(temp); // the place this run allows (your home folder and drives, really)
+  const places = realpathSync.native(temp); // the place this run allows (your home folder and drives, really)
   await js("document.getElementById('sessions-open').click()");
   await until("document.getElementById('sessions').open");
   const typeDir = text => js(`(() => { const f = document.getElementById('sess-dir'); f.focus(); f.value = ${JSON.stringify(text)}; f.dispatchEvent(new Event('input', { bubbles: true })); })()`);
@@ -1310,7 +1311,7 @@ try {
   const acctCli = join(acct, 'claude-cli');
   writeFileSync(acctCli, `#!/bin/sh\ncase "$1 $2" in\n  "agents --json") echo '[]' ;;\n  "auth status") echo '{"loggedIn":true}' ;;\nesac\n`, { mode: 0o755 });
   const acctLaunched = [];
-  const acctHandle = await startCollector({ root: acctRoot, claudeDir: workDir, claudeBin: acctCli, notify: () => {}, log: () => {}, home: '/nowhere', scratchBase: '/nonexistent', folderRoots: [realpathSync(acct)], launch: async args => { acctLaunched.push(args.at(-1)); return { code: 0, stdout: '', stderr: '' }; } });
+  const acctHandle = await startCollector({ root: acctRoot, claudeDir: workDir, claudeBin: acctCli, notify: () => {}, log: () => {}, home: '/nowhere', scratchBase: '/nonexistent', folderRoots: [realpathSync.native(acct)], launch: async args => { acctLaunched.push(args.at(-1)); return { code: 0, stdout: '', stderr: '' }; } });
   try {
     await send('Page.navigate', { url: `http://127.0.0.1:${acctHandle.port}/` });
     check(await until("document.querySelectorAll('.row').length === 2"), 'both accounts\' sessions are listed');

@@ -1343,7 +1343,7 @@
           const d = f.lastDeploy;
           const weather = d ? pxt(d.label, { ok: '#8ef0a0', failed: '#ff8a80', running: '#ffd166' }[d.state] ?? '#c9b48a') : '';
           const tip = [f.key, f.branch && `on ${f.branch}`, d?.detail, 'Click to see the files agents touched here'].filter(Boolean).join(' · ');
-          const second = [f.worktree && f.main ? pxt(`worktree of ${f.main.split('/').pop()}`, '#a9dcf7') : '', weather, f.collision ? ` ${pxt('⚠ crowded', '#ffd166')}` : ''].filter(Boolean).join(' ');
+          const second = [f.worktree && f.main ? pxt(`worktree of ${cutMid(lastPart(f.main), 16)}`, '#a9dcf7') : '', weather, f.collision ? ` ${pxt('⚠ crowded', '#ffd166')}` : ''].filter(Boolean).join(' ');
           lab(s.cx, s.rowTop + 49, `<button type="button" class="px-field" data-farm-field="${esc(f.key)}" title="${esc(tip)}"><span class="px-fl">${pxt(cutMid(f.name, 16), f.collision ? '#ffd166' : '#e6eef5')}${branch}</span>${second ? `<span class="px-fl">${second}</span>` : ''}</button>`, f.collision ? 'bad' : '');
           if (f.behind > 0) lab(s.cx - 40, s.rowTop - 8, cnt(`↓${f.behind}`), 'cnt', `${f.behind} commit${f.behind === 1 ? '' : 's'} behind the remote`);
           if (f.ahead > 0) lab(s.cx - 23, s.rowTop + 3 - Math.ceil(Math.min(f.ahead, 16) / 8) * 6, cnt(`↑${f.ahead}`), 'cnt', `${f.ahead} unpushed commit${f.ahead === 1 ? '' : 's'}`);

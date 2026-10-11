@@ -4,7 +4,7 @@ import assert from 'node:assert/strict';
 import { mkdirSync, mkdtempSync, utimesSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { accountPrefix, claudeCommand, closeTerminalScript, forkCommand, listSessions, projectsOf, terminalScript } from '../sources/sessions.mjs';
+import { accountLaunchEnv, accountPrefix, claudeCommand, claudeLaunch, closeTerminalScript, forkCommand, forkLaunch, listSessions, projectsOf, terminalScript } from '../sources/sessions.mjs';
 
 const NOW = Date.parse('2026-10-07T12:00:00Z');
 const DAY = 86_400_000;
@@ -175,4 +175,42 @@ test('listSessions reads several projects folders, one row per session, the newe
   assert.equal(got.length, 1);
   assert.equal(got[0].firstPrompt, 'new');
   assert.equal(got[0].projectsDir, b);
+});
+
+test('claudeLaunch: the same session as claudeCommand, as folder + argument list + prefill file, checked the same way', () => {
+  assert.deepEqual(claudeLaunch('/code/my app'), { cwd: '/code/my app', args: [] });
+  assert.deepEqual(claudeLaunch('/code/app', ID(1), 'plan', { model: 'sonnet', effort: 'high', prefillFile: '/t/f/prompt.txt' }),
+    { cwd: '/code/app', args: ['--resume', ID(1), '--permission-mode', 'plan', '--model', 'sonnet', '--effort', 'high'], prefillFile: '/t/f/prompt.txt' });
+  assert.deepEqual(claudeLaunch('/code/app', undefined, 'bypassPermissions').args, ['--dangerously-skip-permissions']);
+  assert.throws(() => claudeLaunch('/code/app', 'x; rm -rf ~'), /session id/);
+  assert.throws(() => claudeLaunch('/code/app', undefined, 'yolo; rm -rf ~'), /permission mode/);
+  assert.throws(() => claudeLaunch('/code/app', undefined, 'default', { model: 'gpt; x' }), /model/);
+  assert.throws(() => claudeLaunch('/code/app', undefined, 'default', { effort: 'extreme' }), /effort/);
+});
+
+test('forkLaunch: the fork as an argument list; the name and copy path stay single arguments, whatever they hold', () => {
+  const spec = forkLaunch('/code/app', '/t/forks/f-1/s.jsonl', 'plan', { name: `Bob's "plan"; calc`, sessionId: ID(2), prefillFile: '/t/f/p.txt' });
+  assert.deepEqual(spec, { cwd: '/code/app', args: ['--resume', '/t/forks/f-1/s.jsonl', '--fork-session', '--session-id', ID(2), '--name', `Bob's "plan"; calc`, '--permission-mode', 'plan'], prefillFile: '/t/f/p.txt' });
+  assert.throws(() => forkLaunch('/code/app', 'relative.jsonl'), /transcript copy/);
+  assert.throws(() => forkLaunch('/code/app', '/t/x.txt'), /transcript copy/);
+});
+
+test('a project\'s name is its last folder, whichever separator the path uses', () => {
+  const b = String.fromCharCode(92);
+  const names = projectsOf([{ cwd: `C:${b}Users${b}me${b}my app`, at: 3 }, { cwd: '/Users/me/other', at: 2 }, { cwd: 'D:/work/third', at: 1 }]).map(p => p.name);
+  assert.deepEqual(names, ['my app', 'other', 'third']);
+});
+
+test('accounts on Windows: the launch spec carries CLAUDE_CONFIG_DIR as data, checked as accountPrefix checks the shell form', () => {
+  const win = String.fromCharCode(92);
+  const other = { dir: process.platform === 'win32' ? `C:${win}Users${win}me${win}.claude-zeta` : '/h/.claude-zeta', first: false };
+  assert.equal(accountLaunchEnv(null), undefined);
+  assert.deepEqual(accountLaunchEnv({ dir: '/h/.claude', first: true }), { CLAUDE_CONFIG_DIR: null });
+  assert.deepEqual(accountLaunchEnv(other), { CLAUDE_CONFIG_DIR: other.dir });
+  assert.throws(() => accountLaunchEnv({ dir: 'relative', first: false }), /not an account folder/);
+  assert.throws(() => accountLaunchEnv({ dir: `${other.dir}/`, first: false }), /not an account folder/);
+  assert.deepEqual(claudeLaunch('/code/app', undefined, 'default', { account: other }).env, { CLAUDE_CONFIG_DIR: other.dir });
+  assert.deepEqual(forkLaunch('/code/app', '/t/forks/f-1/s.jsonl', 'default', { account: other }).env, { CLAUDE_CONFIG_DIR: other.dir });
+  assert.equal('env' in claudeLaunch('/code/app'), false, 'one account: nothing set');
+  assert.throws(() => claudeLaunch('/code/app', undefined, 'default', { account: { dir: 'relative', first: false } }), /not an account folder/);
 });

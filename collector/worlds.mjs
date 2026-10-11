@@ -3,7 +3,8 @@
 // (no way out through .., a hidden name or a symlink), and writes the page its sandboxed frame loads.
 // No dependencies.
 import { existsSync, lstatSync, readFileSync, readdirSync, realpathSync, statSync, watch } from 'node:fs';
-import { extname, isAbsolute, join, sep } from 'node:path';
+import { isInside } from './platform/paths.mjs';
+import { extname, isAbsolute, join, normalize, parse, sep } from 'node:path';
 
 export const API_VERSION = 1;
 export const WORLD_NAME = /^[a-z0-9][a-z0-9-]{0,39}$/;
@@ -46,7 +47,7 @@ const identOf = p => { try { const s = statSync(p); return `${s.dev}:${s.ino}`; 
  */
 function holds(target, folder) {
   let r;
-  try { r = realpathSync(folder); } catch { return false; }
+  try { r = realpathSync.native(folder); } catch { return false; }
   const id = identOf(r);
   if (!id) return false;
   const parts = r.split(sep).filter(Boolean);
@@ -55,17 +56,21 @@ function holds(target, folder) {
 }
 
 /** Where your worlds live: worldsDir (a leading ~ is home; a relative one is under home), else ~/.agentville/worlds. Never your home or above it. */
+// On Windows a path that starts with a slash and has no drive ("/", "/worlds") is on the drive it is read on, which for the
+// worlds folder is the home folder's: left alone it would be the process's own drive, and "/" would not be above a home on another.
+export const driveOf = (p, home) => (process.platform === 'win32' && /^[\\/](?![\\/])/.test(p) ? join(parse(home).root, p) : p);
+
 export function worldsDirOf(cfg, home, note = () => {}) {
   const fallback = join(home, '.agentville', 'worlds'), w = cfg?.worldsDir;
   if (typeof w !== 'string' || !w.trim()) return fallback;
   const t = w.trim();
   let dir;
   if (t === '~') dir = home;
-  else if (t.startsWith('~/')) dir = join(home, t.slice(2));
-  else if (isAbsolute(t)) dir = t;
+  else if (t.startsWith('~/') || t.startsWith('~' + String.fromCharCode(92))) dir = join(home, t.slice(2));
+  else if (isAbsolute(t)) dir = driveOf(normalize(t), home);
   else {
     dir = join(home, t);
-    if (dir !== home && !dir.startsWith(home + sep)) { note(`worldsDir "${t}" is outside your home folder; using ${fallback}`); return fallback; }
+    if (dir !== home && !isInside(home, dir)) { note(`worldsDir "${t}" is outside your home folder; using ${fallback}`); return fallback; }
   }
   if (holds(dir, home)) { note(`worldsDir "${t}" is your home folder or above it; using ${fallback}`); return fallback; }
   return dir;
@@ -77,7 +82,7 @@ export function makeWorlds({ builtinDir, userDir = null, home = null }) {
   /** Does the folder hold a regular world.json that really is inside it? */
   function holdsJson(dir) {
     try {
-      const root = realpathSync(dir), r = realpathSync(join(dir, 'world.json'));
+      const root = realpathSync.native(dir), r = realpathSync.native(join(dir, 'world.json'));
       return r.startsWith(root + sep) && statSync(r).isFile();
     } catch { return false; }
   }
@@ -102,7 +107,7 @@ export function makeWorlds({ builtinDir, userDir = null, home = null }) {
     if (!dir || !type || rel.split('/').some(p => p === '' || p === '..' || p.startsWith('.'))) return NOT_FOUND;
     if (key === 'sdk' && rel === 'frame.html') return NOT_FOUND;
     try {
-      const root = realpathSync(dir), real = realpathSync(join(dir, rel)), st = statSync(real);
+      const root = realpathSync.native(dir), real = realpathSync.native(join(dir, rel)), st = statSync(real);
       if (!real.startsWith(root + sep) || !st.isFile()) return NOT_FOUND;
       return { real, type, size: st.size };
     } catch {

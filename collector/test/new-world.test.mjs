@@ -1,5 +1,6 @@
 // npm run new-world: the starter copied into your worlds folder under a name, with that name in world.json;
 // a taken or bad name is refused, and nothing is left half-made.
+import { NO_FILE_LINKS } from './win-links.mjs';
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
@@ -29,7 +30,7 @@ test('copies the starter, with the name in world.json, and the world lists witho
   } finally { rmSync(root, { recursive: true, force: true }); }
 });
 
-test('refuses a name that is taken (even by a broken link), and leaves it alone', () => {
+test('refuses a name that is taken (even by a broken link), and leaves it alone', { skip: NO_FILE_LINKS }, () => {
   const root = temp();
   try {
     mkdirSync(join(root, 'mine'));
@@ -61,16 +62,28 @@ test("the next steps name the world as u/<name>, so a world called farm is yours
 });
 
 test('with --worlds, the next steps repeat it (quoted when it needs to be), and say the dashboard shows only your worlds folder', () => {
-  const steps = nextSteps({ dir: '/tmp/my worlds/my-bakery', name: 'my-bakery', title: 'My bakery', worlds: '/tmp/my worlds' });
+  const steps = nextSteps({ dir: '/tmp/my worlds/my-bakery', name: 'my-bakery', title: 'My bakery', worlds: '/tmp/my worlds', windows: false });
   assert.match(steps, /^ {2}3\. npm run check-world -- u\/my-bakery --worlds '\/tmp\/my worlds'$/m);
   assert.match(steps, /^ {2}4\. npm run world-shots -- u\/my-bakery --worlds '\/tmp\/my worlds'$/m);
   assert.match(steps, /show only your worlds folder/);
-  assert.match(nextSteps({ dir: '/w/x', name: 'x', title: 'X', worlds: "/it's" }), /--worlds '\/it'\\''s'$/m);
-  assert.match(nextSteps({ dir: '/w/x', name: 'x', title: 'X', worlds: '/w' }), /check-world -- u\/x --worlds \/w$/m);
+  assert.match(nextSteps({ dir: '/w/x', name: 'x', title: 'X', worlds: "/it's", windows: false }), /--worlds '\/it'\\''s'$/m);
+  assert.match(nextSteps({ dir: '/w/x', name: 'x', title: 'X', worlds: '/w', windows: false }), /check-world -- u\/x --worlds \/w$/m);
+});
+
+test('on Windows the folder is left plain when it is plain (a backslash, a drive colon and a ~ of a short name are not special), else in double quotes', () => {
+  const b = String.fromCharCode(92);
+  assert.ok(nextSteps({ dir: `C:${b}w`, name: 'x', title: 'X', worlds: `C:${b}Users${b}RUNNER~1${b}worlds`, windows: true }).includes(`--worlds C:${b}Users${b}RUNNER~1${b}worlds\n`), 'a short 8.3 name');
+  const plain = nextSteps({ dir: `C:${b}w${b}x`, name: 'x', title: 'X', worlds: `C:${b}Users${b}me${b}worlds`, windows: true });
+  assert.ok(plain.includes(`check-world -- u/x --worlds C:${b}Users${b}me${b}worlds
+`), plain);
+  const spaced = nextSteps({ dir: `C:${b}w${b}x`, name: 'x', title: 'X', worlds: `C:${b}My Worlds`, windows: true });
+  assert.ok(spaced.includes(`world-shots -- u/x --worlds "C:${b}My Worlds"
+`), spaced);
+  assert.ok(!spaced.includes("'"), 'single quotes mean nothing to cmd.exe');
 });
 
 test('the command, run with --worlds: it prints those steps, and the check-world it prints checks the new world', () => {
-  const root = realpathSync(temp()), worlds = join(root, 'worlds');
+  const root = realpathSync.native(temp()), worlds = join(root, 'worlds');
   try {
     const script = n => fileURLToPath(new URL(`../../scripts/${n}.mjs`, import.meta.url));
     const made = spawnSync(process.execPath, [script('new-world'), 'farm', '--worlds', worlds], { encoding: 'utf8', timeout: 60_000 });

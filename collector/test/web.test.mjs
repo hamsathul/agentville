@@ -382,7 +382,7 @@ test("the top bar shows the agents' memory and CPU, CPU as a share of the whole 
   const page = loadPage();
   page.push(richSnapshot([richAgent({ proc: { ...richAgent().proc, cpu: 200 } })]));
   const stats = page.el('hstats').innerHTML;
-  assert.match(stats, /20% of this Mac/);
+  assert.match(stats, /20% of this computer/);
   assert.match(stats, /200% of one core · 10 cores/);
   assert.match(stats, /600 MB[\s\S]*of 16\.0 GB/);
   assert.doesNotMatch(page.list(), /Memory used by agents|This Mac/);
@@ -1258,7 +1258,12 @@ test("the top bar shows the plan's limits (5-hour, weekly) and when they reset; 
   assert.match(stats, /5-hour limit: 6% used, resets at/);
   assert.match(stats, /class="[^"]*\bbad\b[^"]*"[\s\S]*92%|92%/);
   page.push(richSnapshot([richAgent()]));
-  assert.doesNotMatch(page.el('hstats').innerHTML, />Plan</);
+  // no reading yet: say why, instead of showing nothing (the readings come from the Agentville mod in a session)
+  const none = page.el('hstats').innerHTML;
+  assert.match(none, />Plan</);
+  assert.match(none, /no reading yet/);
+  assert.match(none, /Usage appears once one Claude Code session runs the Agentville mod/);
+  assert.doesNotMatch(none, /5-hour/);
 });
 
 test("an agent's panel shows what its session has cost so far", async () => {
@@ -3054,4 +3059,52 @@ test("📣 Broadcast says which agents' copies wait for their turn to end (the c
   assert.match(results, /waits for its turn to end: remove or edit it under its message box/);
   assert.doesNotMatch(results, /queued: it reads it/);
   assert.match(page.el('bc-status').textContent, /Sent to 4 agents \(4 wait for their turn to end\)/);
+});
+
+test('the top bar names the system: OS and version, Node, and the session command; the CPU share says "this computer"', () => {
+  const page = loadPage();
+  const snap = richSnapshot([richAgent()]);
+  snap.machine.system = { platform: 'win', os: 'Windows 11 Pro 10.0.26200', node: '24.11.1', claude: '2.1.295' };
+  page.push(snap);
+  const stats = page.el('hstats').innerHTML;
+  assert.match(stats, /class="ml">System</);
+  assert.match(stats, /Windows 11 Pro 10\.0\.26200/);
+  assert.match(stats, /Node 24\.11\.1/);
+  assert.match(stats, /Claude Code 2\.1\.295/);
+  assert.match(stats, /of this computer/);
+  assert.doesNotMatch(stats, /of this Mac/);
+  // older snapshots, or a session command that did not report, leave that part out rather than guess
+  snap.machine.system = { platform: 'mac', os: 'macOS 14.5', node: '22.1.0', claude: null };
+  page.push(snap);
+  const mac = page.el('hstats').innerHTML;
+  assert.match(mac, /macOS 14\.5/);
+  assert.doesNotMatch(mac, /Claude Code d/);
+  delete snap.machine.system;
+  page.push(snap);
+  assert.doesNotMatch(page.el('hstats').innerHTML, />System</);
+});
+
+test('on Windows the file buttons and notes say File Explorer, not Finder; without a system they keep saying Finder', () => {
+  const page = loadPage();
+  const snap = richSnapshot([richAgent()]);
+  snap.machine.system = { platform: 'win', os: 'Windows 11 Pro 10.0.26200', node: '24.11.1', claude: null };
+  page.push(snap);
+  assert.equal(page.ctx.fileManager(), 'File Explorer');
+  const noSystem = loadPage();
+  noSystem.push(richSnapshot([richAgent()]));
+  assert.equal(noSystem.ctx.fileManager(), 'Finder');
+});
+
+test('Windows paths: a file, a folder and a session are named by their last part, and a document under the session folder reads relative', () => {
+  const page = loadPage();
+  const b = String.fromCharCode(92);
+  const here = (code, vars = {}) => { Object.assign(page.ctx, vars); return vm.runInContext(code, page.ctx); };
+  const cwd = `C:${b}Users${b}me${b}shop`, doc = `${cwd}${b}docs${b}spec.md`;
+  assert.equal(here('docName(p)', { p: doc }), 'spec.md');
+  assert.equal(here('docName(p)', { p: '/Users/me/shop/docs/spec.md' }), 'spec.md', 'a Mac path as before');
+  assert.equal(here('sessFolder(p)', { p: cwd }), 'shop');
+  assert.equal(here('lastPart(p)', { p: `${b}${b}server${b}share${b}work` }), 'work', 'a network share');
+  assert.equal(here('docLabel(a, p)', { a: { cwd }, p: doc }), 'docs/spec.md', 'relative to the session folder, with forward slashes');
+  assert.equal(here('docLabel(a, p)', { a: { cwd: '/Users/me/shop' }, p: '/Users/me/shop/docs/spec.md' }), 'docs/spec.md');
+  assert.equal(here('short(p)', { p: doc }), `~${b}shop${b}docs${b}spec.md`, 'the home folder is ~ here too');
 });

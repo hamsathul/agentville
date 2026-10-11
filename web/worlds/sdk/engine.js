@@ -12,10 +12,15 @@ const ACTIVE = new Set(['waiting', 'working', 'turn']);
 // A project: the folder holding sibling repos. The scene says which (a repo's `project`); a field
 // without one falls back to its path, read the same way as web/scene.js reads it.
 const CATCH_ALL = new Set(['code', 'projects', 'repos', 'src', 'dev', 'work', 'tools', 'github', 'git', 'documents', 'desktop', 'downloads', 'workspace', 'workspaces', 'sites', 'apps', 'clients', 'tmp']);
+const WIN_PATH = /^(?:[A-Za-z]:[\\/]|\\\\)/; // C:\code\shop\api, as the collector sends a path on Windows
 function projectOf(path) {
-  const parts = String(path).split('/').filter(Boolean).slice(0, -1);
-  return parts.length >= 3 && !CATCH_ALL.has(parts.at(-1).toLowerCase()) ? `/${parts.join('/')}` : null;
+  const p = String(path), win = WIN_PATH.test(p);
+  const all = p.split(win ? /[\\/]/ : '/').filter(Boolean).slice(0, -1);
+  const parts = win && /^[A-Za-z]:$/.test(all[0] ?? '') ? all.slice(1) : all; // a drive letter is not a folder
+  return parts.length >= 3 && !CATCH_ALL.has(parts.at(-1).toLowerCase()) ? `${win ? '' : '/'}${all.join('/')}` : null;
 }
+/** The last part of a path, whichever separator it has (a folder's name for a label). */
+const lastPart = path => String(path ?? '').split(WIN_PATH.test(path) ? /[\\/]/ : '/').filter(Boolean).pop() ?? '';
 // A field keeps its bed; one that leaves keeps it held for a day, so it comes back to the same place.
 const BED_HELD_MS = 86_400_000;
 
@@ -224,8 +229,8 @@ function panelHud({ still, zoom = 1, saysOn = true, skyMode = 'live', seasonMode
               ${kpi(null, '⚠', 'k-collide', 'collisions', c.collisions, c.collisions ? 'two in one repo' : 'none', c.collisions > 0, 'Two agents writing one repo')}
             </div>
             <div class="px-gauges">
-              <span class="px-gauge" title="Memory used by the agents, of this Mac's">${label('RAM')}${bar(ramRatio, tone(ramRatio))}${w(gb(ch.ram?.usedMb ?? 0))}${ch.ram?.totalMb ? dim(`of ${gb(ch.ram.totalMb)}`) : ''}</span>
-              <span class="px-gauge" title="${esc(`CPU used by the agents: ${Math.round(ch.cpu?.used ?? 0)}% of one core, ${ch.cpu?.cores ?? 1} cores`)}">${label('CPU')}${bar(cpuRatio, tone(cpuRatio))}${w(`${Math.round(cpuRatio * 100)}%`)}${dim('of this Mac')}</span>
+              <span class="px-gauge" title="Memory used by the agents, of this computer's">${label('RAM')}${bar(ramRatio, tone(ramRatio))}${w(gb(ch.ram?.usedMb ?? 0))}${ch.ram?.totalMb ? dim(`of ${gb(ch.ram.totalMb)}`) : ''}</span>
+              <span class="px-gauge" title="${esc(`CPU used by the agents: ${Math.round(ch.cpu?.used ?? 0)}% of one core, ${ch.cpu?.cores ?? 1} cores`)}">${label('CPU')}${bar(cpuRatio, tone(cpuRatio))}${w(`${Math.round(cpuRatio * 100)}%`)}${dim('of this computer')}</span>
               ${accs.length > 1 ? accs.map((a, i) => { // with two or more Claude accounts: each one's week, and its 5 hours beside it; one with no name is "account N", as the private scene names it
                 const ws = a.plan?.windows ?? [], f5 = pctOf(ws.find(x => x.kind === 'five_hour')), wk = pctOf(ws.find(x => x.kind === 'seven_day')), name = typeof a.name === 'string' && a.name ? a.name : `account ${i + 1}`;
                 const num = /^account (\d+)$/.exec(name)?.[1]; // a numbered one (the private scene's) reads ACC N: cut to six letters, two would both be ACCOUN
@@ -339,7 +344,7 @@ function withDefaults(h) {
     // each field's name under its bed (a world that gives its own layout() gets these under its own beds)
     labels: lab => { for (const s of out.layout().ST) lab(s.cx, s.rowTop + 50, pxt(cutMid(fields.find(f => f.key === s.key)?.name ?? '', 16)), 'zone'); },
     fieldAt: () => null, buildingAt: () => null, buildingTip: () => '', dialog: () => null, boardSessions: () => [],
-    help: () => `<div class="px-key"><b>${esc(nouns.agents)}</b><span>one for each agent working on this Mac</span><b>${esc(nouns.repos)}</b><span>one for each repo an agent works in</span></div>`,
+    help: () => `<div class="px-key"><b>${esc(nouns.agents)}</b><span>one for each agent working on this computer</span><b>${esc(nouns.repos)}</b><span>one for each repo an agent works in</span></div>`,
     ...h, grid, nouns, seasonNames, boardTitle,
     // the fields are always recorded here (the default labels read them), whoever's setScene runs
     setScene(next) { fields = next.fields; return ownSetScene ? ownSetScene.call(h, next) : []; },
@@ -1236,7 +1241,7 @@ function makePixelView(th, prefs) {
         const r = await opts.request('agentFiles', { agentId: f.id });
         if (!r.ok && r.status === 0) throw new Error(r.error); // the request itself failed: "Could not read it."
         const files = (r.ok ? r.data : null)?.memory ?? [];
-        return `<h4>${esc(f.cwd.split('/').pop() || f.cwd)}</h4>${files.length ? `<ul class="px-dl">${files.map(m => `<li><button type="button" class="act" data-farm-mem="${esc(f.id)}" data-path="${esc(m.path)}">${esc(m.label)}</button><span class="muted">${esc(m.where)}</span></li>`).join('')}</ul>` : '<p class="muted">Nothing remembered here yet.</p>'}`;
+        return `<h4>${esc(lastPart(f.cwd) || f.cwd)}</h4>${files.length ? `<ul class="px-dl">${files.map(m => `<li><button type="button" class="act" data-farm-mem="${esc(f.id)}" data-path="${esc(m.path)}">${esc(m.label)}</button><span class="muted">${esc(m.where)}</span></li>`).join('')}</ul>` : '<p class="muted">Nothing remembered here yet.</p>'}`;
       } catch {
         return `<h4>${esc(f.cwd)}</h4><p class="muted">Could not read it.</p>`;
       }

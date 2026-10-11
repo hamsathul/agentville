@@ -4,6 +4,7 @@ import assert from 'node:assert/strict';
 import { mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { toPosix } from '../platform/paths.mjs';
 import { parseMcpList, parsePluginDetails, projectServersOf, readOwnSkills, readRules, removeRule, tokensOf } from '../sources/claude-setup.mjs';
 
 // What `claude plugin details <name>` printed for real (shortened).
@@ -72,7 +73,7 @@ test('your own skills: name, what they do, and roughly what one costs when used'
   skill('report-writing', long);
   skill('loose', 'No front matter at all');
   mkdirSync(join(home, '.claude', 'skills', 'empty-folder'));
-  assert.deepEqual(readOwnSkills(home).map(s => ({ ...s, path: s.path.replace(home, '~') })), [
+  assert.deepEqual(readOwnSkills(home).map(s => ({ ...s, path: toPosix(s.path.replace(home, '~')) })), [
     { name: 'loose', description: '', path: '~/.claude/skills/loose/SKILL.md', tokens: 6 },
     { name: 'report-writing', description: 'Write a report: findings first', path: '~/.claude/skills/report-writing/SKILL.md', tokens: Math.round(long.length / 4) }, // about 4 characters a token
   ]);
@@ -93,4 +94,14 @@ test('permission rules are read from settings files, and one is removed leaving 
   assert.match(removeRule(file, 'allow', 'Read').error, /no longer there/);
   assert.match(removeRule(file, 'nonsense', 'x').error, /not a list/);
   assert.match(removeRule(join(dir, 'missing.json'), 'allow', 'x').error, /could not read/i);
+});
+
+test('a skill file saved on Windows (CRLF line endings) still has its name and description read', () => {
+  const home = mkdtempSync(join(tmpdir(), 'tracker-skills-crlf-'));
+  mkdirSync(join(home, '.claude', 'skills', 'crlf'), { recursive: true });
+  const crlf = ['---', 'name: win-skill', 'description: written in Notepad', '---', 'body'].join(String.fromCharCode(13, 10));
+  writeFileSync(join(home, '.claude', 'skills', 'crlf', 'SKILL.md'), crlf);
+  const [skill] = readOwnSkills(home);
+  assert.equal(skill.name, 'win-skill');
+  assert.equal(skill.description, 'written in Notepad');
 });

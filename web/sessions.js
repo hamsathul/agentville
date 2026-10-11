@@ -15,7 +15,7 @@ const sessView = { q: '', folder: '', model: '', branch: '', account: '', live: 
 let sessLoading = 0; // the newest read asked for: an older one that comes back after it is dropped
 
 const sessName = s => s.title || s.firstPrompt || '';
-const sessFolder = cwd => cwd?.split('/').filter(Boolean).pop() ?? '';
+const sessFolder = cwd => lastPart(cwd);
 const sessFamily = model => ['opus', 'sonnet', 'haiku', 'fable'].find(f => String(model ?? '').includes(f)) ?? '';
 const byText = (x, y) => x.localeCompare(y, undefined, { sensitivity: 'base' });
 const SESS_ORDER = {
@@ -221,7 +221,7 @@ async function completeDir() {
   const d = sessDir.data;
   if (!d || d.error || !d.dirs.length) return false;
   const typed = sessDir.typed.trim();
-  const part = typed.endsWith('/') ? '' : typed.split('/').pop();
+  const part = /[\\/]$/.test(typed) ? '' : typed.split(/[\\/]/).pop();
   let common = d.dirs[0];
   for (const name of d.dirs) while (!name.startsWith(common)) common = common.slice(0, -1);
   const base = `${tildeOf(d.dir, d.home).replace(/\/$/, '')}/`;
@@ -236,7 +236,7 @@ async function browseForFolder(button) {
   const d = sessDir.data;
   button.disabled = true;
   $('sess-dir-note').className = 'faint dir-note';
-  $('sess-dir-note').textContent = 'Pick a folder in the Finder window…';
+  $('sess-dir-note').textContent = `Pick a folder in the ${fileManager()} window…`;
   const r = await post('/api/actions/choose-folder', { start: d?.exists ? d.path : d?.dir, prompt: 'Start a new Claude Code session in:' });
   button.disabled = false;
   if (r.ok) return setDir(`${tildeOf(r.path, r.home).replace(/\/$/, '')}/`);

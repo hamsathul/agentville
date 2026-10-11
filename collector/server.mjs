@@ -63,10 +63,11 @@ function clampInt(value, min, max, fallback) {
 export function createTrackerServer({ port, token, webFile, getSnapshot, getFeed, getConversation, getPrompts, getNotes, getHeld = () => null, getSubagent, claudePlugins, claudeMcp, claudeRules, fileTicket, rawFile, officeView, listDirs, shellOutput, namedFiles, getTranscriptHtml, getDoc, listFiles, readFile, repoTouched, actions, pastSessions, worlds, log = () => {} }) {
   const clients = new Set();
   let server;
+  let server6 = null;
   const actualPort = () => server.address()?.port ?? port;
 
-  const isAllowedHost = host => host === `localhost:${actualPort()}` || host === `127.0.0.1:${actualPort()}`;
-  const isAllowedOrigin = origin => origin === `http://localhost:${actualPort()}` || origin === `http://127.0.0.1:${actualPort()}`;
+  const isAllowedHost = host => host === `localhost:${actualPort()}` || host === `127.0.0.1:${actualPort()}` || host === `[::1]:${actualPort()}`;
+  const isAllowedOrigin = origin => origin === `http://localhost:${actualPort()}` || origin === `http://127.0.0.1:${actualPort()}` || origin === `http://[::1]:${actualPort()}`;
 
   function openStream(req, res) {
     res.writeHead(200, { 'content-type': 'text/event-stream', 'cache-control': 'no-store', connection: 'keep-alive' });
@@ -283,10 +284,18 @@ export function createTrackerServer({ port, token, webFile, getSnapshot, getFeed
 
   return {
     server,
+    // Loopback only: 127.0.0.1, and ::1 as well because a browser may resolve "localhost" to ::1 first.
+    // Where the machine has no IPv6 loopback the second listener is skipped (and logged); 127.0.0.1 still works.
     listen: () => new Promise((resolve, reject) => {
       server.once('error', reject);
-      server.listen(port, '127.0.0.1', () => resolve(server.address().port));
+      server.listen(port, '127.0.0.1', () => {
+        const chosen = server.address().port;
+        const v6 = createServer(server.listeners('request')[0]);
+        v6.on('error', err => { log(`not listening on ::1 (${err.code ?? err.message}): http://localhost may not open on this machine, use http://127.0.0.1:${chosen}`); resolve(chosen); });
+        v6.listen(chosen, '::1', () => { server6 = v6; resolve(chosen); });
+      });
     }),
+    addresses: () => [server.address()?.address, server6?.address()?.address].filter(Boolean),
     broadcast(snapshot) {
       const data = `event: snapshot\ndata: ${JSON.stringify(snapshot)}\n\n`;
       for (const c of clients) c.write(data);
@@ -300,6 +309,8 @@ export function createTrackerServer({ port, token, webFile, getSnapshot, getFeed
       clearInterval(heartbeat);
       for (const c of clients) c.end();
       clients.clear();
+      server6?.close();
+      server6?.closeAllConnections();
       server.close(() => resolve());
       server.closeAllConnections();
     }),

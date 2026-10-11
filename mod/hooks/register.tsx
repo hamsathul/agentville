@@ -2,6 +2,7 @@ import { atom, read, update } from 'claude-code'
 import type { Register } from 'claude-code'
 
 import type { TrackerSnapshot, TrackerView } from '../types'
+import { claimArgv, isWindowsPath, openArgv, pollForAnswer, removeArgv } from './os'
 import {
   DASHBOARD_URL, buildQuestionResult, dashboardWindowSec, decisionFrom, elapsed, groups, isFresh, newlyWaiting, optionFrom,
   permissionSummary, rowText, stateDirFor, stateFileFor, statusText,
@@ -90,7 +91,12 @@ export async function claimRequests($: any, inbox: string): Promise<any[]> {
   const out: any[] = []
   for (const name of entries.map(e => e.name).filter(n => n.endsWith('.json')).sort()) {
     const claimed = `${inbox}/${name}.claimed`
-    const moved = await $.process.run(['mv', `${inbox}/${name}`, claimed])
+    const claim = claimArgv(isWindowsPath($.plugin.root), `${inbox}/${name}`, claimed)
+    if (!claim) {
+      logFailure($, `refused to claim ${name}: its path holds characters a command line would read as syntax`)
+      continue
+    }
+    const moved = await $.process.run(claim)
     if (moved.exitCode !== 0) continue
     try {
       out.push(JSON.parse(await $.fs.read(claimed)))
@@ -367,14 +373,22 @@ async function ensurePolling($: any) {
 }
 
 async function waitForAnswer($: any, answerPath: string, pendingPath: string, seconds: number): Promise<Waited> {
-  const r = await $.process.run(['/bin/sh', '-c', WAIT_SH, 'sh', answerPath, pendingPath, String(Math.max(1, Math.round(seconds * 4)))], { timeoutMs: (seconds + 10) * 1000 })
-  if (r.exitCode === 0) return { kind: 'answer', text: r.stdout }
-  return r.exitCode === 2 ? { kind: 'withdrawn' } : { kind: 'timeout' }
+  return pollForAnswer({
+    answerPath,
+    pendingPath,
+    maxTicks: Math.max(1, Math.round(seconds * 4)),
+    exists: p => $.fs.exists(p),
+    read: p => $.fs.read(p),
+    touch: async p => { if (await $.fs.exists(p)) await $.fs.write(p, await $.fs.read(p)) },
+    sleep: ms => $.clock.sleep(ms),
+  })
 }
 
 async function removeFiles($: any, paths: string[]) {
   try {
-    await $.process.run(['rm', '-f', ...paths])
+    const argv = removeArgv(isWindowsPath($.plugin.root), paths)
+    if (argv) await $.process.run(argv)
+    else if (paths.length) logFailure($, `did not remove ${paths.length} file(s): a path holds characters a command line would read as syntax`)
   } catch (err) {
     logFailure($, `could not withdraw the dashboard offer: ${String(err)}`)
   }
@@ -604,7 +618,7 @@ export const register: Register = on => {
           </Box>
         ))}
         {snapshot.counts.stale > 0 ? <Text dimColor>{snapshot.counts.stale} stale (see the dashboard)</Text> : null}
-        <Button key="open-browser" label="Open in browser" onPress={() => void $.process.run(['open', DASHBOARD_URL])} />
+        <Button key="open-browser" label="Open in browser" onPress={() => { const argv = openArgv(isWindowsPath($.plugin.root), DASHBOARD_URL); if (argv) void $.process.run(argv) }} />
       </Box>
     )
   })

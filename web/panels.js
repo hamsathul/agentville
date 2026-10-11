@@ -17,7 +17,7 @@ function kpisHtml() {
   return tiles.map(([k, icon, label, val, sub, hot]) => `<div class="kpi ${k}${hot ? ' hot' : ''}"><span>${icon}</span><span class="kpi-label">${label}</span><b class="val">${val}</b><span class="sub">${sub}</span></div>`).join('');
 }
 
-/** The agents' share of this Mac, in the top bar: memory by agent, and CPU as a share of all cores. */
+/** The agents' share of this computer, in the top bar: memory by agent, and CPU as a share of all cores. */
 // The plan's rate-limit windows, as Claude Code names them, in plain words.
 const WINDOW_NAMES = { five_hour: '5-hour', seven_day: 'week', seven_day_opus: 'week · Opus', seven_day_sonnet: 'week · Sonnet', spend_limit: 'spend' };
 const windowName = kind => WINDOW_NAMES[kind] ?? String(kind).replace(/_/g, ' ');
@@ -53,12 +53,21 @@ function planHtml() {
     const meters = (plan?.windows ?? []).map(w => { const r = w.percentUsed / 100; return `${meter(r, severityOf(r, 0.7, 0.9), said(w) + read)}<b>${esc(windowName(w.kind))} ${Math.round(w.percentUsed)}%</b>`; }).join(' ');
     return `<span class="hstat" data-tip="${esc(`${about}${plan?.windows?.length ? `: ${plan.windows.map(said).join(' · ')}${read}` : ''}`)}"><span class="ml${faint ? ' faint' : ''}">${esc(label)}</span>${meters}</span>`;
   };
-  if (!accountsOn()) return snap.plan?.windows?.length ? block('Plan', snap.plan, 'Your Claude plan') : '';
+  // no reading yet: say why, so an empty meter is not mistaken for a broken one (the readings come from the mod)
+  if (!accountsOn()) return snap.plan?.windows?.length ? block('Plan', snap.plan, 'Your Claude plan') : `<span class="hstat" data-tip="Usage appears once one Claude Code session runs the Agentville mod (the readings come from the mod, not from a log file)"><span class="ml">Plan</span><span class="faint">no reading yet</span></span>`;
   return snap.accounts.map(acc => {
     const open = `${acc.open} session${acc.open === 1 ? '' : 's'} open${acc.costUsd ? `, $${acc.costUsd.toFixed(2)} so far` : ''}`;
     const about = `${acc.name}${acc.email ? ` (${acc.email})` : ''} · ${open}${acc.signedIn === false ? ' · Signed out: run /login in a session on it' : ''}${acc.plan?.windows?.length ? '' : ' · No reading yet: open a session on it'}`;
     return block(acc.name, acc.plan, about, acc.signedIn === false);
   }).join('\n    ');
+}
+
+/** Which system this is and what it runs on, from the collector's start-up check; a part it could not read is left out. */
+function systemHtml() {
+  const s = snap.machine?.system;
+  if (!s?.os) return '';
+  const parts = [s.os, s.node ? `Node ${s.node}` : '', s.claude ? `Claude Code ${s.claude}` : ''].filter(Boolean);
+  return `<span class="hstat" data-tip="${esc(`This computer: ${parts.join(' · ')}`)}"><span class="ml">System</span><b>${esc(s.os)}</b><span class="faint">${esc(parts.slice(1).join(' · '))}</span></span>`;
 }
 
 function hstatsHtml() {
@@ -69,8 +78,8 @@ function hstatsHtml() {
   const cores = snap.machine?.cpuCount || 1;
   const cpuUsed = snap.agents.reduce((t, a) => t + (a.proc?.cpu ?? 0), 0);
   const cpuRatio = cpuUsed / (cores * 100);
-  return `<span class="hstat" data-tip="${esc(`Memory used by agents · ${withMem.map(a => `${a.name} ${gb(a.proc.rssMb)}`).join(' · ') || 'none'}`)}"><span class="ml">Agents RAM</span>${memBar}<b>${gb(usedMb)}</b><span class="faint">of ${gb(totalMb)}</span></span>
-    <span class="hstat"><span class="ml">Agents CPU</span>${meter(cpuRatio, severityOf(cpuRatio, 0.5, 0.8), `${Math.round(cpuUsed)}% of one core · ${cores} cores`)}<b>${Math.round(cpuRatio * 100)}% of this Mac</b></span>
+  return `${systemHtml()}<span class="hstat" data-tip="${esc(`Memory used by agents · ${withMem.map(a => `${a.name} ${gb(a.proc.rssMb)}`).join(' · ') || 'none'}`)}"><span class="ml">Agents RAM</span>${memBar}<b>${gb(usedMb)}</b><span class="faint">of ${gb(totalMb)}</span></span>
+    <span class="hstat"><span class="ml">Agents CPU</span>${meter(cpuRatio, severityOf(cpuRatio, 0.5, 0.8), `${Math.round(cpuUsed)}% of one core · ${cores} cores`)}<b>${Math.round(cpuRatio * 100)}% of this computer</b></span>
     ${planHtml()}`;
 }
 
@@ -586,7 +595,7 @@ function heldItemHtml(a, h) {
     return `<li class="held editing"><textarea class="held-edit" data-held-edit-text="${esc(h.id)}" ${ids} rows="3">${esc(edit.text)}</textarea>
       <div class="note-acts"><span class="grow"></span><button type="button" class="act mini" data-held-cancel="${esc(h.id)}" ${ids}>Cancel</button><button type="button" class="act mini primary" data-held-save="${esc(h.id)}" ${ids}>Save</button></div></li>`;
   }
-  const attached = [...(h.files ?? []), ...(h.folders ?? []).map(f => f.split('/').filter(Boolean).pop() ?? f)];
+  const attached = [...(h.files ?? []), ...(h.folders ?? []).map(f => lastPart(f) || f)];
   return `<li class="held"><span class="held-text">${esc(h.text)}</span>${attached.length ? `<span class="faint held-files">📎 ${esc(attached.join(', '))}</span>` : ''}
     <div class="note-acts"><span class="faint">${agoText(h.editedAt ?? h.at)}</span><span class="grow"></span><button type="button" class="act mini" data-held-edit="${esc(h.id)}" ${ids} data-tip="Change it before it goes">Edit</button><button type="button" class="act mini" data-held-now="${esc(h.id)}" ${ids} data-tip="Send it now: it reads it at its next step">⚡ Send now</button><button type="button" class="act mini" data-held-remove="${esc(h.id)}" ${ids} data-tip="Don't send it">✕</button></div></li>`;
 }
@@ -713,7 +722,7 @@ async function attachFolder(agentId, button) {
   button.disabled = false;
   const list = msgFiles.get(agentId) ?? [];
   if (r.ok && list.length >= MAX_FILES) msgStatus.set(agentId, { at: Date.now(), bad: true, text: `At most ${MAX_FILES} attachments per message.` });
-  else if (r.ok && !list.some(f => f.folder === r.path)) msgFiles.set(agentId, [...list, { folder: r.path, name: r.path.split('/').pop() || r.path }]);
+  else if (r.ok && !list.some(f => f.folder === r.path)) msgFiles.set(agentId, [...list, { folder: r.path, name: lastPart(r.path) || r.path }]);
   else if (!r.ok && !r.cancelled) msgStatus.set(agentId, { at: Date.now(), bad: true, text: r.error ?? 'The folder window could not open.' });
   render();
 }

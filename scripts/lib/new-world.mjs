@@ -32,16 +32,22 @@ export function newWorld({ name, worldsDir, starterDir }) {
   return { dir, title };
 }
 
-/** A folder as one word on a command line: as it is when it is plain, else in single quotes. */
-const shellArg = s => (/^[\w@%+=:,./-]+$/.test(s) ? s : `'${s.replaceAll("'", "'\\''")}'`);
+/**
+ * A folder as one word on a command line: as it is when it is plain, else quoted. On Windows a backslash and a drive colon
+ * are plain, and a folder that needs quoting goes in double quotes (single quotes mean nothing to cmd.exe).
+ */
+const shellArg = (s, windows) => {
+  if (windows) return /^[\w@%+=:,./~\\-]+$/.test(s) ? s : `"${s}"`;
+  return /^[\w@%+=:,./-]+$/.test(s) ? s : `'${s.replaceAll("'", "'\\''")}'`;
+};
 
 /**
  * What to do next, for the new world's message. Its commands name it u/<name> (a world of yours called farm is
  * not the farm), and repeat `--worlds <dir>` when `worlds` (that folder) was given; the dashboard and its test
  * page show only your worlds folder, so that case says so.
  */
-export function nextSteps({ dir, name, title, port = 7777, worlds = null }) {
-  const key = `u/${name}`, w = worlds ? ` --worlds ${shellArg(worlds)}` : '';
+export function nextSteps({ dir, name, title, port = 7777, worlds = null, windows = process.platform === 'win32' }) {
+  const key = `u/${name}`, w = worlds ? ` --worlds ${shellArg(worlds, windows)}` : '';
   return `Made ${title} in ${dir}.
 
 Next:

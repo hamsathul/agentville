@@ -63,7 +63,8 @@ export function treeStats(procs, rootPid, idx = childrenIndex(procs)) {
 
 // The Bash tool runs each command as `zsh -c "source <its shell snapshot> … && eval '<command>' < /dev/null
 // && pwd -P >| <file>"`, a child of the session in a process group of its own (so it can be stopped whole).
-const BASH_TOOL = /^\/bin\/(?:zsh|bash|sh) -c .*\/shell-snapshots\/snapshot-/;
+// On Windows it is Git's bash.exe: -c "source /c/Users/..../.claude/shell-snapshots/snapshot-..." (read from a live process list, 2026-10-10).
+const BASH_TOOL = /^(?:\/bin\/(?:zsh|bash|sh)|"?[^"]*bash\.exe"?) -c .*\/shell-snapshots\/snapshot-/;
 /** Whether a process is one of a session's shell commands: its Bash tool's, never its MCP servers or the session itself. */
 export const isShellCommand = (p, sessionPid) => Boolean(p) && p.ppid === sessionPid && p.pgid === p.pid && BASH_TOOL.test(p.command);
 

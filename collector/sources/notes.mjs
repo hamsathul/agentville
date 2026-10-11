@@ -1,6 +1,8 @@
-import { chmodSync, existsSync, mkdirSync, readFileSync, readdirSync, renameSync, statSync, unlinkSync, writeFileSync } from 'node:fs';
+import { chmodSync, existsSync, mkdirSync, readFileSync, readdirSync, statSync, unlinkSync, writeFileSync } from 'node:fs';
 import { randomBytes } from 'node:crypto';
 import { join } from 'node:path';
+import { makePrivate } from '../platform/private.mjs';
+import { replaceFile } from '../platform/replace.mjs';
 
 // Your notes on a session: things you may want to say to it later, or not. They are yours alone:
 // kept under state/notes/<sessionId>.json (the folder 0700, the file 0600), never sent anywhere,
@@ -37,10 +39,11 @@ export function createNotes(dir, { now = () => Date.now(), newId = () => randomB
       return;
     }
     mkdirSync(dir, { recursive: true, mode: 0o700 });
-    chmodSync(dir, 0o700);
+    makePrivate(dir);
     const tmp = `${fileOf(id)}.tmp`;
     writeFileSync(tmp, JSON.stringify({ notes }), { mode: 0o600 });
-    renameSync(tmp, fileOf(id));
+    makePrivate(tmp);
+    replaceFile(tmp, fileOf(id));
   }
   const textOf = text => {
     if (typeof text !== 'string' || !text.trim()) return { error: 'Write something first.' };

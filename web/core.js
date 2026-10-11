@@ -3,6 +3,8 @@
 const GROUPS = [['waiting', 'Waiting on you'], ['working', 'Working'], ['yourTurn', 'Your turn'], ['idle', 'Idle'], ['stale', 'Stale · 24h+ quiet']];
 const STATE_CHIP = { waiting: '❓ Waiting on you', working: '▶ Working', yourTurn: '↩ Your turn', stale: '◌ Stale', idle: '◌ Idle' };
 let snap = null;
+/** The system's file manager, for the button and note labels (the collector's start-up check says which system this is). */
+function fileManager() { return snap?.machine?.system?.platform === 'win' ? 'File Explorer' : 'Finder'; }
 const drafts = new Map(); // toolUseId → { picks: Map<question index, Set<label>>, other: Map<question index, text> }
 const msgDrafts = new Map(); // agent id → half-typed chat message
 const asideDrafts = new Map(); // agent id → half-typed side question
@@ -47,7 +49,11 @@ const clock = ms => new Date(ms).toLocaleTimeString([], { hour: '2-digit', minut
 const hhmm = ms => new Date(ms).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
 const ago = ms => (!ms ? '' : Date.now() - ms < 86_400_000 ? clock(ms) : new Date(ms).toLocaleDateString([], { month: 'short', day: 'numeric' }));
 const gb = mb => (mb >= 1024 ? `${(mb / 1024).toFixed(1)} GB` : `${Math.round(mb)} MB`);
-const short = p => String(p ?? '').replace(/^\/Users\/[^/]+/, '~');
+const short = p => String(p ?? '').replace(/^\/Users\/[^/]+/, '~').replace(/^[A-Za-z]:[\\/]Users[\\/][^\\/]+/, '~');
+// The collector sends native paths: C:\a\b on Windows, /a/b on a Mac. The parts of one, whichever separator it has.
+const WIN_PATH = /^(?:[A-Za-z]:[\\/]|\\\\)/;
+const pathParts = path => String(path ?? '').split(WIN_PATH.test(path) ? /[\\/]/ : '/').filter(Boolean);
+const lastPart = path => pathParts(path).pop() ?? '';
 const shellQuote = s => `'${String(s).replace(/'/g, `'\\''`)}'`;
 
 function elapsed(from) {

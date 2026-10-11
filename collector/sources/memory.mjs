@@ -1,5 +1,6 @@
 import { readFileSync, readdirSync, statSync } from 'node:fs';
 import { dirname, join } from 'node:path';
+import { isInside, toPosix } from '../platform/paths.mjs';
 
 // What a session remembers, for the explorer's Memory section: the CLAUDE.md files Claude Code
 // loads for it, the project's auto memory, and (once the conversation was compacted) the summary
@@ -19,7 +20,7 @@ export function memoryFiles({ cwd, home, claudeDir, transcriptPath }) {
   const add = (path, label, where) => {
     if (isFile(path) && !out.some(o => o.path === path)) out.push({ path, label, where });
   };
-  const short = p => (p === home ? '~' : p.startsWith(`${home}/`) ? `~${p.slice(home.length)}` : p);
+  const short = p => (p === home ? '~' : isInside(home, p) ? `~${toPosix(p.slice(home.length))}` : p);
   add(join(claudeDir, 'CLAUDE.md'), 'CLAUDE.md', 'all projects');
   if (cwd) {
     const parents = [];

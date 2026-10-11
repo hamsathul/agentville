@@ -21,7 +21,7 @@ import { contentTypeOf, parseCsv, readXlsx, viewOf } from './sources/previews.mj
 import { repoFiles } from './derive/repo-files.mjs';
 import { checkFiles, checkFolders, pruneUploads, saveFiles, typedPart, withAttachments } from './sources/uploads.mjs';
 import { compactSummary, memoryFiles, scratchpadOf } from './sources/memory.mjs';
-import { EFFORTS, MODELS, MODE_FLAGS, SESSION_ID, accountPrefix, claudeCommand, closeTerminalScript, forkCommand, listSessions, projectsOf, shellQuote, terminalScript } from './sources/sessions.mjs';
+import { EFFORTS, MODELS, MODE_FLAGS, SESSION_ID, accountLaunchEnv, accountPrefix, claudeCommand, claudeLaunch, closeTerminalScript, forkCommand, forkLaunch, listSessions, projectsOf, shellQuote, terminalScript } from './sources/sessions.mjs';
 import { appendRewind, cutTranscript, pruneForks, restorePoint } from './sources/fork.mjs';
 import { MAX_NOTE_CHARS, createNotes } from './sources/notes.mjs';
 import { createHeld } from './sources/held.mjs';
@@ -33,22 +33,19 @@ import { reposFor } from './derive/repos.mjs';
 import { planReadings, planUsage } from './derive/plan.mjs';
 import { noteDirectDeploys } from './derive/deploys.mjs';
 import { AlertEngine, notifyMac } from './alerts.mjs';
+import { platformFor } from './platform/index.mjs';
+const platform = platformFor();
+import { isInside, toPosix } from './platform/paths.mjs';
+import { makePrivate } from './platform/private.mjs';
+const defaultLaunch = args => run('osascript', args, { timeoutMs: 15_000 });
 import { createTrackerServer } from './server.mjs';
 import { makeWorlds, watchWorlds, worldsDirOf } from './worlds.mjs';
 import { renderTranscriptPage } from './transcript-page.mjs';
 import { checkCast, chooseSession, createLinesWatch, dueLines, factsOf, lineWorld, namesOf, parseLines } from './sources/lines.mjs';
+import { replaceFile } from './platform/replace.mjs';
 
 const DOC_FILE = /\.(md|markdown|mdx)$/i;
 
-// A session's process, for ending it: its command line, its terminal, a signal, whether it still runs.
-const systemProcs = {
-  commandOf: async pid => { const r = await run('ps', ['-o', 'command=', '-p', String(pid)], { timeoutMs: 5000 }); return r.code === 0 ? r.stdout.trim() : null; },
-  ttyOf: async pid => { const r = await run('ps', ['-o', 'tty=', '-p', String(pid)], { timeoutMs: 5000 }); const t = r.code === 0 ? r.stdout.trim() : ''; return /^ttys\d+$/.test(t) ? t : null; },
-  kill: (pid, sig) => process.kill(pid, sig),
-  alive: pid => { try { process.kill(pid, 0); return true; } catch { return false; } },
-  killGroup: (pgid, sig) => process.kill(-pgid, sig), // a shell command and everything it started
-  groupAlive: pgid => { try { process.kill(-pgid, 0); return true; } catch { return false; } },
-};
 const DOC_MAX_BYTES = 2 * 1024 * 1024;
 
 const ID_RE = /^[A-Za-z0-9-]{1,64}$/;
@@ -77,6 +74,7 @@ function loadToken(path) {
   }
   const token = randomBytes(32).toString('hex');
   writeFileSync(path, token, { mode: 0o600 });
+  makePrivate(path);
   return token;
 }
 
@@ -109,7 +107,7 @@ async function quickLookPicture(real) {
   }
 }
 
-export async function startCollector({ root, claudeDir = join(homedir(), '.claude'), claudeBin = 'claude', home = homedir(), signedInMs = 60_000, heldGoneMs = 120_000, scratchBase = `/private/tmp/claude-${process.getuid?.() ?? 0}`, port: portOverride, deliveryTimeoutMs = 5000, helperTimeoutMs = 30_000, linesGapMs = 300_000, linesIdleMs = 1_800_000, castKeepMs = 600_000, notify = notifyMac, launch = args => run('osascript', args, { timeoutMs: 15_000 }), sessionProcs = systemProcs, endWaitMs = 8000, readProcs = readPs, deployStatusOf = deployStatus, pullRequestsOf = pullRequests, githubSlugOf = githubSlug, ticketMs = 600_000, quickLook = quickLookPicture, folderRoots = [home, '/Volumes'], chooseFolder = chooseFolderMac, stopWaitMs = 3000, revealFile = real => run('open', ['-R', real], { timeoutMs: 10_000 }), openFolder = dir => run('open', ['-a', 'Finder', dir], { timeoutMs: 10_000 }), log = makeLogger(join(root, 'logs')) }) {
+export async function startCollector({ root, system = null, claudeDir = join(homedir(), '.claude'), claudeBin = 'claude', home = homedir(), signedInMs = 60_000, heldGoneMs = 120_000, scratchBase = platform.scratchBase(), port: portOverride, deliveryTimeoutMs = 5000, helperTimeoutMs = 30_000, linesGapMs = 300_000, linesIdleMs = 1_800_000, castKeepMs = 600_000, notify = platform.notify, launch = defaultLaunch, sessionProcs = platform.sessionProcs, endWaitMs = 8000, readProcs = platform.readProcs, deployStatusOf = deployStatus, pullRequestsOf = pullRequests, githubSlugOf = githubSlug, ticketMs = 600_000, quickLook = platform.quickLookPicture ?? quickLookPicture, folderRoots = platform.folderRoots(home), chooseFolder = platform.name === 'win' ? platform.chooseFolder : chooseFolderMac, stopWaitMs = 3000, revealFile = real => platform.revealFile(real), openFolder = dir => platform.openFolder(dir), log = makeLogger(join(root, 'logs')) }) {
   // readProcs, deployStatusOf, pullRequestsOf and githubSlugOf read the machine and GitHub; a test or the demo video passes stand-ins.
   const stateDir = join(root, 'state');
   const pendingDir = join(stateDir, 'pending');
@@ -144,7 +142,7 @@ export async function startCollector({ root, claudeDir = join(homedir(), '.claud
   const commandsDir = join(stateDir, 'commands'), resultsDir = join(stateDir, 'command-results');
   const asksDir = join(stateDir, 'btw'), asideAnswersDir = join(stateDir, 'asides');
   for (const dir of [stateDir, pendingDir, answersDir, modsDir, messagesDir, uploadsDir, commandsDir, resultsDir, asksDir, asideAnswersDir]) mkdirSync(dir, { recursive: true });
-  for (const dir of [helperDir, helperRepliesDir]) mkdirSync(dir, { recursive: true, mode: 0o700 });
+  for (const dir of [helperDir, helperRepliesDir]) { mkdirSync(dir, { recursive: true, mode: 0o700 }); makePrivate(dir); }
   const pendingAsides = new Map(); // session → [{ id, question, at }] asked and not answered yet
   const configPath = join(root, 'config.json');
 
@@ -197,7 +195,7 @@ export async function startCollector({ root, claudeDir = join(homedir(), '.claud
   function canRunOnPath(path) {
     const folder = dirname(dirname(path));
     let real = folder;
-    try { real = realpathSync(folder); } catch { /* compared as it is */ }
+    try { real = realpathSync.native(folder); } catch { /* compared as it is */ }
     return projectsFolders().find(p => p.real === real || p.path === folder)?.keys ?? [];
   }
   /** The account a session is on: where a registry lists it, else where it last ran, else the first. */
@@ -360,7 +358,7 @@ export async function startCollector({ root, claudeDir = join(homedir(), '.claud
     const file = join(stateDir, 'state.json');
     try {
       writeFileSync(`${file}.tmp`, JSON.stringify(snap));
-      renameSync(`${file}.tmp`, file);
+      replaceFile(`${file}.tmp`, file);
     } catch (err) {
       markFail('state', err);
     }
@@ -447,7 +445,7 @@ export async function startCollector({ root, claudeDir = join(homedir(), '.claud
       generatedAt: now,
       settings: { modToasts: cfg.modToasts, permissionDashboardSec: cfg.permissionDashboardSec, memoryAlertGb: cfg.memoryAlertGb, cpuAlertPct: cfg.cpuAlertPct },
       collector: selfStats(),
-      machine: { totalMemMb: Math.round(totalmem() / 1_048_576), cpuCount: cpus().length },
+      machine: { totalMemMb: Math.round(totalmem() / 1_048_576), cpuCount: cpus().length, ...(system ? { system } : {}) },
       sources: { ...sources },
       counts: countStates(agents, collisions),
       agents: sortAgents(agents),
@@ -637,7 +635,7 @@ export async function startCollector({ root, claudeDir = join(homedir(), '.claud
     const agent = snapshot?.agents.find(a => a.id === agentId);
     if (!agent?.docs?.some(d => d.path === path)) return { status: 404, error: 'That document is not one this agent has opened.' };
     try {
-      const real = realpathSync(path);
+      const real = realpathSync.native(path);
       const st = statSync(real);
       if (!DOC_FILE.test(real) || !st.isFile()) return { status: 403, error: 'Only markdown files can be shown here.' };
       if (st.size > DOC_MAX_BYTES) return { status: 413, error: 'That file is too large to show here (2 MB at most).' };
@@ -657,8 +655,8 @@ export async function startCollector({ root, claudeDir = join(homedir(), '.claud
     const out = {};
     for (const m of rec ? [rec.model, ...rec.childModels.values()] : []) {
       for (const f of m?.touchedFiles() ?? []) {
-        if (!f.path.startsWith(`${cwd}/`)) continue;
-        const rel = f.path.slice(cwd.length + 1);
+        if (!isInside(cwd, f.path)) continue;
+        const rel = toPosix(f.path.slice(cwd.length + 1));
         const prev = out[rel];
         out[rel] = prev ? { wrote: prev.wrote || f.wrote, at: Math.max(prev.at, f.at) } : { wrote: f.wrote, at: f.at };
       }
@@ -697,8 +695,8 @@ export async function startCollector({ root, claudeDir = join(homedir(), '.claud
     if (!agent || typeof path !== 'string') return null;
     if (agent.kind !== 'codex' && memoryOf(agent).some(m => m.path === path)) return dirname(path);
     const scratchRoot = agent.kind === 'codex' ? null : scratchpadOf(agentId, scratchBase, agent.cwd);
-    if (scratchRoot && path.startsWith(`${scratchRoot}/`)) return scratchRoot;
-    if (browsable(agent) && path.startsWith(`${agent.cwd}/`)) return agent.cwd;
+    if (scratchRoot && isInside(scratchRoot, path)) return scratchRoot;
+    if (browsable(agent) && isInside(agent.cwd, path)) return agent.cwd;
     return null;
   }
   const OUTSIDE = { status: 403, error: "That file is outside the agent's folder." };
@@ -719,7 +717,7 @@ export async function startCollector({ root, claudeDir = join(homedir(), '.claud
     for (const [k, t] of tickets) if (t.until < now) tickets.delete(k);
     const id = randomBytes(16).toString('hex');
     tickets.set(id, { root, file: folder ? null : ok.real, until: now + ticketMs });
-    const rel = folder ? relative(realpathSync(root), ok.real) : basename(ok.real);
+    const rel = folder ? relative(realpathSync.native(root), ok.real) : basename(ok.real);
     return { url: `/raw/${id}/${rel.split(sep).map(encodeURIComponent).join('/')}`, type: contentTypeOf(ok.real), size: ok.size };
   }
   /** What a link opens: { real, type, size } of the file, or { status, error }. `rel` is the path after the link's id, decoded. */
@@ -772,10 +770,10 @@ export async function startCollector({ root, claudeDir = join(homedir(), '.claud
     const call = [rec?.model, ...(rec?.childModels?.values() ?? [])].filter(Boolean).flatMap(m => m.bashCalls()).find(c => c.id === shell.toolUseId);
     if (!shell.output || !call?.outputPath) return { status: 404, error: 'Only a background command writes its output where it can be read; this one hands it to the session when it ends.' };
     let real;
-    try { real = realpathSync(call.outputPath); } catch { return { status: 404, error: 'Its output file is gone.' }; }
+    try { real = realpathSync.native(call.outputPath); } catch { return { status: 404, error: 'Its output file is gone.' }; }
     let base = scratchBase;
-    try { base = realpathSync(scratchBase); } catch { /* none */ }
-    if (!real.startsWith(`${base}/`) || !real.endsWith('.output')) return { status: 403, error: 'That output file is outside the scratch folder.' };
+    try { base = realpathSync.native(scratchBase); } catch { /* none */ }
+    if (!isInside(base, real) || !real.endsWith('.output')) return { status: 403, error: 'That output file is outside the scratch folder.' };
     const size = statSync(real).size;
     const fd = openSync(real, 'r');
     try {
@@ -808,16 +806,12 @@ export async function startCollector({ root, claudeDir = join(homedir(), '.claud
       const book = readXlsx(readFileSync(ok.real));
       return book.error ? { status: 415, error: book.error } : { view: 'sheet', sheets: book.sheets };
     }
-    if (view === 'word') { // macOS's textutil: the document as a page, and as plain text to quote from
-      const [html, text] = await Promise.all(['html', 'txt'].map(as => run('textutil', ['-convert', as, '-stdout', ok.real], { timeoutMs: 30_000 })));
-      if (html.code !== 0) return { status: 415, error: `macOS could not read this document (${html.stderr.trim().split('\n')[0] || `exit ${html.code}`}).` };
-      return { view: 'word', html: html.stdout, text: text.code === 0 ? text.stdout : '' };
-    }
+    if (view === 'word') return platform.readWordFile(ok.real); // the document as a page, and as plain text to quote from
     if (view === 'office') {
       try {
         return { view: 'picture', picture: `data:image/png;base64,${(await quickLook(ok.real)).toString('base64')}` };
       } catch (err) {
-        return { status: 415, error: `Quick Look could not make a picture of it (${err.message}).` };
+        return { status: 415, error: `A picture of it could not be made (${err.message}).` };
       }
     }
     return { status: 415, error: 'This is not a document to read this way.' };
@@ -937,8 +931,13 @@ export async function startCollector({ root, claudeDir = join(homedir(), '.claud
   }
   const claudeRules = () => ({ files: readRules(rulesFiles()) });
 
-  const openTerminal = async command => {
-    const res = await launch(terminalScript(cfg.terminal, command));
+  // A job is { line, spec }: the shell line Mac pastes into Terminal/iTerm, and the same thing as data for Windows (see win.openTerminal).
+  const sessionJob = (...a) => ({ line: claudeCommand(...a), spec: claudeLaunch(...a) });
+  const forkJob = (...a) => ({ line: forkCommand(...a), spec: forkLaunch(...a) });
+  const openTerminal = async job => {
+    // A launch passed in (a test, the demo video) stands in for the terminal on every platform, so a test can never open a real window.
+    if (platform.name === 'win' && launch === defaultLaunch) return platform.openTerminal(job, { claude: claudeBin, specDir: join(stateDir, 'launch') });
+    const res = await launch(terminalScript(cfg.terminal, job.line));
     const app = cfg.terminal === 'iTerm' ? 'iTerm' : 'Terminal';
     if (res.code === 0) return { ok: true, terminal: app };
     if (/-1743|not authori[sz]ed/i.test(res.stderr)) return { ok: false, error: `macOS stopped the tracker from opening ${app}. Allow it in System Settings › Privacy & Security › Automation, then try again.` };
@@ -953,7 +952,7 @@ export async function startCollector({ root, claudeDir = join(homedir(), '.claud
     if (!agent) return { ok: false, error: 'That session was not found.' };
     if (agent.kind !== 'interactive' || !Number.isInteger(agent.pid)) return { ok: false, error: 'Only a session running in a terminal can be ended from here.' };
     const command = await sessionProcs.commandOf(agent.pid);
-    if (!/(^|\/|\s)claude(\s|$)/.test(command ?? '')) return { ok: false, error: "That session's process is not Claude Code any more." };
+    if (!platform.isClaudeCommand(command)) return { ok: false, error: "That session's process is not Claude Code any more." };
     const tty = await sessionProcs.ttyOf(agent.pid);
     sessionProcs.kill(agent.pid, 'SIGTERM');
     const until = Date.now() + endWaitMs;
@@ -1191,7 +1190,7 @@ export async function startCollector({ root, claudeDir = join(homedir(), '.claud
       if (chosen.account.key !== agent.account && !runsOn.includes(chosen.account.key)) return { ok: false, error: notShared(chosen.account, runsOn) };
       const ended = await endSession(agent);
       if (!ended.ok) return ended;
-      const opened = await openTerminal(claudeCommand(agent.cwd, agent.id, body.mode ?? 'default', { account: launchAccount(chosen.account) }));
+      const opened = await openTerminal(sessionJob(agent.cwd, agent.id, body.mode ?? 'default', { account: launchAccount(chosen.account) }));
       if (opened.ok) remember(agent.id, chosen.account);
       return opened;
     },
@@ -1345,7 +1344,7 @@ export async function startCollector({ root, claudeDir = join(homedir(), '.claud
       const chosen = accountFor(body, resume ? accountByKey(s.account) ?? accountOfSession(resume) : accountByKey(known.projects.find(p => p.cwd === cwd)?.account) ?? accounts[0]);
       if (chosen.error) return { ok: false, error: chosen.error };
       if (resume && !s.canRunOn.includes(chosen.account.key)) return { ok: false, error: notShared(chosen.account, s.canRunOn) };
-      const opened = await openTerminal(claudeCommand(cwd, resume, body?.mode ?? 'default', { model: body?.model ?? 'default', effort: body?.effort, account: launchAccount(chosen.account) }));
+      const opened = await openTerminal(sessionJob(cwd, resume, body?.mode ?? 'default', { model: body?.model ?? 'default', effort: body?.effort, account: launchAccount(chosen.account) }));
       if (opened.ok && resume) remember(resume, chosen.account);
       return opened;
     },
@@ -1368,7 +1367,7 @@ export async function startCollector({ root, claudeDir = join(homedir(), '.claud
       const cut = await cutTranscript(path, body.at, forksDir, basename(path, '.jsonl')); // the copy is named as the transcript
       if (cut.error) return { ok: false, error: cut.error };
       const forkId = randomUUID(); // chosen here, so the fork's notes can be ready for it
-      const opened = await openTerminal(forkCommand(agent.cwd, cut.file, body.mode ?? 'default', { model: body.model ?? 'default', effort: body.effort, name: `${agent.name} (fork)`.slice(0, 80), prefillFile: cut.prefillFile, sessionId: forkId, account: launchAccount(chosen.account) }));
+      const opened = await openTerminal(forkJob(agent.cwd, cut.file, body.mode ?? 'default', { model: body.model ?? 'default', effort: body.effort, name: `${agent.name} (fork)`.slice(0, 80), prefillFile: cut.prefillFile, sessionId: forkId, account: launchAccount(chosen.account) }));
       if (opened.ok) { notes.copy(agent.id, forkId); remember(forkId, chosen.account); }
       return opened;
     },
@@ -1396,7 +1395,7 @@ export async function startCollector({ root, claudeDir = join(homedir(), '.claud
         if (!ended.ok) return ended;
       }
       const account = accountOfSession(agent.id); // it is restored and resumed on its own account
-      const resume = prefillFile => openTerminal(claudeCommand(agent.cwd, agent.id, body.mode ?? 'default', { prefillFile, account: launchAccount(account) }));
+      const resume = prefillFile => openTerminal(sessionJob(agent.cwd, agent.id, body.mode ?? 'default', { prefillFile, account: launchAccount(account) }));
       let files = null; // put back, none to put back, or not asked
       if (what !== 'conversation') {
         const r = await run(claudeBin, ['--resume', agent.id, '--rewind-files', body.at], { cwd: agent.cwd, timeoutMs: 60_000, env: { CLAUDE_CODE_ENABLE_SDK_FILE_CHECKPOINTING: '1', ...envFor(account) } });
@@ -1414,6 +1413,7 @@ export async function startCollector({ root, claudeDir = join(homedir(), '.claud
           mkdirSync(forksDir, { recursive: true, mode: 0o700 });
           prefillFile = join(mkdtempSync(join(forksDir, 'r-')), 'prompt.txt');
           writeFileSync(prefillFile, point.prompt, { mode: 0o600 });
+          makePrivate(prefillFile);
         }
       }
       const opened = await resume(prefillFile);
@@ -1526,13 +1526,13 @@ export async function startCollector({ root, claudeDir = join(homedir(), '.claud
       const ok = await checkFolderFile(root, body.path);
       if (ok.error) return { ok: false, error: ok.error };
       const r = await revealFile(ok.real);
-      return r.code === 0 ? { ok: true } : { ok: false, error: 'Finder could not show it.' };
+      return r.code === 0 ? { ok: true } : { ok: false, error: `${platform.fileManager} could not show it.` };
     },
     /** Your worlds folder in Finder, made first so there is one to show. */
     async revealWorlds() {
       try { mkdirSync(worldsDir, { recursive: true }); } catch (err) { return { ok: false, error: `Could not make ${worldsDir}: ${err.message}` }; }
       const r = await openFolder(worldsDir); // Finder, by name: a worldsDir that names an app is shown, never launched
-      if (r.code !== 0) return { ok: false, error: 'Finder could not show the worlds folder.' };
+      if (r.code !== 0) return { ok: false, error: `${platform.fileManager} could not show the worlds folder.` };
       return { ok: true, path: worldsDir };
     },
     /** Turns an installed plugin on or off, updates or uninstalls it (claude plugin …). */
@@ -1560,7 +1560,7 @@ export async function startCollector({ root, claudeDir = join(homedir(), '.claud
       const checked = mcpChecked ?? await claudeMcp();
       if (body?.op === 'login') {
         if (!checked.servers?.some(s => s.name === body.name)) return { ok: false, error: 'That server is not in the list.' };
-        return openTerminal(`cd ~ && exec claude mcp login ${shellQuote(body.name)}`);
+        return openTerminal({ line: `cd ~ && exec claude mcp login ${shellQuote(body.name)}`, spec: { cwd: home, args: ['mcp', 'login', body.name] } });
       }
       if (body?.op !== 'remove') return { ok: false, error: 'Sign in or remove.' };
       const local = body.project !== undefined && checked.projects?.some(p => p.project === body.project && p.names.includes(body.name));
@@ -1587,7 +1587,8 @@ export async function startCollector({ root, claudeDir = join(homedir(), '.claud
       const agent = ID_RE.test(id) ? snapshot?.agents.find(a => a.id === id || a.cliId === id) : undefined;
       if (!agent) return { ok: false, error: 'unknown agent' };
       if (agent.kind !== 'background' || !agent.cliId || !ID_RE.test(agent.cliId)) return { ok: false, error: 'only background sessions can be opened from here' };
-      return openTerminal(`${accountPrefix(launchAccount(accountOfSession(agent.id)))}claude attach ${agent.cliId}`); // cliId is [A-Za-z0-9-] only
+      const account = launchAccount(accountOfSession(agent.id));
+      return openTerminal({ line: `${accountPrefix(account)}claude attach ${agent.cliId}`, spec: { cwd: home, args: ['attach', agent.cliId], ...(account ? { env: accountLaunchEnv(account) } : {}) } }); // cliId is [A-Za-z0-9-] only
     },
     async rm(ids) {
       const results = [];

@@ -255,8 +255,9 @@ Times are milliseconds since 1970, as `Date.now()` gives them.
   `{ state: 'running' | 'ok' | 'failed' | 'other', label: null, detail: null, url, source: 'actions', run: true }`.
 - `collision`: two agents writing in it at once: `'high'` (one of them used git), `'normal'`, or `null`.
 - `worktree`: it is a git worktree; `main`: the folder of the repo it belongs to, or `null`.
-- `project`: an id for grouping repos that sit side by side in one folder (that folder's path; in a private scene a stand-in, `p1`, `p2`…), or
-  `null`; `projectName`: its label.
+- `project`: an id for grouping repos that sit side by side in one folder (that folder's path, with forward slashes also on Windows, drive
+  first: `C:/Users/me/shop`; in a private scene a stand-in, `p1`, `p2`…), or `null`; `projectName`: its label. A repo's `key` and `main`
+  are native paths (`C:\Users\me\shop\api` on Windows): take a folder's name from the last part after either separator.
 - `prs`: its pull requests, from `gh`, or `null`: `{ open: [{ number, title, url, draft, branch, checks }], merged: [{ number, title, url, at }] }`,
   with `checks` `ok`, `failed`, `running` or `null`.
 

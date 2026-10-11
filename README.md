@@ -20,7 +20,7 @@ repo. Three farmers wait on your porch, one has finished, and the rest work in t
 the tool for their current step.</sub>
 
 Everything runs on your machine. The collector is a small Node program with no dependencies.
-It listens on `127.0.0.1` only and reads what Claude Code already writes to disk.
+It listens on the loopback addresses only (`127.0.0.1`, and `::1` where the machine has it) and reads what Claude Code already writes to disk.
 
 ## Contents
 
@@ -154,6 +154,7 @@ It listens on `127.0.0.1` only and reads what Claude Code already writes to disk
 ## Requirements
 
 - **macOS.** The service runs under launchd, and the tracker uses `ps` and `osascript`.
+- **Or Windows 10/11** with Windows PowerShell 5.1. It detects the platform, checks its dependencies and refuses to start with a clear message if one is missing: see [docs/windows.md](docs/windows.md).
 - **Node.js 22 or newer.** An nvm install is found automatically. `npm run check-world` needs
   22.13 or later (or 23.5 or later), to run a world contained.
 - **Claude Code.** The mod needs a build with plugin mods; it is tested on 2.1.293.
@@ -1116,7 +1117,8 @@ The mod also does the dashboard's work inside the session:
 | `permissionDashboardSec` | How long a permission prompt is offered on the dashboard before the terminal asks (15; 0 = terminal only) |
 | `permissionGuessSec` | A tool call with no result for this long, with an idle process, counts as "probably a permission prompt" (20) |
 | `memoryAlertGb`, `cpuAlertPct`, `cpuAlertSustainSec` | When an agent counts as running hot (2 GB; 90% for 120 s) |
-| `notify` | Each notification on or off: `waiting`, `collision`, `yourTurn`, `memory`, `cpu` |
+| `notify` | Each notification on or off: `waiting`, `collision`, `yourTurn`, `memory`, `cpu` (on Windows `memory` and `cpu` start off) |
+| `notifyMaxPerMin` | Most pop-ups raised in one minute; the rest become one "N more alerts" pop-up (0 = no limit; 3 on Windows, 0 on macOS) |
 | `modToasts` | Toasts inside Claude Code sessions (on) |
 | `deployRepos` | Checkout path → `owner/repo` whose latest GitHub Actions run is shown, e.g. `{ "/Users/you/code/api": "you/api" }` |
 | `worldsDir` | Your own worlds, a folder each; `null` means `~/.agentville/worlds` (a leading `~` is your home; a relative one is under your home) |

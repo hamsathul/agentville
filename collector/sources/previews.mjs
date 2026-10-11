@@ -63,7 +63,7 @@ export function parseCsv(text) {
 const MAX_ROWS = 2000, MAX_COLS = 100, MAX_ENTRY_BYTES = 64 * 1024 * 1024;
 
 /** The entries of a zip archive (stored or deflated), each inflated only when asked for, none past 64 MB. */
-function unzip(buf) {
+export function unzip(buf) {
   let end = -1;
   for (let i = buf.length - 22; i >= Math.max(0, buf.length - 22 - 65_535); i--) if (buf.readUInt32LE(i) === 0x06054b50) { end = i; break; }
   if (end === -1) throw new Error('not a zip archive');
@@ -87,7 +87,7 @@ function unzip(buf) {
 }
 
 const ENTITY = { amp: '&', lt: '<', gt: '>', quot: '"', apos: "'" };
-const unxml = s => String(s).replace(/&(#x[0-9a-f]+|#\d+|amp|lt|gt|quot|apos);/gi, (_, e) => (e[0] === '#' ? String.fromCodePoint(e[1] === 'x' || e[1] === 'X' ? parseInt(e.slice(2), 16) : Number(e.slice(1))) : ENTITY[e.toLowerCase()]));
+export const unxml = s => String(s).replace(/&(#x[0-9a-f]+|#\d+|amp|lt|gt|quot|apos);/gi, (_, e) => (e[0] === '#' ? String.fromCodePoint(e[1] === 'x' || e[1] === 'X' ? parseInt(e.slice(2), 16) : Number(e.slice(1))) : ENTITY[e.toLowerCase()]));
 const attr = (tag, name) => tag.match(new RegExp(`\\s${name}="([^"]*)"`))?.[1];
 const texts = xml => [...String(xml).matchAll(/<t(?:\s[^>]*)?>([\s\S]*?)<\/t>/g)].map(m => unxml(m[1])).join('');
 
