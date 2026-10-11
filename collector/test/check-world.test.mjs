@@ -189,9 +189,9 @@ test("contained as the command runs a world: it reads the SDK and the world's tw
     const got = JSON.parse(r.stdout);
     for (const k of ['sdk', 'js', 'json']) assert.equal(got[k], 'allowed', k);
     for (const k of ['notes', 'peek', 'up', 'outside', 'write', 'program']) assert.equal(got[k], 'ERR_ACCESS_DENIED', k);
-    // Windows adds its own base variables to any process (PATH, USERPROFILE, TEMP...): on a Mac there is none.
+    // Windows adds its own base variables to any process (PATH, USERPROFILE, TEMP...): a Mac adds only its text encoding.
     const base = new Set(['HOMEDRIVE', 'HOMEPATH', 'LOGONSERVER', 'PATH', 'SYSTEMDRIVE', 'SYSTEMROOT', 'TEMP', 'TMP', 'USERDOMAIN', 'USERNAME', 'USERPROFILE', 'WINDIR', 'COMSPEC', 'PATHEXT', 'OS', 'APPDATA', 'LOCALAPPDATA', 'PROGRAMDATA', 'PROGRAMFILES', 'COMPUTERNAME', 'NUMBER_OF_PROCESSORS', 'PROCESSOR_ARCHITECTURE']);
-    const ours = process.platform === 'win32' ? got.env.filter(k => !base.has(k.toUpperCase())) : got.env;
+    const ours = process.platform === 'win32' ? got.env.filter(k => !base.has(k.toUpperCase())) : got.env.filter(k => k !== '__CF_USER_TEXT_ENCODING'); // a Mac adds its text encoding
     assert.deepEqual(ours, [], `no environment of yours: ${got.env}`);
     if (process.platform !== 'win32') assert.ok(!got.env.includes('HOME') && !got.env.includes('PATH'));
     assert.equal(existsSync(target), false, 'nothing written');

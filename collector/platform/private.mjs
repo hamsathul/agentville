@@ -18,7 +18,12 @@ export function makePrivate(path) {
   }
   const grant = `${whoami()}:${isDir ? '(OI)(CI)F' : 'F'}`;
   execFileSync(join(SYS32, 'icacls.exe'), [path, '/inheritance:r', '/grant:r', grant], { stdio: 'pipe' });
-  if (!isPrivate(path)) throw new Error(`could not make ${path} private: the ACL check after icacls failed`);
+  if (!isPrivate(path)) {
+    // say what was read, so a refusal on a machine nobody can sit at (a CI runner) is not a guess
+    let seen;
+    try { seen = `icacls printed ${JSON.stringify(execFileSync(join(SYS32, 'icacls.exe'), [path], { encoding: 'utf8', stdio: 'pipe' }))} for ${JSON.stringify(whoami())}`; } catch (err) { seen = `icacls could not be read again: ${err.message}`; }
+    throw new Error(`could not make ${path} private: the ACL check after icacls failed (${seen})`);
+  }
 }
 
 // True when `who` is the only account in icacls output. The first line is the path followed by the first entry, the rest are the
