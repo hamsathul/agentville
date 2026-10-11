@@ -843,7 +843,8 @@ test('a new session starts in any folder of yours, made first if it is new, and 
     assert.equal(launched.at(-1), `cd '${join(home, 'code', 'new app')}' && exec claude --permission-mode plan --model 'sonnet'`);
     // (on Windows "/etc/x" is a folder of the current drive, and a drive is an allowed place: it would be made)
     for (const body of [...(process.platform === 'win32' ? [] : [{ path: '/etc/x' }]), { path: '~/../x' }, {}, null]) assert.equal((await handle.actions.mkdir(body)).ok, false, JSON.stringify(body));
-    for (const cwd of ['/etc', '/', '~/..', 'code']) assert.equal((await handle.actions.start({ cwd })).ok, false, cwd);
+    // (and "/" there is the root of the current drive, which is an allowed place)
+    for (const cwd of ['/etc', ...(process.platform === 'win32' ? [] : ['/']), '~/..', 'code']) assert.equal((await handle.actions.start({ cwd })).ok, false, cwd);
     assert.equal(launched.length, 1);
   } finally {
     await handle.stop();

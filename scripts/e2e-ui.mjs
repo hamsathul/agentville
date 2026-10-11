@@ -463,6 +463,7 @@ try {
   await js("document.getElementById('msg-text').focus()"); // sending leaves the box (so the page can update): back in it
   await arrow('ArrowUp', 38);
   check(await until("document.getElementById('msg-text')?.value === 'Plan the next crop'"), `↑ in the message box brings back what you said to the session (got ${JSON.stringify(await js("document.getElementById('msg-text')?.value"))})`);
+  await js("document.getElementById('msg-text').focus()"); // ↑ may have redrawn the pane: back in the box, as after sending
   await arrow('ArrowDown', 40);
   check(await until("document.getElementById('msg-text')?.value === ''"), '↓ goes back to what you were typing');
   // Notes: written for later, used into the message box, sent from there; Send now; a fork gets a copy
