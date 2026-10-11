@@ -42,6 +42,7 @@ import { createTrackerServer } from './server.mjs';
 import { makeWorlds, watchWorlds, worldsDirOf } from './worlds.mjs';
 import { renderTranscriptPage } from './transcript-page.mjs';
 import { checkCast, chooseSession, createLinesWatch, dueLines, factsOf, lineWorld, namesOf, parseLines } from './sources/lines.mjs';
+import { replaceFile } from './platform/replace.mjs';
 
 const DOC_FILE = /\.(md|markdown|mdx)$/i;
 
@@ -357,7 +358,7 @@ export async function startCollector({ root, system = null, claudeDir = join(hom
     const file = join(stateDir, 'state.json');
     try {
       writeFileSync(`${file}.tmp`, JSON.stringify(snap));
-      renameSync(`${file}.tmp`, file);
+      replaceFile(`${file}.tmp`, file);
     } catch (err) {
       markFail('state', err);
     }

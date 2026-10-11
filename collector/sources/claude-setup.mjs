@@ -1,5 +1,6 @@
-import { readFileSync, readdirSync, renameSync, statSync, writeFileSync } from 'node:fs';
+import { readFileSync, readdirSync, statSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
+import { replaceFile } from '../platform/replace.mjs';
 
 // Claude Code's own setup, for the ⚙ Claude Code dialog: what `claude plugin details` and `claude
 // mcp list` print (neither has a JSON form), your own skills, each project's MCP servers from
@@ -128,6 +129,6 @@ export function removeRule(path, list, value) {
   const indent = text.match(/^\{\n( +)"/)?.[1].length ?? 2;
   const tmp = `${path}.agentville-${process.pid}.tmp`;
   writeFileSync(tmp, `${JSON.stringify(settings, null, indent)}\n`, { mode: statSync(path).mode });
-  renameSync(tmp, path);
+  replaceFile(tmp, path);
   return { ok: true };
 }

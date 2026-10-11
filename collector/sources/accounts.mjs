@@ -1,5 +1,6 @@
-import { readFileSync, readdirSync, realpathSync, renameSync, statSync, writeFileSync } from 'node:fs';
+import { readFileSync, readdirSync, realpathSync, statSync, writeFileSync } from 'node:fs';
 import { basename, dirname, isAbsolute, join } from 'node:path';
+import { replaceFile } from '../platform/replace.mjs';
 
 // Your Claude accounts: one config folder each (CLAUDE_CONFIG_DIR). The collector's own folder
 // (~/.claude) is the first; its siblings ~/.claude-<name> with a login are the others, and
@@ -102,7 +103,7 @@ export function createSessionAccounts(file, { cap = 2000 } = {}) {
       while (map.size > cap) map.delete(map.keys().next().value);
       try {
         writeFileSync(`${file}.tmp`, JSON.stringify(Object.fromEntries(map)));
-        renameSync(`${file}.tmp`, file);
+        replaceFile(`${file}.tmp`, file);
         dirty = false;
       } catch { /* tried again on the next change */ }
     },

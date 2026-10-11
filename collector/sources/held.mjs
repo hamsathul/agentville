@@ -1,7 +1,8 @@
-import { mkdirSync, readFileSync, readdirSync, renameSync, unlinkSync, writeFileSync } from 'node:fs';
+import { mkdirSync, readFileSync, readdirSync, unlinkSync, writeFileSync } from 'node:fs';
 import { randomBytes } from 'node:crypto';
 import { join } from 'node:path';
 import { makePrivate } from '../platform/private.mjs';
+import { replaceFile } from '../platform/replace.mjs';
 
 // Messages you sent a session while it worked: kept here, where you can remove, edit or send each
 // one early, until its turn ends and the collector sends them (one per turn, or all together).
@@ -39,7 +40,7 @@ export function createHeld(dir, { now = () => Date.now(), newId = () => randomBy
     const tmp = `${fileOf(id)}.tmp`;
     writeFileSync(tmp, JSON.stringify(got), { mode: 0o600 });
     makePrivate(tmp);
-    renameSync(tmp, fileOf(id));
+    replaceFile(tmp, fileOf(id));
   }
   const clean = t => (typeof t === 'string' ? t.trim() : '');
 
