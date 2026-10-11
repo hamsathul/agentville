@@ -1,5 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
+import { execFileSync } from 'node:child_process';
 import { mkdirSync, mkdtempSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -46,4 +47,18 @@ test('icacls output is read from the end of each line: the path it prints need n
   assert.equal(onlyAccount(`C:${b}x${b}token X${me}:(F)\r\n${done}`, me), false, 'an account that merely ends the same');
   assert.equal(onlyAccount('', me), false);
   assert.equal(onlyAccount(`C:${b}x${b}token ${me}:(F)\r\n${done}`, ''), false, 'no account to compare: not private');
+});
+
+// The CI runner's temp folders carry SYSTEM, Administrators and the user as explicit entries, which "/inheritance:r" leaves in place:
+// "private" there needs the others taken off, not only the user added.
+test('a folder that carries other accounts as explicit entries is private after makePrivate, and a stranger added is gone', { skip: process.platform !== 'win32' ? 'Windows only' : false }, () => {
+  const sys32 = join(process.env.SystemRoot, 'System32', 'icacls.exe');
+  const d = join(tmp(), 'secrets');
+  mkdirSync(d);
+  for (const sid of ['*S-1-5-32-545', '*S-1-1-0', '*S-1-5-18', '*S-1-5-32-544']) execFileSync(sys32, [d, '/grant', `${sid}:(OI)(CI)R`], { stdio: 'pipe' });
+  assert.equal(isPrivate(d), false, 'the control: Users, Everyone, SYSTEM and Administrators can read it');
+  makePrivate(d);
+  assert.equal(isPrivate(d), true);
+  const listed = execFileSync(sys32, [d], { encoding: 'utf8' });
+  assert.ok(!/Everyone|BUILTIN|SYSTEM/i.test(listed), listed);
 });

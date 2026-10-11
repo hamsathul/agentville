@@ -18,6 +18,7 @@ jobs:
       - name: Collector and dashboard
         run: npm test
       - name: Dashboard in a browser
+        timeout-minutes: 10 # it ran 50 s on a Mac; a step stuck past ten minutes is stuck, and its log is kept
         run: npm run test:ui
 
   test-windows:

@@ -8,6 +8,9 @@ const WIN = process.platform === 'win32';
 const SYS32 = join(process.env.SystemRoot ?? 'C:/Windows', 'System32');
 const whoami = () => execFileSync(join(SYS32, 'whoami.exe'), { encoding: 'utf8' }).trim();
 
+// SYSTEM, Administrators, Users, Authenticated Users, Everyone, CREATOR OWNER, by SID so that no language or domain changes them.
+const OTHERS = ['*S-1-5-18', '*S-1-5-32-544', '*S-1-5-32-545', '*S-1-5-11', '*S-1-1-0', '*S-1-3-0'];
+
 // Owner-only access. Mac: mode 0600 / 0700. Windows has no such modes, so the ACL is replaced with one entry for this
 // user and inheritance is removed (what chmod 600 means there). It throws if it cannot, rather than leave a token readable.
 export function makePrivate(path) {
@@ -16,8 +19,13 @@ export function makePrivate(path) {
     chmodSync(path, isDir ? 0o700 : 0o600);
     return;
   }
-  const grant = `${whoami()}:${isDir ? '(OI)(CI)F' : 'F'}`;
-  execFileSync(join(SYS32, 'icacls.exe'), [path, '/inheritance:r', '/grant:r', grant], { stdio: 'pipe' });
+  const icacls = args => execFileSync(join(SYS32, 'icacls.exe'), [path, ...args], { stdio: 'pipe' });
+  icacls(['/inheritance:r']);
+  // "/inheritance:r" drops only what was inherited. A folder that names SYSTEM, Administrators, Users or Everyone as entries of its
+  // own (a CI runner's temp folders do) keeps them, so the well-known ones are taken off by SID before the user is granted, which
+  // is also what keeps this right when the user is SYSTEM. An account named in some other way is left and is refused below.
+  icacls(['/remove:g', ...OTHERS]);
+  icacls(['/grant:r', `${whoami()}:${isDir ? '(OI)(CI)F' : 'F'}`]);
   if (!isPrivate(path)) {
     // say what was read, so a refusal on a machine nobody can sit at (a CI runner) is not a guess
     let seen;
