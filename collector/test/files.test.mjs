@@ -77,7 +77,10 @@ test('the home folder and the disk root are not listed', async () => {
 
 test('a file inside the folder is read; everything the explorer hides is refused', { skip: NO_FILE_LINKS }, async () => {
   const dir = repo();
-  symlinkSync('/etc/hosts', join(dir, 'hosts.txt'));
+  // a link to a file that exists outside the folder (on Windows /etc/hosts is not one: that link would only be a missing file)
+  const elsewhere = join(mkdtempSync(join(tmpdir(), 'tracker-elsewhere-')), 'hosts.txt');
+  writeFileSync(elsewhere, '127.0.0.1 localhost');
+  symlinkSync(elsewhere, join(dir, 'hosts.txt'));
   const ok = await readFolderFile(dir, join(dir, 'src/app.ts'));
   assert.equal(ok.doc.text, 'export const a = 2;\n');
   assert.equal(ok.doc.path, join(dir, 'src/app.ts'));

@@ -841,7 +841,8 @@ test('a new session starts in any folder of yours, made first if it is new, and 
     assert.deepEqual(await handle.actions.mkdir({ path: '~/code/new app' }), { ok: true, path: join(home, 'code', 'new app') });
     assert.deepEqual(await handle.actions.start({ cwd: '~/code/new app', mode: 'plan', model: 'sonnet' }), { ok: true, terminal: 'Terminal' });
     assert.equal(launched.at(-1), `cd '${join(home, 'code', 'new app')}' && exec claude --permission-mode plan --model 'sonnet'`);
-    for (const body of [{ path: '/etc/x' }, { path: '~/../x' }, {}, null]) assert.equal((await handle.actions.mkdir(body)).ok, false, JSON.stringify(body));
+    // (on Windows "/etc/x" is a folder of the current drive, and a drive is an allowed place: it would be made)
+    for (const body of [...(process.platform === 'win32' ? [] : [{ path: '/etc/x' }]), { path: '~/../x' }, {}, null]) assert.equal((await handle.actions.mkdir(body)).ok, false, JSON.stringify(body));
     for (const cwd of ['/etc', '/', '~/..', 'code']) assert.equal((await handle.actions.start({ cwd })).ok, false, cwd);
     assert.equal(launched.length, 1);
   } finally {
