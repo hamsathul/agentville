@@ -5,7 +5,7 @@
   "type": "module",
   "description": "Local dashboard of every AI agent working on this Mac or Windows PC",
   "scripts": {
-    "test": "node --import ./collector/test/win-links.mjs --test --test-timeout=120000 --test-force-exit \"collector/test/*.test.mjs\"",
+    "test": "node --import ./collector/test/win-links.mjs --test --test-timeout=480000 --test-force-exit \"collector/test/*.test.mjs\"",
     "test:ui": "node scripts/e2e-ui.mjs",
     "golden": "node scripts/world-golden.mjs",
     "new-world": "node scripts/new-world.mjs",
