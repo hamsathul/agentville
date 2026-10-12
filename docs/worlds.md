@@ -990,7 +990,7 @@ With ✨ Helper's **Animal lines** ticked (off by default), Haiku writes fresh l
 screen, from the dashboard's facts (names, states, what just happened) and, for the farm, the factory
 or the field exercise, which world it is, and the page sends them to the world as `chatter`
 ("Messages"). While a `robodog` or a `vacuum` is on screen, only a session with mod 0.9.1 is asked.
-The field exercise's lines are in its drill words from mod 0.9.2; an older mod still writes them, in
+The field exercise's lines are in its drill words from mod 0.9.3; an older mod still writes them, in
 plain words. The kit says them first, each once:
 
 - for `idle` (now and then) and for the five reactions (`deployFailed`, `deployOk`, `harvest`,

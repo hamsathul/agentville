@@ -504,12 +504,12 @@ tick there. The farm's Menu has no ✨ Helper yet: to change it from the farm, g
   - It needs mod 0.9.0 in a session (`/reload-plugins`). While the robot dog or the robot vacuum
     is on screen (and 10 minutes after) it needs 0.9.1: older mods aren't asked, so no lines come
     until a session has it. ✨ Helper says when no session can run it. The field exercise's lines are
-    in its drill words with 0.9.2; an older mod is still asked, and writes them in plain words.
+    in its drill words with 0.9.3; an older mod is still asked, and writes them in plain words.
 - **A daily limit** (200 to start, 1 to 2,000) caps the calls. The dialog shows today's count and
   the last error, and says when today's limit is reached (it resets at midnight). **Switch off**
   asks for nothing more at once; a call already under way finishes, and its answer is dropped.
 - Names need mod 0.8.0 in the session, animal lines 0.9.0 (0.9.1 for the robot dog and the robot
-  vacuum; 0.9.2 for the field exercise's lines in its drill words: an older mod writes them in plain
+  vacuum; 0.9.3 for the field exercise's lines in its drill words: an older mod writes them in plain
   words). For a session started before you updated, run `/reload-plugins` in it.
 
 ### Model, effort and permission mode
@@ -1225,7 +1225,7 @@ and none is a dog or a pigeon (here those are data: the K9 and the carrier pigeo
   an idle soldier comes over, or the mess cat runs at a mouse by the quartermaster's crates and comes
   back with nothing. The goat hops at a merge and when a new soldier arrives; a failed deploy's puff
   startles the cat. At max alert they don't act cold: no scarves.
-- With ✨ Helper's **Animal lines** ticked, they say lines Haiku wrote, in drill words with mod 0.9.2
+- With ✨ Helper's **Animal lines** ticked, they say lines Haiku wrote, in drill words with mod 0.9.3
   (an older mod writes them in plain words: "✨ Helper and suggested names").
 - The **Animals** switch hides them; it is remembered.
 
@@ -1544,7 +1544,7 @@ and can do is in [docs/worlds.md](docs/worlds.md).
 | My world looks wrong in one situation | Open the test page at that stop: `http://localhost:7777/worlds/test?world=u/<folder>&stop=…` (the stops are listed in [docs/worlds.md](docs/worlds.md#the-test-page-and-the-tour)). It has no live reload: reload the page after saving. Or take a picture of that stop: `npm run world-shots -- <folder> --stop …` |
 | A red strip over a world | The world reported an error after it started. It keeps drawing; **×** hides the strip. The page's console has the same message |
 | The farm stays empty, or says "not found" | The farm loads in a frame of its own from the collector (`/world/farm/`). After an update, restart the service (`agent-tracker restart`) and reload the page. The page's console says what a world reported, if anything |
-| The animals never say anything new | Tick **Animal lines** in ✨ Helper (the helper on). A session with mod 0.9.0 must be open (0.9.1 for the robot dog and the robot vacuum; `/reload-plugins` in it), and a world with animals on screen. ✨ Helper shows the last error and today's count. The field exercise's mascots talking in plain words, not drill words: their session's mod is older than 0.9.2 (`/reload-plugins` in it) |
+| The animals never say anything new | Tick **Animal lines** in ✨ Helper (the helper on). A session with mod 0.9.0 must be open (0.9.1 for the robot dog and the robot vacuum; `/reload-plugins` in it), and a world with animals on screen. ✨ Helper shows the last error and today's count. The field exercise's mascots talking in plain words, not drill words: their session's mod is older than 0.9.3 (`/reload-plugins` in it) |
 | **✨** says no name came, or the ✨ Helper shows a last error | No session is listening with mod 0.8.0 (`/reload-plugins` in it), today's limit is reached (it resets at midnight), or your organisation doesn't allow Haiku (the error says so) |
 
 ## Known limits

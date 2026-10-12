@@ -2940,7 +2940,7 @@ test('✨ Helper has an Animal lines box that says what it sends; ticked alone i
   assert.match(body, /Animal lines\.[\s\S]*agent and repo names[\s\S]*never code, file paths or conversation text[\s\S]*only lines without names/);
   assert.match(body, /names the dashboard shows, which Claude Code may take from a conversation's title/);
   assert.match(body, /the built-in world's name \(the farm, the robot factory or the field exercise, so the lines are in its words\)/);
-  assert.match(body, /0\.9\.1 for the robot dog and the robot vacuum; 0\.9\.2 for the field exercise's lines in its drill words, which an older mod writes in plain words/);
+  assert.match(body, /0\.9\.1 for the robot dog and the robot vacuum; 0\.9\.3 for the field exercise's lines in its drill words, which an older mod writes in plain words/);
   page.el('helper-names').checked = false;
   page.el('helper-lines').checked = true;
   page.el('helper-limit').value = '200';

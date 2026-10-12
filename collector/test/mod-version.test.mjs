@@ -16,6 +16,6 @@ test("the mod's MOD_VERSION (hooks/register.tsx) is the plugin manifest's versio
   assert.equal(inCode, inManifest);
 });
 
-test("the field exercise's animal lines (its own words in the mod's table) came with mod 0.9.2", () => {
-  assert.ok(modAtLeast(versionInCode(), '0.9.2'), `MOD_VERSION ${versionInCode()}: 0.9.2 or newer`);
+test("the field exercise's animal lines (its own words in the mod's table) came with mod 0.9.3", () => {
+  assert.ok(modAtLeast(versionInCode(), '0.9.3'), `MOD_VERSION ${versionInCode()}: 0.9.3 or newer`);
 });

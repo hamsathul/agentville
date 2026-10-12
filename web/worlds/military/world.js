@@ -1734,7 +1734,7 @@
           if (!f) continue;
           const branch = f.branch === '(detached)' ? ` ${pxt('?', '#c3cbd2')}` : f.flag ? ` ${pxt(clip(f.branch, 12), '#a9dcf7')}` : '';
           const d = f.lastDeploy, deploy = d?.label ? pxt(d.label, { ok: '#8ef0a0', failed: '#ff8a80', running: '#ffd166' }[d.state] ?? '#c9b48a') : '';
-          const second = [f.worktree && f.main ? pxt(`worktree of ${f.main.split('/').pop()}`, '#a9dcf7') : '', deploy, f.collision ? pxt('⚠ crowded', '#ffd166') : ''].filter(Boolean).join(' ');
+          const second = [f.worktree && f.main ? pxt(`worktree of ${cutMid(lastPart(f.main), 16)}`, '#a9dcf7') : '', deploy, f.collision ? pxt('⚠ crowded', '#ffd166') : ''].filter(Boolean).join(' ');
           const tip = [f.key, f.branch && `on ${f.branch}`, d && [d.label, d.detail].filter(Boolean).join(': '), 'Click to see the files soldiers touched here'].filter(Boolean).join(' · ');
           lab(s.cx, s.rowTop + 49, `<button type="button" class="px-field" data-farm-field="${esc(f.key)}" title="${esc(tip)}"><span class="px-fl">${f.flag ? pennantImg() : ''}${pxt(cutMid(f.name, 16), f.collision ? '#ffd166' : '#e6eef5')}${branch}</span>${second ? `<span class="px-fl">${second}</span>` : ''}</button>`, f.collision ? 'bad' : '');
           // the counts along the position's back edge: behind over its post, uncommitted on the loose sandbags' side, unpushed on the crates'
