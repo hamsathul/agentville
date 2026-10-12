@@ -94,6 +94,14 @@ export async function openChrome({ prepare = async () => {} } = {}) {
     js: expression => evaluate(expression, page),
     /** Whether the frame whose address contains `part` runs in a process of its own. */
     ownProcess: part => [...frames.values()].some(f => f.url.includes(part)),
-    close: async () => { ws.close(); chrome.kill(); await sleep(300); rmSync(profile, { recursive: true, force: true }); },
+    // Chrome's helpers can still be writing into the profile just after it ends (ENOTEMPTY on a CI runner): wait for it to exit,
+    // and let the removal try again.
+    close: async () => {
+      ws.close();
+      const exited = chrome.exitCode !== null || chrome.signalCode !== null ? null : new Promise(r => chrome.once('exit', r));
+      chrome.kill();
+      await Promise.race([exited, sleep(5000)]);
+      rmSync(profile, { recursive: true, force: true, maxRetries: 10, retryDelay: 200 });
+    },
   };
 }
