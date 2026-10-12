@@ -1,13 +1,15 @@
 import { existsSync } from 'node:fs';
-import { release, version } from 'node:os';
+import { homedir, release, version } from 'node:os';
 import { join } from 'node:path';
 import { run } from '../lib/exec.mjs';
 import { existsApp } from './alias.mjs';
+import { isInside } from './paths.mjs';
 
 // Is this machine ready to run Agentville? Run before the server starts (and by `node collector/index.mjs --check`).
 // Each check is { id, level: 'required' | 'optional', ok, message, fix }. A required check that fails stops the start;
 // an optional one is a warning that says which feature is lost. A check that cannot run counts as missing: not verified
-// is never reported as fine.
+// is never reported as fine. Required is only what the dashboard cannot run without: Claude Code is not, since sessions are
+// read from their files (a claude that is mid-update, or not on the service's PATH, must not keep the dashboard down).
 
 const MIN_NODE = 22;
 const sys32 = () => join(process.env.SystemRoot ?? 'C:/Windows', 'System32');
@@ -23,7 +25,7 @@ async function probeOk(probe, cmd, args, accept = () => true) {
 
 const check = (id, level, ok, message, fix) => ({ id, level, ok, message, ...(ok ? {} : { fix }) });
 
-export async function runPreflight({ platform = process.platform, nodeVersion = process.versions.node, probe = run, exists = existsSync, appExists = existsApp, claudeBin = 'claude', claudeDir, osName = version(), osRelease = release() } = {}) {
+export async function runPreflight({ platform = process.platform, nodeVersion = process.versions.node, probe = run, exists = existsSync, appExists = existsApp, claudeBin = 'claude', claudeDir, root, home = homedir(), osName = version(), osRelease = release() } = {}) {
   const isWin = platform === 'win32', isMac = platform === 'darwin';
   if (!isWin && !isMac) {
     return { ok: false, checks: [check('platform', 'required', false, `This operating system (${platform}) is not supported: Agentville runs on macOS and Windows.`, 'Run it on a Mac or a Windows PC.')] };
@@ -34,14 +36,21 @@ export async function runPreflight({ platform = process.platform, nodeVersion = 
     `Install Node.js ${MIN_NODE} or newer from https://nodejs.org${isWin ? ' (or: winget install OpenJS.NodeJS.LTS)' : ' (or: brew install node)'}, then start again.`));
 
   const claude = await probeOk(probe, claudeBin, ['--version']);
-  checks.push(check('claude', 'required', claude.ok, claude.ok ? `Claude Code ${claude.out.split('\n')[0]}` : `Claude Code was not found or did not run (${claudeBin}: ${claude.why})`,
-    `Install Claude Code (https://claude.com/product/claude-code), open a new terminal so "claude" is on PATH, or set TRACKER_CLAUDE_BIN to its full path.`));
+  checks.push(check('claude', 'optional', claude.ok, claude.ok ? `Claude Code ${claude.out.split('\n')[0]}` : `Claude Code was not found or did not run (${claudeBin}: ${claude.why})`,
+    `Install Claude Code (https://claude.com/product/claude-code) so "claude" is on PATH, or set TRACKER_CLAUDE_BIN to its full path. Until then the dashboard shows sessions but cannot start, resume or fork one, and the helper is off.`));
 
   if (isWin) {
     const psExe = join(sys32(), 'WindowsPowerShell', 'v1.0', 'powershell.exe');
     const ps = await probeOk(probe, psExe, ['-NoProfile', '-NonInteractive', '-Command', '$PSVersionTable.PSVersion.Major'], out => Number(out.trim()) >= 5);
     checks.push(check('powershell', 'required', ps.ok, ps.ok ? `Windows PowerShell ${ps.out}` : `Windows PowerShell 5.1 or newer was not found at ${psExe} (${ps.why})`,
       'Windows PowerShell ships with Windows. Repair Windows ("sfc /scannow") or restore powershell.exe, then start again.'));
+    // Folders made outside the user folder (C:\tools) give every signed-in user the right to change them, and bin\run-collector.ps1
+    // runs at this user's logon.
+    if (root !== undefined) {
+      const mine = isInside(home, root, { win: true });
+      checks.push(check('location', 'optional', mine, `Agentville is ${mine ? 'in' : 'outside'} your user folder (${root})`,
+        `Other people who sign in to this PC may be able to change its files there, and bin\\run-collector.ps1 runs at your logon: move it under ${home}.`));
+    }
     const wt = join(process.env.LOCALAPPDATA ?? '', 'Microsoft', 'WindowsApps', 'wt.exe');
     checks.push(check('windows-terminal', 'optional', Boolean(appExists(wt)), 'Windows Terminal', 'Install Windows Terminal from the Microsoft Store. Without it, sessions open in a plain console window.'));
   } else {

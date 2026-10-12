@@ -14,7 +14,8 @@ if (-not (Test-Path -LiteralPath $node -PathType Leaf)) {
     exit 1
 }
 
-# claude (native install), git, gh: the places they live on Windows, in front of whatever PATH the login task was given.
+# claude (native install), git, gh: the places they live on Windows, after whatever PATH the login task was given, so a folder
+# of the user's (.local\bin, npm) never stands in front of System32 for a program of the system's.
 $extra = @(
     (Split-Path -Parent $node),
     (Join-Path $env:USERPROFILE '.local\bin'),
@@ -22,7 +23,7 @@ $extra = @(
     (Join-Path $env:ProgramFiles 'Git\cmd'),
     (Join-Path $env:ProgramFiles 'GitHub CLI')
 ) | Where-Object { Test-Path -LiteralPath $_ -PathType Container }
-$newPath = (($extra + ($env:PATH -split ';')) | Where-Object { $_ } | Select-Object -Unique) -join ';'
+$newPath = ((($env:PATH -split ';') + $extra) | Where-Object { $_ } | Select-Object -Unique) -join ';'
 
 if ($DryRun) {
     [pscustomobject]@{ node = $node; script = $script; path = $newPath } | ConvertTo-Json -Compress

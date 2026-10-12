@@ -32,7 +32,6 @@ test('a machine with everything is ok on Windows and on Mac', async () => {
 test('a missing REQUIRED thing stops the start, and says exactly how to fix it (every one has a fix)', async () => {
   const cases = {
     'Node 20': { nodeVersion: '20.11.0' },
-    'claude missing': { probe: async (cmd, args) => (/claude/i.test(String(cmd)) ? { code: 1, stdout: '', stderr: 'not found' } : goodProbe(cmd, args)) },
     'powershell missing (Windows)': { probe: async (cmd, args) => (/powershell/i.test(String(cmd)) ? { code: 1, stdout: '', stderr: 'x' } : goodProbe(cmd, args)) },
   };
   for (const [name, over] of Object.entries(cases)) {
@@ -42,6 +41,31 @@ test('a missing REQUIRED thing stops the start, and says exactly how to fix it (
     assert.ok(bad.length >= 1, name);
     for (const c of bad) assert.ok(c.fix && c.fix.length > 10, `${name}: ${c.id} has no fix`);
   }
+});
+
+test('Claude Code missing is a warning that says what is lost, not a refusal: the dashboard reads sessions from their files', async () => {
+  for (const platform of ['win32', 'darwin']) {
+    const r = await runPreflight(base({ platform, probe: async (cmd, args) => (/claude/i.test(String(cmd)) ? { code: 1, stdout: '', stderr: 'not found' } : goodProbe(cmd, args)) }));
+    assert.equal(r.ok, true, platform);
+    const c = r.checks.find(x => x.id === 'claude');
+    assert.equal(c.ok, false);
+    assert.equal(c.level, 'optional');
+    assert.match(c.fix, /TRACKER_CLAUDE_BIN/);
+    assert.match(c.fix, /cannot start, resume or fork/);
+  }
+});
+
+test('on Windows, Agentville outside the user folder is a warning: others who sign in may change its files', async () => {
+  const home = 'C:\\Users\\me';
+  const outside = await runPreflight(base({ root: 'C:\\tools\\agentville', home }));
+  const c = outside.checks.find(x => x.id === 'location');
+  assert.equal(outside.ok, true);
+  assert.deepEqual([c.ok, c.level], [false, 'optional']);
+  assert.match(c.message, /outside your user folder \(C:\\tools\\agentville\)/);
+  assert.match(c.fix, /run-collector\.ps1 runs at your logon: move it under C:\\Users\\me/);
+  const inside = await runPreflight(base({ root: 'c:\\users\\ME\\code\\agentville', home }));
+  assert.equal(inside.checks.find(x => x.id === 'location').ok, true, 'the same folder in another case');
+  assert.equal((await runPreflight(base({ platform: 'darwin', root: '/opt/agentville', home: '/Users/me' }))).checks.some(x => x.id === 'location'), false, 'a Mac folder has modes');
 });
 
 test('a missing OPTIONAL thing is a warning with a fix, not a refusal', async () => {
@@ -77,22 +101,14 @@ test('node index.mjs --check prints the report and exits with its verdict, start
   const good = spawnSync(process.execPath, [INDEX, '--check'], { encoding: 'utf8', env: { ...process.env, TRACKER_ROOT: root, TRACKER_CLAUDE_BIN: process.execPath }, timeout: 60_000 });
   assert.equal(good.status, 0, good.stdout + good.stderr);
   assert.match(good.stdout, /All required checks passed/);
-  const bad = spawnSync(process.execPath, [INDEX, '--check'], { encoding: 'utf8', env: { ...process.env, TRACKER_ROOT: root, TRACKER_CLAUDE_BIN: join(root, 'no-such-claude') }, timeout: 60_000 });
-  assert.equal(bad.status, 1);
-  assert.match(bad.stdout, /MISSING \(required\).*Claude Code/);
-});
-
-test('a normal start with a required thing missing refuses before it listens, and says what to do', () => {
-  const root = mkdtempSync(join(tmpdir(), 'agentville-pre-'));
-  const r = spawnSync(process.execPath, [INDEX], { encoding: 'utf8', env: { ...process.env, TRACKER_ROOT: root, TRACKER_CLAUDE_BIN: join(root, 'no-such-claude') }, timeout: 60_000 });
-  assert.equal(r.status, 1);
-  assert.match(r.stdout + r.stderr, /Not starting/);
-  assert.match(r.stdout + r.stderr, /Claude Code/);
+  const noClaude = spawnSync(process.execPath, [INDEX, '--check'], { encoding: 'utf8', env: { ...process.env, TRACKER_ROOT: root, TRACKER_CLAUDE_BIN: join(root, 'no-such-claude') }, timeout: 60_000 });
+  assert.equal(noClaude.status, 0, 'Claude Code is not required');
+  assert.match(noClaude.stdout, /missing \(optional\)\s+Claude Code/);
 });
 
 // --- throwaway servers end themselves (nothing is allowed to kill a node process by its port) ---
 import { createConnection, createServer } from 'node:net';
-import { mkdirSync, writeFileSync, cpSync } from 'node:fs';
+import { mkdirSync, readFileSync, writeFileSync, cpSync } from 'node:fs';
 
 const REPO = join(dirname(INDEX), '..');
 const listening = port => new Promise(res => { const s = createConnection({ port, host: '127.0.0.1' }, () => { s.destroy(); res(true); }); s.on('error', () => res(false)); });
@@ -131,6 +147,24 @@ test('--exit-after N starts the collector, serves, and ends the process by itsel
     assert.equal(await listening(port), false, 'nothing listens afterwards');
   } finally {
     // The test owns this child: if the feature is broken it must not outlive the test (the handle is mine, nothing is looked up by port).
+    if (child.exitCode === null && child.signalCode === null) child.kill();
+  }
+});
+
+test('a normal start without Claude Code still serves, and writes the warning to its log', async () => {
+  const port = await freePort();
+  const root = throwawayRoot(port);
+  const { spawn } = await import('node:child_process');
+  const home = mkdtempSync(join(tmpdir(), 'agentville-exit-home-'));
+  const child = spawn(process.execPath, [INDEX, '--exit-after', '3'], { env: { ...process.env, USERPROFILE: home, HOME: home, TRACKER_ROOT: root, TRACKER_CLAUDE_BIN: join(root, 'no-such-claude') }, stdio: 'ignore' });
+  const exited = new Promise(res => child.on('exit', (code, signal) => res({ code, signal })));
+  try {
+    let served = false;
+    for (let i = 0; i < 40 && !served; i++) { served = await listening(port); if (!served) await new Promise(r => setTimeout(r, 250)); }
+    assert.equal(served, true, 'it serves without Claude Code');
+    assert.deepEqual(await exited, { code: 0, signal: null });
+    assert.match(readFileSync(join(root, 'logs', 'collector.log'), 'utf8'), /missing \(optional\)\s+Claude Code/);
+  } finally {
     if (child.exitCode === null && child.signalCode === null) child.kill();
   }
 });

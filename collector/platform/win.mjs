@@ -3,6 +3,7 @@ import { dirname, extname, join, win32 } from 'node:path';
 import { tmpdir } from 'node:os';
 import { fileURLToPath } from 'node:url';
 import { run } from '../lib/exec.mjs';
+import { findProgram } from '../lib/winbin.mjs';
 import { readWord } from '../sources/word.mjs';
 import { randomBytes } from 'node:crypto';
 import { existsApp } from './alias.mjs';
@@ -108,6 +109,8 @@ export function isClaudeCommand(command) {
   if (/^claude(\.exe|\.cmd)?$/.test(program)) return true;
   return /^node(\.exe)?$/.test(program) && /[\x5c/]@anthropic-ai[\x5c/]claude-code[\x5c/]cli\.js\b/i.test(m[3] ?? '');
 }
+// Found on PATH (never in the working folder) and named by its full path; left as given when it is not there, for the start-up check to say so.
+export const resolveProgram = name => findProgram(name) ?? name;
 export const name = 'win';
 export const fileManager = 'File Explorer'; // named in the texts the dashboard shows
 

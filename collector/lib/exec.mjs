@@ -1,23 +1,37 @@
 import { execFile } from 'node:child_process';
 import { join } from 'node:path';
+import { findProgram, shimTarget } from './winbin.mjs';
 
-// Anything cmd.exe reads as syntax (quotes, %VAR%, ^, &, |, <, >, !) or a control character. A .cmd shim is run through
-// cmd.exe because Node 24 refuses to spawn one directly; so an argument holding any of these is refused, never escaped.
+// Anything cmd.exe reads as syntax (quotes, %VAR%, ^, &, |, <, >, !) or a control character. A .cmd that is not an npm shim
+// is run through cmd.exe because Node 24 refuses to spawn one directly; so an argument holding any of these is refused, never escaped.
 const CMD_SYNTAX = /[\u0000-\u001f"%^&|<>!]/;
-const isCmdShim = cmd => process.platform === 'win32' && /\.(cmd|bat)$/i.test(cmd);
+const WIN = process.platform === 'win32';
 
-/** Runs a command without a shell. Never rejects: failures resolve with a non-zero code. */
-export function run(cmd, args, { timeoutMs = 15000, cwd, env } = {}) {
+/**
+ * Runs a command without a shell. Never rejects: failures resolve with a non-zero code. On Windows the program is found on PATH
+ * (never in the working folder: see winbin.mjs), and an npm .cmd shim runs what it points at, without cmd.exe.
+ */
+export function run(cmd, args, { timeoutMs = 15000, cwd, env, windowsVerbatimArguments } = {}) {
   let file = cmd;
   let argv = args;
-  const opts = { timeout: timeoutMs, cwd, env: env ? { ...process.env, ...env } : process.env, maxBuffer: 32 * 1024 * 1024 };
-  if (isCmdShim(cmd)) {
-    const bad = [cmd, ...args].find(a => CMD_SYNTAX.test(String(a)));
-    if (bad !== undefined) return Promise.resolve({ code: 1, stdout: '', stderr: `refused: an argument for ${cmd} holds characters cmd.exe would read as syntax` });
-    file = join(process.env.SystemRoot ?? 'C:/Windows', 'System32', 'cmd.exe');
-    const q = a => (a === '' || /\s/.test(a) ? `"${a}"` : a); // quoted only when it has a space, so a script sees the same text a program would
-    argv = ['/d', '/s', '/c', `"${[cmd, ...args].map(q).join(' ')}"`];
-    opts.windowsVerbatimArguments = true;
+  const opts = { timeout: timeoutMs, cwd, env: env ? { ...process.env, ...env } : process.env, maxBuffer: 32 * 1024 * 1024, ...(windowsVerbatimArguments ? { windowsVerbatimArguments } : {}) };
+  if (WIN) {
+    file = findProgram(cmd);
+    if (!file) return Promise.resolve({ code: 1, stdout: '', stderr: `${cmd} was not found on PATH` });
+    const shim = shimTarget(file);
+    if (shim) {
+      file = shim.program;
+      argv = [...shim.args, ...args];
+    } else if (/\.(cmd|bat)$/i.test(file)) {
+      const bad = [file, ...args].find(a => CMD_SYNTAX.test(String(a)));
+      if (bad !== undefined) return Promise.resolve({ code: 1, stdout: '', stderr: `refused: an argument for ${cmd} holds characters cmd.exe would read as syntax` });
+      // Quoted only when it has a space, so a script sees the same text a program would. Backslashes before the closing quote
+      // are doubled, or the last one would escape it ("C:\My Dir\" ends the next argument, not this one).
+      const q = a => (a === '' || /\s/.test(a) ? `"${a.replace(/(\\+)$/, '$1$1')}"` : a);
+      argv = ['/d', '/s', '/c', `"${[file, ...args].map(q).join(' ')}"`];
+      file = join(process.env.SystemRoot ?? 'C:/Windows', 'System32', 'cmd.exe');
+      opts.windowsVerbatimArguments = true;
+    }
   }
   return new Promise(resolve => {
     const child = execFile(file, argv, opts, (err, stdout, stderr) => {

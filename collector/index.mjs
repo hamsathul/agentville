@@ -2,11 +2,13 @@ import { homedir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { makeLogger, startCollector } from './collector.mjs';
+import { platformFor } from './platform/index.mjs';
 import { formatReport, runPreflight } from './platform/preflight.mjs';
 
 const root = process.env.TRACKER_ROOT ?? join(dirname(fileURLToPath(import.meta.url)), '..');
 const log = makeLogger(join(root, 'logs'));
-const claudeBin = process.env.TRACKER_CLAUDE_BIN ?? 'claude';
+// On Windows claude is found on PATH here, once, and named by its full path from then on (the launch files carry it).
+const claudeBin = platformFor().resolveProgram(process.env.TRACKER_CLAUDE_BIN ?? 'claude');
 
 // --exit-after <seconds>: a throwaway run that ends itself, so nobody has to stop a server from outside.
 let exitAfterSec = null;
@@ -20,17 +22,18 @@ if (flagAt !== -1) {
   }
 }
 
-// Is this machine ready? --check only says so; a normal start refuses to go on when a required dependency is missing.
-const pre = await runPreflight({ claudeBin, claudeDir: join(homedir(), '.claude') });
+// Is this machine ready? --check only says so; a normal start refuses to go on when a required dependency is missing, and
+// writes any warning to the log.
+const pre = await runPreflight({ claudeBin, claudeDir: join(homedir(), '.claude'), root });
 if (process.argv.includes('--check')) {
   console.log(formatReport(pre));
   process.exit(pre.ok ? 0 : 1);
 }
-if (!pre.ok) {
+if (!pre.ok || pre.checks.some(c => !c.ok)) {
   const report = formatReport(pre);
   log(report);
   console.error(report);
-  process.exit(1);
+  if (!pre.ok) process.exit(1);
 }
 
 try {

@@ -35,8 +35,8 @@ test('an undefined variable is left out of the child environment', async () => {
   }
 });
 
-// Node 24 will not spawn a .cmd directly (EINVAL), and npm installs claude as claude.cmd. run() goes through cmd.exe for those
-// and refuses any argument cmd.exe would read as syntax, so an argument can never become a command.
+// Node 24 will not spawn a .cmd directly (EINVAL). npm's claude.cmd runs what it points at (winbin.test.mjs); any other .cmd goes
+// through cmd.exe, and an argument cmd.exe would read as syntax is refused, so an argument can never become a command.
 const winOnly = { skip: process.platform !== 'win32' ? 'Windows only' : false };
 
 test('a .cmd file runs on Windows and its arguments arrive intact', winOnly, async () => {
@@ -65,6 +65,33 @@ test('an argument cmd.exe would read as syntax is refused, and nothing runs', wi
     assert.match(r.stderr, /refused/i);
   }
   assert.equal(existsSync(marker), false, 'no argument became a command');
+});
+
+test('a quoted argument that ends in a backslash stays one argument through cmd.exe', winOnly, async () => {
+  const { mkdtempSync, writeFileSync } = await import('node:fs');
+  const { tmpdir } = await import('node:os');
+  const { join } = await import('node:path');
+  const dir = mkdtempSync(join(tmpdir(), 'agentville-cmd-'));
+  const bin = join(dir, 'tool.cmd');
+  // the stand-in hands its arguments on to a program, as npm's shims do, and the program says what it got
+  writeFileSync(bin, `@"${process.execPath}" -e "console.log(JSON.stringify(process.argv.slice(1)))" %*\r\n`);
+  const B = String.fromCharCode(92);
+  const r = await run(bin, [`C:${B}My Dir${B}`, '--next']);
+  assert.equal(r.code, 0, r.stderr);
+  assert.deepEqual(JSON.parse(r.stdout).slice(-2), [`C:${B}My Dir${B}`, '--next']);
+});
+
+test('on Windows a program named without a folder is found on PATH, never in the working folder', winOnly, async () => {
+  const { copyFileSync, mkdtempSync } = await import('node:fs');
+  const { tmpdir } = await import('node:os');
+  const { join } = await import('node:path');
+  const repo = mkdtempSync(join(tmpdir(), 'agentville-planted-'));
+  copyFileSync(process.execPath, join(repo, 'agentville-planted.exe')); // a program a repository could carry
+  const r = await run('agentville-planted', ['-e', 'console.log("ran")'], { cwd: repo });
+  assert.notEqual(r.code, 0);
+  assert.doesNotMatch(r.stdout, /ran/);
+  assert.match(r.stderr, /not found on PATH/);
+  assert.equal((await run('node', ['-e', 'console.log("ran")'], { cwd: repo })).stdout.trim(), 'ran', 'node is on PATH');
 });
 
 test('a program that reads its input gets the end of it at once, not a pipe nobody closes', async () => {
