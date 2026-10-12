@@ -17,7 +17,7 @@ export function run(cmd, args, { timeoutMs = 15000, cwd, env, windowsVerbatimArg
   const opts = { timeout: timeoutMs, cwd, env: env ? { ...process.env, ...env } : process.env, maxBuffer: 32 * 1024 * 1024, ...(windowsVerbatimArguments ? { windowsVerbatimArguments } : {}) };
   if (WIN) {
     file = findProgram(cmd);
-    if (!file) return Promise.resolve({ code: 1, stdout: '', stderr: `${cmd} was not found on PATH` });
+    if (!file) return Promise.resolve({ code: 1, stdout: '', stderr: `spawn ${cmd} ENOENT (not found on PATH)` }); // Node's own words, as on a Mac
     const shim = shimTarget(file);
     if (shim) {
       file = shim.program;
