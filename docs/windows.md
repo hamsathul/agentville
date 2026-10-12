@@ -208,15 +208,15 @@ reads the guide would see a different file than it does on a Mac.
 CI runs the suite on `windows-latest` as well as on macOS. The mod's own tests cannot start a program, so
 `collector/test/mod-wait.test.mjs` takes its wait scripts from `mod/hooks/os.ts` and runs this system's one for real.
 
-## Not checked
+## Checked, and not
 
-- Nobody has followed the install steps above on a fresh PC yet. Claude Code's install command is the one in its own setup
-  guide (2026-10-12).
-- On a Mac the merged code passes `npm test`, `npm run test:ui` and `claude plugin test mod`, and runs as the login service
+- On a Windows PC (2026-10-12) the install steps above worked, with the login task, ＋ Session, Resume and Fork (a Windows
+  Terminal tab), the mod in a live session (answers and messages from the dashboard), the folder dialog and toasts. A model
+  switch from the dashboard stopped at Claude Code's own "Switch model?" in the terminal, there and on a Mac; mod 0.9.4
+  answers it.
+- On a Mac the code passes `npm test`, `npm run test:ui` and `claude plugin test mod`, and runs as the login service
   (since 2026-10-12).
-- The folder dialog, the terminal launcher on screen, `install` and the scheduled task were not run on a real PC; they are
-  covered by tests that stand in for the system, plus the real parser for the PowerShell scripts. The task's script
-  (`run-collector.ps1`) and `logs` run for real on Windows CI, with a stand-in collector.
-- The mod has been tested in Claude Code's plugin test harness (`claude plugin test mod`), not inside a live session.
+- CI runs the suite on Windows: the task's script (`run-collector.ps1`) and `logs` run for real there, with a stand-in
+  collector, and the mod's wait, move and delete (`mod-wait.test.mjs`).
 - The CPU figure is the share of one core between two reads, so the first read after start shows 0.
 - A name with a double quote passed to `claude --name` is passed intact by the launcher, but is untested against `claude.exe` itself.
