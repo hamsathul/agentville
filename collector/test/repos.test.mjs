@@ -17,6 +17,18 @@ test("a repo is listed while an agent writes to it or works in its folder", () =
   assert.deepEqual(repos.find(r => r.path === '/code/api').agentIds, ['b']);
 });
 
+test('a repo an agent only reads from is not listed (a tool folder such as ~/.nvm is a git clone too)', () => {
+  const repos = reposFor([agent('a', { cwd: '/code/app', touching: [
+    { repo: '/Users/me/.nvm', mode: 'read' }, // a look at a program installed through nvm
+    { repo: '/code/lib', mode: 'read' },
+    { repo: '/code/api', mode: 'write' },
+    { repo: '/code/site', mode: 'git' },
+  ] })], opts());
+  assert.deepEqual(paths(repos).sort(), ['/code/api', '/code/app', '/code/site']);
+  // a read in its own folder's repo: listed, as the folder it works from
+  assert.deepEqual(paths(reposFor([agent('b', { cwd: '/code/app/src', touching: [{ repo: '/code/app', mode: 'read' }] })], opts())), ['/code/app']);
+});
+
 test('a stale agent (no activity for a day) no longer keeps its folder listed', () => {
   const repos = reposFor([agent('old', { cwd: '/code/site', state: 'stale' }), agent('now', { cwd: '/code/app' })], opts());
   assert.deepEqual(paths(repos), ['/code/app']);

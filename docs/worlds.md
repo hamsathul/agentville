@@ -248,6 +248,9 @@ Times are milliseconds since 1970, as `Date.now()` gives them.
 
 **Each repo** (`repos`)
 
+The repos an agent writes in or works from (not one where it only read a file), and a repo watched
+for deploys while its deploy runs.
+
 - `key`: its folder, which is also its id (in a private scene: a stand-in, `r1`, `r2`…). `name`: the folder's name (private: `repo 1`…).
 - `branch`: the branch it is on, or `null`; `onMain`: that branch is `main` or `master`.
 - `dirty`: uncommitted files; `ahead` and `behind`: commits against its upstream.

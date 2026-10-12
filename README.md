@@ -222,7 +222,8 @@ with the mod shows **📡 dashboard answers on** on the dashboard, and `/tracker
 ### 4. Optional: deploys and pull requests
 
 Install the GitHub CLI and sign in (`gh auth login`). The tracker then:
-- shows open pull requests (with their checks) for every repo whose `origin` is on GitHub;
+- shows open pull requests (with their checks) for every repo on the dashboard whose `origin` is on
+  GitHub: the repos an agent writes in or works from, not one where it only read a file;
 - shows the latest GitHub Actions run for the repos you list in `deployRepos` (see
   [Configuration](#configuration)).
 
@@ -271,7 +272,9 @@ reports them), with the buttons for the other views.
 
 - **Left: the agents.** Waiting ones come first, then the working ones with a live ticker of
   their current tool. Idle and stale agents fold away. Your repos sit below, each with its branch,
-  last deploy, pull requests and the agents in it.
+  last deploy, pull requests and the agents in it: a repo is there while an agent writes in it or
+  works from its folder (reading a file in another repo, or in a tool folder such as `~/.nvm`,
+  doesn't add it).
 - **Centre: the agent you picked** (the one at work until you pick another). It shows:
   - its state, folder and model (a switch with `/model` shows at once, before its next reply);
   - its controls: permission mode, model, effort, Restart in…, End session;

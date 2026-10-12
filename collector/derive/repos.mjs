@@ -19,7 +19,9 @@ export function reposFor(agents, { deployRepos = {}, repoInfo = new Map(), deplo
   };
   for (const a of agents) {
     if (a.state === 'stale') continue;
-    for (const t of a.touching ?? []) if (t.repo) addAgent(t.repo, a.id);
+    // a read alone doesn't list a repo: a look into another project, or into a tool folder that is a
+    // git clone (~/.nvm), would make it a field and send GitHub asking for its pull requests
+    for (const t of a.touching ?? []) if (t.repo && t.mode !== 'read') addAgent(t.repo, a.id);
     const own = a.cwd && a.cwd !== home && a.cwd !== '/' ? lookup(a.cwd) : null;
     if (own) addAgent(own, a.id);
   }
