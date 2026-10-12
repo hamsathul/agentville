@@ -1,6 +1,6 @@
 import { expect, test } from 'claude-code/testing'
 
-import { claimArgv, isWindowsPath, openArgv, pollForAnswer, removeArgv } from '../hooks/os'
+import { claimArgv, isWindowsPath, openArgv, removeArgv, waitArgv } from '../hooks/os'
 import { stateDirFor, stateFileFor } from '../hooks/view'
 
 const B = String.fromCharCode(92)
@@ -20,7 +20,7 @@ test('the state folder is next to the mod folder with either separator', () => {
 test('claiming a request file: mv on a Mac, cmd move on Windows, and a path cmd would read as syntax is refused', () => {
   expect(claimArgv(false, '/s/inbox/a.json', '/s/inbox/a.json.claimed')).toEqual(['mv', '/s/inbox/a.json', '/s/inbox/a.json.claimed'])
   expect(claimArgv(true, 'C:/s/inbox/a.json', 'C:/s/inbox/a.json.claimed')).toEqual(['cmd.exe', '/d', '/c', 'move', '/Y', 'C:/s/inbox/a.json', 'C:/s/inbox/a.json.claimed'])
-  for (const bad of ['C:/s/a&calc.json', 'C:/s/a|b.json', 'C:/s/%PATH%.json', 'C:/s/a^b.json', 'C:/s/a"b.json', 'C:/s/a>b.json', 'C:/s/a!b.json', 'C:/s/a\nb.json']) {
+  for (const bad of ['C:/s/a&calc.json', 'C:/s/a|b.json', 'C:/s/%PATH%.json', 'C:/s/a^b.json', 'C:/s/a"b.json', 'C:/s/a>b.json', 'C:/s/a!b.json', 'C:/s/a\nb.json', 'C:/s/a,b.json', 'C:/s/a;b.json', 'C:/s/a=b.json']) {
     expect(claimArgv(true, bad, 'C:/s/ok')).toBeNull()
   }
 })
@@ -41,34 +41,14 @@ test('opening the dashboard: open on a Mac, cmd start on Windows, and only an ht
   }
 })
 
-function fakeFiles(script: (tick: number) => { answer?: string; pending: boolean }) {
-  let tick = 0
-  const touched: number[] = []
-  return {
-    touched,
-    deps: {
-      exists: async (p: string) => (p === 'answer' ? script(tick).answer !== undefined : script(tick).pending),
-      read: async () => script(tick).answer ?? '',
-      touch: async () => { touched.push(tick) },
-      sleep: async () => { tick++ },
-    },
-  }
-}
-
-test('waiting for an answer: the answer file wins, and its text is returned', async () => {
-  const f = fakeFiles(t => (t >= 3 ? { answer: 'yes', pending: true } : { pending: true }))
-  expect(await pollForAnswer({ ...f.deps, answerPath: 'answer', pendingPath: 'pending', maxTicks: 100 })).toEqual({ kind: 'answer', text: 'yes' })
-})
-
-test('waiting for an answer: if the offer is withdrawn the wait ends at once, and no answer means a timeout', async () => {
-  const w = fakeFiles(t => ({ pending: t < 2 }))
-  expect(await pollForAnswer({ ...w.deps, answerPath: 'answer', pendingPath: 'pending', maxTicks: 100 })).toEqual({ kind: 'withdrawn' })
-  const n = fakeFiles(() => ({ pending: true }))
-  expect(await pollForAnswer({ ...n.deps, answerPath: 'answer', pendingPath: 'pending', maxTicks: 10 })).toEqual({ kind: 'timeout' })
-})
-
-test('waiting for an answer: the offer is touched every fourth tick as a heartbeat, from the first', async () => {
-  const n = fakeFiles(() => ({ pending: true }))
-  await pollForAnswer({ ...n.deps, answerPath: 'answer', pendingPath: 'pending', maxTicks: 9 })
-  expect(n.touched).toEqual([0, 4, 8])
+test('waiting for an answer: the shell loop on a Mac, its inputs as arguments; PowerShell on Windows, its inputs in the environment', () => {
+  const mac = waitArgv(false, '/s/answers/t.json', '/s/pending/t.json', 60)
+  expect(mac.argv.slice(0, 2)).toEqual(['/bin/sh', '-c'])
+  expect(mac.argv.slice(3)).toEqual(['sh', '/s/answers/t.json', '/s/pending/t.json', '60'])
+  expect(mac.env).toBeUndefined()
+  const win = waitArgv(true, 'C:/s/answers/t.json', 'C:/s/pending/t.json', 60)
+  expect(win.argv.slice(0, 6)).toEqual(['powershell.exe', '-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-Command'])
+  expect(win.argv.length).toBe(7)
+  expect(win.argv[6]?.includes('C:/s')).toBe(false)
+  expect(win.env).toEqual({ AGENTVILLE_ANSWER: 'C:/s/answers/t.json', AGENTVILLE_PENDING: 'C:/s/pending/t.json', AGENTVILLE_TICKS: '60' })
 })
