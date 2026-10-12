@@ -39,7 +39,7 @@ function makeGrid({ cols = 3, colW, rowH, cx0, top0, minRows = 3, maxRows = 6, m
     const units = new Map();
     for (const f of fields) {
       const project = f.project !== undefined ? f.project : projectOf(home(f)), id = project ?? `repo:${home(f)}`;
-      if (!units.has(id)) units.set(id, { project, name: f.projectName ?? (project ? project.split('/').pop() : null), keys: [] });
+      if (!units.has(id)) units.set(id, { project, name: f.projectName ?? (project ? project.split(/^(?:[A-Za-z]:[\\/]|\\\\)/.test(project) ? /[\\/]/ : '/').filter(Boolean).pop() ?? null : null), keys: [] });
       units.get(id).keys.push(f.key);
     }
     for (const u of units.values()) { // each repo, then its worktrees
@@ -254,7 +254,7 @@ function panelHud({ still, zoom = 1, saysOn = true, skyMode = 'live', seasonMode
                 ${navBtn('side', 'side', 'SIDEBAR', words.sideTip, Boolean(nav.side))}
                 ${navBtn('broadcast', 'broadcast', 'BROADCAST', 'Message several agents at once: all of them, or the ones you pick')}
                 ${navBtn('chats', 'chats', 'CHATS', "Every agent's conversation in one live timeline: catch up, follow them talking to each other, answer them")}
-                ${navBtn('theme', nav.theme === 'light' ? 'day' : nav.theme === 'auto' ? 'live' : 'night', String(nav.theme ?? 'dark').toUpperCase(), 'Theme: dark, light, or auto (as macOS is): click to change')}
+                ${navBtn('theme', nav.theme === 'light' ? 'day' : nav.theme === 'auto' ? 'live' : 'night', String(nav.theme ?? 'dark').toUpperCase(), 'Theme: dark, light, or auto (as your system is): click to change')}
               </div>
               ${head(words.menuHead)}
               ${tool('data-farm-follow', 'follow', 'Follow', follow ? 'on' : 'off', canFollow ? words.followTip : words.followFirstTip, !canFollow)}

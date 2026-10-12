@@ -41,7 +41,7 @@ const docLabel = (agent, path) => (path === '@summary' ? 'your conversation summ
 function touchOf(agentId, path) {
   const doc = docEntry(agentId, path);
   const root = explorer.agentId === agentId ? explorer.data?.root : null;
-  const listed = root && path.startsWith(`${root}/`) ? explorer.data.touched?.[path.slice(root.length + 1)] : null;
+  const listed = root && (path.startsWith(`${root}/`) || path.startsWith(`${root}\\`)) ? explorer.data.touched?.[path.slice(root.length + 1).replaceAll('\\', '/')] : null;
   if (!doc) return listed ?? null;
   if (!listed) return doc;
   return { wrote: doc.wrote || listed.wrote, at: Math.max(doc.at, listed.at) };
@@ -260,7 +260,7 @@ function noteImageSize(img) {
   meta.textContent = `${img.naturalWidth} × ${img.naturalHeight} · ${meta.textContent}`;
 }
 
-/** Shows the file in Finder: only reveals it, never opens or runs it. */
+/** Shows the file in Finder or File Explorer: only reveals it, never opens or runs it. */
 async function revealReaderFile() {
   if (!reader) return;
   const r = await post('/api/actions/reveal', { agentId: reader.agentId, path: reader.path });

@@ -1,4 +1,5 @@
 import { run } from '../lib/exec.mjs';
+import { lastPart } from '../platform/paths.mjs';
 
 // ps's elapsed time: [[dd-]hh:]mm:ss, in seconds.
 const ETIME = /^(?:(\d+)-)?(?:(\d+):)?(\d+):(\d+)$/;
@@ -32,10 +33,13 @@ export function childrenIndex(procs) {
 }
 
 export function label(command) {
-  const [exe, ...rest] = command.split(' ');
-  const base = exe.split('/').pop();
-  const arg = rest.find(a => a && !a.startsWith('-'));
-  return (arg ? `${base} ${arg.split('/').pop()}` : base).slice(0, 40);
+  // a Windows command line quotes a program path with a space in it: "C:\Program Files\nodejs\node.exe" server.js
+  const quoted = /^"([^"]+)"\s*(.*)$/.exec(command);
+  const [exe, ...rest] = quoted ? [quoted[1], ...quoted[2].split(' ')] : command.split(' ');
+  const base = lastPart(exe);
+  const switches = /^(?:[A-Za-z]:[\\/]|\\\\)/.test(exe) ? /^[-/]/ : /^-/; // a Windows program's switches start with / too
+  const arg = rest.find(a => a && !switches.test(a));
+  return (arg ? `${base} ${lastPart(arg.replace(/^"|"$/g, ''))}` : base).slice(0, 40);
 }
 
 /** CPU % and RSS of a process plus all its descendants. */

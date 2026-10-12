@@ -391,7 +391,7 @@ function composeHtml(a, ids = 'msg', { short = false } = {}) {
     ? `<img src="${esc(f.url)}" alt="${esc(f.name)}">`
     : `<span class="thumb-ext">${f.folder ? 'folder' : esc(extOf(f.name))}</span><span class="thumb-name">${esc(f.name)}</span>`}<button type="button" class="thumb-x" data-remove-file="${i}" data-agent="${esc(a.id)}" aria-label="Remove ${esc(f.name)}">✕</button></span>`).join('')}</div>` : '';
   return `<div class="compose" data-agent="${esc(a.id)}" style="margin-top:10px"><textarea id="${ids}-text" data-msg-agent="${esc(a.id)}" rows="2" placeholder="Message ${esc(a.name)}…"${live ? '' : ' disabled'}>${esc(msgDrafts.get(a.id) ?? '')}</textarea>${thumbs}
-    <div class="compose-row">${status}<span class="grow"></span><button class="act" id="${ids}-attach" type="button" data-agent="${esc(a.id)}" data-tip="Attach files: screenshots, PDFs, Markdown, text… (you can also paste or drop them on the box)"${live ? '' : ' disabled'}>📎 Attach</button><button class="act" id="${ids}-folder" type="button" data-agent="${esc(a.id)}" data-tip="Attach a folder, picked in Finder: its path goes with the message, for the agent to look in"${live ? '' : ' disabled'}>📁 Folder</button><button class="act primary" id="${ids}-send" data-agent="${esc(a.id)}"${live ? '' : ' disabled'}>Send</button></div></div>`;
+    <div class="compose-row">${status}<span class="grow"></span><button class="act" id="${ids}-attach" type="button" data-agent="${esc(a.id)}" data-tip="Attach files: screenshots, PDFs, Markdown, text… (you can also paste or drop them on the box)"${live ? '' : ' disabled'}>📎 Attach</button><button class="act" id="${ids}-folder" type="button" data-agent="${esc(a.id)}" data-tip="Attach a folder, picked in ${fileManager()}: its path goes with the message, for the agent to look in"${live ? '' : ' disabled'}>📁 Folder</button><button class="act primary" id="${ids}-send" data-agent="${esc(a.id)}"${live ? '' : ' disabled'}>Send</button></div></div>`;
 }
 
 const subagentsOf = a => (a?.children ?? []).filter(c => c.kind === 'subagent');
@@ -723,7 +723,7 @@ function addFiles(agentId, files) {
   render();
 }
 
-/** 📁 Folder: Finder's folder window; the folder goes with the next message by its path (nothing is uploaded). */
+/** 📁 Folder: the system's folder window; the folder goes with the next message by its path (nothing is uploaded). */
 async function attachFolder(agentId, button) {
   const agent = snap?.agents.find(a => a.id === agentId);
   button.disabled = true;

@@ -3482,9 +3482,13 @@ test('on Windows the file buttons and notes say File Explorer, not Finder; witho
   snap.machine.system = { platform: 'win', os: 'Windows 11 Pro 10.0.26200', node: '24.11.1', claude: null };
   page.push(snap);
   assert.equal(page.ctx.fileManager(), 'File Explorer');
+  const compose = vm.runInContext('composeHtml(a)', Object.assign(page.ctx, { a: richAgent() }));
+  assert.match(compose, /data-tip="Attach a folder, picked in File Explorer:/);
+  assert.doesNotMatch(compose, /Finder/);
   const noSystem = loadPage();
   noSystem.push(richSnapshot([richAgent()]));
   assert.equal(noSystem.ctx.fileManager(), 'Finder');
+  assert.match(vm.runInContext('composeHtml(a)', Object.assign(noSystem.ctx, { a: richAgent() })), /picked in Finder:/);
 });
 
 test('Windows paths: a file, a folder and a session are named by their last part, and a document under the session folder reads relative', () => {
@@ -3499,4 +3503,9 @@ test('Windows paths: a file, a folder and a session are named by their last part
   assert.equal(here('docLabel(a, p)', { a: { cwd }, p: doc }), 'docs/spec.md', 'relative to the session folder, with forward slashes');
   assert.equal(here('docLabel(a, p)', { a: { cwd: '/Users/me/shop' }, p: '/Users/me/shop/docs/spec.md' }), 'docs/spec.md');
   assert.equal(here('short(p)', { p: doc }), `~${b}shop${b}docs${b}spec.md`, 'the home folder is ~ here too');
+  // the folder field writes the home folder as ~/ (the collector reads ~/x on Windows too), and a Mac path as before
+  assert.equal(here('tildeOf(p, h)', { p: `${cwd}${b}web`, h: `C:${b}Users${b}me` }), '~/shop/web');
+  assert.equal(here('tildeOf(p, h)', { p: `C:${b}Users${b}me`, h: `C:${b}Users${b}me` }), '~');
+  assert.equal(here('tildeOf(p, h)', { p: `D:${b}work`, h: `C:${b}Users${b}me` }), `D:${b}work`);
+  assert.equal(here('tildeOf(p, h)', { p: '/Users/me/shop', h: '/Users/me' }), '~/shop');
 });

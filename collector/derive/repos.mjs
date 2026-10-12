@@ -1,4 +1,5 @@
 import { lastDeployOf } from './deploys.mjs';
+import { lastPart } from '../platform/paths.mjs';
 
 /**
  * The repos the dashboard lists (the repo rail and the farm's fields), busiest first. A repo is
@@ -9,7 +10,7 @@ import { lastDeployOf } from './deploys.mjs';
 export function reposFor(agents, { deployRepos = {}, repoInfo = new Map(), deploys = new Map(), directs = new Map(), prs = new Map(), lookup, home }) {
   const map = new Map();
   const ensure = path => {
-    if (!map.has(path)) map.set(path, { ...(repoInfo.get(path) ?? { path, name: path.split('/').pop() }), deploy: deploys.get(path), lastDeploy: lastDeployOf(deploys.get(path), directs.get(path)), ...(prs.get(path) ? { prs: prs.get(path) } : {}), agentIds: [] });
+    if (!map.has(path)) map.set(path, { ...(repoInfo.get(path) ?? { path, name: lastPart(path) }), deploy: deploys.get(path), lastDeploy: lastDeployOf(deploys.get(path), directs.get(path)), ...(prs.get(path) ? { prs: prs.get(path) } : {}), agentIds: [] });
     return map.get(path);
   };
   const addAgent = (path, id) => {

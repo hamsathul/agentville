@@ -1,3 +1,5 @@
+import { pathParts } from '../platform/paths.mjs';
+
 export function clip(text, max = 80) {
   const one = String(text ?? '').replace(/\s+/g, ' ').trim();
   return one.length > max ? `${one.slice(0, max - 1)}…` : one;
@@ -7,7 +9,7 @@ export function firstLine(text, max = 200) {
   return clip(String(text ?? '').split('\n').find(line => line.trim()) ?? '', max);
 }
 
-const lastTwo = path => String(path ?? '').split('/').filter(Boolean).slice(-2).join('/');
+const lastTwo = path => pathParts(path).slice(-2).join('/');
 
 /** One short line describing a tool call, for tickers and feeds. */
 export function summarizeTool(name, input = {}) {

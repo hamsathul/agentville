@@ -45,3 +45,15 @@ test('git prints C:/x/y; the rest of the code uses the native form, so fromGit c
   assert.equal(fromGit('', W), '');
   assert.equal(fromGit(null, W), null);
 });
+
+test("a path's last part, whichever system wrote it: a Windows one by either separator, any other by / alone", async () => {
+  const { lastPart, pathParts } = await import('../platform/paths.mjs');
+  const b = String.fromCharCode(92);
+  assert.equal(lastPart(`C:${b}Users${b}me${b}shop`), 'shop');
+  assert.equal(lastPart('C:/Users/me/shop/'), 'shop');
+  assert.equal(lastPart(`${b}${b}server${b}share${b}work`), 'work');
+  assert.equal(lastPart('/Users/me/shop'), 'shop');
+  assert.equal(lastPart(`/Users/me/a${b}b`), `a${b}b`, 'a backslash is a letter in a Mac name');
+  assert.deepEqual(pathParts(`C:${b}a${b}b`), ['C:', 'a', 'b']);
+});
+

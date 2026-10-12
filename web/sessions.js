@@ -156,7 +156,12 @@ function renderSessions() {
 /* ---------- a new session in any folder: typed, browsed or made ---------- */
 
 const sessDir = { typed: '', data: null, shown: false, asked: 0, waiting: 0 };
-const tildeOf = (path, home) => (home && (path === home || path.startsWith(`${home}/`)) ? `~${path.slice(home.length)}` : path);
+// ~ for the home folder, as the field takes it (~/x). A Windows path's separators become / after it: Windows reads those too.
+const tildeOf = (path, home) => {
+  if (!home) return path;
+  if (path === home || path.startsWith(`${home}/`)) return `~${path.slice(home.length)}`;
+  return path.startsWith(`${home}\\`) ? `~${path.slice(home.length).replaceAll('\\', '/')}` : path;
+};
 
 function resetDirPicker() {
   Object.assign(sessDir, { typed: '', data: null, shown: false });
@@ -191,6 +196,7 @@ function setDir(value) {
 }
 
 function renderDirs() {
+  $('sess-dir-browse').dataset.tip = `Pick it in ${fileManager() === 'Finder' ? "Finder's" : "Windows'"} folder window, which can also make a new folder`;
   const d = sessDir.data, list = $('sess-dir-list'), note = $('sess-dir-note');
   $('sess-dir-new').disabled = !(d && !d.error && d.exists);
   note.className = 'faint dir-note';
@@ -212,7 +218,7 @@ function renderDirs() {
   list.innerHTML = rows.join('') + (d.truncated ? '<div class="empty" style="padding:4px 10px">More folders: type the start of a name.</div>' : '');
   list.hidden = !sessDir.shown || !rows.length;
   if (d.isFile) note.textContent = `${at(d.path)} is a file, not a folder.`;
-  else if (d.exists) note.textContent = `＋ New starts Claude Code in ${at(d.path)}.${d.unreadable ? ' (Its folders could not be listed: macOS may ask to allow access.)' : ''}`;
+  else if (d.exists) note.textContent = `＋ New starts Claude Code in ${at(d.path)}.${d.unreadable ? ` (Its folders could not be listed: ${fileManager() === 'Finder' ? 'macOS may ask to allow access' : 'you may not have access to it'}.)` : ''}`;
   else note.innerHTML = `${esc(at(d.path))} doesn't exist yet${d.dirs.length ? ': pick a folder above, or' : '.'} <button type="button" class="act mini" data-dir-make>Create it</button>`;
 }
 
@@ -231,7 +237,7 @@ async function completeDir() {
   return true;
 }
 
-/** Browse: Finder's own folder window (it has New Folder), opened where the field is; the folder picked fills the field. */
+/** Browse: the system's own folder window (it has New Folder), opened where the field is; the folder picked fills the field. */
 async function browseForFolder(button) {
   const d = sessDir.data;
   button.disabled = true;

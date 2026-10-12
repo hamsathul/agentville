@@ -165,7 +165,7 @@
           deploy: deployOf(r),
           collision: (snap.collisions ?? []).find(c => c.repo === r.path)?.severity ?? null,
           worktree: r.worktree === true, main: r.main ?? null,
-          project, projectName: project ? project.split('/').pop() : null,
+          project, projectName: project ? project.split(/^(?:[A-Za-z]:[\\/]|\\\\)/.test(project) ? /[\\/]/ : '/').filter(Boolean).pop() ?? null : null, // either separator in a Windows path
           prs: r.prs ?? null,
         };
       }),

@@ -32,6 +32,12 @@ test('treeStats of an unknown pid is null and a ppid loop terminates', () => {
   assert.equal(treeStats(loop, 1).childCount, 1);
 });
 
+test("on Windows a label is the program's name, from a quoted path with spaces too, and the script's name", () => {
+  const b = String.fromCharCode(92);
+  assert.equal(label(`"C:${b}Program Files${b}nodejs${b}node.exe" C:${b}work${b}shop${b}server.js --port 3000`), 'node.exe server.js');
+  assert.equal(label(`C:${b}Windows${b}System32${b}cmd.exe /d /c npm test`), 'cmd.exe npm', '/d and /c are switches there');
+});
+
 test('label keeps the executable name and first non-flag argument', () => {
   assert.equal(label('bun run --cwd /plugins/discord start'), 'bun run');
   assert.equal(label('/usr/bin/claude --dangerously-skip-permissions'), 'claude');

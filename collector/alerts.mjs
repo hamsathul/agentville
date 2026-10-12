@@ -1,5 +1,6 @@
 import { notifyMac } from './platform/mac.mjs';
 import { platformFor } from './platform/index.mjs';
+import { lastPart } from './platform/paths.mjs';
 
 export { notifyMac };
 
@@ -60,7 +61,7 @@ export class AlertEngine {
       }
     }
     for (const c of snapshot.collisions) {
-      want.push({ key: `collision:${c.repo}:${c.agentIds.join(',')}`, family: 'collision', title: `Collision in ${c.repo.split('/').pop()}`, message: c.reason });
+      want.push({ key: `collision:${c.repo}:${c.agentIds.join(',')}`, family: 'collision', title: `Collision in ${lastPart(c.repo)}`, message: c.reason });
     }
 
     const isWarm = now - this.startedAt >= this.warmupMs;

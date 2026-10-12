@@ -13,6 +13,12 @@ export function isInside(base, candidate, { win = ON_WINDOWS } = {}) {
   return true;
 }
 
+// A path's parts, whichever system wrote it: a Windows one (C:\a\b, C:/a/b, \\server\share) by either separator, any other by
+// '/' alone (a backslash is a letter in a Mac file name). The page has the same pair (web/core.js).
+const WIN_PATH = /^(?:[A-Za-z]:[\\/]|\\\\)/;
+export const pathParts = path => String(path ?? '').split(WIN_PATH.test(String(path ?? '')) ? /[\\/]/ : '/').filter(Boolean);
+export const lastPart = path => pathParts(path).pop() ?? '';
+
 // A path as the dashboard shows it: forward slashes.
 export function toPosix(path) {
   return String(path).replaceAll(String.fromCharCode(92), '/');
