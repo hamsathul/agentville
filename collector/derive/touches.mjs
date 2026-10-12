@@ -9,6 +9,10 @@ export function expandHome(path, home = homedir()) {
   return path.startsWith('~/') || path.startsWith('~' + String.fromCharCode(92)) ? join(home, path.slice(2)) : path;
 }
 
+// Absolute paths in a command. A drive path (C:\x, C:/x) only on Windows: on a Mac `sed 's:/a:/b:'` would be one.
+const ABSOLUTE = /(?:^|[\s'"=:(])((?:~|\/Users|\/private|\/tmp|\/Volumes|\/opt)\/[^\s'";|&)<>]*)/g;
+const ABSOLUTE_WIN = /(?:^|[\s'"=:(])((?:~|\/Users|\/private|\/tmp|\/Volumes|\/opt)\/[^\s'";|&)<>]*|[A-Za-z]:[\\/][^\s'";|&)<>]*)/g;
+
 /** Folders/files a shell command works on, as absolute paths. */
 export function bashTargets(command, cwd, home = homedir()) {
   const found = new Set();
@@ -23,7 +27,7 @@ export function bashTargets(command, cwd, home = homedir()) {
   };
   for (const m of command.matchAll(/\bgit\s+-C\s+("[^"]+"|'[^']+'|\S+)/g)) add(m[1]);
   for (const m of command.matchAll(/(?:^|[;&|(]\s*|\s)cd\s+("[^"]+"|'[^']+'|[^\s;&|)]+)/g)) add(m[1]);
-  for (const m of command.matchAll(/(?:^|[\s'"=:(])((?:~|\/Users|\/private|\/tmp|\/Volumes|\/opt)\/[^\s'";|&)<>]*|[A-Za-z]:[\\/][^\s'";|&)<>]*)/g)) add(m[1]);
+  for (const m of command.matchAll(process.platform === 'win32' ? ABSOLUTE_WIN : ABSOLUTE)) add(m[1]);
   if (found.size === 0 && cwd) found.add(cwd);
   return [...found];
 }

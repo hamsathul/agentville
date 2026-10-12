@@ -80,3 +80,8 @@ test('~ expands to the home folder in one native form, with either separator aft
   assert.deepEqual(bashTargets('cat ~/notes.txt', undefined, P('/h')), [P('/h/notes.txt')]);
   assert.equal(touchesFromCall({ name: 'Read', input: { file_path: `~${b}x` } }, P('/h'))[0].path, P('/h/x'));
 });
+
+test("on a Mac a sed pattern written with colons is not a drive path: s:/old:/new: is not a file it touched", () => {
+  if (process.platform === 'win32') return;
+  assert.deepEqual(bashTargets("sed -i 's:/old:/new:' notes.txt", '/p'), ['/p']);
+});
