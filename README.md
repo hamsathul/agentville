@@ -1347,6 +1347,15 @@ From these it works out each agent's state, current step, task list, subagents, 
 collisions. It writes the result to `state/state.json` and serves it as the dashboard, the
 `/api/state` endpoint and a stream of server-sent events.
 
+A file an agent edits or reads with Claude Code's own tools counts as written or read. A shell
+command is read the way the shell reads it: a path counts as written only when it is what the
+command redirects to (`>`, `>>`, `tee`) or changes (`rm`, `mv`, `mkdir`, `touch`, the last path of
+`cp`, the files of `sed -i` or `perl -i`, what `find` deletes, the paths named by an inline script
+that writes files), and a repo counts as changed by git only when a git command that changes it
+(commit, checkout, push, `git mv`…) runs there. Any other path a command names (in an `echo`, a
+commit message, a pattern) is only read. It is a reading of the command, not of what happened: a
+script file or a build that writes files isn't seen.
+
 The **mod** (`mod/`) is a Claude Code plugin. It reads `state/state.json` for its pane, status
 line and toasts, and writes a small check-in file every 2 seconds. When the dashboard asks for
 something (an answer, a message, a model switch, a side question), the collector leaves a file
