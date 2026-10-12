@@ -81,4 +81,6 @@ export const winSessionProcs = {
     if (r.status !== 0) throw Object.assign(new Error(`could not end the process tree: ${String(r.stderr).trim().slice(0, 120)}`), { code: r.status });
   },
   groupAlive: pid => Number.isInteger(pid) && pid > 4 && aliveNow(pid),
+  // killGroup is already forced: no second kill a moment later, when the pid may be another program's (Windows reuses them soon).
+  endsAtOnce: true,
 };

@@ -37,7 +37,7 @@ import { AlertEngine, notifyMac } from './alerts.mjs';
 import { platformFor } from './platform/index.mjs';
 const platform = platformFor();
 import { isInside, toPosix } from './platform/paths.mjs';
-import { makePrivate } from './platform/private.mjs';
+import { isPrivate, makePrivate } from './platform/private.mjs';
 const defaultLaunch = args => run('osascript', args, { timeoutMs: 15_000 });
 import { createTrackerServer } from './server.mjs';
 import { makeWorlds, watchWorlds, worldsDirOf } from './worlds.mjs';
@@ -66,16 +66,23 @@ export function makeLogger(dir) {
   };
 }
 
+// The token is made in the state folder, which is private before it is (so it is never readable by others, even for a moment).
+// One found that is not private (a copy, a restore, a drive without ACLs once) is made private again or refused at every start.
 function loadToken(path) {
-  try {
-    const existing = readFileSync(path, 'utf8').trim();
-    if (existing.length >= 32) return existing;
-  } catch {
-    // created below
+  let existing = '';
+  try { existing = readFileSync(path, 'utf8').trim(); } catch { /* created below */ }
+  if (existing.length >= 32) {
+    if (!isPrivate(path)) makePrivate(path);
+    return existing;
   }
   const token = randomBytes(32).toString('hex');
   writeFileSync(path, token, { mode: 0o600 });
-  makePrivate(path);
+  try {
+    makePrivate(path);
+  } catch (err) {
+    rmSync(path, { force: true });
+    throw err;
+  }
   return token;
 }
 
@@ -142,7 +149,10 @@ export async function startCollector({ root, system = null, claudeDir = join(hom
   // Model and effort switches and side questions go to a session's mod as files; it writes back what came of them.
   const commandsDir = join(stateDir, 'commands'), resultsDir = join(stateDir, 'command-results');
   const asksDir = join(stateDir, 'btw'), asideAnswersDir = join(stateDir, 'asides');
-  for (const dir of [stateDir, pendingDir, answersDir, modsDir, messagesDir, uploadsDir, commandsDir, resultsDir, asksDir, asideAnswersDir]) mkdirSync(dir, { recursive: true });
+  // The state folder is the owner's alone: what is in it answers permission prompts and sends messages to sessions.
+  mkdirSync(stateDir, { recursive: true, mode: 0o700 });
+  makePrivate(stateDir);
+  for (const dir of [pendingDir, answersDir, modsDir, messagesDir, uploadsDir, commandsDir, resultsDir, asksDir, asideAnswersDir]) mkdirSync(dir, { recursive: true });
   for (const dir of [helperDir, helperRepliesDir]) { mkdirSync(dir, { recursive: true, mode: 0o700 }); makePrivate(dir); }
   const pendingAsides = new Map(); // session → [{ id, question, at }] asked and not answered yet
   const configPath = join(root, 'config.json');
@@ -1518,7 +1528,7 @@ export async function startCollector({ root, system = null, claudeDir = join(hom
       } catch (err) {
         return { ok: false, error: `It could not be stopped (${err.code ?? err.message}).` };
       }
-      setTimeout(() => { try { if (sessionProcs.groupAlive(pid)) sessionProcs.killGroup(pid, 'SIGKILL'); } catch { /* gone already */ } }, stopWaitMs).unref?.();
+      if (!sessionProcs.endsAtOnce) setTimeout(() => { try { if (sessionProcs.groupAlive(pid)) sessionProcs.killGroup(pid, 'SIGKILL'); } catch { /* gone already */ } }, stopWaitMs).unref?.();
       return { ok: true };
     },
     /** Makes a folder to start a session in (and any missing above it), only in your home folder or on a drive. */

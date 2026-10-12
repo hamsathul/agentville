@@ -26,7 +26,7 @@ export const NOTIFY_SCRIPT = [
 
 /** Windows notification; the same result shape as notifyMac. */
 export function notifyWin(title, message, runner = run) {
-  return runner('powershell.exe', ['-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-Command', NOTIFY_SCRIPT], {
+  return runner(join(process.env.SystemRoot ?? 'C:/Windows', 'System32', 'WindowsPowerShell', 'v1.0', 'powershell.exe'), ['-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-Command', NOTIFY_SCRIPT], {
     timeoutMs: 10_000,
     env: { AGENTVILLE_TITLE: String(title), AGENTVILLE_MESSAGE: String(message) },
   });
@@ -59,9 +59,10 @@ export function folderRoots(home, exists = drive => existsSync(`${drive}${String
 }
 
 const EXPLORER = join(process.env.SystemRoot ?? 'C:/Windows', 'explorer.exe');
-// A quote or a line break in a path could change what Explorer is asked to do; refuse it (an & in a folder name is fine, no shell is involved).
-const BAD_PATH = /["\u0000-\u001f]/;
-const refuse = () => Promise.resolve({ code: 1, stdout: '', stderr: 'refused: the path holds a quote or control character' });
+// A quote or a line break in a path could change what Explorer is asked to do, and Explorer splits its command line at commas
+// (/select,<path> is itself one): refuse them (an & in a folder name is fine, no shell is involved).
+const BAD_PATH = /[",\u0000-\u001f]/;
+const refuse = () => Promise.resolve({ code: 1, stdout: '', stderr: 'refused: the path holds a quote, a comma or a control character' });
 // Explorer would RUN an .exe it is given, so only an existing folder is passed to it.
 const isFolder = p => { try { return statSync(p).isDirectory(); } catch { return false; } };
 export const openFolder = (dir, runner = run) => (BAD_PATH.test(dir) || !isFolder(dir) ? refuse() : runner(EXPLORER, [dir], { timeoutMs: 10_000 }));

@@ -16,7 +16,7 @@ test('a Windows notification passes title and message in the environment, never 
   const calls = [];
   await notifyWin(hostile, 'msg "q" $(whoami)', (cmd, args, opts) => { calls.push({ cmd, args, opts }); return Promise.resolve({ code: 0, stdout: '', stderr: '' }); });
   assert.equal(calls.length, 1);
-  assert.equal(calls[0].cmd, 'powershell.exe');
+  assert.match(calls[0].cmd, /[\\/]System32[\\/]WindowsPowerShell[\\/]v1\.0[\\/]powershell\.exe$/i, 'by its full path');
   const argvText = calls[0].args.join('\n');
   assert.ok(!argvText.includes('calc') && !argvText.includes('whoami'), 'user text must not be in argv');
   assert.ok(calls[0].args.includes('-NoProfile') && calls[0].args.includes('-NonInteractive'));

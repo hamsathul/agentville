@@ -75,3 +75,14 @@ test("how each file is shown, and the type it is served with: a picture, a PDF, 
   assert.deepEqual(['a.png', 'x.svg', 'r.pdf', 'v.mov', 'i.html', 's.css', 'm.js', 'f.woff2', 'z.bin'].map(contentTypeOf),
     ['image/png', 'image/svg+xml', 'application/pdf', 'video/quicktime', 'text/html; charset=utf-8', 'text/css; charset=utf-8', 'text/javascript; charset=utf-8', 'font/woff2', 'application/octet-stream']);
 });
+
+test('a sheet full of tags that never close is read at once, and phonetic guides are left out of a string', () => {
+  const t0 = Date.now();
+  const book = readXlsx(zip({ ...WORKBOOK,
+    'xl/sharedStrings.xml': `<sst><si><t>漢字</t><rPh sb="0" eb="2"><t>かんじ</t></rPh></si>${'<si><t>'.repeat(60_000)}</sst>`,
+    'xl/worksheets/sheet1.xml': `<worksheet><sheetData><row r="1"><c r="A1" t="s"><v>0</v></c>${'<c r="B1">'.repeat(60_000)}</row>${'<row>'.repeat(60_000)}</sheetData></worksheet>`,
+  }));
+  assert.equal(book.error, undefined);
+  assert.deepEqual(book.sheets[0].rows[0], ['漢字']);
+  assert.ok(Date.now() - t0 < 2000, `took ${Date.now() - t0} ms`);
+});

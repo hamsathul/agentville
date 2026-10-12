@@ -89,7 +89,31 @@ export function unzip(buf) {
 const ENTITY = { amp: '&', lt: '<', gt: '>', quot: '"', apos: "'" };
 export const unxml = s => String(s).replace(/&(#x[0-9a-f]+|#\d+|amp|lt|gt|quot|apos);/gi, (_, e) => (e[0] === '#' ? String.fromCodePoint(e[1] === 'x' || e[1] === 'X' ? parseInt(e.slice(2), 16) : Number(e.slice(1))) : ENTITY[e.toLowerCase()]));
 const attr = (tag, name) => tag.match(new RegExp(`\\s${name}="([^"]*)"`))?.[1];
-const texts = xml => [...String(xml).matchAll(/<t(?:\s[^>]*)?>([\s\S]*?)<\/t>/g)].map(m => unxml(m[1])).join('');
+
+/**
+ * Each element named one of `names` in `xml`, in order and not nested in one before it: { name, attrs, inner } (inner '' for
+ * <x/>). Its end is found with indexOf, and a name with a start and no end is not looked for again. A lazy regex such as
+ * /<x\b[\s\S]*?<\/x>/g reads to the end of the text from every start that has no end: quadratic, so a file of a few hundred
+ * kilobytes held the collector for seconds and a 100 KB .docx (64 MB inside) for hours.
+ */
+export function* elements(xml, names) {
+  const text = String(xml);
+  const open = new RegExp(`<(${[].concat(names).join('|')})\\b([^>]*?)(/?)>`, 'g');
+  const unclosed = new Set();
+  for (let m; (m = open.exec(text));) {
+    const [, name, attrs, selfClosing] = m;
+    if (selfClosing) { yield { name, attrs, inner: '' }; continue; }
+    if (unclosed.has(name)) continue;
+    const close = `</${name}>`;
+    const end = text.indexOf(close, open.lastIndex);
+    if (end < 0) { unclosed.add(name); continue; }
+    yield { name, attrs, inner: text.slice(open.lastIndex, end) };
+    open.lastIndex = end + close.length;
+  }
+}
+
+// The text of a string item: its <t>s, leaving out the phonetic guides (<rPh>) and the <t>s in them.
+const texts = xml => [...elements(xml, ['t', 'rPh'])].filter(e => e.name === 't').map(e => unxml(e.inner)).join('');
 
 /** A column's index from a cell reference: A1 → 0, AA7 → 26. */
 const columnOf = ref => [...ref.replace(/\d+$/, '')].reduce((n, ch) => n * 26 + ch.charCodeAt(0) - 64, 0) - 1;
@@ -117,7 +141,7 @@ function cellText(raw, type, style, styles) {
 export function readXlsx(buf) {
   try {
     const z = unzip(buf);
-    const shared = [...String(z.text('xl/sharedStrings.xml') ?? '').matchAll(/<si>([\s\S]*?)<\/si>/g)].map(m => texts(m[1].replace(/<rPh[\s\S]*?<\/rPh>/g, '')));
+    const shared = [...elements(z.text('xl/sharedStrings.xml') ?? '', 'si')].map(si => texts(si.inner));
     const stylesXml = z.text('xl/styles.xml') ?? '';
     const custom = new Map([...stylesXml.matchAll(/<numFmt\s[^>]*>/g)].map(m => [Number(attr(m[0], 'numFmtId')), unxml(attr(m[0], 'formatCode') ?? '')]));
     const xfs = stylesXml.match(/<cellXfs[^>]*>([\s\S]*?)<\/cellXfs>/)?.[1] ?? '';
@@ -131,18 +155,18 @@ export function readXlsx(buf) {
       const path = target.startsWith('/') ? target.slice(1) : `xl/${target}`;
       const rows = [];
       let truncated = false;
-      for (const row of String(z.text(path) ?? '').matchAll(/<row\b([^>]*?)(?:\/>|>([\s\S]*?)<\/row>)/g)) {
-        const r = Number(attr(row[1], 'r') ?? rows.length + 1) - 1;
+      for (const row of elements(z.text(path) ?? '', 'row')) {
+        const r = Number(attr(row.attrs, 'r') ?? rows.length + 1) - 1;
         if (r >= MAX_ROWS) { truncated = true; break; }
         while (rows.length < r) rows.push([]);
         const cells = [];
-        for (const c of String(row[2] ?? '').matchAll(/<c\b([^>]*?)(?:\/>|>([\s\S]*?)<\/c>)/g)) {
-          const ref = attr(c[1], 'r'), col = ref ? columnOf(ref) : cells.length;
+        for (const c of elements(row.inner, 'c')) {
+          const ref = attr(c.attrs, 'r'), col = ref ? columnOf(ref) : cells.length;
           if (col >= MAX_COLS) { truncated = true; continue; }
-          const type = attr(c[1], 't'), body = c[2] ?? '';
+          const type = attr(c.attrs, 't'), body = c.inner;
           const raw = type === 'inlineStr' ? texts(body) : unxml(body.match(/<v>([\s\S]*?)<\/v>/)?.[1] ?? '');
           while (cells.length < col) cells.push('');
-          cells[col] = type === 's' ? shared[Number(raw)] ?? '' : cellText(raw, type === 'inlineStr' ? 'str' : type, Number(attr(c[1], 's') ?? 0), styles);
+          cells[col] = type === 's' ? shared[Number(raw)] ?? '' : cellText(raw, type === 'inlineStr' ? 'str' : type, Number(attr(c.attrs, 's') ?? 0), styles);
         }
         while (cells.length && !cells.at(-1)) cells.pop(); // a styled but empty cell at the end shows nothing
         rows.push(cells.map(v => v ?? ''));

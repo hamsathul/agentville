@@ -1,4 +1,4 @@
-import { unxml, unzip } from './previews.mjs';
+import { elements, unxml, unzip } from './previews.mjs';
 
 // Word documents (.docx, .odt, .rtf) read in plain JavaScript, for platforms with no textutil (Windows). The page it returns is
 // built from a fixed set of tags around ESCAPED text: nothing in the document becomes a tag, an attribute or a link.
@@ -44,13 +44,14 @@ function render(blocks, b) {
 
 const isOn = (xml, tag) => { const m = xml.match(new RegExp(`<w:${tag}(\\s[^>]*)?/?>`)); return Boolean(m) && !/w:val="(0|false|none)"/.test(m[1] ?? ''); };
 
+// Every element is found with elements() (previews.mjs): a lazy regex over a document is quadratic on one with unclosed tags.
 function docxRuns(paragraphXml, b) {
   const runs = [];
-  for (const run of paragraphXml.matchAll(/<w:r\b[\s\S]*?<\/w:r>/g)) {
-    const xml = run[0];
+  for (const run of elements(paragraphXml, 'w:r')) {
+    const xml = run.inner;
     const props = xml.match(/<w:rPr>[\s\S]*?<\/w:rPr>/)?.[0] ?? '';
     let text = '';
-    for (const t of xml.matchAll(/<w:t(?:\s[^>]*)?>([\s\S]*?)<\/w:t>|<w:tab\s*\/>|<w:br\s*\/>/g)) text += t[1] !== undefined ? unxml(t[1]) : t[0].startsWith('<w:tab') ? '\t' : '\n';
+    for (const t of elements(xml, ['w:t', 'w:tab', 'w:br'])) text += t.name === 'w:t' ? unxml(t.inner) : t.name === 'w:tab' ? '\t' : '\n';
     text = b.take(text);
     if (text) runs.push({ text, bold: isOn(props, 'b'), italic: isOn(props, 'i') });
   }
@@ -59,16 +60,16 @@ function docxRuns(paragraphXml, b) {
 
 function docxBlocks(xml, b) {
   const blocks = [];
-  for (const m of xml.matchAll(/<w:tbl\b[\s\S]*?<\/w:tbl>|<w:p\b[\s\S]*?<\/w:p>/g)) {
-    if (m[0].startsWith('<w:tbl')) {
-      const rows = [...m[0].matchAll(/<w:tr\b[\s\S]*?<\/w:tr>/g)].map(r => [...r[0].matchAll(/<w:tc\b[\s\S]*?<\/w:tc>/g)].map(c => [...c[0].matchAll(/<w:p\b[\s\S]*?<\/w:p>/g)].map(p => docxRuns(p[0], b).map(r => r.text).join('')).join(' ')));
+  for (const m of elements(xml, ['w:tbl', 'w:p'])) {
+    if (m.name === 'w:tbl') {
+      const rows = [...elements(m.inner, 'w:tr')].map(r => [...elements(r.inner, 'w:tc')].map(c => [...elements(c.inner, 'w:p')].map(p => docxRuns(p.inner, b).map(r => r.text).join('')).join(' ')));
       blocks.push({ table: rows });
       continue;
     }
-    const style = m[0].match(/<w:pStyle w:val="([^"]*)"/)?.[1] ?? '';
+    const style = m.inner.match(/<w:pStyle w:val="([^"]*)"/)?.[1] ?? '';
     const heading = /^heading([1-6])$/i.exec(style);
-    const tag = /^title$/i.test(style) ? 'h1' : heading ? `h${heading[1]}` : /<w:numPr>/.test(m[0]) ? 'li' : 'p';
-    blocks.push({ tag, runs: docxRuns(m[0], b) });
+    const tag = /^title$/i.test(style) ? 'h1' : heading ? `h${heading[1]}` : /<w:numPr>/.test(m.inner) ? 'li' : 'p';
+    blocks.push({ tag, runs: docxRuns(m.inner, b) });
   }
   return blocks;
 }
@@ -77,11 +78,11 @@ function docxBlocks(xml, b) {
 
 function odtBlocks(xml, b) {
   const blocks = [];
-  for (const m of xml.matchAll(/<text:(h|p)\b([^>]*)>([\s\S]*?)<\/text:\1>/g)) {
-    const inner = m[3]
+  for (const m of elements(xml, ['text:h', 'text:p'])) {
+    const inner = m.inner
       .replace(/<text:s(?:\s[^>]*?text:c="(\d+)")?[^>]*\/>/g, (_, n) => ' '.repeat(Math.min(Number(n ?? 1), 200)))
       .replace(/<text:tab\s*\/>/g, '\t').replace(/<text:line-break\s*\/>/g, '\n').replace(/<[^>]*>/g, '');
-    const level = m[1] === 'h' ? Math.min(6, Math.max(1, Number(/text:outline-level="(\d+)"/.exec(m[2])?.[1] ?? 1))) : 0;
+    const level = m.name === 'text:h' ? Math.min(6, Math.max(1, Number(/text:outline-level="(\d+)"/.exec(m.attrs)?.[1] ?? 1))) : 0;
     blocks.push({ tag: level ? `h${level}` : 'p', runs: [{ text: b.take(unxml(inner)), bold: false, italic: false }] });
   }
   return blocks;

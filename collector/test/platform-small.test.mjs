@@ -39,12 +39,14 @@ test('opening a folder or revealing a file in Explorer passes the path as one ar
   assert.deepEqual(calls[1].args, [`/select,C:${B}a b${B}c.txt`]);
 });
 
-test('a path with a quote or line break is refused before Explorer is called', async () => {
+test('a path with a quote, a comma or a line break is refused before Explorer is called (it splits its command line at commas)', async () => {
   const calls = [];
-  for (const bad of ['C:' + B + 'x"y', 'C:' + B + 'x\ny']) {
+  for (const bad of ['C:' + B + 'x"y', 'C:' + B + 'x\ny', 'C:' + B + 'x,calc.exe']) {
     const r = await win.revealFile(bad, fake(calls));
     assert.notEqual(r.code, 0, bad);
   }
+  const folder = mkdtempSync(join(tmpdir(), 'agentville-a,b-'));
+  assert.notEqual((await win.openFolder(folder, fake(calls))).code, 0, 'a folder with a comma in its name');
   assert.equal(calls.length, 0);
 });
 

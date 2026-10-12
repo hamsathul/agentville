@@ -3,7 +3,7 @@ import { test } from 'node:test';
 import { assertPrivate, shellStandIn, toSh } from './support.mjs';
 import { execFileSync, spawn } from 'node:child_process';
 import assert from 'node:assert/strict';
-import { appendFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, realpathSync, renameSync, statSync, symlinkSync, unlinkSync, utimesSync, writeFileSync } from 'node:fs';
+import { appendFileSync, chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, realpathSync, renameSync, statSync, symlinkSync, unlinkSync, utimesSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { basename, dirname, join } from 'node:path';
 import { startCollector } from '../collector.mjs';
@@ -978,6 +978,33 @@ test("a session's shell commands: one is stopped with everything it started (its
   }
 });
 
+test('where ending a command is already forced (Windows), it is ended once: no second kill a moment later, when its pid may be another program', async () => {
+  const { winSessionProcs } = await import('../platform/win-procs.mjs');
+  assert.equal(winSessionProcs.endsAtOnce, true);
+  const root = mkdtempSync(join(tmpdir(), 'tracker-root-'));
+  mkdirSync(join(root, 'web'));
+  writeFileSync(join(root, 'web', 'index.html'), '<html></html>');
+  writeFileSync(join(root, 'config.json'), JSON.stringify({ port: 0, deployRepos: {} }));
+  const claudeDir = mkdtempSync(join(tmpdir(), 'tracker-claude-'));
+  mkdirSync(join(claudeDir, 'sessions'));
+  mkdirSync(join(claudeDir, 'projects', '-w'), { recursive: true });
+  const LIVE = '33333333-aaaa-4bbb-8ccc-000000000002', P = process.pid;
+  writeFileSync(join(claudeDir, 'sessions', `${P}.json`), JSON.stringify({ pid: P, sessionId: LIVE, cwd: '/w', name: 'live', kind: 'interactive', status: 'busy', version: '2.1.293' }));
+  writeFileSync(join(claudeDir, 'projects', '-w', `${LIVE}.jsonl`), `${JSON.stringify({ type: 'user', timestamp: new Date().toISOString(), cwd: '/w', message: { role: 'user', content: 'go' } })}\n`);
+  const shell = `/bin/zsh -c source /Users/h/.claude/shell-snapshots/snapshot-zsh-1-x.sh 2>/dev/null || true && eval 'npm run dev' < /dev/null && pwd -P >| /tmp/claude-1-cwd`;
+  const ps = [`${P} 1 ${P} 01:00 1.0 20480 claude`, `5001 ${P} 5001 00:30 0.0 1024 ${shell}`].join('\n');
+  const signals = [];
+  const sessionProcs = { commandOf: async () => 'claude', ttyOf: async () => null, kill: () => {}, alive: () => true, killGroup: (pgid, sig) => { signals.push([pgid, sig]); }, groupAlive: () => true, endsAtOnce: true };
+  const handle = await startCollector({ root, claudeDir, readProcs: async () => parsePs(ps), sessionProcs, stopWaitMs: 50, claudeBin: '/usr/bin/false', notify: () => {}, log: () => {}, home: '/nowhere' });
+  try {
+    assert.deepEqual(await handle.actions.stopShell({ agentId: LIVE, pid: 5001 }), { ok: true });
+    await new Promise(r => setTimeout(r, 300));
+    assert.deepEqual(signals, [[5001, 'SIGTERM']]);
+  } finally {
+    await handle.stop();
+  }
+});
+
 test("a session's model and effort are switched by its mod (/model, /effort), and side questions answered by it", async () => {
   const root = mkdtempSync(join(tmpdir(), 'tracker-root-set-'));
   mkdirSync(join(root, 'web'));
@@ -1489,4 +1516,25 @@ test('Animal lines ticked again: a batch goes out at once, not after the 30-minu
     proc.kill();
     await handle.stop();
   }
+});
+
+test('at start the state folder and the token are private, and a token found readable by others is made private again', async () => {
+  const root = mkdtempSync(join(tmpdir(), 'tracker-root-'));
+  mkdirSync(join(root, 'web'));
+  writeFileSync(join(root, 'web', 'index.html'), '<html>__TRACKER_TOKEN__</html>');
+  writeFileSync(join(root, 'config.json'), JSON.stringify({ port: 0, pollMs: 200, deployRepos: {} }));
+  const claudeDir = mkdtempSync(join(tmpdir(), 'tracker-claude-'));
+  const start = () => startCollector({ root, claudeDir, claudeBin: '/usr/bin/false', notify: () => {}, log: () => {}, home: '/nowhere' });
+  let handle = await start();
+  await handle.stop();
+  assertPrivate(join(root, 'state'), 0o700);
+  assertPrivate(join(root, 'state', 'token'), 0o600);
+  const token = readFileSync(join(root, 'state', 'token'), 'utf8');
+  // a token that lost its protection (a copy, a restore) is kept, and protected again
+  if (process.platform === 'win32') execFileSync(join(process.env.SystemRoot ?? 'C:/Windows', 'System32', 'icacls.exe'), [join(root, 'state', 'token'), '/grant', '*S-1-5-32-545:R']);
+  else chmodSync(join(root, 'state', 'token'), 0o644);
+  handle = await start();
+  await handle.stop();
+  assert.equal(readFileSync(join(root, 'state', 'token'), 'utf8'), token);
+  assertPrivate(join(root, 'state', 'token'), 0o600);
 });

@@ -61,3 +61,20 @@ test('a huge document is cut, and says so', () => {
   assert.ok(r.text.length <= 1_000_100);
   assert.equal(r.truncated, true);
 });
+
+test('a document full of tags that never close is read at once: nothing is read again to the end from every start', () => {
+  const t0 = Date.now();
+  // 600 KB of <w:p> took the old reader about 8 s (a lazy regex read on to the end from each one); a 100 KB file can hold 64 MB
+  const r = readWord(docx(`${p('kept')}${'<w:p>'.repeat(100_000)}`), 'docx');
+  assert.match(r.html, /<p>kept<\/p>/);
+  const runs = readWord(docx(`<w:p>${'<w:r><w:t>'.repeat(50_000)}</w:p>`), 'docx');
+  assert.equal(runs.error, undefined);
+  const odt = readWord(zipOf({ 'content.xml': `<office:text><text:p>kept</text:p>${'<text:p>'.repeat(100_000)}</office:text>` }), 'odt');
+  assert.match(odt.html, /<p>kept<\/p>/);
+  assert.ok(Date.now() - t0 < 2000, `took ${Date.now() - t0} ms`);
+});
+
+test('an empty paragraph written <w:p/> is one empty paragraph, not the start of the next one', () => {
+  const r = readWord(docx(`${p('one')}<w:p/>${p('two')}`), 'docx');
+  assert.match(r.html, /<p>one<\/p><p><\/p><p>two<\/p>/);
+});

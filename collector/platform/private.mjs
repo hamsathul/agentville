@@ -20,12 +20,16 @@ export function makePrivate(path) {
     return;
   }
   const icacls = args => execFileSync(join(SYS32, 'icacls.exe'), [path, ...args], { stdio: 'pipe' });
+  const grant = ['/grant:r', `${whoami()}:${isDir ? '(OI)(CI)F' : 'F'}`];
+  // The user is granted first, so a step that fails after it never leaves a file nobody can open (inheritance removed, no
+  // entry granted: the owner locked out of their own token).
+  icacls(grant);
   icacls(['/inheritance:r']);
   // "/inheritance:r" drops only what was inherited. A folder that names SYSTEM, Administrators, Users or Everyone as entries of its
-  // own (a CI runner's temp folders do) keeps them, so the well-known ones are taken off by SID before the user is granted, which
-  // is also what keeps this right when the user is SYSTEM. An account named in some other way is left and is refused below.
+  // own (a CI runner's temp folders do) keeps them, so the well-known ones are taken off by SID, and the user granted again after
+  // (when the user is SYSTEM, that took theirs off too). An account named in some other way is left and is refused below.
   icacls(['/remove:g', ...OTHERS]);
-  icacls(['/grant:r', `${whoami()}:${isDir ? '(OI)(CI)F' : 'F'}`]);
+  icacls(grant);
   if (!isPrivate(path)) {
     // say what was read, so a refusal on a machine nobody can sit at (a CI runner) is not a guess
     let seen;
