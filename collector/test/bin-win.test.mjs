@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { existsSync, mkdtempSync, mkdirSync, writeFileSync } from 'node:fs';
+import { copyFileSync, existsSync, mkdtempSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -58,4 +58,32 @@ test('run-collector -DryRun finds node and says what it would run, without start
   assert.match(plan.script, /collector[\x5c/]index\.mjs$/);
   assert.ok(existsSync(plan.script));
   assert.ok(plan.path.toLowerCase().includes(dirname(plan.node).toLowerCase()), 'node is on the PATH it would use');
+});
+
+test('the login task runs the collector to its end: its stderr does not stop the script, what it prints lands in logs\\task.log (UTF-8), its own log is left to it', winOnly, async () => {
+  const root = mkdtempSync(join(tmpdir(), 'agentville-task-'));
+  for (const d of ['bin', 'collector']) mkdirSync(join(root, d));
+  for (const f of ['run-collector.ps1', 'agent-tracker.ps1']) copyFileSync(join(BIN, f), join(root, 'bin', f));
+  // a stand-in collector: it writes its own log while the script writes what it prints, warns on stderr, ends with a code of its own
+  writeFileSync(join(root, 'collector', 'index.mjs'), [
+    "import { appendFileSync } from 'node:fs';",
+    "const log = new URL('../logs/collector.log', import.meta.url);",
+    "appendFileSync(log, 'own line before\\n');",
+    "console.log('out line');",
+    "console.error('warning line \\u2713');",
+    "console.error('second warning');",
+    'await new Promise(r => setTimeout(r, 300));',
+    "appendFileSync(log, 'own line after\\n');",
+    'process.exit(3);',
+  ].join('\n'));
+  const r = await run(PS, ['-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-File', join(root, 'bin', 'run-collector.ps1')], { timeoutMs: 60_000 });
+  assert.equal(r.code, 3, `the collector's own exit code, not the script's\n${r.stdout}${r.stderr}`);
+  const task = readFileSync(join(root, 'logs', 'task.log'), 'utf8');
+  assert.match(task, /starting: .*node\.exe/i);
+  for (const line of ['out line', 'warning line \u2713', 'second warning']) assert.ok(task.includes(line), `${line} in task.log:\n${task}`);
+  assert.equal(readFileSync(join(root, 'logs', 'collector.log'), 'utf8'), 'own line before\nown line after\n');
+
+  const logs = await run(PS, ['-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-File', join(root, 'bin', 'agent-tracker.ps1'), 'logs'], { timeoutMs: 60_000 });
+  assert.equal(logs.code, 0, logs.stderr);
+  assert.match(logs.stdout, /==> logs\\collector\.log <==[\s\S]*own line after[\s\S]*==> logs\\task\.log <==[\s\S]*second warning/);
 });

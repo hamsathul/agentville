@@ -33,5 +33,14 @@ if ($DryRun) {
 $env:PATH = $newPath
 $logs = Join-Path $root 'logs'
 New-Item -ItemType Directory -Force -Path $logs | Out-Null
-& $node $script *>> (Join-Path $logs 'collector.log')
+$taskLog = Join-Path $logs 'task.log'
+
+# The collector writes its own log, logs\collector.log. What Node prints (the start-up report, a crash) goes to logs\task.log, as
+# launchd's goes to launchd.log on a Mac: two writers on one file would shut each other out. Windows PowerShell 5.1 makes each
+# line a program writes to stderr an error once it is redirected, and under 'Stop' the first one (the collector's first warning)
+# would end this script, the task: 'Continue' here, each line written as text, in UTF-8, the file opened only for that line.
+$ErrorActionPreference = 'Continue'
+try { [Console]::OutputEncoding = [System.Text.Encoding]::UTF8 } catch { }
+Add-Content -LiteralPath $taskLog -Encoding UTF8 -Value "$(Get-Date -Format o) starting: $node $script"
+& $node $script 2>&1 | ForEach-Object { Add-Content -LiteralPath $taskLog -Encoding UTF8 -Value "$_" }
 exit $LASTEXITCODE

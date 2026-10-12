@@ -172,8 +172,8 @@ It listens on the loopback addresses only (`127.0.0.1`, and `::1` where the mach
 
 ## Install
 
-These steps are for a Mac. On Windows, follow [docs/windows.md](docs/windows.md): clone under your
-user folder, check with `node collector\index.mjs --check`, and install with `bin\agent-tracker.cmd install`.
+These steps are for a Mac. On Windows, follow [docs/windows.md](docs/windows.md#install): the same steps in PowerShell,
+from what to install first (with winget) to the mod's `settings.json`, updating and uninstalling.
 
 ### 1. Get the code and the command
 
@@ -1395,7 +1395,7 @@ and can do is in [docs/worlds.md](docs/worlds.md).
 
 | Problem | Try |
 |---|---|
-| The dashboard doesn't load | `agent-tracker status`, then `agent-tracker logs`. Check that nothing else uses the port |
+| The dashboard doesn't load | `agent-tracker status`, then `agent-tracker logs` (on Windows, `bin\agent-tracker.cmd status`, then `logs`: `logs\collector.log` and `logs\task.log`). Check that nothing else uses the port |
 | The log says "Not starting: a required dependency is missing" | `node collector/index.mjs --check` names it, with the fix. Required are only Node 22+ and the system's own tools (`osascript` and `ps` on a Mac, Windows PowerShell on Windows) |
 | ＋ Session, Resume or Fork fails, and the log says Claude Code was not found | The service looks on its own PATH: nvm's Node folder, Homebrew's, the system's, then `~/.local/bin` (on Windows: yours, then `.local\bin`, npm's, Git's and the GitHub CLI's). The service doesn't see what you set in your shell: on a Mac, link `claude` into `~/.local/bin` (`ln -s "$(command -v claude)" ~/.local/bin/claude`), then `agent-tracker restart`; on Windows, `setx TRACKER_CLAUDE_BIN <its full path>`, then `bin\agent-tracker.cmd restart` |
 | Windows: the collector won't start, and its log says "failed to start" with an `icacls` error (or "could not make … private") | Its folder is on a drive without access lists (FAT, exFAT, some network drives), where the token can't be kept private. Move Agentville under your user folder on the system drive |

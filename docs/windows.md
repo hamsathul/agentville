@@ -1,77 +1,153 @@
 # Agentville on Windows
 
 Agentville runs on Windows 10/11 as well as macOS. It picks the platform by itself (`process.platform`) and checks its
-dependencies before it starts. This page says how to run it, and, honestly, what differs and what has and has not been
-checked on a real Windows PC.
+dependencies before it starts. This page says how to install it, step by step, and, honestly, what differs and what has and
+has not been checked on a real Windows PC.
 
-## Requirements
+## Install
+
+Every command here is for **PowerShell** (Start → type *PowerShell*); none needs an administrator. `bin\agent-tracker.cmd` works
+from cmd.exe as well. It runs its PowerShell script with a one-time `-ExecutionPolicy Bypass`, so you don't need to change
+PowerShell's execution policy.
+
+### 1. What you need first
 
 - **Windows 10 or 11**, with Windows PowerShell 5.1 (it ships with Windows).
 - **Node.js 22 or newer.**
-- **Claude Code**: the native install (`claude.exe`, in `%USERPROFILE%\.local\bin`) or npm's (`claude.cmd`), on your PATH,
-  or `TRACKER_CLAUDE_BIN` set to its full path (for the login task, `setx TRACKER_CLAUDE_BIN <path>`, then
-  `bin\agent-tracker.cmd restart`). The dashboard starts without it and shows your sessions, but cannot start,
-  resume or fork one, and the helper is off.
-- Optional: **Git** (repository status in the explorer), the **GitHub CLI** `gh` (pull requests, deploy badges),
-  **Windows Terminal** (sessions open in a tab; without it they open in a plain console window).
+- **Git**, to get the code (the explorer also uses it for each repository's status).
+- **Claude Code**, signed in (run `claude` once). The dashboard starts without it and shows your sessions, but cannot start,
+  resume or fork one, and the ✨ Helper is off. The mod needs a build with plugin mods; it is tested on 2.1.293.
+- Optional: the **GitHub CLI** `gh` (pull requests, deploy badges) and **Windows Terminal** (sessions open in a tab; without
+  it they open in a plain console window; Windows 11 has it already).
 
-## Get the code
+With winget (part of Windows 11 and of an up-to-date Windows 10):
+
+```powershell
+winget install OpenJS.NodeJS.LTS            # Node.js
+winget install Git.Git                      # Git
+irm https://claude.ai/install.ps1 | iex     # Claude Code (Anthropic's installer; or: winget install Anthropic.ClaudeCode)
+winget install GitHub.cli                   # optional
+winget install Microsoft.WindowsTerminal    # optional; Windows 11 has it
+```
+
+Then **open a new PowerShell window**, so it sees the new PATH, and check: `node --version` (v22 or later), `git --version`,
+`claude --version`.
+
+Claude Code's own installer puts `claude.exe` in `%USERPROFILE%\.local\bin`; npm's install (`claude.cmd`) and winget's work
+too. Agentville looks for it on your PATH. If it is somewhere else, give its full path: `setx TRACKER_CLAUDE_BIN <full path>`,
+then a new window (and `bin\agent-tracker.cmd restart` once the service is installed).
+
+### 2. Get the code
 
 Clone it **under your user folder**, for example `C:\Users\you\tools\agentville`. A folder made elsewhere (`C:\tools`) lets
-every other person who signs in to the PC change its files, and `bin\run-collector.ps1` runs at your logon; the check below
-warns when Agentville is outside your user folder.
+every other person who signs in to the PC change its files, and `bin\run-collector.ps1` runs at your logon. The check in the
+next step warns when Agentville is outside your user folder. There is nothing to build and no `npm install`.
 
 ```powershell
 git clone https://github.com/hamsathul/agentville.git $env:USERPROFILE\tools\agentville
 cd $env:USERPROFILE\tools\agentville
 ```
 
-## Check, then run
+### 3. Check
 
 ```powershell
-node collector\index.mjs --check      # names anything missing, with the fix; exits 1 if a required thing is missing
-node collector\index.mjs              # starts the dashboard on http://localhost:7777; refuses only if a required thing is missing
-node collector\index.mjs --exit-after 60   # a throwaway run that ends itself after 60 seconds
+node collector\index.mjs --check
 ```
 
-`--check` looks at what is required (Node 22+ and Windows PowerShell 5+) and what is optional, each with the feature lost
-without it: Claude Code (it runs `claude --version`), Windows Terminal, git, gh, Claude's own folder, and whether Agentville
-is in your user folder. A check that cannot run counts as missing; it is never reported as fine. A normal start runs the same
-check, writes any warning to `logs\collector.log`, and refuses to start only when a required thing is missing.
+It names anything missing, each with the feature lost without it and the fix, and exits 1 if a required thing is missing.
+Required are Node 22+ and Windows PowerShell 5+. Optional are Claude Code (it runs `claude --version`), Windows Terminal,
+git, gh and Claude's own folder; it also says whether Agentville is in your user folder. A check that cannot run counts as
+missing; it is never reported as fine. A normal start runs the same check, writes any warning to `logs\collector.log`, and
+refuses to start only when a required thing is missing.
 
 The same check feeds the **System** entry in the dashboard header: the operating system and its version, the Node version and
 the Claude Code version. A part that could not be read is left out, never guessed.
 
-## Start at login (optional)
+### 4. Start the service
 
 `bin\agent-tracker.cmd` is the Windows twin of the `agent-tracker` command. `install` registers a per-user scheduled task named
-**Agentville**, which runs at logon at normal rights (no elevation); nothing is installed system-wide.
+**Agentville**, which runs at logon at normal rights (no elevation) and starts now; nothing is installed system-wide.
 
 ```powershell
-bin\agent-tracker.cmd install -DryRun    # prints what it would register, registers nothing
-bin\agent-tracker.cmd install            # registers the task and starts it
-bin\agent-tracker.cmd status | open | logs | start | stop | restart | uninstall
+bin\agent-tracker.cmd install     # registers the task and starts it (install -DryRun prints what it would register)
+bin\agent-tracker.cmd status      # "task Agentville: state = Running" and "http ok on :7777"
+bin\agent-tracker.cmd open        # opens http://localhost:7777
 ```
 
+The dashboard already shows your sessions, their activity and their repos. The other commands are `start`, `stop`,
+`restart`, `logs` and `uninstall`.
+
 The task runs `bin\run-collector.ps1`, which finds Node, adds the folders claude, git and gh usually live in (your
-`.local\bin`, npm's folder, Git's and the GitHub CLI's) to the **end** of PATH, and runs the collector.
+`.local\bin`, npm's folder, Git's and the GitHub CLI's) to the **end** of PATH, and runs the collector. The collector writes
+its own log, `logs\collector.log`; what Node prints (the start-up report, a crash) goes to `logs\task.log`. `logs` shows the
+end of both.
 
-## The Claude Code mod
+To try it without the task, run it in a window instead: `node collector\index.mjs` (Ctrl+C stops it), or
+`node collector\index.mjs --exit-after 60` for a run that ends itself after 60 seconds.
 
-Add the `mod` folder the same way as on a Mac, with your own path (either slash works):
+### 5. Load the mod in Claude Code (recommended)
+
+The mod lets the dashboard answer, message and steer a session. It also reports the session's cost, plan usage and working
+line. Claude Code's settings file is `%USERPROFILE%\.claude\settings.json` (`notepad $env:USERPROFILE\.claude\settings.json`;
+create it if it isn't there). Add the `mod` folder of your clone. JSON needs a backslash doubled, so write the path with `/`:
 
 ```json
 { "env": { "CLAUDE_CODE_PLUGIN_DIRS": "C:/Users/you/tools/agentville/mod" } }
 ```
 
-On Windows the mod claims requests with `cmd.exe /c move`, removes files with `cmd.exe /c del` (only files, never a folder)
-and opens the browser with `cmd.exe /c start`. It hands them paths with backslashes (cmd's own commands read a `/` inside a
-word as a switch), refuses any path that cmd.exe would read as syntax or as a separator (`& | < > ^ % ! " , ; =`), and opens
-only a `http://localhost` address. It waits for a dashboard answer with a small Windows PowerShell loop that stops at a set
-time, the paths in its environment and never in its text; the loop is a program of its own, because a wait inside the hook
-would count against the hook's 10 seconds. cmd.exe and PowerShell are named by their full path in System32, and run in the
-mod's own folder. `collector/test/mod-wait.test.mjs` runs the wait, the move and the delete for real on Windows CI.
-This needs mod 0.9.2 (`/reload-plugins` in a session that is already open).
+If the file already has an `"env"`, add the `"CLAUDE_CODE_PLUGIN_DIRS"` line inside it. In the clone folder,
+`(Resolve-Path mod).Path -replace '\\', '/'` prints the path to paste.
+
+New sessions load it. In a session that is already running, type `/reload-plugins`. A session with the mod shows
+**📡 dashboard answers on** on the dashboard, and `/tracker` opens its pane. On Windows the mod needs 0.9.2 or newer.
+
+### 6. Optional: pull requests, deploys and settings
+
+- `gh auth login` once: the dashboard then shows open pull requests (with their checks) for every repo whose `origin` is on
+  GitHub, and the latest GitHub Actions run for the repos you list in `deployRepos`.
+- `copy config.example.json config.json`, then edit it; it is re-read when you save it. The settings are in the README's
+  [Configuration](../README.md#configuration).
+
+### First run
+
+- **Notifications** show as Windows toasts, sent through Windows PowerShell. If none appear, turn on notifications for
+  **Windows PowerShell** in Settings → System → Notifications, and check Do not disturb (Focus assist on Windows 10). The
+  page's bell asks the browser separately, the first time you switch it on.
+- **＋ Session**, Resume and Fork open a Windows Terminal tab (or a console window without it) running `claude` in the folder
+  you chose.
+
+### Update and uninstall
+
+```powershell
+cd $env:USERPROFILE\tools\agentville; git pull; bin\agent-tracker.cmd restart   # update; then /reload-plugins in open sessions
+bin\agent-tracker.cmd uninstall                                                   # remove the task
+```
+
+To remove it completely, also delete the `CLAUDE_CODE_PLUGIN_DIRS` entry from `%USERPROFILE%\.claude\settings.json` and the
+clone folder.
+
+### If it doesn't work
+
+| Problem | Try |
+| --- | --- |
+| `status` says "http not answering" | `bin\agent-tracker.cmd logs`: the end of `logs\collector.log` and `logs\task.log`. A required thing missing is named there, with the fix (also `node collector\index.mjs --check`) |
+| `status` says "service not registered" | `bin\agent-tracker.cmd install` (run from the clone folder) |
+| ＋ Session, Resume or Fork fails, and the log says Claude Code was not found | The task looks on your PATH, then in `.local\bin`, npm's folder, Git's and the GitHub CLI's. Elsewhere: `setx TRACKER_CLAUDE_BIN <its full path>`, then `bin\agent-tracker.cmd restart` |
+| The collector won't start, and its log says "failed to start" with an `icacls` error (or "could not make … private") | Its folder is on a drive without access lists (FAT, exFAT, some network drives), where the token can't be kept private. Move Agentville under your user folder on the system drive |
+| `--check` says Agentville is outside your user folder | Others who sign in to the PC may be able to change its files, and `bin\run-collector.ps1` runs at your logon: move it under `C:\Users\<you>` |
+| Answers from the dashboard do nothing in a session | The mod needs 0.9.2 there: `/reload-plugins` in that session |
+| A notification never shows | Notifications for Windows PowerShell are off, or Do not disturb is on (see First run) |
+
+## How the mod works on Windows
+
+The mod claims requests with `cmd.exe /c move`, removes files with `cmd.exe /c del` (only files, never a folder) and opens the
+browser with `cmd.exe /c start`. It hands them paths with backslashes (cmd's own commands read a `/` inside a word as a
+switch), refuses any path that cmd.exe would read as syntax or as a separator (`& | < > ^ % ! " , ; =`), and opens only a
+`http://localhost` address. It waits for a dashboard answer with a small Windows PowerShell loop that stops at a set time, the
+paths in its environment and never in its text; the loop is a program of its own, because a wait inside the hook would count
+against the hook's 10 seconds. cmd.exe and PowerShell are named by their full path in System32, and run in the mod's own
+folder. `collector/test/mod-wait.test.mjs` runs the wait, the move and the delete for real on Windows CI. This needs mod
+0.9.2 (`/reload-plugins` in a session that is already open).
 
 ## What differs from macOS
 
@@ -134,9 +210,13 @@ CI runs the suite on `windows-latest` as well as on macOS. The mod's own tests c
 
 ## Not checked
 
-- On a Mac the merged code passes `npm test`, `npm run test:ui` and `claude plugin test mod` (2026-10-12); it has not been run
-  as the login service on a Mac yet.
-- The folder dialog, the terminal launcher on screen and `install` were not run for real; they are covered by tests that stand in for the system, plus the real parser for the PowerShell scripts.
+- Nobody has followed the install steps above on a fresh PC yet. Claude Code's install command is the one in its own setup
+  guide (2026-10-12).
+- On a Mac the merged code passes `npm test`, `npm run test:ui` and `claude plugin test mod`, and runs as the login service
+  (since 2026-10-12).
+- The folder dialog, the terminal launcher on screen, `install` and the scheduled task were not run on a real PC; they are
+  covered by tests that stand in for the system, plus the real parser for the PowerShell scripts. The task's script
+  (`run-collector.ps1`) and `logs` run for real on Windows CI, with a stand-in collector.
 - The mod has been tested in Claude Code's plugin test harness (`claude plugin test mod`), not inside a live session.
 - The CPU figure is the share of one core between two reads, so the first read after start shows 0.
 - A name with a double quote passed to `claude --name` is passed intact by the launcher, but is untested against `claude.exe` itself.

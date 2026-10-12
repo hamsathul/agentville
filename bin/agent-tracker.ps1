@@ -76,8 +76,13 @@ switch ($Command) {
     }
     'open' { Start-Process "http://localhost:$port" }
     'logs' {
-        $log = Join-Path $root 'logs\collector.log'
-        if (Test-Path -LiteralPath $log) { Get-Content -LiteralPath $log -Tail 50 } else { 'no log yet' }
+        # the collector's own log, then what Node printed (the start-up report, a crash), as on a Mac
+        $any = $false
+        foreach ($name in 'collector.log', 'task.log') {
+            $log = Join-Path $root "logs\$name"
+            if (Test-Path -LiteralPath $log) { "==> logs\$name <=="; Get-Content -LiteralPath $log -Tail 50 -Encoding UTF8; $any = $true }
+        }
+        if (-not $any) { 'no log yet' }
     }
     default {
         [Console]::Error.WriteLine('usage: agent-tracker install|uninstall|start|stop|restart|status|open|logs')
