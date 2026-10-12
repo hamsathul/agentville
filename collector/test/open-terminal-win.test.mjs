@@ -2,7 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { existsSync, mkdtempSync, readFileSync, readdirSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { basename, join } from 'node:path';
+import { basename, dirname, join } from 'node:path';
 import { openTerminal, LAUNCHER } from '../platform/win.mjs';
 import { isPrivate } from '../platform/private.mjs';
 
@@ -21,7 +21,10 @@ test('Windows Terminal is asked to run the launcher with the spec file; no sessi
   assert.equal(node, process.execPath);
   assert.equal(launcher, LAUNCHER);
   assert.equal(basename(launcher), 'launch-claude.mjs');
-  const cmdline = calls[0].args.join(' ');
+  assert.equal(dirname(specFile), dir);
+  assert.match(basename(specFile), /^[0-9a-f]{24}\.json$/);
+  // the spec file's name is random hex, which holds "abc" about one time in 200: every other argument is checked for session text
+  const cmdline = calls[0].args.filter(a => a !== specFile).join(' ');
   for (const frag of ['calc', 'resume', 'abc', 'C:/work/app', 'p.txt']) assert.ok(!cmdline.includes(frag), `${frag} must not be on the command line`);
   // the spec file holds it all, as data, and is owner-only
   const written = JSON.parse(readFileSync(specFile, 'utf8'));
