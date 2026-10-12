@@ -94,7 +94,7 @@ world-shots pictures.
 The collector lists every world at `GET /api/worlds` (token only), with the folder it reads yours
 from. Files of a world are served from inside its own folder only: `..`, hidden names and links
 pointing out of the folder are refused with a plain 404, for yours as for the built-in ones. They
-are served without the token, like the farm's, to anything on this Mac that asks for them by path,
+are served without the token, like the farm's, to anything on this computer that asks for them by path,
 so keep nothing secret in a world's folder.
 
 A world's folder may itself be a link (a world you develop elsewhere): it is followed, and its
@@ -231,8 +231,8 @@ Times are milliseconds since 1970, as `Date.now()` gives them.
   `yourTurn`, `idle`, `stale`) and `collisions`. `asking`: agents that asked you something. `agents`:
   how many agents. `oldestWaiting`: since when the longest-waiting agent waits, or `null`.
   `subagentsRunning`: agents with a subagent running. `ram`: `{ usedMb, totalMb }` (the agents' memory
-  and the Mac's). `cpu`: `{ used, cores }` (the agents' CPU, in percent of one core, and the Mac's
-  cores). `collector`: the tracker's own `{ pid, cpu, rssMb, claudeVersion }`. `errors`: sources that
+  and the computer's). `cpu`: `{ used, cores }` (the agents' CPU, in percent of one core, and the
+  computer's cores). `collector`: the tracker's own `{ pid, cpu, rssMb, claudeVersion }`. `errors`: sources that
   are failing, as short lines.
 - `subagents`: every subagent: its `id`, `label` (its task), `type` (`Explore`…), `state` (`running`,
   `done`, `failed`…), `parent` (its agent's name) and `startedAt`.
@@ -263,7 +263,8 @@ Times are milliseconds since 1970, as `Date.now()` gives them.
 
 **Each agent** (`agents`)
 
-- `id`, `name` (private: `agent 1`…); `kind`: `interactive`, `background`, `codex`…; `cwd`: its folder, or `null`.
+- `id`, `name` (private: `agent 1`…); `kind`: `interactive`, `background`, `codex`…; `cwd`: its folder (a native path:
+  `C:\Users\me\shop` on Windows), or `null`.
 - `state`: `waiting` (on you: a question or a permission), `working`, `turn` (its turn ended),
   `idle` or `stale`.
 - `repo`: the repo it works in (its newest write, else its newest touch, else the repo holding its
