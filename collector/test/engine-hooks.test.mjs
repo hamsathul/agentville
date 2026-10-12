@@ -271,6 +271,28 @@ function live(world, agents, { warn = () => {} } = {}) {
 const someone = (id, over = {}) => ({ id, name: id, kind: 'interactive', cwd: '/c/x', state: 'idle', feed: [], children: [], touching: [], ...over });
 const PEN = () => [{ x: 10, y: 20, w: 180, h: 80 }];
 
+test("spawn's door: a newcomer whose world gives [x, y, [dx, dy]] walks straight out to the door first, then along the corridors; with [x, y] it takes the corridors from where it appears, as before", () => {
+  /** Where the newcomer q stands, frame by frame, from where spawn puts it to its place [36, 80]. */
+  const walk = spawn => {
+    const at = [];
+    const w = live(fourHooks({ spawn, corridors: [150], slots: () => ({ group: 'g', cap: 9, at: i => [20 + i * 16, 80], zone: 'g' }), drawChar: (f, b) => { if (f.id === 'q') at.push([Math.round(b.x), Math.round(b.y)]); } }), [someone('p')]);
+    w.run(2);
+    w.update([someone('p'), someone('q')]);
+    w.run(200);
+    assert.equal(w.errors(), 0);
+    return at;
+  };
+  const door = walk(() => [30, 20, [30, 60]]);
+  assert.ok(Math.hypot(door[0][0] - 30, door[0][1] - 20) <= 4, `it appears where spawn says (drawn a step on: ${door[0]})`);
+  const out = door.slice(0, door.findIndex(([, y]) => y >= 60) + 1);
+  assert.ok(out.length > 3 && out.every(([x]) => x === 30) && out.at(-1)[1] === 60, `straight out to its door first (${JSON.stringify(out)})`);
+  assert.ok(door.some(([x, y]) => x === 150 && y > 60 && y < 80), 'then down the corridor from the door');
+  assert.deepEqual(door.at(-1), [36, 80], 'and on to its place');
+  const plain = walk(() => [30, 20]);
+  assert.ok(plain.some(([x, y]) => y === 20 && x > 30), 'no door: along to the corridor at the height it appears, as before');
+  assert.deepEqual(plain.at(-1), [36, 80]);
+});
+
 test('a world with a gag written wrong keeps running, frame after frame', () => {
   const warns = [];
   const w = live(fourHooks({ animals: () => ({ cast: [{ kind: 'goat' }], gags: [{ id: 'bad', steps: [{ wait: 1 }] }] }), roam: PEN, avoid: () => [] }), [someone('p')], { warn: m => warns.push(m) });

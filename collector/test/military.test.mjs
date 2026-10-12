@@ -239,7 +239,12 @@ test('slots: waiting at HQ (3), reporting back at its right (3), idle at the mes
   assert.deepEqual(plain(h.slots({ state: 'idle', nap: true }).at(1)), at.nap[1], 'an idle session that wakes by itself sleeps on a cot too');
   assert.deepEqual(plain(h.slots({ state: 'working', field: '/Users/you/gone' }).at(0)), at.floor[0], 'working in a repo with no position (more than 18): the drill ground');
   assert.equal(h.slots({ state: 'working', field: SHOP, step: 'edit' }).group, `st:${SHOP}`, 'working in a repo: at its position');
-  assert.deepEqual(plain(h.spawn()), [62, 80], 'reinforcements jump down at the motor pool gate');
+  // Reinforcements jump down from the truck in the motor pool's yard, behind the barrier (its arm at y 65), and walk out through the gate onto the track (spawn's door).
+  const [sx, sy, door] = plain(h.spawn());
+  assert.deepEqual([sx, sy, door], [62, 63, [62, 80]], "in the motor pool's yard, then out through its gate");
+  assert.ok(sx - 7 > 34 && sx + 7 < 86 && sy - 16 > 30 && sy < 65, `in the yard, behind the barrier (${sx},${sy})`);
+  for (const [x, y] of [[sx - 7, sy - 16], [sx + 7, sy - 16], [sx - 7, sy], [sx + 7, sy]]) assert.equal(h.buildingAt(x, y), 'barn', `${x},${y}: in the motor pool, no other building`);
+  assert.ok(door[1] >= 74 && door[1] <= 92 && door[0] + 7 < at.desk[0][0] - 8, `the door on the track at the gate, clear of HQ's queue (${door})`);
   // Every place: in the world, its feet on no building, off the positions; HQ's on the track, the rest on the left side. No two overlap, the vehicle park's too.
   const all = [...Object.entries(at).flatMap(([g, list]) => list.map(p => [g, p])), ...M.PARK.map(p => ['park', plain(p)])];
   for (const [g, [x, y]] of all) {
@@ -479,8 +484,8 @@ test("the motor pool's barrier lifts while a soldier comes through the gate, and
   h.relayout(h.grid.layoutFor([]));
   h.setScene(M.militaryScene(window.AgentvilleScene.toScene({ generatedAt: TOUR_NOW, agents: [person('a', { state: 'idle', now: null })], repos: [], collisions: [] })));
   const arm = new Set([ink('#e04a3a'), ink('#ffffff')]);
-  /** How high the barrier's arm reaches: the top of its red and white pixels in the gate. */
-  const top = () => { dom.calls.rects.length = 0; h.ground(); return Math.min(...dom.calls.rects.filter(([c, x, y]) => arm.has(c) && x >= 34 && x <= 90 && y > 18 && y < 74).map(r => r[2])); };
+  /** How high the barrier's arm reaches: the top of its red and white pixels (1 × 2 each) in the gate. */
+  const top = () => { dom.calls.rects.length = 0; h.ground(); return Math.min(...dom.calls.rects.filter(([c, x, y, w, hh]) => arm.has(c) && w === 1 && hh === 2 && x >= 34 && x <= 90 && y > 18 && y < 74).map(r => r[2])); };
   const down = top();
   assert.ok(down >= 62 && down <= 70, `down, across the gate (y ${down})`);
   const out = { walk: true, x: 70, y: 80 }, posOf = () => out;
@@ -494,6 +499,65 @@ test("the motor pool's barrier lifts while a soldier comes through the gate, and
   assert.ok(top() < down, 'it comes down slowly, not at once');
   for (let i = 0; i < 60; i++) h.tick(0.03, posOf);
   assert.equal(top(), down, 'gone by: the barrier is down again');
+});
+
+test("a new soldier: the truck pulls in at the motor pool gate from beyond the base, stops in its yard, and the soldier jumps down behind the barrier and walks out as it lifts; the truck stays parked. With motion off it stands parked", () => {
+  const { window, dom, ctx, M } = load();
+  const h = window.hooks, PXG = vm.runInContext('PXG', ctx), ink = vm.runInContext('ink', ctx);
+  PXG.ctx = dom.document.createElement('canvas').getContext('2d');
+  PXG.T = 0;
+  PXG.ext = { x0: -24, x1: 424, y0: -12, y1: 400 };
+  h.relayout(h.grid.layoutFor([]));
+  h.setScene(M.militaryScene(window.AgentvilleScene.toScene({ generatedAt: TOUR_NOW, agents: [person('a', { state: 'idle', now: null })], repos: [], collisions: [] })));
+  const glass = ink('#a9dcf7'), arm = new Set([ink('#e04a3a'), ink('#ffffff')]);
+  /** What ground() draws: where the truck is (its left, from its cab's window, 6 × 5 at 32 in) and how high the barrier's arm reaches (its red and white pixels, 1 × 2 each). */
+  const look = () => {
+    dom.calls.rects.length = 0; h.ground();
+    const win = dom.calls.rects.find(([c, , , w, hh]) => c === glass && w === 6 && hh === 5);
+    return { truck: win ? win[1] - 32 : null, arm: Math.min(...dom.calls.rects.filter(([c, x, y, w, hh]) => arm.has(c) && w === 1 && hh === 2 && x >= 34 && x <= 90 && y > 18 && y < 74).map(r => r[2])) };
+  };
+  /** Whether the soldier is drawn, and its picture's top. */
+  const drawn = (f, b) => { dom.calls.rects.length = 0; dom.calls.images.length = 0; h.drawChar(f, b); h.drawFx(f, b); return { seen: dom.calls.images.length + dom.calls.rects.length > 0, top: dom.calls.images[0]?.[1] }; };
+  const parked = look();
+  assert.equal(parked.truck, M.TRUCK.x, 'parked in its yard (drawn each frame)');
+  const a = { id: 'a', state: 'idle', look: M.lookOf({ id: 'a' }), shirt: '#3d7be0', kids: [] };
+  const [sx, sy] = plain(h.spawn());
+  assert.ok(sy < parked.arm, `the new soldier starts behind the barrier (${sy}, the arm at ${parked.arm})`);
+  const body = { x: sx, y: sy, walk: true, kids: [] }, posOf = id => (id === 'a' ? body : null);
+  h.tick(0, posOf);
+  const start = look();
+  assert.ok(start.truck <= PXG.ext.x0 - 44, `the truck sets off beyond the ground drawn, at the left (${start.truck})`);
+  // driving in: the soldier rides in it (not drawn, and it waits), the barrier down
+  const xs = [start.truck];
+  let t = 0;
+  for (; t < 5 && !drawn(a, body).seen; t += 0.05) { // riding in it: not drawn
+    assert.equal(h.speed(a), 0, `t ${t.toFixed(2)}: the soldier waits in the truck`);
+    assert.equal(look().arm, parked.arm, `t ${t.toFixed(2)}: the barrier down while the truck drives in`);
+    h.tick(0.05, posOf);
+    xs.push(look().truck);
+  }
+  assert.ok(t >= 1.5 && t <= 3.5, `a few seconds (${t.toFixed(2)} s)`);
+  assert.ok(xs.every((x, i) => i === 0 || (x >= xs[i - 1] && x <= M.TRUCK.x)) && xs.at(-1) === M.TRUCK.x, `it drives in, never back, and stops in its place before the soldier gets down (${xs})`);
+  assert.ok(xs.at(-1) - xs.at(-2) < xs[2] - xs[1], 'slowing as it pulls in');
+  // parked: the soldier jumps down beside it, behind the barrier, which lifts; then it walks out
+  const jump = [];
+  for (let i = 0; i < 40 && h.speed(a) === 0; i++) { jump.push(drawn(a, body)); h.tick(0.05, posOf); }
+  assert.ok(jump.length >= 2 && jump.every(d => d.seen), `it jumps down, seen (${jump.length} frames)`);
+  assert.ok(jump[0].top < jump.at(-1).top, `from the truck down to its feet (${jump.map(d => d.top)})`);
+  assert.ok(look().arm < parked.arm - 20, 'the barrier lifts for it');
+  assert.ok(h.speed(a) > 0, 'then it walks');
+  body.y = 72;
+  for (let i = 0; i < 4; i++) h.tick(0.05, posOf);
+  assert.ok(look().arm < parked.arm - 20, 'up while it walks out through the gate');
+  Object.assign(body, { x: 150, y: 80 });
+  for (let i = 0; i < 80; i++) h.tick(0.05, posOf);
+  assert.deepEqual(look(), parked, 'gone by: the barrier down, the truck parked in its yard');
+  // with motion off (drawn still): a new soldier, and the truck stands parked; the soldier is where it goes
+  Object.assign(body, { x: sx, y: sy });
+  h.spawn();
+  h.tick(0, posOf, true);
+  assert.deepEqual(look(), parked, 'still: the truck parked, the barrier down');
+  assert.ok(h.speed(a) > 0 && drawn(a, body).seen, 'still: no one waits in the truck');
 });
 
 test("items: the mess table in front of the idle soldiers, a crate before each soldier in reserve, a blanket over each cot; a fresh list each call", () => {
@@ -1130,6 +1194,35 @@ test("top(), at night: the searchlights on HQ's roof sweep their beams slowly ac
   assert.equal(flareDay.top.filter(r => inBox([f.x - 12, f.y - 14, 24, 24])(r)).length, 0, 'by day: none');
   const pale = new Set([M.BEAM, '#ffffff', '#e6eef5', '#c3cbd2', '#9c3b30'].map(ink));
   assert.deepEqual([...new Set(flareNight.top.map(r => r[0]))].filter(c => !pale.has(c)), [], 'at night, below max: only pale light over the base (no tracers)');
+});
+
+test("the searchlights' beams reach only so far: however tall the sky drawn over the base (a narrow frame, the sidebar open), what a night frame lights, fills and darkens for them stays bounded, and past their reach a taller sky costs nothing more", () => {
+  const { PXG, frame, ctx, dom } = limits();
+  frame(planned(30, 20));
+  PXG.season = null;
+  const drawNight = vm.runInContext('drawNight', ctx);
+  /** The most a night frame of top() pushes as lights, fills itself, and costs the night's darkness (drawNight's fills for those lights), over a whole sweep of both beams and a flare's burn. */
+  const costOf = ext => {
+    PXG.ext = ext;
+    const most = { lights: 0, fills: 0, night: 0 };
+    for (let T = 0; T < 48; T += 1.5) {
+      PXG.T = T;
+      const { top, pushed } = frame(null, SKY_NIGHT);
+      dom.calls.fillRect = 0; dom.calls.rects.length = 0;
+      drawNight(SKY_NIGHT, ext.y1, pushed);
+      most.lights = Math.max(most.lights, pushed.length); most.fills = Math.max(most.fills, top.length); most.night = Math.max(most.night, dom.calls.fillRect);
+      dom.calls.rects.length = 0;
+    }
+    return most;
+  };
+  const skies = { 'a laptop, full width': { x0: -24, x1: 424, y0: -56, y1: 420 }, 'a portrait monitor': { x0: -24, x1: 424, y0: -254, y1: 600 }, 'the sidebar open': { x0: 0, x1: 400, y0: -450, y1: 765 }, 'a very tall sky': { x0: -24, x1: 424, y0: -1200, y1: 900 } };
+  const costs = Object.fromEntries(Object.entries(skies).map(([k, e]) => [k, costOf(e)]));
+  for (const [k, c] of Object.entries(costs)) {
+    assert.ok(c.lights <= 27, `${k}: a bounded number of lights (${c.lights})`);
+    assert.ok(c.fills <= 240, `${k}: the beams' own fills bounded (${c.fills})`);
+    assert.ok(c.night <= 2600, `${k}: what the night's darkness costs for them bounded (${c.night} fills)`);
+  }
+  assert.deepEqual(costs['a very tall sky'], costs['a portrait monitor'], 'past the beams\' reach, a taller sky costs nothing more');
 });
 
 test('ambient: at night, the illumination flare trails a little smoke as it drifts down; none by day or between flares', () => {
@@ -1771,7 +1864,7 @@ test("placement: whatever they do, no mascot stands on a position, a building or
   for (const n of [3, 18]) for (const seed of [1, 2, 3]) {
     const { h, L, kit, animals } = mascotBase(n), a = animals(seed), crew = fakeCrew([{ id: 's1', state: 'idle', x: 22, y: 132 }]);
     const avoid = plain(h.avoid()), roam = plain(h.roam()), cast = plain(h.animals()).cast, homes = { goat: cast[0].home, mouse: cast[2].home };
-    const events = [['merged', [357, 50]], ['arrive', [62, 80]], ['deployFailed', [205, 116]], ['harvest', [174, 130]], ['deployOk', [293, 116]]];
+    const events = [['merged', [357, 50]], ['arrive', [62, 63]], ['deployFailed', [205, 116]], ['harvest', [174, 130]], ['deployOk', [293, 116]]];
     for (let i = 0; i < 6000; i++) {
       if (i % 400 === 0) { a.perform('goat-0', 2, null); a.perform('cat-0', 1, null); a.perform('mouse-1', 0, null); } // Salute, Feed, Pet
       if (i % 900 === 300) a.react(...events[Math.floor(i / 900) % events.length]);

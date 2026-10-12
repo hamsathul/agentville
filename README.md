@@ -1215,10 +1215,10 @@ Nothing at night looks like combat: no tracers, no gunfire.
 
 **The mascots.** The regimental mascots live on the base just for fun. They never stand for anything,
 and none is a dog or a pigeon (here those are data: the K9 and the carrier pigeon).
-- The mascot goat, in a red dress coat, parades along the track's front edge and naps by the mess tent.
-  The mess cat goes about the track, the left side and the field's edge, and climbs onto the mess
-  tent's ration crates. Two depot mice keep to the track before the quartermaster's depot. None of
-  them goes onto the positions, HQ's queue, the vehicle park or the left side's places.
+- The mascot goat, in a red dress coat, parades along the track's front edge and now and then naps on
+  the way. The mess cat goes about the track, the left side and the field's edge, and climbs onto the
+  mess tent's ration crates. Two depot mice keep to the track before the quartermaster's depot. None
+  of them goes onto the positions, HQ's queue, the vehicle park or the left side's places.
 - Click one for its menu: Pet, Feed or Salute the goat; Pet or Feed the cat and the mice. The nearest
   soldier that isn't waiting on you walks over and does it.
 - Now and then the goat parades to the briefing board and eats the map off it ("Map? What map?") until
@@ -1240,7 +1240,7 @@ files agents touched there, a speech bubble for its conversation, and a building
 
 | Building | Opens |
 |---|---|
-| Motor pool gate | Start or resume a session (the new soldier comes out past the truck parked in its yard, the barrier lifting) |
+| Motor pool gate | Start or resume a session (a truck brings the new soldier in: it pulls into the yard, the soldier jumps down and comes out through the gate as the barrier lifts) |
 | HQ tent | Who is waiting on you, with a button to open each |
 | Fuel depot | Your plan's usage and when each limit resets (each account's, when you have several) |
 | Drone pad | The subagents and how each is going |

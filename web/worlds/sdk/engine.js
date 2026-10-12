@@ -525,11 +525,13 @@ function makePixelView(th, prefs) {
     overflow = over;
     return out;
   }
-  // Walk along the corridors between field columns, so farmers never cross a field.
+  // Walk along the corridors between field columns, so farmers never cross a field. A newcomer whose world's
+  // spawn gave a door walks straight out to it first (b.door, until it is there), and on from there.
   function plan(b, tx, ty) {
-    if (Math.abs(b.y - ty) < 0.5) return [[tx, ty]];
-    const c = th.corridors.reduce((best, x) => (Math.abs(b.x - x) + Math.abs(tx - x) < Math.abs(b.x - best) + Math.abs(tx - best) ? x : best));
-    return [[c, b.y], [c, ty], [tx, ty]];
+    const [x, y] = b.door ?? [b.x, b.y], out = b.door ? [[x, y]] : [];
+    if (Math.abs(y - ty) < 0.5) return [...out, [tx, ty]];
+    const c = th.corridors.reduce((best, cx) => (Math.abs(x - cx) + Math.abs(tx - cx) < Math.abs(x - best) + Math.abs(tx - best) ? cx : best));
+    return [...out, [c, y], [c, ty], [tx, ty]];
   }
   function pop(x, y, text, cls = '') {
     if (!ov || still) return;
@@ -799,14 +801,14 @@ function makePixelView(th, prefs) {
       const f = scene.farmers.find(x => x.id === id);
       let b = bots.get(id);
       if (!b) {
-        const [sx, sy] = first ? [t.x, t.y] : th.spawn();
-        b = { id, x: sx, y: sy, path: [], tx: NaN, ty: NaN, zone: first ? t.zone : '', kids: [], dir: 0, walk: false, tag: null, tagText: '', lift: 0 };
+        const [sx, sy, door] = first ? [t.x, t.y] : th.spawn(); // door: [x, y] it walks out to first, or none
+        b = { id, x: sx, y: sy, door: Array.isArray(door) && Number.isFinite(door[0]) && Number.isFinite(door[1]) ? [door[0], door[1]] : null, path: [], tx: NaN, ty: NaN, zone: first ? t.zone : '', kids: [], dir: 0, walk: false, tag: null, tagText: '', lift: 0 };
         bots.set(id, b);
         if (!first) addLog(f, th.arriveText);
         if (!first && animalsShown()) kit.react('arrive', [sx, sy]); // someone new: the dog runs to meet them
       }
       if (t.x !== b.tx || t.y !== b.ty) { b.tx = t.x; b.ty = t.y; b.path = plan(b, t.x, t.y); }
-      if (snapTo) { b.x = b.tx; b.y = b.ty; b.path = []; }
+      if (snapTo) { b.x = b.tx; b.y = b.ty; b.path = []; b.door = null; }
       if (t.zone !== b.zone) {
         addLog(f, th.zoneText(f, t.zone));
         th.onMove(f, t.zone, b.zone, (txt, cls) => pop(t.x, t.y - th.SH * SC - 14, txt, cls));
@@ -843,7 +845,7 @@ function makePixelView(th, prefs) {
       const [qx, qy] = b.path[0], dx = qx - b.x, dy = qy - b.y, d = Math.hypot(dx, dy), sp = (th.speed?.(f) ?? 40) * dt;
       b.dir = Math.abs(dx) > 0.1 ? Math.sign(dx) : 0;
       if (d > 0.1) b.face = Math.abs(dx) > Math.abs(dy) ? (dx > 0 ? 'right' : 'left') : dy < 0 ? 'up' : 'down';
-      if (d <= sp) { b.x = qx; b.y = qy; b.path.shift(); } else { b.x += (dx / d) * sp; b.y += (dy / d) * sp; }
+      if (d <= sp) { b.x = qx; b.y = qy; b.path.shift(); if (b.door && qx === b.door[0] && qy === b.door[1]) b.door = null; } else { b.x += (dx / d) * sp; b.y += (dy / d) * sp; }
       b.walk = b.path.length > 0 || d > sp;
     } else { b.walk = false; b.dir = 0; b.face = 'down'; }
     while (b.kids.length < f.kids.length) b.kids.push({ x: b.x, y: b.y });

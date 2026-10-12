@@ -231,8 +231,13 @@
   /** A flagpole's foot and shaft, from the hedge's top down to its foot behind the buildings (its top, against the sky, is drawn each frame). */
   function poleShaft(f, x, y1) { f(x, SKY_Y, 1, y1 - SKY_Y, POLE); f(x + 1, SKY_Y, 1, y1 - SKY_Y, POLE_SIDE); f(x - 1, y1, 4, 2, STEEL); }
 
-  /** An army truck, side on, facing right, its top left at (x, y), 44 × 29: a khaki canvas over its bed, an olive cab with a white star on its door. */
-  function truck(f, x, y) {
+  // The motor pool's truck (45 wide with its shadow, drawn each frame): parked in its yard, its top left (x, y). A new
+  // soldier rides in on it from beyond the base's left edge; once it has stopped, the soldier jumps down by its side
+  // (jump: seconds), behind the barrier (YARD_DROP: where spawn puts it), and walks out through the gate onto the
+  // track (GATE: spawn's door).
+  const TRUCK = { x: 38, y: 33, w: 45, jump: 0.35 }, YARD_DROP = [62, 63];
+  /** An army truck, side on, facing right, its top left at (x, y), 44 × 29: a khaki canvas over its bed, an olive cab with a white star on its door. Moving, its wheels turn. */
+  function truck(f, x, y, moving = false) {
     const [shade, paint, light] = OLIVE;
     f(x + 1, y, 26, 1, CANVAS_DARK); f(x, y + 1, 28, 14, CANVAS); f(x, y + 1, 28, 2, CANVAS_LIGHT); for (const rx of [x + 7, x + 14, x + 21]) f(rx, y + 3, 1, 12, CANVAS_SHADE); // the canvas, its hoops
     f(x, y + 15, 28, 5, paint); f(x, y + 15, 28, 1, light); f(x, y + 19, 28, 1, shade); // the bed's side
@@ -241,14 +246,18 @@
     f(x + 34, y + 12, 1, 1, '#ffffff'); f(x + 32, y + 13, 5, 1, '#ffffff'); f(x + 33, y + 14, 3, 1, '#ffffff'); f(x + 33, y + 15, 1, 1, '#ffffff'); f(x + 35, y + 15, 1, 1, '#ffffff'); // a white star
     f(x + 39, y + 10, 5, 10, paint); f(x + 39, y + 10, 5, 1, light); f(x + 43, y + 13, 1, 6, DARK); f(x + 43, y + 11, 1, 2, '#ffe8a3'); // its bonnet, grille and headlight
     f(x, y + 20, 44, 2, DARK); // the chassis
-    for (const wx of [x + 6, x + 19, x + 35]) { f(wx - 3, y + 21, 7, 7, '#2a1d14'); f(wx - 2, y + 22, 5, 5, DARK); f(wx - 1, y + 23, 3, 3, '#8a8f96'); } // wheels
+    for (const wx of [x + 6, x + 19, x + 35]) { // wheels
+      f(wx - 3, y + 21, 7, 7, '#2a1d14'); f(wx - 2, y + 22, 5, 5, DARK); f(wx - 1, y + 23, 3, 3, '#8a8f96');
+      if (moving) { const k = blink(8) * 2; f(wx - 1 + k, y + 23 + k, 1, 1, '#c3cbd2'); }
+    }
     f(x + 1, y + 28, 44, 1, SAND_EDGE); // its shadow
   }
-  /** The motor pool gate: a sandy yard with an army truck parked in it, white gate posts banded red, a board across them for its sign; the barrier's post (its arm lifts: drawn each frame). */
+  /** One of the motor pool's white gate posts, banded red, its left at x. */
+  function gatePost(f, x) { f(x, 28, 4, 46, POLE); for (let y = 32; y < 72; y += 8) f(x, y, 4, 4, RED); f(x + 3, 28, 1, 46, '#c3cbd2'); f(x, 72, 4, 2, STEEL); }
+  /** The motor pool gate: a sandy yard (its truck is drawn each frame: it pulls in with new soldiers), white gate posts banded red, a board across them for its sign; the barrier's post (its arm lifts: drawn each frame). */
   function motorPool(f) {
     f(34, 30, 52, 44, SAND); f(34, 30, 52, 1, SAND_EDGE); // the yard, out to the track
-    truck(f, 38, 33);
-    for (const x of [30, 86]) { f(x, 28, 4, 46, POLE); for (let y = 32; y < 72; y += 8) f(x, y, 4, 4, RED); f(x + 3, 28, 1, 46, '#c3cbd2'); f(x, 72, 4, 2, STEEL); } // the posts
+    for (const x of [30, 86]) gatePost(f, x);
     f(30, 22, 60, 6, WOOD[1]); f(31, 23, 58, 4, WOOD[2]); f(31, 23, 58, 1, WOOD[3]); // the board across (its sign is a label)
     f(34, 62, 4, 12, STEEL); f(34, 62, 4, 1, POLE_SIDE); // the barrier's post
     f(84, 64, 2, 3, DARK); // the fork its arm rests in
@@ -925,19 +934,27 @@
   // Night: the searchlights' beams sweeping the sky, and now and then an illumination flare drifting down over the
   // field under a little parachute. Both are drawn over everything (top), the sky too, with their light (PXG.lights,
   // as the farm's fireflies) so the night shows them; nothing else at night is drawn there. White light only: no tracers.
-  const BEAM = '#f4ecd8';
+  // A beam's light goes `lit` px up it from the lens; the beam itself reaches `long` px, fading out at its end (beyond its
+  // light the night darkens it): however tall the sky drawn over the base (a narrow frame, the sidebar open), a night
+  // frame costs the same.
+  const BEAM = '#f4ecd8', BEAM_REACH = { lit: 48, long: 96 };
   /** Where a searchlight's beam points at T: radians from straight up (left negative), each sweeping its own slow way across the sky. */
   const beamAngle = (i, T) => (i ? 0.3 : -0.3) + Math.sin(T * 0.3 + i * 2.2) * 0.85;
   /** How strongly the night's beams and flare show, from how dark it is (0 day … 1 night): none by day, all at night. */
   const nightOf = dark => Math.max(0, Math.min(1, (dark - 0.4) / 0.4));
-  /** A searchlight's beam, from its lens at (x, y) up through the sky at angle a, widening and fading; k how strongly (nightOf). Its light goes along it. */
+  /**
+   * A searchlight's beam, from its lens at (x, y) up through the sky at angle a, widening and fading; k how strongly
+   * (nightOf). It ends at the top of the sky drawn, at its reach, or where it leaves the ground drawn at the side. Its
+   * light goes along it near the lens (BEAM_REACH).
+   */
   function searchBeam(x, y, a, k) {
-    const top = Math.min(0, PXG.ext?.y0 ?? 0), tan = Math.tan(a), sec = 1 / Math.cos(a);
-    for (let t = 1; y - t >= top; t++) {
+    const e = PXG.ext ?? { x0: 0, x1: W, y0: 0 }, top = Math.min(0, e.y0), tan = Math.tan(a), sec = 1 / Math.cos(a);
+    for (let t = 1; t < BEAM_REACH.long && y - t >= top; t++) {
       const cx = x + tan * t, half = (0.6 + t * 0.14) * sec;
-      PXG.ctx.globalAlpha = k * 0.5 * Math.max(0.3, 1 - t / 40);
+      if (cx < e.x0 || cx > e.x1) break;
+      PXG.ctx.globalAlpha = k * 0.5 * Math.max(0.3, 1 - t / 40) * Math.min(1, (BEAM_REACH.long - t) / 24);
       px(Math.round(cx - half), y - t, Math.max(1, Math.round(2 * half)), 1, BEAM);
-      if (t % 4 === 0) PXG.lights?.push([Math.round(cx), y - t, Math.round(half) + 2, null]);
+      if (t % 4 === 0 && t <= BEAM_REACH.lit) PXG.lights?.push([Math.round(cx), y - t, Math.round(half) + 2, null]);
     }
     PXG.ctx.globalAlpha = 1;
   }
@@ -1300,7 +1317,7 @@
 
   // Just for fun, never data: the regimental mascots, cheerful and pompous, never martial. The goat in its red dress
   // coat (the library's mascot look) parades along the track's front edge, end to end (its home: a goat, 11 tall,
-  // passes HQ's queue only there), and naps by the mess tent on the way; the mess cat goes about the track, the left
+  // passes HQ's queue only there), napping now and then wherever it is; the mess cat goes about the track, the left
   // side and the exercise field's edge, and up onto the mess tent's ration crates; two mice keep to the track before
   // the quartermaster's depot. None goes onto the positions, HQ's queue, the vehicle park, or where soldiers eat, wait
   // in reserve, drill or sleep. Max alert is no weather: the world's coldSeason is null, so the kit never hears winter
@@ -1389,6 +1406,15 @@
     let L = MILITARY_GRID.layoutFor([]);
     let scene = { fields: [], farmers: [] };
     let gateLift = 0; // the motor pool's barrier: 0 down … 1 up, while a soldier comes through the gate
+    let arrival = null; // the truck pulling in with new soldiers, { from, drive, t } (seconds), until they have jumped down; null while it stands parked
+    /** Where the truck is: pulling in from `from`, slowing to its place in the yard; else parked there. */
+    const truckX = () => (arrival && arrival.t < arrival.drive ? arrival.from + (TRUCK.x - arrival.from) * (1 - (1 - arrival.t / arrival.drive) ** 2) : TRUCK.x);
+    /** A new soldier still where it gets down from the truck (spawn): it waits there while the truck pulls in and while it jumps down. */
+    const inTruck = b => arrival !== null && Boolean(b) && b.x === YARD_DROP[0] && b.y === YARD_DROP[1];
+    /** Riding in on the truck: not drawn yet. */
+    const riding = b => inTruck(b) && arrival.t < arrival.drive;
+    /** A soldier as drawn: jumping down from the truck once it has stopped, from its bed to its feet; else where it is. */
+    const drawnAt = b => { if (!inTruck(b)) return b; const s = Math.min(1, (arrival.t - arrival.drive) / TRUCK.jump); return { ...b, y: b.y - Math.round(12 * (1 - s * s)), walk: false }; };
     let seenCompactions = null, seenMerged = null, seenLights = null; // what the last scene had, so news can be told
     const advancing = [], carried = []; // flags carried up-field (compactions): { key, color, t }; crates carried into the depot (merges): { t }
     let alert = 'summer'; // the live alert level, from your 5-hour limit
@@ -1526,7 +1552,15 @@
       },
       layout: () => L,
       relayout(ground) { L = ground; return L; },
-      spawn: () => GATE,
+      /**
+       * A new soldier: the truck pulls in with it from beyond the base's left edge (one pulling in or unloading brings
+       * it too). It gets down in the motor pool's yard, behind the barrier, and walks out through the gate onto the
+       * track (the door).
+       */
+      spawn: () => {
+        if (!arrival) { const from = Math.min(-TRUCK.w, (PXG.ext?.x0 ?? 0) - TRUCK.w) - 1; arrival = { from, drive: Math.min(3.2, Math.max(1.6, (TRUCK.x - from) / 45)), t: 0 }; }
+        return [YARD_DROP[0], YARD_DROP[1], [...GATE]];
+      },
       /** Where its k-th running subagent's drone hovers: by its head, two a side; the K9 (an Explore one) trots to and fro at its feet. */
       follow: (b, k, T, kid) => (kid?.dog
         ? [b.x + Math.cos(T * 0.8 + k) * 20, b.y + 3 + Math.sin(T * 1.6 + k) * 2]
@@ -1541,8 +1575,8 @@
       perches: () => [[...CAT_PERCH]],
       /** Where the gags go: before the briefing board, and by the quartermaster's crates. No huddle: max alert is no winter. */
       spots: () => ({ board: [...BOARD_SPOT], depot: [...DEPOT_SPOT] }),
-      /** How fast a soldier walks: strolling at calm, faster when high, at the double at max; fast mode faster still. */
-      speed: f => Math.round((ALERT[shown()] ?? ALERT.summer).speed * (f.fast ? 1.7 : 1)),
+      /** How fast a soldier walks: strolling at calm, faster when high, at the double at max; fast mode faster still. A new one waits in the truck until it has jumped down. */
+      speed: f => (inTruck(where(f.id)) ? 0 : Math.round((ALERT[shown()] ?? ALERT.summer).speed * (f.fast ? 1.7 : 1))),
       /**
        * Where each soldier stands: at its position while it works there; on the drill ground while it works outside
        * any repo (or in one with no position left); on a cot while it waits to wake up by itself; at HQ when it needs
@@ -1593,8 +1627,10 @@
         return `${props.doing(f)?.verb ?? 'working'} at the ${fieldByKey(f.field)?.name ?? ''} position`;
       },
       bg(fill, season, ext) { drawBase(fill, L, ext); },
-      /** Each frame, on the ground: the motor pool's barrier (lifted while a soldier comes through), the limits (the alert board, the fuel depots), the drones docked on the pad, the crates on the quartermaster's pallet and those carried in, the positions. */
+      /** Each frame, on the ground: the motor pool's truck (parked, or pulling in behind the gate's left post) and its barrier (lifted while a soldier comes through), the limits (the alert board, the fuel depots), the drones docked on the pad, the crates on the quartermaster's pallet and those carried in, the positions. */
       ground() {
+        truck(px, Math.round(truckX()), TRUCK.y, Boolean(arrival) && arrival.t < arrival.drive);
+        if (arrival) gatePost(px, 30);
         barrier(gateLift);
         drawLimits();
         PAD_BERTHS.slice(0, Math.min(6, scene.henhouse?.eggs ?? 0)).forEach(([x, y]) => dockedDrone(x, y)); // subagents that finished lately
@@ -1615,15 +1651,17 @@
         ...riders().map(r => [RIDER_Y, () => motorbike(Math.round(r.x), RIDER_Y, r.dir, r.moving)]),
       ],
       /**
-       * Each frame: the jeeps drive on. Is a soldier coming through the motor pool gate (walking by it)? The barrier
-       * lifts, and comes down slowly after. Flags are carried up-field and crates into the depot, until they're gone.
-       * Still, the barrier is down, nothing is carried, and a jeep stands where it is going. Where the soldiers are is
-       * kept, for their headgear lamps at night (lights) and their dispatch riders (items).
+       * Each frame: the jeeps drive on, and the truck pulls in with new soldiers until they have jumped down. Is a
+       * soldier coming through the motor pool gate (out of the yard, or walking by it)? The barrier lifts, and comes
+       * down slowly after. Flags are carried up-field and crates into the depot, until they're gone. Still, the truck
+       * is parked, the barrier down, nothing is carried, and a jeep stands where it is going. Where the soldiers are is
+       * kept, for their headgear lamps at night (lights), their dispatch riders (items) and who waits in the truck.
        */
       tick(dt, posOf, snap = false) {
         where = posOf;
         moveJeeps(dt, posOf, snap);
-        const coming = !snap && scene.farmers.some(f => { const b = posOf(f.id); return b?.walk && Math.abs(b.x - GATE[0]) < 24 && Math.abs(b.y - GATE[1]) < 4; });
+        if (arrival && (snap || (arrival.t += dt) >= arrival.drive + TRUCK.jump)) arrival = null;
+        const coming = !snap && scene.farmers.some(f => { const b = posOf(f.id); return b?.walk && !riding(b) && Math.abs(b.x - GATE[0]) < 24 && b.y > YARD_DROP[1] - 4 && b.y < GATE[1] + 4; });
         gateLift = snap ? 0 : coming ? Math.min(1, gateLift + dt * 5) : Math.max(0, gateLift - dt * 1.5);
         if (snap) { advancing.length = 0; carried.length = 0; return; }
         for (const a of [...advancing, ...carried]) a.t += dt;
@@ -1762,9 +1800,12 @@
       /**
        * A soldier: walking, it faces where it goes; waiting on you, it waves. On it: a radio pack on its back while it
        * thinks (drawn first: behind it), a grey veil in reserve, its model's pin on its headgear, its chevrons, a
-       * hazard armband for bypass permissions, and its eyes, as the farm's.
+       * hazard armband for bypass permissions, and its eyes, as the farm's. A new soldier riding in on the truck isn't
+       * seen until it jumps down.
        */
       drawChar(f, b) {
+        if (riding(b)) return;
+        b = drawnAt(b);
         const [ox, oy] = pixelOrigin(b, 16), rp = rpAt(ox, oy), look = f.look ?? lookOf(f);
         const view = b.walk ? b.face ?? 'down' : 'down', opts = { view, legs: legFrame(b), wave: f.state === 'waiting' };
         if (f.thinking && !b.walk) radioPack(rp, PXG.T);
@@ -1779,10 +1820,13 @@
        * Over and beside a soldier: speed lines (fast mode) and sweat (a hot CPU); asleep on a cot, a zzz. Working: what
        * it holds for its step, its task list's clipboard. Its drones and the K9. Waiting on you: the ! bubble (a plan's,
        * with the rolled map it carries) and a ring at its feet; your turn: the dispatch it brings back, and a ✓ (a ?
-       * for a question); idle: eating.
+       * for a question); idle: eating. Nothing while it rides in on the truck.
        */
       drawFx(f, b) {
-        const [ox, oy] = pixelOrigin(b, 16), rp = rpAt(ox, oy), T = PXG.T, still = !b.walk;
+        if (riding(b)) return;
+        const still = !b.walk; // jumping down from the truck, it is on its way: nothing held yet
+        b = drawnAt(b);
+        const [ox, oy] = pixelOrigin(b, 16), rp = rpAt(ox, oy), T = PXG.T;
         if (f.fast && f.state !== 'stale') speedLines(rp, b, T);
         if (f.hot && f.state !== 'stale') sweat(rp, T);
         if (b.zone === 'nap' && still) { // asleep on its cot until it wakes by itself: zzz
@@ -1940,7 +1984,7 @@
   window.AgentvilleMilitary = {
     OUTFIT, lookOf, soldierSprite, militaryScene, makeMilitary, props, BUILDINGS, MILITARY_GRID, DEPOT_X, PARK, SKY_Y, depotCrates,
     depotOf, depotsOf, drumsOf, FUEL, LANTERNS, SEARCHLIGHTS, BEACON, BEAM, FLARE, flareAt,
-    MILITARY_PROPS: Object.keys(MILITARY_PROPS), chevronsOf, jeepRoute, jeepGoal, RIDER_Y, MESS_CRATES,
+    MILITARY_PROPS: Object.keys(MILITARY_PROPS), chevronsOf, jeepRoute, jeepGoal, RIDER_Y, MESS_CRATES, TRUCK,
     ICONS, MILITARY_WORDS, PANEL_STYLE,
   };
 })();

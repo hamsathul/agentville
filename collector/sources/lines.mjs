@@ -11,7 +11,7 @@ export const CREATURE_KINDS = ['cow', 'goat', 'sheepdog', 'ostrich', 'lion', 'ti
 const KIND_SINCE = { robodog: '0.9.1', vacuum: '0.9.1' };
 // The built-in worlds the mod has its own words for (a farm, a robot factory, an army field exercise): a request names
 // its world only if it is one of these, by its key; any other world gets the mod's plain words (and so does the field
-// exercise from a mod older than 0.9.2). The page keeps a copy (a test fails when they drift).
+// exercise from a mod older than 0.9.3). The page keeps a copy (a test fails when they drift).
 export const LINE_WORLDS = ['farm', 'factory', 'military'];
 /** A world's key as a request may carry it: one of LINE_WORLDS, else null. */
 export const lineWorld = w => (LINE_WORLDS.includes(w) ? w : null);
