@@ -523,7 +523,11 @@ Each terminal session's bar shows its **permission mode**, its **model** (e.g. *
 - **Model and effort.** Pick another and confirm. The session runs `/model` or `/effort` itself
   after its current turn, as if you had typed it, and what Claude Code replied shows in the bar.
   As when you type them, Claude Code saves the model, and an effort from *low* to *xhigh*, as your
-  default for new sessions. *max* stays with that session.
+  default for new sessions. *max* stays with that session. A new model re-reads a cached
+  conversation in full on its next reply (slower, more tokens): Claude Code asks about that in the
+  terminal when you type `/model`, and the dashboard's confirm says it instead. Mod 0.9.4 answers
+  Claude Code's question for the switch you confirmed, so it doesn't wait in the terminal; with an
+  older mod it does, until you answer it there.
 - **Compact…** asks what the summary should keep (optional, one line), then the session runs
   `/compact` with it after its current turn: the conversation so far becomes a summary, freeing
   its context.
@@ -1271,7 +1275,9 @@ In every session that loads it:
 The mod also does the dashboard's work inside the session:
 - delivers your answers and messages;
 - stops a turn when you press **■ Stop**;
-- runs model and effort switches, compacting, plugin reloads and renames (`/rename`);
+- runs model and effort switches, compacting, plugin reloads and renames (`/rename`), and answers
+  Claude Code's "Switch model?" for a model switch you confirmed on the dashboard (mod 0.9.4; a
+  `/model` you type still asks);
 - answers side questions;
 - asks Haiku for a session's name when the ✨ Helper is on, and for the animals' lines when its
   Animal lines are ticked;
@@ -1524,6 +1530,7 @@ and can do is in [docs/worlds.md](docs/worlds.md).
 | Windows: the collector won't start, and its log says "failed to start" with an `icacls` error (or "could not make … private") | Its folder is on a drive without access lists (FAT, exFAT, some network drives), where the token can't be kept private. Move Agentville under your user folder on the system drive |
 | Windows: `--check` says Agentville is outside your user folder | Others who sign in to the PC may be able to change its files, and `bin\run-collector.ps1` runs at your logon: move it under `C:\Users\<you>` |
 | Windows: answers from the dashboard do nothing in a session | The mod needs 0.9.2 there: `/reload-plugins` in that session |
+| A model switch from the dashboard waits, and the session's terminal asks "Switch model?" | Claude Code asks before a new model re-reads a cached conversation. Mod 0.9.4 answers it for a switch confirmed on the dashboard: `/reload-plugins` in that session (or answer it in the terminal). A switch sent after it, such as an effort change, waits behind it |
 | A message waits and never goes out | It goes out when the session's turn ends, through its mod: the mod must be listening (📡 dashboard answers on). Press **⚡ Send now** to send it at once. A red line on the list says when the session didn't take it; it is tried again when the session next moves |
 | 💬 All chats misses older messages, or a session | It holds each session's latest 200 messages and 200 steps: older ones are in that agent's **⤢ Read all**. Codex sessions have no transcript, so they aren't shown, and a new session shows once its transcript has been read |
 | A session shows "dashboard answers off" | Its mod isn't loaded. Check `CLAUDE_CODE_PLUGIN_DIRS` in `~/.claude/settings.json` (or, for another account, in that account's own `settings.json`), then type anything in the session or `/reload-plugins` |
