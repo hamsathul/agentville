@@ -1,4 +1,5 @@
 import { run } from '../lib/exec.mjs';
+import { lastPart } from '../platform/paths.mjs';
 
 // ps's elapsed time: [[dd-]hh:]mm:ss, in seconds.
 const ETIME = /^(?:(\d+)-)?(?:(\d+):)?(\d+):(\d+)$/;
@@ -32,10 +33,13 @@ export function childrenIndex(procs) {
 }
 
 export function label(command) {
-  const [exe, ...rest] = command.split(' ');
-  const base = exe.split('/').pop();
-  const arg = rest.find(a => a && !a.startsWith('-'));
-  return (arg ? `${base} ${arg.split('/').pop()}` : base).slice(0, 40);
+  // a Windows command line quotes a program path with a space in it: "C:\Program Files\nodejs\node.exe" server.js
+  const quoted = /^"([^"]+)"\s*(.*)$/.exec(command);
+  const [exe, ...rest] = quoted ? [quoted[1], ...quoted[2].split(' ')] : command.split(' ');
+  const base = lastPart(exe);
+  const switches = /^(?:[A-Za-z]:[\\/]|\\\\)/.test(exe) || /\.(exe|cmd|bat|com)$/i.test(exe) ? /^[-/]/ : /^-/; // a Windows program's switches start with / too
+  const arg = rest.find(a => a && !switches.test(a));
+  return (arg ? `${base} ${lastPart(arg.replace(/^"|"$/g, ''))}` : base).slice(0, 40);
 }
 
 /** CPU % and RSS of a process plus all its descendants. */
@@ -63,7 +67,8 @@ export function treeStats(procs, rootPid, idx = childrenIndex(procs)) {
 
 // The Bash tool runs each command as `zsh -c "source <its shell snapshot> … && eval '<command>' < /dev/null
 // && pwd -P >| <file>"`, a child of the session in a process group of its own (so it can be stopped whole).
-const BASH_TOOL = /^\/bin\/(?:zsh|bash|sh) -c .*\/shell-snapshots\/snapshot-/;
+// On Windows it is Git's bash.exe: -c "source /c/Users/..../.claude/shell-snapshots/snapshot-..." (read from a live process list, 2026-10-10).
+const BASH_TOOL = /^(?:\/bin\/(?:zsh|bash|sh)|"?[^"]*bash\.exe"?) -c .*\/shell-snapshots\/snapshot-/;
 /** Whether a process is one of a session's shell commands: its Bash tool's, never its MCP servers or the session itself. */
 export const isShellCommand = (p, sessionPid) => Boolean(p) && p.ppid === sessionPid && p.pgid === p.pid && BASH_TOOL.test(p.command);
 

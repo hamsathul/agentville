@@ -1,8 +1,9 @@
 import { test } from 'node:test';
+import { assertPrivate } from './support.mjs';
 import assert from 'node:assert/strict';
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, statSync, utimesSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { basename, dirname, join } from 'node:path';
 import { appendRewind, cutTranscript, pruneForks, restorePoint } from '../sources/fork.mjs';
 
 const SID = '5e551011-aaaa-4bbb-8ccc-000000000001';
@@ -33,8 +34,9 @@ test("a fork from Claude's reply keeps the conversation up to and including it",
   const cut = await cutTranscript(path, 'r-2', forks, SID);
   assert.equal(cut.prefillFile, undefined);
   assert.deepEqual(linesOf(cut.file), LINES.slice(0, 5));
-  assert.match(cut.file, new RegExp(`/forks/[^/]+/${SID}\\.jsonl$`), 'in a folder of its own, named as the session');
-  assert.equal(statSync(cut.file).mode & 0o777, 0o600, 'yours only');
+  assert.equal(basename(cut.file), `${SID}.jsonl`, 'named as the session');
+  assert.equal(basename(dirname(dirname(cut.file))), 'forks', 'in a folder of its own, under forks');
+  assertPrivate(cut.file, 0o600, 'yours only');
 });
 
 test('a fork from your own message keeps what came before it, and your message goes in the new prompt box', async () => {
@@ -42,7 +44,7 @@ test('a fork from your own message keeps what came before it, and your message g
   const cut = await cutTranscript(path, 'p-2', forks, SID);
   assert.deepEqual(linesOf(cut.file), LINES.slice(0, 5), "the conversation up to Claude's last message before it");
   assert.equal(readFileSync(cut.prefillFile, 'utf8'), 'Now ship it\nto staging');
-  assert.equal(statSync(cut.prefillFile).mode & 0o777, 0o600);
+  assertPrivate(cut.prefillFile, 0o600);
   const two = await cutTranscript(path, 'p-2', forks, SID);
   assert.notEqual(two.file, cut.file, 'each fork gets its own copy');
 });

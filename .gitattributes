@@ -1,0 +1,6 @@
+# Check out text with LF on every system, so a test that reads a file (a guide, a script) sees the same bytes on Windows as on a Mac.
+# Git for Windows checks out CRLF by default, which broke a test that reads docs/worlds.md.
+* text=auto eol=lf
+# cmd.exe wants CRLF in its own scripts.
+*.cmd text eol=crlf
+*.bat text eol=crlf

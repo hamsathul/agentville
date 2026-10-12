@@ -2,21 +2,37 @@ import { expect, test } from 'claude-code/testing'
 
 import { NAME_SYSTEM, answerAsides, answerFromDashboard, chooseAlways, deliverMessages, endStoppedCommand, linesPrompt, linesSystem, namePrompt, noteSpinner, offerContext, permitFromDashboard, runHelper, runSettings, startTurn, turnEnded, turnForBeacon, turnStarted, usageNow } from '../hooks/register'
 
-// The hook bodies only call $.fs.write and $.process.run, so a small stand-in records them.
+// The hook bodies only call $.fs and $.process.run, so a small stand-in records them. A dashboard wait is a program of its own
+// (a $ call's time is free; a sleep counts against the hook's 10-second budget, so the stand-in's sleep fails the test):
+// `onRun` says how it ends (exit 0: this text is the answer; 2: the offer is withdrawn; anything else: nothing came). `root` is
+// the mod's folder: a drive-letter one is Windows, where the wait prints nothing and the answer is read from its file.
 type Run = { exitCode: number; stdout: string; stderr: string }
-function fake$(onRun: (argv: string[]) => Run | Promise<Run>) {
+function fake$(onRun: (argv: string[]) => Run | Promise<Run>, { root = '/repo/mod' }: { root?: string } = {}) {
   const writes: { path: string; text: string }[] = []
   const removed: string[][] = []
+  const runs: { argv: string[]; init?: any }[] = []
+  let answered = ''
   const $ = {
-    fs: { write: async (path: string, text: string) => { writes.push({ path, text }) } },
+    plugin: { root },
+    env: { get: async (name: string) => (name === 'SystemRoot' ? 'C:\\Windows' : undefined) },
+    fs: {
+      write: async (path: string, text: string) => { writes.push({ path, text }) },
+      read: async (path: string) => (path.includes('/answers/') ? answered : writes.findLast(w => w.path === path)?.text ?? ''),
+      stat: async () => ({ kind: 'file' }),
+    },
+    clock: { sleep: async () => { throw new Error('a hook slept: its sleeps count against its 10-second budget') } },
     process: {
-      run: async (argv: string[]) => {
+      run: async (argv: string[], init?: any) => {
+        runs.push({ argv, init })
         if (argv[0] === 'rm') { removed.push(argv.slice(2)); return ok() }
-        return onRun(argv)
+        if (/cmd\.exe$/i.test(argv[0] ?? '') && argv[3] === 'del') { removed.push(argv.slice(6)); return ok() }
+        const r = await onRun(argv)
+        if (r.exitCode === 0) answered = r.stdout
+        return /powershell\.exe$/i.test(argv[0] ?? '') ? { ...r, stdout: '' } : r
       },
     },
   }
-  return { $, writes, removed }
+  return { $, writes, removed, runs }
 }
 
 const QUESTIONS = [{ question: 'Pick a colour?', header: 'Colour', multiSelect: false, options: [{ label: 'Red' }, { label: 'Blue' }] }]
@@ -130,6 +146,40 @@ test('while waiting, the mod refreshes its offer every second so the dashboard k
   expect(/touch "\$2"/.test(script)).toBe(true)
 })
 
+test('a permission wait is a program of its own for the whole window, so a window past the hook budget of 10 s still gets its answer', async () => {
+  const f = fake$(() => ok('{"decision":"allow"}'))
+  const out: any = await permitFromDashboard(f.$, { tool: 'Bash', tool_use_id: 'toolu_P8', input: { command: 'x' } }, async () => ({ decision: 'ask' }), { ...OFFER, windowSec: 60 })
+  expect(out.decision).toBe('allow')
+  const wait = f.runs.find(r => r.argv[0] === '/bin/sh')
+  expect(wait?.argv.slice(4)).toEqual(['/repo/state/answers/toolu_P8.json', '/repo/state/pending/toolu_P8.json', '240'])
+  expect(wait?.init).toEqual({ timeoutMs: 70_000 })
+})
+
+test('on Windows the wait is System32\'s PowerShell, run in the mod folder with its paths in the environment; the answer is read from its file', async () => {
+  const root = 'C:/Users/me/agentville/mod'
+  const f = fake$(() => ok('{"decision":"deny"}'), { root })
+  const offer = { ...OFFER, stateDir: 'C:/Users/me/agentville/state' }
+  const out: any = await permitFromDashboard(f.$, { tool: 'Bash', tool_use_id: 'toolu_W1', input: { command: 'x' } }, async () => ({ decision: 'ask' }), offer)
+  expect(out.decision).toBe('deny')
+  const wait = f.runs.find(r => /powershell\.exe$/i.test(r.argv[0] ?? ''))
+  expect(wait?.argv[0]).toBe('C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe')
+  expect(wait?.init).toEqual({ timeoutMs: 25_000, cwd: root, env: { AGENTVILLE_ANSWER: 'C:/Users/me/agentville/state/answers/toolu_W1.json', AGENTVILLE_PENDING: 'C:/Users/me/agentville/state/pending/toolu_W1.json', AGENTVILLE_TICKS: '60' } })
+  expect(wait?.argv.join(' ').includes('toolu_W1')).toBe(false)
+  // cmd's del reads a / inside a path as a switch: it gets backslashes, and cmd.exe by its full path
+  const B = String.fromCharCode(92)
+  expect(f.removed[0]).toEqual([`C:${B}Users${B}me${B}agentville${B}state${B}pending${B}toolu_W1.json`, `C:${B}Users${B}me${B}agentville${B}state${B}answers${B}toolu_W1.json`])
+  expect(f.runs.find(r => r.argv[3] === 'del')?.argv[0]).toBe(`C:${B}Windows${B}System32${B}cmd.exe`)
+  expect(f.runs.every(r => r.init?.cwd === root)).toBe(true)
+})
+
+test('on Windows only files are handed to del: a folder where an offer was is left alone', async () => {
+  const root = 'C:/Users/me/agentville/mod'
+  const f = fake$(() => ({ exitCode: 1, stdout: '', stderr: '' }), { root })
+  const $ = { ...f.$, fs: { ...f.$.fs, stat: async (path: string) => ({ kind: path.includes('/answers/') ? 'dir' : 'file' }) } }
+  await permitFromDashboard($, { tool: 'Bash', tool_use_id: 'toolu_W2', input: { command: 'x' } }, async () => ({ decision: 'ask' }), { ...OFFER, stateDir: 'C:/Users/me/agentville/state' })
+  expect(f.removed).toEqual([[['C:', 'Users', 'me', 'agentville', 'state', 'pending', 'toolu_W2.json'].join(String.fromCharCode(92))]])
+})
+
 test('a dashboard wait that fails is logged, the terminal still answers, and the offer is withdrawn', async () => {
   const logs: string[] = []
   const f = fake$(() => { throw new Error('process refused') })
@@ -185,6 +235,7 @@ function inbox$(initial: Record<string, string>, submit?: (input: { text: string
   const events: string[] = []
   const base = (path: string) => path.split('/').pop() ?? ''
   const $ = {
+    plugin: { root: '/repo/mod' },
     fs: {
       list: async () => [...files.keys()].map(name => ({ name, kind: 'file' })),
       read: async (path: string) => {

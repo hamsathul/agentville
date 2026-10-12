@@ -1,24 +1,30 @@
 #!/usr/bin/env node
 // Records a demo video of Agentville, with made-up sessions only. A collector runs on a demo
-// ~/.claude (fourteen sessions in six demo repos, with stand-ins for their mods, their processes
-// and GitHub), a director keeps the sessions busy, and headless Chrome tours the features with a
-// cursor and captions, following docs/demo-script.md: the farm, answering and messaging from it, an
-// agent's work, its files, the list view, sessions, Claude Code's own setup, notifications. Frames
-// come from Chrome's screencast; ffmpeg makes the MP4 (about 8 minutes), a copy small enough to upload
-// to GitHub (out-small.mp4, under 10 MB), and a short video for each chapter in a folder beside it
-// (out-chapters/01-the-farm.mp4 and so on).
+// ~/.claude and ~/.claude-work (fourteen sessions in six demo repos, on two Claude accounts, with
+// stand-ins for their mods, their processes, GitHub and the Helper's Haiku), a director keeps the
+// sessions busy, and headless Chrome tours every feature with a cursor, following docs/demo-script.md:
+// the farm, its Menu and seasons, the animals, the sidebar, messaging, Broadcast, naming and steering,
+// an agent's work and files, its conversation, the list view, sessions, Claude Code's own setup, the
+// other worlds, notifications. The video shows no text: what each scene says goes, timed, in a
+// captions file beside it. Frames come from Chrome's screencast; ffmpeg makes the MP4 (about 12
+// minutes), a copy small enough to upload to GitHub (out-small.mp4, under 10 MB), and a short video
+// for each chapter in a folder beside it (out-chapters/01-the-farm.mp4 and so on).
 //
-//   node scripts/demo-video.mjs [out.mp4]      (needs Chrome and ffmpeg)
-//   STILLS=docs node scripts/demo-video.mjs    also saves farm.png and farm-night.png there (no caption or
+//   node scripts/demo-video.mjs [out.mp4]      (needs Chrome and ffmpeg): out.mp4, out-small.mp4,
+//                                              out-chapters/, and out-captions.md
+//   STILLS=docs node scripts/demo-video.mjs    also saves farm.png and farm-night.png there (no
 //                                              cursor), for the README; with STILLS_ONLY=1 it stops after them
+//   DEMO_ONLY=3,5 DEMO_SCENES=<folder>         while working on the tour: just those chapters, and a
+//                                              picture at the end of each scene
 import { execFileSync } from 'node:child_process';
 import { appendFileSync, cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, unlinkSync, utimesSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { dirname, join, resolve } from 'node:path';
+import { basename, dirname, join, resolve } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { crc32 } from 'node:zlib';
 import { startCollector } from '../collector/collector.mjs';
-import { CHROME, launchBrowser, log, makeVideos, sleep, stage } from './demo/recorder.mjs';
+import { captionsMd } from './demo/captions.mjs';
+import { CHROME, launchBrowser, log, makeVideos, sleep, stage, timeline } from './demo/recorder.mjs';
 import { iso, setUpSessions, transcriptWriter } from './demo/transcript.mjs';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
@@ -143,17 +149,24 @@ const SESSIONS = [
   { key: 'demo-flow', name: 'checkout-flow', cwd: WORKTREE, model: OPUS, ctx: 40_000, cpu: 12, mb: 480, cost: 1.06, word: 'Tinkering', effort: 'high' },
   { key: 'demo-docs', name: 'docs-site', cwd: DOCS, model: SONNET, ctx: 110_000, cpu: 9, mb: 410, cost: 3.9, word: 'Browsing', effort: 'medium' },
   { key: 'demo-ios', name: 'ios-build', cwd: MOBILE, model: OPUS, ctx: 90_000, cpu: 27, mb: 690, cost: 4.75, word: 'Planning', effort: 'xhigh', command: 'claude --permission-mode plan', mode: 'plan' },
-  { key: 'demo-ops', name: 'infra-ops', cwd: INFRA, model: OPUS, ctx: 60_000, cpu: 14, mb: 520, cost: 2.6, word: 'Provisioning', effort: 'high', command: 'claude --dangerously-skip-permissions', fast: true, mode: 'bypassPermissions' },
+  { key: 'demo-ops', name: 'infra-ops', cwd: INFRA, model: OPUS, ctx: 60_000, cpu: 14, mb: 520, cost: 2.6, word: 'Provisioning', effort: 'high', command: 'claude --dangerously-skip-permissions', fast: true, mode: 'bypassPermissions', work: true },
   { key: 'demo-metrics', name: 'metrics', cwd: ANALYTICS, model: HAIKU, ctx: 180_000, cpu: 6, mb: 330, cost: 0.84, word: 'Crunching', effort: 'low' },
   { key: 'demo-orders', name: 'orders-db', cwd: API, model: OPUS, ctx: 55_000, cpu: 1, mb: 380, cost: 1.47 },
-  { key: 'demo-deploy', name: 'deploy-bot', cwd: INFRA, model: SONNET, ctx: 30_000, cpu: 1, mb: 300, cost: 0.62 },
+  { key: 'demo-deploy', name: 'deploy-bot', cwd: INFRA, model: SONNET, ctx: 30_000, cpu: 1, mb: 300, cost: 0.62, work: true },
   { key: 'demo-cache', name: 'cache-plan', cwd: WEB, model: OPUS, ctx: 45_000, cpu: 1, mb: 350, cost: 1.12, command: 'claude --permission-mode plan', mode: 'plan' },
   { key: 'demo-notes', name: 'release-notes', cwd: DOCS, model: SONNET, ctx: 85_000, cpu: 0, mb: 290, cost: 1.93 },
-  { key: 'demo-ci', name: 'ci-watch', cwd: INFRA, model: HAIKU, ctx: 25_000, cpu: 0, mb: 220, cost: 0.31 },
+  { key: 'demo-ci', name: 'ci-watch', cwd: INFRA, model: HAIKU, ctx: 25_000, cpu: 0, mb: 220, cost: 0.31, work: true },
   { key: 'demo-scratch', name: 'scratch', cwd: ANALYTICS, model: SONNET, ctx: 0, cpu: 0, mb: 200, cost: 0.05 },
   { key: 'demo-spike', name: 'old-spike', cwd: ANALYTICS, model: SONNET, ctx: 20_000, cpu: 0, mb: 180, cost: 0.4 },
 ];
-const { byId, sleepers } = setUpSessions(claudeDir, SESSIONS, { idBase: '0de30000', now: NOW }); // session ids are UUIDs
+// Two Claude accounts: ~/.claude (personal), and ~/.claude-work, where the infra sessions run.
+const workDir = join(DEMO, '.claude-work');
+put(join(DEMO, '.claude.json'), JSON.stringify({ oauthAccount: { emailAddress: 'you@example.com' } }));
+put(join(workDir, '.claude.json'), JSON.stringify({ oauthAccount: { emailAddress: 'you@acme.example', organizationName: 'Acme' } }));
+const mine = setUpSessions(claudeDir, SESSIONS.filter(s => !s.work), { idBase: '0de30000', now: NOW }); // session ids are UUIDs
+const work = setUpSessions(workDir, SESSIONS.filter(s => s.work), { idBase: '0de31111', now: NOW });
+for (const s of SESSIONS) s.dir = s.work ? workDir : claudeDir;
+const byId = { ...mine.byId, ...work.byId }, sleepers = [...mine.sleepers, ...work.sleepers];
 // Where Claude Code keeps each session's scratchpad and background output: <base>/<project>/<session>/.
 const SCRATCH = join(DEMO, 'tmp');
 const scratchOf = s => join(SCRATCH, s.cwd.replace(/[^A-Za-z0-9]/g, '-'), s.id);
@@ -266,7 +279,8 @@ turnEnd(X, NOW - 51.9 * 60 * MIN);
 utimesSync(X.file, new Date(NOW - 51 * 3_600_000), new Date(NOW - 51 * 3_600_000));
 mkdirSync(join(dirname(C.file), 'memory'), { recursive: true });
 writeFileSync(join(dirname(C.file), 'memory', 'MEMORY.md'), '- [Checkout](checkout.md): idempotent orders, behind the checkout_v2 flag\n');
-for (const s of SESSIONS) writeFileSync(join(claudeDir, 'sessions', `${s.pid}.json`), JSON.stringify({ pid: s.pid, sessionId: s.id, cwd: s.cwd, name: s.name, kind: 'interactive', status: s.open ? 'busy' : 'idle', startedAt: NOW - 30 * MIN }));
+const register = s => writeFileSync(join(s.dir, 'sessions', `${s.pid}.json`), JSON.stringify({ pid: s.pid, sessionId: s.id, cwd: s.cwd, name: s.name, nameSource: s.named ? 'user' : 'derived', kind: 'interactive', status: s.open ? 'busy' : 'idle', startedAt: NOW - 30 * MIN }));
+for (const s of SESSIONS) register(s);
 
 /* ---------- the stand-ins: processes, GitHub, and each session's mod ---------- */
 
@@ -315,11 +329,14 @@ case "$1 $2" in
 esac
 `, { mode: 0o755 });
 put(join(claudeDir, 'settings.json'), `${JSON.stringify({ permissions: { allow: ['Bash(npm test:*)', 'Bash(git status)', 'mcp__claude_ai_Linear__list_issues'], deny: ['Bash(rm -rf:*)'] } }, null, 2)}\n`);
-writeFileSync(join(root, 'config.json'), JSON.stringify({ port: 0, deployRepos: { [ANALYTICS]: 'demo/analytics' }, pollMs: 400, gitPollMs: 3000, deployPollMs: 4000, prPollMs: 4000, permissionGuessSec: 3600, terminal: 'iTerm' }));
+writeFileSync(join(root, 'config.json'), JSON.stringify({ port: 0, deployRepos: { [ANALYTICS]: 'demo/analytics' }, pollMs: 400, gitPollMs: 3000, deployPollMs: 4000, prPollMs: 4000, permissionGuessSec: 3600, terminal: 'iTerm', accounts: { [claudeDir]: 'personal', [workDir]: 'work' } }));
 const state = join(root, 'state');
-for (const d of ['pending', 'answers', 'mods']) mkdirSync(join(state, d), { recursive: true });
+for (const d of ['pending', 'answers', 'mods', 'helper-replies', 'command-results', 'asides']) mkdirSync(join(state, d), { recursive: true });
+// ✨ Helper on, with suggested names and the animals' lines (its Haiku calls are the stand-in mods' below).
+writeFileSync(join(state, 'helper.json'), JSON.stringify({ on: true, uses: { names: true, lines: true }, dailyLimit: 200, consentedAt: NOW - 2 * 60 * MIN }));
 // Each session's mod: it says it is listening, with its cost, the plan's limits and its working line.
-const PLAN = [{ kind: 'five_hour', percentUsed: 38, resetsAt: iso(NOW + 2.2 * 3_600_000) }, { kind: 'seven_day', percentUsed: 76, resetsAt: iso(NOW + 3 * 86_400_000) }]; // the silo's tag is amber
+const PLAN = [{ kind: 'five_hour', percentUsed: 38, resetsAt: iso(NOW + 2.2 * 3_600_000) }, { kind: 'seven_day', percentUsed: 76, resetsAt: iso(NOW + 3 * 86_400_000) }]; // the personal silo's tag is amber
+const WORK_PLAN = [{ kind: 'five_hour', percentUsed: 61, resetsAt: iso(NOW + 1.4 * 3_600_000) }, { kind: 'seven_day', percentUsed: 42, resetsAt: iso(NOW + 5 * 86_400_000) }];
 const offers = { [Q.ask]: { kind: 'question', toolUseId: Q.ask, sessionId: Q.id, createdAt: at(1), questions: [QUESTION] }, [P.ask]: { kind: 'permission', toolUseId: P.ask, sessionId: P.id, tool: 'Bash', summary: 'ssh prod ./deploy.sh --webhooks', createdAt: at(0.8), expiresAt: NOW + 3_600_000 } };
 for (const [id, o] of Object.entries(offers)) writeFileSync(join(state, 'pending', `${id}.json`), JSON.stringify(o));
 const thinking = new Set(['demo-cart']);
@@ -328,7 +345,7 @@ function beacons() {
     if (s.key === 'demo-spike') continue; // long gone
     s.cost += s.open ? 0.004 : 0;
     const working = Boolean(s.open) || thinking.has(s.key);
-    writeFileSync(join(state, 'mods', `${s.id}.json`), JSON.stringify({ sessionId: s.id, version: '0.6.2', at: Date.now(), usage: { costUsd: s.cost, contextPercent: Math.round((s.ctx / 200_000) * 100), rateLimits: PLAN }, ...(working ? { turn: { startedAt: s.turnAt, word: s.word ?? 'Working', mode: thinking.has(s.key) ? 'thinking' : 'tool-use' } } : {}), ...(s.effort ? { effort: s.effort } : {}) }));
+    writeFileSync(join(state, 'mods', `${s.id}.json`), JSON.stringify({ sessionId: s.id, version: '0.9.1', at: Date.now(), usage: { costUsd: s.cost, contextPercent: Math.round((s.ctx / 200_000) * 100), rateLimits: s.work ? WORK_PLAN : PLAN }, ...(working ? { turn: { startedAt: s.turnAt, word: s.word ?? 'Working', mode: thinking.has(s.key) ? 'thinking' : 'tool-use' } } : {}), ...(s.effort ? { effort: s.effort } : {}) }));
   }
   for (const id of Object.keys(offers)) { const f = join(state, 'pending', `${id}.json`); if (existsSync(f)) utimesSync(f, new Date(), new Date()); }
 }
@@ -340,6 +357,17 @@ const REPLIES = {
 const ASIDES = {
   'demo-deploy': '**Two commits** go out: the webhook retry with backoff, and a limit of *10 requests a second* per shop.',
   default: '**tests/checkout.test.ts** covers it: one order per cart, a retried request returns the *same* order, and an empty cart is refused.',
+};
+// What the stand-in Haiku answers: a name for ✨, and the animals' lines (kind|when|text: nameless, as the real ones are).
+const NAMES = { 'demo-metrics': 'Funnel dashboard', 'demo-scratch': 'Data scratchpad', 'demo-flow': 'One-page checkout' };
+const LINES = {
+  cow: ['idle|Moo. Another deploy, another rainbow.', 'idle|The checkout field looks tasty today.', 'deployOk|Moo ♥ A rainbow! Someone shipped.'],
+  goat: ['idle|I could eat that whole task board.', 'idle|Somebody hide the hats.'],
+  sheepdog: ['idle|Seven farmers at work. I counted.', 'idle|Woof! The porch needs you.'],
+  ostrich: ['idle|I outran the Linear cart again.'],
+  lion: ['idle|Rain on the mobile field. I stay dry.'],
+  tiger: ['idle|Waiting on the porch is a nap too.'],
+  duck: ['idle|Quack. Fine pond for a code review.', 'harvest|Quack! A field just got harvested.'],
 };
 const inbox = (kind, id) => { const dir = join(state, kind, id); if (!existsSync(dir)) return []; return readdirSync(dir).filter(n => n.endsWith('.json')).map(n => { const f = join(dir, n), v = JSON.parse(readFileSync(f, 'utf8')); unlinkSync(f); return v; }); };
 function mods() {
@@ -373,9 +401,17 @@ function mods() {
       const shot = /screenshot/i.test(m.text) && s === C; // asked for a screenshot: it says where it saved it (under ~, the demo's home)
       setTimeout(() => { reply(s, shot ? `Here is the checkout page as it looks now: \`~/${SHOT.slice(DEMO.length + 1)}\`` : REPLIES[s.key] ?? 'Will do.'); }, shot ? 2400 : 1600);
     }
-    for (const c of inbox('commands', s.id)) { // a model or effort switch, as /model would say it
+    for (const c of inbox('commands', s.id)) { // a model or effort switch, as /model would say it; a rename; Esc
       setTimeout(() => {
-        const text = { model: 'Set model to `Sonnet 5.5` and saved as your default for new sessions', effort: `Set effort level to ${c.args}`, compact: 'Compacted. The conversation so far is now a summary.', 'reload-plugins': 'Reloaded: 3 plugins · 6 skills · 1 agent · 2 MCP servers' }[c.command] ?? 'Done';
+        const text = { model: 'Set model to `Sonnet 5.5` and saved as your default for new sessions', effort: `Set effort level to ${c.args}`, compact: 'Compacted. The conversation so far is now a summary.', 'reload-plugins': 'Reloaded: 3 plugins · 6 skills · 1 agent · 2 MCP servers', rename: `Session renamed to ${c.args}`, stop: 'Stopped.' }[c.command] ?? 'Done';
+        if (c.command === 'rename') { s.name = c.args; s.named = true; register(s); } // Claude Code's own name for it, as /rename leaves it
+        if (c.command === 'stop') { // Esc: the turn ends where it was, and the session waits for you
+          paused.add(s.key); thinking.delete(s.key);
+          if (s.open) result(s, s.open, { error: true, text: 'Interrupted by user' });
+          s.open = null; s.openBash = null;
+          write(s, prompt(s, '[Request interrupted by user]'));
+          turnEnd(s);
+        }
         if (c.command === 'model') s.model = SONNET;
         if (c.command === 'effort') s.effort = c.args;
         if (c.command === 'compact') { // a harvest on the farm: the field starts again from seed
@@ -384,6 +420,10 @@ function mods() {
         }
         writeFileSync(join(state, 'command-results', `${s.id}.${c.id}.json`), JSON.stringify({ id: c.id, sessionId: s.id, command: c.command, args: c.args, ok: true, text, at: Date.now() }));
       }, 1200);
+    }
+    for (const h of inbox('helper', s.id)) { // ✨ Helper: Haiku, through this session's own Claude Code (made up here)
+      const text = h.kind === 'name' ? (NAMES[s.key] ?? 'Checkout fixes') : (h.cast ?? []).flatMap(c => (LINES[c.kind] ?? []).map(l => `${c.kind}|${l}`)).join('\n');
+      setTimeout(() => writeFileSync(join(state, 'helper-replies', `${s.id}.${h.id}.json`), JSON.stringify({ id: h.id, sessionId: s.id, kind: h.kind, ok: true, text, at: Date.now() })), h.kind === 'name' ? 1400 : 900);
     }
     for (const q of inbox('btw', s.id)) { // a side question (/btw), answered from the conversation
       setTimeout(() => writeFileSync(join(state, 'asides', `${s.id}.${q.id}.json`), JSON.stringify({ id: q.id, sessionId: s.id, question: q.question, text: ASIDES[s.key] ?? ASIDES.default, at: q.at, answeredAt: Date.now() })), 2600);
@@ -415,8 +455,12 @@ function direct() {
   }
 }
 
-/* ---------- the browser, its cursor and its captions ---------- */
+/* ---------- the browser, its cursor and what each scene says ---------- */
 
+// This process also records the screen, which the collector's own CPU figure would count: the panel shows the
+// collector's usual share instead (all its other numbers are made up too).
+const ownCpu = process.cpuUsage.bind(process);
+process.cpuUsage = since => { const u = ownCpu(since); return since ? { user: u.user * 0.02, system: u.system * 0.02 } : u; };
 const handle = await startCollector({
   root, claudeDir, claudeBin: fakeClaude, notify: () => {}, log: () => {}, home: DEMO,
   readProcs, deployStatusOf: async r => (r === 'demo/analytics' ? { status: 'in_progress', at: Date.now(), workflow: 'Deploy', sha: 'a1b2c3d' } : null),
@@ -435,7 +479,12 @@ const timers = [setInterval(beacons, 900), setInterval(mods, 200)];
 const VW = 1440, VH = 900;
 const browser = launchBrowser(temp);
 const { send, js, until, shot } = browser;
-const marks = []; // where each chapter's title card comes up: [number, title, the first frame after it was asked for]
+const marks = []; // each chapter: [number, title, when it starts (wall seconds)]
+// For working on the tour: DEMO_ONLY=3,5 plays just those chapters; DEMO_SCENES=<folder> saves a picture at the end of each scene.
+const ONLY = process.env.DEMO_ONLY ? new Set(process.env.DEMO_ONLY.split(',').map(Number)) : null;
+const want = n => !ONLY || ONLY.has(n);
+const SCENES = process.env.DEMO_SCENES ? resolve(process.env.DEMO_SCENES) : null;
+let ui = null;
 try {
   await browser.connect(VW, VH);
   // Before the tour, this Chrome makes the rest of the files: the release notes as a PDF, and the
@@ -450,53 +499,92 @@ try {
   writeFileSync(SHOT, Buffer.from((await send('Page.captureScreenshot', { format: 'png' })).result.data, 'base64'));
   await send('Page.navigate', { url: `http://127.0.0.1:${handle.port}/` });
   await sleep(800);
-  await js(`(() => { const s = { 'tracker-view': 'farm', 'tracker-farm-tab': 'agent', 'tracker-closed-groups': '["idle","stale"]', 'tracker-theme': 'dark', 'tracker-farm-sky': 'day', 'tracker-farm-zoom': '1', 'tracker-farm-side': 'closed', 'tracker-farm-panel': 'open', 'tracker-farm-bubbles': 'on', 'tracker-bell': 'off', 'tracker-farm-resting': 'shown' }; for (const [k, v] of Object.entries(s)) localStorage.setItem(k, v); })()`);
+  // The page as someone would have it: the farm by day, its panel open, the sidebar shut until a farmer is picked.
+  const prefs = { 'tracker-view': 'farm', 'tracker-world': 'farm', 'tracker-farm-tab': 'agent', 'tracker-closed-groups': '["idle","stale"]', 'tracker-theme': 'dark', 'tracker-farm-side': 'closed', 'tracker-bell': 'off',
+    'tracker-world:farm:sky': 'day', 'tracker-world:farm:zoom': '1', 'tracker-world:farm:panel': 'open', 'tracker-world:farm:bubbles': 'on', 'tracker-world:farm:resting': 'shown', 'tracker-world:farm:animals': 'on', 'tracker-world:farm:migrated': '1' };
+  await js(`(() => { localStorage.clear(); for (const [k, v] of ${JSON.stringify(Object.entries(prefs))}) localStorage.setItem(k, v); })()`);
   await send('Page.reload');
-  await until("document.querySelectorAll('.px-tag').length >= 10", 15000);
-  await sleep(2500); // the repos, deploys and pull requests come in
+  await browser.untilIn('/world/', "document.querySelectorAll('.px-tag').length >= 10", 20000);
+  await sleep(3000); // the repos, deploys and pull requests come in
 
-  const ui = await stage(browser, VW, VH);
-  const { moveTo, where, q, byText, point, click, type, enter, say, raise, spot } = ui;
-  const row = key => q(`#list .row[data-id="${byId[key].id}"]`);
-  // A point on the farm (in its world pixels) and a farmer's sprite (just under its name tag), as screen points.
-  const farmAt = (x, y) => js(`(() => { const c = document.querySelector('#farm canvas'); const [pl, pt] = c.dataset.pad.split(',').map(Number), r = c.getBoundingClientRect(), cs = r.width / Number(c.dataset.ew); return [Math.round(r.left + (${x} + pl) * cs), Math.round(r.top + (${y} + pt) * cs)]; })()`);
-  // A farmer, by its name tag: hovering shows the name, and a click picks exactly that farmer (they stand close on the porch).
-  const tag = key => `document.querySelector('[data-farmer="${byId[key].id}"]')`;
-  const farmer = key => where(tag(key));
+  ui = await stage(browser, VW, VH);
+  const { w, wjs, wuntil, moveTo, q, byText, point, click, clickAt, type, enter, esc, say, raise, spot } = ui;
   const hold = sleep;
-  /** A clean picture of the page, for docs/: no caption and no cursor. */
-  async function still(name) {
-    if (!STILLS) return;
-    await js("window.__demo.caption(null); document.getElementById('demo-cursor').style.opacity = '0'");
-    await sleep(700);
-    writeFileSync(join(STILLS, `${name}.png`), Buffer.from((await send('Page.captureScreenshot', { format: 'png' })).result.data, 'base64'));
-    await js("document.getElementById('demo-cursor').style.opacity = '1'");
+  const row = key => q(`#list .row[data-id="${byId[key].id}"]`);
+  // The world's frame on the page, and points in it: a point of the farm (its world pixels), a farmer (its sprite, just under its name tag).
+  const frameAt = () => js("(f => f ? (r => [r.left + f.clientLeft, r.top + f.clientTop])(f.getBoundingClientRect()) : null)(document.querySelector('iframe[src*=\"/world/\"]'))");
+  const onPage = async p => { const f = await frameAt(); return p && f ? [p[0] + f[0], p[1] + f[1]] : null; };
+  const farmAt = async (x, y) => onPage(await wjs(`(() => { const c = document.querySelector('#farm canvas'); if (!c) return null; const [pl, pt] = c.dataset.pad.split(',').map(Number), r = c.getBoundingClientRect(), cs = r.width / Number(c.dataset.ew); return [Math.round(r.left + (${x} + pl) * cs), Math.round(r.top + (${y} + pt) * cs)]; })()`));
+  const farmer = async key => onPage(await wjs(`(() => { const t = document.querySelector('[data-farmer="${byId[key].id}"]'), c = document.querySelector('#farm canvas'); if (!t || !c) return null; const r = t.getBoundingClientRect(), cs = c.getBoundingClientRect().width / Number(c.dataset.ew); return [Math.round(r.left + r.width / 2), Math.round(r.bottom + 10 * cs)]; })()`));
+  const animal = async kind => JSON.parse((await wjs(`JSON.stringify((window.Agentville.animalsNow?.() ?? []).find(a => a.kind === ${JSON.stringify(kind)} && !a.away) ?? null)`)) ?? 'null');
+  // After a world raises part of the page, its action buttons ignore clicks for a moment: wait that out.
+  const settle = () => until('!document.documentElement.dataset.guard', 2500);
+  const setSelect = (sel, value) => js(`(() => { const s = document.querySelector(${JSON.stringify(sel)}); s.value = ${JSON.stringify(value)}; s.dispatchEvent(new Event('change', { bubbles: true })); })()`);
+  const menuOpen = () => wjs("document.querySelector('[data-farm-menu]')?.getAttribute('aria-expanded') === 'true'");
+  /** An item in the world's Menu, opened as a person would. */
+  async function menu(sel, ms = 500) {
+    if (!(await menuOpen())) { await click(w(q('[data-farm-menu]')), 650); await wuntil("document.querySelector('[data-farm-menu]')?.getAttribute('aria-expanded') === 'true'", 2000); await hold(450); }
+    await click(w(q(sel)), ms);
+    await hold(350); // the page takes a world's buttons at most every 250 ms
   }
-
-  await send('Page.startScreencast', { format: 'jpeg', quality: 88, maxWidth: 1920, maxHeight: 1200, everyNthFrame: 1 });
-  const tick = setInterval(direct, 5200);
-  timers.push(tick);
-  const logo = await js("window.Agentville.svg({ size: 132 })");
-
-  const F = byId['demo-flow'];
-  const dlgOpen = "document.querySelector('.px-dlg')?.open";
+  const shutMenu = async () => { if (await menuOpen()) { await click(w(q('[data-farm-menu]')), 450); await hold(300); } };
+  const named = key => `document.querySelector('#fs-head .fs-name')?.textContent === ${JSON.stringify(byId[key].name)}`;
+  const sideOpen = async () => {
+    if ((await js("document.getElementById('main').dataset.side")) === 'open') return;
+    await menu('[data-farm-nav="side"]');
+    await until("document.getElementById('main').dataset.side === 'open'", 3000); await hold(500);
+  };
+  /**
+   * A farmer, clicked on the farm: the sidebar opens on it. A speech bubble over it would open its
+   * conversation instead: then that closes, and the click goes lower on the sprite. Failing that, the
+   * sidebar's own list.
+   */
+  async function pickFarmer(key) {
+    for (const lower of [0, 9]) {
+      const p = await farmer(key);
+      if (p) { const at = [p[0], p[1] + lower]; await moveTo(at, lower ? 300 : 750); await clickAt(at); }
+      if (await until(`${named(key)} || document.getElementById('convo').open`, 2500) && !(await js("document.getElementById('convo').open"))) { await hold(450); return; }
+      if (await js("document.getElementById('convo').open")) { await click(q('[data-convo-close]'), 400); await until("!document.getElementById('convo').open", 1500); }
+    }
+    await pickInSidebar(key);
+  }
+  // The find box keeps what was last typed in it: empty it first.
+  const clearFind = () => js("(e => { if (!e) return; e.value = ''; e.dispatchEvent(new Event('input', { bubbles: true })); e.focus(); })(document.getElementById('fs-find'))");
+  /** An agent, picked from the sidebar's list of every agent. */
+  async function pickInSidebar(key) {
+    await sideOpen();
+    if (await js(named(key))) return;
+    await settle(); await click(q('#fs-switch'), 600);
+    await until("!!document.querySelector('#fs-find')", 2500); await click(q('#fs-find'), 300);
+    await clearFind();
+    await type(byId[key].name.slice(0, 5), 70);
+    await until(`!!document.querySelector('#fs-find-list .fs-pick[data-pick-agent="${byId[key].id}"]')`, 2500); await hold(300);
+    // The list is drawn again as the find box loses focus to the press, so a real click can land between two
+    // drawings: the cursor goes there and ripples, and the item is clicked as itself.
+    const pick = q(`#fs-find-list .fs-pick[data-pick-agent="${byId[key].id}"]`);
+    const at = await point(pick, 500);
+    if (at) { await js(`window.__demo.ripple(${at[0]}, ${at[1]})`); await js(`${pick}?.click()`); }
+    await until(named(key), 3000); await hold(450);
+  }
+  /** A button in a pane that is drawn again as things change: the cursor goes there and ripples, and it is pressed as itself. */
+  async function press(target, ms = 500) {
+    const at = await point(target, ms);
+    if (at) { await js(`window.__demo.ripple(${at[0]}, ${at[1]})`); await js(`${target}?.click()`); await hold(250); }
+    return Boolean(at);
+  }
+  /** ⚡ Send now on the held message that says `word` (others may be waiting under the box too). */
+  async function heldNow(word) {
+    const now = `[...document.querySelectorAll('#fs-compose li.held')].find(li => li.textContent.includes(${JSON.stringify(word)}))?.querySelector('[data-held-now]')`;
+    if (await until(`!!${now}`, 2500)) { await settle(); await press(now, 500); }
+  }
+  const sideTab = async t => { await click(q(`#tab-${t}`), 550); await hold(500); };
   /** A building's dialog: opened from the farm, read, closed. */
   async function building(x, y, ms = 2200) {
     await click(spot(await farmAt(x, y)), 700);
-    await until(dlgOpen, 3000); await raise(); await hold(ms);
-    await click(q('[data-farm-dlg-close]'), 450);
-    if (!(await until(`!${dlgOpen}`, 1500))) await js("document.querySelector('.px-dlg').close()");
+    await wuntil("document.querySelector('dialog.px-dlg')?.open", 3000); await hold(ms);
+    await click(w(q('[data-farm-dlg-close]')), 450);
+    if (!(await wuntil("!document.querySelector('dialog.px-dlg')?.open", 1500))) await wjs("document.querySelector('dialog.px-dlg')?.close()");
   }
-  const pickFarmer = async key => { await click(tag(key), 750); await until(`document.querySelector('#farm-agent .fs-head .name')?.textContent === ${JSON.stringify(byId[key].name)}`, 3000); await hold(400); };
-  const chapter = async (n, title) => {
-    await say(null);
-    marks.push([n, title, shot.length]);
-    await js(`window.__demo.card(${JSON.stringify(`<small>${n}</small><div style="font-size:52px">${title}</div>`)})`);
-    await hold(2000);
-    await js('window.__demo.card(null)');
-    await hold(600);
-  };
-  const sideTab = async t => { await click(q(`#tab-${t}`), 550); await hold(500); };
   /** A file in the Files tab, its folders opened on the way; it opens in a window over the farm. */
   async function openTreeFile(path) {
     const parts = path.split('/');
@@ -509,7 +597,6 @@ try {
   }
   const closeFile = async () => { await click(q('#file-dlg [data-file-close]'), 450); await until("!document.getElementById('file-dlg').open", 2000); await hold(300); };
   const tabKey = async () => { for (const type of ['keyDown', 'keyUp']) await send('Input.dispatchKeyEvent', { type, key: 'Tab', code: 'Tab', windowsVirtualKeyCode: 9 }); };
-  const setSelect = (sel, value) => js(`(() => { const s = document.querySelector(${JSON.stringify(sel)}); s.value = ${JSON.stringify(value)}; s.dispatchEvent(new Event('change', { bubbles: true })); })()`);
   async function selectText(scope, text) { // a passage, selected with the mouse as you would
     const e = byText(`${scope} li, ${scope} p, ${scope} .l`, text);
     const ends = await js(`(() => { const e = ${e}; if (!e) return null; e.scrollIntoView({ block: 'center' }); const r = document.createRange(); r.selectNodeContents(e); const b = [...r.getClientRects()]; const a = b[0], z = b.at(-1); return a ? [[Math.round(a.left + 2), Math.round(a.top + a.height / 2)], [Math.round(z.right - 2), Math.round(z.top + z.height / 2)]] : null; })()`);
@@ -520,317 +607,529 @@ try {
     await send('Input.dispatchMouseEvent', { type: 'mouseReleased', x: ends[1][0], y: ends[1][1], button: 'left', clickCount: 1 });
     ui.cursor = ends[1];
   }
-
-  // ----- 0. opening -----
-  await js(`window.__demo.card(${JSON.stringify(`${logo}<div>Agentville</div><p>A local dashboard for the Claude Code and Codex sessions running on your Mac.</p>`)})`);
-  await hold(4200);
-  await js('window.__demo.card(null)');
-  await hold(700);
-
-  // ----- 1. the farm -----
-  await chapter(1, 'The farm');
-  await still('farm');
-  await say('Each agent is a farmer, and each repo is a field', 'Subagents, background jobs and Codex sessions show up here too.');
-  await moveTo([VW * 0.55, VH * 0.45], 900); await hold(3600);
-  await say('The panel in the corner', "It counts agents by state and shows their memory and CPU, along with your plan's 5-hour and weekly limits.");
-  await point(q('[data-farm-state="waiting"]'), 700); await hold(1600);
-  await point(q('.px-gauges'), 600); await hold(2600);
-  await say('Agents that need you wait on the porch', "A red ! is a question or a permission. A scroll is a plan to approve, and a basket means the agent finished and it's your turn.");
-  await point(spot(await farmer('demo-deploy')), 800); await hold(1900);
-  await point(spot(await farmer('demo-cache')), 600); await hold(1700);
-  await point(spot(await farmer('demo-notes')), 600); await hold(1900);
-  await say("The farmer's tool shows what the agent is doing", 'A hoe means it is editing and a magnifier means it is running tests. The board next to it is the task list.');
-  await point(spot(await farmer('demo-cart')), 800); await hold(2200);
-  await point(spot(await farmer('demo-checkout')), 700); await hold(2400);
-  await say('Crops grow as the context fills up', 'When the session is compacted, the field is harvested and planted again.');
-  await point(spot(await farmer('demo-metrics')), 800); await hold(1600);
-  write(M, { type: 'system', subtype: 'compact_boundary', timestamp: iso(Date.now()), compactMetadata: { trigger: 'auto', preTokens: 182_000 } });
-  M.ctx = 16_000;
-  reply(M, 'Picking up from the summary: the funnel chart is next.');
-  await hold(3600);
-  await say('The weather shows the last deploy', 'It rains on a field whose last deploy failed. A passed deploy gets a rainbow, and a windmill turns while one is running.');
-  await point(q('[data-farm-field$="mobile"]'), 800); await hold(1800);
-  await point(q('[data-farm-field$="docs"]'), 700); await hold(1800);
-  await point(q('[data-farm-field$="analytics"]'), 700); await hold(1800);
-  await say('The silo shows your weekly usage', "The grain rises as you use up the plan's weekly limit. Its tag turns amber at 70% and red at 90%.");
-  await point(spot(await farmAt(102, 44)), 800); await hold(4000);
-  await say('A pigeon means one agent wrote to another', 'The message also appears in both conversations.');
-  const [ca, cb] = [await farmer('demo-cart'), await farmer('demo-checkout')];
-  if (ca && cb) { // zoom in between the two, so the pigeon shows
-    const mid2 = [Math.round((ca[0] + cb[0]) / 2), Math.round((ca[1] + cb[1]) / 2) - 30];
-    await moveTo(mid2, 700);
-    for (let i = 0; i < 3; i++) { await send('Input.dispatchMouseEvent', { type: 'mouseWheel', x: mid2[0], y: mid2[1], deltaX: 0, deltaY: -120, modifiers: 4 }); await sleep(420); }
-    await hold(600);
+  /** A zoom with ⌘ + the wheel at a point, as a trackpad does; `steps` < 0 zooms out. */
+  async function wheel(at, steps) {
+    await moveTo(at, 600);
+    for (let i = 0; i < Math.abs(steps); i++) { await send('Input.dispatchMouseEvent', { type: 'mouseWheel', x: at[0], y: at[1], deltaX: 0, deltaY: steps > 0 ? -120 : 120, modifiers: 4 }); await sleep(400); }
   }
-  use(W, 'SendMessage', { to: 'checkout-api', summary: 'Cart calls POST /orders', message: 'The cart drawer now calls POST /orders with an idempotency key. Is the endpoint ready?' });
-  await hold(4400);
-  await click(q('[data-farm-zoom="0"]'), 600); await hold(700);
-  await say('Each MCP server has its own cart', 'When an agent calls the server, its cart drives to that farmer and waits there until the call ends.');
-  await point(spot(await farmAt(372, 84)), 800); await hold(1500); // the carts, waiting at the lane's end
-  result(O, O.open);
-  begin(O, 'mcp__claude_ai_Linear__save_issue', { title: 'Rotate the staging TLS certificate', team: 'Infra' });
-  if (await until(`!!${byText('.px-mover', 'Linear')}`, 6000)) for (let i = 0; i < 7; i++) await point(byText('.px-mover', 'Linear'), 850);
-  await hold(2200);
-  await say('Web fetches and searches send a cart to town', 'A pump stands for a background job. A farmer in a hammock is a session that will wake itself up with /loop.');
-  await point(byText('.px-mover', 'docs.github.com'), 700); await hold(1900);
-  result(O, O.open); begin(O, 'Bash', { command: 'terraform plan -out staging.tfplan', description: 'Plan the staging stack' }); // the Linear call is done: its cart heads back
-  await point(spot(await farmer('demo-ops')), 700); await hold(1800);
-  await point(spot(await farmAt(97, 198)), 800); await hold(2200);
-  await say('Click a building to see more', 'The stall lists pull requests and the notice board shows CLAUDE.md and memory. Subagents are in the henhouse.');
-  await building(298, 70, 2400);
-  await building(119, 70, 2200);
-  await building(24, 112, 2200);
-  await say('The sky follows your clock', 'You can zoom, drag the view around and use the minimap. Help explains every symbol.');
-  await click(q('[data-farm-sky]'), 700); await hold(2800);
-  if (STILLS) { await still('farm-night'); if (process.env.STILLS_ONLY) throw STILLS_DONE; }
-  await click(q('[data-farm-sky]'), 400); await hold(250); await click(q('[data-farm-sky]'), 300); await hold(500);
-  const mid = [VW * 0.5, VH * 0.45];
-  await moveTo(mid, 500);
-  for (let i = 0; i < 2; i++) { await send('Input.dispatchMouseEvent', { type: 'mouseWheel', x: mid[0], y: mid[1], deltaX: 0, deltaY: -120, modifiers: 4 }); await sleep(380); }
-  await send('Input.dispatchMouseEvent', { type: 'mousePressed', x: mid[0], y: mid[1], button: 'left', clickCount: 1 });
-  for (let i = 1; i <= 16; i++) { const p = [mid[0] + i * 12, mid[1] + i * 7]; await send('Input.dispatchMouseEvent', { type: 'mouseMoved', x: p[0], y: p[1], button: 'left', buttons: 1 }); await js(`window.__demo.move(${p[0]}, ${p[1]}, 40)`); await sleep(45); }
-  await send('Input.dispatchMouseEvent', { type: 'mouseReleased', x: mid[0] + 192, y: mid[1] + 112, button: 'left', clickCount: 1 });
-  ui.cursor = [mid[0] + 192, mid[1] + 112];
-  await point(q('.px-mini'), 600); await hold(1400);
-  await click(q('[data-farm-zoom="0"]'), 600); await hold(600);
-  await click(q('[data-farm-help]'), 600);
-  await until("document.querySelector('.px-help')?.open", 3000); await raise(); await hold(2600);
-  await click(q('[data-farm-help-close]'), 500); await hold(400);
+  /** A drag across the page, as the mouse does it. */
+  async function drag(from, by) {
+    await moveTo(from, 400);
+    await send('Input.dispatchMouseEvent', { type: 'mousePressed', x: from[0], y: from[1], button: 'left', clickCount: 1 });
+    for (let i = 1; i <= 16; i++) { const p = [from[0] + (by[0] * i) / 16, from[1] + (by[1] * i) / 16]; await send('Input.dispatchMouseEvent', { type: 'mouseMoved', x: p[0], y: p[1], button: 'left', buttons: 1 }); await js(`window.__demo.move(${p[0]}, ${p[1]}, 40)`); await sleep(45); }
+    await send('Input.dispatchMouseEvent', { type: 'mouseReleased', x: from[0] + by[0], y: from[1] + by[1], button: 'left', clickCount: 1 });
+    ui.cursor = [from[0] + by[0], from[1] + by[1]];
+  }
+  /** A clean picture of the page, for docs/: no cursor. */
+  async function still(name) {
+    if (!STILLS) return;
+    await js('window.__demo.hide(true)'); await sleep(700);
+    writeFileSync(join(STILLS, `${name}.png`), Buffer.from((await send('Page.captureScreenshot', { format: 'png' })).result.data, 'base64'));
+    await js('window.__demo.hide(false)');
+  }
+  // What each scene says goes to the captions file. While working on the tour, a picture at each scene's end.
+  let sceneN = 0, lastScene = null;
+  async function snapScene() {
+    if (!SCENES || !lastScene) return;
+    mkdirSync(SCENES, { recursive: true });
+    writeFileSync(join(SCENES, `${String(++sceneN).padStart(3, '0')}-${lastScene.replace(/[^a-z0-9]+/gi, '-').slice(0, 48)}.png`), Buffer.from((await send('Page.captureScreenshot', { format: 'png' })).result.data, 'base64'));
+  }
+  const scene = async (title, sub) => { await snapScene(); say(title, sub); lastScene = title; };
+  const chapter = async (n, title) => { await snapScene(); lastScene = null; say(null); marks.push([n, title, Date.now() / 1000]); await hold(500); };
 
-  // ----- 2. answering and messaging from the farm -----
-  await chapter(2, 'Answering and messaging from the farm');
-  await say('Clicking a farmer opens its sidebar', 'It has the current step, the working line, the model and effort, a message box and the conversation.');
-  await pickFarmer('demo-checkout');
-  await point(q('#farm-agent .workline'), 700); await hold(1600);
-  await point(q('#farm-agent .sessbar'), 600); await hold(1700);
-  await say('Follow keeps the farmer in view', 'The view zooms in and moves along as it walks.');
-  await click(q('[data-farm-follow]'), 700); await hold(3400);
-  await click(q('[data-farm-follow]'), 500); await click(q('[data-farm-zoom="0"]'), 500); await hold(600);
-  await say('Answer its question here', 'The options are the same as in the terminal, and the session carries on as if you had answered there.');
-  await pickFarmer('demo-orders');
-  await click(`${q('#farm-agent input[value="Postgres"]')}?.closest('label')`, 700); await hold(500);
-  await click(q('#ask-send'), 600);
-  await until(`document.querySelector('[data-farmer="${Q.id}"]')?.className.includes('st-working')`, 6000); await hold(2000);
-  await say('Allow or deny a command', 'This only comes up in modes that ask you. In bypass or auto mode the call goes ahead without waiting.');
-  await pickFarmer('demo-deploy');
-  await point(q('#farm-agent .ask'), 600); await hold(2600);
-  await say("Always allow uses Claude Code's own choices", 'For example, a rule for this project or access to a folder.');
-  await click(q('#ask-always'), 600);
-  await until("!!document.querySelector('#farm-agent [data-always-pick]')", 6000);
-  await point(q('#farm-agent .always-opts'), 600); await hold(2400);
-  await click(q('#farm-agent [data-always-pick="0"]'), 600);
-  await until(`document.querySelector('[data-farmer="${P.id}"]')?.className.includes('st-working')`, 6000); await hold(1600);
-  await say('Send it a message', 'It arrives as your own prompt, even in the middle of a task. Attach files, or attach a folder by its path.');
-  await pickFarmer('demo-checkout');
-  browser.chooserFiles = [join(DESIGN, 'checkout.png')];
-  await click(q('#msg-attach'), 600);
-  await until("!!document.querySelector('#farm-agent .thumbs img')", 4000); await hold(700);
-  await click(q('#msg-folder'), 600);
-  await until("!!document.querySelector('#farm-agent .thumb-folder')", 4000); await hold(700);
-  await click(q('#msg-text'), 500);
-  await type('Here is the new design. Match the checkout page to it.');
-  await hold(300); await enter(); await hold(3200);
-  await say('Side questions use /btw', 'The session answers from its conversation without stopping, and the question is not added to the conversation.');
-  await click(q('#aside-text'), 600);
-  await type('Which tests cover the idempotency key?');
-  await hold(300); await enter();
-  await until("!!document.querySelector('#farm-agent .aside .aside-a.md')", 8000);
-  await point(q('#farm-agent .aside'), 600); await hold(2800);
-  await say('Change its model or effort, or compact it', 'The dashboard runs /model, /effort or /compact inside the session.');
-  await point(q('#farm-agent [data-switch-effort]'), 600);
-  await setSelect('#farm-agent [data-switch-effort]', 'high');
-  await until("document.getElementById('confirm').open", 3000); await raise(); await hold(1400);
-  await click(q('#confirm-yes'), 600);
-  await until("!!document.querySelector('#farm-agent .set-note')", 6000); await point(q('#farm-agent .set-note'), 500); await hold(1400);
-  await click(q('#farm-agent [data-compact]'), 600);
-  await until("document.getElementById('confirm').open", 3000); await raise(); await hold(1400);
-  await click(q('#confirm-yes'), 600); await hold(2800);
+  await send('Page.startScreencast', { format: 'jpeg', quality: 88, maxWidth: 1920, maxHeight: 1200, everyNthFrame: 1 });
+  const tick = setInterval(direct, 5200);
+  timers.push(tick);
 
-  // ----- 3. following the work -----
-  await chapter(3, 'Following the work');
-  paused.add('demo-checkout'); // it keeps its test run going while the tour looks at it
-  if (!C.openBash) { if (C.open) result(C, C.open); begin(C, 'Bash', { command: 'npm test -- checkout', description: 'Run the checkout tests' }); }
-  await say('The Activity tab lists every step', 'Each step shows how long it took and whether it worked.');
-  await sideTab('activity'); await hold(2600);
-  await say('Each subagent gets a card', 'The card shows its task, its current step and what it last said. Open it to follow along, or read its transcript.');
-  await sideTab('subagents'); await hold(1400);
-  await click(`${byText('#farm-subagents .sub-card', 'Explore')}?.querySelector('[data-child]')`, 600); // the farm's Subagents tab has its own pane
-  await until("!!document.querySelector('#farm-subagents .sub-prompt')", 5000); await hold(3200);
-  await say('Commands running lists its shell commands', 'For each one you see how long it has run and the CPU and memory it uses, counting anything it started.');
-  await sideTab('agent');
-  await until("!!document.querySelector('#farm-agent .shell-row')", 6000);
-  await point(byText('#farm-agent .sec', 'Commands running'), 700); await hold(900);
-  await point(q('#farm-agent .shell-row'), 600); await hold(2600);
-  await say("Output shows a background command's log", 'It keeps updating while the window is open.');
-  await click(q(`#farm-agent [data-shell-output="${DEV.pid}"]`), 600);
-  await until("document.getElementById('shell-dlg').open", 3000); await raise();
-  const fast = setInterval(devLog, 700);
-  await hold(5400);
-  clearInterval(fast);
-  await click(q('[data-shell-close]'), 500); await hold(400);
-  await say('Stop ends a command', 'After you confirm, the command stops along with anything it started, and the session sees it end.');
-  await click(q(`#farm-agent [data-shell-stop="${DEV.pid}"]`), 600);
-  await until("document.getElementById('confirm').open", 3000); await raise(); await hold(1500);
-  await click(q('#confirm-yes'), 600);
-  await until(`!document.querySelector('#farm-agent [data-shell-stop="${DEV.pid}"]')`, 6000); await hold(2000);
-  await say('The Diary tab is a log of the farm', 'Answers, messages, harvests and deploys are all recorded there.');
-  await sideTab('diary'); await hold(3000);
-  paused.delete('demo-checkout');
+  // ----- the opening, then 1. the farm -----
+  if (want(1)) {
+    await scene('Agentville', 'A local dashboard for every Claude Code and Codex session on your Mac. Here it is a farm: each agent is a farmer.');
+    await moveTo([VW * 0.62, VH * 0.4], 1200); await hold(4400);
+    await chapter(1, 'The farm');
+    await still('farm');
+    await scene('Each agent is a farmer, and each repo is a field', 'Subagents, background jobs and Codex sessions show up here too.');
+    await moveTo([VW * 0.55, VH * 0.52], 900); await hold(3200);
+    await scene('The panel in the corner', "It counts agents by what they need, shows their memory and CPU, and each Claude account's 5-hour and weekly limits.");
+    await point(w(q('[data-farm-state="waiting"]')), 700); await hold(1500);
+    await point(w(q('.px-gauges')), 600); await hold(2600);
+    await scene('Agents that need you wait on the porch', "A red ! is a question or a permission, a scroll is a plan to approve, and a basket means it has finished: it's your turn.");
+    for (const k of ['demo-deploy', 'demo-cache', 'demo-notes']) { await point(spot(await farmer(k)), 700); await hold(1700); }
+    await scene("The farmer's tool shows what the agent is doing", 'A hoe means it is editing and a magnifier means it is running tests. The board beside it is its task list.');
+    await point(spot(await farmer('demo-cart')), 800); await hold(2100);
+    await point(spot(await farmer('demo-checkout')), 700); await hold(2300);
+    await scene('Crops grow as the context fills', 'When the session is compacted, its field is harvested and planted again.');
+    await point(spot(await farmer('demo-metrics')), 800); await hold(1400);
+    write(M, { type: 'system', subtype: 'compact_boundary', timestamp: iso(Date.now()), compactMetadata: { trigger: 'auto', preTokens: 182_000 } });
+    M.ctx = 16_000;
+    reply(M, 'Picking up from the summary: the funnel chart is next.');
+    await hold(3600);
+    await scene('The weather shows the last deploy', 'Rain on a field whose deploy failed, a rainbow on one that passed, and a windmill while one runs.');
+    for (const f of ['mobile', 'docs', 'analytics']) { await point(w(q(`[data-farm-field$="${f}"]`)), 750); await hold(1700); }
+    await scene('A silo for each Claude account', "Its grain is the account's weekly usage. The tag at its foot turns amber at 70% and red at 90%.");
+    await point(spot(await farmAt(102, 44)), 800); await hold(2400);
+    await point(spot(await farmAt(18, 44)), 700); await hold(2400);
+    await scene('A pigeon means one agent wrote to another', 'The message also shows in both conversations.');
+    const [ca, cb] = [await farmer('demo-cart'), await farmer('demo-checkout')];
+    if (ca && cb) await wheel([Math.round((ca[0] + cb[0]) / 2), Math.round((ca[1] + cb[1]) / 2) - 30], 3);
+    await hold(500);
+    use(W, 'SendMessage', { to: 'checkout-api', summary: 'Cart calls POST /orders', message: 'The cart drawer now calls POST /orders with an idempotency key. Is the endpoint ready?' });
+    await hold(4400);
+    await menu('[data-farm-zoom="0"]'); await shutMenu(); await hold(600);
+    await scene('Each MCP server has its own cart', 'When an agent calls the server, its cart drives to that farmer and waits there until the call ends.');
+    await point(spot(await farmAt(372, 84)), 800); await hold(1400); // the carts, waiting at the lane's end
+    result(O, O.open);
+    begin(O, 'mcp__claude_ai_Linear__save_issue', { title: 'Rotate the staging TLS certificate', team: 'Infra' });
+    if (await wuntil(`!!${byText('.px-mover', 'Linear')}`, 6000)) for (let i = 0; i < 6; i++) await point(w(byText('.px-mover', 'Linear')), 850);
+    await hold(1800);
+    await scene('Web fetches and searches send a cart to town', 'A pump is a background job. A farmer in a hammock is a session that will wake itself up with /loop.');
+    await point(w(byText('.px-mover', 'docs.github.com')), 700); await hold(1900);
+    result(O, O.open); begin(O, 'Bash', { command: 'terraform plan -out staging.tfplan', description: 'Plan the staging stack' }); // the Linear call is done: its cart heads back
+    await point(spot(await farmer('demo-ops')), 700); await hold(1800);
+    await point(spot(await farmAt(97, 198)), 800); await hold(2000);
+    await scene('Click a building to see more', 'The stall lists pull requests, the notice board shows CLAUDE.md and memory, and the henhouse the subagents.');
+    await building(298, 64, 2300);
+    await building(119, 70, 2100);
+    await building(53, 116, 2100);
+  }
 
-  // ----- 4. opening files -----
-  await chapter(4, 'Opening files');
-  await say("The Files tab shows the agent's folder", 'The scratchpad and memory are there too. Git status letters and dots mark the files the agent changed or read.');
-  await sideTab('files'); await hold(3000);
-  await say('Files open in a window over the farm', 'Markdown is rendered and code has line numbers. If the agent changes the file, the window updates.');
-  await openTreeFile('docs/plan.md');
-  await until("!!document.getElementById('reader-body')?.textContent.includes('idempotent')", 6000); await hold(2400);
-  await say('Quote part of a file in your reply', 'Select a passage and click Quote. The agent gets your reply along with the quoted lines.');
-  await selectText('#reader-body', 'idempotent');
-  await hold(500);
-  await click(q('#reader-quote'), 600); await hold(500);
-  await type('Use the cart id as the key.');
-  await hold(400);
-  await click(q('#reader-send'), 600); await hold(2200);
-  await closeFile();
-  await say('Pictures, PDFs and videos open as they are', "A picture is fitted to the window and a PDF opens in the browser's viewer. Videos play with seeking.");
-  await openTreeFile('design/checkout.png'); await hold(2800); await closeFile();
-  await openTreeFile('docs/release-2.4.pdf'); await hold(3400); await closeFile();
-  await openTreeFile('design/walkthrough.mp4');
-  await until("!!document.querySelector('#reader-body video')", 4000);
-  await js("document.querySelector('#reader-body video').play()"); await hold(3800); await closeFile();
-  await say('Preview an HTML page', 'Preview shows the page with its own CSS and scripts, kept apart from the dashboard. Source shows the code.');
-  await openTreeFile('design/checkout/index.html'); await hold(2800);
-  await click(q('#file-dlg [data-reader-mode="source"]'), 600); await hold(2400);
-  await closeFile();
-  await say('Word and Excel files', 'A Word document shows as a page or as plain text. A workbook shows as tables with a tab for each sheet.');
-  await openTreeFile('docs/brief.docx'); await hold(3000); await closeFile();
-  await openTreeFile('docs/forecast.xlsx'); await hold(2200);
-  await click(q('#file-dlg [data-sheet="1"]'), 600); await hold(2000); await closeFile();
-  await say('Ask it for a screenshot', 'When the reply names the file, a thumbnail appears under it. Click the thumbnail to open the picture.');
-  await sideTab('agent');
-  await click(q('#msg-text'), 600);
-  await type('Take a screenshot of the checkout page and save it in your scratchpad.', 32);
-  await hold(300); await enter();
-  await until("document.querySelector('#farm-agent .named-pic img')?.naturalWidth > 0", 10000);
-  await point(q('#farm-agent .named-pic'), 700); await hold(1500);
-  await click(q('#farm-agent .named-pic'), 500);
-  await until("document.getElementById('file-dlg').open", 3000); await raise(); await hold(3000);
-  await closeFile();
+  // ----- 2. day, night and seasons -----
+  if (want(2)) {
+    await chapter(2, 'Day, night and seasons');
+    await scene('Everything else is in the Menu', "The dashboard's buttons, the farm's switches and zoom, in one place at the top right.");
+    await click(w(q('[data-farm-menu]')), 800); await hold(2800);
+    await scene('The sky follows your clock', 'Or hold it at day or night: windows and lamps light up, and fireflies come out.');
+    await menu('[data-farm-sky]'); await hold(2300); // the sky goes live → day → night: held at day, one more is night
+    await shutMenu(); await hold(2600);
+    await still('farm-night');
+    if (STILLS && process.env.STILLS_ONLY) throw STILLS_DONE;
+    await scene('The season follows your 5-hour limit', 'Spring while it is fresh, winter when it is nearly used up. Or hold a season with the Season switch.');
+    await menu('[data-farm-sky]'); await click(w(q('[data-farm-sky]')), 350); await hold(600); // live, then held at day again
+    for (let i = 0; i < 4; i++) { await click(w(q('[data-farm-season]')), 500); await hold(1700); } // spring, summer, autumn, winter
+    await click(w(q('[data-farm-season]')), 500); await hold(500); // live again
+    await shutMenu(); await hold(600);
+    await scene('Zoom in and look around', 'Drag the view, and use the minimap while you are zoomed in. Help explains every symbol on the farm.');
+    const mid = [Math.round(VW * 0.5), Math.round(VH * 0.45)];
+    await wheel(mid, 2);
+    await drag(mid, [192, 112]);
+    await point(w(q('.px-mini')), 600); await hold(1500);
+    await menu('[data-farm-zoom="0"]'); await hold(400);
+    await menu('[data-farm-help]');
+    await wuntil("document.querySelector('dialog.px-help:not(.px-dlg)')?.open", 3000); await hold(3000);
+    await click(w(q('[data-farm-help-close]')), 500); await hold(400);
+  }
 
-  // ----- 5. the list view -----
-  await chapter(5, 'The list view');
-  await click(q('[data-farm-nav="list"]'), 700);
-  await until("document.getElementById('main').dataset.view === 'list'", 3000); await hold(600);
-  await say('The list view shows the same agents', 'They are sorted by what needs you, and idle and stale sessions are folded away.');
-  await point(q('#list .row'), 700); await hold(1000);
-  await click(q('#list [data-group="idle"]'), 700); await hold(1700);
-  await click(q('#list [data-group="idle"]'), 500); await hold(500);
-  await say('The top bar shows your Mac and your plan', "How much memory and CPU your agents use, your plan's limits, and when each limit resets.");
-  await point(q('#hstats'), 700); await hold(2400);
-  await point(q('#kpis .kpi'), 600); await hold(1300);
-  await say('Collisions', 'A collision means two agents are writing to the same repo at the same time.');
-  await point(q('#kpis .kpi.k-collide'), 600); await hold(1100);
-  await point(q('#rail .card.collide'), 700); await hold(2400);
-  await say('Each agent has a detailed panel', 'It has the working line, tasks, model, effort, context and cost, with CPU and memory over time.');
-  await click(row('demo-checkout'), 600); await hold(600);
-  await point(q('#center-body .workline'), 600); await hold(1400);
-  await point(q('#center-body .metrics'), 600); await hold(1700);
-  await say('The newest reply is framed as Latest', 'If your message is just below it, that is framed too. Reply quotes any message into the box.');
-  await point(q('#center-body .latest'), 700); await hold(3000);
-  await say('Read all opens the whole conversation', 'Search highlights every match, and Enter jumps to the next one.');
-  await click(q(`#center-body [data-convo="${C.id}"]`), 600);
-  await until("document.getElementById('convo').open", 4000); await raise(); await hold(1200);
-  await click(q('#convo-q'), 500);
-  await type('retry', 90);
-  await until("/ of /.test(document.getElementById('convo-count').textContent)", 4000); await hold(1700);
-  await enter(); await hold(1500); await enter(); await hold(1500);
-  await click(q('[data-convo-close]'), 500); await hold(500);
-  await say('The Repos panel lists every repo', 'You see its branch, uncommitted files, unpushed commits, last deploy and open pull requests.');
-  await point(`[...document.querySelectorAll('#rail .card')].filter(c => !c.classList.contains('collide'))[0]`, 700); await hold(1700);
-  await point(`[...document.querySelectorAll('#rail .card')].filter(c => !c.classList.contains('collide'))[1]`, 600); await hold(1700);
+  // ----- 3. the animals -----
+  if (want(3)) {
+    await chapter(3, 'The animals');
+    await scene('Animals live on the farm, just for fun', 'Cows, goats, a sheepdog, an ostrich, a lion, a tiger, and a duck family on the pond. They never stand for anything.');
+    for (const k of ['cow', 'goat', 'sheepdog', 'ostrich', 'lion']) { const a = await animal(k); if (a) { await point(spot(await farmAt(a.x, a.y - 4)), 650); await hold(1200); } }
+    await scene('Click one to pet or feed it', 'A farmer with nothing to do walks over and does it.');
+    const cow = await animal('cow');
+    if (cow) {
+      await click(spot(await farmAt(cow.x, cow.y - 4)), 700);
+      await wuntil("!!document.querySelector('.px-animal-menu')", 2500); await hold(1600);
+      await click(w(q('.px-animal-menu [data-animal-act="0"]')), 600);
+      await wuntil("[...document.querySelectorAll('.px-animal-say')].some(b => !b.hidden)", 15000); await hold(2400);
+    }
+    await scene('The ducks on the pond', 'Click the pond to feed them bread, or quack back.');
+    await click(spot(await farmAt(42, 210)), 700);
+    await wuntil("!!document.querySelector('.px-animal-menu')", 2500); await hold(1400);
+    await click(w(q('.px-animal-menu [data-animal-act="0"]')), 600); await hold(3600);
+    await scene("With ✨ Helper's Animal lines on, Haiku writes what they say", 'Fresh lines about what is happening on the farm, never naming anyone, written through one of your own sessions.');
+    await wuntil('(window.Agentville.freshLinesNow?.() ?? []).length > 0', 20000);
+    const bubble = "[...document.querySelectorAll('.px-animal-say')].find(b => !b.hidden)";
+    for (const end = Date.now() + 15000; Date.now() < end;) { // each animal says its fresh lines first, when its turn to talk comes
+      if (await wuntil(`!!${bubble}`, 3000)) { await point(w(bubble), 700); await hold(2600); }
+    }
+  }
 
-  // ----- 6. starting, restarting and ending sessions -----
-  await chapter(6, 'Starting, restarting and ending sessions');
-  await click(row('demo-checkout'), 600); await hold(400);
-  await say('Restart it in another mode, or end it', 'Restart in resumes it in plan, accept-edits or bypass mode. End session asks before it stops anything.');
-  await point(q('#center-body [data-restart-mode]'), 600); await hold(1400);
-  await click(q('#center-body [data-end-session]'), 600);
-  await until("document.getElementById('confirm').open", 3000); await raise(); await hold(1900);
-  await click(q('#confirm-no'), 500); await hold(400);
-  await say('A new session can start in any folder', "Type a path and the folders in it are suggested. Tab completes the name, and Browse opens Finder's folder window.");
-  await click(q('#sessions-open'), 700);
-  await until("document.getElementById('sessions').open", 3000); await raise(); await hold(900);
-  await click(q('#sess-dir'), 600);
-  await type('~/code/sh', 90); await hold(1500);
-  await tabKey(); await hold(2000);
-  await point(q('#sess-dir-browse'), 600); await hold(1200);
-  await say('The folder does not have to exist yet', 'Create it makes the folder after asking. New then starts the session there with the mode, model and effort you picked.');
-  await js("(() => { const f = document.getElementById('sess-dir'); f.value = ''; f.dispatchEvent(new Event('input', { bubbles: true })); f.focus(); })()");
-  await type('~/code/new-shop', 70); await hold(1300);
-  await click(q('#sess-dir-note [data-dir-make]'), 600);
-  await until("document.getElementById('confirm').open", 3000); await raise(); await hold(1500);
-  await click(q('#confirm-yes'), 600);
-  await until("!document.getElementById('sess-dir-new').disabled", 4000); await hold(1100);
-  await click(q('#sess-dir-new'), 600); await hold(2500);
-  await say('Search your past sessions', 'Filter them by folder, model, branch or whether they are running, sort them, and resume one.');
-  await click(q('#sessions-open'), 700);
-  await until("document.getElementById('sessions').open && !!document.querySelector('#sessions [data-sess-resume]')", 5000); await raise(); await hold(900);
-  await click(q('#sess-filter'), 600);
-  await type('checkout', 80); await hold(1700);
-  await setSelect('#sess-f-model', 'opus'); await hold(1500);
-  await setSelect('#sess-sort', 'length'); await hold(2000);
-  await click(q('#sessions [data-sess-close]'), 600); await hold(400);
+  // ----- 4. the sidebar -----
+  if (want(4)) {
+    await chapter(4, 'The sidebar');
+    await scene('Click a farmer to open its sidebar', 'What it is doing now, its chat with you, and one box to write in.');
+    await pickFarmer('demo-checkout');
+    await point(q('#fs-now .workline'), 700); await hold(1500);
+    await point(q('#farm-agent .fs-latest'), 600); await hold(1600);
+    await point(q('#fs-compose'), 600); await hold(1300);
+    await scene('Pick any agent from the list', 'Those that need you come first. Type to find one, and ‹ › step through them in that order.');
+    await settle(); await click(q('#fs-switch'), 600);
+    await until("!!document.querySelector('#fs-find')", 2500); await click(q('#fs-find'), 300); await clearFind(); await hold(1200);
+    await type('cart', 90); await hold(1600);
+    await esc(); await hold(400);
+    await click(q('[data-fs-step="1"]'), 600); await hold(1400);
+    await click(q('[data-fs-step="-1"]'), 500); await hold(900);
+    await pickInSidebar('demo-checkout');
+    await scene('Answer the others without leaving this one', 'A card for each agent waiting on you: allow a command, pick an option or say Yes, right here.');
+    if ((await js("document.querySelector('#fs-head .fs-queue-toggle')?.getAttribute('aria-expanded')")) === 'false') await click(q('#fs-head .fs-queue-toggle'), 500);
+    await point(q('#fs-head .fs-queue'), 600); await hold(1500);
+    await settle(); await click(q('#fs-head .fs-card [data-fs-answer="Postgres"]'), 700); // orders-db's question, answered in place
+    await until('!document.querySelector(\'#fs-head [data-fs-answer="Postgres"]\')', 5000); await hold(1800);
+    await scene('Its own question sits above the tabs', 'Fold it to one line to read the whole chat first. A new question always comes unfolded.');
+    await pickInSidebar('demo-deploy');
+    await point(q('#fs-ask-box .fs-ask'), 600); await hold(1600);
+    await click(q('#fs-ask-box [data-fs-ask-fold]'), 600); await hold(1900);
+    await click(q('#fs-ask-box [data-fs-ask-fold]'), 600); await hold(1200);
+    await scene("Always allow uses Claude Code's own choices", 'For example a rule for this project, or access to a folder.');
+    await settle(); await click(q('#ask-always'), 600);
+    await until("!!document.querySelector('#fs-ask-box [data-always-pick]')", 6000);
+    await point(q('#fs-ask-box .always-opts'), 600); await hold(2400);
+    await settle(); await click(q('#fs-ask-box [data-always-pick="0"]'), 600);
+    await wuntil(`document.querySelector('[data-farmer="${P.id}"]')?.className.includes('st-working')`, 6000); await hold(1500);
+  }
 
-  // ----- 7. plugins, MCP servers and permission rules -----
-  await chapter(7, 'Plugins, MCP servers and permission rules');
-  await say('The Claude Code dialog lists your plugins and skills', 'Each one shows how much context it uses in every session. You can turn it off, update it or remove it.');
-  await click(q('#setup-open'), 700);
-  await until("document.getElementById('setup').open", 3000); await raise();
-  await until("/shop-tools/.test(document.getElementById('setup-body').textContent)", 8000); await hold(3400);
-  await say('Reload applies plugin changes to running sessions', 'It runs /reload-plugins in every session that is listening.');
-  await click(q('#setup [data-reload-sessions]'), 600); await hold(2800);
-  await say('Check your MCP servers', "The list covers your own servers, claude.ai connectors and each plugin's servers. Sign in to one that needs it.");
-  await click(q('[data-setup-tab="mcp"]'), 600);
-  await until("/linear/.test(document.getElementById('setup-body').textContent)", 8000); await hold(3400);
-  await say('Permission rules', 'See what runs without asking and which settings file each rule is in. You can remove a rule.');
-  await click(q('[data-setup-tab="rules"]'), 600); await hold(3400);
-  await click(q('[data-setup-close]'), 500); await hold(400);
+  // ----- 5. messaging -----
+  if (want(5)) {
+    await chapter(5, 'Messaging');
+    await pickInSidebar('demo-checkout');
+    await scene('Message it like a chat', 'It arrives as your own prompt. Attach pictures and files, or a folder by its path.');
+    browser.chooserFiles = [join(DESIGN, 'checkout.png')];
+    await settle(); await click(q('#msg-attach'), 600);
+    await until("!!document.querySelector('#fs-compose .thumb')", 4000); await hold(700);
+    await click(q('#msg-folder'), 600);
+    await until("!!document.querySelector('#fs-compose .thumb-folder')", 4000); await hold(700);
+    await click(q('#msg-text'), 500);
+    await type('Here is the new design. Match the checkout page to it.');
+    await hold(300); await enter(); await hold(900);
+    await scene('A busy agent gets it when its turn ends', 'Until then it waits under the box, where you can remove it, edit it, or ⚡ send it now.');
+    await until("!!document.querySelector('#fs-compose li.held')", 5000);
+    await point(q('#fs-compose li.held'), 600); await hold(2600);
+    await settle(); await press(q('#fs-compose [data-held-now]'), 600);
+    await until("!document.querySelector('#fs-compose li.held')", 6000); await hold(2800); // it goes at once, and its reply follows
+    await scene('Ask a side question', "It answers from its conversation without stopping, and nothing is added to it: Claude Code's /btw.");
+    await click(q('[data-fs-mode="btw"]'), 600); await hold(500);
+    await click(q('#aside-text'), 500);
+    await type('Which tests cover the idempotency key?');
+    await hold(300); await enter();
+    await until("!!document.querySelector('#farm-agent .aside .aside-a.md')", 8000);
+    await point(q('#farm-agent .aside'), 600); await hold(2600);
+    await scene('Keep notes for later', 'Things you may want to tell it, or not. Put one in the box to edit, or send it as it is.');
+    await click(q('[data-fs-mode="note"]'), 600); await hold(400);
+    await click(q('#note-text'), 500);
+    await type('Ask about the refund flow once checkout ships.'); await hold(300);
+    await settle(); await click(q('#note-add'), 600);
+    await until("!!document.querySelector('li.note')", 4000); await hold(2200);
+    await click(q('[data-fs-mode="message"]'), 500); await hold(500);
+  }
 
-  // ----- 8. notifications -----
-  await chapter(8, 'Notifications');
-  await click(q('#view-farm'), 700);
-  await until("document.getElementById('main').dataset.view === 'farm'", 3000); await hold(800);
-  await say('The bell plays a sound when an agent needs you', 'You also get a desktop notification, and the tab title shows how many agents are waiting.');
-  await click(q('[data-farm-bell]'), 700); await hold(700);
-  paused.add('demo-flow'); // it stops to ask: it walks to the porch, and the bell rings
-  if (F.open) result(F, F.open);
-  F.open = null; F.openBash = null;
-  const FQ = { question: 'Keep the old checkout page as a fallback?', header: 'Fallback', multiSelect: false, options: [{ label: 'Yes' }, { label: 'No' }] };
-  const fq = use(F, 'AskUserQuestion', { questions: [FQ] });
-  offers[fq] = { kind: 'question', toolUseId: fq, sessionId: F.id, createdAt: Date.now(), questions: [FQ] };
-  writeFileSync(join(state, 'pending', `${fq}.json`), JSON.stringify(offers[fq]));
-  await hold(2600);
-  await point(spot(await farmer('demo-flow')), 900); await hold(2600);
-  await say(null);
-  await js(`window.__demo.card(${JSON.stringify('<div style="font-size:44px">There is a view inside Claude Code too</div><p>/tracker opens a pane that lists every agent. Each session also gets a status line and toasts.</p>')})`);
-  await hold(4600);
-  await js('window.__demo.card(null)');
-  await hold(600);
+  // ----- 6. broadcast -----
+  if (want(6)) {
+    await chapter(6, 'Broadcast');
+    await scene('📣 Broadcast one message to several agents', 'Tick the ones you want, or pick a group: all of them, those that need you, or those at work.');
+    await menu('[data-farm-nav="broadcast"]');
+    await until("document.getElementById('broadcast').open", 3000); await raise(); await hold(1500);
+    await settle(); await click(q('[data-bc-pick="working"]'), 600); await hold(1600);
+    await click(q('#bc-text'), 500);
+    await type('Pause before you deploy: the release freeze starts at five.', 34); await hold(500);
+    await scene('Each gets it as its own box would send it', 'An agent in the middle of a turn gets it when the turn ends, and the list says which.');
+    await settle(); await click(q('#bc-send'), 600);
+    await until("!!document.querySelector('#bc-results .msg-ok')", 6000);
+    await point(q('#bc-results'), 600); await hold(3200);
+    await click(q('[data-bc-close]'), 500); await hold(500);
+  }
 
-  // ----- 9. privacy -----
-  await chapter(9, 'Privacy');
-  await say('It all runs on your Mac', "The dashboard only listens on 127.0.0.1, and reading files or conversations needs the page's key.");
-  await moveTo([VW * 0.5, VH * 0.42], 900); await hold(4400);
+  // ----- 7. naming and steering -----
+  if (want(7)) {
+    await chapter(7, 'Naming and steering');
+    await pickInSidebar('demo-scratch');
+    await scene('Rename a session yourself', '✎ opens its name. Rename runs /rename in the session, as if you typed it there.');
+    await click(q('#fs-head .name-pen'), 600);
+    await until("!!document.getElementById('name-edit')", 2000); await hold(600);
+    await js("(e => { e.value = ''; e.dispatchEvent(new Event('input', { bubbles: true })); e.focus(); })(document.getElementById('name-edit'))");
+    await type('funnel-notes', 80); await hold(500);
+    await settle(); await click(q('[data-name-save]'), 600);
+    await until("document.querySelector('#fs-head .fs-name')?.textContent === 'funnel-notes'", 6000); await hold(1800);
+    await scene('Or let Haiku suggest one', "✨ asks a small Claude model, through the session's own Claude Code, for a short name from what it is working on.");
+    await pickInSidebar('demo-metrics');
+    await settle(); await click(q('#fs-head [data-name-suggest]'), 600);
+    await until("!!document.querySelector('#fs-head .name-offer [data-name-rename]')", 8000);
+    await point(q('#fs-head .name-offer'), 600); await hold(2200);
+    await settle(); await click(q('#fs-head .name-offer [data-name-rename]'), 600);
+    await until("/funnel/i.test(document.querySelector('#fs-head .fs-name')?.textContent ?? '')", 6000); await hold(1600);
+    await scene('Change its model or effort, or compact it', 'The dashboard runs /model, /effort or /compact inside the session.');
+    await pickInSidebar('demo-checkout');
+    await click(q('#fs-session'), 600);
+    await until("!!document.querySelector('#fs-effort')", 2500); await point(q('#fs-effort'), 600); await hold(900);
+    await setSelect('#fs-effort', 'high');
+    await until("document.getElementById('confirm').open", 3000); await raise(); await hold(1300);
+    await settle(); await click(q('#confirm-yes'), 600);
+    await until("!!document.querySelector('#fs-head .set-note')", 6000); await point(q('#fs-head .set-note'), 500); await hold(1400);
+    await click(q('#fs-session'), 600);
+    await until("!!document.querySelector('#fs-pop [data-compact]')", 2500); await click(q('#fs-pop [data-compact]'), 600);
+    await until("document.getElementById('confirm').open", 3000); await raise(); await hold(1200);
+    await settle(); await click(q('#confirm-yes'), 600); await hold(2400);
+    await scene('Stop it in the middle of a turn', '■ Stop ends the turn as Esc does in its terminal, and the session waits for you.');
+    await pickInSidebar('demo-cart');
+    await point(q('#fs-now .workline'), 600); await hold(900);
+    await settle(); await click(q('#fs-now [data-stop-turn]'), 600);
+    await wuntil(`!document.querySelector('[data-farmer="${W.id}"]')?.className.includes('st-working')`, 8000); await hold(2000);
+    await scene('Restart it in another mode, or on your other account', 'Restart in resumes it in plan, accept-edits or bypass mode, or moves it to another of your Claude accounts.');
+    await pickInSidebar('demo-checkout');
+    await click(q('#fs-session'), 600);
+    await until("!!document.querySelector('#fs-mode')", 2500); await point(q('#fs-mode'), 600); await hold(1200);
+    await setSelect('#fs-mode', 'account:work');
+    await until("document.getElementById('confirm').open", 3000); await raise(); await hold(2600);
+    await click(q('#confirm-no'), 500); await hold(500);
+  }
 
-  // ----- 10. closing -----
-  await say('Light, dark, or following macOS', 'The farm and the list show the same data.');
-  await pickFarmer('demo-checkout');
-  await click(q('[data-farm-nav="theme"]'), 600); await hold(300); await click(q('[data-farm-nav="theme"]'), 400); await hold(2800);
-  await click(q('[data-farm-nav="theme"]'), 500); await hold(1200);
-  await say(null);
-  await moveTo([VW - 40, VH - 40], 600);
-  await js(`window.__demo.card(${JSON.stringify(`${logo}<div>Agentville</div><small>github.com/hamsathul/agentville</small>`)})`);
-  await hold(4400);
+  // ----- 8. following the work -----
+  if (want(8)) {
+    await chapter(8, 'Following the work');
+    paused.add('demo-checkout'); // it keeps its test run going while the tour looks at it
+    if (!C.openBash) { if (C.open) result(C, C.open); begin(C, 'Bash', { command: 'npm test -- checkout', description: 'Run the checkout tests' }); }
+    await pickInSidebar('demo-checkout');
+    await scene('The Activity tab lists every step', 'How long each one took and whether it worked. Filter it to commands, edits, reads or failures.');
+    await sideTab('activity'); await hold(1500);
+    await click(q('[data-fs-steps="edit"]'), 500); await hold(1400);
+    await click(q('[data-fs-steps="cmd"]'), 500); await hold(1400);
+    await click(q('[data-fs-steps="all"]'), 500); await hold(600);
+    await scene('Each subagent gets a card', 'Its task, its current step and what it last said. Open it to follow along.');
+    await sideTab('subagents'); await hold(1200);
+    await click(`${byText('#farm-subagents .sub-card', 'Explore')}?.querySelector('[data-child]')`, 600);
+    await until("!!document.querySelector('#farm-subagents .sub-prompt')", 5000); await hold(3000);
+    await scene('Its commands, as they run', 'How long each one has run, and the CPU and memory it uses, counting everything it started.');
+    await sideTab('agent');
+    if ((await js("document.querySelector('#fs-now [data-fs-shells]')?.getAttribute('aria-expanded')")) === 'false') await click(q('#fs-now [data-fs-shells]'), 600);
+    await until("!!document.querySelector('#fs-now .shell-row')", 6000);
+    await point(q('#fs-now .shell-row'), 600); await hold(2400);
+    await scene("Output shows a background command's log", 'It keeps updating while the window is open.');
+    await click(q(`#fs-now [data-shell-output="${DEV.pid}"]`), 600);
+    await until("document.getElementById('shell-dlg').open", 3000); await raise();
+    const fast = setInterval(devLog, 700);
+    await hold(5000);
+    clearInterval(fast);
+    await click(q('[data-shell-close]'), 500); await hold(400);
+    await scene('Stop ends a command', 'After you confirm, it stops with everything it started, and the session sees it end.');
+    await settle(); await click(q(`#fs-now [data-shell-stop="${DEV.pid}"]`), 600);
+    await until("document.getElementById('confirm').open", 3000); await raise(); await hold(1400);
+    await settle(); await click(q('#confirm-yes'), 600);
+    await until(`!document.querySelector('#fs-now [data-shell-stop="${DEV.pid}"]')`, 6000); await hold(1800);
+    await scene('The diary is a log of the farm', 'Answers, messages, harvests and deploys, newest first.');
+    await click(q('#fs-diary'), 600); await hold(3000);
+    await click(q('#diary-back'), 500); await hold(500);
+    paused.delete('demo-checkout');
+  }
+
+  // ----- 9. opening files -----
+  if (want(9)) {
+    await chapter(9, 'Opening files');
+    await pickInSidebar('demo-checkout');
+    await scene("The Files tab shows the agent's folder", 'Its scratchpad and memory too. Git letters and dots mark the files it changed or read.');
+    await sideTab('files'); await hold(3000);
+    await scene('Files open in a window over the farm', 'Markdown is rendered and code has line numbers. If the agent changes the file, the window updates.');
+    await openTreeFile('docs/plan.md');
+    await until("!!document.getElementById('reader-body')?.textContent.includes('idempotent')", 6000); await hold(2400);
+    await scene('Quote part of a file in your reply', 'Select a passage and click Quote. The agent gets your reply with the quoted lines.');
+    await selectText('#reader-body', 'idempotent');
+    await hold(500);
+    await click(q('#reader-quote'), 600); await hold(500);
+    await type('Use the cart id as the key.');
+    await hold(400);
+    await click(q('#reader-send'), 600); await hold(2200);
+    await closeFile();
+    await sideTab('agent'); await heldNow('plan.md'); await hold(1200); // busy: sent now
+    await sideTab('files');
+    await scene('Pictures, PDFs and videos open as they are', "A picture fits the window, a PDF opens in the browser's viewer, and a video plays.");
+    await openTreeFile('design/checkout.png'); await hold(2800); await closeFile();
+    await openTreeFile('docs/release-2.4.pdf'); await hold(3200); await closeFile();
+    await openTreeFile('design/walkthrough.mp4');
+    await until("!!document.querySelector('#reader-body video')", 4000);
+    await js("document.querySelector('#reader-body video').play()"); await hold(3600); await closeFile();
+    await scene('Preview an HTML page', 'Preview shows the page with its own CSS and scripts, kept apart from the dashboard. Source shows its code.');
+    await openTreeFile('design/checkout/index.html'); await hold(2800);
+    await click(q('#file-dlg [data-reader-mode="source"]'), 600); await hold(2200);
+    await closeFile();
+    await scene('Word and Excel files', 'A Word document shows as a page or as text. A workbook shows as tables, with a tab for each sheet.');
+    await openTreeFile('docs/brief.docx'); await hold(2800); await closeFile();
+    await openTreeFile('docs/forecast.xlsx'); await hold(2000);
+    await click(q('#file-dlg [data-sheet="1"]'), 600); await hold(1900); await closeFile();
+    await scene('Ask it for a screenshot', 'When its reply names the file, a thumbnail shows under it. Click it to open the picture.');
+    await sideTab('agent');
+    if ((await js("document.querySelector('#fs-head .fs-queue-toggle')?.getAttribute('aria-expanded')")) === 'true') { await click(q('#fs-head .fs-queue-toggle'), 500); await hold(500); } // the cards folded away: room for its reply
+    await click(q('#msg-text'), 600);
+    await type('Take a screenshot of the checkout page and save it in your scratchpad.', 32);
+    await hold(300); await enter(); await hold(900);
+    await heldNow('screenshot'); // busy: sent now
+    await until("document.querySelector('#farm-agent .named-pic img')?.naturalWidth > 0", 10000);
+    await point(q('#farm-agent .named-pic'), 700); await hold(1500);
+    await click(q('#farm-agent .named-pic'), 500);
+    await until("document.getElementById('file-dlg').open", 3000); await raise(); await hold(3000);
+    await closeFile();
+  }
+
+  // ----- 10. the conversation -----
+  if (want(10)) {
+    await chapter(10, 'The conversation');
+    await pickInSidebar('demo-checkout');
+    await scene('Read the whole conversation', 'From its first message, with search: Enter jumps to the next match.');
+    await click(q('#fs-chat-bar [data-convo]'), 600);
+    await until("document.getElementById('convo').open", 4000); await raise(); await hold(1200);
+    await click(q('#convo-q'), 500);
+    await type('retry', 90);
+    await until("/ of /.test(document.getElementById('convo-count').textContent)", 4000); await hold(1600);
+    await enter(); await hold(1400); await enter(); await hold(1400);
+    await scene('Fork from any reply', 'A new session starts from that point of the conversation, in the mode, model, effort and account you choose.');
+    const theirs = "[...document.querySelectorAll('#convo .bub.agent')].find(b => b.textContent.includes('retry stops'))"; // the match it is on
+    await point(theirs, 700); await hold(500);
+    await click(`${theirs}?.querySelector('.bub-reply[data-fork]')`, 500);
+    await until("document.getElementById('fork-dlg').open", 3000); await raise(); await hold(2800);
+    await click(q('[data-fork-cancel]'), 500); await hold(400);
+    await scene('Or go back to before one of your messages', '↺ Restore rewinds the conversation, the code it changed since, or both, as /rewind does.');
+    const yours = "[...document.querySelectorAll('#convo .bub.you')].find(b => b.textContent.includes('behind a flag'))"; // its first prompt
+    await point(yours, 700); await hold(500);
+    await click(`${yours}?.querySelector('.bub-reply[data-restore]')`, 500);
+    await until("document.getElementById('restore-dlg').open", 3000); await raise(); await hold(2800);
+    await click(q('[data-restore-cancel]'), 500); await hold(400);
+    await click(q('[data-convo-close]'), 500); await hold(500);
+    await scene('💬 All chats: every conversation in one timeline', "Your messages, the agents' replies and what they say to each other, oldest first. Each agent's steps fold into one line.");
+    await menu('[data-farm-nav="chats"]');
+    await until("document.getElementById('chats').open", 4000); await raise(); await hold(1800);
+    await point(q('#chats-body'), 600); await js("document.getElementById('chats-body').scrollBy({ top: -360, behavior: 'smooth' })"); await hold(1500); // back a little, to read
+    await click(q('#chats-body .ch-run-btn'), 600); await hold(1800);
+    await scene('Pick whose messages to show', 'A chip for each agent, with how many of its messages are new. ⚠ Needs you shows the ones waiting on you, to answer them here.');
+    await click(q(`#chats-chips [data-chats-chip="${byId['demo-checkout'].id}"]`), 600); await hold(1800);
+    await click(q('#chats-chips [data-chats-needs]'), 600); await hold(2400);
+    await click(q('#chats-chips [data-chats-chip=""]'), 600); await hold(900);
+    await scene('Write to any of them from here', 'The box writes to the agent in To: the one whose message you clicked last. It is that agent\'s own box.');
+    await click(`[...document.querySelectorAll('#chats-body .bub[data-chats-agent="${byId['demo-orders'].id}"]')].at(-1)`, 600); await hold(700);
+    await point(q('#chats-to'), 600); await hold(2000);
+    await click(q('[data-chats-close]'), 500); await hold(500);
+  }
+
+  // ----- 11. the list view -----
+  if (want(11)) {
+    await chapter(11, 'The list view');
+    await menu('[data-farm-nav="list"]');
+    await until("document.getElementById('main').dataset.view === 'list'", 3000); await hold(700);
+    await scene('The list view shows the same agents', 'Sorted by what needs you; idle and stale sessions are folded away. Each carries its account.');
+    await point(q('#list .row'), 700); await hold(1000);
+    await point(q('#list .row .chip.acct'), 600); await hold(1300);
+    await click(q('#list .grp[data-group="idle"]'), 700); await hold(1600);
+    await click(q('#list .grp[data-group="idle"]'), 500); await hold(500);
+    await scene('The top bar shows your Mac and each account', "How much memory and CPU your agents use, and each Claude account's limits and when they reset.");
+    await point(q('#hstats'), 700); await hold(1200);
+    await point("[...document.querySelectorAll('#hstats .hstat')].at(-1)", 600); await hold(1600);
+    await point(q('#kpis .kpi'), 600); await hold(1200);
+    await scene('Collisions', 'Two agents writing to the same repo at the same time.');
+    await point(q('#kpis .kpi.k-collide'), 600); await hold(1100);
+    await point(q('#rail .card.collide'), 700); await hold(2400);
+    await scene('Each agent has a detailed panel', 'Its working line, tasks, model, effort, context and cost, with CPU and memory over time.');
+    await click(row('demo-checkout'), 600); await hold(600);
+    await point(q('#center-body .workline'), 600); await hold(1400);
+    await point(q('#center-body .metrics'), 600); await hold(1700);
+    await scene('The newest reply is framed as Latest', 'With your message just before it, when there is one. Reply quotes any message into the box.');
+    await point(q('#center-body .latest'), 700); await hold(3000);
+    await scene('The repos', 'Each one with its branch, uncommitted files, unpushed commits, last deploy and open pull requests.');
+    await point("[...document.querySelectorAll('#rail .card')].filter(c => !c.classList.contains('collide'))[0]", 700); await hold(1700);
+    await point("[...document.querySelectorAll('#rail .card')].filter(c => !c.classList.contains('collide'))[1]", 600); await hold(1700);
+  }
+
+  // ----- 12. sessions -----
+  if (want(12)) {
+    await chapter(12, 'Sessions');
+    if ((await js("document.getElementById('main').dataset.view")) !== 'list') { await click(q('#view-list'), 600); await until("document.getElementById('main').dataset.view === 'list'", 3000); }
+    await scene('Start a session in any folder', "Type a path and the folders in it are suggested. Tab completes the name, and Browse opens Finder's folder window.");
+    await click(q('#sessions-open'), 700);
+    await until("document.getElementById('sessions').open", 3000); await raise(); await hold(900);
+    await click(q('#sess-dir'), 600);
+    await type('~/code/sh', 90); await hold(1500);
+    await tabKey(); await hold(1900);
+    await point(q('#sess-dir-browse'), 600); await hold(1100);
+    await scene('The folder does not have to exist yet', 'Create it makes it after asking. New starts the session there, in the mode, model, effort and account you pick.');
+    await js("(() => { const f = document.getElementById('sess-dir'); f.value = ''; f.dispatchEvent(new Event('input', { bubbles: true })); f.focus(); })()");
+    await type('~/code/new-shop', 70); await hold(1200);
+    await click(q('#sess-dir-note [data-dir-make]'), 600);
+    await until("document.getElementById('confirm').open", 3000); await raise(); await hold(1400);
+    await click(q('#confirm-yes'), 600);
+    await until("!document.getElementById('sess-dir-new').disabled", 4000); await hold(800);
+    await point(q('#sess-account'), 600); await setSelect('#sess-account', 'work'); await hold(1400);
+    await click(q('#sess-dir-new'), 600); await hold(2400);
+    await scene('Search your past sessions', 'Filter them by folder, model, branch, account or whether they run, sort them, and resume one.');
+    await click(q('#sessions-open'), 700);
+    await until("document.getElementById('sessions').open && !!document.querySelector('#sessions [data-sess-resume]')", 5000); await raise(); await hold(900);
+    await click(q('#sess-filter'), 600);
+    await type('checkout', 80); await hold(1600);
+    await setSelect('#sess-f-model', 'opus'); await hold(1400);
+    await setSelect('#sess-sort', 'length'); await hold(1900);
+    await click(q('#sessions [data-sess-close]'), 600); await hold(400);
+  }
+
+  // ----- 13. Claude Code itself -----
+  if (want(13)) {
+    await chapter(13, 'Claude Code itself');
+    await scene('Your plugins and skills', 'Each one with the context it adds to every session. Turn it off, update it or remove it.');
+    await click(q('#setup-open'), 700);
+    await until("document.getElementById('setup').open", 3000); await raise();
+    await until("/shop-tools/.test(document.getElementById('setup-body').textContent)", 8000); await hold(3400);
+    await scene('Reload applies them to running sessions', 'It runs /reload-plugins in every session that is listening.');
+    await click(q('#setup [data-reload-sessions]'), 600); await hold(2800);
+    await scene('Check your MCP servers', "Yours, claude.ai's connectors and each plugin's, with Sign in where one needs it.");
+    await click(q('[data-setup-tab="mcp"]'), 600);
+    await until("/linear/.test(document.getElementById('setup-body').textContent)", 8000); await hold(3400);
+    await scene('Permission rules', 'What runs without asking, and the settings file each rule is in. Remove one in a click.');
+    await click(q('[data-setup-tab="rules"]'), 600); await hold(3400);
+    await click(q('[data-setup-close]'), 500); await hold(400);
+  }
+
+  // ----- 14. other worlds -----
+  if (want(14)) {
+    await chapter(14, 'Other worlds');
+    if ((await js("document.getElementById('main').dataset.view")) !== 'farm') { await click(q('#view-farm'), 700); await until("document.getElementById('main').dataset.view === 'farm'", 3000); }
+    await browser.untilIn('/world/', "document.querySelectorAll('.px-tag').length >= 8", 10000);
+    if ((await js("document.getElementById('main').dataset.side")) === 'open') { await click(q('#fs-hide'), 600); await until("document.getElementById('main').dataset.side !== 'open'", 2000); } // the world, the whole window
+    await hold(800);
+    await scene('Choose how the dashboard draws your agents', 'The farm is one world. The robot factory shows the same agents, and you can make your own.');
+    await menu('[data-farm-nav="worlds"]');
+    await until("document.getElementById('worlds-dlg')?.open", 3000); await raise(); await hold(2200);
+    await settle(); await click(q('#worlds-dlg .world-pick[data-world="factory"]'), 700);
+    await until("/\\/world\\/factory\\/$/.test(document.querySelector('#farm .world-frame')?.src ?? '')", 6000);
+    await browser.untilIn('/world/factory/', "document.querySelectorAll('.px-tag').length >= 8", 15000); await hold(1500);
+    await scene('The robot factory', 'Every agent a robot, every repo an assembly bay where a robot is built as its context fills. Drones are subagents and web calls.');
+    await moveTo([Math.round(VW * 0.5), Math.round(VH * 0.45)], 900); await hold(2600);
+    await moveTo([Math.round(VW * 0.7), Math.round(VH * 0.32)], 900); await hold(2400);
+    await scene('Carts, tubes and the heat of the floor', 'A cart drives to the robot calling an MCP server, messages shoot through tubes, and the floor warms with your 5-hour limit.');
+    result(O, O.open); begin(O, 'mcp__claude_ai_Linear__list_issues', { team: 'Infra' });
+    use(byId['demo-flow'], 'SendMessage', { to: 'checkout-api', summary: 'One-page checkout is ready', message: 'The one-page checkout prototype builds. Shall I open a pull request?' });
+    if (await wuntil(`!!${byText('.px-mover', 'Linear')}`, 6000)) for (let i = 0; i < 5; i++) await point(w(byText('.px-mover', 'Linear')), 850);
+    await hold(2400);
+    await scene('A robot dog, a robot vacuum and a cat live here', 'Just for fun, like the animals on the farm.');
+    for (const k of ['robodog', 'vacuum', 'cat']) { const a = await animal(k); if (a) { await point(spot(await farmAt(a.x, a.y - 4)), 700); await hold(1500); } }
+    await scene('Or make a world of your own', 'npm run new-world starts one, with a guide written for Claude Code. Yours runs sandboxed, and sees no words until you let it.');
+    await menu('[data-farm-nav="worlds"]');
+    await until("document.getElementById('worlds-dlg')?.open", 3000); await raise(); await hold(800);
+    await point(q('#worlds-folder'), 600); await hold(2600);
+    await settle(); await click(q('#worlds-dlg .world-pick[data-world="farm"]'), 700);
+    await until("/\\/world\\/farm\\/$/.test(document.querySelector('#farm .world-frame')?.src ?? '')", 6000);
+    await browser.untilIn('/world/farm/', "document.querySelectorAll('.px-tag').length >= 8", 15000); await hold(1200);
+  }
+
+  // ----- 15. notifications, privacy and the theme -----
+  if (want(15)) {
+    await chapter(15, 'Notifications, privacy and the theme');
+    await scene('The bell rings when an agent needs you', 'A chime, a desktop notification, and a count in the tab title.');
+    await menu('[data-farm-bell]'); await shutMenu(); await hold(600);
+    paused.add('demo-flow'); // it stops to ask: it walks to the porch, and the bell rings
+    if (F.open) result(F, F.open);
+    F.open = null; F.openBash = null;
+    const FQ = { question: 'Keep the old checkout page as a fallback?', header: 'Fallback', multiSelect: false, options: [{ label: 'Yes' }, { label: 'No' }] };
+    const fq = use(F, 'AskUserQuestion', { questions: [FQ] });
+    offers[fq] = { kind: 'question', toolUseId: fq, sessionId: F.id, createdAt: Date.now(), questions: [FQ] };
+    writeFileSync(join(state, 'pending', `${fq}.json`), JSON.stringify(offers[fq]));
+    await hold(2600);
+    await point(spot(await farmer('demo-flow')), 900); await hold(2600);
+    await scene('There is a view inside Claude Code too', '/tracker opens a pane listing every agent, and each session gets a status line and toasts.');
+    await moveTo([Math.round(VW * 0.5), Math.round(VH * 0.45)], 900); await hold(4200);
+    await scene('It all runs on your Mac', "The dashboard listens only on 127.0.0.1, and reading files or conversations needs the page's key.");
+    await moveTo([Math.round(VW * 0.42), Math.round(VH * 0.55)], 1400); await hold(3800);
+    await scene('Light, dark, or as macOS is', 'From the Menu. The farm and the list show the same data.');
+    await pickFarmer('demo-checkout');
+    await menu('[data-farm-nav="theme"]'); await hold(2200);
+    await click(w(q('[data-farm-nav="theme"]')), 400); await hold(1700);
+    await click(w(q('[data-farm-nav="theme"]')), 400); await hold(900);
+    await shutMenu();
+    await scene('Agentville', 'github.com/hamsathul/agentville');
+    await moveTo([VW - 40, VH - 40], 700); await hold(3800);
+  }
+  await snapScene();
   await send('Page.stopScreencast');
   await sleep(300);
 } catch (err) {
@@ -842,7 +1141,7 @@ try {
   await handle.stop();
 }
 
-/* ---------- frames to video ---------- */
+/* ---------- frames to video, and the captions beside it ---------- */
 
 if (process.env.STILLS_ONLY) { // only the stills were asked for
   rmSync(temp, { recursive: true, force: true });
@@ -852,7 +1151,13 @@ if (process.env.STILLS_ONLY) { // only the stills were asked for
 }
 
 if (shot.length < 10) { console.error(`only ${shot.length} frames: nothing to make`); process.exit(1); }
-const { small, chapters } = makeVideos({ shot, marks, out: OUT, temp });
+const { small, chapters, start, end } = makeVideos({ shot, marks, out: OUT, temp });
+const captionsFile = `${OUT.replace(/\.mp4$/i, '')}-captions.md`;
+writeFileSync(captionsFile, captionsMd({
+  video: basename(OUT), length: end - start,
+  chapters: marks.map(([n, title, wall]) => ({ n, title, at: wall - start })),
+  captions: timeline(ui?.said ?? [], marks.map(([, , wall]) => ({ wall })), start, end),
+}));
 rmSync(temp, { recursive: true, force: true });
 rmSync(DEMO, { recursive: true, force: true });
-log(`made ${OUT}, ${small}, and a video for each chapter in ${chapters}`);
+log(`made ${OUT}, ${small}, a video for each chapter in ${chapters}, and the captions in ${captionsFile}`);

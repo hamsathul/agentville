@@ -2,123 +2,174 @@
 
 What the demo videos show and say, scene by scene. There are two: the tour of every feature
 (`npm run demo`), and a short one with sixteen sessions at once (`npm run demo:many`, at the end).
-The sessions, repos and files in them are made up. Each video has its own demo `~/.claude`, under
-`/Users/Shared/agentville-demo` and `/Users/Shared/agentville-many`, not on a real Mac.
+The sessions, repos and files in them are made up. Each video has its own demo home, under
+`/Users/Shared/agentville-demo` and `/Users/Shared/agentville-many`, not on a real Mac. The tour's
+home has two Claude accounts, `~/.claude` (personal) and `~/.claude-work` (work, where the infra
+sessions run), and the ✨ Helper on, with its Haiku stood in for.
 
-Each scene lists what is on screen and its caption, which is a title with one line under it. The
-video runs about 7½ minutes over ten chapters, and each chapter starts with a 2-second title card.
-Chapters 1 to 9 are also saved as short videos of their own, each starting at its title card. The
-opening is at the start of chapter 1's video and the closing at the end of chapter 9's. A smaller
-copy of the whole video, 1280 wide and under 10 MB, can be uploaded to GitHub.
+The tour shows no text on screen: only the dashboard, the cursor and its click ripples. What each
+scene says (a caption, and a line under it) goes in a file beside the video, `<video>-captions.md`,
+with its time in the whole video and in its chapter's own clip, for a voice-over or subtitles. The
+tour runs about 12 minutes over fifteen chapters. Each chapter is also saved as a short video of its
+own; the opening is at the start of chapter 1's.
 
-## 0. Opening (10 s)
-
-| # | On screen | Caption | Under it |
-|---|---|---|---|
-| 0.1 | The farm, full window, sessions busy | Agentville | A local dashboard for the Claude Code and Codex sessions running on your Mac. |
-
-## 1. The farm (75 s)
+## Opening (6 s)
 
 | # | On screen | Caption | Under it |
 |---|---|---|---|
-| 1.1 | Slow pan across the farm | Each agent is a farmer, and each repo is a field | Subagents, background jobs and Codex sessions show up here too. |
-| 1.2 | Cursor on the panel, top left | The panel in the corner | It counts agents by state and shows their memory and CPU, along with your plan's 5-hour and weekly limits. |
-| 1.3 | Zoom to the porch: a red !, a scroll, a basket | Agents that need you wait on the porch | A red ! is a question or a permission. A scroll is a plan to approve, and a basket means the agent finished and it's your turn. |
-| 1.4 | A field: a farmer with a hoe, its board | The farmer's tool shows what the agent is doing | A hoe means it is editing and a magnifier means it is running tests. The board next to it is the task list. |
-| 1.5 | Crops at different heights | Crops grow as the context fills up | When the session is compacted, the field is harvested and planted again. |
-| 1.6 | Rainbow on one field, rain on another, a windmill | The weather shows the last deploy | It rains on a field whose last deploy failed. A passed deploy gets a rainbow, and a windmill turns while one is running. |
-| 1.7 | The silo, its red tag | The silo shows your weekly usage | The grain rises as you use up the plan's weekly limit. Its tag turns amber at 70% and red at 90%. |
-| 1.8 | A pigeon flies between two farmers | A pigeon means one agent wrote to another | The message also appears in both conversations. |
-| 1.9 | A cart leaves the row by the road and drives to a farmer | Each MCP server has its own cart | When an agent calls the server, its cart drives to that farmer and waits there until the call ends. |
-| 1.10 | A cart heading to town, a pump, a hammock | Web fetches and searches send a cart to town | A pump stands for a background job. A farmer in a hammock is a session that will wake itself up with /loop. |
-| 1.11 | The market stall, the notice board, the henhouse | Click a building to see more | The stall lists pull requests and the notice board shows CLAUDE.md and memory. Subagents are in the henhouse. |
-| 1.12 | The sky turns to night, with lit windows and fireflies | The sky follows your clock | You can zoom, drag the view around and use the minimap. Help explains every symbol. |
+| 0.1 | The farm, full window, sessions busy | Agentville | A local dashboard for every Claude Code and Codex session on your Mac. Here it is a farm: each agent is a farmer. |
 
-## 2. Answering and messaging from the farm (75 s)
+## 1. The farm (90 s)
 
 | # | On screen | Caption | Under it |
 |---|---|---|---|
-| 2.1 | Click a farmer: the sidebar opens | Clicking a farmer opens its sidebar | It has the current step, the working line, the model and effort, a message box and the conversation. |
-| 2.2 | Follow on: the view keeps it in the middle | Follow keeps the farmer in view | The view zooms in and moves along as it walks. |
-| 2.3 | Answer a question with its options | Answer its question here | The options are the same as in the terminal, and the session carries on as if you had answered there. |
-| 2.4 | A permission card, then Allow | Allow or deny a command | This only comes up in modes that ask you. In bypass or auto mode the call goes ahead without waiting. |
-| 2.5 | Always allow, with Claude Code's own choices | Always allow uses Claude Code's own choices | For example, a rule for this project or access to a folder. |
-| 2.6 | Type a message, attach a screenshot and a folder | Send it a message | It arrives as your own prompt, even in the middle of a task. Attach files, or attach a folder by its path. |
-| 2.7 | Ask a side question; the answer appears | Side questions use /btw | The session answers from its conversation without stopping, and the question is not added to the conversation. |
-| 2.8 | Switch effort, then model, then Compact | Change its model or effort, or compact it | The dashboard runs /model, /effort or /compact inside the session. |
+| 1.1 | The cursor drifts over the farm | Each agent is a farmer, and each repo is a field | Subagents, background jobs and Codex sessions show up here too. |
+| 1.2 | The panel, top left: the counts, then the gauges of both accounts | The panel in the corner | It counts agents by what they need, shows their memory and CPU, and each Claude account's 5-hour and weekly limits. |
+| 1.3 | The porch: deploy-bot's !, cache-plan's scroll, release-notes' basket | Agents that need you wait on the porch | A red ! is a question or a permission, a scroll is a plan to approve, and a basket means it has finished: it's your turn. |
+| 1.4 | cart-ui with a hoe, checkout-api with a magnifier and its task board | The farmer's tool shows what the agent is doing | A hoe means it is editing and a magnifier means it is running tests. The board beside it is its task list. |
+| 1.5 | metrics' field is harvested as its session is compacted | Crops grow as the context fills | When the session is compacted, its field is harvested and planted again. |
+| 1.6 | Rain on mobile, a rainbow on docs, a windmill on analytics | The weather shows the last deploy | Rain on a field whose deploy failed, a rainbow on one that passed, and a windmill while one runs. |
+| 1.7 | The two silos, personal (amber, 76%) and work (42%) | A silo for each Claude account | Its grain is the account's weekly usage. The tag at its foot turns amber at 70% and red at 90%. |
+| 1.8 | Zoomed in: a pigeon flies from cart-ui to checkout-api | A pigeon means one agent wrote to another | The message also shows in both conversations. |
+| 1.9 | The Linear cart leaves the lane's end and drives to infra-ops | Each MCP server has its own cart | When an agent calls the server, its cart drives to that farmer and waits there until the call ends. |
+| 1.10 | The docs.github.com cart, a pump, a hammock | Web fetches and searches send a cart to town | A pump is a background job. A farmer in a hammock is a session that will wake itself up with /loop. |
+| 1.11 | The stall's, the notice board's and the henhouse's dialogs | Click a building to see more | The stall lists pull requests, the notice board shows CLAUDE.md and memory, and the henhouse the subagents. |
 
-## 3. Following the work (60 s)
-
-| # | On screen | Caption | Under it |
-|---|---|---|---|
-| 3.1 | The Activity tab | The Activity tab lists every step | Each step shows how long it took and whether it worked. |
-| 3.2 | The Subagents tab, one card opened | Each subagent gets a card | The card shows its task, its current step and what it last said. Open it to follow along, or read its transcript. |
-| 3.3 | Commands running: a dev server and a test run | Commands running lists its shell commands | For each one you see how long it has run and the CPU and memory it uses, counting anything it started. |
-| 3.4 | The dev server's output, growing | Output shows a background command's log | It keeps updating while the window is open. |
-| 3.5 | Stop, confirm, and the command is gone | Stop ends a command | After you confirm, the command stops along with anything it started, and the session sees it end. |
-| 3.6 | The Diary tab | The Diary tab is a log of the farm | Answers, messages, harvests and deploys are all recorded there. |
-
-## 4. Opening files (75 s)
+## 2. Day, night and seasons (45 s)
 
 | # | On screen | Caption | Under it |
 |---|---|---|---|
-| 4.1 | The Files tab: its folder, scratchpad and memory | The Files tab shows the agent's folder | The scratchpad and memory are there too. Git status letters and dots mark the files the agent changed or read. |
-| 4.2 | A plan opens in a window over the farm | Files open in a window over the farm | Markdown is rendered and code has line numbers. If the agent changes the file, the window updates. |
-| 4.3 | Select a passage, Quote, reply | Quote part of a file in your reply | Select a passage and click Quote. The agent gets your reply along with the quoted lines. |
-| 4.4 | A picture, then a PDF, then a video playing | Pictures, PDFs and videos open as they are | A picture is fitted to the window and a PDF opens in the browser's viewer. Videos play with seeking. |
-| 4.5 | An HTML page: Preview, then Source | Preview an HTML page | Preview shows the page with its own CSS and scripts, kept apart from the dashboard. Source shows the code. |
-| 4.6 | A Word document, then a spreadsheet with sheet tabs | Word and Excel files | A Word document shows as a page or as plain text. A workbook shows as tables with a tab for each sheet. |
-| 4.7 | Ask for a screenshot; a thumbnail appears under the reply; click it | Ask it for a screenshot | When the reply names the file, a thumbnail appears under it. Click the thumbnail to open the picture. |
+| 2.1 | The Menu opens, top right | Everything else is in the Menu | The dashboard's buttons, the farm's switches and zoom, in one place at the top right. |
+| 2.2 | Sky: night. The glass and lamps light up | The sky follows your clock | Or hold it at day or night: windows and lamps light up, and fireflies come out. |
+| 2.3 | Season: spring, summer, autumn, winter, then live | The season follows your 5-hour limit | Spring while it is fresh, winter when it is nearly used up. Or hold a season with the Season switch. |
+| 2.4 | Zoom in, drag, the minimap, back to 100%, Help | Zoom in and look around | Drag the view, and use the minimap while you are zoomed in. Help explains every symbol on the farm. |
 
-## 5. The list view (75 s)
+## 3. The animals (48 s)
 
 | # | On screen | Caption | Under it |
 |---|---|---|---|
-| 5.1 | Switch to the list | The list view shows the same agents | They are sorted by what needs you, and idle and stale sessions are folded away. |
-| 5.2 | The top bar and the count cards | The top bar shows your Mac and your plan | How much memory and CPU your agents use, your plan's limits, and when each limit resets. |
-| 5.3 | A collision card | Collisions | A collision means two agents are writing to the same repo at the same time. |
-| 5.4 | One agent's panel | Each agent has a detailed panel | It has the working line, tasks, model, effort, context and cost, with CPU and memory over time. |
-| 5.5 | The conversation, with the Latest frame | The newest reply is framed as Latest | If your message is just below it, that is framed too. Reply quotes any message into the box. |
-| 5.6 | Read all, then a search for "retry" | Read all opens the whole conversation | Search highlights every match, and Enter jumps to the next one. |
-| 5.7 | The Repos panel | The Repos panel lists every repo | You see its branch, uncommitted files, unpushed commits, last deploy and open pull requests. |
+| 3.1 | The cursor visits a cow, a goat, the sheepdog, the ostrich, the lion | Animals live on the farm, just for fun | Cows, goats, a sheepdog, an ostrich, a lion, a tiger, and a duck family on the pond. They never stand for anything. |
+| 3.2 | A cow's menu: Pet. A farmer walks over; the cow says so | Click one to pet or feed it | A farmer with nothing to do walks over and does it. |
+| 3.3 | The pond's menu: bread for the ducks | The ducks on the pond | Click the pond to feed them bread, or quack back. |
+| 3.4 | The animals say Haiku's fresh lines in their bubbles | With ✨ Helper's Animal lines on, Haiku writes what they say | Fresh lines about what is happening on the farm, never naming anyone, written through one of your own sessions. |
 
-## 6. Starting, restarting and ending sessions (60 s)
+## 4. The sidebar (44 s)
 
 | # | On screen | Caption | Under it |
 |---|---|---|---|
-| 6.1 | The session bar: mode, Restart in, End session | Restart it in another mode, or end it | Restart in resumes it in plan, accept-edits or bypass mode. End session asks before it stops anything. |
-| 6.2 | New session: type `~/code/new-shop`, suggestions, Tab | A new session can start in any folder | Type a path and the folders in it are suggested. Tab completes the name, and Browse opens Finder's folder window. |
-| 6.3 | Create it, confirm, then New | The folder does not have to exist yet | Create it makes the folder after asking. New then starts the session there with the mode, model and effort you picked. |
-| 6.4 | Past sessions: search, filter by model, sort by length | Search your past sessions | Filter them by folder, model, branch or whether they are running, sort them, and resume one. |
+| 4.1 | Click checkout-api: the sidebar opens beside the farm | Click a farmer to open its sidebar | What it is doing now, its chat with you, and one box to write in. |
+| 4.2 | The list of every agent, a search, then ‹ › | Pick any agent from the list | Those that need you come first. Type to find one, and ‹ › step through them in that order. |
+| 4.3 | On checkout-api, orders-db's card: Postgres | Answer the others without leaving this one | A card for each agent waiting on you: allow a command, pick an option or say Yes, right here. |
+| 4.4 | deploy-bot's permission above the tabs, folded to one line, unfolded | Its own question sits above the tabs | Fold it to one line to read the whole chat first. A new question always comes unfolded. |
+| 4.5 | Always allow…: Claude Code's options; the first is picked | Always allow uses Claude Code's own choices | For example a rule for this project, or access to a folder. |
 
-## 7. Plugins, MCP servers and permission rules (45 s)
-
-| # | On screen | Caption | Under it |
-|---|---|---|---|
-| 7.1 | The Claude Code dialog: Plugins | The Claude Code dialog lists your plugins and skills | Each one shows how much context it uses in every session. You can turn it off, update it or remove it. |
-| 7.2 | Reload sessions | Reload applies plugin changes to running sessions | It runs /reload-plugins in every session that is listening. |
-| 7.3 | MCP servers: Check again | Check your MCP servers | The list covers your own servers, claude.ai connectors and each plugin's servers. Sign in to one that needs it. |
-| 7.4 | Permission rules | Permission rules | See what runs without asking and which settings file each rule is in. You can remove a rule. |
-
-## 8. Notifications (20 s)
+## 5. Messaging (42 s)
 
 | # | On screen | Caption | Under it |
 |---|---|---|---|
-| 8.1 | The bell rings; the tab title shows (1) | The bell plays a sound when an agent needs you | You also get a desktop notification, and the tab title shows how many agents are waiting. |
-| 8.2 | A still picture of the Claude Code pane and status line | There is a view inside Claude Code too | /tracker opens a pane that lists every agent. Each session also gets a status line and toasts. |
+| 5.1 | A picture and a folder attached, a message typed and sent | Message it like a chat | It arrives as your own prompt. Attach pictures and files, or a folder by its path. |
+| 5.2 | It waits under the box; ⚡ Send now, and its reply follows | A busy agent gets it when its turn ends | Until then it waits under the box, where you can remove it, edit it, or ⚡ send it now. |
+| 5.3 | Side question: asked, answered | Ask a side question | It answers from its conversation without stopping, and nothing is added to it: Claude Code's /btw. |
+| 5.4 | Note: a note added | Keep notes for later | Things you may want to tell it, or not. Put one in the box to edit, or send it as it is. |
 
-## 9. Privacy (15 s)
-
-| # | On screen | Caption | Under it |
-|---|---|---|---|
-| 9.1 | The farm, quiet | It all runs on your Mac | The dashboard only listens on 127.0.0.1, and reading files or conversations needs the page's key. |
-
-## 10. Closing (10 s)
+## 6. Broadcast (18 s)
 
 | # | On screen | Caption | Under it |
 |---|---|---|---|
-| 10.1 | Light theme, then back to the farm | Light, dark, or following macOS | The farm and the list show the same data. |
-| 10.2 | Title card | Agentville | github.com/hamsathul/agentville |
+| 6.1 | Menu → Broadcast: the agents at work picked, a message typed | 📣 Broadcast one message to several agents | Tick the ones you want, or pick a group: all of them, those that need you, or those at work. |
+| 6.2 | Sent: a line for each, sent or waiting for its turn to end | Each gets it as its own box would send it | An agent in the middle of a turn gets it when the turn ends, and the list says which. |
+
+## 7. Naming and steering (73 s)
+
+| # | On screen | Caption | Under it |
+|---|---|---|---|
+| 7.1 | scratch: ✎, a new name typed, Rename | Rename a session yourself | ✎ opens its name. Rename runs /rename in the session, as if you typed it there. |
+| 7.2 | metrics: ✨, Haiku's offer, ✓ Rename | Or let Haiku suggest one | ✨ asks a small Claude model, through the session's own Claude Code, for a short name from what it is working on. |
+| 7.3 | Session: effort high, confirmed; Compact | Change its model or effort, or compact it | The dashboard runs /model, /effort or /compact inside the session. |
+| 7.4 | cart-ui: ■ Stop, and it waits | Stop it in the middle of a turn | ■ Stop ends the turn as Esc does in its terminal, and the session waits for you. |
+| 7.5 | Session: Restart in…, the work account; asked, not done | Restart it in another mode, or on your other account | Restart in resumes it in plan, accept-edits or bypass mode, or moves it to another of your Claude accounts. |
+
+## 8. Following the work (42 s)
+
+| # | On screen | Caption | Under it |
+|---|---|---|---|
+| 8.1 | The Activity tab, filtered to edits, then commands | The Activity tab lists every step | How long each one took and whether it worked. Filter it to commands, edits, reads or failures. |
+| 8.2 | The Subagents tab, the Explore card opened | Each subagent gets a card | Its task, its current step and what it last said. Open it to follow along. |
+| 8.3 | Under Now, the commands running: a dev server and a test run | Its commands, as they run | How long each one has run, and the CPU and memory it uses, counting everything it started. |
+| 8.4 | The dev server's output, growing | Output shows a background command's log | It keeps updating while the window is open. |
+| 8.5 | Stop, confirmed: the dev server is gone | Stop ends a command | After you confirm, it stops with everything it started, and the session sees it end. |
+| 8.6 | The diary, then back | The diary is a log of the farm | Answers, messages, harvests and deploys, newest first. |
+
+## 9. Opening files (83 s)
+
+| # | On screen | Caption | Under it |
+|---|---|---|---|
+| 9.1 | The Files tab: its folder, scratchpad and memory | The Files tab shows the agent's folder | Its scratchpad and memory too. Git letters and dots mark the files it changed or read. |
+| 9.2 | The plan opens in a window over the farm | Files open in a window over the farm | Markdown is rendered and code has line numbers. If the agent changes the file, the window updates. |
+| 9.3 | A passage selected, Quote, a reply; it waits, ⚡ sent now | Quote part of a file in your reply | Select a passage and click Quote. The agent gets your reply with the quoted lines. |
+| 9.4 | A picture, the release notes PDF, a video playing | Pictures, PDFs and videos open as they are | A picture fits the window, a PDF opens in the browser's viewer, and a video plays. |
+| 9.5 | The checkout page: Preview, then Source | Preview an HTML page | Preview shows the page with its own CSS and scripts, kept apart from the dashboard. Source shows its code. |
+| 9.6 | The brief (Word), then the forecast (Excel) and its second sheet | Word and Excel files | A Word document shows as a page or as text. A workbook shows as tables, with a tab for each sheet. |
+| 9.7 | The cards folded away; asked for a screenshot, ⚡ sent now; the thumbnail under its reply opens | Ask it for a screenshot | When its reply names the file, a thumbnail shows under it. Click it to open the picture. |
+
+## 10. The conversation (48 s)
+
+| # | On screen | Caption | Under it |
+|---|---|---|---|
+| 10.1 | ⤢ Read the whole conversation; a search for "retry" | Read the whole conversation | From its first message, with search: Enter jumps to the next match. |
+| 10.2 | In the conversation, ⑂ Fork on the reply it found: its dialog | Fork from any reply | A new session starts from that point of the conversation, in the mode, model, effort and account you choose. |
+| 10.3 | ↺ Restore on its first prompt: its dialog; the conversation closed | Or go back to before one of your messages | ↺ Restore rewinds the conversation, the code it changed since, or both, as /rewind does. |
+| 10.4 | Menu → Chats: every agent's messages and folded steps; back a little; a folded run opened | 💬 All chats: every conversation in one timeline | Your messages, the agents' replies and what they say to each other, oldest first. Each agent's steps fold into one line. |
+| 10.5 | checkout-api's chip, then ⚠ Needs you (their cards), then All | Pick whose messages to show | A chip for each agent, with how many of its messages are new. ⚠ Needs you shows the ones waiting on you, to answer them here. |
+| 10.6 | orders-db's message clicked: To is orders-db; closed | Write to any of them from here | The box writes to the agent in To: the one whose message you clicked last. It is that agent's own box. |
+
+## 11. The list view (40 s)
+
+| # | On screen | Caption | Under it |
+|---|---|---|---|
+| 11.1 | Menu → List: the rows, an account tag, the idle group | The list view shows the same agents | Sorted by what needs you; idle and stale sessions are folded away. Each carries its account. |
+| 11.2 | The top bar: the Mac, then each account's plan | The top bar shows your Mac and each account | How much memory and CPU your agents use, and each Claude account's limits and when they reset. |
+| 11.3 | The collisions count and card | Collisions | Two agents writing to the same repo at the same time. |
+| 11.4 | checkout-api's panel | Each agent has a detailed panel | Its working line, tasks, model, effort, context and cost, with CPU and memory over time. |
+| 11.5 | The Latest frame in its conversation | The newest reply is framed as Latest | With your message just before it, when there is one. Reply quotes any message into the box. |
+| 11.6 | The repo cards | The repos | Each one with its branch, uncommitted files, unpushed commits, last deploy and open pull requests. |
+
+## 12. Sessions (37 s)
+
+| # | On screen | Caption | Under it |
+|---|---|---|---|
+| 12.1 | ＋ Session: `~/code/sh`, its folders suggested, Tab | Start a session in any folder | Type a path and the folders in it are suggested. Tab completes the name, and Browse opens Finder's folder window. |
+| 12.2 | `~/code/new-shop`: Create it, confirmed; the work account; New | The folder does not have to exist yet | Create it makes it after asking. New starts the session there, in the mode, model, effort and account you pick. |
+| 12.3 | Past sessions: a search, filtered by model, sorted by length | Search your past sessions | Filter them by folder, model, branch, account or whether they run, sort them, and resume one. |
+
+## 13. Claude Code itself (19 s)
+
+| # | On screen | Caption | Under it |
+|---|---|---|---|
+| 13.1 | The Claude Code dialog: Plugins | Your plugins and skills | Each one with the context it adds to every session. Turn it off, update it or remove it. |
+| 13.2 | Reload sessions | Reload applies them to running sessions | It runs /reload-plugins in every session that is listening. |
+| 13.3 | MCP servers | Check your MCP servers | Yours, claude.ai's connectors and each plugin's, with Sign in where one needs it. |
+| 13.4 | Permission rules | Permission rules | What runs without asking, and the settings file each rule is in. Remove one in a click. |
+
+## 14. Other worlds (43 s)
+
+| # | On screen | Caption | Under it |
+|---|---|---|---|
+| 14.1 | Menu → World: the list of worlds; the robot factory | Choose how the dashboard draws your agents | The farm is one world. The robot factory shows the same agents, and you can make your own. |
+| 14.2 | The factory: robots in their bays, drones | The robot factory | Every agent a robot, every repo an assembly bay where a robot is built as its context fills. Drones are subagents and web calls. |
+| 14.3 | The Linear cart drives to a robot; a capsule in a tube | Carts, tubes and the heat of the floor | A cart drives to the robot calling an MCP server, messages shoot through tubes, and the floor warms with your 5-hour limit. |
+| 14.4 | The robot dog, the robot vacuum, the cat | A robot dog, a robot vacuum and a cat live here | Just for fun, like the animals on the farm. |
+| 14.5 | The list of worlds again: your folder; back to the farm | Or make a world of your own | npm run new-world starts one, with a guide written for Claude Code. Yours runs sandboxed, and sees no words until you let it. |
+
+## 15. Notifications, privacy and the theme (40 s)
+
+| # | On screen | Caption | Under it |
+|---|---|---|---|
+| 15.1 | Menu → Bell; checkout-flow stops to ask, and walks to the porch | The bell rings when an agent needs you | A chime, a desktop notification, and a count in the tab title. |
+| 15.2 | The farm | There is a view inside Claude Code too | /tracker opens a pane listing every agent, and each session gets a status line and toasts. |
+| 15.3 | The farm, quiet | It all runs on your Mac | The dashboard listens only on 127.0.0.1, and reading files or conversations needs the page's key. |
+| 15.4 | The sidebar on checkout-api; the theme: light, auto, dark | Light, dark, or as macOS is | From the Menu. The farm and the list show the same data. |
+| 15.5 | The farm, the cursor to the corner | Agentville | github.com/hamsathul/agentville |
 
 # Many sessions at once
 

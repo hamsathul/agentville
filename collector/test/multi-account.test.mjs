@@ -8,6 +8,7 @@ import { startCollector } from '../collector.mjs';
 
 const ID = { nco: '11111111-1111-4111-8111-111111111111', zeta: '22222222-2222-4222-8222-222222222222', old: '33333333-3333-4333-8333-333333333333', bg: '44444444-4444-4444-8444-444444444444' };
 const iso = ms => new Date(ms).toISOString();
+const literal = text => text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 const say = (cwd, text, ms, extra = {}) => JSON.stringify({ type: 'user', timestamp: iso(ms), cwd, message: { role: 'user', content: text }, ...extra });
 const answer = (cwd, text, ms, extra = {}) => JSON.stringify({ type: 'assistant', timestamp: iso(ms), cwd, message: { model: 'claude-opus-5-5', role: 'assistant', content: [{ type: 'text', text }] }, ...extra });
 
@@ -43,8 +44,10 @@ function twoAccounts({ shared = true } = {}) {
  * `agents --json` lists a background session two days old (stale); `auth status` says signed in.
  */
 function fakeClaude(f) {
-  const bin = join(f.top, 'claude-cli'), log = join(f.top, 'claude-cli.log');
+  const log = join(f.top, 'claude-cli.log');
+  const bin = join(f.top, process.platform === 'win32' ? 'claude-cli.cmd' : 'claude-cli');
   const bg = JSON.stringify([{ id: 'bg1', sessionId: ID.bg, cwd: f.work, kind: 'background', startedAt: 1, state: 'blocked' }]);
+  if (process.platform === 'win32') return fakeClaudeWindows(f, bin, log, bg);
   // A file named cli-fails makes `agents --json` fail; zeta-out makes zeta's `auth status` say signed out.
   writeFileSync(bin, `#!/bin/sh
 echo "\${CLAUDE_CONFIG_DIR:-none}|$*" >> '${log}'
@@ -55,6 +58,31 @@ esac
 exit 0
 `);
   chmodSync(bin, 0o755);
+  writeFileSync(join(f.claudeDir, 'projects', '-work', `${ID.bg}.jsonl`), `${say(f.work, 'background work', Date.now() - 2 * 86_400_000)}\n`);
+  return { bin, calls: () => { try { return readFileSync(log, 'utf8').trim().split('\n'); } catch { return []; } } };
+}
+
+// The same stand-in for Windows, where there is no /bin/sh: a node script behind a .cmd (which the collector runs through
+// cmd.exe, as it runs npm's claude.cmd). A file named cli-bg-on-main makes the first account list the background session too.
+function fakeClaudeWindows(f, bin, log, bg) {
+  const script = bin.replace(/\.cmd$/, '.mjs');
+  const top = JSON.stringify(f.top), zeta = JSON.stringify(f.zeta), logFile = JSON.stringify(log);
+  writeFileSync(script, [
+    "import { appendFileSync, existsSync } from 'node:fs';",
+    "import { join } from 'node:path';",
+    `const top = ${top}, zeta = ${zeta}, bg = ${JSON.stringify(bg)};`,
+    'const args = process.argv.slice(2), cfg = process.env.CLAUDE_CONFIG_DIR;',
+    `appendFileSync(${logFile}, \`\${cfg || 'none'}|\${args.join(' ')}\n\`);`,
+    "const two = `${args[0]} ${args[1]}`;",
+    "if (two === 'agents --json') {",
+    "  if (existsSync(join(top, 'cli-fails'))) process.exit(1);",
+    "  console.log(cfg === zeta || existsSync(join(top, 'cli-bg-on-main')) ? bg : '[]');",
+    "} else if (two === 'auth status') {",
+    "  console.log(existsSync(join(top, 'zeta-out')) && cfg === zeta ? '{\"loggedIn\":false}' : '{\"loggedIn\":true}');",
+    '}',
+    '',
+  ].join('\n'));
+  writeFileSync(bin, `@"${process.execPath}" "${script}" %*\r\n`);
   writeFileSync(join(f.claudeDir, 'projects', '-work', `${ID.bg}.jsonl`), `${say(f.work, 'background work', Date.now() - 2 * 86_400_000)}\n`);
   return { bin, calls: () => { try { return readFileSync(log, 'utf8').trim().split('\n'); } catch { return []; } } };
 }
@@ -199,7 +227,7 @@ test('fork: on the account picked, else the original\'s; an unknown account refu
   try {
     assert.deepEqual(await handle.actions.fork({ agentId: ID.nco, at: 'r1', account: 'nope' }), { ok: false, error: 'No account "nope".' });
     assert.equal((await handle.actions.fork({ agentId: ID.nco, at: 'r1', account: 'zeta' })).ok, true);
-    assert.match(launched.at(-1), new RegExp(`^cd '${f.work}' && exec env CLAUDE_CONFIG_DIR='${f.zeta}' claude --resume '[^']+' --fork-session --session-id `));
+    assert.match(launched.at(-1), new RegExp(`^cd '${literal(f.work)}' && exec env CLAUDE_CONFIG_DIR='${literal(f.zeta)}' claude --resume '[^']+' --fork-session --session-id `));
     assert.equal((await handle.actions.fork({ agentId: ID.nco, at: 'r1' })).ok, true);
     assert.match(launched.at(-1), /exec env -u CLAUDE_CONFIG_DIR claude --resume/);
   } finally { await handle.stop(); }
@@ -263,6 +291,8 @@ test("restore, remove and attach run on the session's account; the collector's o
 });
 
 const settle = ms => new Promise(r => setTimeout(r, ms));
+/** Waits until `ok()` holds, for at most `ms`: what a fixed sleep guesses at. */
+async function until(ok, ms = 8000) { for (const end = Date.now() + ms; Date.now() < end && !ok();) await settle(50); }
 
 test('an account that leaves the list (its folder removed) never stops the collector; its sessions fall to the first account', async () => {
   const f = twoAccounts();
@@ -343,10 +373,11 @@ test('a signed-out account is asked again within signedInMs, so a /login shows s
   writeFileSync(join(f.top, 'zeta-out'), '');
   const { handle, snap } = await start(f, { claudeBin: claude.bin, signedInMs: 300 });
   try {
-    await settle(600);
-    assert.equal(snap().accounts.find(a => a.key === 'zeta').signedIn, false);
+    const signedIn = () => snap().accounts.find(a => a.key === 'zeta').signedIn;
+    await until(() => signedIn() === false); // a call takes longer where starting a program is slow (Windows)
+    assert.equal(signedIn(), false);
     rmSync(join(f.top, 'zeta-out'));
-    await settle(1200);
-    assert.equal(snap().accounts.find(a => a.key === 'zeta').signedIn, true);
+    await until(() => signedIn() === true);
+    assert.equal(signedIn(), true);
   } finally { await handle.stop(); }
 });

@@ -552,7 +552,7 @@ document.addEventListener('selectionchange', captureReaderSelection);
 async function endSessionFlow(id) {
   const a = snap?.agents.find(x => x.id === id);
   if (!a) return;
-  if (!(await confirmBox(`End ${a.name}? Claude stops now; the conversation is kept, so you can resume it from ＋ Session. Its iTerm or Terminal window closes too.`, 'End session'))) return;
+  if (!(await confirmBox(`End ${a.name}? Claude stops now; the conversation is kept, so you can resume it from ＋ Session. ${fileManager() === 'Finder' ? 'Its iTerm or Terminal window closes too.' : 'Close its terminal window if it stays open.'}`, 'End session'))) return;
   const r = await post('/api/actions/end', { agentId: id });
   notice(r.ok ? `Ended ${a.name}${r.closedWindow ? ' and closed its window' : ''}.` : `Could not end ${a.name}: ${r.error}`);
 }
@@ -1045,7 +1045,7 @@ function connect() {
   };
 }
 
-// Dark first: no saved choice means Dark. Auto follows macOS.
+// Dark first: no saved choice means Dark. Auto follows the system's setting.
 const THEMES = ['auto', 'light', 'dark'];
 const THEME_LABELS = { auto: '◐ Auto', light: '☀ Light', dark: '☾ Dark' };
 function loadTheme() {

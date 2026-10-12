@@ -612,6 +612,11 @@ test("a bay's sign: its name, a blue flag for a branch other than main, the depl
   assert.match(titleOf(branch), /on feature\/cart/);
   assert.doesNotMatch(signOf(signs(bay({ branch: 'main' }))).html, /px-flag/, 'on main: no flag');
   assert.match(words(signOf(signs(bay({ worktree: true, main: '/Users/you/code/api' }))).html), /worktree of api/);
+  // a Windows path has backslashes, and a long name is cut in the middle, so the label never runs over its neighbours
+  assert.match(words(signOf(signs(bay({ worktree: true, main: `C:${String.fromCharCode(92)}Users${String.fromCharCode(92)}you${String.fromCharCode(92)}code${String.fromCharCode(92)}api` }))).html), /worktree of api/);
+  const longName = words(signOf(signs(bay({ worktree: true, main: '/Users/you/code/a-repository-with-a-very-long-name' }))).html);
+  assert.match(longName, /worktree of a-reposi…ng-name$/);
+  assert.doesNotMatch(longName, /a-repository-with-a-very-long-name/);
   const crowded = signOf(signs(bay({ collision: 'high' })));
   assert.match(words(crowded.html), /⚠ crowded/);
   assert.equal(crowded.cls, 'bad');

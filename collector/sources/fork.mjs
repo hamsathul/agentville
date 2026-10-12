@@ -3,6 +3,7 @@ import { join } from 'node:path';
 import { createInterface } from 'node:readline';
 import { pipeline } from 'node:stream/promises';
 import { cleanPrompt } from '../transcript/parse.mjs';
+import { makePrivate } from '../platform/private.mjs';
 
 // Forking a conversation at one of its messages, and restoring one to before a message of yours. Claude Code can fork a whole session (--resume
 // --fork-session), and --resume takes a transcript's path: so the tracker writes a copy cut at the
@@ -47,12 +48,15 @@ export async function cutTranscript(path, uuid, dir, sessionId) {
   if (refused) return { error: refused };
   if (cut === null) return { error: 'That message is not in its transcript any more.' };
   mkdirSync(dir, { recursive: true, mode: 0o700 });
+  makePrivate(dir);
   const folder = mkdtempSync(join(dir, 'f-'));
   const file = join(folder, `${sessionId}.jsonl`);
   await pipeline(createReadStream(path, { start: 0, end: cut - 1 }), createWriteStream(file, { mode: 0o600 }));
+  makePrivate(file);
   if (prefill === undefined) return { file };
   const prefillFile = join(folder, 'prompt.txt');
   writeFileSync(prefillFile, prefill, { mode: 0o600 });
+  makePrivate(prefillFile);
   return { file, prefillFile };
 }
 

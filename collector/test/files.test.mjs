@@ -1,3 +1,4 @@
+import { NO_FILE_LINKS } from './win-links.mjs';
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
@@ -38,7 +39,7 @@ test('a git folder lists tracked and new files with their status; ignored and se
     git: true,
     files: ['.gitignore', 'README.md', 'big.txt', 'bin.dat', 'notes.txt', 'src/app.ts', 'src/util/x.ts'],
     status: { 'big.txt': 'U', 'bin.dat': 'U', 'notes.txt': 'U', 'src/app.ts': 'M' },
-    repos: [{ path: '', top: realpathSync(dir), name: basename(dir), branch: 'main' }],
+    repos: [{ path: '', top: realpathSync.native(dir), name: basename(dir), branch: 'main' }],
     truncated: false,
   });
 });
@@ -48,7 +49,7 @@ test('a subfolder of a repo lists only its own files, relative to itself', async
   const r = await listFolder(join(dir, 'src'), { home: '/nowhere' });
   assert.deepEqual(r.files, ['app.ts', 'util/x.ts']);
   assert.deepEqual(r.status, { 'app.ts': 'M' });
-  assert.deepEqual(r.repos, [{ path: '', top: realpathSync(dir), name: basename(dir), branch: 'main' }]);
+  assert.deepEqual(r.repos, [{ path: '', top: realpathSync.native(dir), name: basename(dir), branch: 'main' }]);
 });
 
 test('a long listing is cut at the limit and says so', async () => {
@@ -74,9 +75,12 @@ test('the home folder and the disk root are not listed', async () => {
   assert.match((await listFolder('/', { home: '/nowhere' })).error, /home folder/);
 });
 
-test('a file inside the folder is read; everything the explorer hides is refused', async () => {
+test('a file inside the folder is read; everything the explorer hides is refused', { skip: NO_FILE_LINKS }, async () => {
   const dir = repo();
-  symlinkSync('/etc/hosts', join(dir, 'hosts.txt'));
+  // a link to a file that exists outside the folder (on Windows /etc/hosts is not one: that link would only be a missing file)
+  const elsewhere = join(mkdtempSync(join(tmpdir(), 'tracker-elsewhere-')), 'hosts.txt');
+  writeFileSync(elsewhere, '127.0.0.1 localhost');
+  symlinkSync(elsewhere, join(dir, 'hosts.txt'));
   const ok = await readFolderFile(dir, join(dir, 'src/app.ts'));
   assert.equal(ok.doc.text, 'export const a = 2;\n');
   assert.equal(ok.doc.path, join(dir, 'src/app.ts'));
@@ -96,7 +100,7 @@ test('a file inside the folder is read; everything the explorer hides is refused
 test("a picture, a PDF or any binary passes the same rules for its bytes: binary and large files too, the rest refused alike", async () => {
   const dir = repo();
   const ok = await checkFolderFile(dir, join(dir, 'bin.dat'));
-  assert.equal(ok.real, join(realpathSync(dir), 'bin.dat'));
+  assert.equal(ok.real, join(realpathSync.native(dir), 'bin.dat'));
   assert.ok(ok.size > 0);
   assert.ok((await checkFolderFile(dir, join(dir, 'big.txt'))).real, 'size is for the caller to judge');
   for (const [path, re] of [['debug.log', /ignores/], ['.env.local', /secrets/], ['.git/config', /Git's own/], ['gone.txt', /no longer exists/]]) assert.match((await checkFolderFile(dir, join(dir, path))).error, re, path);
@@ -128,7 +132,7 @@ test('a plain folder holding git repos lists each repo the way git sees it', asy
     git: false,
     files: ['notes.md', 'svc/.gitignore', 'svc/src.ts'],
     status: { 'svc/src.ts': 'M' },
-    repos: [{ path: 'svc', top: realpathSync(join(outer, 'svc')), name: 'svc', branch: 'dev' }],
+    repos: [{ path: 'svc', top: realpathSync.native(join(outer, 'svc')), name: 'svc', branch: 'dev' }],
     truncated: false,
   });
   assert.equal((await readFolderFile(outer, join(outer, 'svc/src.ts'))).doc.text, 'two');

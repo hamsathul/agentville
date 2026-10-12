@@ -107,7 +107,7 @@ function fsQueueHtml(a) {
  */
 function fsCardHtml(x) {
   const id = esc(x.id), ask = x.ask;
-  const where = fsRepo(x)?.name ?? short(x.cwd).split('/').pop();
+  const where = fsRepo(x)?.name ?? lastPart(short(x.cwd));
   const head = `<div class="fs-card-head"><span class="swatch" style="background:${fsColor(x)}"></span><b>${esc(x.name)}</b><span class="faint">${esc(where)}${x.stateSince ? ` · ${fsSince(x.stateSince)}` : ''}</span><span class="grow"></span><button type="button" class="fs-open" data-pick-agent="${id}" data-tip="Open ${esc(x.name)} here">Open ›</button></div>`;
   const ids = `data-agent="${id}" data-tool="${esc(ask?.toolUseId ?? '')}"`;
   let body, kind = 'ask';

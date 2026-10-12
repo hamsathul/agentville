@@ -27,10 +27,76 @@ test('env is merged over process.env', async () => {
 test('an undefined variable is left out of the child environment', async () => {
   process.env.AGENTVILLE_TEST_UNSET = 'set';
   try {
-    const r = await run('/usr/bin/env', [], { env: { AGENTVILLE_TEST_UNSET: undefined } });
+    const r = await run(process.execPath, ['-e', 'process.stdout.write(String("AGENTVILLE_TEST_UNSET" in process.env))'], { env: { AGENTVILLE_TEST_UNSET: undefined } });
     assert.equal(r.code, 0);
-    assert.doesNotMatch(r.stdout, /AGENTVILLE_TEST_UNSET/);
+    assert.equal(r.stdout, 'false');
   } finally {
     delete process.env.AGENTVILLE_TEST_UNSET;
   }
+});
+
+// Node 24 will not spawn a .cmd directly (EINVAL). npm's claude.cmd runs what it points at (winbin.test.mjs); any other .cmd goes
+// through cmd.exe, and an argument cmd.exe would read as syntax is refused, so an argument can never become a command.
+const winOnly = { skip: process.platform !== 'win32' ? 'Windows only' : false };
+
+test('a .cmd file runs on Windows and its arguments arrive intact', winOnly, async () => {
+  const { mkdtempSync, writeFileSync } = await import('node:fs');
+  const { tmpdir } = await import('node:os');
+  const { join } = await import('node:path');
+  const dir = mkdtempSync(join(tmpdir(), 'agentville-cmd-'));
+  const bin = join(dir, 'tool.cmd');
+  writeFileSync(bin, '@echo off\r\necho [%1] [%2]\r\n');
+  const r = await run(bin, ['--rewind-files', 'abc-123']);
+  assert.equal(r.code, 0, r.stderr);
+  assert.match(r.stdout, /\[--rewind-files\] \[abc-123\]/);
+});
+
+test('an argument cmd.exe would read as syntax is refused, and nothing runs', winOnly, async () => {
+  const { mkdtempSync, writeFileSync, existsSync } = await import('node:fs');
+  const { tmpdir } = await import('node:os');
+  const { join } = await import('node:path');
+  const dir = mkdtempSync(join(tmpdir(), 'agentville-cmd-'));
+  const bin = join(dir, 'tool.cmd');
+  const marker = join(dir, 'ran');
+  writeFileSync(bin, '@echo off\r\necho x\r\n');
+  for (const bad of ['a & echo pwned > ' + marker, 'a | b', 'a > ' + marker, '%PATH%', 'a^b', 'say "hi"', 'x\ny']) {
+    const r = await run(bin, [bad]);
+    assert.notEqual(r.code, 0, `should refuse: ${bad}`);
+    assert.match(r.stderr, /refused/i);
+  }
+  assert.equal(existsSync(marker), false, 'no argument became a command');
+});
+
+test('a quoted argument that ends in a backslash stays one argument through cmd.exe', winOnly, async () => {
+  const { mkdtempSync, writeFileSync } = await import('node:fs');
+  const { tmpdir } = await import('node:os');
+  const { join } = await import('node:path');
+  const dir = mkdtempSync(join(tmpdir(), 'agentville-cmd-'));
+  const bin = join(dir, 'tool.cmd');
+  // the stand-in hands its arguments on to a program, as npm's shims do, and the program says what it got
+  writeFileSync(bin, `@"${process.execPath}" -e "console.log(JSON.stringify(process.argv.slice(1)))" %*\r\n`);
+  const B = String.fromCharCode(92);
+  const r = await run(bin, [`C:${B}My Dir${B}`, '--next']);
+  assert.equal(r.code, 0, r.stderr);
+  assert.deepEqual(JSON.parse(r.stdout).slice(-2), [`C:${B}My Dir${B}`, '--next']);
+});
+
+test('on Windows a program named without a folder is found on PATH, never in the working folder', winOnly, async () => {
+  const { copyFileSync, mkdtempSync } = await import('node:fs');
+  const { tmpdir } = await import('node:os');
+  const { join } = await import('node:path');
+  const repo = mkdtempSync(join(tmpdir(), 'agentville-planted-'));
+  copyFileSync(process.execPath, join(repo, 'agentville-planted.exe')); // a program a repository could carry
+  const r = await run('agentville-planted', ['-e', 'console.log("ran")'], { cwd: repo });
+  assert.notEqual(r.code, 0);
+  assert.doesNotMatch(r.stdout, /ran/);
+  assert.match(r.stderr, /not found on PATH/);
+  assert.equal((await run('node', ['-e', 'console.log("ran")'], { cwd: repo })).stdout.trim(), 'ran', 'node is on PATH');
+});
+
+test('a program that reads its input gets the end of it at once, not a pipe nobody closes', async () => {
+  const t0 = Date.now();
+  const r = await run(process.execPath, ['-e', "let n = 0; process.stdin.on('data', d => { n += d.length; }).on('end', () => process.stdout.write('eof ' + n));"], { timeoutMs: 8000 });
+  assert.equal(r.stdout, 'eof 0', r.stderr);
+  assert.ok(Date.now() - t0 < 6000, 'it did not wait for the timeout');
 });

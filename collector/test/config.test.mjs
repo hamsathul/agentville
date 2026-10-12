@@ -4,14 +4,15 @@ import { mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { DEFAULTS, loadConfig } from '../config.mjs';
+import { DEFAULTS, loadConfig, mergeConfig } from '../config.mjs';
 
 const tmp = () => mkdtempSync(join(tmpdir(), 'tracker-config-'));
 
 test('missing config.json gives the defaults', () => {
   const cfg = loadConfig(join(tmp(), 'config.json'));
   assert.equal(cfg.port, 7777);
-  assert.deepEqual(cfg.notify, DEFAULTS.notify);
+  assert.deepEqual(cfg.notify, mergeConfig({}).notify);
+  assert.deepEqual(mergeConfig({}, 'darwin').notify, DEFAULTS.notify);
 });
 
 test('user values override defaults and notify merges key by key', () => {

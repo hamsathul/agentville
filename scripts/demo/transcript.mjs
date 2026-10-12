@@ -1,6 +1,7 @@
 // Made-up Claude Code sessions for the demo videos: each one a sleeping process (so it looks alive)
 // and a transcript, with the lines Claude Code writes to it.
 import { spawn } from 'node:child_process';
+import { randomUUID } from 'node:crypto';
 import { appendFileSync, mkdirSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 
@@ -30,7 +31,7 @@ export function setUpSessions(claudeDir, sessions, { idBase, now }) {
 /** Transcript lines, as Claude Code writes them. A shell command a session begins runs at pid `shellBase` and up. */
 export function transcriptWriter({ shellBase = 4_000_100 } = {}) {
   let msgN = 0, taskN = 0, callN = 0;
-  const write = (s, ...entries) => appendFileSync(s.file, `${entries.map(e => JSON.stringify(e)).join('\n')}\n`);
+  const write = (s, ...entries) => appendFileSync(s.file, `${entries.map(e => JSON.stringify({ uuid: randomUUID(), ...e })).join('\n')}\n`); // every line has its uuid, as Claude Code's do (Fork and Restore go by it)
   const prompt = (s, text, ms = Date.now(), extra = {}) => ({ type: 'user', timestamp: iso(ms), cwd: s.cwd, permissionMode: s.mode ?? 'default', message: { role: 'user', content: text }, ...extra });
   const assistant = (s, content, ms = Date.now(), out = 400) => ({ type: 'assistant', timestamp: iso(ms), cwd: s.cwd, message: { id: `msg_${++msgN}`, model: s.model, role: 'assistant', content, usage: { input_tokens: 1200, cache_read_input_tokens: s.ctx, cache_creation_input_tokens: 800, output_tokens: out, ...(s.fast ? { speed: 'fast' } : {}) } } });
   function use(s, name, input, ms = Date.now()) {

@@ -1,11 +1,14 @@
+import { NO_FILE_LINKS } from './win-links.mjs';
 import { test } from 'node:test';
+import { assertPrivate, shellStandIn, toSh } from './support.mjs';
 import { execFileSync, spawn } from 'node:child_process';
 import assert from 'node:assert/strict';
-import { appendFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, realpathSync, renameSync, statSync, symlinkSync, unlinkSync, utimesSync, writeFileSync } from 'node:fs';
+import { appendFileSync, chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, realpathSync, renameSync, statSync, symlinkSync, unlinkSync, utimesSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { basename, dirname, join } from 'node:path';
 import { startCollector } from '../collector.mjs';
 import { parsePs } from '../sources/ps.mjs';
+import { platformFor } from '../platform/index.mjs';
 
 test('collector serves a waiting agent from a fixture ~/.claude and survives a bad config edit', async () => {
   const root = mkdtempSync(join(tmpdir(), 'tracker-root-'));
@@ -226,7 +229,7 @@ test('a chat message is handed to the session through its mod, with delivery con
   }
 });
 
-test('a document can be read only if the agent opened it, and only if it is a markdown file of sane size', async () => {
+test('a document can be read only if the agent opened it, and only if it is a markdown file of sane size', { skip: NO_FILE_LINKS }, async () => {
   const root = mkdtempSync(join(tmpdir(), 'tracker-root-doc-'));
   mkdirSync(join(root, 'web'));
   writeFileSync(join(root, 'web', 'index.html'), '<html></html>');
@@ -429,7 +432,7 @@ test("a repo's close-up lists the files its sessions touched, with git status, o
   mkdirSync(join(root, 'web'));
   writeFileSync(join(root, 'web', 'index.html'), '<html></html>');
   writeFileSync(join(root, 'config.json'), JSON.stringify({ port: 0, deployRepos: {}, pollMs: 200 }));
-  const work = realpathSync(mkdtempSync(join(tmpdir(), 'tracker-work-touched-')));
+  const work = realpathSync.native(mkdtempSync(join(tmpdir(), 'tracker-work-touched-')));
   const git = (...args) => execFileSync('git', ['-C', work, '-c', 'user.email=t@t', '-c', 'user.name=t', ...args]);
   git('init', '-q', '-b', 'main');
   mkdirSync(join(work, 'src'));
@@ -470,7 +473,7 @@ test("an agent's own repo stays on the dashboard even when it touched no files l
   mkdirSync(join(root, 'web'));
   writeFileSync(join(root, 'web', 'index.html'), '<html></html>');
   writeFileSync(join(root, 'config.json'), JSON.stringify({ port: 0, deployRepos: {}, pollMs: 200 }));
-  const work = realpathSync(mkdtempSync(join(tmpdir(), 'tracker-work-cwdrepo-')));
+  const work = realpathSync.native(mkdtempSync(join(tmpdir(), 'tracker-work-cwdrepo-')));
   execFileSync('git', ['-C', work, 'init', '-q', '-b', 'main']);
   mkdirSync(join(work, 'src'));
   const claudeDir = mkdtempSync(join(tmpdir(), 'tracker-claude-cwdrepo-'));
@@ -592,7 +595,7 @@ test("a session's conversation is forked at one of its messages into a new sessi
   mkdirSync(join(root, 'web'));
   writeFileSync(join(root, 'web', 'index.html'), '<html>__TRACKER_TOKEN__</html>');
   writeFileSync(join(root, 'config.json'), JSON.stringify({ port: 0, deployRepos: {}, terminal: 'iTerm' }));
-  const work = realpathSync(mkdtempSync(join(tmpdir(), 'tracker-work-fork-')));
+  const work = realpathSync.native(mkdtempSync(join(tmpdir(), 'tracker-work-fork-')));
   const claudeDir = mkdtempSync(join(tmpdir(), 'tracker-claude-fork-'));
   const dir = join(claudeDir, 'projects', work.replace(/[^a-zA-Z0-9]/g, '-'));
   mkdirSync(join(claudeDir, 'sessions'));
@@ -636,7 +639,7 @@ test("your notes on a session: added, edited, used, deleted; counted in its snap
   mkdirSync(join(root, 'web'));
   writeFileSync(join(root, 'web', 'index.html'), '<html>__TRACKER_TOKEN__</html>');
   writeFileSync(join(root, 'config.json'), JSON.stringify({ port: 0, deployRepos: {} }));
-  const work = realpathSync(mkdtempSync(join(tmpdir(), 'tracker-work-notes-')));
+  const work = realpathSync.native(mkdtempSync(join(tmpdir(), 'tracker-work-notes-')));
   const claudeDir = mkdtempSync(join(tmpdir(), 'tracker-claude-notes-'));
   const dir = join(claudeDir, 'projects', work.replace(/[^a-zA-Z0-9]/g, '-'));
   mkdirSync(join(claudeDir, 'sessions'));
@@ -661,7 +664,7 @@ test("your notes on a session: added, edited, used, deleted; counted in its snap
     assert.equal(JSON.stringify(agent()).includes('and the tests'), false, 'the snapshot carries counts, never the text');
     assert.deepEqual(handle.getNotes(SID).notes.map(n => n.text), ['ask about the cache, again', 'and the tests']);
     assert.equal((await handle.pastSessions()).sessions.find(s => s.id === SID).notes, 1, 'the resume list counts the unused ones');
-    assert.equal(statSync(join(root, 'state', 'notes', `${SID}.json`)).mode & 0o777, 0o600);
+    assertPrivate(join(root, 'state', 'notes', `${SID}.json`), 0o600);
     assert.deepEqual((await handle.actions.note({ agentId: SID, op: 'clear-used' })).notes.map(n => n.text), ['and the tests']);
     assert.equal((await handle.actions.note({ agentId: SID, op: 'delete', id: handle.getNotes(SID).notes[0].id })).notes.length, 0);
     for (const body of [{ agentId: 'nobody', op: 'add', text: 'x' }, { agentId: SID, op: 'shout', text: 'x' }, { agentId: SID, op: 'add', text: '' }, { agentId: SID, op: 'add' }, null]) {
@@ -678,7 +681,7 @@ test('a session is restored to before one of your messages: ended, its files and
   mkdirSync(join(root, 'web'));
   writeFileSync(join(root, 'web', 'index.html'), '<html>__TRACKER_TOKEN__</html>');
   writeFileSync(join(root, 'config.json'), JSON.stringify({ port: 0, deployRepos: {}, terminal: 'iTerm' }));
-  const work = realpathSync(mkdtempSync(join(tmpdir(), 'tracker-work-restore-')));
+  const work = realpathSync.native(mkdtempSync(join(tmpdir(), 'tracker-work-restore-')));
   const claudeDir = mkdtempSync(join(tmpdir(), 'tracker-claude-restore-'));
   const dir = join(claudeDir, 'projects', work.replace(/[^a-zA-Z0-9]/g, '-'));
   mkdirSync(join(claudeDir, 'sessions'));
@@ -691,8 +694,8 @@ test('a session is restored to before one of your messages: ended, its files and
   writeFileSync(transcript, `${lines.join('\n')}\n`);
   writeFileSync(join(claudeDir, 'sessions', `${process.pid}.json`), JSON.stringify({ pid: process.pid, sessionId: SID, cwd: work, name: 'releaser', kind: 'interactive', status: 'idle' }));
   // A stand-in for claude --rewind-files: what it was asked goes to a log, how it ends to a file.
-  const bin = join(root, 'claude'), log = join(root, 'claude.log'), outcome = join(root, 'outcome');
-  writeFileSync(bin, `#!/bin/sh\ncase "$*" in *--rewind-files*) ;; *) echo '[]'; exit 0 ;; esac\necho "$CLAUDE_CODE_ENABLE_SDK_FILE_CHECKPOINTING $*" >> '${log}'\nif [ -f '${outcome}' ]; then cat '${outcome}'; exit 1; fi\necho "Files rewound to state at message $4"\n`, { mode: 0o755 });
+  const binBase = join(root, 'claude'), log = join(root, 'claude.log'), outcome = join(root, 'outcome');
+  const bin = shellStandIn(binBase, `#!/bin/sh\ncase "$*" in *--rewind-files*) ;; *) echo '[]'; exit 0 ;; esac\necho "$CLAUDE_CODE_ENABLE_SDK_FILE_CHECKPOINTING $*" >> '${toSh(log)}'\nif [ -f '${toSh(outcome)}' ]; then cat '${toSh(outcome)}'; exit 1; fi\necho "Files rewound to state at message $4"\n`);
   const launched = [], signals = [];
   let alive = true;
   const procs = { commandOf: async () => 'claude', ttyOf: async () => 'ttys012', kill: (pid, sig) => { signals.push([pid, sig]); alive = false; }, alive: () => alive };
@@ -754,7 +757,7 @@ test('a session starts or resumes in a terminal only in a listed folder, or from
   mkdirSync(join(root, 'web'));
   writeFileSync(join(root, 'web', 'index.html'), '<html>__TRACKER_TOKEN__</html>');
   writeFileSync(join(root, 'config.json'), JSON.stringify({ port: 0, deployRepos: {}, terminal: 'iTerm' }));
-  const work = realpathSync(mkdtempSync(join(tmpdir(), 'tracker-work-')));
+  const work = realpathSync.native(mkdtempSync(join(tmpdir(), 'tracker-work-')));
   const claudeDir = mkdtempSync(join(tmpdir(), 'tracker-claude-'));
   const dir = join(claudeDir, 'projects', work.replace(/[^a-zA-Z0-9]/g, '-'));
   mkdirSync(join(claudeDir, 'sessions'));
@@ -798,7 +801,7 @@ test("Finder's own folder window picks a folder: one at a time, starting where a
   mkdirSync(join(root, 'web'));
   writeFileSync(join(root, 'web', 'index.html'), '<html></html>');
   writeFileSync(join(root, 'config.json'), JSON.stringify({ port: 0, deployRepos: {} }));
-  const home = realpathSync(mkdtempSync(join(tmpdir(), 'tracker-home-')));
+  const home = realpathSync.native(mkdtempSync(join(tmpdir(), 'tracker-home-')));
   mkdirSync(join(home, 'code'));
   const asked = [];
   let answer = { path: `${join(home, 'code')}/` }, release;
@@ -826,7 +829,7 @@ test('a new session starts in any folder of yours, made first if it is new, and 
   mkdirSync(join(root, 'web'));
   writeFileSync(join(root, 'web', 'index.html'), '<html>__TRACKER_TOKEN__</html>');
   writeFileSync(join(root, 'config.json'), JSON.stringify({ port: 0, deployRepos: {}, terminal: 'Terminal' }));
-  const home = realpathSync(mkdtempSync(join(tmpdir(), 'tracker-home-')));
+  const home = realpathSync.native(mkdtempSync(join(tmpdir(), 'tracker-home-')));
   mkdirSync(join(home, 'code'));
   const claudeDir = mkdtempSync(join(tmpdir(), 'tracker-claude-'));
   mkdirSync(join(claudeDir, 'sessions'));
@@ -838,8 +841,10 @@ test('a new session starts in any folder of yours, made first if it is new, and 
     assert.deepEqual(await handle.actions.mkdir({ path: '~/code/new app' }), { ok: true, path: join(home, 'code', 'new app') });
     assert.deepEqual(await handle.actions.start({ cwd: '~/code/new app', mode: 'plan', model: 'sonnet' }), { ok: true, terminal: 'Terminal' });
     assert.equal(launched.at(-1), `cd '${join(home, 'code', 'new app')}' && exec claude --permission-mode plan --model 'sonnet'`);
-    for (const body of [{ path: '/etc/x' }, { path: '~/../x' }, {}, null]) assert.equal((await handle.actions.mkdir(body)).ok, false, JSON.stringify(body));
-    for (const cwd of ['/etc', '/', '~/..', 'code']) assert.equal((await handle.actions.start({ cwd })).ok, false, cwd);
+    // (on Windows "/etc/x" is a folder of the current drive, and a drive is an allowed place: it would be made)
+    for (const body of [...(process.platform === 'win32' ? [] : [{ path: '/etc/x' }]), { path: '~/../x' }, {}, null]) assert.equal((await handle.actions.mkdir(body)).ok, false, JSON.stringify(body));
+    // (and "/" there is the root of the current drive, which is an allowed place)
+    for (const cwd of ['/etc', ...(process.platform === 'win32' ? [] : ['/']), '~/..', 'code']) assert.equal((await handle.actions.start({ cwd })).ok, false, cwd);
     assert.equal(launched.length, 1);
   } finally {
     await handle.stop();
@@ -851,7 +856,7 @@ test('a session is ended (SIGTERM, then its window closed by its tty) or restart
   mkdirSync(join(root, 'web'));
   writeFileSync(join(root, 'web', 'index.html'), '<html>__TRACKER_TOKEN__</html>');
   writeFileSync(join(root, 'config.json'), JSON.stringify({ port: 0, deployRepos: {}, terminal: 'iTerm' }));
-  const work = realpathSync(mkdtempSync(join(tmpdir(), 'tracker-work-')));
+  const work = realpathSync.native(mkdtempSync(join(tmpdir(), 'tracker-work-')));
   const claudeDir = mkdtempSync(join(tmpdir(), 'tracker-claude-'));
   mkdirSync(join(claudeDir, 'sessions'));
   mkdirSync(join(claudeDir, 'projects', '-w'), { recursive: true });
@@ -894,7 +899,7 @@ test('files an agent names in its replies: only those the dashboard may show, ea
   mkdirSync(join(root, 'web'));
   writeFileSync(join(root, 'web', 'index.html'), '<html></html>');
   writeFileSync(join(root, 'config.json'), JSON.stringify({ port: 0, deployRepos: {} }));
-  const work = realpathSync(mkdtempSync(join(tmpdir(), 'tracker-named-')));
+  const work = realpathSync.native(mkdtempSync(join(tmpdir(), 'tracker-named-')));
   mkdirSync(join(work, 'docs'));
   writeFileSync(join(work, 'shot.png'), Buffer.from('89504e470d0a1a0a0000000d49484452', 'hex'));
   writeFileSync(join(work, 'demo.mov'), 'not really a video');
@@ -932,8 +937,8 @@ test("a session's shell commands: one is stopped with everything it started (its
   mkdirSync(join(root, 'web'));
   writeFileSync(join(root, 'web', 'index.html'), '<html></html>');
   writeFileSync(join(root, 'config.json'), JSON.stringify({ port: 0, deployRepos: {} }));
-  const work = realpathSync(mkdtempSync(join(tmpdir(), 'tracker-work-')));
-  const scratch = realpathSync(mkdtempSync(join(tmpdir(), 'tracker-scratch-')));
+  const work = realpathSync.native(mkdtempSync(join(tmpdir(), 'tracker-work-')));
+  const scratch = realpathSync.native(mkdtempSync(join(tmpdir(), 'tracker-scratch-')));
   const claudeDir = mkdtempSync(join(tmpdir(), 'tracker-claude-'));
   mkdirSync(join(claudeDir, 'sessions'));
   mkdirSync(join(claudeDir, 'projects', '-w'), { recursive: true });
@@ -968,6 +973,33 @@ test("a session's shell commands: one is stopped with everything it started (its
     assert.deepEqual(signals, [[5001, 'SIGTERM']]);
     for (let i = 0; i < 40 && signals.length < 2; i++) await new Promise(r => setTimeout(r, 20));
     assert.deepEqual(signals, [[5001, 'SIGTERM'], [5001, 'SIGKILL']], 'still there after a moment: killed');
+  } finally {
+    await handle.stop();
+  }
+});
+
+test('where ending a command is already forced (Windows), it is ended once: no second kill a moment later, when its pid may be another program', async () => {
+  const { winSessionProcs } = await import('../platform/win-procs.mjs');
+  assert.equal(winSessionProcs.endsAtOnce, true);
+  const root = mkdtempSync(join(tmpdir(), 'tracker-root-'));
+  mkdirSync(join(root, 'web'));
+  writeFileSync(join(root, 'web', 'index.html'), '<html></html>');
+  writeFileSync(join(root, 'config.json'), JSON.stringify({ port: 0, deployRepos: {} }));
+  const claudeDir = mkdtempSync(join(tmpdir(), 'tracker-claude-'));
+  mkdirSync(join(claudeDir, 'sessions'));
+  mkdirSync(join(claudeDir, 'projects', '-w'), { recursive: true });
+  const LIVE = '33333333-aaaa-4bbb-8ccc-000000000002', P = process.pid;
+  writeFileSync(join(claudeDir, 'sessions', `${P}.json`), JSON.stringify({ pid: P, sessionId: LIVE, cwd: '/w', name: 'live', kind: 'interactive', status: 'busy', version: '2.1.293' }));
+  writeFileSync(join(claudeDir, 'projects', '-w', `${LIVE}.jsonl`), `${JSON.stringify({ type: 'user', timestamp: new Date().toISOString(), cwd: '/w', message: { role: 'user', content: 'go' } })}\n`);
+  const shell = `/bin/zsh -c source /Users/h/.claude/shell-snapshots/snapshot-zsh-1-x.sh 2>/dev/null || true && eval 'npm run dev' < /dev/null && pwd -P >| /tmp/claude-1-cwd`;
+  const ps = [`${P} 1 ${P} 01:00 1.0 20480 claude`, `5001 ${P} 5001 00:30 0.0 1024 ${shell}`].join('\n');
+  const signals = [];
+  const sessionProcs = { commandOf: async () => 'claude', ttyOf: async () => null, kill: () => {}, alive: () => true, killGroup: (pgid, sig) => { signals.push([pgid, sig]); }, groupAlive: () => true, endsAtOnce: true };
+  const handle = await startCollector({ root, claudeDir, readProcs: async () => parsePs(ps), sessionProcs, stopWaitMs: 50, claudeBin: '/usr/bin/false', notify: () => {}, log: () => {}, home: '/nowhere' });
+  try {
+    assert.deepEqual(await handle.actions.stopShell({ agentId: LIVE, pid: 5001 }), { ok: true });
+    await new Promise(r => setTimeout(r, 300));
+    assert.deepEqual(signals, [[5001, 'SIGTERM']]);
   } finally {
     await handle.stop();
   }
@@ -1046,17 +1078,17 @@ test("a session's model and effort are switched by its mod (/model, /effort), an
 
 // A stand-in for the claude CLI: plugins, their details, MCP servers; what it was asked to change goes to a log.
 function fakeClaude(dir) {
-  const log = join(dir, 'claude.log'), bin = join(dir, 'claude');
-  writeFileSync(bin, `#!/bin/sh
+  const log = join(dir, 'claude.log'), binBase = join(dir, 'claude');
+  const bin = shellStandIn(binBase, `#!/bin/sh
 case "$1 $2" in
   "agents --json") echo '[]' ;;
   "plugin list") echo '[{"id":"alpha@market","version":"1.0.0","enabled":true,"scope":"user","lastUpdated":"2026-10-01T00:00:00Z"},{"id":"agent-tracker@inline","version":"0.6.1","enabled":true,"scope":"user"}]' ;;
   "plugin details") printf 'alpha 1.0.0\\n  Description: Alpha things.\\n\\nComponent inventory\\n  Skills (2)  one, two\\n  Agents (0)\\n  Hooks (0)\\n  MCP servers (1)  mine\\n  LSP servers (0)\\n\\nProjected token cost\\n  Always-on:   ~1,200 tok   added to every session\\n' ;;
-  "plugin enable"|"plugin disable"|"plugin update"|"plugin uninstall") echo "$*" >> "${log}"; echo "Done: $2 $3" ;;
+  "plugin enable"|"plugin disable"|"plugin update"|"plugin uninstall") echo "$*" >> "${toSh(log)}"; echo "Done: $2 $3" ;;
   "mcp list") printf 'Checking MCP server health…\\n\\nmine: https://mine.example/mcp (HTTP) - ! Needs authentication\\nplugin:alpha:extra: https://extra.example/mcp (HTTP) - ✔ Connected\\n' ;;
-  "mcp remove") echo "$* in $(pwd -P)" >> "${log}" ;;
+  "mcp remove") echo "$* in $(cygpath -w "$(pwd -P)" 2>/dev/null || pwd -P)" >> "${toSh(log)}" ;;
 esac
-`, { mode: 0o755 });
+`);
   return { bin, log: () => (existsSync(log) ? readFileSync(log, 'utf8') : '') };
 }
 
@@ -1065,7 +1097,7 @@ test("Claude Code's setup for the ⚙ dialog: plugins with their costs, MCP serv
   mkdirSync(join(root, 'web'));
   writeFileSync(join(root, 'web', 'index.html'), '<html></html>');
   writeFileSync(join(root, 'config.json'), JSON.stringify({ port: 0, deployRepos: {} }));
-  const home = realpathSync(mkdtempSync(join(tmpdir(), 'tracker-home-setup-')));
+  const home = realpathSync.native(mkdtempSync(join(tmpdir(), 'tracker-home-setup-')));
   const claudeDir = join(home, '.claude');
   mkdirSync(join(claudeDir, 'sessions'), { recursive: true });
   mkdirSync(join(claudeDir, 'skills', 'mine'), { recursive: true });
@@ -1095,7 +1127,9 @@ test("Claude Code's setup for the ⚙ dialog: plugins with their costs, MCP serv
     assert.equal(launched.at(-1), "cd ~ && exec claude mcp login 'mine'");
     assert.deepEqual(await handle.actions.mcp({ name: 'mine', op: 'remove' }), { ok: true });
     assert.deepEqual(await handle.actions.mcp({ name: 'local1', op: 'remove', project }), { ok: true });
-    assert.match(claude.log(), new RegExp(`^mcp remove mine -s user in .*\\n^mcp remove local1 -s local in ${project}$`, 'm'));
+    const logged = claude.log().split('\n');
+    assert.ok(logged.some(l => l.startsWith('mcp remove mine -s user in ')), 'user-scope server removed');
+    assert.ok(logged.includes(`mcp remove local1 -s local in ${project}`), 'local-scope server removed from its own project folder');
 
     mkdirSync(join(project, '.claude'));
     writeFileSync(join(project, '.claude', 'settings.local.json'), JSON.stringify({ permissions: { deny: ['Bash(rm:*)'] } }));
@@ -1116,7 +1150,7 @@ test('files that are not text: a short-lived link to the bytes, for one file or 
   mkdirSync(join(root, 'web'));
   writeFileSync(join(root, 'web', 'index.html'), '<html></html>');
   writeFileSync(join(root, 'config.json'), JSON.stringify({ port: 0, deployRepos: {} }));
-  const work = realpathSync(mkdtempSync(join(tmpdir(), 'tracker-view-work-')));
+  const work = realpathSync.native(mkdtempSync(join(tmpdir(), 'tracker-view-work-')));
   mkdirSync(join(work, 'css'));
   writeFileSync(join(work, 'picture.png'), Buffer.from('89504e470d0a1a0a0000000d49484452', 'hex'));
   writeFileSync(join(work, 'page.html'), '<link rel="stylesheet" href="css/site.css"><h1>Hi</h1>');
@@ -1172,7 +1206,7 @@ test('Open the worlds folder makes the folder, opens it in Finder only, and says
   const root = mkdtempSync(join(tmpdir(), 'tracker-root-worlds-'));
   mkdirSync(join(root, 'web'));
   writeFileSync(join(root, 'web', 'index.html'), '<html></html>');
-  const worldsDir = join(realpathSync(mkdtempSync(join(tmpdir(), 'tracker-worlds-'))), 'mine');
+  const worldsDir = join(realpathSync.native(mkdtempSync(join(tmpdir(), 'tracker-worlds-'))), 'mine');
   writeFileSync(join(root, 'config.json'), JSON.stringify({ port: 0, deployRepos: {}, worldsDir }));
   const claudeDir = mkdtempSync(join(tmpdir(), 'tracker-claude-worlds-'));
   const opened = [];
@@ -1186,7 +1220,7 @@ test('Open the worlds folder makes the folder, opens it in Finder only, and says
     code = 1;
     const failed = await handle.actions.revealWorlds();
     assert.equal(failed.ok, false);
-    assert.match(failed.error, /Finder/);
+    assert.match(failed.error, new RegExp(platformFor().fileManager));
   } finally {
     await handle.stop();
   }
@@ -1482,4 +1516,25 @@ test('Animal lines ticked again: a batch goes out at once, not after the 30-minu
     proc.kill();
     await handle.stop();
   }
+});
+
+test('at start the state folder and the token are private, and a token found readable by others is made private again', async () => {
+  const root = mkdtempSync(join(tmpdir(), 'tracker-root-'));
+  mkdirSync(join(root, 'web'));
+  writeFileSync(join(root, 'web', 'index.html'), '<html>__TRACKER_TOKEN__</html>');
+  writeFileSync(join(root, 'config.json'), JSON.stringify({ port: 0, pollMs: 200, deployRepos: {} }));
+  const claudeDir = mkdtempSync(join(tmpdir(), 'tracker-claude-'));
+  const start = () => startCollector({ root, claudeDir, claudeBin: '/usr/bin/false', notify: () => {}, log: () => {}, home: '/nowhere' });
+  let handle = await start();
+  await handle.stop();
+  assertPrivate(join(root, 'state'), 0o700);
+  assertPrivate(join(root, 'state', 'token'), 0o600);
+  const token = readFileSync(join(root, 'state', 'token'), 'utf8');
+  // a token that lost its protection (a copy, a restore) is kept, and protected again
+  if (process.platform === 'win32') execFileSync(join(process.env.SystemRoot ?? 'C:/Windows', 'System32', 'icacls.exe'), [join(root, 'state', 'token'), '/grant', '*S-1-5-32-545:R']);
+  else chmodSync(join(root, 'state', 'token'), 0o644);
+  handle = await start();
+  await handle.stop();
+  assert.equal(readFileSync(join(root, 'state', 'token'), 'utf8'), token);
+  assertPrivate(join(root, 'state', 'token'), 0o600);
 });

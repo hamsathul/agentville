@@ -1,13 +1,17 @@
 import { homedir } from 'node:os';
-import { isAbsolute, resolve } from 'node:path';
+import { isAbsolute, join, resolve } from 'node:path';
 
 const GIT_MUTATING = /\bgit\b(?:\s+-C\s+\S+|\s+-c\s+\S+)*\s+(commit|checkout|switch|stash|reset|rebase|merge|push|pull)\b/;
 const WRITE_CMD = /(^|[\s;&|(])(tee|rm|mv|cp|mkdir|touch)\s|\bsed\s+-i\b/;
 
 export function expandHome(path, home = homedir()) {
   if (path === '~') return home;
-  return path.startsWith('~/') ? home + path.slice(1) : path;
+  return path.startsWith('~/') || path.startsWith('~' + String.fromCharCode(92)) ? join(home, path.slice(2)) : path;
 }
+
+// Absolute paths in a command. A drive path (C:\x, C:/x) only on Windows: on a Mac `sed 's:/a:/b:'` would be one.
+const ABSOLUTE = /(?:^|[\s'"=:(])((?:~|\/Users|\/private|\/tmp|\/Volumes|\/opt)\/[^\s'";|&)<>]*)/g;
+const ABSOLUTE_WIN = /(?:^|[\s'"=:(])((?:~|\/Users|\/private|\/tmp|\/Volumes|\/opt)\/[^\s'";|&)<>]*|[A-Za-z]:[\\/][^\s'";|&)<>]*)/g;
 
 /** Folders/files a shell command works on, as absolute paths. */
 export function bashTargets(command, cwd, home = homedir()) {
@@ -16,12 +20,14 @@ export function bashTargets(command, cwd, home = homedir()) {
     const clean = raw.replace(/^['"]|['"]$/g, '');
     if (!clean) return;
     const expanded = expandHome(clean, home);
-    if (isAbsolute(expanded)) found.add(expanded);
+    // On Windows one path has many spellings (drive with either slash, or rooted): resolve to one native form so it counts once.
+    // (a rooted path with no drive is on the drive of the command's own folder, not of this process)
+    if (isAbsolute(expanded)) found.add(process.platform === 'win32' ? resolve(cwd || '.', expanded) : expanded);
     else if (cwd) found.add(resolve(cwd, expanded));
   };
   for (const m of command.matchAll(/\bgit\s+-C\s+("[^"]+"|'[^']+'|\S+)/g)) add(m[1]);
   for (const m of command.matchAll(/(?:^|[;&|(]\s*|\s)cd\s+("[^"]+"|'[^']+'|[^\s;&|)]+)/g)) add(m[1]);
-  for (const m of command.matchAll(/(?:^|[\s'"=:(])((?:~|\/Users|\/private|\/tmp|\/Volumes|\/opt)\/[^\s'";|&)<>]*)/g)) add(m[1]);
+  for (const m of command.matchAll(process.platform === 'win32' ? ABSOLUTE_WIN : ABSOLUTE)) add(m[1]);
   if (found.size === 0 && cwd) found.add(cwd);
   return [...found];
 }

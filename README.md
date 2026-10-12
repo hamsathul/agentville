@@ -8,7 +8,7 @@ https://github.com/user-attachments/assets/803b91f8-a0ca-4ba8-835b-b889cefef32f
 
 # Agentville
 
-**Agentville is a live dashboard for every AI coding agent on your Mac**: Claude Code sessions (interactive
+**Agentville is a live dashboard for every AI coding agent on your Mac or Windows PC**: Claude Code sessions (interactive
 and background), their subagents and background jobs, and Codex. See who is waiting on you, what
 each agent is doing right now and what it costs. Answer, message and steer them from one page,
 and watch them work as farmers on a pixel farm.
@@ -20,13 +20,13 @@ repo. Three farmers wait on your porch, one has finished, and the rest work in t
 the tool for their current step.</sub>
 
 Everything runs on your machine. The collector is a small Node program with no dependencies.
-It listens on `127.0.0.1` only and reads what Claude Code already writes to disk.
+It listens on the loopback addresses only (`127.0.0.1`, and `::1` where the machine has it) and reads what Claude Code already writes to disk.
 
 ## Contents
 
 - [What it can do](#what-it-can-do)
 - [Requirements](#requirements)
-- [Install](#install)
+- [Install](#install) (on Windows: [docs/windows.md](docs/windows.md))
 - [Using it](#using-it)
   - [The list view](#the-list-view)
   - [Answering and messaging agents](#answering-and-messaging-agents)
@@ -62,7 +62,7 @@ It listens on `127.0.0.1` only and reads what Claude Code already writes to disk
 ## What it can do
 
 **See everything at once**
-- Every Claude Code session on the Mac (terminal and background) and Codex, sorted by what needs
+- Every Claude Code session on the computer (terminal and background) and Codex, sorted by what needs
   you: **waiting on you**, **working**, **your turn**, **idle** and **stale**.
 - What each one is doing right now: the tool it is running, the working line its terminal shows
   (`✻ Slithering… (5m 31s · ↓ 28.5k tokens · thinking with xhigh effort)`) and its recent steps.
@@ -125,7 +125,8 @@ It listens on `127.0.0.1` only and reads what Claude Code already writes to disk
   reply, and one click opens it.
 
 **Get told when it matters**
-- macOS notifications when an agent needs you, finishes, collides with another or runs hot.
+- Desktop notifications (macOS's, or Windows toasts) when an agent needs you, finishes, collides
+  with another or runs hot.
 - A bell in the page, and a count in the tab title.
 - Inside Claude Code: a `/tracker` pane, a status line and toasts.
 
@@ -169,12 +170,20 @@ It listens on `127.0.0.1` only and reads what Claude Code already writes to disk
 ## Requirements
 
 - **macOS.** The service runs under launchd, and the tracker uses `ps` and `osascript`.
+- **Or Windows 10/11** with Windows PowerShell 5.1. It detects the platform and checks its dependencies at
+  every start, and refuses to start, with the fix, only when a required one is missing: see
+  [docs/windows.md](docs/windows.md), which also says what differs there.
 - **Node.js 22 or newer.** An nvm install is found automatically. `npm run check-world` needs
   22.13 or later (or 23.5 or later), to run a world contained.
-- **Claude Code.** The mod needs a build with plugin mods; it is tested on 2.1.293.
+- **Claude Code.** The mod needs a build with plugin mods; it is tested on 2.1.293. The dashboard
+  starts without `claude` (it reads sessions from their files), but needs it to start, resume or
+  fork a session and for the ✨ Helper; the start-up check says so.
 - **Optional: the GitHub CLI (`gh`)**, signed in, for deploy status and pull requests.
 
 ## Install
+
+These steps are for a Mac. On Windows, follow [docs/windows.md](docs/windows.md): clone under your
+user folder, check with `node collector\index.mjs --check`, and install with `bin\agent-tracker.cmd install`.
 
 ### 1. Get the code and the command
 
@@ -255,7 +264,10 @@ itself), the page adds **World ▾** and **☰ List** in a corner.
 
 ### The list view
 
-The page is laid out like an editor, in three columns:
+The page is laid out like an editor, in three columns, under a top bar. The top bar shows
+**System** (the operating system and its version, Node's and Claude Code's), the memory and CPU your
+agents use of this computer, and your plan's limits (**no reading yet** until a session with the mod
+reports them), with the buttons for the other views.
 
 - **Left: the agents.** Waiting ones come first, then the working ones with a live ticker of
   their current tool. Idle and stale agents fold away. Your repos sit below, each with its branch,
@@ -527,12 +539,13 @@ before you updated, run `/reload-plugins` in it.
   - **New session in any folder**: type or paste a path (`~/code/new-app`), and the folders in it
     are suggested as you type. **Tab** completes a name as a terminal does; click a folder to go
     into it, or `..` to go up. Hidden folders are suggested once you type the dot.
-  - **Browse…** opens Finder's own folder window instead, in front of the browser, with its **New
-    Folder** button. The folder you pick fills the field. The first time, macOS may ask to let the
-    tracker control System Events, which shows that window.
+  - **Browse…** opens Finder's own folder window instead (Windows' folder window on Windows), in
+    front of the browser, with its **New Folder** button. The folder you pick fills the field. The
+    first time, macOS may ask to let the tracker control System Events, which shows that window.
   - A folder that doesn't exist yet gets **Create it**, which makes it (and any missing folders
     above it) after asking.
-  - Only folders in your home folder or on a mounted drive (`/Volumes/…`) can be used.
+  - Only folders in your home folder or on a mounted drive (`/Volumes/…`) can be used (on Windows,
+    your user folder or a drive other than the system's).
   - The first time Claude Code runs in a folder, it asks in the new window whether to trust it.
   - Below are the folders you have worked in, each with **＋ New**.
   - **Search** matches titles, messages, folders and git branches.
@@ -552,7 +565,7 @@ before you updated, run `/reload-plugins` in it.
     Each past session and folder shows the account it last ran on, and the filters include
     **Account**.
   - It opens a new Terminal or iTerm window (the `terminal` setting), and the window closes when
-    Claude exits.
+    Claude exits. On Windows it opens a Windows Terminal tab, or a console window without it.
 - **⑂ Fork** on any message in the conversation (in the side panel or ⤢ Read all; it shows when you
   point at the message) starts a new session from the conversation at that point, in a new terminal
   window. The original session is left as it is and can keep working.
@@ -565,7 +578,8 @@ before you updated, run `/reload-plugins` in it.
   - It gets a copy of your notes on the original, which from then on are its own.
   - Forking from your very first message isn't possible: start a new session instead.
 - **End session** stops Claude cleanly after you confirm and closes its terminal window. You can
-  resume the conversation later.
+  resume the conversation later. On Windows it ends the process at once, and its window may stay
+  open for you to close.
 - A stale background session can be **removed** (`claude rm`).
 
 ### Several Claude accounts
@@ -725,7 +739,7 @@ The **⚙ Claude Code** button in the top bar opens your Claude Code setup in th
   | PDF | the browser's PDF viewer, with pages, zoom and search |
   | Video and audio | a player that seeks |
   | HTML | **Preview**: the page itself, with the CSS, scripts and pictures beside it, sealed off from the dashboard. Or **Source** |
-  | Word (docx, doc, rtf, odt) | **Page**: its headings, lists and tables, read by macOS's `textutil`. Or **Text** |
+  | Word (docx, doc, rtf, odt) | **Page**: its headings, lists and tables, read by macOS's `textutil` (on Windows, in JavaScript: not `.doc`). Or **Text** |
   | Excel (xlsx) and CSV | tables with column letters and row numbers, a tab per sheet, values as Excel shows them |
   | PowerPoint, Keynote, Pages, Numbers… | a picture of the first page, made by Quick Look |
   | Anything else (zip, fonts…) | a note saying it can't be shown |
@@ -834,7 +848,7 @@ to their defaults, the checklist items it draws the same in two states ("deploy 
 same as "deploy ok"), and outfit parts the people kit doesn't have. It exits 1 on a problem. It needs no server or token and
 reads none of your sessions: only the world's `world.js` and `world.json`, the SDK and the tour (and
 `config.json`, for where your worlds are). What it reports, and the checklist, are in
-[docs/worlds.md](docs/worlds.md#check-world-and-the-checklist). It runs the world's code on your Mac, contained (it can
+[docs/worlds.md](docs/worlds.md#check-world-and-the-checklist). It runs the world's code on your computer, contained (it can
 read only the SDK and the world's `world.js` and `world.json`, no other file of the world's, and can't
 write or start programs), but the world can still reach the network: check only worlds you'd trust
 ([Privacy and security](#privacy-and-security)). A world whose `world.js` or `world.json` is a link out
@@ -1238,7 +1252,7 @@ reduce-motion setting.
 
 ### Notifications and the bell
 
-- **macOS notifications** come from the collector: an agent needs you, finished its turn,
+- **Desktop notifications** (macOS's, or Windows toasts) come from the collector: an agent needs you, finished its turn,
   collides with another in the same repo, or runs hot on CPU or memory. Each event notifies
   once; turn types on or off with `notify`.
 - **The bell** (**Bell** in a world's Menu) chimes in the page whenever an agent starts waiting on
@@ -1260,6 +1274,8 @@ The mod also does the dashboard's work inside the session:
   Animal lines are ticked;
 - reports the session's cost, plan usage and working line.
 
+On Windows the mod needs 0.9.2 or newer (`/reload-plugins` in a session that is already open).
+
 ## Configuration
 
 `config.json` sits next to `config.example.json` and is re-read when you save it. A changed
@@ -1274,7 +1290,8 @@ The mod also does the dashboard's work inside the session:
 | `permissionDashboardSec` | How long a permission prompt is offered on the dashboard before the terminal asks (15; 0 = terminal only) |
 | `permissionGuessSec` | A tool call with no result for this long, with an idle process, counts as "probably a permission prompt" (20) |
 | `memoryAlertGb`, `cpuAlertPct`, `cpuAlertSustainSec` | When an agent counts as running hot (2 GB; 90% for 120 s) |
-| `notify` | Each notification on or off: `waiting`, `collision`, `yourTurn`, `memory`, `cpu` |
+| `notify` | Each notification on or off: `waiting`, `collision`, `yourTurn`, `memory`, `cpu` (on Windows `memory` and `cpu` start off) |
+| `notifyMaxPerMin` | Most pop-ups raised in one minute; the rest become one "N more alerts" pop-up (0 = no limit; 3 on Windows, 0 on macOS) |
 | `modToasts` | Toasts inside Claude Code sessions (on) |
 | `deployRepos` | Checkout path → `owner/repo` whose latest GitHub Actions run is shown, e.g. `{ "/Users/you/code/api": "you/api" }` |
 | `worldsDir` | Your own worlds, a folder each; `null` means `~/.agentville/worlds` (a leading `~` is your home; a relative one is under your home) |
@@ -1291,13 +1308,18 @@ The mod also does the dashboard's work inside the session:
 | `agent-tracker status` | Whether the service runs and the dashboard answers |
 | `agent-tracker open` | Opens the dashboard |
 | `agent-tracker logs` | The last lines of its logs |
+| `bin\agent-tracker.cmd install` (and `uninstall`, `start`, `stop`, `restart`, `status`, `open`, `logs`) | The same on Windows, with a per-user scheduled task at logon; `install -DryRun` prints what it would register ([docs/windows.md](docs/windows.md)) |
+| `node collector/index.mjs --check` | What the collector needs, each with its fix, required or optional; exits 1 if a required one is missing |
+| `node collector/index.mjs --exit-after <seconds>` | A throwaway run that ends itself (1 to 3600 seconds) |
 | `npm run new-world -- <name>` | Makes a world of your own from the starter, in your worlds folder, and says what to do next ([docs/worlds.md](docs/worlds.md#making-a-world)) |
 | `npm run world-shots -- <world>` | A picture of a world (`farm`, `factory`, `military`, `starter` or one of yours) at every stop of the test tour, in headless Chrome on made-up data, in `.private/shots/` (`--stop <name>` for one stop). Exits 1 if a stop didn't show |
 | `npm run check-world -- <world>` | Runs the test tour headless against a world (`farm`, `factory`, `military`, `starter` or one of yours): its exceptions with file and line, a hook that never returns, creatures (and their gags) that break the animals kit's rules, and pointers to what it may draw the same ([docs/worlds.md](docs/worlds.md#check-world-and-the-checklist)). Exits 1 on a problem. It runs the world's code contained (it can read only the SDK and the world's `world.js` and `world.json`), but the world can still reach the network: check only worlds you'd trust ([Privacy and security](#privacy-and-security)) |
 
 ## How it works
 
-The **collector** (`collector/`) is a Node program run by launchd. Every few seconds it reads:
+The **collector** (`collector/`) is a Node program run by launchd (on Windows, by a scheduled task at
+logon). Before it starts it checks what it needs (`--check`), and writes any warning to its log.
+What differs by system is in `collector/platform/`. Every few seconds it reads:
 - `~/.claude/sessions/*.json`: the live session registry;
 - `claude agents --json`: background sessions;
 - the transcripts under `~/.claude/projects/` (only the new bytes of each). When a session moves
@@ -1307,7 +1329,7 @@ The **collector** (`collector/`) is a Node program run by launchd. Every few sec
   `sessions/` with `claude agents --json` run in its `CLAUDE_CONFIG_DIR`, and its `projects/`
   unless it is a link to one already read. Every minute it looks for accounts again, and it asks
   `claude auth status` whether each is signed in;
-- `ps`: processes, CPU and memory, and each session's start flags;
+- `ps` (on Windows, `Win32_Process`): processes, CPU and memory, and each session's start flags;
 - `git` in each repo, with `GIT_OPTIONAL_LOCKS=0`, so it never takes `index.lock` from an agent
   that is committing (it never fetches);
 - `gh`, for deploys and pull requests.
@@ -1335,8 +1357,22 @@ and can do is in [docs/worlds.md](docs/worlds.md).
 
 ## Privacy and security
 
-- Everything stays on your Mac. The collector listens on `127.0.0.1` only and sends nothing
-  anywhere. The exception is `gh`, which asks GitHub about your own repos.
+- Everything stays on your computer. The collector listens on the loopback addresses only
+  (`127.0.0.1`, and `::1` where the machine has it; both take the same token and checks) and sends
+  nothing anywhere. The exception is `gh`, which asks GitHub about your own repos.
+- The `state/` folder, where the dashboard leaves answers and messages for your sessions and keeps
+  its token, is made readable only by you at every start, before the token is made in it; a token
+  found readable by others is made private again. "Readable only by you" is mode 0600/0700 on a Mac,
+  and on Windows an access list with one entry, yours, set with `icacls` and read back. On a Windows
+  drive without access lists (FAT, exFAT) the collector refuses to start rather than leave the token
+  open. (A Mac can't keep modes on such a drive either: keep Agentville on your system disk.)
+- On Windows the collector runs every program it finds on PATH, never one from a session's folder
+  (Windows would otherwise look there first), and starts a session from a launch file under
+  `state/launch/`, readable only by you and deleted when read: the folder, the arguments and, with
+  several accounts, its `CLAUDE_CONFIG_DIR`, never a command line. The mod there runs `cmd.exe` to
+  move, delete and open, refusing any path cmd.exe would read as syntax, and waits for an answer
+  with a PowerShell loop that gets its paths in its environment. The service is a scheduled task
+  for your account only, at normal rights.
 - The dashboard's own page and its API tell the browser never to show them inside a frame
   (`frame-ancestors 'none'`), so no other page, and no world, can load the dashboard with its token
   inside itself.
@@ -1352,7 +1388,7 @@ and can do is in [docs/worlds.md](docs/worlds.md).
   ⤢ Read all does; the collector stores nothing new for it. The browser keeps one time, the newest
   message you saw, for its "new since you last looked" line. Worlds get none of it: a world's Menu
   only asks the page to open it.
-- Your worlds' files are served without the token, like the farm's, to anything on this Mac that
+- Your worlds' files are served without the token, like the farm's, to anything on this computer that
   asks for them by path (so keep nothing secret in a world's folder), and never from outside the
   world's own folder. The list of their names and the folder's path needs the token. The collector
   reads the folder; it never fetches a world from anywhere.
@@ -1360,7 +1396,7 @@ and can do is in [docs/worlds.md](docs/worlds.md).
   and answers are made up in the page, it never asks the collector for your sessions or files (its
   content policy lets it fetch nothing at all), and it keeps a world's settings in memory, never in
   the browser. Like the dashboard, it refuses to be shown in a frame.
-- `npm run check-world` runs a world's code on your Mac, on made-up snapshots, outside the sandboxed
+- `npm run check-world` runs a world's code on your computer, on made-up snapshots, outside the sandboxed
   frame. It runs it contained, in a Node of its own (Node's permission model): it can read only the
   SDK and the world's `world.js` and `world.json` (no other file of the world's, so a link the world
   ships in its folder leads nowhere), can't write or start programs, and gets none of your
@@ -1372,7 +1408,8 @@ and can do is in [docs/worlds.md](docs/worlds.md).
   A Node too old to contain it (before 22.13, or 23.0 to 23.4) gets a one-line refusal, never an
   unconfined run.
 - **Open the worlds folder** (an action: token and same origin) makes your worlds folder and shows
-  it in Finder (`open -a Finder <folder>`); it only shows it, and runs nothing in it. The page keeps your
+  it in Finder (`open -a Finder <folder>`; on Windows, File Explorer, which is handed only a folder
+  that exists); it only shows it, and runs nothing in it. The page keeps your
   choice of world in this browser (`tracker-world`), and nothing else about it leaves the page.
 - **The threat model.** The sandbox protects your token and every action — a world can never act
   for you — but not the secrecy of what a world is shown. A world can't read the page, use its
@@ -1418,7 +1455,8 @@ and can do is in [docs/worlds.md](docs/worlds.md).
 - **■ Stop** on the working line goes through the session's own mod, as Esc would: no signal is
   sent to anything. **■ Stop** under Commands running only ever stops a session's shell commands,
   never the session itself, its MCP servers or anything else: the collector checks again in `ps`, then sends SIGTERM to the command's
-  own process group (SIGKILL 3 s later if anything is left). A background command's output is read
+  own process group (SIGKILL 3 s later if anything is left). On Windows it ends the command's whole
+  process tree at once (`taskkill /T /F`), and only once. A background command's output is read
   only with the token, and only from the file Claude Code named for it in the scratch folder.
 - Files a reply names are checked with the collector before anything shows: token only, the same
   rules as the explorer. A picture's thumbnail loads through a short-lived link, kept by your
@@ -1446,7 +1484,7 @@ and can do is in [docs/worlds.md](docs/worlds.md).
   files readable only by you). Nothing in them reaches the session until one goes out, and the
   snapshot the page reads says only how many are waiting; the text is read with the token.
 - Your notes on a session are kept under `state/notes/` (the folder and its files readable only by
-  you) until you delete them. They never leave your Mac, and nothing in one reaches the session
+  you) until you delete them. They never leave your computer, and nothing in one reaches the session
   until you use or send it. The snapshot the page reads every few seconds carries only how many
   there are; the text is read with the token when the section shows.
 - The ✨ Helper is off by default. Switched on, it calls Haiku only through `$.model.complete` in
@@ -1478,6 +1516,11 @@ and can do is in [docs/worlds.md](docs/worlds.md).
 | Problem | Try |
 |---|---|
 | The dashboard doesn't load | `agent-tracker status`, then `agent-tracker logs`. Check that nothing else uses the port |
+| The log says "Not starting: a required dependency is missing" | `node collector/index.mjs --check` names it, with the fix. Required are only Node 22+ and the system's own tools (`osascript` and `ps` on a Mac, Windows PowerShell on Windows) |
+| ＋ Session, Resume or Fork fails, and the log says Claude Code was not found | The service looks on its own PATH: nvm's Node folder, Homebrew's, the system's, then `~/.local/bin` (on Windows: yours, then `.local\bin`, npm's, Git's and the GitHub CLI's). The service doesn't see what you set in your shell: on a Mac, link `claude` into `~/.local/bin` (`ln -s "$(command -v claude)" ~/.local/bin/claude`), then `agent-tracker restart`; on Windows, `setx TRACKER_CLAUDE_BIN <its full path>`, then `bin\agent-tracker.cmd restart` |
+| Windows: the collector won't start, and its log says "failed to start" with an `icacls` error (or "could not make … private") | Its folder is on a drive without access lists (FAT, exFAT, some network drives), where the token can't be kept private. Move Agentville under your user folder on the system drive |
+| Windows: `--check` says Agentville is outside your user folder | Others who sign in to the PC may be able to change its files, and `bin\run-collector.ps1` runs at your logon: move it under `C:\Users\<you>` |
+| Windows: answers from the dashboard do nothing in a session | The mod needs 0.9.2 there: `/reload-plugins` in that session |
 | A message waits and never goes out | It goes out when the session's turn ends, through its mod: the mod must be listening (📡 dashboard answers on). Press **⚡ Send now** to send it at once. A red line on the list says when the session didn't take it; it is tried again when the session next moves |
 | 💬 All chats misses older messages, or a session | It holds each session's latest 200 messages and 200 steps: older ones are in that agent's **⤢ Read all**. Codex sessions have no transcript, so they aren't shown, and a new session shows once its transcript has been read |
 | A session shows "dashboard answers off" | Its mod isn't loaded. Check `CLAUDE_CODE_PLUGIN_DIRS` in `~/.claude/settings.json` (or, for another account, in that account's own `settings.json`), then type anything in the session or `/reload-plugins` |
@@ -1492,8 +1535,8 @@ and can do is in [docs/worlds.md](docs/worlds.md).
 | A second account asks you to log in again | Its folder is spelled differently from when you logged in (a trailing slash, or a link to it): use the same path every time |
 | My world shows no bubbles and calls its repos `repo 1`, `repo 2`… (and its agents `agent 1`…) | It is in privacy mode: tick **Can see what agents say** for it in the list of worlds. Unticking later doesn't clear what the world saved while it could see; it gets its own saved settings back on start |
 | No pull requests or deploy weather | `gh auth status`. Pull requests need a GitHub `origin`; Actions runs need the repo in `deployRepos` |
-| ＋ Session or End session does nothing | Allow the tracker to control Terminal or iTerm: System Settings → Privacy & Security → Automation |
-| **Browse…** or **📁 Folder** opens no window | Allow the tracker to control System Events: System Settings → Privacy & Security → Automation. A window may also be open behind others: pick or cancel it there |
+| ＋ Session or End session does nothing (Mac) | Allow the tracker to control Terminal or iTerm: System Settings → Privacy & Security → Automation |
+| **Browse…** or **📁 Folder** opens no window (Mac) | Allow the tracker to control System Events: System Settings → Privacy & Security → Automation. A window may also be open behind others: pick or cancel it there |
 | ↺ Restore says its files could not be restored | Claude Code's file snapshots may be off (`/config` → file checkpointing, or `CLAUDE_CODE_DISABLE_FILE_CHECKPOINTING`). The session was resumed as it was; restore the conversation only |
 | The bell is silent | Click the page once (browsers block sound until you do), and allow notifications |
 | A world says it "didn't start" | A world has 5 seconds to start. Past that, a panel replaces the (empty) world and gives the first error it reported, if any. For a world you'd trust, run `npm run check-world -- <name>`: it names the file and line (it runs the world contained, reading only the SDK and the world's `world.js` and `world.json`, but the world can still reach the network; see [Privacy and security](#privacy-and-security)). Fix its `world.js` (or `world.json`) and save: it reloads by itself. Or press **Back to the farm**, **Show the list**, or **Try again** |
@@ -1520,7 +1563,10 @@ and can do is in [docs/worlds.md](docs/worlds.md).
   and sheets up to 50 MB.
 - Sheets show their first 2,000 rows and 100 columns, without colours, merged cells or charts, and
   a formula's last saved result. A Word page loses its layout (headers, footers, page breaks) and
-  its pictures. Word pages and first-page pictures need macOS's `textutil` and Quick Look.
+  its pictures. On a Mac, Word pages and first-page pictures come from macOS's `textutil` and Quick
+  Look. On Windows, Word pages are read in JavaScript (`.docx`, `.odt`, `.rtf`; not the old `.doc`),
+  and there are no first-page pictures.
+- On Windows, End session can't close the session's terminal window (there is no terminal to ask).
 - The explorer lists at most 5,000 files, and stays off for an agent working in your home folder.
 - "Documents" and the explorer's dots come from the agent's Write, Edit and Read tool calls (not
   shell commands).
@@ -1537,13 +1583,15 @@ and can do is in [docs/worlds.md](docs/worlds.md).
 ## Development
 
 ```
-collector/   the collector: sources/, transcript/, derive/, server.mjs; its tests in test/
+collector/   the collector: sources/, transcript/, derive/, server.mjs; platform/ (what differs on a Mac
+             and on Windows, the start-up check, the Windows launcher); its tests in test/
 web/         the dashboard: index.html, app.js, panels.js, scene.js, worlds.js…; worlds/ holds the
              farm (worlds/farm/), the robot factory (worlds/factory/), the field exercise
              (worlds/military/), the starter (worlds/starter/), the test page and its tour (worlds/test/)
              and what every world's frame loads (worlds/sdk/)
 mod/         the Claude Code mod: hooks/register.tsx; its tests in tests/
-bin/         the agent-tracker command and the launchd entry point
+bin/         the agent-tracker command and the launchd entry point; on Windows agent-tracker.cmd,
+             agent-tracker.ps1 and the scheduled task's entry point run-collector.ps1
 launchd/     the service definition
 scripts/     end-to-end checks, the world tools (new-world, check-world, world-shots), the reference
              pictures (world-golden) and the demo videos (their shared recorder in scripts/demo/)
@@ -1562,15 +1610,17 @@ npm run golden              # reference pictures of the list, the farm, the fact
 claude plugin test mod      # the Claude Code mod
 scripts/e2e-answer.sh       # answering and messaging real sessions
 npm start                   # run the collector in the foreground (stop the service first)
-npm run demo [out.mp4]      # record the demo video, made-up sessions only (Chrome, ffmpeg; ~8 min),
-                            # a copy under 10 MB for GitHub (out-small.mp4), and one short video per
-                            # chapter in out-chapters/ (01-the-farm.mp4, …);
-                            # it follows docs/demo-script.md; STILLS=docs STILLS_ONLY=1 remakes docs/farm.png
+npm run demo [out.mp4]      # record the demo video, made-up sessions only (Chrome, ffmpeg; ~12 min, no
+                            # text on screen), a copy under 10 MB for GitHub (out-small.mp4), one short
+                            # video per chapter in out-chapters/ (01-the-farm.mp4, …), and its captions,
+                            # timed in both, in out-captions.md; it follows docs/demo-script.md;
+                            # STILLS=docs STILLS_ONLY=1 remakes docs/farm.png and docs/farm-night.png
 npm run demo:many [out.mp4] # a short video of sixteen made-up sessions: their terminal windows, then the
                             # farm (~80 s, and a copy under 10 MB)
 ```
 
-GitHub Actions runs `npm test` and `npm run test:ui` on every push to `main` and on pull requests.
+GitHub Actions runs `npm test` on macOS and on Windows, and `npm run test:ui` on macOS, on every push
+to `main` and on pull requests.
 The mod's tests need Claude Code, and `scripts/e2e-answer.sh` needs real sessions, so those two run
 locally.
 

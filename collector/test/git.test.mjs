@@ -8,7 +8,7 @@ import { RepoResolver, githubSlug, mainOf, repoStatus } from '../sources/git.mjs
 
 const ID = { GIT_AUTHOR_NAME: 't', GIT_AUTHOR_EMAIL: 't@t', GIT_COMMITTER_NAME: 't', GIT_COMMITTER_EMAIL: 't@t' };
 const git = (cwd, ...args) => execFileSync('git', args, { cwd, env: { ...process.env, ...ID } });
-const tmp = prefix => realpathSync(mkdtempSync(join(tmpdir(), prefix)));
+const tmp = prefix => realpathSync.native(mkdtempSync(join(tmpdir(), prefix)));
 
 function makeRepo() {
   const dir = tmp('tracker-git-');

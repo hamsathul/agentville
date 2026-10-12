@@ -1,4 +1,5 @@
 import { statSync } from 'node:fs';
+import { fromGit } from '../platform/paths.mjs';
 import { basename, dirname } from 'node:path';
 import { run } from '../lib/exec.mjs';
 
@@ -34,7 +35,7 @@ export class RepoResolver {
     const hit = this.cache.get(dir);
     if (hit && this.now() - hit.at < this.ttlMs) return hit.top;
     const res = await this.runner('git', ['-C', dir, 'rev-parse', '--show-toplevel'], { env: GIT_ENV, timeoutMs: 5000 });
-    const top = res.code === 0 && res.stdout.trim() ? res.stdout.trim() : null;
+    const top = res.code === 0 && res.stdout.trim() ? fromGit(res.stdout.trim()) : null;
     this.cache.set(dir, { top, at: this.now() });
     return top;
   }
@@ -64,7 +65,7 @@ export async function mainOf(top, runner = run) {
   if (worktrees.has(top)) return worktrees.get(top);
   const res = await runner('git', ['-C', top, 'rev-parse', '--path-format=absolute', '--git-dir', '--git-common-dir'], { env: GIT_ENV, timeoutMs: 5000 });
   const [dir, common] = res.code === 0 ? res.stdout.trim().split('\n') : [];
-  const main = dir && common && dir !== common && basename(common) === '.git' ? dirname(common) : null;
+  const main = dir && common && dir !== common && basename(common) === '.git' ? fromGit(dirname(common)) : null;
   if (res.code === 0) worktrees.set(top, main);
   return main;
 }
