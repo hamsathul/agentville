@@ -1410,6 +1410,18 @@ test('the conversation shows messages from and to other sessions as their own bu
   assert.match(side, /class="bub peer out"[\s\S]*to shop-api-3 · Holding[\s\S]*Holding until you say so\./);
 });
 
+test("with mod 0.9.4 the switch's confirm says Claude Code's warning itself, and no longer that the terminal will ask", async () => {
+  const page = loadPage();
+  page.push(richSnapshot([richAgent({ pid: 4242, model: 'claude-opus-5-5', effort: 'xhigh', mod: { live: true, version: '0.9.4' } })]));
+  page.side();
+  await page.change({ dataset: { switchModel: '', agent: 'r1' }, value: 'haiku' });
+  const text = page.el('confirm-text').textContent;
+  assert.match(text, /If the conversation is cached, its next reply re-reads all of it: slower, and more tokens\.$/);
+  assert.doesNotMatch(text, /terminal/);
+  await page.change({ dataset: { switchEffort: '', agent: 'r1' }, value: 'high' });
+  assert.doesNotMatch(page.el('confirm-text').textContent, /re-reads/, 'an effort switch has no such warning');
+});
+
 test("a session's bar switches its model and effort (in the session, after you confirm), and side questions show with their answers", async () => {
   const page = loadPage();
   page.push(richSnapshot([richAgent({ pid: 4242, model: 'claude-opus-5-5', effort: 'xhigh', mod: { live: true, version: '0.5.0' },
@@ -1423,6 +1435,7 @@ test("a session's bar switches its model and effort (in the session, after you c
   assert.match(side, /Still running\?[\s\S]*thinking…/, 'a question still being answered');
   await page.change({ dataset: { switchModel: '', agent: 'r1' }, value: 'haiku' });
   assert.match(page.el('confirm-text').textContent, /Switch busy-one to Haiku\? It runs \/model haiku in the session after its current turn\. Claude Code also saves it as your default/);
+  assert.match(page.el('confirm-text').textContent, /If the conversation is cached, its next reply re-reads all of it: slower, and more tokens\. Claude Code may ask you to confirm in its terminal \(tracker mod 0\.9\.4 answers for you/, 'an older mod: the terminal still asks');
   assert.deepEqual(page.posts, [], 'nothing until you confirm');
   await page.clickButton('confirm-yes', { confirm: 'yes' });
   await new Promise(r => setTimeout(r, 0));

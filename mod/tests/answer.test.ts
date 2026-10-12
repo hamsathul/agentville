@@ -1,6 +1,6 @@
 import { expect, test } from 'claude-code/testing'
 
-import { NAME_SYSTEM, answerAsides, answerFromDashboard, chooseAlways, deliverMessages, endStoppedCommand, linesPrompt, linesSystem, namePrompt, noteSpinner, offerContext, permitFromDashboard, runHelper, runSettings, startTurn, turnEnded, turnForBeacon, turnStarted, usageNow } from '../hooks/register'
+import { NAME_SYSTEM, allowDashboardSwitch, answerAsides, answerFromDashboard, chooseAlways, deliverMessages, endStoppedCommand, linesPrompt, linesSystem, namePrompt, noteSpinner, offerContext, permitFromDashboard, runHelper, runSettings, startTurn, turnEnded, turnForBeacon, turnStarted, usageNow } from '../hooks/register'
 
 // The hook bodies only call $.fs and $.process.run, so a small stand-in records them. A dashboard wait is a program of its own
 // (a $ call's time is free; a sleep counts against the hook's 10-second budget, so the stand-in's sleep fails the test):
@@ -360,6 +360,34 @@ test('a model or effort switch from the dashboard runs as /model or /effort, and
   expect(f.written.map(w => w.path)).toEqual(['/repo/state/command-results/s1.1-a.json', '/repo/state/command-results/s1.2-b.json'])
   expect(f.written[0]?.value).toEqual({ id: '1-a', sessionId: 's1', command: 'model', args: 'sonnet', ok: true, text: 'Set model to sonnet', at: 5_000 })
   expect([...f.files.keys()]).toEqual([])
+})
+
+test("while the dashboard's /model runs, Claude Code's question about re-reading a cached conversation is answered for that model only", async () => {
+  let finish = (_: any) => {}
+  const f = asker$({ '1-a.json': '{"command":"model","args":"haiku","id":"1-a"}' }, { run: () => new Promise(r => { finish = r }) })
+  const next = (e: any) => ({ passedOn: e.requested_model })
+  const check = (requested_model: string | null, source = 'command') => allowDashboardSwitch({ hook_event_name: 'PreModelSwitch', source, requested_model, from_model: 'claude-opus-5-5', to_model: 'claude-haiku-5-5', prompt_cache_warm: true }, next)
+  expect(check('haiku')).toEqual({ passedOn: 'haiku' }) // nothing from the dashboard yet: a /model typed in the terminal asks
+  await runSettings(f.$, '/repo/state', 's1')
+  await settle()
+  expect(f.ran).toEqual([{ command: 'model', args: 'haiku' }])
+  expect(check('haiku')).toEqual({ permissionDecision: 'allow', permissionDecisionReason: 'switched from the Agentville dashboard, where you confirmed it' })
+  expect(check('HAIKU')).toMatchObject({ permissionDecision: 'allow' })
+  expect(check('sonnet')).toEqual({ passedOn: 'sonnet' })
+  expect(check('haiku', 'picker')).toEqual({ passedOn: 'haiku' })
+  finish({ text: 'Set model to Haiku 5.5' })
+  await settle()
+  expect(check('haiku')).toEqual({ passedOn: 'haiku' }) // done: the next /model asks again
+})
+
+test('a dashboard /model that fails leaves no answer behind, and an effort switch never answers for a model', async () => {
+  const next = (e: any) => ({ passedOn: e.requested_model })
+  const f = asker$({ '1-a.json': '{"command":"model","args":"opus[1m]","id":"1-a"}', '2-b.json': '{"command":"effort","args":"high","id":"2-b"}' }, { run: async c => { if (c.command === 'model') throw new Error('no such model'); return { text: 'ok' } } })
+  await runSettings(f.$, '/repo/state', 's1')
+  await settle()
+  expect(f.written[0]?.value).toMatchObject({ command: 'model', ok: false })
+  expect(allowDashboardSwitch({ source: 'command', requested_model: 'opus[1m]' }, next)).toEqual({ passedOn: 'opus[1m]' })
+  expect(allowDashboardSwitch({ source: 'command', requested_model: 'high' }, next)).toEqual({ passedOn: 'high' })
 })
 
 test('only /model and /effort, with an alias or a level, are run from the dashboard', async () => {

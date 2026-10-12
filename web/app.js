@@ -672,7 +672,9 @@ async function switchFlow(id, what, value) {
   if (!a) return;
   const label = what === 'model' ? (MODELS.find(([m]) => m === value)?.[1] ?? value) : `${value} effort`;
   const saved = what === 'model' || value !== 'max' ? ' Claude Code also saves it as your default for new sessions (as when you type it).' : '';
-  if (!(await confirmBox(`Switch ${a.name} to ${label}? It runs /${what} ${value} in the session after its current turn.${saved}`, `Switch to ${label}`))) return;
+  // Claude Code's own warning before a model switch (it asks in the terminal); mod 0.9.4 answers that question, so it is said here.
+  const reread = what !== 'model' ? '' : ` If the conversation is cached, its next reply re-reads all of it: slower, and more tokens.${modCan(a, '0.9.4') ? '' : ' Claude Code may ask you to confirm in its terminal (tracker mod 0.9.4 answers for you: run /reload-plugins in the session).'}`;
+  if (!(await confirmBox(`Switch ${a.name} to ${label}? It runs /${what} ${value} in the session after its current turn.${saved}${reread}`, `Switch to ${label}`))) return;
   const r = await post('/api/actions/setting', { agentId: id, [what]: value });
   notice(r.ok ? `${a.name} switches to ${label} after its current turn.` : `Could not switch ${a.name}: ${r.error}`);
 }

@@ -1,6 +1,6 @@
 {
   "name": "agent-tracker",
-  "version": "0.9.3",
+  "version": "0.9.4",
   "description": "Pane, status line and toasts for Agentville, the local dashboard of your AI agents",
   "types": "./types/index.d.ts",
   "author": {

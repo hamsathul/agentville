@@ -19,3 +19,9 @@ test("the mod's MOD_VERSION (hooks/register.tsx) is the plugin manifest's versio
 test("the field exercise's animal lines (its own words in the mod's table) came with mod 0.9.3", () => {
   assert.ok(modAtLeast(versionInCode(), '0.9.3'), `MOD_VERSION ${versionInCode()}: 0.9.3 or newer`);
 });
+
+test("a model switch from the dashboard answers Claude Code's own question (PreModelSwitch) from mod 0.9.4, which the page names", () => {
+  assert.ok(modAtLeast(versionInCode(), '0.9.4'), `MOD_VERSION ${versionInCode()}: 0.9.4 or newer`);
+  assert.match(read('hooks/register.tsx'), /on\('classic\.PreModelSwitch'/);
+  assert.match(readFileSync(fileURLToPath(new URL('../../web/app.js', import.meta.url)), 'utf8'), /modCan\(a, '0\.9\.4'\)/);
+});

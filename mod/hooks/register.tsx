@@ -26,7 +26,7 @@ const DASHBOARD_REASON = 'Answered from the Agentville dashboard'
 type Offer = { stateDir: string; sessionId: string; isLive: boolean; windowSec: number; now: number }
 type Waited = { kind: 'answer'; text: string } | { kind: 'withdrawn' } | { kind: 'timeout' }
 
-const MOD_VERSION = '0.9.3'
+const MOD_VERSION = '0.9.4'
 
 let latest: TrackerView = EMPTY
 // The terminal's working line (Slithering… while thinking), for the dashboard: when the turn began,
@@ -164,6 +164,19 @@ async function stopTurn($: any) {
   return { text: 'Stopped.' }
 }
 
+// Claude Code asks before /model switches a conversation it holds cached ("Switch model?": the next
+// reply re-reads it all), in the terminal, where the dashboard can't answer. The person confirmed the
+// switch on the dashboard, which says as much: so while a /model from there runs, its PreModelSwitch
+// check is answered here. A /model typed in the terminal still asks.
+let dashboardModel: string | null = null
+const ALLOW_SWITCH = { permissionDecision: 'allow', permissionDecisionReason: 'switched from the Agentville dashboard, where you confirmed it' }
+
+/** The PreModelSwitch check: allowed for the model the dashboard is switching to, else Claude Code asks as usual. */
+export function allowDashboardSwitch(e: any, next: any) {
+  const asked = String(e?.requested_model ?? 'default').toLowerCase()
+  return dashboardModel !== null && e?.source === 'command' && asked === dashboardModel.toLowerCase() ? ALLOW_SWITCH : next(e)
+}
+
 /**
  * Runs the switches the dashboard asked for. A slash command waits for the session to be idle, so
  * each runs on its own, never holding up the poll; what Claude Code said comes back to the collector.
@@ -174,11 +187,14 @@ export async function runSettings($: any, stateDir: string, sessionId: string) {
     if (!SETTINGS[command]?.test(args) || !SAFE_ID.test(id)) continue
     void (async () => {
       let result: { ok: boolean; text: string }
+      if (command === 'model') dashboardModel = args
       try {
         const r = command === 'stop' ? await stopTurn($) : await $.command.run({ command, args })
         result = { ok: true, text: String(r?.text ?? '') }
       } catch (err) {
         result = { ok: false, text: String(err) }
+      } finally {
+        if (command === 'model' && dashboardModel === args) dashboardModel = null
       }
       await writeReply($, `${stateDir}/command-results/${sessionId}.${id}.json`, { id, sessionId, command, args, ...result, at: await $.clock.now() })
     })()
@@ -558,6 +574,8 @@ export const register: Register = on => {
   on('tool.check', async ($, e, next) => permitFromDashboard($, e, next, await offerContext($)))
   on('classic.PermissionRequest', async ($, e, next) => chooseAlways($, e, next, await offerContext($)))
     .catch(($, e, next) => next(e)) // if choosing fails, the terminal asks as usual
+  on('classic.PreModelSwitch', async ($, e, next) => allowDashboardSwitch(e, next))
+    .catch(($, e, next) => next(e)) // if it fails, Claude Code asks as usual
 
   on('command.run', { command: 'tracker' }, async $ => {
     await $.ui.open({ id: PANE, title: 'Agents' })
