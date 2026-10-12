@@ -37,7 +37,7 @@ export function label(command) {
   const quoted = /^"([^"]+)"\s*(.*)$/.exec(command);
   const [exe, ...rest] = quoted ? [quoted[1], ...quoted[2].split(' ')] : command.split(' ');
   const base = lastPart(exe);
-  const switches = /^(?:[A-Za-z]:[\\/]|\\\\)/.test(exe) ? /^[-/]/ : /^-/; // a Windows program's switches start with / too
+  const switches = /^(?:[A-Za-z]:[\\/]|\\\\)/.test(exe) || /\.(exe|cmd|bat|com)$/i.test(exe) ? /^[-/]/ : /^-/; // a Windows program's switches start with / too
   const arg = rest.find(a => a && !switches.test(a));
   return (arg ? `${base} ${lastPart(arg.replace(/^"|"$/g, ''))}` : base).slice(0, 40);
 }

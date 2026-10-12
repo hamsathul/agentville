@@ -1244,8 +1244,9 @@ and can do is in [docs/worlds.md](docs/worlds.md).
 - The `state/` folder, where the dashboard leaves answers and messages for your sessions and keeps
   its token, is made readable only by you at every start, before the token is made in it; a token
   found readable by others is made private again. "Readable only by you" is mode 0600/0700 on a Mac,
-  and on Windows an access list with one entry, yours, set with `icacls` and read back. On a drive
-  without access lists (FAT, exFAT) the collector refuses to start rather than leave the token open.
+  and on Windows an access list with one entry, yours, set with `icacls` and read back. On a Windows
+  drive without access lists (FAT, exFAT) the collector refuses to start rather than leave the token
+  open. (A Mac can't keep modes on such a drive either: keep Agentville on your system disk.)
 - On Windows the collector runs every program it finds on PATH, never one from a session's folder
   (Windows would otherwise look there first), and starts a session from a launch file under
   `state/launch/`, readable only by you and deleted when read: the folder, the arguments and, with
@@ -1396,8 +1397,8 @@ and can do is in [docs/worlds.md](docs/worlds.md).
 |---|---|
 | The dashboard doesn't load | `agent-tracker status`, then `agent-tracker logs`. Check that nothing else uses the port |
 | The log says "Not starting: a required dependency is missing" | `node collector/index.mjs --check` names it, with the fix. Required are only Node 22+ and the system's own tools (`osascript` and `ps` on a Mac, Windows PowerShell on Windows) |
-| ＋ Session, Resume or Fork fails, and the log says Claude Code was not found | The service's PATH has nvm's Node folder, `~/.local/bin`, Homebrew's and the system's (on Windows: yours, then `.local\bin`, npm's, Git's and the GitHub CLI's). If `claude` is elsewhere, set `TRACKER_CLAUDE_BIN` to its full path, then `agent-tracker restart` |
-| Windows: the collector won't start, "could not make … private" | Its folder is on a drive without access lists (FAT, exFAT, some network drives), where the token can't be kept private. Move Agentville under your user folder on the system drive |
+| ＋ Session, Resume or Fork fails, and the log says Claude Code was not found | The service looks on its own PATH: nvm's Node folder, Homebrew's, the system's, then `~/.local/bin` (on Windows: yours, then `.local\bin`, npm's, Git's and the GitHub CLI's). The service doesn't see what you set in your shell: on a Mac, link `claude` into `~/.local/bin` (`ln -s "$(command -v claude)" ~/.local/bin/claude`), then `agent-tracker restart`; on Windows, `setx TRACKER_CLAUDE_BIN <its full path>`, then `bin\agent-tracker.cmd restart` |
+| Windows: the collector won't start, and its log says "failed to start" with an `icacls` error (or "could not make … private") | Its folder is on a drive without access lists (FAT, exFAT, some network drives), where the token can't be kept private. Move Agentville under your user folder on the system drive |
 | Windows: `--check` says Agentville is outside your user folder | Others who sign in to the PC may be able to change its files, and `bin\run-collector.ps1` runs at your logon: move it under `C:\Users\<you>` |
 | Windows: answers from the dashboard do nothing in a session | The mod needs 0.9.2 there: `/reload-plugins` in that session |
 | A message waits and never goes out | It goes out when the session's turn ends, through its mod: the mod must be listening (📡 dashboard answers on). Press **⚡ Send now** to send it at once. A red line on the list says when the session didn't take it; it is tried again when the session next moves |

@@ -160,7 +160,7 @@ const sessDir = { typed: '', data: null, shown: false, asked: 0, waiting: 0 };
 const tildeOf = (path, home) => {
   if (!home) return path;
   if (path === home || path.startsWith(`${home}/`)) return `~${path.slice(home.length)}`;
-  return path.startsWith(`${home}\\`) ? `~${path.slice(home.length).replaceAll('\\', '/')}` : path;
+  return /^[A-Za-z]:/.test(home) && path.startsWith(`${home}\\`) ? `~${path.slice(home.length).replaceAll('\\', '/')}` : path; // a backslash is a letter in a Mac name
 };
 
 function resetDirPicker() {

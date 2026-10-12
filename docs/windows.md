@@ -9,7 +9,8 @@ checked on a real Windows PC.
 - **Windows 10 or 11**, with Windows PowerShell 5.1 (it ships with Windows).
 - **Node.js 22 or newer.**
 - **Claude Code**: the native install (`claude.exe`, in `%USERPROFILE%\.local\bin`) or npm's (`claude.cmd`), on your PATH,
-  or `TRACKER_CLAUDE_BIN` set to its full path. The dashboard starts without it and shows your sessions, but cannot start,
+  or `TRACKER_CLAUDE_BIN` set to its full path (for the login task, `setx TRACKER_CLAUDE_BIN <path>`, then
+  `bin\agent-tracker.cmd restart`). The dashboard starts without it and shows your sessions, but cannot start,
   resume or fork one, and the helper is off.
 - Optional: **Git** (repository status in the explorer), the **GitHub CLI** `gh` (pull requests, deploy badges),
   **Windows Terminal** (sessions open in a tab; without it they open in a plain console window).
@@ -64,10 +65,13 @@ Add the `mod` folder the same way as on a Mac, with your own path (either slash 
 ```
 
 On Windows the mod claims requests with `cmd.exe /c move`, removes files with `cmd.exe /c del` (only files, never a folder)
-and opens the browser with `cmd.exe /c start`. It refuses any path that cmd.exe would read as syntax or as a separator
-(`& | < > ^ % ! " , ; =`), and it opens only a `http://localhost` address. It waits for a dashboard answer with a small
-Windows PowerShell loop, the paths in its environment and never in its text; the loop is a program of its own, because a wait
-inside the hook would count against the hook's 10 seconds. Every program the mod starts runs in the mod's own folder.
+and opens the browser with `cmd.exe /c start`. It hands them paths with backslashes (cmd's own commands read a `/` inside a
+word as a switch), refuses any path that cmd.exe would read as syntax or as a separator (`& | < > ^ % ! " , ; =`), and opens
+only a `http://localhost` address. It waits for a dashboard answer with a small Windows PowerShell loop that stops at a set
+time, the paths in its environment and never in its text; the loop is a program of its own, because a wait inside the hook
+would count against the hook's 10 seconds. cmd.exe and PowerShell are named by their full path in System32, and run in the
+mod's own folder. `collector/test/mod-wait.test.mjs` runs the wait, the move and the delete for real on Windows CI.
+This needs mod 0.9.2 (`/reload-plugins` in a session that is already open).
 
 ## What differs from macOS
 
@@ -85,6 +89,7 @@ inside the hook would count against the hook's 10 seconds. Every program the mod
 | Files kept private | mode 0600/0700 | an owner-only ACL set with `icacls` (checked after) |
 | Pickable folders | home and `/Volumes` | home and the *other* drives (not the system drive) |
 | Finding a program | PATH | PATH only: never the working folder (see below) |
+| Showing a file in the file manager | any name | not a name with a comma (Explorer splits its command line at commas) |
 
 ## How programs are found
 

@@ -36,6 +36,8 @@ test("on Windows a label is the program's name, from a quoted path with spaces t
   const b = String.fromCharCode(92);
   assert.equal(label(`"C:${b}Program Files${b}nodejs${b}node.exe" C:${b}work${b}shop${b}server.js --port 3000`), 'node.exe server.js');
   assert.equal(label(`C:${b}Windows${b}System32${b}cmd.exe /d /c npm test`), 'cmd.exe npm', '/d and /c are switches there');
+  assert.equal(label('cmd.exe /c npm test'), 'cmd.exe npm', 'named without its folder too');
+  assert.equal(label('python3 /tmp/x.py'), 'python3 x.py', 'a Mac path as before');
 });
 
 test('label keeps the executable name and first non-flag argument', () => {

@@ -151,6 +151,15 @@ test('--exit-after N starts the collector, serves, and ends the process by itsel
   }
 });
 
+test('a normal start with a required thing missing refuses before it listens, says what to do, and writes it to its log', { skip: process.platform === 'win32' ? 'on a Mac: an empty PATH leaves no osascript or ps (Windows names PowerShell by its full path)' : false }, () => {
+  const root = mkdtempSync(join(tmpdir(), 'agentville-pre-'));
+  const r = spawnSync(process.execPath, [INDEX], { encoding: 'utf8', env: { ...process.env, PATH: '', TRACKER_ROOT: root }, timeout: 60_000 });
+  assert.equal(r.status, 1);
+  assert.match(r.stdout + r.stderr, /MISSING \(required\)\s+osascript did not run/);
+  assert.match(r.stdout + r.stderr, /Not starting/);
+  assert.match(readFileSync(join(root, 'logs', 'collector.log'), 'utf8'), /Not starting/);
+});
+
 test('a normal start without Claude Code still serves, and writes the warning to its log', async () => {
   const port = await freePort();
   const root = throwawayRoot(port);

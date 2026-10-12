@@ -11,6 +11,6 @@ if [ -s "$NVM_DIR/nvm.sh" ]; then
   NODE_BIN="$(nvm which default 2>/dev/null || true)"
 fi
 [ -x "$NODE_BIN" ] || NODE_BIN="$(command -v node)"
-# ~/.local/bin is where Claude Code's native installer puts claude
-export PATH="$(dirname "$NODE_BIN"):$HOME/.local/bin:/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin"
+# ~/.local/bin, where Claude Code's native installer puts claude, comes last: it only adds what is not found before it
+export PATH="$(dirname "$NODE_BIN"):/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin:$HOME/.local/bin"
 exec "$NODE_BIN" "$ROOT/collector/index.mjs"

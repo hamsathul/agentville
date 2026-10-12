@@ -41,7 +41,9 @@ const docLabel = (agent, path) => (path === '@summary' ? 'your conversation summ
 function touchOf(agentId, path) {
   const doc = docEntry(agentId, path);
   const root = explorer.agentId === agentId ? explorer.data?.root : null;
-  const listed = root && (path.startsWith(`${root}/`) || path.startsWith(`${root}\\`)) ? explorer.data.touched?.[path.slice(root.length + 1).replaceAll('\\', '/')] : null;
+  // the listing's keys use /; a Windows path's separators become / (a backslash in a Mac name is kept)
+  const rel = !root ? null : path.startsWith(`${root}/`) ? path.slice(root.length + 1) : /^[A-Za-z]:/.test(root) && path.startsWith(`${root}\\`) ? path.slice(root.length + 1).replaceAll('\\', '/') : null;
+  const listed = rel !== null ? explorer.data.touched?.[rel] : null;
   if (!doc) return listed ?? null;
   if (!listed) return doc;
   return { wrote: doc.wrote || listed.wrote, at: Math.max(doc.at, listed.at) };

@@ -3508,4 +3508,5 @@ test('Windows paths: a file, a folder and a session are named by their last part
   assert.equal(here('tildeOf(p, h)', { p: `C:${b}Users${b}me`, h: `C:${b}Users${b}me` }), '~');
   assert.equal(here('tildeOf(p, h)', { p: `D:${b}work`, h: `C:${b}Users${b}me` }), `D:${b}work`);
   assert.equal(here('tildeOf(p, h)', { p: '/Users/me/shop', h: '/Users/me' }), '~/shop');
+  assert.equal(here('tildeOf(p, h)', { p: `/Users/me${b}x`, h: '/Users/me' }), `/Users/me${b}x`, 'a backslash is a letter in a Mac name');
 });

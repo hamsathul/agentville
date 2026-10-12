@@ -54,15 +54,16 @@ export function shimTarget(cmdFile, { read = f => readFileSync(f, 'utf8'), isFil
   return null;
 }
 
-// run() asks for git and the rest on every tick: a program found is remembered (checked again with one stat) until PATH changes.
-const found = new Map();
+// run() asks for git and the rest on every tick: a program found is remembered (checked again with one stat) until PATH changes,
+// and one not found is not looked for again for 30 s (gh not installed would otherwise cost a look in every PATH folder each time).
+const found = new Map(), missed = new Map();
 /** findOnPath for this process's own PATH, remembered. */
-export function findProgram(name) {
+export function findProgram(name, now = Date.now()) {
   const key = `${name}\u0000${process.env.PATH ?? ''}`;
   const hit = found.get(key);
   if (hit && isProgramFile(hit)) return hit;
+  if (now - (missed.get(key) ?? -Infinity) < 30_000) return null;
   const full = findOnPath(name);
-  if (full) found.set(key, full);
-  else found.delete(key);
+  if (full) { found.set(key, full); missed.delete(key); } else { found.delete(key); missed.set(key, now); }
   return full;
 }
