@@ -1,7 +1,11 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
+import { normalize } from 'node:path';
 import { SessionModel } from '../transcript/session-model.mjs';
 import { at, modelOf, prompt, reply, title, toolResult, toolUse, turnEnd } from './fixtures.mjs';
+
+// Fixture paths are written POSIX-style; on Windows they get a drive so they are absolute there too.
+const P = p => normalize(process.platform === 'win32' ? `C:${p}` : p);
 
 test('a finished tool call is marked ok with its duration and is no longer pending', () => {
   const m = modelOf(prompt(0, 'go'), toolUse(1, 't1', 'Bash', { command: 'ls' }), toolResult(3, 't1'));
@@ -82,50 +86,50 @@ test('callsSince returns calls at or after a time', () => {
 test('markdown files written, edited or read are remembered as documents, newest first', () => {
   const m = modelOf(
     prompt(0, 'go'),
-    toolUse(1, 'a', 'Read', { file_path: '/w/README.md' }),
-    toolUse(2, 'b', 'Write', { file_path: '/w/docs/spec.md', content: '# Spec' }),
-    toolUse(3, 'c', 'Edit', { file_path: '/w/src/app.ts' }),
-    toolUse(4, 'd', 'Read', { file_path: '/w/docs/spec.md' }),
-    toolUse(5, 'e', 'Edit', { file_path: 'notes/plan.markdown' }, '/w'),
+    toolUse(1, 'a', 'Read', { file_path: P('/w/README.md') }),
+    toolUse(2, 'b', 'Write', { file_path: P('/w/docs/spec.md'), content: '# Spec' }),
+    toolUse(3, 'c', 'Edit', { file_path: P('/w/src/app.ts') }),
+    toolUse(4, 'd', 'Read', { file_path: P('/w/docs/spec.md') }),
+    toolUse(5, 'e', 'Edit', { file_path: 'notes/plan.markdown' }, P('/w')),
   );
   assert.deepEqual(m.documents(), [
-    { path: '/w/notes/plan.markdown', wrote: true, at: at(5) },
-    { path: '/w/docs/spec.md', wrote: true, at: at(4) },
-    { path: '/w/README.md', wrote: false, at: at(1) },
+    { path: P('/w/notes/plan.markdown'), wrote: true, at: at(5) },
+    { path: P('/w/docs/spec.md'), wrote: true, at: at(4) },
+    { path: P('/w/README.md'), wrote: false, at: at(1) },
   ]);
 });
 
 test('pictures, videos and PDFs it wrote or read count as documents too (a screenshot it checked, say); code does not', () => {
   const m = modelOf(prompt(0, 'go'),
-    toolUse(1, 'a', 'Read', { file_path: '/w/shots/login.png' }),
-    toolUse(2, 'b', 'Write', { file_path: '/w/report.pdf', content: 'x' }),
-    toolUse(3, 'c', 'Edit', { file_path: '/w/src/app.ts' }),
-    toolUse(4, 'd', 'Read', { file_path: '/w/demo.mov' }));
-  assert.deepEqual(m.documents().map(d => d.path), ['/w/demo.mov', '/w/report.pdf', '/w/shots/login.png']);
+    toolUse(1, 'a', 'Read', { file_path: P('/w/shots/login.png') }),
+    toolUse(2, 'b', 'Write', { file_path: P('/w/report.pdf'), content: 'x' }),
+    toolUse(3, 'c', 'Edit', { file_path: P('/w/src/app.ts') }),
+    toolUse(4, 'd', 'Read', { file_path: P('/w/demo.mov') }));
+  assert.deepEqual(m.documents().map(d => d.path), [P('/w/demo.mov'), P('/w/report.pdf'), P('/w/shots/login.png')]);
 });
 
 test('only the 40 most recent documents are kept', () => {
   const lines = [prompt(0, 'go')];
-  for (let i = 1; i <= 45; i++) lines.push(toolUse(i, `t${i}`, 'Read', { file_path: `/w/d${i}.md` }));
+  for (let i = 1; i <= 45; i++) lines.push(toolUse(i, `t${i}`, 'Read', { file_path: P(`/w/d${i}.md`) }));
   const docs = modelOf(...lines).documents();
   assert.equal(docs.length, 40);
-  assert.equal(docs[0].path, '/w/d45.md');
-  assert.equal(docs.at(-1).path, '/w/d6.md');
+  assert.equal(docs[0].path, P('/w/d45.md'));
+  assert.equal(docs.at(-1).path, P('/w/d6.md'));
 });
 
 test('every file the session wrote, edited or read is remembered for the explorer, newest first', () => {
   const m = modelOf(
     prompt(0, 'go'),
-    toolUse(1, 'a', 'Read', { file_path: '/w/src/a.ts' }),
-    toolUse(2, 'b', 'Edit', { file_path: '/w/src/b.ts' }),
-    toolUse(3, 'c', 'NotebookEdit', { notebook_path: '/w/n.ipynb' }),
-    toolUse(4, 'd', 'Read', { file_path: '/w/src/b.ts' }),
+    toolUse(1, 'a', 'Read', { file_path: P('/w/src/a.ts') }),
+    toolUse(2, 'b', 'Edit', { file_path: P('/w/src/b.ts') }),
+    toolUse(3, 'c', 'NotebookEdit', { notebook_path: P('/w/n.ipynb') }),
+    toolUse(4, 'd', 'Read', { file_path: P('/w/src/b.ts') }),
     toolUse(5, 'e', 'Bash', { command: 'ls' }),
   );
   assert.deepEqual(m.touchedFiles(), [
-    { path: '/w/src/b.ts', wrote: true, at: at(4) },
-    { path: '/w/n.ipynb', wrote: true, at: at(3) },
-    { path: '/w/src/a.ts', wrote: false, at: at(1) },
+    { path: P('/w/src/b.ts'), wrote: true, at: at(4) },
+    { path: P('/w/n.ipynb'), wrote: true, at: at(3) },
+    { path: P('/w/src/a.ts'), wrote: false, at: at(1) },
   ]);
   assert.deepEqual(m.documents(), []);
 });
@@ -143,19 +147,19 @@ test("a subagent remembers its type, so the farm can draw an Explore subagent as
 });
 
 test('files found earlier in the transcript are merged in as older, never overriding newer ones', () => {
-  const m = modelOf(prompt(10, 'go'), toolUse(11, 'a', 'Read', { file_path: '/w/spec.md' }), toolUse(12, 'b', 'Edit', { file_path: '/w/b.ts' }));
+  const m = modelOf(prompt(10, 'go'), toolUse(11, 'a', 'Read', { file_path: P('/w/spec.md') }), toolUse(12, 'b', 'Edit', { file_path: P('/w/b.ts') }));
   m.addEarlierFiles([
-    { name: 'Write', input: { file_path: '/w/spec.md' }, at: at(1), cwd: '/w' },
-    { name: 'Read', input: { file_path: '/w/old.md' }, at: at(2), cwd: '/w' },
-    { name: 'Edit', input: { file_path: 'rel.ts' }, at: at(3), cwd: '/w' },
+    { name: 'Write', input: { file_path: P('/w/spec.md') }, at: at(1), cwd: P('/w') },
+    { name: 'Read', input: { file_path: P('/w/old.md') }, at: at(2), cwd: P('/w') },
+    { name: 'Edit', input: { file_path: 'rel.ts' }, at: at(3), cwd: P('/w') },
   ]);
   assert.deepEqual(m.touchedFiles(), [
-    { path: '/w/b.ts', wrote: true, at: at(12) },
-    { path: '/w/spec.md', wrote: true, at: at(11) },
-    { path: '/w/rel.ts', wrote: true, at: at(3) },
-    { path: '/w/old.md', wrote: false, at: at(2) },
+    { path: P('/w/b.ts'), wrote: true, at: at(12) },
+    { path: P('/w/spec.md'), wrote: true, at: at(11) },
+    { path: P('/w/rel.ts'), wrote: true, at: at(3) },
+    { path: P('/w/old.md'), wrote: false, at: at(2) },
   ]);
-  assert.deepEqual(m.documents().map(d => d.path), ['/w/spec.md', '/w/old.md']);
+  assert.deepEqual(m.documents().map(d => d.path), [P('/w/spec.md'), P('/w/old.md')]);
 });
 
 test('prompts and replies keep their whole text, line breaks and all, for the conversation view', () => {

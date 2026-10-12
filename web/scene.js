@@ -51,7 +51,7 @@
     if (pick) return pick.repo;
     const cwd = agent.cwd || '';
     if (!cwd) return null;
-    const holder = repos.filter(r => cwd === r.path || cwd.startsWith(`${r.path}/`)).sort((a, b) => b.path.length - a.path.length)[0];
+    const holder = repos.filter(r => cwd === r.path || cwd.startsWith(`${r.path}/`) || cwd.startsWith(`${r.path}\\`)).sort((a, b) => b.path.length - a.path.length)[0];
     return holder?.path ?? null;
   }
 
@@ -98,9 +98,13 @@
   // A project is the folder holding sibling repos (like shop/api and shop/web); a home folder or a
   // catch-all one like ~/code holds unrelated repos, so it is none. The farm's bed grid groups by it.
   const CATCH_ALL = new Set(['code', 'projects', 'repos', 'src', 'dev', 'work', 'tools', 'github', 'git', 'documents', 'desktop', 'downloads', 'workspace', 'workspaces', 'sites', 'apps', 'clients', 'tmp']);
+  // The collector sends native paths: C:\code\shop\api on Windows, /code/shop/api on a Mac. A drive letter is not a folder.
+  const WIN_PATH = /^(?:[A-Za-z]:[\\/]|\\\\)/;
   function projectOf(path) {
-    const parts = String(path).split('/').filter(Boolean).slice(0, -1);
-    return parts.length >= 3 && !CATCH_ALL.has(parts.at(-1).toLowerCase()) ? `/${parts.join('/')}` : null;
+    const p = String(path), win = WIN_PATH.test(p);
+    const all = p.split(win ? /[\\/]/ : '/').filter(Boolean).slice(0, -1);
+    const parts = win && /^[A-Za-z]:$/.test(all[0] ?? '') ? all.slice(1) : all;
+    return parts.length >= 3 && !CATCH_ALL.has(parts.at(-1).toLowerCase()) ? `${win ? '' : '/'}${all.join('/')}` : null;
   }
 
   /**

@@ -23,11 +23,11 @@ export const canContain = () => process.allowedNodeEnvironmentFlags.has('--permi
  * there at all is let through, for the check to report. Throws an Error of one line naming the file otherwise.
  */
 export function worldFiles(folder) {
-  const dir = realpathSync(folder);
+  const dir = realpathSync.native(folder);
   const one = (name, mayBeMissing = false) => {
     const at = join(dir, name);
     let real;
-    try { real = realpathSync(at); } catch (err) {
+    try { real = realpathSync.native(at); } catch (err) {
       let there = true;
       try { lstatSync(at); } catch { there = false; }
       if (!there && mayBeMissing) return at; // the check says "world.json is missing."

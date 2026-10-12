@@ -35,9 +35,18 @@ export async function openChrome({ prepare = async () => {} } = {}) {
   const pending = new Map(), errors = [];
   const frames = new Map(); // sessionId → { targetId, url }: frames in a process of their own
   const contexts = new Map(); // frameId → its main world's context id, for frames in the page's process
+  // A request to a frame that went away (a world's frame leaves when the view changes) is never answered, and a reader waiting for
+  // that answer waits for ever: on a CI runner that was ten minutes of silence in the middle of a run. So a request is answered with
+  // an error when its session detaches, and after REPLY_MS at the latest, saying which one it was.
+  const REPLY_MS = 20_000;
   const raw = (method, params = {}, sessionId) => new Promise(r => {
     const n = ++id;
-    pending.set(n, r);
+    const timer = setTimeout(() => {
+      if (!pending.delete(n)) return;
+      console.error(`(no reply to ${method} in ${REPLY_MS / 1000} s)`);
+      r({ id: n, error: { message: `no reply to ${method}` } });
+    }, REPLY_MS);
+    pending.set(n, Object.assign(m => { clearTimeout(timer); r(m); }, { sessionId }));
     ws.send(JSON.stringify({ id: n, method, params, ...(sessionId ? { sessionId } : {}) }));
   });
   const send = (method, params = {}, sessionId = page) => raw(method, params, sessionId);
@@ -59,7 +68,10 @@ export async function openChrome({ prepare = async () => {} } = {}) {
       void adopt(p.sessionId);
     }
     if (m.method === 'Target.targetInfoChanged') for (const f of frames.values()) if (f.targetId === p.targetInfo?.targetId) f.url = p.targetInfo.url;
-    if (m.method === 'Target.detachedFromTarget') frames.delete(p.sessionId);
+    if (m.method === 'Target.detachedFromTarget') {
+      frames.delete(p.sessionId);
+      for (const [n, answer] of pending) if (answer.sessionId === p.sessionId) { pending.delete(n); answer({ id: n, error: { message: 'the frame went away' } }); }
+    }
   });
   const targets = (await raw('Target.getTargets')).result.targetInfos;
   page = (await raw('Target.attachToTarget', { targetId: targets.find(t => t.type === 'page').targetId, flatten: true })).result.sessionId;

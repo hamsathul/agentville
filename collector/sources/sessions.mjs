@@ -117,7 +117,7 @@ export function projectsOf(sessions) {
   for (const s of sessions) {
     if (!s.cwd || s.cwd === '/') continue;
     const p = map.get(s.cwd);
-    if (p) { p.sessions++; p.at = Math.max(p.at, s.at); } else map.set(s.cwd, { cwd: s.cwd, name: s.cwd.split('/').filter(Boolean).pop() ?? s.cwd, at: s.at, sessions: 1 });
+    if (p) { p.sessions++; p.at = Math.max(p.at, s.at); } else map.set(s.cwd, { cwd: s.cwd, name: s.cwd.split(/[\\/]/).filter(Boolean).pop() ?? s.cwd, at: s.at, sessions: 1 });
   }
   return [...map.values()].sort((x, y) => y.at - x.at);
 }
@@ -146,6 +146,17 @@ export function accountPrefix(account) {
 }
 
 /**
+ * accountPrefix as data, for a platform that starts Claude from an argument list (Windows) rather than a shell line:
+ * { CLAUDE_CONFIG_DIR: null } means "remove it" (the first account), a folder means "set it". Checked as accountPrefix is.
+ */
+export function accountLaunchEnv(account) {
+  if (!account) return undefined;
+  if (account.first) return { CLAUDE_CONFIG_DIR: null };
+  if (!isAbsolute(account.dir) || /[/\\]$/.test(account.dir)) throw new Error('not an account folder');
+  return { CLAUDE_CONFIG_DIR: account.dir };
+}
+
+/**
  * The shell line that starts Claude Code in a folder (or resumes a session there) in a permission
  * mode, with a model and effort for this session only (flags, not your saved defaults), on `account`
  * (see accountPrefix). `exec` puts Claude in the shell's place, so its window closes when it ends.
@@ -165,6 +176,29 @@ export function forkCommand(cwd, copy, mode = 'default', { model = 'default', ef
   if (!isAbsolute(copy) || !copy.endsWith('.jsonl')) throw new Error('not a transcript copy');
   if (sessionId !== undefined && !SESSION_ID.test(sessionId)) throw new Error('not a session id');
   return `cd ${shellQuote(cwd)} && exec ${accountPrefix(account)}claude --resume ${shellQuote(copy)} --fork-session${sessionId ? ` --session-id ${sessionId}` : ''}${name ? ` --name ${shellQuote(name)}` : ''}${startFlags(mode, { model, effort })}${prefillFlag(prefillFile)}`;
+}
+
+/**
+ * The same session as claudeCommand, as data: the folder, an argument list and the prefill file. A platform with no shell line
+ * (Windows) starts it from this, so no text of a session's ever becomes part of a script. Checked exactly as claudeCommand checks.
+ */
+export function claudeLaunch(cwd, resume, mode = 'default', { model = 'default', effort, prefillFile, account = null } = {}) {
+  if (resume !== undefined && !SESSION_ID.test(resume)) throw new Error('not a session id');
+  const env = accountLaunchEnv(account);
+  return { cwd, args: [...(resume ? ['--resume', resume] : []), ...startArgs(mode, { model, effort })], ...(prefillFile ? { prefillFile } : {}), ...(env ? { env } : {}) };
+}
+
+/** The fork of forkCommand as data (see claudeLaunch). The name and the copy's path stay single arguments, whatever they hold. */
+export function forkLaunch(cwd, copy, mode = 'default', { model = 'default', effort, name, prefillFile, sessionId, account = null } = {}) {
+  if (!isAbsolute(copy) || !copy.endsWith('.jsonl')) throw new Error('not a transcript copy');
+  if (sessionId !== undefined && !SESSION_ID.test(sessionId)) throw new Error('not a session id');
+  return { cwd, args: ['--resume', copy, '--fork-session', ...(sessionId ? ['--session-id', sessionId] : []), ...(name ? ['--name', name] : []), ...startArgs(mode, { model, effort })], ...(prefillFile ? { prefillFile } : {}), ...(accountLaunchEnv(account) ? { env: accountLaunchEnv(account) } : {}) };
+}
+
+// startFlags checks mode, model and effort (it throws); the arguments are then read back from the same tables.
+function startArgs(mode, { model = 'default', effort } = {}) {
+  startFlags(mode, { model, effort });
+  return [...MODE_FLAGS[mode].split(' ').filter(Boolean), ...(model !== 'default' ? ['--model', model] : []), ...(effort ? ['--effort', effort] : [])];
 }
 
 /** Text for the prompt box (--prefill), read from a file by the shell, so it never goes into the command line. */

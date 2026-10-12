@@ -2,7 +2,10 @@ import type { TrackerAgent, TrackerSnapshot, TrackerView } from '../types'
 
 /** The collector's state folder sits beside the mod folder: <repo>/mod → <repo>/state. */
 export function stateDirFor(pluginRoot: string): string {
-  return `${pluginRoot.replace(/\/+$/, '').replace(/\/[^/]+$/, '')}/state`
+  // On Windows the folder may come with backslashes; Windows takes forward slashes too, so one form is used. (On a Mac a
+  // backslash can be part of a name, so it is left alone there.)
+  const root = /^[A-Za-z]:|^\\\\/.test(pluginRoot) ? pluginRoot.replace(/\\/g, '/') : pluginRoot
+  return `${root.replace(/\/+$/, '').replace(/\/[^/]+$/, '')}/state`
 }
 
 export function stateFileFor(pluginRoot: string): string {

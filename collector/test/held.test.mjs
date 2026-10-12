@@ -4,6 +4,7 @@ import assert from 'node:assert/strict';
 import { existsSync, mkdtempSync, statSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { isPrivate } from '../platform/private.mjs';
 import { MAX_HELD, MAX_HELD_CHARS, createHeld } from '../sources/held.mjs';
 
 const SID = '11111111-1111-4111-8111-111111111111';
@@ -80,8 +81,13 @@ test('kept in a file only you can read; read again after a restart; a broken fil
   const { dir, held } = fresh();
   held.add(SID, { text: 'survives' });
   held.setTogether(SID, true);
-  assert.equal(statSync(dir).mode & 0o777, 0o700);
-  assert.equal(statSync(join(dir, `${SID}.json`)).mode & 0o777, 0o600);
+  if (process.platform === 'win32') { // no modes there: owner-only is an ACL with one entry (platform/private.mjs)
+    assert.equal(isPrivate(dir), true, 'the folder');
+    assert.equal(isPrivate(join(dir, `${SID}.json`)), true, 'the file');
+  } else {
+    assert.equal(statSync(dir).mode & 0o777, 0o700);
+    assert.equal(statSync(join(dir, `${SID}.json`)).mode & 0o777, 0o600);
+  }
   const again = createHeld(dir);
   assert.deepEqual(texts(again.list(SID)), ['survives']);
   assert.equal(again.list(SID).together, true);

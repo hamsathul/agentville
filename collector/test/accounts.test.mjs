@@ -103,3 +103,13 @@ test('session accounts: seeing the same account again does not rewrite the file'
   m.save();
   assert.match(readFileSync(file, 'utf8'), /marker/);
 });
+
+// On Windows a person writes the folder the way Explorer shows it: ~\.claude-zeta or C:\...\.claude-zeta\ with a backslash at the end.
+test('on Windows, ~ and a trailing separator written with backslashes name the same folder', { skip: process.platform !== 'win32' ? 'Windows only' : false }, () => {
+  const { h, main } = home();
+  mkdirSync(join(h, '.claude-zeta'));
+  login(join(h, '.claude-zeta', '.claude.json'), 'z@x');
+  const b = String.fromCharCode(92);
+  const got = findAccounts({ claudeDir: main + b, home: h, log: () => {}, names: { [`~${b}.claude`]: 'nco', [`~${b}.claude-zeta${b}`]: 'zeta work' } });
+  assert.deepEqual(got.map(a => [a.key, a.name, a.dir]), [['main', 'nco', main], ['zeta', 'zeta work', join(h, '.claude-zeta')]]);
+});

@@ -1,4 +1,5 @@
 import { test } from 'node:test';
+import { assertPrivate } from './support.mjs';
 import assert from 'node:assert/strict';
 import { existsSync, mkdtempSync, readFileSync, readdirSync, statSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -25,8 +26,8 @@ test('a note is added, kept in the order written, and read back after a restart'
 test('the file is private to you: the folder 0700, the file 0600, written whole', () => {
   const { dir, notes } = store();
   notes.add(S, 'secret plan');
-  assert.equal(statSync(dir).mode & 0o777, 0o700);
-  assert.equal(statSync(join(dir, `${S}.json`)).mode & 0o777, 0o600);
+  assertPrivate(dir, 0o700);
+  assertPrivate(join(dir, `${S}.json`), 0o600);
   assert.deepEqual(readdirSync(dir), [`${S}.json`]); // no temp file left behind
 });
 

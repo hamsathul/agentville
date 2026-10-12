@@ -1,5 +1,6 @@
-import { mkdirSync, readdirSync, renameSync, rmdirSync, statSync, unlinkSync, writeFileSync } from 'node:fs';
+import { mkdirSync, readdirSync, rmdirSync, statSync, unlinkSync, writeFileSync } from 'node:fs';
 import { isAbsolute, join, resolve } from 'node:path';
+import { replaceFile } from '../platform/replace.mjs';
 
 // Files sent with a dashboard message: screenshots, PDFs, Markdown, text… A plugin's prompt can't
 // carry them, so they are saved under state/uploads/<sessionId>/ and the message names them for the
@@ -68,7 +69,7 @@ export function saveFiles(dir, sessionId, files, now = Date.now()) {
   return files.map((f, i) => {
     const file = join(folder, `${stamp}-${i + 1}-${f.name}`);
     writeFileSync(`${file}.tmp`, f.bytes);
-    renameSync(`${file}.tmp`, file);
+    replaceFile(`${file}.tmp`, file);
     return file;
   });
 }

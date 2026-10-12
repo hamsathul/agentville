@@ -2,7 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { existsSync, mkdtempSync, readFileSync, unlinkSync, utimesSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { basename, join } from 'node:path';
 import { confirmDelivery, readBeacons, readPending, validateAnswers, writeAnswerFile } from '../sources/pending.mjs';
 
 const NOW = 1_000_000_000;
@@ -64,7 +64,7 @@ test('expired permission prompts and day-old offers are listed for cleanup, not 
   put(dir, 'toolu_Day.json', question('toolu_Day', 's2', NOW - 25 * 3_600_000));
   const { bySession, expired } = readPending(dir, NOW);
   assert.equal(bySession.size, 0);
-  assert.deepEqual(expired.map(p => p.split('/').pop()).sort(), ['toolu_Day.json', 'toolu_Exp.json']);
+  assert.deepEqual(expired.map(p => basename(p)).sort(), ['toolu_Day.json', 'toolu_Exp.json']);
 });
 
 test('a missing pending folder reads as nothing offered', () => {
@@ -132,7 +132,7 @@ test('an offer whose heartbeat stopped over 10 minutes ago is cleaned up', () =>
   utimesSync(join(dir, 'toolu_Dead.json'), beat / 1000, beat / 1000);
   const { bySession, expired } = readPending(dir, NOW);
   assert.equal(bySession.size, 0);
-  assert.deepEqual(expired.map(p => p.split('/').pop()), ['toolu_Dead.json']);
+  assert.deepEqual(expired.map(p => basename(p)), ['toolu_Dead.json']);
 });
 
 test('delivery is confirmed when the mod takes the file, even in the last instant before it is withdrawn', async () => {

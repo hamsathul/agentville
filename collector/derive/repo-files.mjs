@@ -1,4 +1,5 @@
 import { SECRET_FILE } from '../sources/files.mjs';
+import { isInside, toPosix } from '../platform/paths.mjs';
 
 // The farm's field close-up: the files agents read or wrote in one repo, from every session's
 // file-tool calls, merged per file with who touched it and when.
@@ -10,8 +11,8 @@ export function repoFiles({ repo, sessions, status = {}, now, max = 300, windowM
   const byPath = new Map();
   for (const s of sessions) {
     for (const f of s.touched) {
-      if (f.at < now - windowMs || !f.path.startsWith(`${repo}/`)) continue;
-      const rel = f.path.slice(repo.length + 1);
+      if (f.at < now - windowMs || !isInside(repo, f.path)) continue;
+      const rel = toPosix(f.path.slice(repo.length + 1));
       if (SECRET_FILE.test(rel)) continue;
       let entry = byPath.get(rel);
       if (!entry) byPath.set(rel, (entry = { path: rel, wrote: false, at: 0, agents: new Map() }));

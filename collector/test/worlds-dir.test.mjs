@@ -48,7 +48,7 @@ test('check-world and world-shots: the usage names the built-in worlds; a shadow
     const r = spawnSync(process.execPath, [script('check-world'), 'starter', '--worlds', root], { encoding: 'utf8', timeout: 60_000 });
     assert.equal(r.status, 0, r.stdout + r.stderr);
     assert.ok(r.stderr.split('\n').includes(shadowLine('starter')), r.stderr);
-    assert.match(r.stdout, /check-world: starter \(.*web\/worlds\/starter\)/, 'it checked the built-in');
+    assert.match(r.stdout, /check-world: starter \(.*web[\\/]worlds[\\/]starter\)/, 'it checked the built-in');
   } finally { rmSync(root, { recursive: true, force: true }); }
 });
 

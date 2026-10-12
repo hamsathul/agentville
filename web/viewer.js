@@ -9,7 +9,7 @@ let readerQuote = '';
 let readerLines = null; // [first, last] line numbers of the quoted code selection
 const readerDrafts = new Map(); // agent id + path → half-typed reply
 const readerKey = () => (reader ? `${reader.agentId}\n${reader.path}` : '');
-const docName = path => String(path).split('/').pop();
+const docName = path => lastPart(path);
 const isMarkdown = path => path === '@summary' || /\.(md|markdown|mdx)$/i.test(path);
 
 // How each file is shown, by its extension: the collector serves them the same way (collector/sources/previews.mjs).
@@ -36,7 +36,7 @@ function readerHasText() {
 }
 const docEntry = (agentId, path) => snap?.agents.find(a => a.id === agentId)?.docs?.find(d => d.path === path);
 /** The path as the agent knows it: relative to its folder when inside it. */
-const docLabel = (agent, path) => (path === '@summary' ? 'your conversation summary' : agent?.cwd && path.startsWith(`${agent.cwd}/`) ? path.slice(agent.cwd.length + 1) : path);
+const docLabel = (agent, path) => (path === '@summary' ? 'your conversation summary' : agent?.cwd && (path.startsWith(`${agent.cwd}/`) || path.startsWith(`${agent.cwd}\\`)) ? path.slice(agent.cwd.length + 1).replaceAll('\\', '/') : path);
 /** When the agent last wrote or read a file: from its documents, or from the explorer listing. */
 function touchOf(agentId, path) {
   const doc = docEntry(agentId, path);
@@ -90,7 +90,7 @@ function readerHtml() {
     : quotes ? 'Select text above, then Quote to reply about that part. ↩ sends, ⇧↩ new line.' : `Tell ${agent?.name ?? 'the agent'} about this file. ↩ sends, ⇧↩ new line.`;
   const kind = viewKind(reader.path);
   const modes = SHOW_AS[kind] ? `<span class="seg" role="group" aria-label="Show it as">${SHOW_AS[kind].map(([m, label]) => `<button type="button" data-reader-mode="${m}" aria-pressed="${reader.mode === m}">${label}</button>`).join('')}</span>` : '';
-  const reveal = kind !== 'text' ? '<button class="act" type="button" data-reader-reveal data-tip="Show it in Finder, to open it in its own app">Show in Finder</button>' : '';
+  const reveal = kind !== 'text' ? '<button class="act" type="button" data-reader-reveal data-tip="Show it in ' + fileManager() + ', to open it in its own app">Show in ' + fileManager() + '</button>' : '';
   return `<div class="reader-head">
       <div class="reader-title"><b>${fileIcon(reader.path)} ${esc(fileLabel(reader.path))}</b><div class="faint mono" id="reader-sub">${esc(docSub(agent, reader.path))}</div></div>
       <span class="grow"></span>
@@ -169,7 +169,7 @@ function closeTab(path) {
 }
 
 const emptyBox = html => `<div class="empty" style="padding:12px 16px">${html}</div>`;
-const revealButton = '<button class="act" type="button" data-reader-reveal>Show in Finder</button>';
+const revealButton = () => `<button class="act" type="button" data-reader-reveal>Show in ${fileManager()}</button>`;
 
 /** A token-only read: its JSON, or { error, status }. */
 async function getJson(url) {
@@ -189,7 +189,7 @@ function sheetHtml(sheets, at) {
   const head = `<tr><th></th>${Array.from({ length: cols }, (_, c) => `<th>${letter(c)}</th>`).join('')}</tr>`;
   const cell = v => `<td${/^-?[\d,]*\.?\d+%?$/.test(v) ? ' class="num"' : ''}>${esc(v)}</td>`;
   const rows = s.rows.map((r, n) => `<tr><th>${n + 1}</th>${Array.from({ length: cols }, (_, c) => cell(r[c] ?? '')).join('')}</tr>`).join('');
-  const cut = s.truncated ? '<div class="empty" style="padding:8px 12px">Showing the first 2,000 rows and 100 columns. Show in Finder to open it whole.</div>' : '';
+  const cut = s.truncated ? '<div class="empty" style="padding:8px 12px">Showing the first 2,000 rows and 100 columns. Show in ' + fileManager() + ' to open it whole.</div>' : '';
   return `${tabs}<div class="sheet-wrap"><table class="sheet"><thead>${head}</thead><tbody>${rows}</tbody></table>${cut}</div>`;
 }
 
@@ -199,14 +199,14 @@ async function docHtml({ agentId, path, mode }) {
   const api = `/api/agent/${encodeURIComponent(agentId)}`, q = `path=${encodeURIComponent(path)}`;
   if (kind === 'text' || (kind === 'html' && mode === 'source')) {
     const body = await getJson(`${api}/file?${q}`);
-    if (body.error) return emptyBox(`${esc(body.error)}${body.status === 413 || body.status === 415 ? ` ${revealButton}` : ''}`);
+    if (body.error) return emptyBox(`${esc(body.error)}${body.status === 413 || body.status === 415 ? ` ${revealButton()}` : ''}`);
     return body.text === '' ? emptyBox('This file is empty.') : isMarkdown(path) ? renderMarkdown(body.text) : codeHtml(body.text);
   }
   const name = esc(docName(path));
-  if (kind === 'binary') return emptyBox(`A .${esc(path.split('.').pop().toLowerCase())} file can't be shown here. ${revealButton} to open it in its own app.`);
+  if (kind === 'binary') return emptyBox(`A .${esc(path.split('.').pop().toLowerCase())} file can't be shown here. ${revealButton()} to open it in its own app.`);
   if (kind === 'word' || kind === 'sheet' || kind === 'office') {
     const body = await getJson(`${api}/office?${q}`);
-    if (body.error) return emptyBox(`${esc(body.error)} ${revealButton}`);
+    if (body.error) return emptyBox(`${esc(body.error)} ${revealButton()}`);
     if (body.view === 'sheet') {
       reader.sheets = body.sheets;
       return sheetHtml(body.sheets, mode);
@@ -215,7 +215,7 @@ async function docHtml({ agentId, path, mode }) {
       return mode === 'text' ? `<div class="doc-text">${esc(body.text)}</div>` // its words, to select and quote
         : `<iframe class="media-frame page" sandbox="" srcdoc="${esc(body.html.replace(/<head[^>]*>/i, h => `${h}<style>body { margin: 24px 32px; max-width: 820px; }</style>`))}" title="${name}"></iframe>`; // its look, with no scripts
     }
-    return `<div class="media"><img class="page-pic" src="${esc(body.picture)}" alt="The first page of ${name}"></div><div class="media-meta faint">The first page, as Quick Look pictures it. Show in Finder to open it in its own app.</div>`;
+    return `<div class="media"><img class="page-pic" src="${esc(body.picture)}" alt="The first page of ${name}"></div><div class="media-meta faint">The first page, as Quick Look pictures it. Show in ${fileManager()} to open it in its own app.</div>`;
   }
   const link = await getJson(`${api}/ticket?${q}${kind === 'html' ? '&folder=1' : ''}`);
   if (link.error) return emptyBox(esc(link.error));
@@ -264,7 +264,7 @@ function noteImageSize(img) {
 async function revealReaderFile() {
   if (!reader) return;
   const r = await post('/api/actions/reveal', { agentId: reader.agentId, path: reader.path });
-  $('reader-status').textContent = r.ok ? 'Shown in Finder.' : `Finder could not show it: ${r.error}`;
+  $('reader-status').textContent = r.ok ? `Shown in ${fileManager()}.` : `${fileManager()} could not show it: ${r.error}`;
 }
 
 /** When the agent changes the open file, show the new text in place. */
