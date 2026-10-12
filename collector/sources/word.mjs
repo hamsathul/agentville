@@ -42,14 +42,14 @@ function render(blocks, b) {
 
 /* ---------- docx ---------- */
 
-const isOn = (xml, tag) => { const m = xml.match(new RegExp(`<w:${tag}(\\s[^>]*)?/?>`)); return Boolean(m) && !/w:val="(0|false|none)"/.test(m[1] ?? ''); };
+const isOn = (xml, tag) => { const m = xml.match(new RegExp(`<w:${tag}(\\s[^<>]*)?/?>`)); return Boolean(m) && !/w:val="(0|false|none)"/.test(m[1] ?? ''); };
 
 // Every element is found with elements() (previews.mjs): a lazy regex over a document is quadratic on one with unclosed tags.
 function docxRuns(paragraphXml, b) {
   const runs = [];
   for (const run of elements(paragraphXml, 'w:r')) {
     const xml = run.inner;
-    const props = xml.match(/<w:rPr>[\s\S]*?<\/w:rPr>/)?.[0] ?? '';
+    const props = elements(xml, 'w:rPr').next().value?.inner ?? '';
     let text = '';
     for (const t of elements(xml, ['w:t', 'w:tab', 'w:br'])) text += t.name === 'w:t' ? unxml(t.inner) : t.name === 'w:tab' ? '\t' : '\n';
     text = b.take(text);
@@ -66,7 +66,7 @@ function docxBlocks(xml, b) {
       blocks.push({ table: rows });
       continue;
     }
-    const style = m.inner.match(/<w:pStyle w:val="([^"]*)"/)?.[1] ?? '';
+    const style = m.inner.match(/<w:pStyle w:val="([^"<>]*)"/)?.[1] ?? '';
     const heading = /^heading([1-6])$/i.exec(style);
     const tag = /^title$/i.test(style) ? 'h1' : heading ? `h${heading[1]}` : /<w:numPr>/.test(m.inner) ? 'li' : 'p';
     blocks.push({ tag, runs: docxRuns(m.inner, b) });
@@ -80,8 +80,8 @@ function odtBlocks(xml, b) {
   const blocks = [];
   for (const m of elements(xml, ['text:h', 'text:p'])) {
     const inner = m.inner
-      .replace(/<text:s(?:\s[^>]*?text:c="(\d+)")?[^>]*\/>/g, (_, n) => ' '.repeat(Math.min(Number(n ?? 1), 200)))
-      .replace(/<text:tab\s*\/>/g, '\t').replace(/<text:line-break\s*\/>/g, '\n').replace(/<[^>]*>/g, '');
+      .replace(/<text:s(?:\s[^<>]*?text:c="(\d+)")?[^<>]*\/>/g, (_, n) => ' '.repeat(Math.min(Number(n ?? 1), 200)))
+      .replace(/<text:tab\s*\/>/g, '\t').replace(/<text:line-break\s*\/>/g, '\n').replace(/<[^<>]*>/g, ''); // never past the next <: a tag left open would make this quadratic
     const level = m.name === 'text:h' ? Math.min(6, Math.max(1, Number(/text:outline-level="(\d+)"/.exec(m.attrs)?.[1] ?? 1))) : 0;
     blocks.push({ tag: level ? `h${level}` : 'p', runs: [{ text: b.take(unxml(inner)), bold: false, italic: false }] });
   }

@@ -88,7 +88,9 @@ export function unzip(buf) {
 
 const ENTITY = { amp: '&', lt: '<', gt: '>', quot: '"', apos: "'" };
 export const unxml = s => String(s).replace(/&(#x[0-9a-f]+|#\d+|amp|lt|gt|quot|apos);/gi, (_, e) => (e[0] === '#' ? String.fromCodePoint(e[1] === 'x' || e[1] === 'X' ? parseInt(e.slice(2), 16) : Number(e.slice(1))) : ENTITY[e.toLowerCase()]));
-const attr = (tag, name) => tag.match(new RegExp(`\\s${name}="([^"]*)"`))?.[1];
+// No pattern here reads past the next < (none can be in a tag or an attribute's value): one that could would read to the end of
+// the text from every start of a tag that never closes, which is quadratic on a crafted file.
+const attr = (tag, name) => tag.match(new RegExp(`\\s${name}="([^"<>]*)"`))?.[1];
 
 /**
  * Each element named one of `names` in `xml`, in order and not nested in one before it: { name, attrs, inner } (inner '' for
@@ -98,7 +100,7 @@ const attr = (tag, name) => tag.match(new RegExp(`\\s${name}="([^"]*)"`))?.[1];
  */
 export function* elements(xml, names) {
   const text = String(xml);
-  const open = new RegExp(`<(${[].concat(names).join('|')})\\b([^>]*?)(/?)>`, 'g');
+  const open = new RegExp(`<(${[].concat(names).join('|')})\\b([^<>]*?)(/?)>`, 'g');
   const unclosed = new Set();
   for (let m; (m = open.exec(text));) {
     const [, name, attrs, selfClosing] = m;
@@ -143,14 +145,14 @@ export function readXlsx(buf) {
     const z = unzip(buf);
     const shared = [...elements(z.text('xl/sharedStrings.xml') ?? '', 'si')].map(si => texts(si.inner));
     const stylesXml = z.text('xl/styles.xml') ?? '';
-    const custom = new Map([...stylesXml.matchAll(/<numFmt\s[^>]*>/g)].map(m => [Number(attr(m[0], 'numFmtId')), unxml(attr(m[0], 'formatCode') ?? '')]));
-    const xfs = stylesXml.match(/<cellXfs[^>]*>([\s\S]*?)<\/cellXfs>/)?.[1] ?? '';
-    const styles = [...xfs.matchAll(/<xf\s[^>]*>/g)].map(m => {
+    const custom = new Map([...stylesXml.matchAll(/<numFmt\s[^<>]*>/g)].map(m => [Number(attr(m[0], 'numFmtId')), unxml(attr(m[0], 'formatCode') ?? '')]));
+    const xfs = elements(stylesXml, 'cellXfs').next().value?.inner ?? '';
+    const styles = [...xfs.matchAll(/<xf\s[^<>]*>/g)].map(m => {
       const id = Number(attr(m[0], 'numFmtId') ?? 0);
       return { date: DATE_IDS.has(id) || (custom.has(id) && isDateFormat(custom.get(id))), percent: PERCENT_IDS.has(id) };
     });
-    const rels = new Map([...String(z.text('xl/_rels/workbook.xml.rels') ?? '').matchAll(/<Relationship\s[^>]*>/g)].map(m => [attr(m[0], 'Id'), attr(m[0], 'Target')]));
-    const sheets = [...String(z.text('xl/workbook.xml') ?? '').matchAll(/<sheet\s[^>]*>/g)].map(m => {
+    const rels = new Map([...String(z.text('xl/_rels/workbook.xml.rels') ?? '').matchAll(/<Relationship\s[^<>]*>/g)].map(m => [attr(m[0], 'Id'), attr(m[0], 'Target')]));
+    const sheets = [...String(z.text('xl/workbook.xml') ?? '').matchAll(/<sheet\s[^<>]*>/g)].map(m => {
       const target = rels.get(attr(m[0], 'r:id')) ?? '';
       const path = target.startsWith('/') ? target.slice(1) : `xl/${target}`;
       const rows = [];
@@ -164,7 +166,7 @@ export function readXlsx(buf) {
           const ref = attr(c.attrs, 'r'), col = ref ? columnOf(ref) : cells.length;
           if (col >= MAX_COLS) { truncated = true; continue; }
           const type = attr(c.attrs, 't'), body = c.inner;
-          const raw = type === 'inlineStr' ? texts(body) : unxml(body.match(/<v>([\s\S]*?)<\/v>/)?.[1] ?? '');
+          const raw = type === 'inlineStr' ? texts(body) : unxml(elements(body, 'v').next().value?.inner ?? '');
           while (cells.length < col) cells.push('');
           cells[col] = type === 's' ? shared[Number(raw)] ?? '' : cellText(raw, type === 'inlineStr' ? 'str' : type, Number(attr(c.attrs, 's') ?? 0), styles);
         }

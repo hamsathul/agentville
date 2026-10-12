@@ -86,3 +86,17 @@ test('a sheet full of tags that never close is read at once, and phonetic guides
   assert.deepEqual(book.sheets[0].rows[0], ['漢字']);
   assert.ok(Date.now() - t0 < 2000, `took ${Date.now() - t0} ms`);
 });
+
+test('a sheet whose tags have no > after them is read at once (strings, styles, relationships, sheets, rows, cells, values)', () => {
+  const t0 = Date.now();
+  const book = readXlsx(zip({ ...WORKBOOK,
+    'xl/sharedStrings.xml': `<sst><si><t>Item</t></si>${'<si '.repeat(60_000)}</sst>`,
+    'xl/styles.xml': `<styleSheet>${'<numFmt '.repeat(30_000)}${'<cellXfs'.repeat(30_000)}<cellXfs>${'<xf '.repeat(30_000)}</cellXfs></styleSheet>`,
+    'xl/_rels/workbook.xml.rels': `${WORKBOOK['xl/_rels/workbook.xml.rels']}${'<Relationship '.repeat(30_000)}`,
+    'xl/worksheets/sheet1.xml': `<worksheet><sheetData><row r="1"><c r="A1" t="s"><v>0</v></c><c r="B1">${'<v>'.repeat(40_000)}</c></row>${'<row '.repeat(40_000)}</sheetData></worksheet>`,
+  }));
+  assert.equal(book.error, undefined);
+  assert.equal(book.sheets[0].rows[0][0], 'Item');
+  assert.ok(Date.now() - t0 < 2000, `took ${Date.now() - t0} ms`);
+});
+

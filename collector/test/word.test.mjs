@@ -78,3 +78,15 @@ test('an empty paragraph written <w:p/> is one empty paragraph, not the start of
   const r = readWord(docx(`${p('one')}<w:p/>${p('two')}`), 'docx');
   assert.match(r.html, /<p>one<\/p><p><\/p><p>two<\/p>/);
 });
+
+test("tags with no > after them are read at once too, in every part of a document", () => {
+  const t0 = Date.now();
+  // each start once read on to the end of the text looking for its > (an 881-byte file took 5 s)
+  assert.equal(readWord(docx(`${p('kept')}${'<w:p '.repeat(80_000)}`), 'docx').error, undefined);
+  assert.equal(readWord(docx(`<w:p>${'<w:pStyle w:val="'.repeat(40_000)}</w:p>`), 'docx').error, undefined);
+  assert.equal(readWord(docx(`<w:p><w:r>${'<w:rPr>'.repeat(40_000)}<w:t>x</w:t></w:r></w:p>`), 'docx').error, undefined);
+  assert.equal(readWord(docx(`<w:p><w:r><w:rPr>${'<w:b '.repeat(40_000)}</w:rPr><w:t>x</w:t></w:r></w:p>`), 'docx').error, undefined);
+  const odt = readWord(zipOf({ 'content.xml': `<office:text><text:p>kept ${'<'.repeat(80_000)}</text:p><text:p>${'<text:s '.repeat(40_000)}</text:p></office:text>` }), 'odt');
+  assert.match(odt.html, /<p>kept /);
+  assert.ok(Date.now() - t0 < 2000, `took ${Date.now() - t0} ms`);
+});
