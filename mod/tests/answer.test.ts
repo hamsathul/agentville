@@ -14,6 +14,7 @@ function fake$(onRun: (argv: string[]) => Run | Promise<Run>, { root = '/repo/mo
   let answered = ''
   const $ = {
     plugin: { root },
+    env: { get: async (name: string) => (name === 'SystemRoot' ? 'C:\\Windows' : undefined) },
     fs: {
       write: async (path: string, text: string) => { writes.push({ path, text }) },
       read: async (path: string) => (path.includes('/answers/') ? answered : writes.findLast(w => w.path === path)?.text ?? ''),
@@ -24,10 +25,10 @@ function fake$(onRun: (argv: string[]) => Run | Promise<Run>, { root = '/repo/mo
       run: async (argv: string[], init?: any) => {
         runs.push({ argv, init })
         if (argv[0] === 'rm') { removed.push(argv.slice(2)); return ok() }
-        if (argv[0] === 'cmd.exe' && argv[3] === 'del') { removed.push(argv.slice(6)); return ok() }
+        if (/cmd\.exe$/i.test(argv[0] ?? '') && argv[3] === 'del') { removed.push(argv.slice(6)); return ok() }
         const r = await onRun(argv)
         if (r.exitCode === 0) answered = r.stdout
-        return argv[0] === 'powershell.exe' ? { ...r, stdout: '' } : r
+        return /powershell\.exe$/i.test(argv[0] ?? '') ? { ...r, stdout: '' } : r
       },
     },
   }
@@ -154,16 +155,20 @@ test('a permission wait is a program of its own for the whole window, so a windo
   expect(wait?.init).toEqual({ timeoutMs: 70_000 })
 })
 
-test('on Windows the wait is PowerShell, run in the mod folder with its paths in the environment; the answer is read from its file', async () => {
+test('on Windows the wait is System32\'s PowerShell, run in the mod folder with its paths in the environment; the answer is read from its file', async () => {
   const root = 'C:/Users/me/agentville/mod'
   const f = fake$(() => ok('{"decision":"deny"}'), { root })
   const offer = { ...OFFER, stateDir: 'C:/Users/me/agentville/state' }
   const out: any = await permitFromDashboard(f.$, { tool: 'Bash', tool_use_id: 'toolu_W1', input: { command: 'x' } }, async () => ({ decision: 'ask' }), offer)
   expect(out.decision).toBe('deny')
-  const wait = f.runs.find(r => r.argv[0] === 'powershell.exe')
+  const wait = f.runs.find(r => /powershell\.exe$/i.test(r.argv[0] ?? ''))
+  expect(wait?.argv[0]).toBe('C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe')
   expect(wait?.init).toEqual({ timeoutMs: 25_000, cwd: root, env: { AGENTVILLE_ANSWER: 'C:/Users/me/agentville/state/answers/toolu_W1.json', AGENTVILLE_PENDING: 'C:/Users/me/agentville/state/pending/toolu_W1.json', AGENTVILLE_TICKS: '60' } })
   expect(wait?.argv.join(' ').includes('toolu_W1')).toBe(false)
-  expect(f.removed[0]).toEqual(['C:/Users/me/agentville/state/pending/toolu_W1.json', 'C:/Users/me/agentville/state/answers/toolu_W1.json'])
+  // cmd's del reads a / inside a path as a switch: it gets backslashes, and cmd.exe by its full path
+  const B = String.fromCharCode(92)
+  expect(f.removed[0]).toEqual([`C:${B}Users${B}me${B}agentville${B}state${B}pending${B}toolu_W1.json`, `C:${B}Users${B}me${B}agentville${B}state${B}answers${B}toolu_W1.json`])
+  expect(f.runs.find(r => r.argv[3] === 'del')?.argv[0]).toBe(`C:${B}Windows${B}System32${B}cmd.exe`)
   expect(f.runs.every(r => r.init?.cwd === root)).toBe(true)
 })
 
@@ -172,7 +177,7 @@ test('on Windows only files are handed to del: a folder where an offer was is le
   const f = fake$(() => ({ exitCode: 1, stdout: '', stderr: '' }), { root })
   const $ = { ...f.$, fs: { ...f.$.fs, stat: async (path: string) => ({ kind: path.includes('/answers/') ? 'dir' : 'file' }) } }
   await permitFromDashboard($, { tool: 'Bash', tool_use_id: 'toolu_W2', input: { command: 'x' } }, async () => ({ decision: 'ask' }), { ...OFFER, stateDir: 'C:/Users/me/agentville/state' })
-  expect(f.removed).toEqual([['C:/Users/me/agentville/state/pending/toolu_W2.json']])
+  expect(f.removed).toEqual([[['C:', 'Users', 'me', 'agentville', 'state', 'pending', 'toolu_W2.json'].join(String.fromCharCode(92))]])
 })
 
 test('a dashboard wait that fails is logged, the terminal still answers, and the offer is withdrawn', async () => {

@@ -19,7 +19,8 @@ test('the state folder is next to the mod folder with either separator', () => {
 
 test('claiming a request file: mv on a Mac, cmd move on Windows, and a path cmd would read as syntax is refused', () => {
   expect(claimArgv(false, '/s/inbox/a.json', '/s/inbox/a.json.claimed')).toEqual(['mv', '/s/inbox/a.json', '/s/inbox/a.json.claimed'])
-  expect(claimArgv(true, 'C:/s/inbox/a.json', 'C:/s/inbox/a.json.claimed')).toEqual(['cmd.exe', '/d', '/c', 'move', '/Y', 'C:/s/inbox/a.json', 'C:/s/inbox/a.json.claimed'])
+  // cmd's move and del read a / inside a path as a switch: Windows paths go to them with backslashes
+  expect(claimArgv(true, 'C:/s/inbox/a.json', 'C:/s/inbox/a.json.claimed')).toEqual(['cmd.exe', '/d', '/c', 'move', '/Y', `C:${B}s${B}inbox${B}a.json`, `C:${B}s${B}inbox${B}a.json.claimed`])
   for (const bad of ['C:/s/a&calc.json', 'C:/s/a|b.json', 'C:/s/%PATH%.json', 'C:/s/a^b.json', 'C:/s/a"b.json', 'C:/s/a>b.json', 'C:/s/a!b.json', 'C:/s/a\nb.json', 'C:/s/a,b.json', 'C:/s/a;b.json', 'C:/s/a=b.json']) {
     expect(claimArgv(true, bad, 'C:/s/ok')).toBeNull()
   }
@@ -27,7 +28,7 @@ test('claiming a request file: mv on a Mac, cmd move on Windows, and a path cmd 
 
 test('removing files: rm -f on a Mac, cmd del on Windows, refused for paths cmd would read as syntax', () => {
   expect(removeArgv(false, ['/s/a', '/s/b'])).toEqual(['rm', '-f', '/s/a', '/s/b'])
-  expect(removeArgv(true, ['C:/s/a', 'C:/s/b'])).toEqual(['cmd.exe', '/d', '/c', 'del', '/f', '/q', 'C:/s/a', 'C:/s/b'])
+  expect(removeArgv(true, ['C:/s/a', 'C:/s/b'])).toEqual(['cmd.exe', '/d', '/c', 'del', '/f', '/q', `C:${B}s${B}a`, `C:${B}s${B}b`])
   expect(removeArgv(true, ['C:/s/a', 'C:/s/b&calc'])).toBeNull()
   expect(removeArgv(true, [])).toBeNull()
 })

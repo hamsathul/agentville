@@ -12,18 +12,21 @@ export function isWindowsPath(p: string): boolean {
 const CMD_SYNTAX = /[&|<>^%!",;=\u0000-\u001f]/
 
 const safeForCmd = (...args: string[]) => args.every(a => typeof a === 'string' && a.length > 0 && !CMD_SYNTAX.test(a))
+// cmd's own commands read a / inside a word as a switch (`del C:/x/a.json` is "Invalid switch"), and the state folder is
+// written C:/x/state: they are handed backslashes.
+const native = (p: string) => p.replaceAll('/', String.fromCharCode(92))
 
 /** Moving a request file to its claimed name. Null if the Windows paths hold anything cmd would read as syntax. */
 export function claimArgv(win: boolean, from: string, to: string): string[] | null {
   if (!win) return ['mv', from, to]
-  return safeForCmd(from, to) ? ['cmd.exe', '/d', '/c', 'move', '/Y', from, to] : null
+  return safeForCmd(from, to) ? ['cmd.exe', '/d', '/c', 'move', '/Y', native(from), native(to)] : null
 }
 
 /** Deleting files that may or may not exist. Null if there is nothing to delete or a Windows path is not safe for cmd. */
 export function removeArgv(win: boolean, paths: string[]): string[] | null {
   if (paths.length === 0) return null
   if (!win) return ['rm', '-f', ...paths]
-  return safeForCmd(...paths) ? ['cmd.exe', '/d', '/c', 'del', '/f', '/q', ...paths] : null
+  return safeForCmd(...paths) ? ['cmd.exe', '/d', '/c', 'del', '/f', '/q', ...paths.map(native)] : null
 }
 
 // Only this machine's dashboard: http, localhost or 127.0.0.1, a port, and a plain path.
@@ -41,9 +44,10 @@ export function openArgv(win: boolean, url: string): string[] | null {
 // so the dashboard only offers answering while the wait is alive. Exit 0: the answer is there; 2: withdrawn; else nothing came.
 const WAIT_SH = 'n=0; while [ "$n" -lt "$3" ]; do if [ -f "$1" ]; then cat "$1"; exit 0; fi; if [ ! -f "$2" ]; then exit 2; fi; if [ $((n % 4)) -eq 0 ]; then touch "$2"; fi; sleep 0.25; n=$((n+1)); done; exit 1'
 // The same in Windows PowerShell, the paths and the count in the environment, never in the script text. It prints nothing:
-// the answer is read with $.fs, so its text is not passed through the console's code page. Both scripts stay one line each:
+// the answer is read with $.fs, so its text is not passed through the console's code page. It stops at a time, not after a
+// count: a Windows sleep of 250 ms lasts a little longer, and 2,160 of them ran past the call's timeout. Both scripts stay one line each:
 // collector/test/mod-wait.test.mjs runs them for real (the mod's own tests cannot start a program).
-const WAIT_PS = '$a=$env:AGENTVILLE_ANSWER; $p=$env:AGENTVILLE_PENDING; $n=[int]$env:AGENTVILLE_TICKS; for ($i = 0; $i -lt $n; $i++) { if ([IO.File]::Exists($a)) { exit 0 }; if (-not [IO.File]::Exists($p)) { exit 2 }; if ($i % 4 -eq 0) { try { [IO.File]::SetLastWriteTime($p, [DateTime]::Now) } catch {} }; Start-Sleep -Milliseconds 250 }; exit 1'
+const WAIT_PS = '$a=$env:AGENTVILLE_ANSWER; $p=$env:AGENTVILLE_PENDING; $end=[DateTime]::UtcNow.AddMilliseconds(250 * [int]$env:AGENTVILLE_TICKS); for ($i = 0; [DateTime]::UtcNow -lt $end; $i++) { if ([IO.File]::Exists($a)) { exit 0 }; if (-not [IO.File]::Exists($p)) { exit 2 }; if ($i % 4 -eq 0) { try { [IO.File]::SetLastWriteTime($p, [DateTime]::Now) } catch {} }; Start-Sleep -Milliseconds 250 }; exit 1'
 
 /** The program that waits for a dashboard answer: the shell loop on a Mac, PowerShell on Windows with its inputs in `env`. */
 export function waitArgv(win: boolean, answerPath: string, pendingPath: string, ticks: number): { argv: string[]; env?: Record<string, string> } {

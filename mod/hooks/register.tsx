@@ -95,7 +95,7 @@ export async function claimRequests($: any, inbox: string): Promise<any[]> {
       logFailure($, `refused to claim ${name}: its path holds characters a command line would read as syntax`)
       continue
     }
-    const moved = await $.process.run(claim, onHost($))
+    const moved = await hostRun($, claim)
     if (moved.exitCode !== 0) continue
     try {
       out.push(JSON.parse(await $.fs.read(claimed)))
@@ -372,13 +372,18 @@ async function ensurePolling($: any) {
 }
 
 // On Windows a program named without a folder is looked for in the working folder first, and a session's folder is any
-// repository: the mod's own folder is the one it runs them in there.
-const onHost = ($: any) => (isWindowsPath($.plugin.root) ? { cwd: $.plugin.root } : undefined)
+// repository: there cmd.exe and PowerShell are named by their full path, and run in the mod's own folder. A Mac's run as before.
+async function hostRun($: any, argv: string[], init?: Record<string, unknown>) {
+  if (!isWindowsPath($.plugin.root)) return init ? $.process.run(argv, init) : $.process.run(argv)
+  const root = (await $.env.get('SystemRoot')) ?? 'C:\\Windows'
+  const full: Record<string, string> = { 'cmd.exe': `${root}\\System32\\cmd.exe`, 'powershell.exe': `${root}\\System32\\WindowsPowerShell\\v1.0\\powershell.exe` }
+  return $.process.run([full[argv[0] ?? ''] ?? argv[0], ...argv.slice(1)], { ...init, cwd: $.plugin.root })
+}
 
 async function waitForAnswer($: any, answerPath: string, pendingPath: string, seconds: number): Promise<Waited> {
   const win = isWindowsPath($.plugin.root)
   const { argv, env } = waitArgv(win, answerPath, pendingPath, Math.max(1, Math.round(seconds * 4)))
-  const r = await $.process.run(argv, { timeoutMs: (seconds + 10) * 1000, ...(win ? { env, cwd: $.plugin.root } : {}) })
+  const r = await hostRun($, argv, { timeoutMs: (seconds + 10) * 1000, ...(env ? { env } : {}) })
   if (r.exitCode === 0) return { kind: 'answer', text: win ? await $.fs.read(answerPath) : r.stdout }
   return r.exitCode === 2 ? { kind: 'withdrawn' } : { kind: 'timeout' }
 }
@@ -390,7 +395,7 @@ async function removeFiles($: any, paths: string[]) {
     const files = win ? (await Promise.all(paths.map(async p => ((await $.fs.stat(p).catch(() => null))?.kind === 'file' ? p : null)))).filter((p): p is string => p !== null) : paths
     if (win && files.length === 0) return
     const argv = removeArgv(win, files)
-    if (argv) await $.process.run(argv, onHost($))
+    if (argv) await hostRun($, argv)
     else if (paths.length) logFailure($, `did not remove ${paths.length} file(s): a path holds characters a command line would read as syntax`)
   } catch (err) {
     logFailure($, `could not withdraw the dashboard offer: ${String(err)}`)
@@ -621,7 +626,7 @@ export const register: Register = on => {
           </Box>
         ))}
         {snapshot.counts.stale > 0 ? <Text dimColor>{snapshot.counts.stale} stale (see the dashboard)</Text> : null}
-        <Button key="open-browser" label="Open in browser" onPress={() => { const argv = openArgv(isWindowsPath($.plugin.root), DASHBOARD_URL); if (argv) void $.process.run(argv, onHost($)) }} />
+        <Button key="open-browser" label="Open in browser" onPress={() => { const argv = openArgv(isWindowsPath($.plugin.root), DASHBOARD_URL); if (argv) void hostRun($, argv) }} />
       </Box>
     )
   })
