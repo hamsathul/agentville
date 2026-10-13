@@ -158,9 +158,10 @@ It listens on the loopback addresses only (`127.0.0.1`, and `::1` where the mach
   there just for fun.
 - The 3D farm, a prototype: the same live farm as a low-poly diorama in 3D (three.js). Farmers walk
   the lanes with their tools, crops grow as context fills, the sun follows your clock and the seasons
-  your 5-hour limit, deploys bring rain or a rainbow, and fourteen animated animals graze, gallop and get
-  up to things (click one to pet it, feed it or throw the dogs a stick). It fills the window as the farm
-  does; turn and tilt it as you like, and zoom in to one farmer. It shows less than the farm for now.
+  your 5-hour limit, deploys bring rain or a rainbow, and eighteen animated animals graze, gallop and get
+  up to things, a frog and three fish in the pond among them (click one to pet it, feed it, throw the
+  dogs a stick or send the frog diving). It fills the window as the farm does; turn and tilt it as you
+  like, and zoom in to one farmer. It shows less than the farm for now.
 - The farm, the factory, the field exercise and the 3D farm are worlds: each runs in a sandboxed frame
   of its own, with no access to the token, and asks the page for the little it needs
   ([docs/worlds.md](docs/worlds.md)). A world from your own folder sees no words or paths until
@@ -1272,13 +1273,13 @@ in the list of worlds (**World**). It is a prototype, to see how a farm in 3D fe
 farm's own rules, so every farmer stands where the farm would put it and every repo lies in the bed the
 farm gives it (when both are opened fresh), but it shows less than the farm for now. It has more room
 than the farm: 5 m walkways and rows between the fields, farmers 4 m apart on a longer deck, a wider yard,
-and a fenced pasture across the front.
+a fenced pasture across the front, and a strip of grass under it where the forest begins.
 
 ![The 3D farm: the farm as a low-poly diorama](docs/farm3d.png)
 
 **What it shows.** The farmstead (the black barn, the silo with your plan's week as grain and a lamp near
 the limit, the timber farmhouse and its deck, your porch, with string lights), a raised bed for each repo
-in the fenced grid, the yard with the henhouse, the pond, the hammocks and the shade tree, the scarecrow
+in the fenced grid, the yard with the henhouse, the pond (clear water over a muddy hollow, lily pads), the hammocks and the shade tree, the scarecrow
 patch, the pasture across the front, and the meadow and the forest running on all round.
 - **Farmers** are figurines dressed as on the farm: the agent's colour for the shirt, a hat by its id
   with the model's pin, and the tool for its step in hand (a hoe for edits, an almanac for reads, a crate
@@ -1297,20 +1298,29 @@ patch, the pasture across the front, and the meadow and the forest running on al
   [Animated Animal Pack](https://poly.pizza/bundle/Animated-Animal-Pack-ILAPXeUYiS) (CC0), each playing
   its own animations, and repainted to match the farm: lighter, warmer colours in the farm's matte
   finish, where the models come darker and partly metallic (`web/worlds/farm3d/coats.js`, a colour for
-  each part of each animal; the eyes keep theirs). Two cows, a bull, two alpacas, a donkey and two horses graze in the pasture; a husky
-  in a red bandana and a Shiba Inu in a blue one (so neither is taken for a dog that means something) run
-  about the yard; a deer, a stag, a fox and a wolf keep to the forest's edge. They walk, graze and rest,
-  and now and then get up to something of their own: a look round, a sniff, a hop, a fly to shake off, a
-  gallop and a leap, the donkey kicking up its heels, the bull and the stag butting the air, the dogs
-  running laps and pouncing, the fox mousing. At night they stand and rest.
+  each part of each animal; the eyes keep theirs). Two cows, white with black spots (each her own), a
+  bull, two alpacas, a donkey and two horses graze in the pasture; a husky in a red bandana and a Shiba
+  Inu in a blue one (so neither is taken for a dog that means something) run about the yard; a deer, a
+  stag, a fox and a wolf keep to the forest's edge, a strip of grass between the pasture's fence and the
+  trees. They walk, graze and rest, and now and then get up to something of their own: a look round, a
+  sniff, a hop, a fly to shake off, a gallop and a leap, the donkey kicking up its heels, the bull and
+  the stag butting the air, the dogs running laps and pouncing, the fox mousing. At night they stand and
+  rest.
+  - **They keep to their ground**, all of their body: one walks only where the way there is clear, round
+    the pond, the trees, the bushes and rocks, never through a fence, and a gallop comes back the way it
+    went (`web/worlds/farm3d/roam.js`).
+  - **The pond**: Quaternius's lily pads (two in flower), his frog and three of his fish (single models,
+    CC0). A trout, a koi and a roach swim just under the surface and now and then leap out with a
+    splash; the frog sits on a pad, hops pad to pad, snaps at flies, and dives, to come up on a pad a
+    while later. In winter the pond is ice and they are out of sight.
   - **Click one for its menu**: Pet, Feed, Run (a gallop out and back), Leap, Hop, Sniff, Look around and
     Play dead (it falls over, lies still, and gets up again), with Kick and Headbutt for the hoofed ones,
     Pounce for the dogs, the fox and the wolf, and Throw a stick for the dogs (the dog runs for it and
-    brings it back). Esc or a click elsewhere shuts it. With **Motion** off they stand still and the menu
-    says so.
+    brings it back). The frog's: Hop, Catch a fly, Dive and Play dead; a fish's: Leap. Esc or a click
+    elsewhere shuts it. With **Motion** off they stand still and the menu says so.
   - They load just after the farm (a moment's pause the first time), and **Animals** in the Menu hides
-    them. `web/worlds/farm3d/models/LICENSE.md` lists each model, and `npm run farm3d-animals` makes them
-    again from poly.pizza.
+    them (not the lily pads). `web/worlds/farm3d/models/LICENSE.md` lists each model, and
+    `npm run farm3d-animals` makes them again from poly.pizza.
 - **Names and bubbles**: a farmer's name (in the farm's pixel font) shows when it needs you, when its turn
   ended, when you pick it or point at it, and for every farmer once you zoom in; pointing at a farmer also
   shows what it is doing, as its name's tooltip does. Its speech bubble shows for one that needs you or
@@ -1336,8 +1346,8 @@ without it the world says so and you can pick another. It uses the graphics card
 second, and draws nothing while the page shows its list or the tab is hidden; with **Motion** off (or
 reduced motion) it draws only when something changes. three.js (0.186.1, MIT licence; with its glTF loader
 for the animals) is part of Agentville, in `web/worlds/farm3d/vendor/`, and the animals' models are in
-`web/worlds/farm3d/models/` (about 5 MB, packed into JS files the world imports; the fourteen animals add
-about 200 draw calls, shadows included): nothing is downloaded from anywhere, and the world sees the same
+`web/worlds/farm3d/models/` (about 6 MB, packed into JS files the world imports; the eighteen animals and
+the lily pads add about 240 draw calls, shadows included): nothing is downloaded from anywhere, and the world sees the same
 scene as the farm and sends nothing.
 
 ### Notifications and the bell

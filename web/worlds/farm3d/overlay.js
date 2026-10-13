@@ -47,7 +47,7 @@ const HELP = `<h2>The 3D farm <small>(a prototype)</small></h2>
     <dt>Weather</dt><dd>Rain: its deploy failed · a rainbow: it worked · a windmill: it runs</dd>
     <dt>Elsewhere</dt><dd>The shade tree: idle · scarecrows: stale · hammocks: it wakes up by itself · the meadow: working outside any repo · a cloud: thinking</dd>
     <dt>Silo</dt><dd>Your plan's weekly use as grain; a lamp near the limit. The season follows the 5-hour limit</dd>
-    <dt>Animals</dt><dd>Just for fun, never for data. They walk, graze and rest, and now and then get up to something. Click one for what you can ask it to do: pet it, feed it, send it running, throw the dogs a stick…</dd>
+    <dt>Animals</dt><dd>Just for fun, never for data. They walk, graze and rest, round the pond and the trees and inside their fences, and now and then get up to something; a frog and three fish live in the pond. Click one for what you can ask it to do: pet it, feed it, send it running, throw the dogs a stick, send the frog diving…</dd>
     <dt>Moving</dt><dd>Drag to pan, scroll or pinch to zoom. Right-drag (or Shift-drag) to turn and tilt the farm; ↺ ↻ (or Q / E) turn it 15°, ⌂ puts it back square-on. Click a farmer to open it; its bubble for its whole conversation; the barn to start a session</dd>
   </dl>
   <p>Not here yet: the stats panel, a field's close-up, the diary, subagents, carts, and the farmers playing with the animals.</p>`;

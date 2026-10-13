@@ -1,10 +1,12 @@
 // The farm's animals, just for fun, never for data: all twelve of Quaternius's Animated Animal Pack (CC0; see
 // models/LICENSE.md). Two cows, a bull, two alpacas, a donkey and two horses in the pasture; the husky (in a red
 // bandana) and the Shiba Inu (in a blue one) in the yard, so neither is taken for a dog that means something; a deer,
-// a stag, a fox and a wolf at the forest's edge. What they do is antics.js's: they walk, rest and graze, get up to
-// something now and then, rest at night, and do what you pick from an animal's menu. This draws it: each kind's model
-// loaded once (after the farm has drawn), every animal its own copy with its own animation player, playing the clip
-// for each part (models/index.js), repainted in the farm's colours and finish (coats.js). The Animals switch hides them all.
+// a stag, a fox and a wolf at the forest's edge; and in the pond his frog on his lily pads and three of his fish. What
+// they do is antics.js's, where they may go roam.js's: they walk, rest and graze, get up to something now and then,
+// rest at night, and do what you pick from an animal's menu. This draws it: each kind's model loaded once (after the
+// farm has drawn), every animal its own copy with its own animation player, playing the clip for each part
+// (models/index.js), repainted in the farm's colours and finish (coats.js), the cows spotted; the frog on a pad, the
+// fish just under the water, a splash where one breaks it. The Animals switch hides them all (not the lily pads).
 import { GLTFLoader } from '../vendor/GLTFLoader.js';
 import { clone as cloneSkinned } from '../vendor/SkeletonUtils.js';
 import { LILY_PADS, PX, WATER } from '../layout.js';
