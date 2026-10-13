@@ -42,11 +42,12 @@ test("slimming a model: skin weights packed in bytes still add up to one, each v
 const PACK = 'https://poly.pizza/bundle/Animated-Animal-Pack-ILAPXeUYiS';
 const KINDS = ['alpaca', 'bull', 'cow', 'deer', 'donkey', 'fox', 'horse', 'husky', 'shiba', 'stag', 'whitehorse', 'wolf'];
 const POND_KINDS = ['frog', 'koi', 'lilypad', 'roach', 'trout'];
+const NATURE_KINDS = ['autumntree', 'birch', 'birchdead', 'birchsnow', 'bush', 'bushberries', 'bushsnow', 'deadtreesnow', 'flowers', 'log', 'mushroom', 'pine', 'pineautumn', 'pinesnow', 'rockmoss', 'rocks', 'rocksnow', 'stump', 'tree', 'tree2'];
 
 test("the models: all twelve of Quaternius's Animated Animal Pack, each with every one of its animations, slimmed", async () => {
   const { MODELS } = await import('../../web/worlds/farm3d/models/index.js');
   const { readGlb } = await import('../../scripts/lib/glb.mjs');
-  assert.deepEqual(Object.keys(MODELS).sort(), [...KINDS, ...POND_KINDS].sort());
+  assert.deepEqual(Object.keys(MODELS).sort(), [...KINDS, ...POND_KINDS, ...NATURE_KINDS].sort());
   let total = 0;
   for (const kind of Object.keys(MODELS)) total += (await import(`../../web/worlds/farm3d/models/${kind}.js`)).default.length;
   for (const kind of KINDS) {
@@ -72,7 +73,7 @@ test("the models: all twelve of Quaternius's Animated Animal Pack, each with eve
     assert.ok(m.height > 0.4 && m.height < 2.2, `${kind}: ${m.height} m`);
     assert.ok(glb.length < 420 * 1024, `${kind}: ${Math.round(glb.length / 1024)} KB, slimmed`);
   }
-  assert.ok(total < 6.5 * 1024 * 1024, `all the animals and the pond's: ${Math.round(total / 1024)} KB served`);
+  assert.ok(total < 7.5 * 1024 * 1024, `all the animals, the pond's and the plants: ${Math.round(total / 1024)} KB served`);
   assert.ok(MODELS.horse.height > MODELS.cow.height && MODELS.cow.height > MODELS.donkey.height && MODELS.donkey.height > MODELS.wolf.height && MODELS.wolf.height > MODELS.husky.height && MODELS.husky.height > MODELS.fox.height, 'sizes that make sense side by side');
 });
 
@@ -97,6 +98,23 @@ test("the pond's models: Quaternius's frog with its four animations, three fish 
   }
 });
 
+test("the farm's plants: Quaternius's flat-coloured trees, bushes, rocks and things of the forest floor, a variant for each season; CC0, still, slimmed", async () => {
+  const { MODELS } = await import('../../web/worlds/farm3d/models/index.js');
+  const { readGlb } = await import('../../scripts/lib/glb.mjs');
+  for (const kind of NATURE_KINDS) {
+    const m = MODELS[kind], glb = Buffer.from((await import(`../../web/worlds/farm3d/models/${kind}.js`)).default, 'base64'), { json } = readGlb(glb);
+    assert.equal(m.author, 'Quaternius', kind);
+    assert.match(m.licence, /^CC0/, kind);
+    assert.match(m.page, /^https:\/\/poly\.pizza\/m\//, kind);
+    assert.equal(m.family, 'still', kind);
+    assert.ok(!json.animations && !json.skins && !json.images && !json.textures, `${kind}: no animation, skeleton or texture`);
+    const size = m.height ?? m.length;
+    assert.ok(size >= 0.2 && size <= 12, `${kind}: ${size} m`);
+    assert.ok(glb.length < 160 * 1024, `${kind}: ${Math.round(glb.length / 1024)} KB`);
+  }
+  for (const [kind, snowy] of [['pine', 'pinesnow'], ['bush', 'bushsnow'], ['birch', 'birchsnow'], ['rockmoss', 'rocksnow']]) assert.ok(MODELS[kind] && MODELS[snowy], `${kind} has a winter`);
+});
+
 // The colour areas a model's eyes are, where their names don't say so.
 const EYES = { husky: ['Material.002', 'Material.003'], stag: ['Material.011'], frog: ['Black'] };
 
@@ -104,9 +122,9 @@ test("their colours: the farm's matte finish, and every colour area but the eyes
   const { COATS, FINISH } = await import('../../web/worlds/farm3d/coats.js');
   const { readGlb } = await import('../../scripts/lib/glb.mjs');
   assert.deepEqual(FINISH, { roughness: 0.85, metalness: 0 }, "build/materials.js's std(): no metal");
-  assert.deepEqual(Object.keys(COATS).sort(), [...KINDS, ...POND_KINDS].sort());
+  assert.deepEqual(Object.keys(COATS).sort(), [...KINDS, ...POND_KINDS, ...NATURE_KINDS].sort());
   const linear = v => (v <= 0.04045 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4), lum = ([r, g, b]) => 0.2126 * r + 0.7152 * g + 0.0722 * b;
-  for (const kind of [...KINDS, ...POND_KINDS]) {
+  for (const kind of [...KINDS, ...POND_KINDS, ...NATURE_KINDS]) {
     const { json } = readGlb(Buffer.from((await import(`../../web/worlds/farm3d/models/${kind}.js`)).default, 'base64'));
     const own = new Map(json.materials.map(m => [m.name, m.pbrMetallicRoughness.baseColorFactor]));
     for (const [name, hex] of Object.entries(COATS[kind])) {

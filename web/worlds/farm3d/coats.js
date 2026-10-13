@@ -28,6 +28,27 @@ export const COATS = {
   koi: { Outline: '#d9541e', Body: '#f07a2c', Stripes: '#fbf7ee' },
   roach: { Body: '#c9d0d6', Front: '#dfe5ea', Fins: '#f2c9a0' },
   lilypad: { Green: '#5f9a48', Pink: '#f08cc0' },
+  // the farm's plants and stones: the farm's greens and browns, snow white, autumn warm
+  tree: { Wood: '#7d5a45', Green: '#5e9a45' },
+  tree2: { Brown: '#a8764e', Green: '#7cba6a' },
+  birch: { White: '#eceee8', Black: '#4a4a4a', DarkGreen: '#55884a', Green: '#78ad58' },
+  birchsnow: { White: '#eceee8', Black: '#4a4a4a', Green: '#78ad58', Snow: '#f2f5f8', DarkGreen: '#55884a' },
+  birchdead: { White: '#eceee8', Black: '#4a4a4a' },
+  autumntree: { Wood: '#7d5a45', Orange: '#e08a3c', LightOrange: '#efb45e' },
+  deadtreesnow: { Wood: '#7d5a45', Snow: '#f2f5f8' },
+  pine: { Wood: '#8a6448', Green: '#4f8a52' },
+  pinesnow: { Wood: '#8a6448', Snow: '#f2f5f8', Green: '#4f8a52' },
+  pineautumn: { Wood: '#8a6448', Orange: '#d98f42', LightOrange: '#e9b867' },
+  bush: { Green: '#5e9a45' },
+  bushsnow: { Snow: '#f2f5f8', Green: '#5e9a45' },
+  bushberries: { Green: '#5e9a45', Berry: '#d63a44' },
+  rockmoss: { Rock: '#a3a6ad', Green: '#6c9a50' },
+  rocksnow: { 'Rock.001': '#a3a6ad', 'Snow.001': '#f2f5f8' },
+  rocks: { Stone_Dark: '#8e949c' },
+  stump: { Wood: '#8a6448', Green: '#6c9a50' },
+  log: { Wood: '#8a6448', Green: '#6c9a50', Mushroom_Top: '#b7795c', Mushroom_Bottom: '#e6d6c8', DarkGreen: '#55884a' },
+  mushroom: { White: '#f0eee8', LightRed: '#d0503f' },
+  flowers: { Green: '#5e9a45', Cyan: '#f2c94c', Yellow: '#f5e08a' },
 };
 
 /** Spotted coats: the colour area the spots are on, their colour, and how much of it they cover. */

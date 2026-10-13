@@ -1,6 +1,7 @@
 #!/usr/bin/env node
-// The 3D farm's animals: the twelve animated models of Quaternius's Animated Animal Pack on poly.pizza (CC0), and for
-// the pond his frog, three of his fish and a lily pad (CC0, single models on poly.pizza). Downloads
+// The 3D farm's animals: the twelve animated models of Quaternius's Animated Animal Pack on poly.pizza (CC0), for the
+// pond his frog, three of his fish and a lily pad, and his flat-coloured trees, bushes, rocks and forest-floor things
+// for the farm's plants (CC0, single models on poly.pizza). Downloads
 // each (a GLB, by its pinned id), keeps every animation once (the pack holds two copies) and fails if one goes unused,
 // drops what the farm's flat shading doesn't use (normals, texture coordinates, textures), packs what is left small
 // (scripts/lib/glb.mjs), and writes it to web/worlds/farm3d/models/<kind>.js (a world's frame can't fetch a model file:
@@ -45,6 +46,29 @@ export const MODELS = [
   { kind: 'koi', title: 'Fish', id: '6805b99c-5fd7-4aab-bf57-3bb645e1108a', page: 'https://poly.pizza/m/BEcU9rjiAq', length: 0.6, family: 'fish', clips: SWIM('Swim') },
   { kind: 'roach', title: 'Fish', id: '8410757e-6594-4011-817a-633730fbcaf8', page: 'https://poly.pizza/m/Ymu8ftrmuT', length: 0.5, family: 'fish', clips: SWIM('Swim.001') },
   { kind: 'lilypad', title: 'Lilypad', id: 'ae432cca-6422-42ef-a982-b74bd0fc99b2', page: 'https://poly.pizza/m/TI6ukUlsLh', length: 0.8, family: 'still', clips: {} },
+  // the farm's plants and stones (flat-coloured, a variant for each season), each its height or length as placed
+  ...[
+    ['tree', 'Tree', '18bfa206-01b3-4368-a391-513f21078bb1', '2paAm1ja4w', { height: 5.5 }],
+    ['tree2', 'Tree', '36ada9ac-2071-49f7-9e09-cda4add8589b', '9nvGuZlbpE', { height: 6.5 }],
+    ['birch', 'Birch Tree', 'f51ba6c2-51e9-43ce-b2a9-ccb0230b55e6', 'k6cozoNfLH', { height: 6 }],
+    ['birchsnow', 'Birch Tree with Snow', '6f6529a3-2385-4781-96f2-802cf2c6e832', 'R4NgnzZHcK', { height: 6 }],
+    ['birchdead', 'Birch Tree Dead', '320aeb25-6b5c-4b17-b3a8-0292c1b7d602', 'RieYOsjDj8', { height: 6 }],
+    ['autumntree', 'Autumn Tree', '653f3101-2c31-4d15-9e54-3d81aeca345a', '2lRubrT6Na', { height: 5.5 }],
+    ['deadtreesnow', 'Dead Tree with Snow', '4cfe60b4-042a-44fa-881d-0a3ed5adce04', 'PILl2nbDNz', { height: 5.5 }],
+    ['pine', 'Pine Tree', '4ab9f316-03f8-4588-9dcb-ca4f02f4219b', 'gX8WmgkeEm', { height: 6.5 }],
+    ['pinesnow', 'Pine Tree with Snow', '1e077c40-f8df-4322-9faf-964faecc5860', '17vQv2X5rh', { height: 6.5 }],
+    ['pineautumn', 'Pine Tree Autumn', '3e8bc39d-53b5-4aed-a47f-1827be7e0e43', 'n0X3N2yUFL', { height: 6.5 }],
+    ['bush', 'Bush', '57727111-0deb-4a85-9182-9f1371f6ca96', '92EytlU1El', { length: 1.6 }],
+    ['bushsnow', 'Bush Snow', '84e3f229-b276-4766-8846-a8d70beef332', 'H4IEAwYl1z', { length: 1.6 }],
+    ['bushberries', 'Bush with Berries', '30a7c72d-c014-40c4-8e1d-aaa949ebc465', 'TSbIxkDtxF', { length: 1.6 }],
+    ['rockmoss', 'Rock Moss', '76cc8706-7c55-4ba6-9492-f673b477b4bf', 'Oar39tFugM', { length: 1.4 }],
+    ['rocksnow', 'Rock Snow', '3d9f39ed-af7d-491a-90a3-957036099b1d', 'eZRzCg5BcR', { length: 1.4 }],
+    ['rocks', 'Rocks', 'c6f65def-08c5-4c81-b17f-f37b171ad911', 'OQvi8PIZ40', { length: 1.2 }],
+    ['stump', 'Tree Stump with Moss', 'f6caf11a-75ff-4a6e-9d87-28b44f685803', 'nFvEbUX6LE', { length: 1.2 }],
+    ['log', 'Wood Log with Moss', '5283865a-f61a-4787-b02d-28b5b76df7b9', 'nwsYvcI0bC', { length: 2.4 }],
+    ['mushroom', 'Mushroom', 'c30dcc3b-c43d-4ce8-9b2d-6dd942b81fd7', 'db1tjMhmiA', { height: 0.5 }],
+    ['flowers', 'Flowers', '1c2f8472-750c-4169-b2d7-573b0a4f8ba6', 'dOO6kMDd8L', { height: 0.6 }],
+  ].map(([kind, title, id, page, size]) => ({ kind, title, id, page: `https://poly.pizza/m/${page}`, ...size, family: 'still', clips: {} })),
 ].map(m => ({ ...m, ...QUATERNIUS, pack: null, packUrl: null })));
 const dir = join(ROOT, 'web', 'worlds', 'farm3d', 'models');
 mkdirSync(dir, { recursive: true });
