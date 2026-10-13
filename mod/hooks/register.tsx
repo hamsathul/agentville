@@ -26,7 +26,7 @@ const DASHBOARD_REASON = 'Answered from the Agentville dashboard'
 type Offer = { stateDir: string; sessionId: string; isLive: boolean; windowSec: number; now: number }
 type Waited = { kind: 'answer'; text: string } | { kind: 'withdrawn' } | { kind: 'timeout' }
 
-const MOD_VERSION = '0.9.4'
+const MOD_VERSION = '0.9.5'
 
 let latest: TrackerView = EMPTY
 // The terminal's working line (Slithering… while thinking), for the dashboard: when the turn began,
@@ -272,9 +272,32 @@ export function linesPrompt(req: any): string | null {
   ].join('\n')
 }
 
-const USE_OF: Record<string, string> = { name: 'names', lines: 'lines' }
+// Talk (from 0.9.5): the 3D farm's conversations, between its animals and between a farmer and an animal. Its animals
+// are its own (the collector's TALK_KINDS); the farmers who may talk are those not waiting on the person or done with a turn.
+const TALK_KINDS = ['cow', 'bull', 'alpaca', 'donkey', 'horse', 'whitehorse', 'deer', 'stag', 'fox', 'wolf', 'husky', 'shiba', 'frog', 'trout', 'koi', 'roach']
+/** The fixed talk prompt. */
+export const TALK_SYSTEM = `You write short, funny, kind conversations on a 3D farm where coding agents work as farmers: between two of its animals, and between a farmer and an animal. Reply only with rows of the form n|speaker|text: n numbers the conversation (1 to 12), speaker is one of the animals given or one of the farmers who may talk, exactly as written, and text is what they say, 60 characters or fewer, plain words, no quotes. A conversation is 2 to 4 rows, its two speakers taking turns, with at least one animal. Write 8 conversations, most between two animals and some between a farmer and an animal, using what just happened. Give each animal its own voice. Use only the names given and never invent names. Never mention files, code or secrets.`
+/** The facts of a talk request, as plain lines for the model; null when it names none of the 3D farm's animals. */
+export function talkPrompt(req: any): string | null {
+  const s = (v: any, n: number) => String(v ?? '').replace(/[\u0000-\u001f\u007f-\u009f]/g, '').trim().slice(0, n)
+  const num = (v: any) => (Number.isFinite(v) && v >= 0 ? Math.round(v) : 0)
+  const list = (v: any, n: number) => (Array.isArray(v) ? v.slice(0, n) : [])
+  const kinds = [...new Set(list(req?.cast, 16).map((c: any) => c?.kind).filter((k: any) => TALK_KINDS.includes(k)))]
+  if (!kinds.length) return null
+  const farmers = list(req?.agents, 12).filter((a: any) => a && typeof a === 'object' && !['waiting', 'turn', 'stale'].includes(a.state))
+  const events = list(req?.events, 5).filter((e: any) => LINE_EVENTS.includes(e?.kind))
+  const c = req?.counts ?? {}
+  return [
+    `Animals: ${kinds.join(', ')}`, // kinds only: a world's names for them never reach the model
+    `Farmers who may talk: ${farmers.length ? farmers.map((a: any) => `${s(a.name, 40)} is ${s(a.state, 10)}${a.step ? `, ${s(a.step, 12)}` : ''}${a.repo ? ` in ${s(a.repo, 40)}` : ''}`).join('; ') : 'none'}`,
+    `Waiting on the person: ${num(c.waiting)}; working: ${num(c.working)}; idle: ${num(c.idle)}`,
+    `What just happened: ${events.length ? events.map((e: any) => `${e.kind}${e.agent ? ` (${s(e.agent, 40)})` : ''}${e.repo ? ` in ${s(e.repo, 40)}` : ''}, ${num(e.ago)} min ago`).join('; ') : 'nothing'}`,
+  ].join('\n')
+}
 
-/** Runs the helper's requests for this session (names, animal lines), each on its own. */
+const USE_OF: Record<string, string> = { name: 'names', lines: 'lines', talk: 'lines' } // talk comes with Animal lines
+
+/** Runs the helper's requests for this session (names, animal lines, talk), each on its own. */
 export async function runHelper($: any, stateDir: string, sessionId: string, snapshot: any) {
   for (const req of await claimRequests($, `${stateDir}/helper/${sessionId}`)) {
     const id = String(req?.id ?? '')
@@ -284,7 +307,14 @@ export async function runHelper($: any, stateDir: string, sessionId: string, sna
     void (async () => {
       let out: { ok: boolean; text?: string; error?: string }
       try {
-        if (kind === 'lines') {
+        if (kind === 'talk') {
+          const prompt = talkPrompt(req)
+          if (!prompt) out = { ok: false, error: 'no animals to write for' }
+          else {
+            const r = await $.model.complete({ model: 'haiku', system: TALK_SYSTEM, prompt, maxTokens: 900, timeoutMs: 25000 })
+            out = r?.isAnswered ? { ok: true, text: String(r.text ?? '').slice(0, 12000) } : { ok: false, error: String(r?.error ?? r?.reason ?? 'no answer') }
+          }
+        } else if (kind === 'lines') {
           const prompt = linesPrompt(req)
           if (!prompt) out = { ok: false, error: 'no animals to write for' }
           else {

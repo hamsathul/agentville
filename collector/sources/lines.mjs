@@ -132,13 +132,64 @@ export function parseLines(text, castKinds, names = []) {
 const RANK = { idle: 0, yourTurn: 1, working: 2 };
 /**
  * The session to run a batch for this cast: listening, with a mod that knows every kind in it (0.9.0, or 0.9.1 for
- * the robot dog and the vacuum), not codex; idle first, then on its turn, then working; least recently used first.
+ * the robot dog and the vacuum; `least` at least: 0.9.5 for talk), not codex; idle first, then on its turn, then
+ * working; least recently used first.
  */
-export function chooseSession(agents, lastUsed = new Map(), cast = []) {
-  const need = (cast ?? []).map(c => (Object.hasOwn(KIND_SINCE, c?.kind) ? KIND_SINCE[c.kind] : '0.9.0')).reduce((v, w) => (modAtLeast(v, w) ? v : w), '0.9.0');
+export function chooseSession(agents, lastUsed = new Map(), cast = [], least = '0.9.0') {
+  const need = (cast ?? []).map(c => (Object.hasOwn(KIND_SINCE, c?.kind) ? KIND_SINCE[c.kind] : '0.9.0')).reduce((v, w) => (modAtLeast(v, w) ? v : w), least);
   const ok = (agents ?? []).filter(a => a.kind !== 'codex' && a.mod?.live && modAtLeast(a.mod.version, need) && a.state in RANK);
   ok.sort((x, y) => RANK[x.state] - RANK[y.state] || (lastUsed.get(x.id) ?? 0) - (lastUsed.get(y.id) ?? 0));
   return ok[0] ?? null;
+}
+
+/* ---------- talk: the 3D farm's conversations (its own kinds, its own request and rows; mod 0.9.5) ---------- */
+
+/** The 3D farm's animals (web/worlds/farm3d/antics.js HERDS): the speakers a talk batch may have, with the farmers. */
+export const TALK_KINDS = ['cow', 'bull', 'alpaca', 'donkey', 'horse', 'whitehorse', 'deer', 'stag', 'fox', 'wolf', 'husky', 'shiba', 'frog', 'trout', 'koi', 'roach'];
+export const TALK_SINCE = '0.9.5'; // the mod that first writes talk
+/** A talk cast as a page reported it: the 3D farm's kinds only, each once; null for no list or more than 16. */
+export function checkTalkCast(list) {
+  if (!Array.isArray(list) || list.length > 16) return null;
+  const out = new Map();
+  for (const c of list) if (c && typeof c === 'object' && TALK_KINDS.includes(c.kind) && !out.has(c.kind)) out.set(c.kind, { kind: c.kind });
+  return [...out.values()];
+}
+/** A talk request's facts: the lines' facts (names, states, a step word, counts, events) for the talk cast, and the 3D farm's key. */
+export function talkFactsOf(snap, cast, events, now) {
+  const { world, ...facts } = factsOf(snap, cast, events, now);
+  return { ...facts, cast: (cast ?? []).slice(0, 16).map(c => ({ kind: c.kind })), world: 'farm3d' };
+}
+/**
+ * The exchanges worth keeping from Haiku's reply: rows `n|speaker|text`, grouped by n in the order they come; a
+ * speaker is a kind of the cast or one of the farmers given; plain text of 1 to 60; an exchange of 2 to 4 lines with an
+ * animal in it; 12 at most. One with a farmer speaking, or a line holding a name the request named, is marked `named`.
+ */
+export function parseTalk(text, castKinds, farmerNames, names = []) {
+  const kinds = new Set(castKinds ?? []), farmers = new Set(farmerNames ?? []), groups = new Map();
+  for (const row of String(text ?? '').slice(0, 12000).split('\n')) {
+    const parts = row.split('|');
+    if (parts.length !== 3) continue;
+    const n = parts[0].trim(), who = parts[1].trim(), t = plain(parts[2].trim().replace(/^["'“”‘’]+|["'“”‘’]+$/g, ''), 61);
+    if (!/^\d{1,2}$/.test(n)) continue;
+    if (!groups.has(n)) groups.set(n, { lines: [], bad: false });
+    if (!(kinds.has(who) || farmers.has(who)) || !t || t.length > 60) groups.get(n).bad = true; // a bad row spoils its exchange
+    else groups.get(n).lines.push({ who, text: t });
+  }
+  const out = [];
+  for (const g of groups.values()) {
+    if (g.bad || g.lines.length < 2 || g.lines.length > 4 || !g.lines.some(l => kinds.has(l.who))) continue;
+    const named = g.lines.some(l => farmers.has(l.who) || isNamed(l.text, names));
+    out.push({ lines: g.lines, ...(named ? { named: true } : {}) });
+    if (out.length >= 12) break;
+  }
+  return out;
+}
+/** Whether a talk batch is due: the first at once; after an event, `gapMs` on; else every `idleMs`; asked for (Talk with none left), a minute on. */
+export function dueTalk({ now, lastAskedAt, eventSince, wantedAt = null, gapMs = 300_000, idleMs = 900_000, minMs = 60_000 }) {
+  if (lastAskedAt == null) return true;
+  if (eventSince && now - lastAskedAt >= gapMs) return true;
+  if (wantedAt != null && wantedAt > lastAskedAt && now - lastAskedAt >= minMs) return true;
+  return now - lastAskedAt >= idleMs;
 }
 
 /** Whether a batch is due: the first at once; after an event, once `gapMs` has passed; else every `idleMs`. */

@@ -1474,6 +1474,65 @@ test('Animal lines: a live cast and a 0.9.0 session get a batch; the reply’s g
   }
 });
 
+test("Talk (the 3D farm): a talk cast and a 0.9.5 session get a batch; its exchanges become snapshot.talk; 0.9.4 isn't asked; Talk with none left asks again; unticking clears", async () => {
+  const root = mkdtempSync(join(tmpdir(), 'tracker-root-talk-'));
+  mkdirSync(join(root, 'web'));
+  writeFileSync(join(root, 'web', 'index.html'), '<html></html>');
+  writeFileSync(join(root, 'config.json'), JSON.stringify({ port: 0, deployRepos: {} }));
+  const claudeDir = mkdtempSync(join(tmpdir(), 'tracker-claude-talk-'));
+  mkdirSync(join(claudeDir, 'sessions'));
+  mkdirSync(join(claudeDir, 'projects', '-w'), { recursive: true });
+  const proc = spawn('sleep', ['60']);
+  writeFileSync(join(claudeDir, 'sessions', `${proc.pid}.json`), JSON.stringify({ pid: proc.pid, sessionId: 'talk-one', cwd: '/w', name: 'talk-one', nameSource: 'user', status: 'idle', startedAt: Date.now() }));
+  writeFileSync(join(claudeDir, 'projects', '-w', 'talk-one.jsonl'), JSON.stringify({ type: 'user', timestamp: new Date().toISOString(), message: { content: 'hello' } }) + '\n');
+  mkdirSync(join(root, 'state', 'mods'), { recursive: true });
+  let version = '0.9.4';
+  const asked = [], reply = { ok: true, text: '1|cow|Grass again.\n1|husky|Run? Run!\n2|dragon|Rawr.\n2|cow|Eek.' };
+  const fakeMod = setInterval(() => {
+    writeFileSync(join(root, 'state', 'mods', 'talk-one.json'), JSON.stringify({ sessionId: 'talk-one', version, at: Date.now() }));
+    const inbox = join(root, 'state', 'helper', 'talk-one');
+    if (!existsSync(inbox)) return;
+    for (const name of readdirSync(inbox).filter(n => n.endsWith('.json'))) {
+      const req = JSON.parse(readFileSync(join(inbox, name), 'utf8'));
+      unlinkSync(join(inbox, name));
+      asked.push(req);
+      mkdirSync(join(root, 'state', 'helper-replies'), { recursive: true });
+      setTimeout(() => writeFileSync(join(root, 'state', 'helper-replies', `talk-one.${req.id}.json`), JSON.stringify({ id: req.id, sessionId: 'talk-one', kind: req.kind, ...reply, at: Date.now() })), 50);
+    }
+  }, 40);
+  const handle = await startCollector({ root, claudeDir, claudeBin: '/usr/bin/false', notify: () => {}, log: () => {}, helperTimeoutMs: 600, linesGapMs: 200, linesIdleMs: 60_000, talkIdleMs: 60_000, talkMinMs: 300 });
+  const snap = () => handle.getSnapshot();
+  const until = async (ok, ms = 4000) => { for (let i = 0; i < ms / 50; i++) { await handle.reloadConfig(); if (ok()) return true; await new Promise(r => setTimeout(r, 50)); } return false; };
+  try {
+    assert.equal(snap().talk, null);
+    assert.deepEqual(await handle.actions.talk({ cast: 'cow' }), { ok: false, error: 'That is not a cast of animals.' });
+    assert.deepEqual(await handle.actions.talk({ cast: [{ kind: 'cow' }, { kind: 'husky' }] }), { ok: true });
+    await new Promise(r => setTimeout(r, 300));
+    await handle.reloadConfig();
+    assert.deepEqual(asked, [], 'off: nothing asked');
+    await handle.actions.helper({ on: true, uses: { lines: true } });
+    assert.ok(await until(() => snap().helper.talkBlocked === 'no-session'), 'mod 0.9.4 writes no talk: not asked, and the snapshot says so');
+    assert.deepEqual(asked.filter(r => r.kind === 'talk'), []);
+    version = '0.9.5';
+    assert.ok(await until(() => snap().talk?.exchanges?.length === 1), 'a batch, its good exchange kept');
+    assert.deepEqual(snap().talk.exchanges, [{ lines: [{ who: 'cow', text: 'Grass again.' }, { who: 'husky', text: 'Run? Run!' }] }]);
+    const req = asked.find(r => r.kind === 'talk');
+    assert.deepEqual(req.cast, [{ kind: 'cow' }, { kind: 'husky' }]);
+    assert.equal(req.world, 'farm3d');
+    assert.equal(JSON.stringify(req).includes('/w'), false, 'no path in a request');
+    const before = asked.filter(r => r.kind === 'talk').length;
+    assert.deepEqual(await handle.actions.talk({ cast: [{ kind: 'cow' }, { kind: 'husky' }], more: true }), { ok: true });
+    assert.ok(await until(() => asked.filter(r => r.kind === 'talk').length > before), 'Talk with none left: another batch, a moment on');
+    assert.equal((await handle.actions.helper({ uses: { names: true, lines: false } })).ok, true);
+    await handle.reloadConfig();
+    assert.equal(snap().talk, null, 'unticked: talk cleared');
+  } finally {
+    clearInterval(fakeMod);
+    proc.kill();
+    await handle.stop();
+  }
+});
+
 test('Animal lines ticked again: a batch goes out at once, not after the 30-minute wait', async () => {
   const root = mkdtempSync(join(tmpdir(), 'tracker-root-relines-'));
   mkdirSync(join(root, 'web'));

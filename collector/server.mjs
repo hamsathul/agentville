@@ -261,6 +261,7 @@ export function createTrackerServer({ port, token, webFile, getSnapshot, getFeed
         if (path === '/api/actions/helper') return sendJson(res, 200, await actions.helper(body));
         if (path === '/api/actions/name') return sendJson(res, 200, await actions.name(body));
         if (path === '/api/actions/animals') return sendJson(res, 200, await actions.animals(body));
+        if (path === '/api/actions/talk') return sendJson(res, 200, await actions.talk(body));
         if (path === '/api/actions/setting') return sendJson(res, 200, await actions.setting(body));
         if (path === '/api/actions/aside') return sendJson(res, 200, await actions.aside(body));
         if (path === '/api/actions/reveal') return sendJson(res, 200, await actions.reveal(body));

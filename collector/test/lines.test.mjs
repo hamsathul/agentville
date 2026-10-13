@@ -4,7 +4,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import vm from 'node:vm';
-import { CREATURE_KINDS, LINE_WORLDS, SITUATIONS, checkCast, chooseSession, createLinesWatch, dueLines, factsOf, namesOf, parseLines, stepOf } from '../sources/lines.mjs';
+import { CREATURE_KINDS, LINE_WORLDS, SITUATIONS, TALK_KINDS, checkCast, checkTalkCast, chooseSession, createLinesWatch, dueLines, dueTalk, factsOf, namesOf, parseLines, parseTalk, stepOf, talkFactsOf } from '../sources/lines.mjs';
 
 const agent = (id, over = {}) => ({ id, name: id, kind: 'interactive', state: 'idle', compactions: 0, mod: { live: true, version: '0.9.0' }, ...over });
 const repo = (path, over = {}) => ({ path, name: path.split('/').pop(), branch: 'main', agentIds: [], lastDeploy: null, prs: { open: [], merged: [] }, ...over });
@@ -161,4 +161,57 @@ test('createLinesWatch: what the collector learns after it starts, but that happ
   t += 10_000;
   w.observe({ agents: [agent('a', { compactions: 4, lastCompactAt: t - 1000 })], repos: [repo('/r/api', { agentIds: ['a'], lastDeploy: { state: 'failed', at: t - 1000 }, prs: { open: [], merged: [{ number: 9, at: t - 600_000 }, { number: 10, at: t - 1000 }] } })] });
   assert.deepEqual(w.recent().map(e => e.kind).sort(), ['deployFailed', 'harvest', 'merged']);
+});
+
+/* ---------- talk (the 3D farm's conversations): its own kinds, request and reply rows ---------- */
+
+test("checkTalkCast: the 3D farm's kinds (16 at most), kinds only, each once; nothing else", () => {
+  assert.deepEqual(TALK_KINDS.slice().sort(), ['alpaca', 'bull', 'cow', 'deer', 'donkey', 'fox', 'frog', 'horse', 'husky', 'koi', 'roach', 'shiba', 'stag', 'trout', 'whitehorse', 'wolf']);
+  assert.deepEqual(checkTalkCast([{ kind: 'cow', name: 'Daisy' }, { kind: 'frog' }, { kind: 'cow' }, { kind: 'dragon' }, null]), [{ kind: 'cow' }, { kind: 'frog' }]);
+  assert.equal(checkTalkCast('cow'), null);
+  assert.equal(checkTalkCast(Array.from({ length: 17 }, () => ({ kind: 'cow' }))), null);
+  assert.equal(checkTalkCast(TALK_KINDS.map(kind => ({ kind }))).length, 16);
+});
+
+test('talkFactsOf: the lines facts for the talk cast and the 3D farm by its key; who may talk is said by state; no path or branch', () => {
+  const snap = { agents: [agent('shop-bot', { state: 'working', now: { tool: 'Edit', input: { file_path: '/w/a.js' } } }), agent('api', { state: 'waiting' })], repos: [repo('/w/shop', { agentIds: ['shop-bot'], branch: 'secret-branch' })] };
+  const f = talkFactsOf(snap, [{ kind: 'cow' }, { kind: 'husky' }], [], Date.now());
+  assert.deepEqual(f.cast, [{ kind: 'cow' }, { kind: 'husky' }]);
+  assert.equal(f.world, 'farm3d');
+  assert.deepEqual(f.agents.find(a => a.name === 'shop-bot'), { name: 'shop-bot', state: 'working', step: 'editing', repo: 'shop' });
+  assert.ok(!JSON.stringify(f).includes('/w') && !JSON.stringify(f).includes('secret-branch'));
+});
+
+test('parseTalk: rows n|speaker|text grouped by exchange; speakers from the cast or the farmers given; 2 to 4 lines of 1 to 60; 12 at most; one with a farmer or a name is marked named', () => {
+  const text = [
+    'Here you go:',
+    '1|cow|Grass again.', '1|horse|Speak for yourself.',
+    '2|shop-bot|Morning, cow.', '2|cow|Moo, shop-bot.',
+    '3|dragon|Rawr.', '3|cow|Eek.',
+    '4|cow|' + 'x'.repeat(61), '4|horse|Hm.',
+    '5|cow|Alone.',
+    '6|wolf|The api is broken.', '6|fox|Not me.',
+  ].join('\n');
+  const out = parseTalk(text, ['cow', 'horse', 'wolf', 'fox'], ['shop-bot'], ['api', 'shop-bot']);
+  assert.deepEqual(out.map(e => e.lines.map(l => l.who)), [['cow', 'horse'], ['shop-bot', 'cow'], ['wolf', 'fox']]);
+  assert.deepEqual(out.map(e => Boolean(e.named)), [false, true, true]);
+  assert.equal(parseTalk(Array.from({ length: 20 }, (_, n) => `${n + 1}|cow|a\n${n + 1}|horse|b`).join('\n'), ['cow', 'horse'], [], []).length, 12);
+  assert.deepEqual(parseTalk('', ['cow'], [], []), []);
+});
+
+test('dueTalk: the first at once; an event after 5 minutes; else every 15; asked for (Talk with none left) after a minute', () => {
+  const t0 = 1_000_000;
+  assert.equal(dueTalk({ now: t0, lastAskedAt: null }), true);
+  assert.equal(dueTalk({ now: t0 + 60_000, lastAskedAt: t0 }), false);
+  assert.equal(dueTalk({ now: t0 + 300_000, lastAskedAt: t0, eventSince: true }), true);
+  assert.equal(dueTalk({ now: t0 + 900_000, lastAskedAt: t0 }), true);
+  assert.equal(dueTalk({ now: t0 + 30_000, lastAskedAt: t0, wantedAt: t0 + 20_000 }), false, 'not within a minute');
+  assert.equal(dueTalk({ now: t0 + 61_000, lastAskedAt: t0, wantedAt: t0 + 20_000 }), true);
+  assert.equal(dueTalk({ now: t0 + 61_000, lastAskedAt: t0, wantedAt: t0 - 1 }), false, 'wanted before the last batch: that batch answered it');
+});
+
+test('chooseSession: a talk batch needs mod 0.9.5', () => {
+  const agents = [agent('old', { mod: { live: true, version: '0.9.4' } }), agent('new', { mod: { live: true, version: '0.9.5' } })];
+  assert.equal(chooseSession(agents, new Map(), [{ kind: 'cow' }], '0.9.5')?.id, 'new');
+  assert.equal(chooseSession(agents.slice(0, 1), new Map(), [{ kind: 'cow' }], '0.9.5'), null);
 });

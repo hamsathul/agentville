@@ -42,7 +42,7 @@ const defaultLaunch = args => run('osascript', args, { timeoutMs: 15_000 });
 import { createTrackerServer } from './server.mjs';
 import { makeWorlds, watchWorlds, worldsDirOf } from './worlds.mjs';
 import { renderTranscriptPage } from './transcript-page.mjs';
-import { checkCast, chooseSession, createLinesWatch, dueLines, factsOf, lineWorld, namesOf, parseLines } from './sources/lines.mjs';
+import { TALK_SINCE, checkCast, checkTalkCast, chooseSession, createLinesWatch, dueLines, dueTalk, factsOf, lineWorld, namesOf, parseLines, parseTalk, talkFactsOf } from './sources/lines.mjs';
 import { replaceFile } from './platform/replace.mjs';
 
 const DOC_FILE = /\.(md|markdown|mdx)$/i;
@@ -115,7 +115,7 @@ async function quickLookPicture(real) {
   }
 }
 
-export async function startCollector({ root, system = null, claudeDir = join(homedir(), '.claude'), claudeBin = 'claude', home = homedir(), signedInMs = 60_000, heldGoneMs = 120_000, scratchBase = platform.scratchBase(), port: portOverride, deliveryTimeoutMs = 5000, helperTimeoutMs = 30_000, linesGapMs = 300_000, linesIdleMs = 1_800_000, castKeepMs = 600_000, notify = platform.notify, launch = defaultLaunch, sessionProcs = platform.sessionProcs, endWaitMs = 8000, readProcs = platform.readProcs, deployStatusOf = deployStatus, pullRequestsOf = pullRequests, githubSlugOf = githubSlug, ticketMs = 600_000, quickLook = platform.quickLookPicture ?? quickLookPicture, folderRoots = platform.folderRoots(home), chooseFolder = platform.name === 'win' ? platform.chooseFolder : chooseFolderMac, stopWaitMs = 3000, revealFile = real => platform.revealFile(real), openFolder = dir => platform.openFolder(dir), log = makeLogger(join(root, 'logs')) }) {
+export async function startCollector({ root, system = null, claudeDir = join(homedir(), '.claude'), claudeBin = 'claude', home = homedir(), signedInMs = 60_000, heldGoneMs = 120_000, scratchBase = platform.scratchBase(), port: portOverride, deliveryTimeoutMs = 5000, helperTimeoutMs = 30_000, linesGapMs = 300_000, linesIdleMs = 1_800_000, talkGapMs = 300_000, talkIdleMs = 900_000, talkMinMs = 60_000, castKeepMs = 600_000, notify = platform.notify, launch = defaultLaunch, sessionProcs = platform.sessionProcs, endWaitMs = 8000, readProcs = platform.readProcs, deployStatusOf = deployStatus, pullRequestsOf = pullRequests, githubSlugOf = githubSlug, ticketMs = 600_000, quickLook = platform.quickLookPicture ?? quickLookPicture, folderRoots = platform.folderRoots(home), chooseFolder = platform.name === 'win' ? platform.chooseFolder : chooseFolderMac, stopWaitMs = 3000, revealFile = real => platform.revealFile(real), openFolder = dir => platform.openFolder(dir), log = makeLogger(join(root, 'logs')) }) {
   // readProcs, deployStatusOf, pullRequestsOf and githubSlugOf read the machine and GitHub; a test or the demo video passes stand-ins.
   const stateDir = join(root, 'state');
   const pendingDir = join(stateDir, 'pending');
@@ -146,6 +146,10 @@ export async function startCollector({ root, system = null, claudeDir = join(hom
   const linesWatch = createLinesWatch();
   let linesPending = null, linesAskedAt = null, chatter = null, linesBlocked = null;
   const linesUsed = new Map();
+  // Talk (the 3D farm's conversations, Animal lines ticked): the animals of a world that talks (kinds; kept 10 minutes),
+  // the one batch asked for, the latest batch, why none can be asked, who ran one last, and when a page asked for more.
+  let talkCast = null, talkSeenAt = 0, talkPending = null, talkAskedAt = null, talkWantedAt = null, talk = null, talkBlocked = null;
+  const talkUsed = new Map();
   // Model and effort switches and side questions go to a session's mod as files; it writes back what came of them.
   const commandsDir = join(stateDir, 'commands'), resultsDir = join(stateDir, 'command-results');
   const asksDir = join(stateDir, 'btw'), asideAnswersDir = join(stateDir, 'asides');
@@ -469,6 +473,9 @@ export async function startCollector({ root, system = null, claudeDir = join(hom
     try { linesTick(snapshot, now); } catch (err) { markFail('helper', err); } // lines never stop the dashboard
     snapshot.chatter = chatter;
     if (linesBlocked) snapshot.helper = { ...snapshot.helper, linesBlocked };
+    try { talkTick(snapshot, now); } catch (err) { markFail('helper', err); } // talk never stops the dashboard
+    snapshot.talk = talk;
+    if (talkBlocked) snapshot.helper = { ...snapshot.helper, talkBlocked };
     prevAgents = new Map(agents.map(a => [a.id, a]));
     alerts.process(snapshot, now, cpuHist);
     writeState(snapshot);
@@ -1117,6 +1124,42 @@ export async function startCollector({ root, system = null, claudeDir = join(hom
     linesAskedAt = now;
     linesUsed.set(a.id, now);
   }
+  /** Talk, each tick (after the lines: their news watch is shared): a batch asked for when due, from a mod that writes talk. */
+  function talkTick(snap, now) {
+    if (talkCast && now - talkSeenAt > castKeepMs) talkCast = null;
+    const s = helper.settings();
+    talkBlocked = null;
+    if (!s.on || !s.uses.lines) { withdrawTalk(); talk = null; return; }
+    if (talkPending && now - talkPending.at > helperTimeoutMs) { withdrawTalk(); helper.fail('The session gave no talk in 30 seconds.'); }
+    if (talkPending || !talkCast?.length) return;
+    if (!dueTalk({ now, lastAskedAt: talkAskedAt, eventSince: linesWatch.since(talkAskedAt ?? 0), wantedAt: talkWantedAt, gapMs: talkGapMs, idleMs: talkIdleMs, minMs: talkMinMs })) return;
+    if (!helper.canCall('lines').ok) { talkBlocked = 'limit'; return; }
+    const a = chooseSession(snap.agents, talkUsed, [], TALK_SINCE); // a mod that writes talk
+    if (!a) { talkBlocked = 'no-session'; return; }
+    const id = `${now}-${Math.random().toString(36).slice(2, 8)}`, facts = talkFactsOf(snap, talkCast, linesWatch.recent(), now);
+    const file = writeRequestFile(helperDir, a.id, { id, kind: 'talk', at: now, ...facts }, id);
+    helper.count();
+    const farmers = facts.agents.filter(x => !['waiting', 'turn', 'stale'].includes(x.state)).map(x => x.name); // who may speak: not one waiting on you
+    talkPending = { sid: a.id, id, file, at: now, names: namesOf(snap, facts), farmers };
+    talkAskedAt = now;
+    talkUsed.set(a.id, now);
+  }
+  function withdrawTalk() {
+    if (!talkPending) return;
+    try { unlinkSync(talkPending.file); } catch { /* taken already: its answer is dropped */ }
+    talkPending = null;
+  }
+  /** A mod's talk: kept if it answers the batch asked for; its good exchanges become the talk, none counts as a failure. */
+  function talkReply(sid, r, now) {
+    const p = talkPending;
+    if (!p || p.sid !== sid || p.id !== r.id) return; // late, or withdrawn: dropped
+    talkPending = null;
+    if (!r.ok) { helper.fail(String(r.error ?? 'no answer')); return; }
+    const exchanges = parseTalk(r.text, (talkCast ?? []).map(c => c.kind), p.farmers, p.names);
+    if (!exchanges.length) { helper.fail('Haiku gave no usable talk.'); return; }
+    helper.ok();
+    talk = { at: now, exchanges };
+  }
   function withdrawLines() {
     if (!linesPending) return;
     try { unlinkSync(linesPending.file); } catch { /* taken already: its answer is dropped */ }
@@ -1149,6 +1192,7 @@ export async function startCollector({ root, system = null, claudeDir = join(hom
       for (const r of list) {
         try { unlinkSync(join(helperRepliesDir, `${sid}.${r.id}.json`)); } catch { /* gone */ }
         if (r.kind === 'lines') { linesReply(sid, r, now); continue; }
+        if (r.kind === 'talk') { talkReply(sid, r, now); continue; }
         const p = helperPending.get(sid);
         if (!p || p.id !== r.id) continue; // late, or the helper was switched off: dropped
         helperPending.delete(sid);
@@ -1247,9 +1291,9 @@ export async function startCollector({ root, system = null, claudeDir = join(hom
     async helper(body) {
       const was = helper.settings(), linesWere = was.on && was.uses.lines;
       const r = helper.update(body ?? {});
-      if (r.ok && r.helper.on && r.helper.uses.lines && !linesWere) linesAskedAt = null; // ticked (again): the first batch goes out at once
+      if (r.ok && r.helper.on && r.helper.uses.lines && !linesWere) { linesAskedAt = null; talkAskedAt = null; } // ticked (again): the first batches go out at once
       if (r.ok && !r.helper.on) for (const id of [...helperPending.keys()]) withdrawName(id);
-      if (r.ok && (!r.helper.on || !r.helper.uses.lines)) { withdrawLines(); chatter = null; }
+      if (r.ok && (!r.helper.on || !r.helper.uses.lines)) { withdrawLines(); chatter = null; withdrawTalk(); talk = null; }
       if (r.ok) await schedule(false);
       return r;
     },
@@ -1261,6 +1305,20 @@ export async function startCollector({ root, system = null, claudeDir = join(hom
       for (const c of cast) casts.set(c.kind, { name: c.name, seenAt: at });
       castWorld = { key: lineWorld(body?.world), seenAt: at }; // the newest page's world; any other key, none
       if (first && cast.length) await schedule(false); // the first batch goes out as soon as a cast is live
+      return { ok: true };
+    },
+    /**
+     * A page's world that talks (the 3D farm) reports its animals (kinds only), kept 10 minutes, for Haiku's talk to
+     * write for; `more` when it has used every exchange (Talk with none left): another batch, a minute after the last.
+     */
+    async talk(body) {
+      const cast = checkTalkCast(body?.cast);
+      if (!cast) return { ok: false, error: 'That is not a cast of animals.' };
+      const at = Date.now(), first = !talkCast?.length;
+      talkCast = cast;
+      talkSeenAt = at;
+      if (body?.more === true) talkWantedAt = at;
+      if ((first && cast.length) || body?.more === true) await schedule(false);
       return { ok: true };
     },
     /** A session's name: ✨ suggest (Haiku, through its own mod), rename (/rename, as /compact runs), or dismiss the offer. */
