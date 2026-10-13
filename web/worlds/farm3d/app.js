@@ -87,13 +87,22 @@ export function start({ el, opts, prefs }) {
   let keep = { beds: (() => { try { const b = JSON.parse(prefs.get('beds') ?? '{}'); return b && typeof b === 'object' && !Array.isArray(b) ? b : {}; } catch { return {}; } })(), packed: false };
   let model = null, groundKey = '', lampsKey = '', dirty = true, saveTimer = 0, firstScene = true, selected = null;
 
-  // The view's turn and zoom are kept (a moment after they stop changing, so a drag sends one message, not fifty).
+  // The view (its heading and tilt in degrees, and the zoom) is kept, a moment after it stops changing, so a drag
+  // sends one message, not fifty. The haze follows the camera's distance: the far meadow fades, the farm never does.
+  const deg = name => { const v = Number(prefs.get(name)); return prefs.get(name) !== null && Number.isFinite(v) ? (v * Math.PI) / 180 : undefined; };
   const rig = makeCameraRig(THREE, camera, canvas, {
-    turn: Number(prefs.get('turn')) || 0, zoom: Number(prefs.get('zoom')) || 1,
-    onChange: ({ turn, zoom }) => {
+    yaw: deg('yaw'), pitch: deg('pitch'), zoom: Number(prefs.get('zoom')) || 1,
+    onChange: ({ yaw, pitch, zoom, distance }) => {
       dirty = true;
+      scene3.fog.near = Math.max(70, distance * 1.2);
+      scene3.fog.far = Math.max(260, distance * 3.2);
       clearTimeout(saveTimer);
-      saveTimer = setTimeout(() => { prefs.set('turn', String(turn)); prefs.set('zoom', String(+zoom.toFixed(2))); refreshHud(); }, 300);
+      saveTimer = setTimeout(() => {
+        prefs.set('yaw', String(Math.round(((yaw * 180) / Math.PI) % 360)));
+        prefs.set('pitch', String(Math.round((pitch * 180) / Math.PI)));
+        prefs.set('zoom', String(+zoom.toFixed(2)));
+        refreshHud();
+      }, 300);
     },
   });
 
@@ -104,6 +113,7 @@ export function start({ el, opts, prefs }) {
     hooks: {
       refresh: () => refreshHud(),
       turn: d => rig.turn(d),
+      reset: () => rig.reset(),
       zoom: d => rig.zoomBy(d),
       pick: id => pickFarmer(id),
       hover: id => overlay.setHover(id),
@@ -143,9 +153,10 @@ export function start({ el, opts, prefs }) {
     // snow falling over the whole farm in winter
     if (snow) { snow.object.removeFromParent(); snow.object.geometry.dispose(); snow = null; }
     if (season === 'winter') { snow = weather.snowfall(ext.x, ext.z); snow.object.position.set(ext.center.x, 0, ext.center.z); scene3.add(snow.object); }
-    // pan and fit over the farm itself (the forest round it may run off the edges), its buildings' height at the back
+    // pan over the farm, and fit the farm itself to the window (the forest and the meadow run past its edges), its
+    // buildings' height at the back
     const hx = W / 2 / PX, hz = model.ground.H / 2 / PX, edge = 1.5;
-    rig.setFarm({ half: { x: hx, z: hz }, points: [-1, 1].flatMap(sx => [-1, 1].map(sz => ({ x: sx * (hx + edge), y: sz < 0 ? 8 : 0, z: sz * (hz + edge) }))) });
+    rig.setFarm({ half: { x: hx, z: hz }, points: [-1, 1].flatMap(sx => [-1, 1].flatMap(sz => [0, sz < 0 ? 8 : 2].map(y => ({ x: sx * (hx + edge), y, z: sz * (hz + edge) })))) });
   }
   /** The farmstead and the yard: rebuilt when the rows, the season or the silos change. */
   function rebuildBuildings() {
@@ -253,9 +264,9 @@ export function start({ el, opts, prefs }) {
   window.__farm3d = {
     stats: () => ({ calls: renderer.info.render.calls, triangles: renderer.info.render.triangles, geometries: renderer.info.memory.geometries, textures: renderer.info.memory.textures, farmers: farmers.count(), drawn: model?.farmers.length ?? 0, tags: overlay.count(), beds: model?.beds.length ?? 0 }),
     screenOf: id => { const h = farmers.headOf(id); return h ? project(h) : null; }, // where a farmer's head is in the picture, in pixels
-    view({ turn, zoom, at } = {}) {
-      if (Number.isInteger(turn)) while (rig.state().turn !== ((turn % 4) + 4) % 4) rig.turn(1);
-      if (zoom) rig.setZoom(zoom);
+    /** A view to hold: yaw and pitch in degrees, zoom, and a 2D farm point to glide to. */
+    view({ yaw, pitch, zoom, at } = {}) {
+      rig.hold({ yaw: Number.isFinite(yaw) ? (yaw * Math.PI) / 180 : undefined, pitch: Number.isFinite(pitch) ? (pitch * Math.PI) / 180 : undefined, zoom });
       if (at && model) { const p = shapes.at(at[0], at[1], model.ground.H); rig.glideTo(p); }
       dirty = true;
     },

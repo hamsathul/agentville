@@ -158,8 +158,8 @@ It listens on the loopback addresses only (`127.0.0.1`, and `::1` where the mach
   there just for fun.
 - The 3D farm, a prototype: the same live farm as a low-poly diorama in 3D (three.js). Farmers walk
   the lanes with their tools, crops grow as context fills, the sun follows your clock and the seasons
-  your 5-hour limit, deploys bring rain or a rainbow, and a few animals wander. Turn the view a
-  quarter at a time and zoom in to one farmer. It shows less than the farm for now.
+  your 5-hour limit, deploys bring rain or a rainbow, and a few animals wander. It fills the window as the
+  farm does; turn and tilt it as you like, and zoom in to one farmer. It shows less than the farm for now.
 - The farm, the factory, the field exercise and the 3D farm are worlds: each runs in a sandboxed frame
   of its own, with no access to the token, and asks the page for the little it needs
   ([docs/worlds.md](docs/worlds.md)). A world from your own folder sees no words or paths until
@@ -1265,7 +1265,8 @@ reduce-motion setting.
 
 #### The 3D farm (prototype)
 
-The same live farm in 3D: a low-poly diorama on a wooden slab, drawn with three.js. Choose **3D farm**
+The same live farm in 3D, low-poly and drawn with three.js, filling the window as the farm does: the meadow
+and the forest run on past every edge. Choose **3D farm**
 in the list of worlds (**World**). It is a prototype, to see how a farm in 3D feels: it follows the
 farm's own rules, so every farmer stands where the farm would put it and every repo lies in the bed the
 farm gives it (when both are opened fresh), but it shows less than the farm for now.
@@ -1298,8 +1299,11 @@ patch and the forest all round.
   more farmers wait, rest or work in the meadow than there is room for, a sign says how many more
   (`+4 waiting`), as on the farm.
 
-**Moving around.** Drag to pan, scroll or pinch to zoom (from the whole farm in to one farmer), and turn
-the view a quarter at a time with **↺ ↻** beside the Menu, or **Q** and **E**. Click a farmer (or its name)
+**Moving around.** It opens square-on, the porch at the back as on the farm, with the whole farm filling the
+window (100%). Drag to pan, scroll or pinch to zoom (from the whole farm in to one farmer). Right-drag (or
+Shift-drag, or click and drag with two fingers on a trackpad) to turn the farm to any angle and tilt it, from
+nearly flat (30°) to nearly top-down (80°); **↺ ↻** beside the Menu (or **Q** and **E**) turn it 15° at a time,
+and **⌂** puts it back square-on. At 100% it always shows the whole farm, from any angle. Click a farmer (or its name)
 to open it in the sidebar: the view glides to it. Click its bubble for its whole conversation, and the barn
 to start a session. The Menu has the farm's buttons (List, World, Sidebar, Broadcast, Chats, Sky, Season,
 Motion, Animals, Help, zoom) and **Help** says what each thing means. The view and the switches are kept.

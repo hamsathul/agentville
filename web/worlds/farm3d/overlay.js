@@ -38,7 +38,7 @@ const HELP = `<h2>The 3D farm <small>(a prototype)</small></h2>
     <dt>Weather</dt><dd>Rain: its deploy failed · a rainbow: it worked · a windmill: it runs</dd>
     <dt>Elsewhere</dt><dd>The shade tree: idle · scarecrows: stale · hammocks: it wakes up by itself · the meadow: working outside any repo · a cloud: thinking</dd>
     <dt>Silo</dt><dd>Your plan's weekly use as grain; a lamp near the limit. The season follows the 5-hour limit</dd>
-    <dt>Moving</dt><dd>Drag to pan, scroll or pinch to zoom, ⟲ ⟳ (or Q / E) to turn. Click a farmer to open it; its bubble for its whole conversation; the barn to start a session</dd>
+    <dt>Moving</dt><dd>Drag to pan, scroll or pinch to zoom. Right-drag (or Shift-drag) to turn and tilt the farm; ↺ ↻ (or Q / E) turn it 15°, ⌂ puts it back square-on. Click a farmer to open it; its bubble for its whole conversation; the barn to start a session</dd>
   </dl>
   <p>Not here yet: the stats panel, a field's close-up, the diary, subagents, carts, and the animals' games.</p>`;
 
@@ -170,7 +170,7 @@ export function makeOverlay(el, { opts, hooks }) {
   let hudHtml = '', menuOpen = false, help = null;
   function renderHud(state) {
     let html = defaultHud({ ...state, seasons: true, menuOpen });
-    html = html.replace('<div class="px-nav">', `<div class="px-nav"><span class="f3-turn"><button type="button" data-f3-turn="-1" title="Turn the view a quarter to the left (Q)" aria-label="Turn left">↺</button><button type="button" data-f3-turn="1" title="Turn the view a quarter to the right (E)" aria-label="Turn right">↻</button></span>`);
+    html = html.replace('<div class="px-nav">', `<div class="px-nav"><span class="f3-turn"><button type="button" data-f3-turn="-1" title="Turn the farm 15° (Q). Or right-drag (or Shift-drag) to turn and tilt it as you like" aria-label="Turn left">↺</button><button type="button" data-f3-turn="1" title="Turn the farm 15° the other way (E)" aria-label="Turn right">↻</button><button type="button" data-f3-reset title="Back to square-on, the whole farm in view" aria-label="Reset the view">⌂</button></span>`);
     const bubbles = `<button type="button" data-f3-bubbles title="Speech bubbles: always for farmers who need you; the rest when you zoom in" aria-pressed="${state.bubbles}">${pxImg(`Bubbles: ${state.bubbles ? 'on' : 'off'}`, '#4e3626', null)}<span class="px-sr">Bubbles</span></button>`;
     html = html.replace('<button type="button" data-farm-help', `${bubbles}<button type="button" data-farm-help`);
     if (html !== hudHtml) { hudHtml = html; hud.innerHTML = html; }
@@ -190,6 +190,7 @@ export function makeOverlay(el, { opts, hooks }) {
     if (!b) return;
     if (b.matches('[data-farm-menu]')) { menuOpen = !menuOpen; hooks.refresh(); return; }
     if (b.dataset.f3Turn) { hooks.turn(Number(b.dataset.f3Turn)); return; }
+    if (b.matches('[data-f3-reset]')) { hooks.reset(); return; }
     if (b.dataset.farmNav) { menuOpen = false; opts.onNav(b.dataset.farmNav); hooks.refresh(); return; }
     if (b.matches('[data-farm-sky]')) hooks.cycle('sky');
     else if (b.matches('[data-farm-season]')) hooks.cycle('season');

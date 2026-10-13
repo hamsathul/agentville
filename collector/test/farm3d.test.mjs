@@ -196,27 +196,53 @@ test('the 2D → 3D mapping: 8 px a metre, centred on the farm', () => {
   assert.deepEqual(toWorld(0, 0, 400), { x: -25, z: -25 });
 });
 
-test('the camera: four turns a quarter apart, the porch at the back first; a target kept over the farm; zoom steps', async () => {
-  const { yawOf, clampTarget, ZOOMS, nextZoom, shortestTurn } = await import('../../web/worlds/farm3d/camera.js');
-  assert.deepEqual([0, 1, 2, 3].map(t => +(yawOf(t) / Math.PI).toFixed(2)), [0.25, 0.75, 1.25, 1.75]);
+const DEG = Math.PI / 180;
+test('the camera turns to any angle, a 15° step at a time by key or button, and tilts only between 30° and 80°', async () => {
+  const { DEFAULT_VIEW, STEP, clampPitch, stepYaw, clampTarget, ZOOMS, nextZoom } = await import('../../web/worlds/farm3d/camera.js');
+  assert.deepEqual([DEFAULT_VIEW.yaw, Math.round(DEFAULT_VIEW.pitch / DEG)], [0, 55], 'square-on, looking down at 55°');
+  assert.equal(Math.round(STEP / DEG), 15);
+  assert.ok(Math.abs(stepYaw(0, 1) - 15 * DEG) < 1e-9 && Math.abs(stepYaw(0, -1) + 15 * DEG) < 1e-9);
+  assert.ok(Math.abs(stepYaw(7 * DEG, 1) - 15 * DEG) < 1e-9, 'a step from anywhere lands on the next multiple of 15°');
+  assert.ok(Math.abs(stepYaw(7 * DEG, -1)) < 1e-9);
+  assert.equal(Math.round(clampPitch(10 * DEG) / DEG), 30);
+  assert.equal(Math.round(clampPitch(89 * DEG) / DEG), 80);
+  assert.equal(Math.round(clampPitch(60 * DEG) / DEG), 60);
   assert.deepEqual(clampTarget({ x: 99, z: -99 }, { x: 25, z: 30 }), { x: 25, z: -30 });
-  assert.deepEqual(clampTarget({ x: 3, z: 4 }, { x: 25, z: 30 }), { x: 3, z: 4 });
   assert.ok(ZOOMS.includes(1));
-  assert.equal(nextZoom(1, 1), 1.25); assert.equal(nextZoom(1, -1), 0.75); assert.equal(nextZoom(3, 1), 4, 'closer than the 2D farm goes: down to one farmer'); assert.equal(nextZoom(6, 1), 6); assert.equal(nextZoom(1.1, 1), 1.25, 'from between two steps: the next one up');
-  assert.ok(Math.abs(shortestTurn(yawOf(3), yawOf(0)) - Math.PI / 2) < 1e-9, 'from the last turn to the first: a quarter on, not three back');
+  assert.equal(nextZoom(1, 1), 1.25); assert.equal(nextZoom(3, 1), 4, 'closer than the 2D farm goes: down to one farmer'); assert.equal(nextZoom(6, 1), 6); assert.equal(nextZoom(1.1, 1), 1.25);
 });
 
-test('the camera fits the whole farm: every point lands inside the picture, and a bigger farm needs more distance', async () => {
-  const { fitDistance, project } = await import('../../web/worlds/farm3d/camera.js');
+test('square-on, the porch is at the back, as the 2D farm has it at the top', async () => {
+  const { DEFAULT_VIEW, project } = await import('../../web/worlds/farm3d/camera.js');
+  const view = { ...DEFAULT_VIEW, fov: 30 * DEG, aspect: 1.6, target: { x: 0, y: 0, z: 0 }, distance: 80 };
+  const porch = project({ x: 0, y: 0, z: -18 }, view), fields = project({ x: 0, y: 0, z: 18 }, view);
+  assert.ok(porch.y > fields.y, 'the porch (north, -z) is higher in the picture than the fields');
+  assert.ok(Math.abs(porch.x) < 1e-6, 'and straight ahead');
+});
+
+test('at 100% the whole farm is in view and nearly fills it, at any angle; a bigger farm needs more distance', async () => {
+  const { DEFAULT_VIEW, fitDistance, project } = await import('../../web/worlds/farm3d/camera.js');
   const box = (w, d, h) => [-1, 1].flatMap(sx => [-1, 1].flatMap(sz => [0, h].map(y => ({ x: sx * w / 2, y, z: sz * d / 2 }))));
-  const view = { yaw: Math.PI / 4, pitch: (50 * Math.PI) / 180, fov: (30 * Math.PI) / 180, aspect: 1.6, target: { x: 0, y: 0, z: 0 } };
-  const small = fitDistance(box(50, 40, 8), view), big = fitDistance(box(50, 63, 8), view);
-  assert.ok(big > small);
-  for (const p of box(50, 40, 8)) {
-    const s = project(p, { ...view, distance: small });
-    assert.ok(Math.abs(s.x) <= 0.93 && Math.abs(s.y) <= 0.93, JSON.stringify(s));
+  for (const yaw of [0, 15 * DEG, 45 * DEG, 200 * DEG]) for (const pitch of [30 * DEG, 55 * DEG, 80 * DEG]) {
+    const view = { yaw, pitch, fov: 30 * DEG, aspect: 1.6, target: { x: 0, y: 0, z: 0 } }, d = fitDistance(box(53, 43, 6), view);
+    const s = box(53, 43, 6).map(p => project(p, { ...view, distance: d }));
+    assert.ok(s.every(q => Math.abs(q.x) <= 0.93 && Math.abs(q.y) <= 0.93), `in view at yaw ${Math.round(yaw / DEG)}°, pitch ${Math.round(pitch / DEG)}°`);
+    assert.ok(s.some(q => Math.abs(q.x) > 0.85 || Math.abs(q.y) > 0.85), `and filling it at yaw ${Math.round(yaw / DEG)}°, pitch ${Math.round(pitch / DEG)}°`);
   }
-  assert.ok(box(50, 40, 8).some(p => { const s = project(p, { ...view, distance: small }); return Math.abs(s.x) > 0.85 || Math.abs(s.y) > 0.85; }), 'and fills it: some point is near an edge');
+  const v = { ...DEFAULT_VIEW, fov: 30 * DEG, aspect: 1.6, target: { x: 0, y: 0, z: 0 } };
+  assert.ok(fitDistance(box(53, 63, 6), v) > fitDistance(box(53, 43, 6), v));
+});
+
+test('the ground reaches every corner of the window: at 100% and further out, at every tilt, no sky shows', async () => {
+  const { DEFAULT_VIEW, fitDistance, groundAt, GROUND_HALF } = await import('../../web/worlds/farm3d/camera.js');
+  const box = [-1, 1].flatMap(sx => [-1, 1].map(sz => ({ x: sx * 26.5, y: 0, z: sz * 21.5 })));
+  for (const pitch of [30 * DEG, DEFAULT_VIEW.pitch, 80 * DEG]) for (const zoom of [0.5, 1]) for (const aspect of [1.6, 0.75]) {
+    const view = { yaw: 30 * DEG, pitch, fov: 30 * DEG, aspect, target: { x: 0, y: 0, z: 0 } }, distance = fitDistance(box, view) / zoom;
+    for (const [sx, sy] of [[-1, -1], [1, -1], [-1, 1], [1, 1]]) {
+      const g = groundAt(sx, sy, { ...view, distance });
+      assert.ok(g && Math.abs(g.x) < GROUND_HALF && Math.abs(g.z) < GROUND_HALF, `corner ${sx},${sy} at pitch ${Math.round(pitch / DEG)}°, zoom ${zoom}, aspect ${aspect}: ${JSON.stringify(g)}`);
+    }
+  }
 });
 
 test("a deploying farmer's cart carries a flag; a plan-mode farmer holds the blueprint; one not working holds nothing", () => {

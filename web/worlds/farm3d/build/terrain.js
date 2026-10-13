@@ -1,8 +1,10 @@
-// The ground: a wooden slab, the farm's grass on top (the season's greens in soft patches, gently uneven where
-// nothing stands), the dirt lane in front of the buildings, the yard's path and the walkways between the fields,
-// the pond, and the forest all round, as on the 2D farm (web/worlds/farm/world.js, drawLand).
+// The ground: the farm's grass (the season's greens in soft patches, gently uneven where nothing stands), the dirt
+// lane in front of the buildings, the yard's path and the walkways between the fields, the pond, and the forest all
+// round, as on the 2D farm (web/worlds/farm/world.js, drawLand); and past it a wide meadow with more forest, out
+// past every edge of the window (camera.js, GROUND_HALF), fading into the haze, so the farm fills the window as the
+// 2D farm does.
 import { CORR, LANE, POND, PX, W, toWorld } from '../layout.js';
-import { RoundedBoxGeometry } from '../vendor/RoundedBoxGeometry.js';
+import { GROUND_HALF } from '../camera.js';
 import { disposeTree, noise, seasonPalette, vnoise } from './util.js';
 
 const MARGIN_X = 48, MARGIN_TOP = 40, MARGIN_BOTTOM = 40; // the forest's ring past the farm's edges, in 2D px
@@ -17,13 +19,18 @@ export function makeTerrain(THREE, mats) {
     if (built) { disposeTree(built); built = null; }
     const g = new THREE.Group(), { H, GRID } = ground, S = seasonPalette(season), ext = extentOf(H);
     const w = (ext.x1 - ext.x0) / PX, d = (ext.y1 - ext.y0) / PX, c0 = toWorld((ext.x0 + ext.x1) / 2, (ext.y0 + ext.y1) / 2, H);
-    // the slab
-    const slab = new THREE.Mesh(new RoundedBoxGeometry(w + 0.8, 1.4, d + 0.8, 3, 0.45), mats.std('#8b5a2b'));
-    slab.position.set(c0.x, -0.72, c0.z);
-    const lip = new THREE.Mesh(new RoundedBoxGeometry(w + 0.2, 0.3, d + 0.2, 2, 0.12), mats.std('#a8703c'));
-    lip.position.set(c0.x, -0.28, c0.z); // its top just under the grass
-    slab.receiveShadow = lip.receiveShadow = true;
-    g.add(slab, lip);
+    // the meadow past the farm, out past every edge of the window: one vertex every 40 m, the season's greens
+    {
+      const n = Math.round((GROUND_HALF * 2) / 40), far = new THREE.PlaneGeometry(GROUND_HALF * 2, GROUND_HALF * 2, n, n);
+      far.rotateX(-Math.PI / 2);
+      const fp = far.attributes.position, fc = new Float32Array(fp.count * 3), shades = S.grass.map(h => new THREE.Color(h)), fcol = new THREE.Color();
+      for (let i = 0; i < fp.count; i++) { fcol.copy(shades[noise(Math.round(fp.getX(i)), Math.round(fp.getZ(i))) % 2 ? 1 : 0]); fc.set([fcol.r, fcol.g, fcol.b], i * 3); }
+      far.setAttribute('color', new THREE.BufferAttribute(fc, 3));
+      const meadow = new THREE.Mesh(far, mats.std('#ffffff', { vertexColors: true, roughness: 1 }));
+      meadow.position.y = -0.04; // under the farm's own grass
+      meadow.receiveShadow = true;
+      g.add(meadow);
+    }
 
     // the grass: one vertex every half metre, coloured and raised by where it is
     const lane = (x, y) => (Math.abs(y - LANE) <= 5)
@@ -85,6 +92,31 @@ export function makeTerrain(THREE, mats) {
     trunks.castShadow = crowns.castShadow = true;
     trunks.receiveShadow = crowns.receiveShadow = true;
     g.add(trunks, crowns);
+
+    // more forest past the farm's own, out to 160 m, thinning, with clearings; too far for shadows
+    {
+      const spots = [], half = 160, inner = { x: w / 2 + 2, z: d / 2 + 2 };
+      for (let gz = -half; gz <= half; gz += 6) for (let gx = -half; gx <= half; gx += 6) {
+        const n = noise(gx + 1000, gz + 2000), x = c0.x + gx + (n % 7) - 3, z = c0.z + gz + ((n >> 3) % 7) - 3;
+        if (Math.abs(x - c0.x) < inner.x && Math.abs(z - c0.z) < inner.z) continue;
+        const out = Math.max(Math.abs(x - c0.x) - inner.x, Math.abs(z - c0.z) - inner.z); // metres past the farm's edge
+        if (n % 100 < (out < 30 ? 8 : out < 80 ? 30 : 55)) continue; // thinner further out
+        if (vnoise(x, z, 40) < 0.22) continue; // a clearing
+        spots.push([x, z, n]);
+      }
+      const ot = new THREE.InstancedMesh(trunkGeo, mats.std('#6b4320'), spots.length), oc = new THREE.InstancedMesh(crownGeo, mats.std('#ffffff'), spots.length * 2);
+      spots.forEach(([x, z, n], i) => {
+        const s2 = 1.3 + (n % 9) * 0.12, h = 1.3 + (n % 5) * 0.2;
+        ot.setMatrixAt(i, m4.compose(new THREE.Vector3(x, h / 2, z), q.identity(), new THREE.Vector3(1.1, h, 1.1)));
+        e.set((n % 7) * 0.3, (n % 11) * 0.5, 0);
+        oc.setMatrixAt(i * 2, m4.compose(new THREE.Vector3(x, h + s2 * 0.7, z), q.setFromEuler(e), new THREE.Vector3(s2, s2 * 0.95, s2)));
+        oc.setColorAt(i * 2, canopy[n % 2]);
+        oc.setMatrixAt(i * 2 + 1, m4.compose(new THREE.Vector3(x - s2 * 0.25, h + s2 * 1.3, z + s2 * 0.2), q.setFromEuler(e.set(0.4, (n % 13) * 0.4, 0.2)), new THREE.Vector3(s2 * 0.6, s2 * 0.6, s2 * 0.6)));
+        oc.setColorAt(i * 2 + 1, S.bloom && n % 3 === 0 ? new THREE.Color(S.bloom) : canopy[S.snow ? 2 : 1 + (n % 2)]);
+      });
+      ot.receiveShadow = oc.receiveShadow = true;
+      g.add(ot, oc);
+    }
 
     // flowers in the grass, by the season (none in winter)
     if (S.flowers.length) {
