@@ -182,12 +182,13 @@
   let raw = false; // the world draws itself: the page then gives it a way back (World ▾, List) in a corner
   /**
    * A world that draws itself: { start({ el, opts, prefs }), scene(scene), select?(id) }. The engine
-   * registers through here too, with { engine: true }: its buttons have List and World already.
+   * registers through here too, with { engine: true }: its buttons have List and World already; a world
+   * that draws its own List and World buttons says { menu: true }. The page adds no corner for either.
    */
   A.raw = (handlers, how) => {
     if (world) { report('A world registered twice.', 'world.js'); return; }
     world = handlers;
-    raw = how?.engine !== true;
+    raw = how?.engine !== true && how?.menu !== true;
   };
   /** Sends the page one of the messages it accepts (docs/worlds.md, "Messages"); it checks each one. */
   A.send = message => send(message); // the live `send`: over the port once the handshake is done, not the window send captured here

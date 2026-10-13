@@ -101,6 +101,13 @@ test('a world that registers is announced; one that never does is reported', () 
   assert.deepEqual(n.sent, [{ type: 'loaded', raw: true }], 'anything but { engine: true } is a world that draws itself');
 });
 
+test('a world that draws itself with its own List and World ({ menu: true }) gets no corner: loaded has no raw', () => {
+  const m = frame();
+  m.A.raw({ start() {}, scene() {} }, { menu: true });
+  m.fire('DOMContentLoaded', {});
+  assert.deepEqual(m.sent, [{ type: 'loaded' }]);
+});
+
 test('start runs the world in #farm with its prefs and settings, then ready; once it has drawn, the newest scene', () => {
   const f = frame(), got = [];
   f.A.raw({ start: ({ el, opts, prefs }) => got.push(['start', el.id, prefs.get('zoom'), prefs.get('bell'), opts.still, opts.navState()]), scene: s => got.push(['scene', s.n]), select: id => got.push(['select', id]) });
