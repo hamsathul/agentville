@@ -80,3 +80,64 @@ test('never a path: a repo or a name that looks like one is said by its last par
     assert.ok(ex.every(l => !/[\\/]/.test(l.text)), JSON.stringify(ex));
   }
 });
+
+test("Haiku's batch replaces the last: the same one again isn't kept twice, and an empty one clears them", () => {
+  const talk = createTalk({ rand: seeded(1) });
+  const batch = [{ lines: [{ who: 'cow', text: 'Grass is grass.' }, { who: 'horse', text: 'Speak for yourself.' }] }];
+  talk.take(batch); talk.take(batch);
+  assert.equal(talk.stock(), 1);
+  talk.take([]);
+  assert.equal(talk.stock(), 0);
+});
+
+test('a conversation stops when its farmer starts needing you, ends its turn or goes', () => {
+  const talk = createTalk({ rand: seeded(2) });
+  const scene = state => ({ animals: [animal(0, 'husky', 100, 100)], farmers: [farmer('a', 'shop-bot', state, 110, 100)] });
+  talk.start(0, scene('idle'));
+  assert.ok(talk.bubbles().length, 'talking');
+  talk.tick(scene('waiting'), 0.1);
+  assert.equal(talk.bubbles().length, 0, 'it needs you now: the talk stops');
+  talk.start(0, scene('idle'));
+  talk.tick({ animals: [animal(0, 'husky', 100, 100)], farmers: [] }, 0.1);
+  assert.equal(talk.bubbles().length, 0, 'gone: the talk stops');
+});
+
+test("a farmer blames the right repo: a deploy that failed is said by the repo it failed in, not the farmer's own", () => {
+  const rand = seeded(17);
+  for (let i = 0; i < 200; i++) {
+    const ex = exchange([{ id: 'a', name: 'shop-bot', state: 'working', step: 'editing', repo: 'shop' }, { kind: 'cow' }], { night: false, weather: null, events: [{ kind: 'deployFailed', repo: 'api' }] }, rand);
+    for (const l of ex) assert.ok(!/shop did not deploy|Back to shop\. It broke|shop.{0,10}(broke|fell|sank|stumbled)/i.test(l.text), l.text);
+  }
+});
+
+test("Haiku's exchange is said by the two talking, in turn, the one you clicked first when it can be", () => {
+  const talk = createTalk({ rand: seeded(3) });
+  talk.take([{ lines: [{ who: 'horse', text: 'Hay?' }, { who: 'cow', text: 'Grass.' }] }, { lines: [{ who: 'cow', text: 'Moo one.' }, { who: 'horse', text: 'Neigh one.' }] }]);
+  const scene = { animals: [animal(0, 'cow', 100, 100), animal(1, 'horse', 120, 100)], farmers: [] };
+  talk.start(0, scene);
+  assert.deepEqual(talk.bubbles().map(b => [b.who, b.text]), [[0, 'Moo one.']], 'the cow, clicked, speaks first');
+  const two = createTalk({ rand: seeded(4) });
+  two.take([{ lines: [{ who: 'cow', text: 'A.' }, { who: 'cow', text: 'B.' }] }]);
+  const cows = { animals: [animal(0, 'cow', 100, 100), animal(1, 'cow', 120, 100)], farmers: [] };
+  two.start(0, cows);
+  const said = [];
+  for (let k = 0; k < 80; k++) { const b = two.bubbles()[0]; if (b && said.at(-1)?.[1] !== b.text) said.push([b.who, b.text]); two.tick(cows, 0.1); }
+  assert.deepEqual(said, [[0, 'A.'], [1, 'B.']], 'two cows take turns');
+});
+
+test('a conversation that starts by itself is reported, so the two can stop and face each other', () => {
+  const talk = createTalk({ rand: seeded(11) });
+  const scene = { animals: [animal(0, 'cow', 100, 100), animal(1, 'horse', 120, 100)], farmers: [] };
+  let started = [];
+  for (let k = 0; k < 1200 && !started.length; k++) started = talk.tick(scene, 0.1);
+  assert.equal(started.length, 1);
+  assert.deepEqual(started[0].map(t => t.i).sort(), [0, 1]);
+});
+
+test("talk's bubbles sit under a farmer's own and hide rather than cover one (overlay.js)", async () => {
+  const { readFileSync } = await import('node:fs');
+  const src = readFileSync(new URL('../../web/worlds/farm3d/overlay.js', import.meta.url), 'utf8');
+  const z = sel => Number(new RegExp(`\\${sel} \\{[^}]*z-index: (\\d+)`).exec(src)?.[1]);
+  assert.ok(z('.f3-talk') < z('.f3-say'), `talk ${z('.f3-talk')} under a farmer's bubble ${z('.f3-say')}`);
+  assert.match(src, /if \(hits\(y\)\) \{ e\.style\.display = 'none'; continue; \}/, 'one still in the way after its nudges waits');
+});

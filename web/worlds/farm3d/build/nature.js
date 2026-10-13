@@ -4,7 +4,7 @@
 // models have loaded the old shapes stand in (terrain.js's ball trees, buildings.js's bushes and rocks): `ready()`.
 import { GLTFLoader } from '../vendor/GLTFLoader.js';
 import { COATS, FINISH } from '../coats.js';
-import { plantsOf } from '../nature.js';
+import { WIND_PERIOD, plantsOf } from '../nature.js';
 
 const STILL = new Set(['rockmoss', 'rocksnow', 'rocks', 'stump', 'log']); // what the wind doesn't move
 /**
@@ -98,7 +98,7 @@ export function makeNature(THREE, S) {
   return {
     group, build,
     /** The wind for this frame: t the farm's clock in seconds (0 while still), strength 1 calm, more in rain. */
-    blow(t, strength) { if (t) wind.time.value = t; wind.strength.value = strength; },
+    blow(t, strength) { if (t) wind.time.value = t % WIND_PERIOD; wind.strength.value = strength; },
     /** The wind now (for the check). */
     wind: () => ({ time: wind.time.value, strength: wind.strength.value }),
     /** Whether the models are drawn (the stand-ins can go). */

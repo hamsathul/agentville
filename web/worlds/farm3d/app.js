@@ -18,6 +18,7 @@ import { makeFarmers } from './build/farmers.js';
 import { makeAnimals } from './build/animals.js';
 import { makeNature } from './build/nature.js';
 import { createTalk } from './talk.js';
+import { HERDS } from './antics.js';
 
 // what a farmer is doing, as a word, from the tool in its hands (for what it says to the animals)
 const STEP_WORDS = { hoe: 'editing', rake: 'editing', sickle: 'editing', hammer: 'fixing', seeds: 'writing', almanac: 'reading', recipe: 'reading', clipboard: 'planning', blueprint: 'planning', spyglass: 'searching', magnifier: 'searching', pigeon: 'browsing', parcel: 'calling tools', mailbag: 'calling tools', crate: 'committing', cart: 'pushing', barrow: 'pushing', lantern: 'thinking', whistle: 'delegating', can: 'working' };
@@ -287,9 +288,12 @@ export function start({ el, opts, prefs }) {
     const walking = farmers.tick(t, dt, opts.still);
     if (animals.tick(t, dt, night)) dirty = true;
     nature.blow(t, model?.beds.some(b => b.weather === 'rain') ? 2.2 : 1); // the wind in the trees, harder while a field rains
-    if (!opts.still && model) talk.tick(sceneForTalk(now), dt); // conversations now and then; held still with Motion off
-    // the animals out, by kind, for Haiku's talk (none while the Animals switch hides them): said when it changes
-    const kinds = animalsOn && animals.count() === animals.total ? [...new Set((talkScene?.animals ?? []).map(a => a.kind))].sort() : [];
+    if (!opts.still && model) for (const pair of talk.tick(sceneForTalk(now), dt)) { // conversations now and then; held still with Motion off
+      // one that starts by itself: each animal in it stops and turns to the other (unless it is doing what you asked)
+      for (const [me, other] of [pair, [pair[1], pair[0]]]) if (typeof me.i === 'number' && !animals.info(me.i)?.act) { animals.command(me.i, 'talk'); animals.face(me.i, [other.x, other.y]); }
+    }
+    // the animals, by kind, for Haiku's talk, once all have loaded (none while the Animals switch hides them): said when it changes
+    const kinds = animalsOn && animals.count() === animals.total ? [...new Set(HERDS.map(h => h.kind))].sort() : [];
     if (kinds.join() !== castSaid) { castSaid = kinds.join(); opts.onTalkCast?.(kinds.map(kind => ({ kind }))); }
     overlay.setTalk(bubblesOn ? talk.bubbles().map(b => {
       const top = typeof b.who === 'number' ? animals.info(b.who)?.top : (h => h && { x: h.x, y: h.y + 0.55, z: h.z })(farmers.headOf(b.who));

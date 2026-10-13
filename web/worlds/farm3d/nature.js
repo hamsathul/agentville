@@ -5,6 +5,13 @@
 // run it. Positions in the 2D farm's pixels; w and h the box each fits in (metres), turn its heading.
 import { BUSHES, PX, SHADE, W, forestOf, orchardOf, rocksOf } from './layout.js';
 
+/**
+ * The wind's clock wraps every WIND_PERIOD seconds (build/nature.js): every speed in its sway is a whole number of
+ * turns in that time, so the wrap is seamless, and the clock stays small (a float on the graphics card loses its
+ * fractions after days of seconds).
+ */
+export const WIND_PERIOD = 20 * Math.PI;
+
 /** A plant's variant for the season: autumn colours, and snow (or bare branches) in winter. `n` mixes them a little. */
 export function seasonal(kind, season, n = 0) {
   if (season === 'winter') return { tree: 'deadtreesnow', tree2: 'deadtreesnow', birch: n % 2 ? 'birchsnow' : 'birchdead', pine: 'pinesnow', bush: 'bushsnow', bushberries: 'bushsnow', rockmoss: 'rocksnow' }[kind] ?? kind;

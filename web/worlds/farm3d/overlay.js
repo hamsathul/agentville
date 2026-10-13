@@ -29,7 +29,7 @@ const CSS = `
   .f3-help { position: absolute; z-index: 90; top: 56px; right: 10px; width: min(420px, calc(100% - 20px)); max-height: calc(100% - 76px); overflow: auto; padding: 12px 14px; background: linear-gradient(#fbf3dc, #f1e3bd); color: #2b2116; border: 2px solid #6b4320; border-radius: 6px; box-shadow: 0 3px 0 #4e3626; font: 13px/1.45 system-ui, sans-serif; }
   .f3-help h2 { margin: 0 0 6px; font-size: 15px; } .f3-help dl { display: grid; grid-template-columns: auto 1fr; gap: 3px 10px; margin: 6px 0; } .f3-help dt { font-weight: 700; }
   .f3-help .close { position: absolute; top: 6px; right: 8px; border: 0; background: none; font-size: 18px; cursor: pointer; color: #6b4320; }
-  .f3-talk { position: absolute; left: 0; top: 0; width: max-content; max-width: 170px; padding: 3px 8px 4px; background: #ffffff; color: #2b2116; border: 1.5px solid #8a7a66; border-radius: 12px; font: italic 600 11px/1.3 system-ui, sans-serif; box-shadow: 0 2px 0 rgba(0, 0, 0, .18); z-index: 3; pointer-events: none; }
+  .f3-talk { position: absolute; left: 0; top: 0; width: max-content; max-width: 170px; padding: 3px 8px 4px; background: #ffffff; color: #2b2116; border: 1.5px solid #8a7a66; border-radius: 12px; font: italic 600 11px/1.3 system-ui, sans-serif; box-shadow: 0 2px 0 rgba(0, 0, 0, .18); z-index: 1; pointer-events: none; }
   .f3-talk::after { content: ''; position: absolute; left: 50%; top: 100%; margin-left: -5px; border: 5px solid transparent; border-top-color: #8a7a66; }
   .f3-talk.you { background: #fff8d6; border-color: #c9a24a; } .f3-talk.you::after { border-top-color: #c9a24a; }
   .f3-pet { pointer-events: auto; z-index: 8; width: 212px; padding: 7px 8px 8px; background: linear-gradient(#fbf3dc, #f1e3bd); color: #2b2116; border: 2px solid #6b4320; border-radius: 6px; box-shadow: 0 3px 0 #4e3626; font: 12px/1.35 system-ui, sans-serif; }
@@ -151,9 +151,10 @@ export function makeOverlay(el, { opts, hooks }) {
   function place(project, headOf, at3, silo3) {
     // over its point (a tag, a count), or hanging under it (a field's label, under its bed as on the 2D farm)
     const put = (e, p, dy = 0, under = false) => { if (!p?.visible) { e.style.display = 'none'; return null; } e.style.display = ''; e.style.transform = `translate(${Math.round(p.x)}px, ${Math.round(p.y + dy)}px) translate(-50%, ${under ? '0' : '-100%'})`; return p; };
-    const boxes = [];
+    const boxes = [], tagBoxes = []; // what is placed so far: bubbles (and, for talk only, the farmers' tags)
     for (const [id, t] of tags) {
       const h = headOf(id), p = h && put(t, project(h), t.dataset.raise ? -16 : -2);
+      if (p) { const tw = t.offsetWidth || 40, th = t.offsetHeight || 16, ty = p.y + (t.dataset.raise ? -16 : -2); tagBoxes.push({ x0: p.x - tw / 2, x1: p.x + tw / 2, y0: ty - th, y1: ty }); } // talk keeps off the tags
       const s = says.get(id);
       if (!s) continue;
       if (!p) { s.style.display = 'none'; continue; }
@@ -187,8 +188,9 @@ export function makeOverlay(el, { opts, hooks }) {
       if (!p?.visible) { e.style.display = 'none'; continue; }
       const w = e.offsetWidth || 120, hh = e.offsetHeight || 22;
       let y = p.y - 8, tries = 0;
-      const hits = yy => boxes.some(b => p.x - w / 2 < b.x1 && p.x + w / 2 > b.x0 && yy - hh < b.y1 && yy > b.y0);
+      const hits = yy => [...boxes, ...tagBoxes].some(b => p.x - w / 2 < b.x1 && p.x + w / 2 > b.x0 && yy - hh < b.y1 && yy > b.y0);
       while (hits(y) && tries++ < 6) y -= hh * 0.8;
+      if (hits(y)) { e.style.display = 'none'; continue; } // still in the way of a farmer's bubble or tag: it waits
       boxes.push({ x0: p.x - w / 2, x1: p.x + w / 2, y0: y - hh, y1: y });
       e.style.display = '';
       e.style.transform = `translate(${Math.round(p.x)}px, ${Math.round(y)}px) translate(-50%, -100%)`;

@@ -170,7 +170,8 @@
 
   /**
    * What a talking world gets of Haiku's latest talk: exchanges of 2 to 4 lines whose speakers are its kinds or the
-   * dashboard's agents, plain text of 1 to 60, rechecked; for a private world none the collector marked as named.
+   * dashboard's agents, plain text of 1 to 60, rechecked; for a private world none the collector marked as named, nor
+   * one with a name the dashboard has now (as chatterFor's).
    */
   function talkFor(snap, cast, priv) {
     const kinds = new Set((cast ?? []).map(c => c.kind)), names = new Set((snap?.agents ?? []).map(a => a.name));
@@ -178,6 +179,7 @@
     return (Array.isArray(snap?.talk?.exchanges) ? snap.talk.exchanges : []).slice(0, 12)
       .filter(e => e && Array.isArray(e.lines) && e.lines.length >= 2 && e.lines.length <= 4 && !(priv && e.named))
       .filter(e => e.lines.every(l => l && (kinds.has(l.who) || names.has(l.who)) && typeof l.text === 'string' && l.text.length >= 1 && l.text.length <= 60) && e.lines.some(l => kinds.has(l.who)))
+      .filter(e => !priv || namelessLines(e.lines, snap).length === e.lines.length) // and, private, none with a name the dashboard has now
       .map(e => ({ lines: e.lines.map(l => ({ who: l.who, text: noBidi(l.text).replace(CONTROL, '') })) }));
   }
 
@@ -667,10 +669,11 @@
   }
   /** A talking world's animals: kept, said to the collector now and every 5 minutes (while Animal lines are ticked). */
   function takeTalkCast(animals) {
-    const was = JSON.stringify(talkCast);
+    const was = JSON.stringify(talkCast), first = !talkCast?.length;
     talkCast = animals;
     if (JSON.stringify(animals) === was) return;
-    clearInterval(talkTimer); talkTimer = setInterval(() => void postTalk(), 300_000); void postTalk(); sendTalk(true);
+    clearInterval(talkTimer); talkTimer = setInterval(() => void postTalk(), 300_000); void postTalk();
+    if (first) sendTalk(true); // a batch that came before the world said its animals; not again each time they change
   }
   /** The talk cast to the collector; `more` when the world has used every exchange. Only while the world is on screen. */
   async function postTalk(more = false) {

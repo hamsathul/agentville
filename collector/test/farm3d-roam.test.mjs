@@ -136,3 +136,28 @@ test("the farm's plants: a forest tree wherever forestOf puts one, the season's 
     if (season === 'autumn') assert.ok(kinds.has('autumntree'), `${where}: autumn colours`);
   }
 });
+
+test('when its ground moves (a row more), an animal put somewhere new forgets the walk it was on, and stays inside', async () => {
+  const { placeAt } = await import('../../web/worlds/farm3d/antics.js');
+  const before = roamOf(groundOf(3)), after = roamOf(groundOf(6)), rand = seeded(21);
+  const env = { resting: false, rand, habitChance: 0, duration: () => 1, spot: (area, from, far, r) => after.spot(area, rand, { from, far, r }), inside: after.inside, clear: after.clear };
+  for (let k = 0; k < 50; k++) {
+    const [x, y] = before.spot('pasture', rand, { r: BODY.cow });
+    const a = makeAnimal({ kind: 'cow', family: 'hooves', area: 'pasture', walk: 7, run: 40, r: BODY.cow }, x, y, rand);
+    a.path = [[x + 40, y], [x + 80, y + 10]]; a.tx = x + 20; a.ty = y; a.looked = true; // mid-walk on the old ground
+    const [nx, ny] = after.spot('pasture', rand, { r: BODY.cow });
+    placeAt(a, nx, ny);
+    assert.deepEqual([a.path, a.looked, a.tx, a.ty], [[], false, nx, ny]);
+    for (let t = 0; t < 60; t += 0.1) { advance(a, 0.1, env); assert.ok(after.inside('pasture', a.x, a.y, a.r - 1), `${k}: off its new pasture at ${a.x},${a.y}`); }
+  }
+});
+
+test("the wind's clock wraps without a jump: every speed in the sway repeats a whole number of times in its period", async () => {
+  const { readFileSync } = await import('node:fs');
+  const { WIND_PERIOD } = await import('../../web/worlds/farm3d/nature.js');
+  const src = readFileSync(new URL('../../web/worlds/farm3d/build/nature.js', import.meta.url), 'utf8');
+  const speeds = [...src.matchAll(/uTime \* ([\d.]+)/g)].map(m => Number(m[1]));
+  assert.ok(speeds.length >= 3, `${speeds}`);
+  for (const w of speeds) { const turns = (w * WIND_PERIOD) / (2 * Math.PI); assert.ok(Math.abs(turns - Math.round(turns)) < 1e-9, `${w} rad/s: ${turns} turns`); }
+  assert.match(src, /% WIND_PERIOD/, 'the clock wraps');
+});

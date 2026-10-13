@@ -143,6 +143,18 @@ export function command(a, act, env) {
   a.stick = null;
 }
 
+/** Puts it somewhere new (its ground moved): whatever it was doing and the walk it was on are forgotten. */
+export function placeAt(a, x, y) {
+  Object.assign(a, { x, y, tx: x, ty: y, path: [], looked: false, queue: [], cur: null, act: null, stick: null, home: [x, y], trail: [], lift: 0, under: false });
+}
+/** Its ground changed under it, though it is still on it: the walk it was on was checked against the old one, so it stops there. */
+export function forgetWalk(a) {
+  a.path = [];
+  a.tx = a.x;
+  a.ty = a.y;
+  if (a.cur?.to && a.cur.jump === undefined) Object.assign(a, { cur: null, queue: [], act: null, trail: [], stick: null }); // a run there stops too
+}
+
 /** How long it rests where it stops: 1 to 30 s, mostly short. */
 export const restFor = rand => 1 + 29 * rand() ** 2.2;
 /** Its next walk: 1 to 3 points, each reached by a clear straight way from the last, so the walk bends; its own pace. */

@@ -1335,9 +1335,11 @@ patch, the pasture across the front, and the meadow and the forest running on al
     while later. In winter the pond is ice and they are out of sight.
   - **They talk**: now and then two animals near each other trade a few lines, or a farmer and an animal
     near it do (one at work in its bed over the pasture's fence, one idle under the shade tree with the
-    dogs), each in its own voice and about what is happening: the farmer's name, what it is doing
-    (editing, reading, pushing…), its repo's name, a deploy that failed or went out, the night, the
-    rain. A farmer waiting on you or whose turn ended is never drawn in, and their bubbles stay clear.
+    dogs), each in its own voice and about what is happening: what the farmer is doing (editing,
+    reading, pushing…), its repo's name, a deploy that failed or went out, the night, the rain. Two
+    animals stop and turn to each other while they talk. A farmer waiting on you or whose turn ended is
+    never drawn in (one that starts needing you stops), and their bubbles and name tags stay clear: a
+    talk bubble that would cover one waits.
     The lines are the farm's own, and with ✨ Helper's Animal lines ticked also Haiku's ("✨ Helper and
     suggested names"); either way nothing reaches any agent's conversation or task. **Bubbles** in the
     Menu hides them too.
@@ -1377,8 +1379,8 @@ reduced motion) it draws only when something changes. three.js (0.186.1, MIT lic
 for the animals) is part of Agentville, in `web/worlds/farm3d/vendor/`, and the models (the animals, the
 plants, the farmers' characters) are in `web/worlds/farm3d/models/` (about 12 MB, packed into JS files
 the world imports and loaded a moment after the farm draws; the eighteen animals, the lily pads and the
-plants add about 290 draw calls and the plants about 700,000 triangles, a farmer two draw calls, shadows
-included): nothing is downloaded from anywhere, and the world sees the same
+plants add about 290 draw calls and the plants about 700,000 triangles, shadows included; a farmer is two
+draw calls and two for its shadow, with its pin, tool and badges): nothing is downloaded from anywhere, and the world sees the same
 scene as the farm and sends nothing.
 
 ### Notifications and the bell

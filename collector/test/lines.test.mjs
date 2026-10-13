@@ -215,3 +215,8 @@ test('chooseSession: a talk batch needs mod 0.9.5', () => {
   assert.equal(chooseSession(agents, new Map(), [{ kind: 'cow' }], '0.9.5')?.id, 'new');
   assert.equal(chooseSession(agents.slice(0, 1), new Map(), [{ kind: 'cow' }], '0.9.5'), null);
 });
+
+test('parseTalk: two speakers taking turns (or two of one kind); never three, or one saying two lines running', () => {
+  const text = ['1|cow|a', '1|cow|b', '1|horse|c', '2|cow|a', '2|cow|b', '3|cow|a', '3|horse|b', '3|fox|c', '4|horse|a', '4|cow|b', '4|horse|c'].join('\n');
+  assert.deepEqual(parseTalk(text, ['cow', 'horse', 'fox'], [], []).map(e => e.lines.map(l => l.who).join('+')), ['cow+cow', 'horse+cow+horse']);
+});

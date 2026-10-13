@@ -11,7 +11,7 @@ import { GLTFLoader } from '../vendor/GLTFLoader.js';
 import { clone as cloneSkinned } from '../vendor/SkeletonUtils.js';
 import { LILY_PADS, PX, WATER } from '../layout.js';
 import { MODELS } from '../models/index.js';
-import { ACTS, HERDS, advance, command, makeAnimal, menuFor } from '../antics.js';
+import { ACTS, HERDS, advance, command, forgetWalk, makeAnimal, menuFor, placeAt } from '../antics.js';
 import { roamOf } from '../roam.js';
 import { COATS, FINISH, SPOTS, spotsOf } from '../coats.js';
 
@@ -184,9 +184,9 @@ export function makeAnimals(THREE, mats, S) {
   function setGround(g) {
     ground = g; H = g.H;
     roam = roamOf(g);
-    for (const w of animals) if (!w.placed || !roam.inside(w.a.area, w.a.x, w.a.y, w.a.r)) { // each on its ground: when the ground changes, or it has just arrived
-      const [x, y] = roam.spot(w.a.area, rand, { r: w.a.r });
-      Object.assign(w.a, { x, y, tx: x, ty: y, queue: [], cur: null, act: null, stick: null, home: [x, y], trail: [] });
+    for (const w of animals) { // each on its ground: when the ground changes, or it has just arrived; a walk planned on the old one is dropped
+      if (!w.placed || !roam.inside(w.a.area, w.a.x, w.a.y, w.a.r)) { const [x, y] = roam.spot(w.a.area, rand, { r: w.a.r }); placeAt(w.a, x, y); }
+      else forgetWalk(w.a);
       w.placed = true;
     }
     start().catch(err => { started = false; throw err; }); // a model that won't load: the bridge reports it, the farm goes on

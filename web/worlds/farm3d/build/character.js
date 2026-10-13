@@ -79,19 +79,22 @@ export function makeCharacters(THREE) {
     holder.add(model);
     root.add(holder);
     let shirtMesh = null;
-    model.traverse(o => { if (o.userData.shirt) shirtMesh = o; });
+    model.traverse(o => {
+      if (o.userData.shirt) shirtMesh = o;
+      if (o.isSkinnedMesh) o.raycast = () => {}; // a pointer's ray skips it: skinning it on the CPU is slow, and the figurine under it is the click box
+    });
     const mixer = new THREE.AnimationMixer(model), actions = new Map();
     for (const [name, clip] of t.clips) actions.set(name, mixer.clipAction(clip));
     const hand = model.getObjectByName('WristR');
     let playing = null, playingName = '', lastT = 0;
-    function play(name, once) {
+    function play(name, once, still) {
       const next = actions.get(name);
       if (!next || name === playingName) return;
       next.reset();
       next.setLoop(once ? THREE.LoopOnce : THREE.LoopRepeat, Infinity);
       next.clampWhenFinished = once;
-      next.play();
-      if (playing) next.crossFadeFrom(playing, 0.25, false);
+      if (still) { for (const a of actions.values()) if (a !== next) a.stop(); next.setEffectiveWeight(1); next.play(); } // nothing moves: the new pose at once
+      else { next.play(); if (playing) next.crossFadeFrom(playing, 0.25, false); }
       playing = next;
       playingName = name;
     }
@@ -100,19 +103,21 @@ export function makeCharacters(THREE) {
       /** Puts a tool (made for the figurine's hand) in its right hand. */
       holdInHand(object) {
         const g = new THREE.Group();
+        g.userData.grip = true;
         g.quaternion.copy(t.grip.turn);
         g.scale.setScalar(t.grip.size);
         g.add(object);
         hand?.add(g);
         return g;
       },
-      /** What it is playing now (for the check). */
+      /** What it is playing now, and how much (for the check). */
       playing: () => playingName,
+      weight: () => playing?.getEffectiveWeight() ?? 0,
       /** The pose for now (the figurine's kinds); t the clock, 0 holding it still. */
       pose(kind2, t2) {
         const clips = MODELS[kind].clips, nap = kind2 === 'nap';
         const part = kind2 === 'idle' && t2 % 15 > 11 ? 'idle2' : clipFor(kind2); // now and then the other idle
-        play(clips[part] ?? clips.idle, nap);
+        play(clips[part] ?? clips.idle, nap, !t2);
         // lying along the hammock (it runs across the farmer's view, sagging to 0.7 m), its middle over the hammock's
         holder.position.set(nap ? 0.8 : 0, nap ? 0.55 : t.lift * t.scale, 0);
         holder.rotation.y = nap ? Math.PI / 2 : 0;
@@ -122,7 +127,7 @@ export function makeCharacters(THREE) {
         mixer.update(dt);
       },
       setShirt(colour) { if (shirtMesh) shirtMesh.material = shirtOf(colour); },
-      dispose() { mixer.stopAllAction(); root.removeFromParent(); },
+      dispose() { mixer.stopAllAction(); model.traverse(o => { if (o.isSkinnedMesh) o.skeleton.dispose(); }); root.removeFromParent(); }, // its skeletons' bone textures too
     };
   }
   return { load, make, ready: kind => templates.has(kind) };

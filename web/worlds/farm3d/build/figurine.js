@@ -125,12 +125,13 @@ export function makeFigures(THREE, mats, S) {
       if (pinDot) { pinDot.removeFromParent(); pinDot = null; }
       if (char && pin) { pinDot = new THREE.Mesh(baked(`pin|${pin}`, [{ geo: 'sphere', color: pin, pos: [0.15, 1.42, 0.16], scale: [0.06, 0.06, 0.05] }]), material); root.add(pinDot); }
       propName = ''; // put the prop back on the new arms
+      badgeName = ''; // and the badge (a basket rides on the body: the figurine's, or now the character's)
     }
     function setProp(name, flag) {
       const k = `${name}|${flag}`;
       if (k === propName) return;
       propName = k;
-      if (prop) { prop.removeFromParent(); prop = null; }
+      if (prop) { (prop.parent?.userData.grip ? prop.parent : prop).removeFromParent(); prop = null; } // a tool goes with the grip it hung in
       if (!name) return;
       const p = propOf(name), g = baked(`prop|${name}|${flag}`, [...p.parts, ...(name === 'cart' && flag ? CART_FLAG : [])]);
       prop = new THREE.Mesh(g, material);
@@ -186,7 +187,11 @@ export function makeFigures(THREE, mats, S) {
       setSelected(on) { ring.visible = on; },
       update(f2) { dress(f2); },
       /** Which character it is, what it plays and its shirt's colour (for the check); null while the figurine stands in. */
-      info: () => (char ? { character: charKind, clip: char.playing(), shirt: lastF.shirt ?? null } : null),
+      info: () => {
+        if (!char) return null;
+        const shows = o => { for (let p = o; p && p !== root.parent; p = p.parent) if (!p.visible) return false; return true; };
+        return { character: charKind, clip: char.playing(), weight: char.weight(), shirt: lastF.shirt ?? null, badge: badge && shows(badge) ? badgeName : null };
+      },
       dispose() { char?.dispose(); root.removeFromParent(); release(owner); },
     };
     dress(f);

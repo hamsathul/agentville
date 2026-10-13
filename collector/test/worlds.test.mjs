@@ -1170,6 +1170,36 @@ test('the page posts the world’s cast while Animal lines is ticked, and sends 
   assert.deepEqual(plain(p.posted.filter(m => m.type === 'chatter').at(-1)), { type: 'chatter', lines: [] }, 'gone: the world drops its lines');
 });
 
+test("a talking world: its talk cast posted while Animal lines is ticked (and Talk's ask for more), and a new batch sent once, not again when its cast changes", async () => {
+  const p = await page();
+  const exchanges = [{ lines: [{ who: 'cow', text: 'Grass again.' }, { who: 'husky', text: 'Run!' }] }];
+  p.farm.update({ ...snap, helper: { on: true, uses: { names: false, lines: true } }, talk: null });
+  p.from({ type: 'loaded' });
+  p.from({ type: 'ready' });
+  p.from({ type: 'talkCast', animals: [{ kind: 'cow' }, { kind: 'husky' }] });
+  await p.settle();
+  assert.deepEqual(p.bodies.filter(b => b[0] === '/api/actions/talk').map(b => JSON.parse(b[1])), [{ cast: [{ kind: 'cow' }, { kind: 'husky' }] }]);
+  p.farm.update({ ...snap, helper: { on: true, uses: { names: false, lines: true } }, talk: { at: 3, exchanges } });
+  assert.equal(p.posted.filter(m => m.type === 'talk').length, 1, 'the batch, sent');
+  p.from({ type: 'talkCast', animals: [{ kind: 'cow' }] }); // the husky out of sight a moment
+  p.from({ type: 'talkCast', animals: [{ kind: 'cow' }, { kind: 'husky' }] });
+  await p.settle();
+  assert.equal(p.posted.filter(m => m.type === 'talk').length, 1, 'the same batch is not sent again when the cast changes');
+  p.from({ type: 'talkMore' });
+  await p.settle();
+  assert.deepEqual(JSON.parse(p.bodies.filter(b => b[0] === '/api/actions/talk').at(-1)[1]).more, true, 'Talk with none left asks for more');
+});
+
+test("talkFor: a private world gets no exchange with a name in it, even one the collector didn't mark (a name the dashboard has now)", async () => {
+  const W = (await page()).worlds;
+  const snap2 = { agents: [{ name: 'deploy-bot' }], repos: [{ name: 'checkout' }], talk: { at: 9, exchanges: [
+    { lines: [{ who: 'cow', text: 'checkout broke again?' }, { who: 'husky', text: 'Not me!' }] },
+    { lines: [{ who: 'cow', text: 'Moo.' }, { who: 'husky', text: 'Woof.' }] },
+  ] } };
+  assert.deepEqual(plain(W.talkFor(snap2, [{ kind: 'cow' }, { kind: 'husky' }], true)).map(e => e.lines[0].text), ['Moo.']);
+  assert.equal(plain(W.talkFor(snap2, [{ kind: 'cow' }, { kind: 'husky' }], false)).length, 2);
+});
+
 test('the cast names its world only for a built-in world the helper has words for (farm, factory, military): never the starter, your own worlds or a private one', async () => {
   const built = (key, name) => ({ key, builtIn: true, name, icon: '🧩', description: '', nouns: {}, preview: null, error: null });
   const worlds = [...WORLDS, built('factory', 'Robot factory'), built('military', 'Field exercise'), built('starter', 'Starter')];

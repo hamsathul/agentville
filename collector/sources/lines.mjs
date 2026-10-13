@@ -162,7 +162,7 @@ export function talkFactsOf(snap, cast, events, now) {
 /**
  * The exchanges worth keeping from Haiku's reply: rows `n|speaker|text`, grouped by n in the order they come; a
  * speaker is a kind of the cast or one of the farmers given; plain text of 1 to 60; an exchange of 2 to 4 lines with an
- * animal in it; 12 at most. One with a farmer speaking, or a line holding a name the request named, is marked `named`.
+ * animal in it, its two speakers taking turns (or two of one kind); 12 at most. One with a farmer speaking, or a line holding a name the request named, is marked `named`.
  */
 export function parseTalk(text, castKinds, farmerNames, names = []) {
   const kinds = new Set(castKinds ?? []), farmers = new Set(farmerNames ?? []), groups = new Map();
@@ -177,7 +177,8 @@ export function parseTalk(text, castKinds, farmerNames, names = []) {
   }
   const out = [];
   for (const g of groups.values()) {
-    if (g.bad || g.lines.length < 2 || g.lines.length > 4 || !g.lines.some(l => kinds.has(l.who))) continue;
+    const w = g.lines.map(l => l.who), turns = new Set(w).size === 1 || (new Set(w).size === 2 && w.every((x, k) => x === w[k % 2])); // two taking turns, or two of one kind
+    if (g.bad || g.lines.length < 2 || g.lines.length > 4 || !turns || !g.lines.some(l => kinds.has(l.who))) continue;
     const named = g.lines.some(l => farmers.has(l.who) || isNamed(l.text, names));
     out.push({ lines: g.lines, ...(named ? { named: true } : {}) });
     if (out.length >= 12) break;

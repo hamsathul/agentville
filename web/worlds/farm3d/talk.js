@@ -191,11 +191,15 @@ export function talkers(scene) {
 const pick = (list, rand) => list[Math.floor(rand() * list.length) % list.length];
 /** A name as said: 16 characters at most, and never a path (only its last part). */
 const short = v => { const s = String(v ?? ''), parts = s.split(/[\\/]/).filter(Boolean); return (parts.at(-1) ?? s).slice(0, 16); };
-/** A voice's line for a situation (its idle line if it has none), its blanks filled. */
+const DEPLOYS = new Set(['deployFailed', 'deployOk']);
+/**
+ * A voice's line for a situation (its idle line if it has none), its blanks filled. {repo} is the repo a deploy
+ * happened in for a deploy's lines, else the speaker's own (or the news's).
+ */
 function line(t, other, when, facts, rand) {
   const v = VOICES[t.kind ?? 'farmer'] ?? VOICES.cow, list = v[when]?.length ? v[when] : v.idle;
-  const event = facts?.events?.[0];
-  const words = { name: short(t.name), repo: short(t.repo ?? event?.repo ?? 'the farm'), step: short(t.step ?? 'working'), animal: short(other?.kind ?? other?.name ?? 'friend') };
+  const event = facts?.events?.[0], repo = DEPLOYS.has(when) ? event?.repo : t.repo ?? event?.repo;
+  const words = { name: short(t.name), repo: short(repo ?? 'the farm'), step: short(t.step ?? 'working'), animal: short(other?.kind ?? other?.name ?? 'friend') };
   return pick(list, rand).replace(/\{(\w+)\}/g, (_, k) => words[k] ?? '').slice(0, 60);
 }
 /** What a conversation is about now: a fresh event, the night, the weather, or nothing much. */
@@ -213,7 +217,7 @@ export function exchange([a, b], facts, rand) {
   for (let k = 0; k < n; k++) {
     const t = k % 2 ? b : a, other = k % 2 ? a : b;
     const w = k === 0 ? (t.kind ? when : t.state === 'working' && when === 'idle' ? 'working' : when) : rand() < 0.6 ? 'reply' : t.kind ? when : 'idle';
-    out.push({ who: keyOf(t), text: line(t, other, w, { ...facts, events: t.repo ? [{ repo: t.repo }] : facts?.events }, rand) });
+    out.push({ who: keyOf(t), text: line(t, other, w, facts, rand) });
   }
   return out;
 }
@@ -227,34 +231,50 @@ const GAP_S = 40; // about how often a conversation starts by itself
  */
 export function createTalk({ rand = Math.random } = {}) {
   let talks = [], stockList = [], wait = GAP_S * (0.3 + rand() * 0.7), seq = 0, facts = {};
-  /** Haiku's exchange for these two, if one fits (its speakers their kinds or names), taken once. */
+  const used = new Set(); // Haiku's exchanges said already: each once, even when the same batch comes again
+  const exKey = ex => JSON.stringify(ex.lines);
+  /**
+   * Haiku's exchange for these two, if one fits, taken once: its two speakers their kinds or names taking turns (or,
+   * for two of a kind, that kind's), the first of the two speaking first when one has it so.
+   */
   function fresh(a, b) {
-    const name = t => t.kind ?? t.name, k = stockList.findIndex(ex => {
-      const who = new Set(ex.lines.map(l => l.who));
-      return who.size <= 2 && [...who].every(w => w === name(a) || w === name(b)) && who.has(name(a));
-    });
+    const name = t => t.kind ?? t.name, na = name(a), nb = name(b);
+    const fits = ex => {
+      const w = ex.lines.map(l => l.who);
+      if (na === nb) return w.every(x => x === na); // two of a kind: they take its lines in turn
+      return w.every((x, k) => x === w[k % 2]) && new Set(w).size === 2 && w.every(x => x === na || x === nb);
+    };
+    let k = stockList.findIndex(ex => fits(ex) && ex.lines[0].who === na);
+    if (k < 0) k = stockList.findIndex(fits);
     if (k < 0) return null;
     const ex = stockList.splice(k, 1)[0];
-    const first = ex.lines[0].who === name(a) ? a : b;
-    return ex.lines.map(l => ({ who: keyOf(l.who === name(first) ? first : first === a ? b : a), text: String(l.text).slice(0, 60) }));
+    used.add(exKey(ex));
+    if (used.size > 200) used.delete(used.values().next().value);
+    if (na === nb) return ex.lines.map((l, i) => ({ who: keyOf(i % 2 ? b : a), text: String(l.text).slice(0, 60) }));
+    return ex.lines.map(l => ({ who: keyOf(l.who === na ? a : b), text: String(l.text).slice(0, 60) }));
   }
   function begin(a, b) {
     const ids = new Set([keyOf(a), keyOf(b)]);
     talks = talks.filter(c => !c.ids.some(id => ids.has(id))); // whoever is talking again stops the old one
     const lines = fresh(a, b) ?? exchange([a, b], facts, rand);
-    talks.push({ n: ++seq, lines, ids: [...ids], to: { [keyOf(a)]: b, [keyOf(b)]: a }, at: 0 });
+    talks.push({ n: ++seq, lines, ids: [...ids], farmers: [a, b].filter(t => t.id !== undefined).map(t => t.id), to: { [keyOf(a)]: b, [keyOf(b)]: a }, at: 0 });
     if (talks.length > 2) talks.shift();
   }
   return {
+    /** Moves the conversations on; returns any that started by themselves now, as [first, second], so they can face each other. */
     tick(scene, dt) {
       facts = scene?.facts ?? facts;
+      const free = new Set((scene?.farmers ?? []).filter(f => !BUSY.has(f.state)).map(f => f.id));
       for (const c of talks) c.at += dt;
-      talks = talks.filter(c => c.at < c.lines.length * LINE_S);
+      talks = talks.filter(c => c.at < c.lines.length * LINE_S && c.farmers.every(id => free.has(id))); // a farmer who needs you now, or has gone, stops talking
       wait -= dt;
-      if (wait > 0 || talks.length >= 2) return;
+      if (wait > 0 || talks.length >= 2) return [];
       wait = GAP_S * (0.5 + rand());
       const busy = new Set(talks.flatMap(c => c.ids)), pairs = talkers(scene).filter(([a, b]) => !busy.has(keyOf(a)) && !busy.has(keyOf(b)));
-      if (pairs.length) { const [a, b] = pick(pairs.slice(0, 4), rand); rand() < 0.5 ? begin(a, b) : begin(b, a); }
+      if (!pairs.length) return [];
+      const [a, b] = pick(pairs.slice(0, 4), rand), [x, y] = rand() < 0.5 ? [a, b] : [b, a];
+      begin(x, y);
+      return [[x, y]];
     },
     start(i, scene) {
       facts = scene?.facts ?? facts;
@@ -263,12 +283,14 @@ export function createTalk({ rand = Math.random } = {}) {
       const near = talkers(scene).filter(p => p.some(t => t === me)).map(p => (p[0] === me ? p[1] : p[0]))[0];
       if (near) { begin(me, near); return; }
       talks = talks.filter(c => !c.ids.includes(i));
-      talks.push({ n: ++seq, lines: [{ who: i, text: line(me, null, 'you', facts, rand), toYou: true }], ids: [i], to: {}, at: 0 });
+      talks.push({ n: ++seq, lines: [{ who: i, text: line(me, null, 'you', facts, rand), toYou: true }], ids: [i], farmers: [], to: {}, at: 0 });
       if (talks.length > 2) talks.shift();
     },
+    /** Haiku's latest batch, in place of the last (an empty one clears them); what was said already isn't kept again. */
     take(exchanges) {
-      for (const ex of exchanges ?? []) if (Array.isArray(ex?.lines) && ex.lines.length >= 2) stockList.push({ lines: ex.lines.filter(l => l && typeof l.text === 'string').slice(0, 4) });
-      stockList = stockList.slice(-24);
+      stockList = (exchanges ?? []).filter(ex => Array.isArray(ex?.lines) && ex.lines.length >= 2)
+        .map(ex => ({ lines: ex.lines.filter(l => l && typeof l.text === 'string').slice(0, 4) }))
+        .filter(ex => !used.has(exKey(ex))).slice(0, 24);
     },
     stock: () => stockList.length,
     bubbles: () => talks.map(c => {
