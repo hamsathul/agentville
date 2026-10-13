@@ -8,7 +8,7 @@ import { clone as cloneSkinned } from '../vendor/SkeletonUtils.js';
 import { mergeGeometries } from '../vendor/BufferGeometryUtils.js';
 import { MODELS } from '../models/index.js';
 import { FINISH, SHIRTS } from '../coats.js';
-import { clipFor } from '../characters.js';
+import { clipFor, makeIdler } from '../characters.js';
 
 export function makeCharacters(THREE) {
   const loader = new GLTFLoader(), templates = new Map(), loads = new Map();
@@ -85,7 +85,7 @@ export function makeCharacters(THREE) {
     });
     const mixer = new THREE.AnimationMixer(model), actions = new Map();
     for (const [name, clip] of t.clips) actions.set(name, mixer.clipAction(clip));
-    const hand = model.getObjectByName('WristR');
+    const hand = model.getObjectByName('WristR'), idler = makeIdler(); // its own idle moves, on its own rhythm
     let playing = null, playingName = '', lastT = 0;
     function play(name, once, still) {
       const next = actions.get(name);
@@ -116,8 +116,8 @@ export function makeCharacters(THREE) {
       /** The pose for now (the figurine's kinds); t the clock, 0 holding it still. */
       pose(kind2, t2) {
         const clips = MODELS[kind].clips, nap = kind2 === 'nap';
-        const part = kind2 === 'idle' && t2 % 15 > 11 ? 'idle2' : clipFor(kind2); // now and then the other idle
-        play(clips[part] ?? clips.idle, nap, !t2);
+        const move = kind2 === 'idle' ? idler.part(t2) : { part: clipFor(kind2), once: nap }; // idle: its own moves now and then
+        play(clips[move.part] ?? clips.idle, move.once, !t2);
         // lying along the hammock (it runs across the farmer's view, sagging to 0.7 m), its middle over the hammock's
         holder.position.set(nap ? 0.8 : 0, nap ? 0.55 : t.lift * t.scale, 0);
         holder.rotation.y = nap ? Math.PI / 2 : 0;

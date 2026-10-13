@@ -597,7 +597,10 @@ export const MODELS = {
       "wave": "Wave",
       "idle": "Idle",
       "idle2": "Idle_Neutral",
-      "nap": "Death"
+      "nap": "Death",
+      "flinch": "HitRecieve",
+      "kick": "Kick_Right",
+      "point": "Idle_Gun_Pointing"
     }
   },
   "worker": {
@@ -619,7 +622,10 @@ export const MODELS = {
       "wave": "Wave",
       "idle": "Idle",
       "idle2": "Idle_Neutral",
-      "nap": "Death"
+      "nap": "Death",
+      "flinch": "HitRecieve",
+      "kick": "Kick_Right",
+      "point": "Idle_Gun_Pointing"
     }
   },
   "casual": {
@@ -641,7 +647,10 @@ export const MODELS = {
       "wave": "Wave",
       "idle": "Idle",
       "idle2": "Idle_Neutral",
-      "nap": "Death"
+      "nap": "Death",
+      "flinch": "HitRecieve",
+      "kick": "Kick_Right",
+      "point": "Idle_Gun_Pointing"
     }
   },
   "hoodie": {
@@ -663,7 +672,10 @@ export const MODELS = {
       "wave": "Wave",
       "idle": "Idle",
       "idle2": "Idle_Neutral",
-      "nap": "Death"
+      "nap": "Death",
+      "flinch": "HitRecieve",
+      "kick": "Kick_Right",
+      "point": "Idle_Gun_Pointing"
     }
   },
   "business": {
@@ -685,7 +697,10 @@ export const MODELS = {
       "wave": "Wave",
       "idle": "Idle",
       "idle2": "Idle_Neutral",
-      "nap": "Death"
+      "nap": "Death",
+      "flinch": "HitRecieve",
+      "kick": "Kick_Right",
+      "point": "Idle_Gun_Pointing"
     }
   },
   "beach": {
@@ -707,7 +722,10 @@ export const MODELS = {
       "wave": "Wave",
       "idle": "Idle",
       "idle2": "Idle_Neutral",
-      "nap": "Death"
+      "nap": "Death",
+      "flinch": "HitRecieve",
+      "kick": "Kick_Right",
+      "point": "Idle_Gun_Pointing"
     }
   },
   "woman": {
@@ -729,7 +747,10 @@ export const MODELS = {
       "wave": "Wave",
       "idle": "Idle",
       "idle2": "Idle_Neutral",
-      "nap": "Death"
+      "nap": "Death",
+      "flinch": "HitRecieve",
+      "kick": "Kick_Right",
+      "point": "Idle_Gun_Pointing"
     }
   },
   "womancasual": {
@@ -751,7 +772,10 @@ export const MODELS = {
       "wave": "Wave",
       "idle": "Idle",
       "idle2": "Idle_Neutral",
-      "nap": "Death"
+      "nap": "Death",
+      "flinch": "HitRecieve",
+      "kick": "Kick_Right",
+      "point": "Idle_Gun_Pointing"
     }
   },
   "womanadventurer": {
@@ -773,7 +797,10 @@ export const MODELS = {
       "wave": "Wave",
       "idle": "Idle",
       "idle2": "Idle_Neutral",
-      "nap": "Death"
+      "nap": "Death",
+      "flinch": "HitRecieve",
+      "kick": "Kick_Right",
+      "point": "Idle_Gun_Pointing"
     }
   }
 };

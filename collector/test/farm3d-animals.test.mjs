@@ -120,7 +120,7 @@ test("the farmers' characters: Quaternius's modular men and women (CC0), each wi
   const { MODELS } = await import('../../web/worlds/farm3d/models/index.js');
   const { SHIRTS } = await import('../../web/worlds/farm3d/coats.js');
   const { readGlb } = await import('../../scripts/lib/glb.mjs');
-  const PARTS = { walk: 'Walk', run: 'Run', swing: 'Sword_Slash', hold: 'Idle_Sword', raise: 'Interact', carry: 'Idle_Gun', wave: 'Wave', idle: 'Idle', idle2: 'Idle_Neutral', nap: 'Death' };
+  const PARTS = { walk: 'Walk', run: 'Run', swing: 'Sword_Slash', hold: 'Idle_Sword', raise: 'Interact', carry: 'Idle_Gun', wave: 'Wave', idle: 'Idle', idle2: 'Idle_Neutral', nap: 'Death', flinch: 'HitRecieve', kick: 'Kick_Right', point: 'Idle_Gun_Pointing' };
   assert.deepEqual(Object.keys(SHIRTS).sort(), PERSON_KINDS);
   for (const kind of PERSON_KINDS) {
     const m = MODELS[kind], glb = Buffer.from((await import(`../../web/worlds/farm3d/models/${kind}.js`)).default, 'base64'), { json } = readGlb(glb);
@@ -150,6 +150,26 @@ test("the farmers' characters: an agent keeps its own, they spread, and every po
   assert.ok(Math.min(...counts.values()) > 600 / CHARACTERS.length / 3, `spread: ${[...counts.values()]}`);
   for (const kind of CHARACTERS) for (const pose of POSES) assert.ok(MODELS[kind].clips[clipFor(pose)], `${kind}: ${pose}`);
   assert.deepEqual(POSES.slice().sort(), ['basket', 'carry', 'hold', 'idle', 'nap', 'push', 'raise', 'run', 'swing', 'walk', 'wave']);
+});
+
+test("an idle farmer's own routine: mostly its idle, now and then a move of its own (a look round, a wave, a fly, a pebble, a point, a fiddle), no two farmers in step", async () => {
+  const { makeIdler, FIDGETS } = await import('../../web/worlds/farm3d/characters.js');
+  const { MODELS } = await import('../../web/worlds/farm3d/models/index.js');
+  const seeded = s => () => { s = (s * 16807) % 2147483647; return s / 2147483647; };
+  const day = seed => {
+    const idler = makeIdler(seeded(seed)), seen = [];
+    let last = 'idle';
+    for (let t = 1; t < 121; t += 0.05) { const p = idler.part(t).part; if (p !== last) { seen.push([Math.round(t * 10) / 10, p]); last = p; } }
+    return seen;
+  };
+  const one = day(1), two = day(2);
+  const moves = one.filter(([, p]) => p !== 'idle');
+  assert.ok(moves.length >= 6, `${moves.length} moves in two minutes`);
+  assert.ok(new Set(moves.map(([, p]) => p)).size >= 3, `kinds: ${[...new Set(moves.map(([, p]) => p))]}`);
+  assert.ok(one.every(([, p], k) => k % 2 ? p === 'idle' : p !== 'idle'), 'each move ends back in its idle');
+  assert.notDeepEqual(one.slice(0, 4), two.slice(0, 4), 'another farmer, another rhythm');
+  assert.equal(makeIdler(seeded(3)).part(0).part, 'idle', 'still: its idle');
+  for (const kind of ['farmer', 'woman']) for (const f of FIDGETS) assert.ok(MODELS[kind].clips[f.part], `${kind} has ${f.part}`);
 });
 
 // The colour areas a model's eyes are, where their names don't say so.

@@ -26,10 +26,11 @@ const PAWS = { walk: 'Walk', run: 'Gallop', leap: 'Gallop_Jump', hop: 'Jump_ToId
 const FROG = { idle: 'Frog_Idle', hop: 'Frog_Jump', snap: 'Frog_Attack', dead: 'Frog_Death' };
 const SWIM = clip => ({ idle: clip, walk: clip, run: clip });
 /**
- * A farmer's poses (build/character.js plays them): the only clips a character keeps, so its guns go (the "every clip
- * used" rule is the animals'). A hoe swings as a sword does, a tool is held as one is, a crate is carried as a gun.
+ * A farmer's poses and an idle one's moves (build/character.js plays them): the only clips a character keeps, so its
+ * shooting goes (the "every clip used" rule is the animals'). A hoe swings as a sword does, a tool is held as one is, a
+ * crate is carried as a gun; idle, it flinches at a fly, kicks a pebble, points (as at a gun's sight).
  */
-const PERSON = { walk: 'Walk', run: 'Run', swing: 'Sword_Slash', hold: 'Idle_Sword', raise: 'Interact', carry: 'Idle_Gun', wave: 'Wave', idle: 'Idle', idle2: 'Idle_Neutral', nap: 'Death' };
+const PERSON = { walk: 'Walk', run: 'Run', swing: 'Sword_Slash', hold: 'Idle_Sword', raise: 'Interact', carry: 'Idle_Gun', wave: 'Wave', idle: 'Idle', idle2: 'Idle_Neutral', nap: 'Death', flinch: 'HitRecieve', kick: 'Kick_Right', point: 'Idle_Gun_Pointing' };
 /** The pack's animals, each with its height on the farm in metres (before the farm makes them larger than life). */
 export const MODELS = [
   { kind: 'cow', title: 'Cow', id: '382b3d4a-a7c9-4c03-9858-3df630d90047', height: 1.5, family: 'hooves' },

@@ -1299,8 +1299,9 @@ patch, the pasture across the front, and the meadow and the forest running on al
   ones: the Farmer, the Worker, Casual, Hoodie, Business Man, Beach and three women), each agent its own
   by its id, in the agent's colour (a shirt, a vest, a dress), the model's pin on the chest, and the
   tool for its step in hand (a hoe for edits, an almanac for reads, a crate for a commit, a cart for a
-  push, with a flag to deploy…). They walk (run in fast mode), swing the hoe, hold or carry their tools,
-  and stand about. Waiting on you: on the porch's left, waving, with a red **!** (a scroll for a plan).
+  push, with a flag to deploy…). They walk (run in fast mode), swing the hoe, hold or carry their tools;
+  an idle one stands about and now and then, on a rhythm of its own, looks round, waves, swats a fly,
+  kicks a pebble, points at something or fiddles with something. Waiting on you: on the porch's left, waving, with a red **!** (a scroll for a plan).
   Turn ended: on the porch's right with a basket (**?** when it asked you something). At work: in its
   bed. Idle: under the shade tree. Stale: a scarecrow. Waking up by itself (`/loop`): lying in a
   hammock. A newcomer walks out of the barn and along the lanes to its place. Until a character's model
