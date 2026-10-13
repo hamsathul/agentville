@@ -3,7 +3,7 @@
 // the sky and the fog blend between the phases; at night the glowing materials and up to four lamps come on.
 const DAY = { sky: '#cfe6f5', hemiSky: '#e2f2ff', hemiGround: '#6a8f4a', hemi: 1.15, sun: '#fff0d6', sunI: 2.8 };
 const DUSK = { sky: '#f2b8a0', hemiSky: '#ffd9c2', hemiGround: '#6a5a4a', hemi: 0.8, sun: '#ffb070', sunI: 1.7 };
-const NIGHT = { sky: '#17203a', hemiSky: '#6c7fb0', hemiGround: '#1c2a1c', hemi: 0.45, sun: '#9fb4ff', sunI: 0.55 };
+const NIGHT = { sky: '#1b2544', hemiSky: '#7d90c4', hemiGround: '#24342a', hemi: 0.8, sun: '#a9bcff', sunI: 0.85 };
 
 /** A held sky as an hour: noon for day, eleven at night for night. */
 export function skyFor(date, hold, skyAt) {

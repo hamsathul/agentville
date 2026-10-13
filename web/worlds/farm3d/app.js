@@ -6,6 +6,8 @@ import { makeCameraRig } from './camera.js';
 import { makeMaterials } from './build/materials.js';
 import { makeSky, skyFor } from './build/sky.js';
 import { makeTerrain } from './build/terrain.js';
+import { makeShapes } from './build/shapes.js';
+import { makeBuildings } from './build/buildings.js';
 import { PX, W } from './layout.js';
 
 const SKIES = ['live', 'day', 'night'], SEASON_MODES = ['live', 'spring', 'summer', 'autumn', 'winter'];
@@ -36,7 +38,9 @@ export function start({ el, opts, prefs }) {
   el.append(canvas);
   const scene3 = new THREE.Scene(), camera = new THREE.PerspectiveCamera(30, 1, 0.5, 400);
   const mats = makeMaterials(THREE), sky = makeSky(THREE, scene3, mats), terrain = makeTerrain(THREE, mats);
-  scene3.add(terrain.group);
+  const shapes = makeShapes(THREE, mats), buildings = makeBuildings(THREE, mats, shapes);
+  scene3.add(terrain.group, buildings.group);
+  let lampsKey = '';
 
   const pref = (name, allowed, fallback) => (allowed.includes(prefs.get(name)) ? prefs.get(name) : fallback);
   let skyMode = pref('sky', SKIES, 'live'), seasonMode = pref('season', SEASON_MODES, 'live');
@@ -70,9 +74,16 @@ export function start({ el, opts, prefs }) {
     groundKey = key;
     const ext = terrain.build(model.ground, season);
     sky.setExtent(ext.x, ext.z);
-    // pan over the farm itself; fit the whole slab, forest and all
-    const hx = W / 2 / PX, hz = model.ground.H / 2 / PX;
-    rig.setFarm({ half: { x: hx, z: hz }, points: [-1, 1].flatMap(sx => [-1, 1].flatMap(sz => [0, 5].map(y => ({ x: ext.center.x + sx * ext.x, y, z: ext.center.z + sz * ext.z })))) });
+    // pan and fit over the farm itself (the forest round it may run off the edges), its buildings' height at the back
+    const hx = W / 2 / PX, hz = model.ground.H / 2 / PX, edge = 1.5;
+    rig.setFarm({ half: { x: hx, z: hz }, points: [-1, 1].flatMap(sx => [-1, 1].map(sz => ({ x: sx * (hx + edge), y: sz < 0 ? 8 : 0, z: sz * (hz + edge) }))) });
+  }
+
+  /** The farmstead and the yard: rebuilt when the rows, the season or the silos change. */
+  function rebuildBuildings() {
+    const info = buildings.build(model.ground, shownSeason(), model.silos.map(({ x, name, silo }) => ({ x, name, silo: silo && { fill: silo.fill, lamp: silo.lamp } })));
+    const lk = JSON.stringify(info.lamps);
+    if (lk !== lampsKey) { lampsKey = lk; sky.setLamps(info.lamps); }
   }
 
   function onScene(s) {
@@ -81,6 +92,7 @@ export function start({ el, opts, prefs }) {
     if (beds !== JSON.stringify(keep.beds)) prefs.set('beds', beds);
     keep = model.keep;
     rebuildGround();
+    rebuildBuildings();
     dirty = true;
   }
 
