@@ -49,7 +49,7 @@ export function literalOf(file, name) {
     else if (c === '{' || c === '[') depth++;
     else if ((c === '}' || c === ']') && !--depth) break;
   }
-  return vm.runInNewContext(`(${s.slice(start, i + 1)})`);
+  return plain(vm.runInNewContext(`(${s.slice(start, i + 1)})`)); // a plain object of this realm, so deepEqual compares it
 }
 export const NOW = Date.UTC(2026, 9, 9, 9, 0), HOME = '/Users/you/code';
 export const touch = (repo, mode = 'write', lastAt = NOW) => ({ path: `${repo}/f.ts`, mode, lastAt, repo });
