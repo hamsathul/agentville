@@ -1,0 +1,92 @@
+// The farmers on the ground: each walks from where it is to where the model puts it, along the lanes the 2D engine
+// uses (route.js), at the farm's pace (40 px a second, 68 in fast mode); a newcomer walks out of the barn door. On the
+// porch they stand on the deck, in a field on the soil, by the pond in a hammock. Still (Motion off, or reduced
+// motion), or on the first scene, every farmer is simply at its place.
+import { BARN_DOOR, CORR, HOUSE, PORCH_Y } from '../layout.js';
+import { walkRoute } from '../route.js';
+import { DECK_H } from './buildings.js';
+import { FIGURE_SCALE } from './figurine.js';
+import { SOIL_Y } from './beds.js';
+
+const onDeck = (x, y) => x >= HOUSE.x - 5 && x <= HOUSE.x + HOUSE.w + 5 && y >= PORCH_Y - 12 && y <= PORCH_Y + 3;
+
+export function makeFarmers(THREE, figures, S) {
+  const group = new THREE.Group();
+  const bodies = new Map(); // id → { fig, x, y, path, farmer, face, h }
+  let H = 400, beds = [];
+  const inBed = (x, y) => beds.some(b => x >= b.x0 - 2 && x <= b.x0 + 74 && y >= b.y0 - 2 && y <= b.y0 + 36);
+  const groundAt = (x, y) => (onDeck(x, y) ? DECK_H : inBed(x, y) ? SOIL_Y : 0);
+
+  /** The farmers of a new model. `instant`: no walking (the first scene, or still). */
+  function sync(model, { instant }) {
+    H = model.ground.H; beds = model.beds;
+    const seen = new Set();
+    let newcomers = 0; // newcomers leave the barn one after another, not in a heap
+    for (const f of model.farmers) {
+      seen.add(f.id);
+      let b = bodies.get(f.id);
+      if (!b) {
+        const fig = figures.make(f);
+        group.add(fig.root);
+        const [sx, sy] = instant ? f.at : BARN_DOOR;
+        b = { fig, x: sx, y: sy, path: [], face: 0, h: groundAt(sx, sy), target: null, wait: instant ? 0 : 0.45 * newcomers++ };
+        bodies.set(f.id, b);
+      }
+      b.fig.update(f);
+      b.farmer = f;
+      const [tx, ty] = f.at;
+      if (!b.target || b.target[0] !== tx || b.target[1] !== ty) {
+        b.target = [tx, ty];
+        if (instant) { b.x = tx; b.y = ty; b.path = []; b.h = groundAt(tx, ty); }
+        else b.path = walkRoute([b.x, b.y], [tx, ty], CORR);
+      }
+    }
+    for (const [id, b] of bodies) if (!seen.has(id)) { b.fig.dispose(); bodies.delete(id); }
+  }
+  /** Moves and poses everyone; t is the clock (0 while still), dt the seconds since the last frame. True while someone walks. */
+  function tick(t, dt, still) {
+    let walking = false;
+    for (const b of bodies.values()) {
+      const f = b.farmer;
+      if (still && b.path.length) { [b.x, b.y] = b.target; b.path = []; }
+      let moving = false;
+      if (b.wait > 0) b.wait -= dt;
+      else if (b.path.length) {
+        moving = true;
+        let step = (f.fast ? 68 : 40) * dt;
+        while (step > 0 && b.path.length) {
+          const [nx, ny] = b.path[0], dx = nx - b.x, dy = ny - b.y, d = Math.hypot(dx, dy);
+          if (d <= step) { b.x = nx; b.y = ny; b.path.shift(); step -= d; }
+          else { b.x += (dx / d) * step; b.y += (dy / d) * step; b.face = Math.atan2(dx, dy); step = 0; }
+        }
+      }
+      walking ||= moving;
+      // step up onto the deck or into a bed, and down again, smoothly
+      const want = groundAt(b.x, b.y);
+      b.h += Math.sign(want - b.h) * Math.min(Math.abs(want - b.h), dt * 3 || Math.abs(want - b.h));
+      const p = S.at(b.x, b.y, H), fig = b.fig;
+      fig.root.position.set(p.x, b.h, p.z);
+      // at its place: working farmers turn a little towards their bed's middle; everyone else faces out, towards the lane
+      if (!moving) b.face = f.group.startsWith('st:') ? (f.at[0] < (beds.find(x => `st:${x.key}` === f.group)?.cx ?? f.at[0]) ? 0.45 : f.at[0] > (beds.find(x => `st:${x.key}` === f.group)?.cx ?? f.at[0]) ? -0.45 : 0) : 0;
+      fig.root.rotation.y = b.face;
+      fig.setProp(moving ? null : f.prop, f.flag);
+      fig.setBadge(f.badge === 'basket' && moving ? null : f.badge, f.thinking);
+      const kind = moving ? 'walk' : f.scarecrow ? 'scarecrow' : f.nap ? 'nap' : f.state === 'waiting' ? 'wave' : f.badge === 'basket' ? 'basket' : f.state === 'working' ? fig.propPose() ?? 'hold' : 'idle';
+      fig.pose(kind, still ? 0 : t);
+    }
+    return walking;
+  }
+  /** Where a farmer's head is now (for its tag), in metres; null for one not drawn. */
+  function headOf(id) {
+    const b = bodies.get(id);
+    if (!b) return null;
+    const p = b.fig.root.position, top = (b.farmer.nap ? 1.4 : b.farmer.scarecrow ? 2.15 : 1.95) * FIGURE_SCALE;
+    return { x: p.x, y: p.y + top, z: p.z };
+  }
+  return {
+    group, sync, tick, headOf,
+    hits: () => [...bodies.values()].map(b => b.fig.root),
+    select(id) { for (const [k, b] of bodies) b.fig.setSelected(k === id); },
+    count: () => bodies.size,
+  };
+}

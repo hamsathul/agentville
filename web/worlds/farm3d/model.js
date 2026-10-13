@@ -174,7 +174,7 @@ export function makeModel({ makeGrid, engineScene, tagText, cutMid, lastPart, ag
       farmers.push({
         id: f.id, name: f.name, state: f.state, kind: f.kind, tag: tagText(f), tip: tipOf(f, fieldByKey), shirt: f.shirt, look: f.look,
         family: f.family ?? null, fast: Boolean(f.fast), thinking: Boolean(f.thinking), nap: Boolean(f.nap), field: f.field ?? null,
-        prop, action: SWING.has(prop) ? 'swing' : CARRY.has(prop) ? 'carry' : 'hold',
+        prop, flag: f.state === 'working' && Boolean(d?.flag), action: SWING.has(prop) ? 'swing' : CARRY.has(prop) ? 'carry' : 'hold',
         badge: f.state === 'waiting' ? (f.planAsk ? 'scroll' : '!') : f.state === 'turn' ? (f.question ? '?' : 'basket') : null,
         say: (f.state === 'waiting' ? f.ask : f.said) || '', group, at, scarecrow: f.state === 'stale',
       });

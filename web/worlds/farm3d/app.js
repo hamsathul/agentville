@@ -11,6 +11,8 @@ import { makeBuildings } from './build/buildings.js';
 import { makeCrops } from './build/crops.js';
 import { makeWeather } from './build/weather.js';
 import { makeBeds } from './build/beds.js';
+import { makeFigures } from './build/figurine.js';
+import { makeFarmers } from './build/farmers.js';
 import { PX, W } from './layout.js';
 
 const SKIES = ['live', 'day', 'night'], SEASON_MODES = ['live', 'spring', 'summer', 'autumn', 'winter'];
@@ -43,7 +45,9 @@ export function start({ el, opts, prefs }) {
   const mats = makeMaterials(THREE), sky = makeSky(THREE, scene3, mats), terrain = makeTerrain(THREE, mats);
   const shapes = makeShapes(THREE, mats), buildings = makeBuildings(THREE, mats, shapes);
   const crops = makeCrops(THREE, mats), beds = makeBeds(THREE, mats, shapes, makeWeather(THREE, mats, shapes), crops);
-  scene3.add(terrain.group, buildings.group, beds.group, crops.group);
+  const farmers = makeFarmers(THREE, makeFigures(THREE, mats, shapes), shapes);
+  scene3.add(terrain.group, buildings.group, beds.group, crops.group, farmers.group);
+  let firstScene = true, selected = null;
   let lampsKey = '';
 
   const pref = (name, allowed, fallback) => (allowed.includes(prefs.get(name)) ? prefs.get(name) : fallback);
@@ -98,6 +102,9 @@ export function start({ el, opts, prefs }) {
     rebuildGround();
     rebuildBuildings();
     beds.sync(model.beds, model.ground, shownSeason());
+    farmers.sync(model, { instant: firstScene || opts.still });
+    farmers.select(selected);
+    firstScene = false;
     dirty = true;
   }
 
@@ -108,9 +115,9 @@ export function start({ el, opts, prefs }) {
     const dt = Math.min(0.1, (now - lastTick) / 1000);
     lastTick = now;
     if (now - lastSky > 2000) { lastSky = now; sky.set(skyFor(new Date(), skyMode, skyAt)); dirty = true; }
-    const moving = rig.update(dt);
+    const moving = rig.update(dt), t = opts.still ? 0 : now / 1000;
+    farmers.tick(t, dt, opts.still);
     if (!opts.still) { // the world moves: the wind in the crops, the weather
-      const t = now / 1000;
       crops.tick(t);
       beds.tick(t, dt);
     }
@@ -132,6 +139,6 @@ export function start({ el, opts, prefs }) {
 
   return {
     scene: onScene,
-    select() { dirty = true; },
+    select(id) { selected = id ?? null; farmers.select(selected); dirty = true; },
   };
 }

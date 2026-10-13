@@ -218,3 +218,15 @@ test('the camera fits the whole farm: every point lands inside the picture, and 
   }
   assert.ok(box(50, 40, 8).some(p => { const s = project(p, { ...view, distance: small }); return Math.abs(s.x) > 0.85 || Math.abs(s.y) > 0.85; }), 'and fills it: some point is near an edge');
 });
+
+test("a deploying farmer's cart carries a flag; a plan-mode farmer holds the blueprint; one not working holds nothing", () => {
+  const shop = `${HOME}/shop`, s = snap([
+    agent('d', { now: { tool: 'Bash', step: 'deploy', summary: 'x', startedAt: NOW }, touching: [touch(shop)] }),
+    agent('p', { mode: 'plan', touching: [touch(shop)] }),
+    agent('i', { state: 'idle', now: null }),
+  ], [repo('shop')]);
+  const f = id => model(s).farmers.find(x => x.id === id);
+  assert.deepEqual([f('d').prop, f('d').flag, f('d').action], ['cart', true, 'carry']);
+  assert.deepEqual([f('p').prop, f('p').flag], ['blueprint', false]);
+  assert.deepEqual([f('i').prop, f('i').flag], [null, false]);
+});
