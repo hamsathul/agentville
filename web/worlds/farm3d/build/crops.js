@@ -1,0 +1,145 @@
+// The crops, as the 2D farm grows them (web/worlds/farm/world.js, drawCrop): seven crops, each in six stages from a
+// seed in its mound to ripe, plus the weeds of a fallow bed and the dry stalks of one whose farmers are all stale.
+// Every plant of one crop and stage shares one InstancedMesh per part, across the whole farm, so a full farm of
+// 648 plants is a few dozen draw calls. Plants sway in the wind, a little more where a farmer is working.
+const G = '#3f9b3a', GL = '#6cc04a', GP = '#8fd16a'; // stem, leaf, pale leaf
+const SEED_COLOR = { wheat: '#d9b26a', corn: '#f2d14b', carrot: '#c98d4f', cabbage: '#6b4320', sunflower: '#3a3a40', tomato: '#f4d58d', pumpkin: '#f1e4c3' };
+const U = 1 / 8 * 1.15; // a 2D pixel of plant height, in metres (a touch taller: they are seen from above)
+
+export function makeCrops(THREE, mats) {
+  const group = new THREE.Group();
+  const geos = {
+    stem: new THREE.CylinderGeometry(0.5, 0.5, 1, 5).translate(0, 0.5, 0), // a unit stem, from the ground up
+    blade: new THREE.ConeGeometry(0.5, 1, 4).translate(0, 0.5, 0),
+    leaf: new THREE.SphereGeometry(0.5, 6, 4),
+    ball: new THREE.IcosahedronGeometry(0.5, 1),
+    lump: new THREE.IcosahedronGeometry(0.5, 0),
+    disc: new THREE.CylinderGeometry(0.5, 0.5, 1, 12),
+  };
+  const v = new THREE.Vector3(), e = new THREE.Euler(), q = new THREE.Quaternion(), s = new THREE.Vector3();
+  /** One part of a plant: a shared geometry, a colour, and where it sits on the plant. */
+  const part = (geo, color, [x, y, z], [sx, sy, sz], [rx = 0, ry = 0, rz = 0] = []) => ({ geo, color, m: new THREE.Matrix4().compose(v.set(x, y, z), q.setFromEuler(e.set(rx, ry, rz)), s.set(sx, sy, sz)) });
+  const stem = (h, color = G, r = 0.035, lean = 0, x = 0) => part('stem', color, [x, 0, 0], [r * 2, h, r * 2], [0, 0, lean]);
+  const blade = (h, color, lean, turn = 0, w = 0.07) => part('blade', color, [0, 0, 0], [w, h, w], [Math.sin(turn) * lean, 0, Math.cos(turn) * lean]);
+  const leaf = (len, color, y, turn, w = 0.12, tilt = 0.35) => part('leaf', color, [Math.cos(turn) * len * 0.45, y, -Math.sin(turn) * len * 0.45], [len, 0.04, w], [0, turn, tilt]);
+  const ball = (r, color, x, y, z, [sx, sy, sz] = [1, 1, 1], geo = 'ball') => part(geo, color, [x, y, z], [r * 2 * sx, r * 2 * sy, r * 2 * sz]);
+
+  /** The parts of one plant of a crop at a stage. */
+  function template(crop, stage) {
+    if (crop === 'weeds') return [blade(0.22, '#4f7f2f', 0.4, 0), blade(0.18, '#4f7f2f', 0.5, 2.1), blade(0.2, '#5d8f3a', 0.45, 4.2)];
+    if (crop === 'dry') return [stem(0.3, '#9c7a4a', 0.02, 0.3), stem(0.22, '#9c7a4a', 0.02, -0.4, 0.05), ball(0.03, '#b5925a', 0.1, 0.29, 0)];
+    if (stage <= 0) return [ball(0.1, '#5e3d22', 0, 0, 0, [1.4, 0.5, 1.2], 'lump'), ball(0.035, SEED_COLOR[crop] ?? '#d9b26a', 0, 0.05, 0)];
+    if (stage === 1) {
+      if (crop === 'wheat' || crop === 'corn') return [blade(3 * U, GL, 0.15), blade(2 * U, GP, 0.4, 2)];
+      if (crop === 'carrot') return [blade(2.5 * U, GL, 0.1), blade(2 * U, GP, 0.6, 1), blade(2 * U, GP, 0.6, 4)];
+      const wide = crop === 'pumpkin' ? 1.6 : 1;
+      return [stem(2 * U), leaf(0.16 * wide, GP, 2 * U, 0, 0.1), leaf(0.16 * wide, GP, 2 * U, Math.PI, 0.1)];
+    }
+    switch (crop) {
+      case 'wheat': {
+        const h = [0, 0, 5, 7, 8, 9][stage] * U, head = stage >= 4 ? (stage === 5 ? '#e9c46a' : '#cdd27a') : '#9ed36a';
+        return [0, 1.3, 2.6, 3.9, 5.2].flatMap((turn, i) => {
+          const lean = 0.08 + (i % 3) * 0.06, hh = h * (0.85 + (i % 2) * 0.15), x = Math.cos(turn) * 0.06, z = Math.sin(turn) * 0.06;
+          const out = [part('stem', '#7fae4a', [x, 0, z], [0.03, hh, 0.03], [Math.sin(turn) * lean, 0, Math.cos(turn) * lean])];
+          if (stage >= 3) out.push(part('blade', head, [x + Math.cos(turn) * lean * hh * 0.9, hh * 0.92, z - Math.sin(turn) * lean * hh * 0.2], [0.07, 0.24, 0.07], [Math.PI, 0, 0]));
+          return out;
+        });
+      }
+      case 'corn': {
+        const h = [0, 0, 5, 8, 9, 10][stage] * U, out = [stem(h, '#4f9a35', 0.05)];
+        for (const [y, turn] of [[0.3, 0.4], [0.5, 2.6], [0.7, 4.4]]) out.push(leaf(0.55, GL, h * y, turn, 0.12, -0.25));
+        if (stage >= 3) out.push(part('blade', '#d9b26a', [0, h, 0], [0.1, 0.22, 0.1]));
+        if (stage === 4) out.push(ball(0.07, '#9ed36a', 0.08, h * 0.6, 0.04, [0.9, 2.2, 0.9]));
+        if (stage === 5) out.push(ball(0.08, '#f2d14b', 0.09, h * 0.6, 0.04, [0.9, 2.4, 0.9]), ball(0.05, GP, 0.08, h * 0.6 - 0.18, 0.04, [1, 1.4, 1]));
+        return out;
+      }
+      case 'carrot': {
+        const h = [0, 0, 3, 4, 4, 5][stage] * U, out = [0, 1.25, 2.5, 3.75, 5].map((turn, i) => blade(h * (0.8 + (i % 2) * 0.25), i % 2 ? GL : G, 0.35, turn, 0.06));
+        if (stage === 3) out.push(ball(0.05, '#f4f1e1', 0, h + 0.03, 0));
+        if (stage >= 4) out.push(part('blade', stage === 5 ? '#ff7a1a' : '#f0a060', [0, 0.06, 0], [0.16, 0.22, 0.16], [Math.PI, 0, 0]));
+        return out;
+      }
+      case 'cabbage': {
+        const r = [0, 0, 0.14, 0.18, 0.23, 0.25][stage], out = [];
+        for (let i = 0; i < 5; i++) out.push(leaf(r * 2.2, '#4f9a35', 0.04, i * 1.26, r * 1.2, -0.25));
+        out.push(ball(r * (stage >= 4 ? 1 : 0.7), stage === 5 ? '#c6e89a' : stage >= 4 ? '#a8d070' : GP, 0, r * 0.75, 0, [1, 0.9, 1]));
+        return out;
+      }
+      case 'sunflower': {
+        const h = [0, 0, 4, 7, 9, 10][stage] * U, out = [stem(h, G, 0.035), leaf(0.3, GL, h * 0.35, 0.3), leaf(0.28, GL, h * 0.55, 3.4)];
+        if (stage === 3) out.push(ball(0.07, '#9ed36a', 0, h + 0.05, 0));
+        if (stage >= 4) {
+          const r = stage === 5 ? 0.22 : 0.13;
+          out.push(part('disc', '#f4c430', [0, h + 0.04, 0.06], [r * 2, 0.04, r * 2], [1.1, 0, 0]), part('disc', stage === 5 ? '#6b4320' : '#6b8f3a', [0, h + 0.06, 0.09], [r * 1.0, 0.05, r * 1.0], [1.1, 0, 0]));
+        }
+        return out;
+      }
+      case 'tomato': {
+        const h = [0, 0, 3, 5, 6, 7][stage] * U, out = [stem(h + 0.1, '#8b5a2b', 0.015, 0, 0.06)];
+        for (const [y, x, z] of [[0.45, -0.06, 0.03], [0.7, 0.05, -0.04], [0.95, -0.02, 0.02]]) out.push(ball(0.11 + stage * 0.012, y > 0.9 ? GL : G, x, h * y, z, [1, 0.85, 1], 'lump'));
+        if (stage === 3) out.push(ball(0.03, '#f4d03f', -0.1, h * 0.7, 0.07), ball(0.03, '#f4d03f', 0.07, h * 0.95, 0.06));
+        const fruit = stage === 4 ? ['#9ed36a', '#f08a3a'] : ['#e04a3a', '#e04a3a'];
+        if (stage >= 4) out.push(ball(0.06, fruit[0], -0.11, h * 0.6, 0.09), ball(0.06, fruit[1], 0.1, h * 0.35, 0.08), ball(0.05, fruit[1], 0.02, h * 0.8, 0.12));
+        return out;
+      }
+      case 'pumpkin': {
+        const out = [leaf(0.32, G, 0.03, 0.2, 0.22, 0), leaf(0.28, GL, 0.05, 2.4, 0.2, 0.1)];
+        if (stage >= 3) out.push(leaf(0.3, GL, 0.04, 4.3, 0.22, 0.05));
+        if (stage === 3) out.push(part('blade', '#f4d03f', [0.05, 0.08, 0.05], [0.09, 0.1, 0.09], [Math.PI, 0, 0]));
+        if (stage === 4) out.push(ball(0.09, '#6b8f3a', 0, 0.08, 0.08, [1.2, 0.85, 1.2]));
+        if (stage === 5) out.push(ball(0.2, '#ff8c1a', 0, 0.15, 0.06, [1.25, 0.8, 1.15]), stem(0.08, G, 0.02, 0.2), ball(0.2, '#e07a10', 0, 0.15, 0.06, [0.5, 0.82, 1.18]));
+        return out;
+      }
+      default: return [ball(0.08, G, 0, 0.08, 0)];
+    }
+  }
+
+  const templates = new Map(); // `${crop}|${stage}` → parts
+  const meshes = new Map(); // `${crop}|${stage}|${i}` → InstancedMesh
+  let plants = [];
+  const plantM = new THREE.Matrix4(), out = new THREE.Matrix4();
+  /** The plants to show now: [{ crop, stage, x, z, y, busy, seed }]. */
+  function sync(list) {
+    plants = list;
+    const byKey = new Map();
+    for (const p of list) { const k = `${p.crop}|${p.stage}`; if (!byKey.has(k)) byKey.set(k, []); byKey.get(k).push(p); }
+    for (const [k, mesh] of meshes) if (!byKey.has(k.split('|').slice(0, 2).join('|'))) mesh.count = 0;
+    for (const [k, list2] of byKey) {
+      if (!templates.has(k)) { const [crop, stage] = k.split('|'); templates.set(k, template(crop, Number(stage))); }
+      templates.get(k).forEach((pt, i) => {
+        const mk = `${k}|${i}`;
+        let mesh = meshes.get(mk);
+        if (!mesh || mesh.instanceMatrix.count < list2.length) {
+          if (mesh) { group.remove(mesh); mesh.dispose(); }
+          mesh = new THREE.InstancedMesh(geos[pt.geo], mats.std(pt.color), Math.max(16, list2.length));
+          mesh.castShadow = true; mesh.receiveShadow = true;
+          mesh.frustumCulled = false; // the plants are spread over the whole farm, nearly always in view
+          mesh.userData.list = null;
+          meshes.set(mk, mesh);
+          group.add(mesh);
+        }
+        mesh.count = list2.length;
+        mesh.userData.part = pt;
+        mesh.userData.list = list2;
+      });
+    }
+    tick(0);
+  }
+  /** Sways the plants (t: seconds; 0 holds them still). */
+  function tick(t) {
+    for (const mesh of meshes.values()) {
+      const list = mesh.userData.list;
+      if (!mesh.count || !list) continue;
+      const pt = mesh.userData.part;
+      for (let i = 0; i < mesh.count; i++) {
+        const p = list[i], amp = t ? (p.busy ? 0.07 : 0.045) : 0;
+        e.set(Math.sin(t * 1.3 + p.seed) * amp * 0.5, p.seed, Math.sin(t * 1.7 - p.x * 0.7 + p.z * 0.4) * amp);
+        plantM.compose(v.set(p.x, p.y, p.z), q.setFromEuler(e), s.set(1, 1, 1));
+        mesh.setMatrixAt(i, out.multiplyMatrices(plantM, pt.m));
+      }
+      mesh.instanceMatrix.needsUpdate = true;
+    }
+  }
+  function dispose() { for (const mesh of meshes.values()) mesh.dispose(); meshes.clear(); for (const g of Object.values(geos)) g.dispose(); }
+  return { group, sync, tick, dispose, count: () => plants.length };
+}

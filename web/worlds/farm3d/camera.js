@@ -3,7 +3,7 @@
 // exported for collector/test/farm3d.test.mjs; makeCameraRig drives a three.js camera with them.
 
 export const PITCH = (50 * Math.PI) / 180, FOV = 30;
-export const ZOOMS = [0.5, 0.75, 1, 1.25, 1.5, 2, 2.5, 3];
+export const ZOOMS = [0.5, 0.75, 1, 1.25, 1.5, 2, 2.5, 3, 4, 5, 6]; // past the 2D farm's 3: close enough to see one farmer
 const MIN_ZOOM = ZOOMS[0], MAX_ZOOM = ZOOMS.at(-1);
 
 /** The camera's heading for a turn (0–3): the first looks across the farm's corner with the porch at the back. */

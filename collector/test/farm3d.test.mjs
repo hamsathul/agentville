@@ -202,7 +202,7 @@ test('the camera: four turns a quarter apart, the porch at the back first; a tar
   assert.deepEqual(clampTarget({ x: 99, z: -99 }, { x: 25, z: 30 }), { x: 25, z: -30 });
   assert.deepEqual(clampTarget({ x: 3, z: 4 }, { x: 25, z: 30 }), { x: 3, z: 4 });
   assert.ok(ZOOMS.includes(1));
-  assert.equal(nextZoom(1, 1), 1.25); assert.equal(nextZoom(1, -1), 0.75); assert.equal(nextZoom(3, 1), 3); assert.equal(nextZoom(1.1, 1), 1.25, 'from between two steps: the next one up');
+  assert.equal(nextZoom(1, 1), 1.25); assert.equal(nextZoom(1, -1), 0.75); assert.equal(nextZoom(3, 1), 4, 'closer than the 2D farm goes: down to one farmer'); assert.equal(nextZoom(6, 1), 6); assert.equal(nextZoom(1.1, 1), 1.25, 'from between two steps: the next one up');
   assert.ok(Math.abs(shortestTurn(yawOf(3), yawOf(0)) - Math.PI / 2) < 1e-9, 'from the last turn to the first: a quarter on, not three back');
 });
 

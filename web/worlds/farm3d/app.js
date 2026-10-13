@@ -8,6 +8,9 @@ import { makeSky, skyFor } from './build/sky.js';
 import { makeTerrain } from './build/terrain.js';
 import { makeShapes } from './build/shapes.js';
 import { makeBuildings } from './build/buildings.js';
+import { makeCrops } from './build/crops.js';
+import { makeWeather } from './build/weather.js';
+import { makeBeds } from './build/beds.js';
 import { PX, W } from './layout.js';
 
 const SKIES = ['live', 'day', 'night'], SEASON_MODES = ['live', 'spring', 'summer', 'autumn', 'winter'];
@@ -39,7 +42,8 @@ export function start({ el, opts, prefs }) {
   const scene3 = new THREE.Scene(), camera = new THREE.PerspectiveCamera(30, 1, 0.5, 400);
   const mats = makeMaterials(THREE), sky = makeSky(THREE, scene3, mats), terrain = makeTerrain(THREE, mats);
   const shapes = makeShapes(THREE, mats), buildings = makeBuildings(THREE, mats, shapes);
-  scene3.add(terrain.group, buildings.group);
+  const crops = makeCrops(THREE, mats), beds = makeBeds(THREE, mats, shapes, makeWeather(THREE, mats, shapes), crops);
+  scene3.add(terrain.group, buildings.group, beds.group, crops.group);
   let lampsKey = '';
 
   const pref = (name, allowed, fallback) => (allowed.includes(prefs.get(name)) ? prefs.get(name) : fallback);
@@ -88,11 +92,12 @@ export function start({ el, opts, prefs }) {
 
   function onScene(s) {
     model = M.farmModel(s, keep);
-    const beds = JSON.stringify(model.keep.beds);
-    if (beds !== JSON.stringify(keep.beds)) prefs.set('beds', beds);
+    const bedMap = JSON.stringify(model.keep.beds);
+    if (bedMap !== JSON.stringify(keep.beds)) prefs.set('beds', bedMap);
     keep = model.keep;
     rebuildGround();
     rebuildBuildings();
+    beds.sync(model.beds, model.ground, shownSeason());
     dirty = true;
   }
 
@@ -104,10 +109,26 @@ export function start({ el, opts, prefs }) {
     lastTick = now;
     if (now - lastSky > 2000) { lastSky = now; sky.set(skyFor(new Date(), skyMode, skyAt)); dirty = true; }
     const moving = rig.update(dt);
+    if (!opts.still) { // the world moves: the wind in the crops, the weather
+      const t = now / 1000;
+      crops.tick(t);
+      beds.tick(t, dt);
+    }
     if (!dirty && !moving && opts.still) return;
     dirty = false;
     renderer.render(scene3, camera);
   });
+
+  // For the browser check (scripts/farm3d-check.mjs) and close-up pictures: what is drawn, and a view to hold.
+  window.__farm3d = {
+    stats: () => ({ calls: renderer.info.render.calls, triangles: renderer.info.render.triangles, geometries: renderer.info.memory.geometries, textures: renderer.info.memory.textures, farmers: model?.farmers.length ?? 0, beds: model?.beds.length ?? 0 }),
+    view({ turn, zoom, at } = {}) {
+      if (Number.isInteger(turn)) while (rig.state().turn !== ((turn % 4) + 4) % 4) rig.turn(1);
+      if (zoom) rig.setZoom(zoom);
+      if (at && model) { const p = shapes.at(at[0], at[1], model.ground.H); rig.glideTo(p); }
+      dirty = true;
+    },
+  };
 
   return {
     scene: onScene,
