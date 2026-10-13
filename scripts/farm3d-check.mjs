@@ -77,7 +77,10 @@ try {
       now: state === 'working' ? { tool: 'Edit', step: 'edit', summary: 'x', startedAt: NOW } : null, ...over });
     const many = (n, state, tag) => Array.from({ length: n }, (_, i) => person(`${tag}${i}`, state));
     const crowd = { generatedAt: NOW, collisions: [], repos: [], settings: { cpuAlertPct: 90 }, agents: [...many(7, 'waiting', 'w'), ...many(3, 'yourTurn', 't'), ...many(6, 'stale', 's'), ...many(9, 'idle', 'i'), ...many(6, 'working', 'm')] };
-    for (const [name, snap, want, signs] of [['a crowd with no repos', crowd, 18, ['+4 waiting', '+2 stale', '+5 idle', '+2 in the meadow']], ['a fresh farm with nothing at all', { generatedAt: NOW, collisions: [], repos: [], agents: [] }, 0, ['No fields yet']]]) {
+    // two Claude accounts with no reading of their limits yet (a copy of the dashboard the mod doesn't talk to): a silo each, with a dash
+    const account = (key, name) => ({ key, name, email: null, signedIn: true, open: 0, costUsd: 0, plan: null });
+    const unread = { generatedAt: NOW, collisions: [], repos: [], agents: [person('a', 'idle')], accounts: [account('main', 'work'), account('zeta', 'home')] };
+    for (const [name, snap, want, signs] of [['a crowd with no repos', crowd, 18, ['+4 waiting', '+2 stale', '+5 idle', '+2 in the meadow']], ['a fresh farm with nothing at all', { generatedAt: NOW, collisions: [], repos: [], agents: [] }, 0, ['No fields yet']], ['two accounts with no reading of their limits yet', unread, 1, ['work –', 'home –']]]) {
       await open(chrome, 'everyone');
       const before = chrome.errors.length;
       await chrome.js(`window.TrackerFarm.update(${JSON.stringify(snap)})`);

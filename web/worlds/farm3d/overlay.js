@@ -115,7 +115,7 @@ export function makeOverlay(el, { opts, hooks }) {
       d.className = `f3-cnt${s.silo?.lamp ? ` silo-${s.silo.lamp}` : ''}`;
       const h = pxt(text, s.silo?.lamp === 'red' ? '#ffffff' : '#5a3a1a', null);
       if (d.dataset.html !== h) { d.innerHTML = h; d.dataset.html = h; }
-      d.title = `The silo${s.name ? ` of ${s.name}` : ''}: ${s.name ? 'its' : 'your'} plan's weekly limit, ${s.silo.label} used`;
+      d.title = `The silo${s.name ? ` of ${s.name}` : ''}: ${s.silo ? `${s.name ? 'its' : 'your'} plan's weekly limit, ${s.silo.label} used` : `no reading of ${s.name ? 'its' : 'your'} plan's limits yet`}`; // an account with no reading yet has no silo figures
     }
     prune(silos, keepSilo);
     const keepSign = new Set(), more = m.ground.more ?? 0;
