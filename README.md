@@ -1287,12 +1287,16 @@ patch, the pasture across the front, and the meadow and the forest running on al
   the trees at the forest's edge. The wind sways them, harder while a field rains; the lily pads bob.
   Autumn turns the leaves orange and winter brings snowy pines and bushes and bare branches. Until
   their models load, a moment after the farm, simpler shapes stand in.
-- **Farmers** are figurines dressed as on the farm: the agent's colour for the shirt, a hat by its id
-  with the model's pin, and the tool for its step in hand (a hoe for edits, an almanac for reads, a crate
-  for a commit, a cart for a push, with a flag to deploy…). Waiting on you: on the porch's left, waving,
-  with a red **!** (a scroll for a plan). Turn ended: on the porch's right with a basket (**?** when it
-  asked you something). At work: in its bed. Idle: under the shade tree. Stale: a scarecrow. Waking up
-  by itself (`/loop`): in a hammock. A newcomer walks out of the barn and along the lanes to its place.
+- **Farmers** are Quaternius's animated characters (his Ultimate Modular Men and Women packs, the CC0
+  ones: the Farmer, the Worker, Casual, Hoodie, Business Man, Beach and three women), each agent its own
+  by its id, in the agent's colour (a shirt, a vest, a dress), the model's pin on the chest, and the
+  tool for its step in hand (a hoe for edits, an almanac for reads, a crate for a commit, a cart for a
+  push, with a flag to deploy…). They walk (run in fast mode), swing the hoe, hold or carry their tools,
+  and stand about. Waiting on you: on the porch's left, waving, with a red **!** (a scroll for a plan).
+  Turn ended: on the porch's right with a basket (**?** when it asked you something). At work: in its
+  bed. Idle: under the shade tree. Stale: a scarecrow. Waking up by itself (`/loop`): lying in a
+  hammock. A newcomer walks out of the barn and along the lanes to its place. Until a character's model
+  loads, a moment after the farm, a little figurine stands in.
 - **Fields**: crops grow from seed to ripe as context fills (seven crops, one per repo, as on the farm);
   hay, crates and a mailbox for uncommitted files, unpushed commits and commits behind; a pennant for a
   branch, a rope with orange flags when two agents write at once, a greenhouse over a worktree; rain over
@@ -1354,9 +1358,10 @@ without it the world says so and you can pick another. It uses the graphics card
 second, and draws nothing while the page shows its list or the tab is hidden; with **Motion** off (or
 reduced motion) it draws only when something changes. three.js (0.186.1, MIT licence; with its glTF loader
 for the animals) is part of Agentville, in `web/worlds/farm3d/vendor/`, and the models (the animals, the
-plants) are in `web/worlds/farm3d/models/` (about 7 MB, packed into JS files the world imports; the
-eighteen animals, the lily pads and the plants add about 290 draw calls and the plants about 700,000
-triangles, shadows included): nothing is downloaded from anywhere, and the world sees the same
+plants, the farmers' characters) are in `web/worlds/farm3d/models/` (about 12 MB, packed into JS files
+the world imports and loaded a moment after the farm draws; the eighteen animals, the lily pads and the
+plants add about 290 draw calls and the plants about 700,000 triangles, a farmer two draw calls, shadows
+included): nothing is downloaded from anywhere, and the world sees the same
 scene as the farm and sends nothing.
 
 ### Notifications and the bell

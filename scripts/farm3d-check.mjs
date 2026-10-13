@@ -178,7 +178,22 @@ try {
       else console.log(`  ✓ wind: the trees sway, ${storm.strength / calm1.strength}× harder while a field rains`);
     }
 
-    // 6. memory: the busiest stop and an empty one, swapped 300 times; the geometry held comes back to the same
+    // 6. the farmers as characters (build/character.js): once loaded, every farmer but a scarecrow is one, in its
+    // agent's colour; one waiting on you waves
+    {
+      await open(chrome, 'everyone');
+      const ids = JSON.parse(await chrome.inFrame('/world/farm3d/', 'JSON.stringify(window.__farm3d.farmerIds())'));
+      let seen = [];
+      for (const end = Date.now() + 20_000; Date.now() < end; await sleep(300)) {
+        seen = JSON.parse(await chrome.inFrame('/world/farm3d/', `JSON.stringify(${JSON.stringify(ids)}.map(id => ({ id, ...(window.__farm3d.farmer(id) ?? {}) })))`));
+        if (seen.length && seen.every(f => f.character)) break;
+      }
+      const stats = await statsOf(chrome), waving = seen.filter(f => f.clip === 'Wave');
+      if (!seen.length || !seen.every(f => f.character && /^#[0-9a-f]{6}$/i.test(f.shirt ?? '')) || !waving.length) bad(`characters: ${JSON.stringify(seen)} (each a character in its colour, one waving)`);
+      else console.log(`  ✓ characters: ${seen.length} farmers as ${[...new Set(seen.map(f => f.character))].join(', ')}, ${waving.length} waving; ${stats.calls} draw calls`);
+    }
+
+    // 7. memory: the busiest stop and an empty one, swapped 300 times; the geometry held comes back to the same
     await open(chrome, 'everyone');
     const frames = JSON.parse(await chrome.js("JSON.stringify(['everyone', 'nobody'].map(n => window.AgentvilleTour.stops.find(s => s.name === n).frames[0]))"));
     await chrome.js(`window.__f3frames = ${JSON.stringify(frames)}`);

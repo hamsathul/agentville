@@ -278,6 +278,10 @@ export function start({ el, opts, prefs }) {
     screenOf: id => { const h = farmers.headOf(id); return h ? project(h) : null; }, // where a farmer's head is in the picture, in pixels
     /** The plants drawn, by kind (none until their models have loaded). */
     plants: () => nature.count(),
+    /** A farmer as drawn: its character, the clip it plays, its shirt's colour (null while the figurine stands in). */
+    farmer: id => farmers.info(id),
+    /** The farmers drawn, by id (stale ones are scarecrows). */
+    farmerIds: () => (model?.farmers ?? []).filter(f => !f.scarecrow).map(f => f.id),
     /** The wind in the trees: its clock and strength. */
     wind: () => nature.wind(),
     /** Animal i: its kind, what it is doing, where it is on the 2D map, and where its middle is in the picture, in pixels. */

@@ -139,6 +139,19 @@ test("the farmers' characters: Quaternius's modular men and women (CC0), each wi
   }
 });
 
+test("the farmers' characters: an agent keeps its own, they spread, and every pose has a clip in every one", async () => {
+  const { CHARACTERS, characterFor, clipFor, POSES } = await import('../../web/worlds/farm3d/characters.js');
+  const { MODELS } = await import('../../web/worlds/farm3d/models/index.js');
+  assert.deepEqual([...CHARACTERS].sort(), PERSON_KINDS);
+  assert.equal(characterFor('a1b2'), characterFor('a1b2'));
+  const counts = new Map();
+  for (let i = 0; i < 600; i++) { const k = characterFor(`agent-${i}`); counts.set(k, (counts.get(k) ?? 0) + 1); }
+  assert.deepEqual([...counts.keys()].sort(), [...CHARACTERS].sort(), 'every character is someone');
+  assert.ok(Math.min(...counts.values()) > 600 / CHARACTERS.length / 3, `spread: ${[...counts.values()]}`);
+  for (const kind of CHARACTERS) for (const pose of POSES) assert.ok(MODELS[kind].clips[clipFor(pose)], `${kind}: ${pose}`);
+  assert.deepEqual(POSES.slice().sort(), ['basket', 'carry', 'hold', 'idle', 'nap', 'push', 'raise', 'run', 'swing', 'walk', 'wave']);
+});
+
 // The colour areas a model's eyes are, where their names don't say so.
 const EYES = { husky: ['Material.002', 'Material.003'], stag: ['Material.011'], frog: ['Black'] };
 

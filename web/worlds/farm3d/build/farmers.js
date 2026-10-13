@@ -71,8 +71,8 @@ export function makeFarmers(THREE, figures, S) {
       fig.root.rotation.y = b.face;
       fig.setProp(moving ? null : f.prop, f.flag);
       fig.setBadge(f.badge === 'basket' && moving ? null : f.badge, f.thinking);
-      const kind = moving ? 'walk' : f.scarecrow ? 'scarecrow' : f.nap ? 'nap' : f.state === 'waiting' ? 'wave' : f.badge === 'basket' ? 'basket' : f.state === 'working' ? fig.propPose() ?? 'hold' : 'idle';
-      fig.pose(kind, still ? 0 : t);
+      const kind = moving ? (f.fast ? 'run' : 'walk') : f.scarecrow ? 'scarecrow' : f.nap ? 'nap' : f.state === 'waiting' ? 'wave' : f.badge === 'basket' ? 'basket' : f.state === 'working' ? fig.propPose() ?? 'hold' : 'idle';
+      if (fig.pose(kind, still ? 0 : t)) walking = true; // a character just arrived: draw it, still or not
     }
     return walking;
   }
@@ -88,5 +88,7 @@ export function makeFarmers(THREE, figures, S) {
     hits: () => [...bodies.values()].map(b => b.fig.root),
     select(id) { for (const [k, b] of bodies) b.fig.setSelected(k === id); },
     count: () => bodies.size,
+    /** A farmer's character, what it plays and its shirt (for the check); null while its figurine stands in. */
+    info: id => bodies.get(id)?.fig.info() ?? null,
   };
 }

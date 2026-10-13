@@ -3,8 +3,12 @@
 // pin on it, and a beard, glasses or cheeks. A stale farmer is a scarecrow on a pole, in straw and sacking. Each moving
 // part (the body, two legs, two arms) is one baked mesh (shapes.merge), so a farmer is a handful of draw calls; the
 // baked geometry is shared by every farmer who looks the same. Badges float over the head; a ring marks the one the
-// page's sidebar shows.
+// page's sidebar shows. Once its character's model has loaded (build/character.js; characters.js picks which by its
+// id), a farmer is that character instead, in its shirt colour, its tool in hand, the model's pin on its chest; the
+// figurine stands in until then, and stays for a scarecrow.
 import { CART_FLAG, propOf } from './props.js';
+import { makeCharacters } from './character.js';
+import { characterFor } from '../characters.js';
 
 const SCARECROW = { shirt: '#8b7a55', bottom: '#6b5a3a', skin: '#d8c48a', hair: '#c9a24a', hat: '#c9a24a', band: '#7a5230' };
 const shade = (hex, k) => `#${[1, 3, 5].map(i => Math.min(255, Math.round(parseInt(hex.slice(i, i + 2), 16) * k)).toString(16).padStart(2, '0')).join('')}`;
@@ -12,7 +16,7 @@ const HAT_TOP = { straw: 1.82, cap: 1.81, beanie: 1.9, bandana: 1.77, none: 1.7 
 export const FIGURE_SCALE = 1.2; // a little larger than life, as the 2D farm's are: they are seen from above
 
 export function makeFigures(THREE, mats, S) {
-  const material = mats.std('#ffffff', { vertexColors: true });
+  const material = mats.std('#ffffff', { vertexColors: true }), people = makeCharacters(THREE);
   // Baked geometry, shared by every figure that looks the same, and freed when the last of them goes (a day of
   // agents coming and going leaves nothing behind).
   const cache = new Map(); // key → { geo, users }
@@ -80,10 +84,12 @@ export function makeFigures(THREE, mats, S) {
     root.userData.id = f.id;
     const pivots = {}, owner = {};
     let dressed = '', prop = null, propName = '', badge = null, badgeName = '', think = null, pole = null;
+    let char = null, charKind = null, pinDot = null, lastF = f; // its character, once loaded
     const ring = new THREE.Mesh(ringGeo, ringMat);
     ring.visible = false; ring.position.y = 0.03;
     root.add(ring);
     function dress(f2) {
+      lastF = f2;
       const look = f2.look ?? {}, scare = f2.scarecrow;
       const c = scare ? SCARECROW : { shirt: f2.shirt ?? '#d9673a', bottom: look.bottomColor ?? '#3c5a99', skin: look.skin ?? '#f1c7a1', hair: look.hair ?? '#5a3a22', hat: look.hatColor ?? '#e9c46a', band: look.band ?? '#b5562f' };
       const lk = scare ? { ...look, hat: look.hat === 'none' ? 'straw' : look.hat, extra: 'none' } : look;
@@ -109,6 +115,15 @@ export function makeFigures(THREE, mats, S) {
         fig.position.y = 0.25;
         pivots.armL.rotation.z = -1.45; pivots.armR.rotation.z = 1.45;
       } else fig.position.y = 0;
+      // its character (none for a scarecrow): made once its model has loaded; the figurine stands in till then
+      const kind = scare ? null : characterFor(f2.id);
+      if (char && kind !== charKind) { char.dispose(); char = null; }
+      charKind = kind;
+      if (kind && !char) { char = people.make(kind); if (char) root.add(char.root); }
+      if (char) char.setShirt(c.shirt);
+      fig.visible = !char;
+      if (pinDot) { pinDot.removeFromParent(); pinDot = null; }
+      if (char && pin) { pinDot = new THREE.Mesh(baked(`pin|${pin}`, [{ geo: 'sphere', color: pin, pos: [0.15, 1.42, 0.16], scale: [0.06, 0.06, 0.05] }]), material); root.add(pinDot); }
       propName = ''; // put the prop back on the new arms
     }
     function setProp(name, flag) {
@@ -120,17 +135,18 @@ export function makeFigures(THREE, mats, S) {
       const p = propOf(name), g = baked(`prop|${name}|${flag}`, [...p.parts, ...(name === 'cart' && flag ? CART_FLAG : [])]);
       prop = new THREE.Mesh(g, material);
       prop.castShadow = true;
-      if (p.at === 'right') { prop.position.set(0, -0.44, 0); pivots.armR.add(prop); }
-      else if (p.at === 'chest') { prop.position.set(0, 0.95, 0.42); fig.add(prop); }
-      else if (p.at === 'eye') { prop.position.set(0.1, 1.42, 0.25); fig.add(prop); }
-      else { prop.position.set(0, 0, 0.55); fig.add(prop); }
+      const body = char ? root : fig;
+      if (p.at === 'right') { if (char) char.holdInHand(prop); else { prop.position.set(0, -0.44, 0); pivots.armR.add(prop); } }
+      else if (p.at === 'chest') { prop.position.set(0, 0.95, 0.42); body.add(prop); }
+      else if (p.at === 'eye') { prop.position.set(0.1, 1.42, 0.25); body.add(prop); }
+      else { prop.position.set(0, 0, 0.55); body.add(prop); }
       prop.userData.pose = p.pose;
     }
     function setBadge(name, thinking) {
       if (name !== badgeName) {
         badgeName = name;
         if (badge) { badge.removeFromParent(); badge = null; }
-        if (name === 'basket') { badge = new THREE.Mesh(baked('badge|basket', BADGES.basket), material); badge.position.set(0, 0.62, 0.42); fig.add(badge); }
+        if (name === 'basket') { badge = new THREE.Mesh(baked('badge|basket', BADGES.basket), material); badge.position.set(0, 0.62, 0.42); (char ? root : fig).add(badge); }
         else if (name) { badge = new THREE.Mesh(baked(`badge|${name}`, BADGES[name]), material); badge.position.set(0.58, 1.75, 0); root.add(badge); } // beside the head, as the 2D farm has it, so the name tag can sit just over the hat
         if (badge) badge.castShadow = true;
       }
@@ -144,13 +160,18 @@ export function makeFigures(THREE, mats, S) {
      * clock (0 holds it still).
      */
     function pose(kind, t) {
+      let arrived = false;
+      if (!char && charKind && people.ready(charKind)) { dressed = ''; dress(lastF); arrived = Boolean(char); } // its character has just loaded
+      if (badge && badgeName !== 'basket') badge.position.y = 1.75 + (t ? Math.abs(Math.sin(t * 3)) * 0.1 : 0);
+      if (think) think.position.y = 2.1 + (t ? Math.sin(t * 2) * 0.05 : 0);
+      if (char) { char.pose(kind, t); if (pinDot) pinDot.visible = kind !== 'nap'; return arrived; }
       const { legL, legR, armL, armR } = pivots, s = Math.sin(t * 9), w = Math.sin(t * 5);
       if (!legL) return;
       fig.rotation.set(0, 0, 0);
       fig.position.y = pole ? 0.25 : 0;
       legL.rotation.set(0, 0, 0); legR.rotation.set(0, 0, 0);
       if (kind !== 'scarecrow') { armL.rotation.set(0, 0, 0); armR.rotation.set(0, 0, 0); }
-      if (kind === 'walk') { legL.rotation.x = s * 0.6; legR.rotation.x = -s * 0.6; armL.rotation.x = -s * 0.5; armR.rotation.x = s * 0.5; fig.position.y = Math.abs(s) * 0.05; }
+      if (kind === 'walk' || kind === 'run') { legL.rotation.x = s * 0.6; legR.rotation.x = -s * 0.6; armL.rotation.x = -s * 0.5; armR.rotation.x = s * 0.5; fig.position.y = Math.abs(s) * 0.05; }
       else if (kind === 'swing') { armR.rotation.x = -1.3 + w * 0.6; armL.rotation.x = -0.9 + w * 0.35; fig.rotation.x = 0.08 + w * 0.04; }
       else if (kind === 'hold') { armL.rotation.x = -0.95; armR.rotation.x = -0.95 + Math.sin(t * 1.5) * 0.05; armL.rotation.z = 0.25; armR.rotation.z = -0.25; }
       else if (kind === 'raise') { armR.rotation.x = -2.2; armR.rotation.z = 0.35; armL.rotation.x = -0.4; }
@@ -159,14 +180,14 @@ export function makeFigures(THREE, mats, S) {
       else if (kind === 'wave') { armR.rotation.z = 2.6 + Math.sin(t * 8) * 0.35; }
       else if (kind === 'nap') { fig.rotation.x = -Math.PI / 2; fig.position.y = 1.05; armL.rotation.z = -0.2; armR.rotation.z = 0.2; }
       else if (kind === 'idle') { armL.rotation.z = -0.08; armR.rotation.z = 0.08; fig.position.y = Math.sin(t * 1.4) * 0.01; }
-      if (badge && badgeName !== 'basket') badge.position.y = 1.75 + (t ? Math.abs(Math.sin(t * 3)) * 0.1 : 0);
-      if (think) think.position.y = 2.1 + (t ? Math.sin(t * 2) * 0.05 : 0);
     }
     const figure = {
       root, pivots, pose, setProp, setBadge, propPose: () => prop?.userData.pose ?? null,
       setSelected(on) { ring.visible = on; },
       update(f2) { dress(f2); },
-      dispose() { root.removeFromParent(); release(owner); },
+      /** Which character it is, what it plays and its shirt's colour (for the check); null while the figurine stands in. */
+      info: () => (char ? { character: charKind, clip: char.playing(), shirt: lastF.shirt ?? null } : null),
+      dispose() { char?.dispose(); root.removeFromParent(); release(owner); },
     };
     dress(f);
     return figure;
