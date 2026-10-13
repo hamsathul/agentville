@@ -62,7 +62,7 @@ const HELP = `<h2>The 3D farm <small>(a prototype)</small></h2>
     <dt>Pigeons</dt><dd>A note from one agent to another, flying over</dd>
     <dt>Buildings</dt><dd>The barn: start a session · the silo: your plan's week as grain, a lamp near the limit (click for the meters) · the stall: pull requests, a crate each · the notice board: what your projects remember</dd>
     <dt>Animals</dt><dd>Just for fun, never for data. They roam the farm round what stands on it, play and play-fight with each other (tag, a race, a headbutt duel…), and idle farmers come and play with them; they all talk now and then. Click one for its menu: Talk, Play, and Pet, Feed or Throw a stick, which send a farmer over</dd>
-    <dt>Moving</dt><dd>Drag to pan, scroll or pinch to zoom. Right-drag (or Shift-drag) to turn and tilt the farm; ↺ ↻ (or Q / E) turn it 15°, ⌂ puts it back square-on. Follow in the Menu keeps the farmer you picked in the middle. Click a farmer to open it; its bubble for its whole conversation; a building or a field for what it holds</dd>
+    <dt>Moving</dt><dd>Drag to pan, scroll or pinch to zoom. Right-drag (or Shift-drag) to turn and tilt the farm; ↺ ↻ (or Q / E) turn it 15°, ⌂ puts it back square-on. Follow in the Menu keeps the farmer you picked in the middle; zoomed in, the minimap in the corner shows where you are (click it to go elsewhere). Click a farmer to open it; its bubble for its whole conversation; a building or a field for what it holds</dd>
   </dl>
   <p>Not here yet: the 2D farm's animal pranks.</p>`;
 
@@ -250,7 +250,7 @@ export function makeOverlay(el, { opts, hooks }) {
       e.style.transform = `translate(${Math.round(p.x)}px, ${Math.round(y)}px) translate(-50%, -100%)`;
     }
     prune(talks, keepTalk);
-    if (pet) { const top = hooks.animal(pet.i)?.top; if (top) put(pet.el, project(top), -4); else closePet(); }
+    if (pet) { const top = hooks.animalTop(pet.i); if (top) put(pet.el, project(top), -4); else closePet(); }
     // the pops: up 30 px and gone in 2 s; one whose point has gone goes with it
     const now = performance.now();
     pops = pops.filter(p => {
@@ -275,7 +275,7 @@ export function makeOverlay(el, { opts, hooks }) {
     const sends = info.menu.some(m => SENDS[m.id] !== undefined) && !opts.still, who = sends ? hooks.doers(i) : { doer: null, others: [] };
     let doer = who.doer;
     const whoHtml = () => `${doer ? `${esc(doer.name)} will go` : 'You do it'}${[who.doer, ...who.others].filter(f => f && f.id !== doer?.id).map(f => `<button type="button" data-send="${esc(f.id)}" title="Send ${esc(f.name)} instead" aria-label="Send ${esc(f.name)} instead" style="background:${esc(f.shirt ?? '#9aa0a6')}"></button>`).join('')}`;
-    el2.innerHTML = `<b>${esc(info.title)}</b><button type="button" class="close" aria-label="Close">×</button><div class="acts">${info.menu.map(m => `<button type="button" data-act="${m.id}"${opts.still || (m.disabled ?? false) ? ' disabled' : ''}${m.title ? ` title="${esc(m.title)}"` : ''}>${esc(m.label)}</button>`).join('')}</div>${sends ? `<p class="who">${whoHtml()}</p>` : ''}${opts.still ? '<p>Motion is off, so the animals stand still. Turn it on in the Menu to play with them.</p>' : ''}`;
+    el2.innerHTML = `<b>${esc(info.title)}</b><button type="button" class="close" aria-label="Close">×</button><div class="acts">${info.menu.map(m => `<button type="button" data-act="${m.id}"${opts.still || info.busyWith || (m.disabled ?? false) ? ' disabled' : ''}${m.title ? ` title="${esc(m.title)}"` : ''}>${esc(m.label)}</button>`).join('')}</div>${sends && !info.busyWith ? `<p class="who">${whoHtml()}</p>` : ''}${info.busyWith ? '<p>Busy playing just now: ask again in a moment.</p>' : ''}${opts.still ? '<p>Motion is off, so the animals stand still. Turn it on in the Menu to play with them.</p>' : ''}`;
     el2.addEventListener('click', e => {
       const b = e.target.closest('button');
       if (!b) return;

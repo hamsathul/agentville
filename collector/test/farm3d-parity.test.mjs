@@ -56,10 +56,13 @@ test('at 100% the farm fits beside the panel or below it, whichever shows it big
   assert.deepEqual(clearRect(1600, 700, { w: 330, h: 240 }, fitFor), { x: 330, y: 0, w: 1270, h: 700 }); // a wide window: beside
   assert.deepEqual(clearRect(700, 1200, { w: 330, h: 240 }, fitFor), { x: 0, y: 240, w: 700, h: 960 }); // a tall one: below
 });
-test("the panel's box only grows while it shows, so the farm doesn't jump as its figures change; folded, none", () => {
-  assert.deepEqual(holdBox(null, { w: 300, h: 200 }), { w: 300, h: 200 });
-  assert.deepEqual(holdBox({ w: 300, h: 200 }, { w: 290, h: 210 }), { w: 300, h: 210 });
-  assert.equal(holdBox({ w: 300, h: 200 }, null), null);
+test("the panel's box is held with 24 px to spare (the engine's holdHud), so the farm doesn't jump as its figures change; folded, none", () => {
+  assert.deepEqual(holdBox(null, { w: 300, h: 200 }), { w: 324, h: 200 });
+  const kept = { w: 324, h: 200 };
+  assert.equal(holdBox(kept, { w: 301, h: 200 }), kept, '$9.99 → $10.00: no refit');
+  assert.equal(holdBox(kept, { w: 324, h: 190 }), kept);
+  assert.deepEqual(holdBox(kept, { w: 330, h: 210 }), { w: 354, h: 210 });
+  assert.equal(holdBox(kept, null), null);
 });
 
 import { dialogFor, buildingTip, boardSessions, boardHtml, stallOf, BOARD_TITLE } from '../../web/worlds/farm3d/dialogs.js';
@@ -105,6 +108,7 @@ test("the stall: a crate on its counter for each open pull request (8 at most), 
 });
 
 import { clickOrder } from '../../web/worlds/farm3d/hud.js';
+import { guarded } from '../../web/worlds/farm3d/guard.js';
 test('a click finds a farmer first, then an animal, then a building, then a field', () => {
   assert.deepEqual(clickOrder([{ field: 'k' }, { building: 'barn' }, { animal: 2 }, { id: 'a' }]), { id: 'a' });
   assert.deepEqual(clickOrder([{ field: 'k' }, { building: 'barn' }, { animal: 0 }]), { animal: 0 });
@@ -422,4 +426,66 @@ import { toMap } from '../../web/worlds/farm3d/minimap.js';
 import { toWorld } from '../../web/worlds/farm3d/layout.js';
 test("the minimap's point for a place on the ground is the 2D map's", () => {
   for (const [x, y] of [[0, 0], [280, 200], [560, 410], [123.5, 77.25]]) { const [mx, my] = toMap(toWorld(x, y, 410), 410); assert.ok(Math.abs(mx - x) < 1e-9 && Math.abs(my - y) < 1e-9); }
+});
+
+// ---------- the final review's fixes ----------
+test('Play from a menu: never for an animal busy in a game or a talk, never while another game is on; why, when greyed out', () => {
+  const w = W([{ kind: 'husky', x: 0, y: 0 }, { kind: 'shiba', x: 30, y: 0 }]);
+  assert.equal(partnerFor(0, W([{ kind: 'husky', x: 0, y: 0, free: false }, { kind: 'shiba', x: 30, y: 0 }]), { playOnly: true }), null, 'the one clicked is busy');
+  const r = createRomps({ rand: () => 0 });
+  assert.deepEqual(r.playButton(0, w), { disabled: false, title: null });
+  assert.deepEqual(r.playButton(0, W([{ kind: 'husky', x: 0, y: 0, free: false }, { kind: 'shiba', x: 30, y: 0 }])), { disabled: true, title: 'Busy just now' });
+  assert.deepEqual(r.playButton(0, W([{ kind: 'husky', x: 0, y: 0 }, { kind: 'shiba', x: 300, y: 0 }])), { disabled: true, title: 'Nobody to play with nearby' });
+  assert.equal(r.start('tag', 0, 1, W([{ kind: 'husky', x: 0, y: 0, free: false }, { kind: 'shiba', x: 30, y: 0 }]), rompCtx()), false, 'start refuses a busy one');
+  assert.equal(r.start('tag', 0, 1, W([{ kind: 'husky', x: 0, y: 0 }, { kind: 'shiba', x: 30, y: 0, free: false }]), rompCtx()), false);
+  assert.ok(r.start('tag', 0, 1, w, rompCtx()));
+  const w2 = W([{ kind: 'husky', x: 0, y: 0 }, { kind: 'shiba', x: 30, y: 0 }, { kind: 'cow', family: 'hooves', x: 500, y: 500 }, { kind: 'bull', family: 'hooves', x: 510, y: 500 }]);
+  assert.deepEqual(r.playButton(2, w2), { disabled: true, title: 'Another game is on just now' });
+});
+test("the menu's farmer is checked again when you pick: not if it has started a play, waits on you, or the animal is busy", () => {
+  const mk = () => {
+    let onErr = new Set();
+    return {
+      now: 0, still: false, animalsOn: true, busy: new Set(), idleSince: new Map(),
+      farmers: [{ id: 'f', name: 'Ada', x: 0, y: 0, state: 'idle' }, { id: 'w', name: 'Bo', x: 5, y: 0, state: 'waiting' }],
+      animals: [{ i: 3, kind: 'husky', x: 40, y: 0, free: true }, { i: 4, kind: 'cow', x: 60, y: 0, free: true }, { i: 5, kind: 'cow', x: 80, y: 0, free: false }],
+      animal: i => ({ x: 40 + (i - 3) * 20, y: 0, act: null }), errand: id => onErr.add(id), endErrand: id => onErr.delete(id), onErrand: id => onErr.has(id), arrived: () => false,
+      setPose() {}, perform() {}, release() {}, command() {}, face() {}, pop() {},
+    };
+  };
+  const plays = createPlays({ rand: seq(0) }), ctx = mk();
+  assert.equal(plays.send(3, 'fetch', 'f', ctx), true);
+  assert.equal(plays.send(4, 'pet', 'f', ctx), false, 'Ada is already at play');
+  assert.equal(plays.send(4, 'pet', 'w', ctx), false, 'Bo waits on you');
+  const p2 = createPlays({ rand: seq(0) });
+  assert.equal(p2.send(5, 'pet', 'f', mk()), false, 'the cow is busy');
+  const ctx3 = mk(); ctx3.busy = new Set([4]);
+  assert.equal(p2.send(4, 'pet', 'f', ctx3), false, 'the cow is in a game or a talk');
+});
+test('guarded: a piece that throws is reported once and the rest of the frame goes on', () => {
+  const told = [];
+  const g = guarded((err, where) => told.push(where));
+  let after = 0;
+  for (let k = 0; k < 3; k++) { g('carts', () => { throw new Error('boom'); }); after++; }
+  assert.equal(after, 3);
+  assert.deepEqual(told, ['carts']);
+  assert.equal(g('flock', () => 7), 7);
+});
+
+import * as THREE3 from '../../web/worlds/farm3d/vendor/three.module.js';
+import { makeCameraRig } from '../../web/worlds/farm3d/camera.js';
+test("Follow ends when you zoom out to the whole farm: at 100% the view is the whole farm, in the middle", () => {
+  globalThis.document ??= { addEventListener() {} };
+  const dom = { addEventListener() {}, setPointerCapture() {}, clientHeight: 800 };
+  const rig = makeCameraRig(THREE3, new THREE3.PerspectiveCamera(30, 1, 0.5, 400), dom);
+  rig.setFrame(1000, 800);
+  rig.setFarm({ half: { x: 30, z: 25 }, points: [-1, 1].flatMap(sx => [-1, 1].map(sz => ({ x: sx * 30, y: 0, z: sz * 25 }))) });
+  let off = 0;
+  rig.follow(() => ({ x: 12, z: 6 }), () => off++);
+  for (let k = 0; k < 30; k++) rig.update(0.1);
+  assert.ok(rig.state().target.x > 10, 'following');
+  rig.setZoom(1);
+  rig.update(0.1);
+  assert.equal(off, 1, 'Follow ended');
+  assert.deepEqual(rig.state().target, { x: 0, z: 0 });
 });

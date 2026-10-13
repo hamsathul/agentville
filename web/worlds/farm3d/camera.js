@@ -77,8 +77,15 @@ export function clearRect(W, H, panel, fitFor) {
   const size = r => r.h / fitFor(r.w / r.h);
   return size(beside) >= size(below) ? beside : below;
 }
-/** The panel's box, held while it shows: it grows and never shrinks, so the farm doesn't jump as its figures change (null: folded). */
-export const holdBox = (kept, now) => (now ? (kept ? { w: Math.max(kept.w, now.w), h: Math.max(kept.h, now.h) } : now) : null);
+/**
+ * The panel's box, held while it shows, with 24 px to spare across (the engine's holdHud): a figure a digit longer
+ * fits, so the farm doesn't jump as they change; it only grows (null: folded).
+ */
+export function holdBox(kept, now) {
+  if (!now) return null;
+  if (kept && now.w <= kept.w && now.h <= kept.h) return kept;
+  return kept ? { w: Math.max(kept.w, now.w + 24), h: Math.max(kept.h, now.h) } : { w: now.w + 24, h: now.h };
+}
 
 const ease = t => (t < 0.5 ? 2 * t * t : 1 - (-2 * t + 2) ** 2 / 2);
 
@@ -158,7 +165,7 @@ export function makeCameraRig(THREE, camera, dom, { yaw = DEFAULT_VIEW.yaw, pitc
       }
       if (follow) {
         const p = follow.get();
-        if (!p) unfollow();
+        if (!p || state.zoom <= 1) unfollow(); // its farmer went, or you zoomed out to the whole farm (which stays in the middle)
         else {
           const to = clampTarget(followStep(state.target, p, still ? 0 : dt), farm.half); // still: there at once
           if (Math.hypot(to.x - state.target.x, to.z - state.target.z) > 1e-4) { state.target = to; place(); moving = true; }

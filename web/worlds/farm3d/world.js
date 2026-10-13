@@ -11,7 +11,9 @@
     const said = String(err?.message ?? err).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]);
     let open = false;
     const draw = () => {
-      el.innerHTML = `<div class="f3-nogl" role="status">The 3D farm could not load.<small>${said}</small></div><div class="px-hud">${defaultHud({ nav: opts.navState?.() ?? {}, menuOpen: open, seasons: true })}</div>`;
+      // its own look: app.js, which styles the farm, is what failed to load
+      const box = 'position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:8px;padding:24px;text-align:center;background:#1c3320;color:#fff3d6;font:600 15px/1.45 system-ui,sans-serif';
+      el.innerHTML = `<div class="f3-nogl" role="status" style="${box}">The 3D farm could not load.<small style="max-width:520px;font-weight:400;color:#c9b48a">${said} Reload the page, or choose another world with World in the Menu.</small></div><div class="px-hud">${defaultHud({ nav: opts.navState?.() ?? {}, menuOpen: open, seasons: true })}</div>`;
       for (const b of el.querySelectorAll('.px-hud button:not([data-farm-nav]):not([data-farm-menu])')) b.disabled = true;
     };
     el.addEventListener('click', e => {

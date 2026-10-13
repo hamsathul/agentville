@@ -153,7 +153,16 @@ export function createPlays({ rand = Math.random } = {}) {
       if (cast) start(cast.play.id, cast.farmer, cast.animal, ctx);
       return cast;
     },
-    send(i, act, farmerId, ctx) { return start(act, farmerId, i, ctx); },
+    /**
+     * The menu's: that farmer walks over and does it, checked again now (the menu opened a while ago): not if it has
+     * started a play or an errand, waits on you, its turn ended or it is stale, or the animal is busy; false then.
+     */
+    send(i, act, farmerId, ctx) {
+      const f = ctx.farmers.find(x => x.id === farmerId), a = ctx.animals.find(x => x.i === i), busy = new Set([...busySet(), ...ctx.busy]);
+      if (!f || f.errand || ['waiting', 'turn', 'stale'].includes(f.state) || busy.has(farmerId)) return false;
+      if (!a || a.free === false || busy.has(i)) return false;
+      return start(act, farmerId, i, ctx);
+    },
     /** Starts a play now, whatever the clock says (for the check): the next tick casts one. */
     soon() { wait = 0; },
     busy: busySet,

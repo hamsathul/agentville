@@ -30,6 +30,7 @@ import { makePigeons } from './build/pigeons.js';
 import { createTalk } from './talk.js';
 import { HERDS } from './antics.js';
 import { roamOf } from './roam.js';
+import { guarded } from './guard.js';
 import { SENDS, chooseDoer, createPlays } from './play.js';
 import { createRomps, partnerFor } from './romps.js';
 
@@ -125,6 +126,8 @@ export function start({ el, opts, prefs }) {
   /** The ball trees, bushes and rocks stand in until the plants' models are drawn. */
   const standIns = () => { const on = !nature.ready(); terrain.setForest(on); buildings.setPlants(on); };
   const diary = createDiary();
+  const piece = guarded(report); // each piece of a frame on its own: one that throws is told once and skipped
+  let minimapAt = -1e9, roadItems = []; // roadItems: the web calls' carts to town now (for the check)
   // Farmers at play with the animals (play.js): how long each has been idle, and the farm as a play sees it
   const plays = createPlays(), idleSince = new Map();
   const playCtx = {
@@ -187,12 +190,14 @@ export function start({ el, opts, prefs }) {
     pick: id => pickFarmer(id),
     openField: key => field.open(key),
     hover: id => overlay.setHover(id),
-    animal: i => { // its menu's Play is greyed out with no one near to play with
+    animal: i => { // its menu: Play greyed out (and why) when it can't start a game; nothing to pick while it is in one
       const info = animals.info(i);
       if (!info) return info;
-      const alone = partnerFor(i, rompWorld(), { playOnly: true }, clearBetween) === null;
-      return { ...info, menu: info.menu.map(m => (m.id === 'play' && alone ? { ...m, disabled: true, title: 'Nobody to play with nearby' } : m)) };
+      const play = romps.playButton(i, rompWorld(), clearBetween), busyWith = plays.busy().has(i) || romps.busy().has(i) ? 'playing' : null;
+      return { ...info, busyWith, menu: info.menu.map(m => (m.id === 'play' && play.disabled ? { ...m, disabled: true, title: play.title } : m)) };
     },
+    /** The point over animal i's head, in the world (its menu stands there). */
+    animalTop: i => animals.info(i)?.top ?? null,
     /** Who would go for animal i's Pet, Feed or Throw a stick: { doer, others: [{ id, name, shirt }] } (none while still). */
     doers(i) {
       const a = animals.info(i);
@@ -201,6 +206,7 @@ export function start({ el, opts, prefs }) {
       return { doer: who.doer && of(who.doer), others: who.others.map(of).filter(Boolean).slice(0, 4) };
     },
     act(i, act, doer) {
+      if (plays.busy().has(i) || romps.busy().has(i)) return; // in a game: its menu waits till it is over
       if (act === 'play') { // with the nearest it can play with: a romp, never a fight
         const w = rompWorld(), j = partnerFor(i, w, { playOnly: true }, clearBetween), id = j !== null && romps.playFor(i, j, w);
         if (id) romps.start(id, i, j, w, rompCtx);
@@ -346,8 +352,10 @@ export function start({ el, opts, prefs }) {
     keep = model.keep;
     rebuildAll();
     farmers.sync(shownModel(), { instant: firstScene || opts.still });
-    flock.sync(new Map(shownModel().farmers.map(f => [f.id, f.kids])), id => farmers.posOf(id));
-    flock.setHenhouse(henhouseView(model.henhouse), model.ground.H);
+    piece('hens', () => {
+      flock.sync(new Map(shownModel().farmers.map(f => [f.id, f.kids])), id => farmers.posOf(id));
+      flock.setHenhouse(henhouseView(model.henhouse), model.ground.H);
+    });
     farmers.select(selected);
     overlay.sync(shownModel(), { bubblesOn, near: near() });
     overlay.setSelected(selected);
@@ -355,7 +363,7 @@ export function start({ el, opts, prefs }) {
     field.refresh(); // an open close-up reads its field again (at most every 5 s)
     for (const f of model.farmers) if (f.state === 'idle') { if (!idleSince.has(f.id)) idleSince.set(f.id, performance.now()); } else idleSince.delete(f.id); // how long each has been idle, for play
     // the diary (the sidebar's Farm diary) and the pops: who came, went where, harvested, sold, sent a note
-    const told = diary.update(model, new Set(shownModel().farmers.map(f => f.id)), Date.now());
+    const told = piece('diary', () => diary.update(model, new Set(shownModel().farmers.map(f => f.id)), Date.now())) ?? { entries: null, pops: [], flights: [] };
     if (told.entries) opts.onDiary?.(told.entries);
     if (!opts.still) for (const f of told.flights) pigeons.launch(f.from, f.to);
     if (!opts.still) for (const p of told.pops) overlay.pop(p.id ? () => (h => h && { x: h.x, y: h.y + 0.5, z: h.z })(farmers.headOf(p.id)) : () => at3(STALL.x + 14, STALL.y + 20, 3), p.text, p.cls);
@@ -450,28 +458,39 @@ export function start({ el, opts, prefs }) {
     const moving = rig.update(dt, opts.still), t = opts.still ? 0 : now / 1000;
     const walking = farmers.tick(t, dt, opts.still);
     if (model) {
-      flock.tick(t, dt, id => farmers.posOf(id), opts.still, farmers.groundAt);
       const shown = shownModel().farmers, shownIds = new Set(shown.map(f => f.id)), byId = new Map(model.scene.farmers.map(f => [f.id, f]));
-      flock.whistle(t, shown.filter(f => f.prop === 'whistle').map(f => farmers.headOf(f.id)).filter(Boolean), opts.still);
-      // the carts: an MCP server's drives to the farmer calling it (one not drawn: it stays home); a web call's goes to town
-      cartItems = carts.tick(model.carts, dt, id => (shownIds.has(id) ? farmers.posOf(id) : null), opts.still, performance.now()); // a duration: the page clock may stand still
-      const road = shown.map(f => { const c = cartOf(f, now / 1000); return c && { id: f.id, ...c }; }).filter(Boolean);
-      cartMeshes.tick(cartItems, road, dt, opts.still);
-      const zoomed = rig.state().zoom > 1.01;
-      minimap.show(zoomed);
-      if (zoomed) minimap.draw(shownModel(), fid => farmers.posOf(fid), viewCorners(), now);
-      overlay.setMovers([
+      piece('hens', () => {
+        flock.tick(t, dt, id => farmers.posOf(id), opts.still, farmers.groundAt);
+        flock.whistle(t, shown.filter(f => f.prop === 'whistle').map(f => farmers.headOf(f.id)).filter(Boolean), opts.still);
+      });
+      // the carts: an MCP server's drives to the farmer calling it (one not drawn: it stays home); a web call's goes to
+      // town and back, on the farm's clock (still with Motion off)
+      const road = piece('carts', () => {
+        cartItems = carts.tick(model.carts, dt, id => (shownIds.has(id) ? farmers.posOf(id) : null), opts.still, performance.now()); // a duration: the page clock may stand still
+        const r = shown.map(f => { const c = cartOf(f, t); return c && { id: f.id, ...c }; }).filter(Boolean);
+        roadItems = r;
+        cartMeshes.tick(cartItems, r, dt, opts.still);
+        return r;
+      }) ?? [];
+      piece('minimap', () => {
+        const zoomed = rig.state().zoom > 1.01;
+        minimap.show(zoomed);
+        if (zoomed && now - minimapAt > 250) { minimapAt = now; minimap.draw(shownModel(), fid => farmers.posOf(fid), viewCorners(), now); }
+      });
+      piece('labels', () => overlay.setMovers([
         ...shown.filter(f => f.nap && f.wakeAt).map(f => { const p = farmers.posOf(f.id); return p && !p.moving && { key: `nap:${f.id}`, x: p.x, y: p.y, h: 2, text: `wakes in ${until(f.wakeAt)}`, title: `${f.name} wakes up by itself at ${new Date(f.wakeAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}` }; }).filter(Boolean),
         ...cartItems.filter(c => c.away).map(c => ({ key: `mcp:${c.server}`, x: c.x, y: c.y, h: 2.4, text: cutMid(c.server, 16), title: `${c.server}, an MCP server${c.who && byId.get(c.who) ? `: ${byId.get(c.who).name} is calling it` : ''}` })),
         ...road.map(r => { const f = shown.find(x => x.id === r.id); return { key: `cart:${r.id}`, x: r.x, y: 114, h: 2.4, text: clip(f.service, 18), title: `${f.name}: ${f.summary || f.service}` }; }),
-      ]);
-      if (cartItems.some(c => c.moving) || road.length) dirty = true;
-      for (const id of pigeons.tick(dt, fid => farmers.headOf(fid), opts.still)) overlay.pop(() => farmers.headOf(id) && { ...farmers.headOf(id), y: farmers.headOf(id).y + 0.5 }, '✉', 'good');
-      if (pigeons.count()) dirty = true;
+      ]));
+      if (!opts.still && (cartItems.some(c => c.moving) || road.length)) dirty = true; // still: nothing moves, nothing to draw
+      piece('pigeons', () => {
+        for (const id of pigeons.tick(dt, fid => farmers.headOf(fid), opts.still)) overlay.pop(() => farmers.headOf(id) && { ...farmers.headOf(id), y: farmers.headOf(id).y + 0.5 }, '✉', 'good');
+        if (pigeons.count()) dirty = true;
+      });
     }
     if (animals.tick(t, dt, night)) dirty = true;
     nature.blow(t, model?.beds.some(b => b.weather === 'rain') ? 2.2 : 1); // the wind in the trees, harder while a field rains
-    if (!opts.still && model) for (const pair of talk.tick(sceneForTalk(now), dt)) { // conversations now and then; held still with Motion off
+    if (!opts.still && model) for (const pair of talk.tick(sceneForTalk(now), dt, new Set([...plays.busy(), ...romps.busy()]))) { // none with one at play // conversations now and then; held still with Motion off
       // one that starts by itself: each animal in it stops and turns to the other (unless it is doing what you asked)
       for (const [me, other] of [pair, [pair[1], pair[0]]]) if (typeof me.i === 'number' && !animals.info(me.i)?.act) { animals.command(me.i, 'talk'); animals.face(me.i, [other.x, other.y]); }
     }
@@ -479,9 +498,11 @@ export function start({ el, opts, prefs }) {
     const kinds = animalsOn && animals.count() === animals.total ? [...new Set(HERDS.map(h => h.kind))].sort() : [];
     if (kinds.join() !== castSaid) { castSaid = kinds.join(); opts.onTalkCast?.(kinds.map(kind => ({ kind }))); }
     // farmers at play with the animals: now and then one starts; their lines join the conversations' bubbles
-    if (model && !opts.still) plays.tick(dt, playCtx);
-    else if (opts.still && plays.busy().size) plays.endAll(playCtx);
-    if (model) romps.tick(rompWorld(), dt, rompCtx); // and the animals with each other (none while still or hidden)
+    piece('plays', () => {
+      if (model && !opts.still) plays.tick(dt, playCtx);
+      else if (opts.still && plays.busy().size) plays.endAll(playCtx);
+    });
+    if (model) piece('romps', () => romps.tick(rompWorld(), dt, rompCtx)); // and the animals with each other (none while still or hidden)
     overlay.setTalk(bubblesOn ? [...talk.bubbles().map(b => ({ ...b, key: `${b.conversation}|${b.who}` })), ...plays.bubbles(), ...romps.bubbles()].map(b => {
       const top = typeof b.who === 'number' ? animals.info(b.who)?.top : (h => h && { x: h.x, y: h.y + 0.55, z: h.z })(farmers.headOf(b.who));
       return { key: b.key, text: b.text, toYou: b.toYou, top };
@@ -501,7 +522,7 @@ export function start({ el, opts, prefs }) {
 
   // For the browser check (scripts/farm3d-check.mjs) and close-up pictures: what is drawn, and a view to hold.
   window.__farm3d = {
-    stats: () => ({ calls: renderer.info.render.calls, triangles: renderer.info.render.triangles, geometries: renderer.info.memory.geometries, textures: renderer.info.memory.textures, farmers: farmers.count(), drawn: shownModel()?.farmers.length ?? 0, ...flock.count(), ...cartMeshes.count(), tags: overlay.count(), beds: model?.beds.length ?? 0, animals: animals.count() }),
+    stats: () => ({ frame: renderer.info.render.frame, calls: renderer.info.render.calls, triangles: renderer.info.render.triangles, geometries: renderer.info.memory.geometries, textures: renderer.info.memory.textures, farmers: farmers.count(), drawn: shownModel()?.farmers.length ?? 0, ...flock.count(), ...cartMeshes.count(), tags: overlay.count(), beds: model?.beds.length ?? 0, animals: animals.count() }),
     screenOf: id => { const h = farmers.headOf(id); return h ? project(h) : null; }, // where a farmer's head is in the picture, in pixels
     /** Where a building's click box is in the picture (its upper part, clear of who stands in front), in pixels. */
     buildingAt(k) { const b = buildings.hits().find(o => o.userData.hit === k && o.isMesh); if (!b) return null; const p = new THREE.Vector3(); b.getWorldPosition(p); return project({ x: p.x, y: p.y * 1.6, z: p.z }); },
@@ -521,6 +542,8 @@ export function start({ el, opts, prefs }) {
     menuOf: i => overlayHooks.animal(i)?.menu ?? null,
     /** Who is at play now (farmers' ids, animals' indices). */
     playing: () => [...plays.busy()],
+    /** The web calls' carts to town now: where each is. */
+    roadCarts: () => roadItems.map(r => ({ ...r })),
     /** How many pigeons are in the air. */
     pigeons: () => pigeons.count(),
     /** The MCP carts now: where each is, whether it is out of its place, who calls it. */

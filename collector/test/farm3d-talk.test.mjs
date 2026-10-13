@@ -155,3 +155,15 @@ test('busyIds: who is talking now (an animal by its index, a farmer by its id), 
   for (let k = 0; k < 200; k++) quiet.tick({ animals: [], farmers: [] }, 0.1);
   assert.deepEqual([...quiet.busyIds()], []);
 });
+
+test('no conversation starts with an animal or a farmer busy elsewhere (at play, in a romp): tick takes who is busy', () => {
+  const talk = createTalk({ rand: seeded(11) });
+  const scene = { animals: [animal(0, 'cow', 100, 100), animal(1, 'horse', 120, 100)], farmers: [] };
+  let busySaid = 0;
+  for (let k = 0; k < 3000; k++) { talk.tick(scene, 0.1, new Set([0])); busySaid += talk.bubbles().length; }
+  assert.equal(busySaid, 0);
+  const free = createTalk({ rand: seeded(11) });
+  let said = 0;
+  for (let k = 0; k < 3000; k++) { free.tick(scene, 0.1, new Set()); said += free.bubbles().length; }
+  assert.ok(said > 0);
+});

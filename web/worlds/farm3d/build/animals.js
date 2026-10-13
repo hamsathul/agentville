@@ -158,7 +158,12 @@ export function makeAnimals(THREE, mats, S) {
         playing = next;
       },
       tick(dt) { mixer.update(dt); },
-      dispose() { mixer.stopAllAction(); mixer.uncacheRoot(model); root.removeFromParent(); for (const m of own) m.dispose(); band?.geometry.dispose(); },
+      dispose() { // its own player, skeleton (its bone texture on the graphics card), colours and bandana go with it
+        mixer.stopAllAction(); mixer.uncacheRoot(model); root.removeFromParent();
+        model.traverse(o => o.skeleton?.dispose());
+        for (const m of own) m.dispose();
+        band?.geometry.dispose();
+      },
     };
   }
   /** Plays an animal's part as antics.js set it: a clip once (staying at its end) or round and round, faded from the last. */

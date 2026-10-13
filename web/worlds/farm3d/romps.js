@@ -147,7 +147,7 @@ const inRange = (romp, A, B) => dist(A, B) <= (romp.range ?? RANGE);
 /** Animal i's nearest partner for a romp (a play only, from the menu), free and near enough; null when there is none. */
 export function partnerFor(i, world, { playOnly = false } = {}, clear = () => true) {
   const A = world.find(w => w.i === i);
-  if (!A) return null;
+  if (!A?.free) return null; // the one asked is busy itself (in a game, a talk, doing what you asked)
   const ok = world.filter(B => B.i !== i && B.free && ROMPS.some(r => (!playOnly || r.play) && !r.trigger && cast(r, A, B) && inRange(r, A, B)) && clear(A, B));
   return ok.sort((p, q) => dist(A, p) - dist(A, q))[0]?.i ?? null;
 }
@@ -241,7 +241,7 @@ export function createRomps({ rand = Math.random } = {}) {
     start(id, i, j, world, ctx) {
       if (running) return false;
       const A = world.find(w => w.i === i), B = world.find(w => w.i === j), romp = ROMPS.find(r => r.id === id);
-      const two = romp && A && B && cast(romp, A, B);
+      const two = romp && A?.free && B?.free && cast(romp, A, B);
       return two ? begin(romp, ...two, ctx) : false;
     },
     /** A play romp for i and j, by weight (for the Play button), or null. */
@@ -251,6 +251,14 @@ export function createRomps({ rand = Math.random } = {}) {
       if (!fit.length) return null;
       let roll = rand() * fit.reduce((t, r) => t + r.weight, 0);
       return (fit.find(r => (roll -= r.weight) < 0) ?? fit[0]).id;
+    },
+    /** Play on animal i's menu: greyed out, and why, while it can't start a game ({ disabled, title }). */
+    playButton(i, world, clear = () => true) {
+      const A = world.find(w => w.i === i);
+      if (running) return { disabled: true, title: 'Another game is on just now' };
+      if (!A?.free) return { disabled: true, title: 'Busy just now' };
+      if (partnerFor(i, world, { playOnly: true }, clear) === null) return { disabled: true, title: 'Nobody to play with nearby' };
+      return { disabled: false, title: null };
     },
     /** The next tick looks for a romp (for the check). */
     soon() { wait = 0; },

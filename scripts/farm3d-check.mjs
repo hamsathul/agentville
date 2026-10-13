@@ -321,7 +321,7 @@ try {
       const kinds = await Promise.all(pair.map(i => chrome.inFrame('/world/farm3d/', `window.__farm3d.animal(${i}).kind`)));
       const menu = JSON.parse(await chrome.inFrame('/world/farm3d/', 'JSON.stringify(window.__farm3d.menuOf(0))')), play = menu?.find(m => m.id === 'play');
       const why = [pair.length < 2 && 'no romp started in 40 s', pair.length && !(moved > 4) && `they never moved (${moved.toFixed(1)} px)`, pair.length && said.size < 2 && `${said.size} lines (${[...said].join(' | ')})`, busy.length && `still romping after a minute (${busy.join(', ')})`,
-        !play && "no Play on the cow's menu", play?.disabled && play.title !== 'Nobody to play with nearby' && `Play greyed out as "${play.title}"`,
+        !play && "no Play on the cow's menu", play?.disabled && !['Nobody to play with nearby', 'Busy just now', 'Another game is on just now'].includes(play.title) && `Play greyed out as "${play.title}"`,
         chrome.errors.length > before && `script errors: ${oneLine(chrome.errors[before]).slice(0, 160)}`].filter(Boolean);
       if (why.length) bad(`the animals with each other: ${why.join('; ')}`);
       else console.log(`  ✓ the animals with each other: the ${kinds.join(' and the ')} romp (${Math.round(moved)} px; "${oneLine([...said][0] ?? '')}"…), both free after; Play on the menu`);
@@ -343,6 +343,27 @@ try {
       const why = [!shown && 'no minimap at 300%', !hidden && 'a minimap at 100%', !nap && 'no "wakes in" label over the napper', chrome.errors.length > before && `script errors: ${oneLine(chrome.errors[before]).slice(0, 160)}`].filter(Boolean);
       if (why.length) bad(`the minimap and the hammock: ${why.join('; ')}`);
       else console.log(`  ✓ the minimap while zoomed in; the napper's countdown ("${oneLine(nap)}")`);
+    }
+
+    // 3k. Motion off while an agent makes a web call: its cart to town stands still, and the farm stops drawing
+    {
+      await open(chrome, 'one');
+      const before = chrome.errors.length;
+      const tour = JSON.parse(await chrome.js("JSON.stringify(window.AgentvilleTour.stops.find(s => s.name === 'one').frames[0])"));
+      tour.agents[0].now = { tool: 'WebFetch', summary: 'the docs', step: 'web', service: 'example.com', startedAt: Date.now() };
+      await chrome.js(`window.TrackerFarm.update(${JSON.stringify(tour)})`);
+      await sleep(1200);
+      const moving = JSON.parse(await chrome.inFrame('/world/farm3d/', 'JSON.stringify(window.__farm3d.roadCarts())'));
+      await chrome.inFrame('/world/farm3d/', "document.querySelector('[data-farm-menu]').click(); document.querySelector('[data-farm-motion]').click(); document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' })); true");
+      await sleep(800);
+      const a = JSON.parse(await chrome.inFrame('/world/farm3d/', 'JSON.stringify({ c: window.__farm3d.roadCarts(), f: window.__farm3d.stats().frame })'));
+      await sleep(1500);
+      const b = JSON.parse(await chrome.inFrame('/world/farm3d/', 'JSON.stringify({ c: window.__farm3d.roadCarts(), f: window.__farm3d.stats().frame })'));
+      await chrome.inFrame('/world/farm3d/', "document.querySelector('[data-farm-menu]').click(); document.querySelector('[data-farm-motion]').click(); document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' })); true"); // back on
+      const why = [!moving.length && 'no cart to town for the web call', a.c[0]?.x !== b.c[0]?.x && `the cart moved with Motion off (${a.c[0]?.x} → ${b.c[0]?.x})`, b.f - a.f > 2 && `${b.f - a.f} frames drawn in 1.5 s with Motion off`,
+        chrome.errors.length > before && `script errors: ${oneLine(chrome.errors[before]).slice(0, 160)}`].filter(Boolean);
+      if (why.length) bad(`Motion off: ${why.join('; ')}`);
+      else console.log('  ✓ Motion off: the cart to town stands still and the farm stops drawing');
     }
 
     // 4. the animals: the twelve of Quaternius's Animated Animal Pack and the pond's frog and fish, all out once their
@@ -436,18 +457,21 @@ try {
       else console.log(`  ✓ characters: ${seen.length} farmers as ${[...new Set(seen.map(f => f.character))].join(', ')}, ${waving.length} waving; ${stats.calls} draw calls`);
     }
 
-    // 7. memory: the busiest stop and an empty one, swapped 300 times; the geometry held comes back to the same
+    // 7. memory: the busiest stop, an empty one, an MCP call (a cart and its pony), subagents (hens, the Explore dog) and a
+    // note (a pigeon), swapped 300 times; the geometry and the textures held come back to the same
     await open(chrome, 'everyone');
-    const frames = JSON.parse(await chrome.js("JSON.stringify(['everyone', 'nobody'].map(n => window.AgentvilleTour.stops.find(s => s.name === n).frames[0]))"));
+    const frames = JSON.parse(await chrome.js("JSON.stringify(['everyone', 'nobody', 'mcp', 'nobody', 'subagents', 'nobody', 'pigeon'].map(n => window.AgentvilleTour.stops.find(s => s.name === n).frames[0]))"));
     await chrome.js(`window.__f3frames = ${JSON.stringify(frames)}`);
-    await sleep(500);
-    const g0 = (await statsOf(chrome)).geometries;
-    for (let i = 0; i < 300; i++) { await chrome.js(`window.TrackerFarm.update(window.__f3frames[${i % 2 ? 0 : 1}])`); await sleep(40); }
+    for (const f of frames) { await chrome.js(`window.TrackerFarm.update(${JSON.stringify(f)})`); await sleep(1500); } // every model loaded once first
     await chrome.js('window.TrackerFarm.update(window.__f3frames[0])');
     await sleep(800);
-    const g1 = (await statsOf(chrome)).geometries;
-    if (Math.abs(g1 - g0) > 5) bad(`memory: ${g0} geometries before 300 scene swaps, ${g1} after`);
-    else console.log(`  ✓ memory: ${g0} geometries before 300 scene swaps, ${g1} after`);
+    const { geometries: g0, textures: t0 } = await statsOf(chrome);
+    for (let i = 0; i < 300; i++) { await chrome.js(`window.TrackerFarm.update(window.__f3frames[${(i + 1) % frames.length}])`); await sleep(60); }
+    await chrome.js('window.TrackerFarm.update(window.__f3frames[0])');
+    await sleep(800);
+    const { geometries: g1, textures: t1 } = await statsOf(chrome);
+    if (Math.abs(g1 - g0) > 5 || t1 - t0 > 3) bad(`memory: ${g0} geometries and ${t0} textures before 300 scene swaps, ${g1} and ${t1} after`);
+    else console.log(`  ✓ memory: ${g0} geometries and ${t0} textures before 300 scene swaps (carts, hens, dogs, pigeons coming and going), ${g1} and ${t1} after`);
   } finally { await chrome.close(); }
 
   // 6. no WebGL: the plain panel, the world started all the same, and no error
@@ -461,6 +485,24 @@ try {
     if (state !== 'shown' || !s?.noWebGL || !/needs WebGL/.test(text ?? '') || !menu || strip || noGl.errors.length) bad(`without WebGL: ${JSON.stringify({ state, s, text: oneLine(text ?? '').slice(0, 120), menu, strip, errors: noGl.errors.length })}`);
     else console.log('  ✓ without WebGL: the plain panel, the farm\'s panel and Menu (World, List), started, no error');
   } finally { await noGl.close(); }
+
+  // 8. the farm's files fail to load (app.js blocked): it says so, styled, and its Menu's World and List still work
+  const broken = await openChrome({ prepare: async (send, session) => { await send('Page.addScriptToEvaluateOnNewDocument', { source: freezeScript(NOW) }, session); await send('Network.enable', {}, session); await send('Network.setBlockedURLs', { urls: ['*farm3d/app.js*'] }, session); } });
+  try {
+    await broken.send('Emulation.setDeviceMetricsOverride', { width: 1280, height: 820, deviceScaleFactor: 1, mobile: false });
+    await broken.send('Page.navigate', { url: page('everyone') });
+    let said = '';
+    for (const end = Date.now() + 15_000; Date.now() < end && !/could not load/.test(said); await sleep(250)) said = (await broken.inFrame('/world/farm3d/', "document.querySelector('.f3-nogl')?.textContent ?? ''").catch(() => '')) ?? '';
+    const styled = await broken.inFrame('/world/farm3d/', "(() => { const e = document.querySelector('.f3-nogl'); return Boolean(e) && getComputedStyle(e).position === 'absolute' && getComputedStyle(e).display === 'flex'; })()");
+    await broken.inFrame('/world/farm3d/', "document.querySelector('[data-farm-menu]')?.click(); true");
+    await sleep(200);
+    await broken.inFrame('/world/farm3d/', "document.querySelector('[data-farm-nav=\"worlds\"]')?.click(); true");
+    await sleep(300);
+    const asked = await broken.js("document.querySelector('#asked li')?.textContent ?? ''");
+    const why = [!/could not load/.test(said) && `no "could not load" (${oneLine(said).slice(0, 80)})`, !styled && 'its message is unstyled', asked !== 'go to: worlds' && `World asked "${asked}"`].filter(Boolean);
+    if (why.length) bad(`files that fail to load: ${why.join('; ')}`);
+    else console.log("  ✓ files that fail to load: it says so, and the Menu's World still works");
+  } finally { await broken.close(); }
 } finally {
   await srv.close();
 }

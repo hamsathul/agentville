@@ -1360,7 +1360,8 @@ patch, the pasture across the front, and the meadow and the forest running on al
     (the bull and a cow, the two alpacas, the stag and the deer) with dust flying, the donkey kicking at a
     horse that crowds it, a dog chasing the fox back to the trees when it comes near the farmstead. One
     at a time, every minute or two, each a little conversation in talk bubbles; none at night, or with
-    one busy talking or at play.
+    one busy talking or at play. **Play** on a menu is greyed out, with why, while that can't be: the
+    animal is busy, another game is on, or no one it can play with is near (with a clear way between).
   - **Click one for its menu**: Talk (it talks at once to the nearest animal or farmer, turning to it,
     or to you if no one is near), Play (a game with the nearest it can play with, never a fight; greyed
     out with no one near), Pet, Feed, Run (a gallop out and back), Leap, Hop, Sniff, Look around and

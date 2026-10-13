@@ -261,8 +261,11 @@ export function createTalk({ rand = Math.random } = {}) {
     if (talks.length > 2) talks.shift();
   }
   return {
-    /** Moves the conversations on; returns any that started by themselves now, as [first, second], so they can face each other. */
-    tick(scene, dt) {
+    /**
+     * Moves the conversations on; returns any that started by themselves now, as [first, second], so they can face each
+     * other. `elsewhere`: who is busy with something else (at play, in a romp): none starts with them.
+     */
+    tick(scene, dt, elsewhere = new Set()) {
       facts = scene?.facts ?? facts;
       const free = new Set((scene?.farmers ?? []).filter(f => !BUSY.has(f.state)).map(f => f.id));
       for (const c of talks) c.at += dt;
@@ -270,7 +273,7 @@ export function createTalk({ rand = Math.random } = {}) {
       wait -= dt;
       if (wait > 0 || talks.length >= 2) return [];
       wait = GAP_S * (0.5 + rand());
-      const busy = new Set(talks.flatMap(c => c.ids)), pairs = talkers(scene).filter(([a, b]) => !busy.has(keyOf(a)) && !busy.has(keyOf(b)));
+      const busy = new Set([...talks.flatMap(c => c.ids), ...elsewhere]), pairs = talkers(scene).filter(([a, b]) => !busy.has(keyOf(a)) && !busy.has(keyOf(b)));
       if (!pairs.length) return [];
       const [a, b] = pick(pairs.slice(0, 4), rand), [x, y] = rand() < 0.5 ? [a, b] : [b, a];
       begin(x, y);
