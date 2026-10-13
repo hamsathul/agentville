@@ -269,7 +269,7 @@ export function start({ el, opts, prefs }) {
     stats: () => ({ calls: renderer.info.render.calls, triangles: renderer.info.render.triangles, geometries: renderer.info.memory.geometries, textures: renderer.info.memory.textures, farmers: farmers.count(), drawn: model?.farmers.length ?? 0, tags: overlay.count(), beds: model?.beds.length ?? 0, animals: animals.count() }),
     screenOf: id => { const h = farmers.headOf(id); return h ? project(h) : null; }, // where a farmer's head is in the picture, in pixels
     /** Animal i: its kind, what it is doing, where it is on the 2D map, and where its middle is in the picture, in pixels. */
-    animal: i => { const a = animals.info(i); return a && { kind: a.kind, act: a.act, part: a.part, spot: a.spot, at: project({ x: a.top.x, y: a.top.y * 0.5, z: a.top.z }) }; },
+    animal: i => { const a = animals.info(i); return a && { kind: a.kind, act: a.act, part: a.part, spot: a.spot, at: project({ x: a.top.x, y: a.top.y * 0.5, z: a.top.z }), coat: animals.coat(i) }; },
     /** A view to hold: yaw and pitch in degrees, zoom, and a 2D farm point to glide to. */
     view({ yaw, pitch, zoom, at } = {}) {
       rig.hold({ yaw: Number.isFinite(yaw) ? (yaw * Math.PI) / 180 : undefined, pitch: Number.isFinite(pitch) ? (pitch * Math.PI) / 180 : undefined, zoom });

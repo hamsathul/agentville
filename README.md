@@ -1295,7 +1295,9 @@ patch, the pasture across the front, and the meadow and the forest running on al
   winter. **Sky** and **Season** in the Menu hold one, as on the farm.
 - **Animals**, just for fun, never for data: all twelve of Quaternius's
   [Animated Animal Pack](https://poly.pizza/bundle/Animated-Animal-Pack-ILAPXeUYiS) (CC0), each playing
-  its own animations. Two cows, a bull, two alpacas, a donkey and two horses graze in the pasture; a husky
+  its own animations, and repainted to match the farm: lighter, warmer colours in the farm's matte
+  finish, where the models come darker and partly metallic (`web/worlds/farm3d/coats.js`, a colour for
+  each part of each animal; the eyes keep theirs). Two cows, a bull, two alpacas, a donkey and two horses graze in the pasture; a husky
   in a red bandana and a Shiba Inu in a blue one (so neither is taken for a dog that means something) run
   about the yard; a deer, a stag, a fox and a wolf keep to the forest's edge. They walk, graze and rest,
   and now and then get up to something of their own: a look round, a sniff, a hop, a fly to shake off, a

@@ -4,12 +4,13 @@
 // a stag, a fox and a wolf at the forest's edge. What they do is antics.js's: they walk, rest and graze, get up to
 // something now and then, rest at night, and do what you pick from an animal's menu. This draws it: each kind's model
 // loaded once (after the farm has drawn), every animal its own copy with its own animation player, playing the clip
-// for each part (models/index.js). The Animals switch hides them all.
+// for each part (models/index.js), repainted in the farm's colours and finish (coats.js). The Animals switch hides them all.
 import { GLTFLoader } from '../vendor/GLTFLoader.js';
 import { clone as cloneSkinned } from '../vendor/SkeletonUtils.js';
 import { NAPS, POND, SHADE, WOODPILE, forestEdgeOf, pastureOf } from '../layout.js';
 import { MODELS } from '../models/index.js';
 import { ACTS, advance, command, makeAnimal, menuFor } from '../antics.js';
+import { COATS, FINISH } from '../coats.js';
 
 // Who lives where, and their pace (2D pixels a second: 8 a metre): walking, and running.
 const HERDS = [
@@ -38,7 +39,7 @@ export function makeAnimals(THREE, mats, S) {
   const animals = [], hidden = new THREE.MeshBasicMaterial({ visible: false }), v = new THREE.Vector3();
   let H = 400, ground = null, areas = {}, avoid = [], on = true, started = false, shown = 0;
 
-  /** A kind's model, loaded once: its module, the GLB in it, sized to its height (larger than life) with its feet at 0. */
+  /** A kind's model, loaded once: its module, the GLB in it, repainted, sized to its height (larger than life) with its feet at 0. */
   async function template(kind) {
     if (templates.has(kind)) return templates.get(kind);
     const b64 = (await import(`../models/${kind}.js`)).default, bytes = Uint8Array.from(atob(b64), c => c.charCodeAt(0));
@@ -48,12 +49,30 @@ export function makeAnimals(THREE, mats, S) {
     const box = new THREE.Box3().setFromObject(gltf.scene), size = box.getSize(new THREE.Vector3()), raw = size.y || 1;
     const scale = (MODELS[kind].height * BIGGER) / raw;
     gltf.scene.traverse(o => { if (o.isMesh) { o.castShadow = true; o.receiveShadow = true; o.frustumCulled = false; } });
+    paint(gltf.scene, kind); // its copies share its materials
     // what a click finds: a box round it, larger than its body so a small one is easy to hit
     const hit = new THREE.BoxGeometry(Math.max(0.8, size.x * scale * 1.2), size.y * scale * 1.1, Math.max(0.8, size.z * scale * 1.1));
     hit.translate(0, (size.y * scale * 1.1) / 2, (box.min.z + box.max.z) * 0.5 * scale);
     const t = { scene: gltf.scene, clips, scale, lift: -box.min.y * scale, raw, hit, top: size.y * scale };
     templates.set(kind, t);
     return t;
+  }
+  /** A model in the farm's colours and finish (coats.js): every material matte, each colour area named there recoloured. */
+  function paint(scene, kind) {
+    scene.traverse(o => {
+      if (!o.isMesh) return;
+      for (const m of [o.material].flat()) {
+        if (COATS[kind][m.name]) m.color.set(COATS[kind][m.name]);
+        Object.assign(m, FINISH);
+      }
+    });
+  }
+  /** The colours a model is painted in, by colour area, and its most metallic part's metalness. */
+  function coatOf(model) {
+    const colours = {};
+    let metal = 0;
+    model.traverse(o => { if (o.isMesh) for (const m of [o.material].flat()) { colours[m.name] = `#${m.color.getHexString()}`; metal = Math.max(metal, m.metalness); } });
+    return { colours, metal };
   }
   /** One animal: its own copy of the model in a holder that sizes it, its own animation player, and its hit box. */
   function instance(h, t, i) {
@@ -73,7 +92,7 @@ export function makeAnimals(THREE, mats, S) {
     model.traverse(o => { if (!head && o.isBone && /head/i.test(o.name)) head = o; });
     const spot = ground ? pickSpot(h.area) : [0, 0];
     const a = makeAnimal({ kind: h.kind, family: MODELS[h.kind].family, area: h.area, walk: h.walk, run: h.run }, spot[0], spot[1], rand);
-    return { a, root, mixer, actions, head, t, hitBox: hit, playing: null, seq: -1, yaw: a.face, placed: Boolean(ground), stick: null };
+    return { a, root, model, mixer, actions, head, t, hitBox: hit, playing: null, seq: -1, yaw: a.face, placed: Boolean(ground), stick: null };
   }
   /** A dog's bandana, round its neck bone, so it follows the head as it moves; sized to the dog. */
   function bandana(model, colour, raw) {
@@ -211,6 +230,8 @@ export function makeAnimals(THREE, mats, S) {
       w.root.updateMatrixWorld();
       return { kind: w.a.kind, title: MODELS[w.a.kind].title, menu: menuFor(w.a.kind, w.a.family).map(id => ({ id, label: ACTS[id].label })), act: w.a.act, part: w.a.part, spot: [w.a.x, w.a.y], top: { x: w.root.position.x, y: w.t.top + 0.3, z: w.root.position.z } };
     },
+    /** Animal i's colours, by colour area, and how metallic its most metallic part is (for the check). */
+    coat: i => (animals[i] && on ? coatOf(animals[i].model) : null),
     /** Asks animal i to do act (from its menu). */
     command(i, act) { const w = animals[i]; if (w && menuFor(w.a.kind, w.a.family).includes(act)) command(w.a, act, env); },
     dispose() { for (const w of animals) w.mixer.stopAllAction(); group.clear(); animals.length = 0; templates.clear(); },

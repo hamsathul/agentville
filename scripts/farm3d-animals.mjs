@@ -65,7 +65,8 @@ writeFileSync(join(dir, 'LICENSE.md'), `# The 3D farm's animals
 
 Made into this folder by \`scripts/farm3d-animals.mjs\`: each model with every animation once (the pack holds two
 copies), its normals, texture coordinates and textures dropped, its animation keys thinned and its data packed again
-(scripts/lib/glb.mjs); nothing else changed.
+(scripts/lib/glb.mjs); nothing else changed. On the farm, \`../coats.js\` repaints them as they load: lighter colours
+and the farm's matte finish.
 
 ${[...credits.values()].map(c => `## ${c.pack}, by ${c.author}
 

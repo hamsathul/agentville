@@ -73,6 +73,28 @@ test("the models: all twelve of Quaternius's Animated Animal Pack, each with eve
   assert.ok(MODELS.horse.height > MODELS.cow.height && MODELS.cow.height > MODELS.donkey.height && MODELS.donkey.height > MODELS.wolf.height && MODELS.wolf.height > MODELS.husky.height && MODELS.husky.height > MODELS.fox.height, 'sizes that make sense side by side');
 });
 
+// The colour areas a model's eyes are, where their names don't say so.
+const EYES = { husky: ['Material.002', 'Material.003'], stag: ['Material.011'] };
+
+test("their colours: the farm's matte finish, and every colour area but the eyes repainted, by a name the model has, no darker than before", async () => {
+  const { COATS, FINISH } = await import('../../web/worlds/farm3d/coats.js');
+  const { readGlb } = await import('../../scripts/lib/glb.mjs');
+  assert.deepEqual(FINISH, { roughness: 0.85, metalness: 0 }, "build/materials.js's std(): no metal");
+  assert.deepEqual(Object.keys(COATS).sort(), KINDS);
+  const linear = v => (v <= 0.04045 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4), lum = ([r, g, b]) => 0.2126 * r + 0.7152 * g + 0.0722 * b;
+  for (const kind of KINDS) {
+    const { json } = readGlb(Buffer.from((await import(`../../web/worlds/farm3d/models/${kind}.js`)).default, 'base64'));
+    const own = new Map(json.materials.map(m => [m.name, m.pbrMetallicRoughness.baseColorFactor]));
+    for (const [name, hex] of Object.entries(COATS[kind])) {
+      assert.ok(own.has(name), `${kind}: no colour area "${name}" (it has ${[...own.keys()].join(', ')})`);
+      assert.match(hex, /^#[0-9a-f]{6}$/, `${kind} ${name}`);
+      const rgb = [1, 3, 5].map(i => linear(parseInt(hex.slice(i, i + 2), 16) / 255));
+      assert.ok(lum(rgb) >= lum(own.get(name)), `${kind} ${name}: ${hex} is darker than the model's own`);
+    }
+    for (const name of own.keys()) if (!(name in COATS[kind])) assert.ok(/^eyes?(_|$)/i.test(name) || EYES[kind]?.includes(name), `${kind}: "${name}" keeps the model's colour, but it isn't an eye`);
+  }
+});
+
 test("the models' credit: LICENSE.md names the pack, its author, its licence and each model; the README credits it", async () => {
   const { MODELS } = await import('../../web/worlds/farm3d/models/index.js');
   const licence = readFileSync(fileURLToPath(new URL('../../web/worlds/farm3d/models/LICENSE.md', import.meta.url)), 'utf8');

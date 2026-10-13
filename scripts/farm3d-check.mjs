@@ -15,6 +15,7 @@ import { openChrome, sleep } from './lib/cdp.mjs';
 import { freezeScript } from './lib/freeze.mjs';
 import { oneLine } from './lib/plain-text.mjs';
 import { ROOT } from './lib/worlds-dir.mjs';
+import { COATS } from '../web/worlds/farm3d/coats.js';
 
 const NOW = Date.UTC(2026, 9, 9, 9, 0); // the tour's moment (web/worlds/test/tour.js)
 const none = async () => ({ status: 404, error: 'none' });
@@ -116,13 +117,15 @@ try {
     }
 
     // 4. the animals: the twelve of Quaternius's Animated Animal Pack, 14 in all once their models have loaded (they
-    // load after the farm has drawn); clicking one opens its menu, a pick from it sets it going and shuts the menu,
-    // Esc shuts it too; and the Animals switch hides them all
+    // load after the farm has drawn), in the farm's colours (coats.js) with no metal; clicking one opens its menu, a pick
+    // from it sets it going and shuts the menu, Esc shuts it too; and the Animals switch hides them all
     {
       await open(chrome, 'everyone');
       let on = 0;
       for (const end = Date.now() + 30_000; Date.now() < end && on !== 14; await sleep(250)) on = (await statsOf(chrome))?.animals;
       const before = chrome.errors.length;
+      const coat = JSON.parse(await chrome.inFrame('/world/farm3d/', 'JSON.stringify(window.__farm3d.animal(0)?.coat ?? null)'));
+      const coatOk = Boolean(coat) && coat.metal === 0 && Object.entries(COATS.cow).every(([name, hex]) => coat.colours[name] === hex);
       const clickAnimal = i => chrome.inFrame('/world/farm3d/', `(() => {
         const m = window.__farm3d; m.view({ zoom: 3, at: m.animal(${i}).spot });
         return new Promise(done => setTimeout(() => {
@@ -144,8 +147,8 @@ try {
       await chrome.inFrame('/world/farm3d/', "document.querySelector('[data-farm-animals]').click()");
       await sleep(400);
       const off = (await statsOf(chrome))?.animals, strip = await stripOf(chrome);
-      if (on !== 14 || off !== 0 || !menuOk || strip || chrome.errors.length > before) bad(`animals: ${on} out (14 wanted), ${off} after the Animals switch (0 wanted); the cow's menu ${cow.menu.join(' ') || 'never opened'}, after Hop ${JSON.stringify(doing)}; the husky's menu ${dog.menu.join(' ') || 'never opened'}, after Esc ${shut ? 'still open' : 'shut'}${strip ? `; an error strip: ${oneLine(strip).slice(0, 160)}` : ''}`);
-      else console.log('  ✓ animals: 14 out once loaded; a click opens one\'s menu (the husky\'s has Throw a stick), Hop sets the cow hopping, Esc shuts it; none after the Animals switch');
+      if (on !== 14 || off !== 0 || !coatOk || !menuOk || strip || chrome.errors.length > before) bad(`animals: ${on} out (14 wanted), ${off} after the Animals switch (0 wanted); the cow's colours ${JSON.stringify(coat)} (coats.js's, no metal, wanted); the cow's menu ${cow.menu.join(' ') || 'never opened'}, after Hop ${JSON.stringify(doing)}; the husky's menu ${dog.menu.join(' ') || 'never opened'}, after Esc ${shut ? 'still open' : 'shut'}${strip ? `; an error strip: ${oneLine(strip).slice(0, 160)}` : ''}`);
+      else console.log('  ✓ animals: 14 out once loaded, in coats.js\'s colours with no metal; a click opens one\'s menu (the husky\'s has Throw a stick), Hop sets the cow hopping, Esc shuts it; none after the Animals switch');
     }
 
     // 5. memory: the busiest stop and an empty one, swapped 300 times; the geometry held comes back to the same
