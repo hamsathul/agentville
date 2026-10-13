@@ -8,6 +8,7 @@ import { makeOverlay } from './overlay.js';
 import { clickOrder, makeHud } from './hud.js';
 import { makeIconImg } from './icons.js';
 import { BOARD_TITLE, boardHtml, boardSessions, buildingTip, dialogFor } from './dialogs.js';
+import { createDiary } from './diary.js';
 import { makeMaterials } from './build/materials.js';
 import { makeSky, skyFor } from './build/sky.js';
 import { makeTerrain } from './build/terrain.js';
@@ -25,7 +26,7 @@ import { HERDS } from './antics.js';
 
 // what a farmer is doing, as a word, from the tool in its hands (for what it says to the animals)
 const STEP_WORDS = { hoe: 'editing', rake: 'editing', sickle: 'editing', hammer: 'fixing', seeds: 'writing', almanac: 'reading', recipe: 'reading', clipboard: 'planning', blueprint: 'planning', spyglass: 'searching', magnifier: 'searching', pigeon: 'browsing', parcel: 'calling tools', mailbag: 'calling tools', crate: 'committing', cart: 'pushing', barrow: 'pushing', lantern: 'thinking', whistle: 'delegating', can: 'working' };
-import { PX, SILO_Y, W } from './layout.js';
+import { PX, SILO_Y, STALL, W } from './layout.js';
 
 const SKIES = ['live', 'day', 'night'], SEASON_MODES = ['live', 'spring', 'summer', 'autumn', 'winter'];
 const FRAME_MS = 1000 / 30; // at most 30 frames a second
@@ -109,6 +110,7 @@ export function start({ el, opts, prefs }) {
   scene3.add(terrain.group, buildings.group, beds.group, crops.group, farmers.group, animals.group, nature.group);
   /** The ball trees, bushes and rocks stand in until the plants' models are drawn. */
   const standIns = () => { const on = !nature.ready(); terrain.setForest(on); buildings.setPlants(on); };
+  const diary = createDiary();
   let snow = null, night = 0, blinkTags = []; // blinkTags: the stall's tags for pull requests whose checks run
 
   // The world's own settings, kept by the page.
@@ -275,6 +277,10 @@ export function start({ el, opts, prefs }) {
     overlay.setSelected(selected);
     if (following && !farmers.headOf(following)) setFollow(false); // its farmer went, or Resting hid it
     field.refresh(); // an open close-up reads its field again (at most every 5 s)
+    // the diary (the sidebar's Farm diary) and the pops: who came, went where, harvested, sold, sent a note
+    const told = diary.update(model, new Set(shownModel().farmers.map(f => f.id)), Date.now());
+    if (told.entries) opts.onDiary?.(told.entries);
+    if (!opts.still) for (const p of told.pops) overlay.pop(p.id ? () => (h => h && { x: h.x, y: h.y + 0.5, z: h.z })(farmers.headOf(p.id)) : () => at3(STALL.x + 14, STALL.y + 20, 3), p.text, p.cls);
     refreshHud();
     firstScene = false;
     dirty = true;
@@ -401,6 +407,8 @@ export function start({ el, opts, prefs }) {
     bedAt(key) { const b = beds.hits().find(o => o.userData.field === key); if (!b) return null; const p = new THREE.Vector3(); b.getWorldPosition(p); return project({ x: p.x, y: 0.5, z: p.z }); },
     /** The fields drawn, by key. */
     bedKeys: () => (model?.beds ?? []).map(b => b.key),
+    /** The pops showing now (their words). */
+    pops: () => overlay.popsShown(),
     /** The buildings' dialog: open or not, and its title. */
     dialog: () => ({ open: overlay.dialogOpen(), title: document.querySelector('.px-dlg-title')?.textContent ?? '' }),
     /** The plants drawn, by kind (none until their models have loaded). */

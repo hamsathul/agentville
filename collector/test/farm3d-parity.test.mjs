@@ -112,3 +112,55 @@ test('a click finds a farmer first, then an animal, then a building, then a fiel
   assert.deepEqual(clickOrder([{ field: 'k' }]), { field: 'k' });
   assert.equal(clickOrder([]), null);
 });
+
+import { createDiary, zoneText } from '../../web/worlds/farm3d/diary.js';
+import { makeModel } from '../../web/worlds/farm3d/model.js';
+import { kit, toScene } from './farm3d-vm.mjs';
+const M3 = makeModel(kit);
+const ids = m => new Set(m.farmers.map(f => f.id));
+test("a place's words in the diary are the 2D farm's, and so is the place (its zone)", () => {
+  const s = snap([agent('a1'), agent('a2', { state: 'waiting', stateReason: 'permission', ask: 'Run it?' }), agent('a3', { state: 'yourTurn', lastReply: 'Done.' }),
+    agent('a4', { state: 'stale', stateReason: 'stale' }), agent('a5', { state: 'idle', stateReason: 'idle', now: null }), agent('a6', { cwd: '/elsewhere', touching: [] })], [repo('shop')]);
+  const e = engineOf(s), hooks = farm.makeFarm();
+  hooks.setScene(e);
+  hooks.relayout(hooks.grid.layoutFor(e.fields, {})); // the farm's beds, so its slots find the fields
+  const m = M3.farmModel(toScene(s));
+  assert.ok(m.farmers.length >= 5);
+  for (const f of m.farmers) {
+    const ef = e.farmers.find(x => x.id === f.id);
+    assert.equal(f.zone, plain(hooks.slots(ef)).zone ?? hooks.slots(ef).zone, `${f.id} zone`);
+    assert.equal(zoneText(ef, f.zone, e.fields.find(x => x.key === ef.field)?.name), hooks.zoneText(ef, f.zone), f.id);
+  }
+});
+test('the diary: morning, arrivals and where they go, moves, harvests, newest first, eight at most; pops for the porch and the harvest', () => {
+  const d = createDiary();
+  const m1 = M3.farmModel(toScene(snap([agent('a1'), agent('a2')], [repo('shop')])));
+  const r1 = d.update(m1, ids(m1), NOW);
+  assert.deepEqual(r1.entries.map(x => x.text), ['Morning: 2 farmers on the farm']);
+  assert.deepEqual(r1.pops, []);
+  const m2 = M3.farmModel(toScene(snap([agent('a1', { state: 'waiting', stateReason: 'permission', ask: { kind: 'permission', tool: 'Bash', summary: 'npm test' } }), agent('a2', { compactions: 1 }), agent('a3')], [repo('shop')])));
+  const r2 = d.update(m2, ids(m2), NOW + 1000);
+  assert.deepEqual(r2.entries.slice(0, 4).map(x => `${x.who} ${x.text}`).sort(), [
+    'a1 comes up to your porch: needs a permission', 'a2 brings in the harvest: its conversation was compacted, and it sows again', 'a3 hoeing the rows in the shop field', 'a3 walks out of the barn',
+  ]);
+  assert.equal(r2.entries.at(-1).text, 'Morning: 2 farmers on the farm');
+  assert.deepEqual(r2.pops.map(p => `${p.id}:${p.text}`).sort(), ['a1:Needs you!', 'a2:Harvest!']);
+  assert.equal(d.update(m2, ids(m2), NOW + 2000).entries, null); // nothing new
+  for (let i = 0; i < 12; i++) { const mi = M3.farmModel(toScene(snap([agent('a1', { now: { tool: i % 2 ? 'Edit' : 'Read', summary: 'x', step: i % 2 ? 'edit' : 'read', startedAt: NOW } })], [repo('shop')]))); d.update(mi, ids(mi), NOW + 3000 + i); }
+  assert.equal(d.update(m2, ids(m2), NOW + 9e3).entries.length, 8);
+});
+test('a note between two farmers is told once, its first 60 characters; a merged pull request once, under the market', () => {
+  const d = createDiary(), feed = text => [{ at: NOW - 5000, kind: 'peer', dir: 'out', other: 'a2', text }];
+  const m0 = M3.farmModel(toScene(snap([agent('a1'), agent('a2')], [repo('shop')])));
+  d.update(m0, ids(m0), NOW);
+  const m1 = M3.farmModel(toScene(snap([agent('a1', { feed: feed('x'.repeat(80)) }), agent('a2')], [repo('shop')])));
+  const r = d.update(m1, ids(m1), NOW + 1000);
+  assert.ok(r.entries[0].text.startsWith('sends a note to a2: '), r.entries[0].text);
+  assert.ok(r.entries[0].text.endsWith('…') && r.entries[0].text.length === 'sends a note to a2: '.length + 60, r.entries[0].text);
+  assert.equal(d.update(m1, ids(m1), NOW + 2000).entries, null);
+  const pr = { open: [], merged: [{ number: 9, title: 'Hens', at: NOW + 2500 }] };
+  const m2 = M3.farmModel(toScene(snap([agent('a1'), agent('a2')], [repo('shop', { prs: pr })])));
+  const r2 = d.update(m2, ids(m2), NOW + 3000);
+  assert.deepEqual([r2.entries[0].who, r2.entries[0].text], ['The market', 'shop: pull request #9 merged (Hens)']);
+  assert.deepEqual(r2.pops, [{ at: 'stall', text: 'Sold! #9', cls: 'good' }]);
+});

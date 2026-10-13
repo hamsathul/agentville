@@ -172,19 +172,25 @@ export function makeModel({ makeGrid, engineScene, tagText, cutMid, lastPart, ag
         at = T[group].at(i);
       }
       const prop = f.state === 'working' ? d?.prop ?? 'can' : null;
+      // its place for the diary, as the farm's slots name it: a bed and the tool in hand there, or the group
+      const zone = s ? `st:${s.key}:${d?.prop ?? ''}` : group;
       farmers.push({
         id: f.id, name: f.name, state: f.state, kind: f.kind, tag: tagText(f), tip: tipOf(f, fieldByKey), shirt: f.shirt, look: f.look,
         family: f.family ?? null, fast: Boolean(f.fast), thinking: Boolean(f.thinking), nap: Boolean(f.nap), field: f.field ?? null,
         prop, flag: f.state === 'working' && Boolean(d?.flag), action: SWING.has(prop) ? 'swing' : CARRY.has(prop) ? 'carry' : 'hold',
         badge: f.state === 'waiting' ? (f.planAsk ? 'scroll' : '!') : f.state === 'turn' ? (f.question ? '?' : 'basket') : null,
-        say: (f.state === 'waiting' ? f.ask : f.said) || '', group, at, scarecrow: f.state === 'stale',
+        say: (f.state === 'waiting' ? f.ask : f.said) || '', group, at, scarecrow: f.state === 'stale', zone,
+        kids: f.kids ?? [], jobs: f.jobs ?? 0, wakeAt: f.wakeAt ?? null, service: f.service ?? null, step: f.step ?? null, tool: f.tool ?? null, summary: f.summary ?? '',
       });
     }
     return {
       scene: e, // the engine scene (engine.js engineScene, with the farm's looks): the panel, the dialogs and the diary read it
+      mail: e.mail ?? [], henhouse: e.henhouse ?? { eggs: 0, roosting: 0 }, carts: e.carts ?? [], subagents: e.subagents ?? [],
       ground, beds: bedsOut, farmers, over, season: seasonOf(e.plan), silos: silosOf(e), stall: stallOf(e),
       keep: { beds: ground.beds ?? beds, packed: packed || e.fields.length > 0 },
     };
   }
   return { grid, farmModel, actionOf, growthStage, weatherOf, seasonOf, siloOf };
 }
+/** What a farmer does now (its step's prop and verb), for the diary's words. */
+export { doing };

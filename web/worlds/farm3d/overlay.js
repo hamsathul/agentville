@@ -41,6 +41,7 @@ const CSS = `
   .f3-pet .acts button { padding: 4px 6px; background: linear-gradient(#fffaf0, #f4e6c4); border: 1.5px solid #6b4320; border-radius: 4px; box-shadow: 0 2px 0 #4e3626; font: 600 12px system-ui, sans-serif; color: #4e3626; cursor: pointer; text-align: left; }
   .f3-pet .acts button:hover { background: #fffdf6; } .f3-pet .acts button:disabled { opacity: .5; cursor: default; }
   .f3-pet p { margin: 6px 2px 0; color: #6b4320; font-size: 11px; }
+  .f3-pop { pointer-events: none; z-index: 4; line-height: 0; }
 `;
 const HELP = `<h2>The 3D farm <small>(a prototype)</small></h2>
   <p>The same live farm as the 2D one, in 3D. Every farmer is an agent, every field a repo.</p>
@@ -76,6 +77,8 @@ export function makeOverlay(el, { opts, hooks }) {
     if (e.target.closest?.('[data-farm-dlg-close]') || e.target === dlg) dlg.close(); // × or the backdrop
   });
   let stallTag = null; // the stall's "N PRs" label
+  let pops = []; // words that rise and fade over something: { el, at() (its point in the world, or null), born }
+  const POP_COLOURS = { good: '#8ef0a0', warn: '#ffd166', dim: '#c9b48a' };
   const tags = new Map(), says = new Map(), fields = new Map(), cnts = new Map(), silos = new Map(), signs = new Map(), talks = new Map();
   let talkItems = []; // what the animals and farmers are saying to each other now (talk.js), each over its speaker
   // Farmers beyond a place's room aren't drawn: a sign says how many, in the 2D farm's words (web/worlds/farm/world.js,
@@ -217,6 +220,14 @@ export function makeOverlay(el, { opts, hooks }) {
     }
     prune(talks, keepTalk);
     if (pet) { const top = hooks.animal(pet.i)?.top; if (top) put(pet.el, project(top), -4); else closePet(); }
+    // the pops: up 30 px and gone in 2 s; one whose point has gone goes with it
+    const now = performance.now();
+    pops = pops.filter(p => {
+      const k = (now - p.born) / 2000, at = p.at();
+      if (k >= 1 || !at) { p.el.remove(); return false; }
+      if (put(p.el, project(at), -k * 30)) p.el.style.opacity = String(1 - k * k);
+      return true;
+    });
   }
 
   /** An animal's menu, over it: its name, and what you can ask it to do (nothing while the farm stands still). */
@@ -270,6 +281,10 @@ export function makeOverlay(el, { opts, hooks }) {
 
   return {
     sync, place, openPet, closePet,
+    /** Words that rise and fade over a point (`at()`: where, in the world, now; null once it has gone): good, warn or dim. */
+    pop(at, text, cls = 'good') { const el2 = document.createElement('div'); el2.className = 'f3-pop'; el2.innerHTML = pxt(text, POP_COLOURS[cls] ?? POP_COLOURS.good, '#2a1d14'); ov.append(el2); pops.push({ el: el2, at, born: performance.now() }); if (pops.length > 12) pops.shift().el.remove(); },
+    /** The pops showing now (their words; for the check). */
+    popsShown: () => pops.map(p => p.el.textContent || p.el.querySelector('[aria-label]')?.getAttribute('aria-label') || ''),
     /** A building's dialog ({ title, html }), opened (or its body replaced, when it is open). */
     openDialog(d) { if (!d) return; dlg.querySelector('.px-dlg-title').textContent = d.title; dlg.querySelector('.px-dlg-body').innerHTML = d.html; if (!dlg.open) dlg.showModal(); },
     /** The open dialog's body, replaced (the notice board's, once read). */

@@ -209,6 +209,24 @@ try {
       else console.log("  ✓ the buildings: the porch, the silo, the henhouse, the stall and the notice board open their dialogs; Open picks; the barn starts a session; a field's label opens its close-up");
     }
 
+    // 3d. the diary: the page's Farm diary fills from the 3D farm; a harvest pops "Harvest!" over its farmer
+    {
+      await open(chrome, 'everyone');
+      await sleep(600);
+      const before = chrome.errors.length;
+      const lines = Number(await chrome.js("document.querySelectorAll('#diary li').length"));
+      const tour = JSON.parse(await chrome.js("JSON.stringify(window.AgentvilleTour.stops.find(s => s.name === 'everyone').frames[0])"));
+      const who = tour.agents.find(a => a.state === 'working');
+      who.compactions = (who.compactions ?? 0) + 1;
+      await chrome.js(`window.TrackerFarm.update(${JSON.stringify(tour)})`);
+      let pops = [];
+      for (const end = Date.now() + 2000; Date.now() < end && !pops.some(p => /Harvest!/.test(p)); await sleep(100)) pops = JSON.parse(await chrome.inFrame('/world/farm3d/', 'JSON.stringify(window.__farm3d.pops())'));
+      const harvest = await chrome.js("[...document.querySelectorAll('#diary li')].some(li => /brings in the harvest/.test(li.textContent))");
+      const why = [!(lines > 0) && 'the Farm diary is empty', !pops.some(p => /Harvest!/.test(p)) && `no "Harvest!" pop (${pops.join(', ')})`, !harvest && 'no harvest line in the diary', chrome.errors.length > before && `script errors: ${oneLine(chrome.errors[before]).slice(0, 160)}`].filter(Boolean);
+      if (why.length) bad(`the diary: ${why.join('; ')}`);
+      else console.log(`  ✓ the diary: ${lines} lines in the Farm diary; a harvest pops "Harvest!" and is told`);
+    }
+
     // 4. the animals: the twelve of Quaternius's Animated Animal Pack and the pond's frog and fish, all out once their
     // models have loaded (they load after the farm has drawn), in the farm's colours (coats.js) with no metal, the cows
     // spotted; clicking one opens its menu (the frog's its own), a pick from it sets it going and shuts the menu, Esc
