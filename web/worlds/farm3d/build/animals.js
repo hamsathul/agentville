@@ -10,7 +10,7 @@ import { clone as cloneSkinned } from '../vendor/SkeletonUtils.js';
 import { NAPS, POND, SHADE, WOODPILE, forestEdgeOf, pastureOf } from '../layout.js';
 import { MODELS } from '../models/index.js';
 import { ACTS, advance, command, makeAnimal, menuFor } from '../antics.js';
-import { COATS, FINISH } from '../coats.js';
+import { COATS, FINISH, SPOTS, spotsOf } from '../coats.js';
 
 // Who lives where, and their pace (2D pixels a second: 8 a metre): walking, and running.
 const HERDS = [
@@ -64,15 +64,34 @@ export function makeAnimals(THREE, mats, S) {
       for (const m of [o.material].flat()) {
         if (COATS[kind][m.name]) m.color.set(COATS[kind][m.name]);
         Object.assign(m, FINISH);
+        if (SPOTS[kind]?.area === m.name) m.vertexColors = true; // each copy's own spots, on its own copy of the coat (paintSpots)
       }
     });
   }
-  /** The colours a model is painted in, by colour area, and its most metallic part's metalness. */
+  /** Spots for one animal of a spotted kind: its own copy of the coat's mesh, each face white or the spots' colour. */
+  function paintSpots(model, kind, seed) {
+    const { area, colour } = SPOTS[kind], dark = new THREE.Color(colour);
+    model.traverse(o => {
+      if (!o.isMesh || o.material.name !== area) return;
+      const geo = o.geometry.index ? o.geometry.toNonIndexed() : o.geometry.clone(), p = geo.attributes.position, middles = [];
+      for (let f = 0; f < p.count; f += 3) for (let k = 0; k < 3; k++) middles.push((p.getComponent(f, k) + p.getComponent(f + 1, k) + p.getComponent(f + 2, k)) / 3);
+      const spots = spotsOf(middles, seed), c = new Float32Array(p.count * 3);
+      spots.forEach((on, f) => { for (let v = f * 3; v < f * 3 + 3; v++) c.set(on ? [dark.r, dark.g, dark.b] : [1, 1, 1], v * 3); });
+      geo.setAttribute('color', new THREE.BufferAttribute(c, 3));
+      o.geometry = geo;
+    });
+  }
+  /** The colours a model is painted in, by colour area, its most metallic part's metalness, and how much of it is spots. */
   function coatOf(model) {
     const colours = {};
-    let metal = 0;
-    model.traverse(o => { if (o.isMesh) for (const m of [o.material].flat()) { colours[m.name] = `#${m.color.getHexString()}`; metal = Math.max(metal, m.metalness); } });
-    return { colours, metal };
+    let metal = 0, spots = 0, faces = 0;
+    model.traverse(o => {
+      if (!o.isMesh) return;
+      for (const m of [o.material].flat()) { colours[m.name] = `#${m.color.getHexString()}`; metal = Math.max(metal, m.metalness); }
+      const c = o.geometry.attributes.color;
+      if (c) for (let v = 0; v < c.count; v += 3) { faces++; if (c.getX(v) < 0.5) spots++; }
+    });
+    return { colours, metal, ...(faces ? { spots: spots / faces } : {}) };
   }
   /** One animal: its own copy of the model in a holder that sizes it, its own animation player, and its hit box. */
   function instance(h, t, i) {
@@ -88,6 +107,7 @@ export function makeAnimals(THREE, mats, S) {
     const mixer = new THREE.AnimationMixer(model), actions = new Map();
     for (const [name, clip] of t.clips) actions.set(name, mixer.clipAction(clip));
     if (h.bandana) bandana(model, h.bandana, t.raw);
+    if (SPOTS[h.kind]) paintSpots(model, h.kind, i + 1);
     let head = null;
     model.traverse(o => { if (!head && o.isBone && /head/i.test(o.name)) head = o; });
     const spot = ground ? pickSpot(h.area) : [0, 0];

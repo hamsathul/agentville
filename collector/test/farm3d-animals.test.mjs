@@ -95,6 +95,33 @@ test("their colours: the farm's matte finish, and every colour area but the eyes
   }
 });
 
+test("a cow's spots: about a third of her coat, in a few clumps, the same for the same seed and different for another", async () => {
+  const { spotsOf, SPOTS } = await import('../../web/worlds/farm3d/coats.js');
+  // a cow-ish body: points over an ellipsoid 2.4 long, 1 high, 0.8 wide (a triangle's middle each)
+  const pts = [];
+  for (let i = 0; i < 1200; i++) {
+    const u = ((i * 0.618034) % 1) * 2 - 1, t = i * 2.399963, r = Math.sqrt(1 - u * u);
+    pts.push(1.2 * u, 0.5 * r * Math.sin(t), 0.4 * r * Math.cos(t));
+  }
+  const a = spotsOf(pts, 1), b = spotsOf(pts, 1), c = spotsOf(pts, 2);
+  assert.equal(a.length, 1200);
+  assert.deepEqual(a, b, 'the same seed, the same cow');
+  assert.ok(a.some((x, i) => x !== c[i]), 'another seed, another pattern');
+  for (const s of [a, c]) {
+    const share = s.filter(Boolean).length / s.length;
+    assert.ok(Math.abs(share - SPOTS.cow.share) < 0.03, `${share} of her coat black`);
+    // clumps: a black point's nearest neighbours are mostly black too, far more than the share alone would give
+    let same = 0, black = 0;
+    for (let i = 0; i < s.length; i++) if (s[i]) {
+      black++;
+      const near = [...s.keys()].filter(j => j !== i).sort((p, q) => Math.hypot(pts[p * 3] - pts[i * 3], pts[p * 3 + 1] - pts[i * 3 + 1], pts[p * 3 + 2] - pts[i * 3 + 2]) - Math.hypot(pts[q * 3] - pts[i * 3], pts[q * 3 + 1] - pts[i * 3 + 1], pts[q * 3 + 2] - pts[i * 3 + 2])).slice(0, 6);
+      same += near.filter(j => s[j]).length / 6;
+    }
+    assert.ok(same / black > 0.75, `spots in clumps: ${(same / black).toFixed(2)} of a black point's neighbours black`);
+  }
+  assert.deepEqual(spotsOf([], 1), []);
+});
+
 test("the models' credit: LICENSE.md names the pack, its author, its licence and each model; the README credits it", async () => {
   const { MODELS } = await import('../../web/worlds/farm3d/models/index.js');
   const licence = readFileSync(fileURLToPath(new URL('../../web/worlds/farm3d/models/LICENSE.md', import.meta.url)), 'utf8');
