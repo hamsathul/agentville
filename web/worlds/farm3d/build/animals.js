@@ -146,6 +146,7 @@ export function makeAnimals(THREE, mats, S) {
       pad.rotation.y = k * 2.1;
       pad.traverse(o => { if (o.isMesh && o.material.name === 'Pink' && !flower) o.visible = false; });
       pad.userData.at = [x, y];
+      pad.userData.rest = { y: pad.position.y, turn: pad.rotation.y, phase: k * 1.7 };
       pads.add(pad);
     });
   }
@@ -218,6 +219,7 @@ export function makeAnimals(THREE, mats, S) {
   function tick(t, dt, night) {
     creatures.visible = on;
     pads.visible = !winter;
+    if (t) for (const pad of pads.children) { const r = pad.userData.rest; pad.position.y = r.y + Math.sin(t * 1.2 + r.phase) * 0.012; pad.rotation.y = r.turn + Math.sin(t * 0.4 + r.phase) * 0.05; } // bobbing on the water
     for (const s of splashes) if (s.visible) { // spreading, fading
       s.userData.age += dt;
       const k = s.userData.age / 0.9;

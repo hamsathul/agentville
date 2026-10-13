@@ -1281,6 +1281,12 @@ a fenced pasture across the front, and a strip of grass under it where the fores
 the limit, the timber farmhouse and its deck, your porch, with string lights), a raised bed for each repo
 in the fenced grid, the yard with the henhouse, the pond (clear water over a muddy hollow, lily pads), the hammocks and the shade tree, the scarecrow
 patch, the pasture across the front, and the meadow and the forest running on all round.
+- **Trees, bushes and rocks**: Quaternius's flat-coloured models (single models, CC0): leafy trees,
+  birches and pines in the forest round the farm (pines further out), the shade tree and the orchard,
+  the yard's bushes (some with berries) and mossy rocks, and stumps, logs, mushrooms and flowers under
+  the trees at the forest's edge. The wind sways them, harder while a field rains; the lily pads bob.
+  Autumn turns the leaves orange and winter brings snowy pines and bushes and bare branches. Until
+  their models load, a moment after the farm, simpler shapes stand in.
 - **Farmers** are figurines dressed as on the farm: the agent's colour for the shirt, a hat by its id
   with the model's pin, and the tool for its step in hand (a hoe for edits, an almanac for reads, a crate
   for a commit, a cart for a push, with a flag to deploy…). Waiting on you: on the porch's left, waving,
@@ -1293,7 +1299,8 @@ patch, the pasture across the front, and the meadow and the forest running on al
   a failed deploy, a rainbow over one that worked, a windmill while it runs.
 - **Light and seasons**: the sun crosses the sky by your clock and the windows and lamps glow at night;
   the season follows your 5-hour limit, with blossom in spring, orange leaves in autumn and snow in
-  winter. **Sky** and **Season** in the Menu hold one, as on the farm.
+  winter. **Sky** and **Season** in the Menu hold one, as on the farm. With **Motion** off the wind
+  stops too.
 - **Animals**, just for fun, never for data: all twelve of Quaternius's
   [Animated Animal Pack](https://poly.pizza/bundle/Animated-Animal-Pack-ILAPXeUYiS) (CC0), each playing
   its own animations, and repainted to match the farm: lighter, warmer colours in the farm's matte
@@ -1346,9 +1353,10 @@ requests, the notice board, and the farmers playing with the animals.
 without it the world says so and you can pick another. It uses the graphics card, at most 30 frames a
 second, and draws nothing while the page shows its list or the tab is hidden; with **Motion** off (or
 reduced motion) it draws only when something changes. three.js (0.186.1, MIT licence; with its glTF loader
-for the animals) is part of Agentville, in `web/worlds/farm3d/vendor/`, and the animals' models are in
-`web/worlds/farm3d/models/` (about 6 MB, packed into JS files the world imports; the eighteen animals and
-the lily pads add about 240 draw calls, shadows included): nothing is downloaded from anywhere, and the world sees the same
+for the animals) is part of Agentville, in `web/worlds/farm3d/vendor/`, and the models (the animals, the
+plants) are in `web/worlds/farm3d/models/` (about 7 MB, packed into JS files the world imports; the
+eighteen animals, the lily pads and the plants add about 290 draw calls and the plants about 700,000
+triangles, shadows included): nothing is downloaded from anywhere, and the world sees the same
 scene as the farm and sends nothing.
 
 ### Notifications and the bell

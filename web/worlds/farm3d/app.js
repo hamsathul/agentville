@@ -259,6 +259,7 @@ export function start({ el, opts, prefs }) {
     const moving = rig.update(dt), t = opts.still ? 0 : now / 1000;
     const walking = farmers.tick(t, dt, opts.still);
     if (animals.tick(t, dt, night)) dirty = true;
+    nature.blow(t, model?.beds.some(b => b.weather === 'rain') ? 2.2 : 1); // the wind in the trees, harder while a field rains
     if (!opts.still) { // the world moves: the wind in the crops, the weather, the snow
       crops.tick(t);
       beds.tick(t, dt);
@@ -277,6 +278,8 @@ export function start({ el, opts, prefs }) {
     screenOf: id => { const h = farmers.headOf(id); return h ? project(h) : null; }, // where a farmer's head is in the picture, in pixels
     /** The plants drawn, by kind (none until their models have loaded). */
     plants: () => nature.count(),
+    /** The wind in the trees: its clock and strength. */
+    wind: () => nature.wind(),
     /** Animal i: its kind, what it is doing, where it is on the 2D map, and where its middle is in the picture, in pixels. */
     animal: i => { const a = animals.info(i); return a && { kind: a.kind, act: a.act, part: a.part, spot: a.spot, at: project({ x: a.top.x, y: a.top.y * 0.5, z: a.top.z }), coat: animals.coat(i) }; },
     /** A view to hold: yaw and pitch in degrees, zoom, and a 2D farm point to glide to. */

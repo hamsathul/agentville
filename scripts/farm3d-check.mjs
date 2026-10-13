@@ -171,6 +171,11 @@ try {
       const summer = await plantsAt('everyone'), winter = await plantsAt('limits-high'), total = o => Object.values(o).reduce((n, k) => n + k, 0);
       if (total(summer) < 100 || !summer.pine || summer.pinesnow || !winter.pinesnow || winter.pine) bad(`plants: ${JSON.stringify(summer)} by day in summer, ${JSON.stringify(winter)} in winter (100 or more, pines; snowy pines in winter)`);
       else console.log(`  ✓ plants: ${total(summer)} trees, bushes, rocks and things on the forest floor; snowy pines in winter`);
+      // the wind in them: it blows (its clock runs), harder while a field rains (a failed deploy)
+      const windAt = async stop => { await open(chrome, stop); const a = JSON.parse(await chrome.inFrame('/world/farm3d/', 'JSON.stringify(window.__farm3d.wind?.() ?? null)')); await sleep(600); return [a, JSON.parse(await chrome.inFrame('/world/farm3d/', 'JSON.stringify(window.__farm3d.wind?.() ?? null)'))]; };
+      const [calm0, calm1] = await windAt('everyone'), [storm] = await windAt('deploy-failed');
+      if (!calm0 || !(calm1.time > calm0.time) || !(storm?.strength > calm1.strength * 1.5)) bad(`wind: ${JSON.stringify([calm0, calm1])} on a calm day, ${JSON.stringify(storm)} while a field rains (its clock running; twice as strong in rain)`);
+      else console.log(`  ✓ wind: the trees sway, ${storm.strength / calm1.strength}× harder while a field rains`);
     }
 
     // 6. memory: the busiest stop and an empty one, swapped 300 times; the geometry held comes back to the same

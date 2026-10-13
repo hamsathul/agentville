@@ -6,8 +6,36 @@ import { GLTFLoader } from '../vendor/GLTFLoader.js';
 import { COATS, FINISH } from '../coats.js';
 import { plantsOf } from '../nature.js';
 
+const STILL = new Set(['rockmoss', 'rocksnow', 'rocks', 'stump', 'log']); // what the wind doesn't move
+/**
+ * The wind: each vertex of a plant moves with the wind, the more the higher it is above the ground (its trunk's foot
+ * stays put), each plant on its own phase (from where it stands). uTime is the farm's clock (still when Motion is off),
+ * uWind its strength (1 calm, more in rain).
+ */
+function sway(material, wind) {
+  material.onBeforeCompile = shader => {
+    shader.uniforms.uTime = wind.time;
+    shader.uniforms.uWind = wind.strength;
+    shader.vertexShader = shader.vertexShader.replace('#include <common>', '#include <common>\nuniform float uTime;\nuniform float uWind;').replace('#include <project_vertex>', `
+      vec4 placed = vec4(transformed, 1.0);
+      #ifdef USE_INSTANCING
+        placed = instanceMatrix * placed;
+        float phase = instanceMatrix[3].x * 0.37 + instanceMatrix[3].z * 0.23;
+      #else
+        float phase = 0.0;
+      #endif
+      float lean = uWind * 0.008 * placed.y * placed.y;
+      placed.x += lean * sin(uTime * 1.3 + phase) + lean * 0.35 * sin(uTime * 3.1 + phase * 2.0);
+      placed.z += lean * 0.6 * cos(uTime * 1.1 + phase);
+      vec4 mvPosition = modelViewMatrix * placed;
+      gl_Position = projectionMatrix * mvPosition;`);
+  };
+  material.customProgramCacheKey = () => 'farm3d-sway';
+}
+
 export function makeNature(THREE, S) {
   const group = new THREE.Group(), loader = new GLTFLoader(), templates = new Map(), loads = new Map();
+  const wind = { time: { value: 0 }, strength: { value: 1 } }; // shared by every swaying material
   let built = null, want = null, drawnKey = '';
   /** A kind's model, loaded once: its parts (geometry, painted material, place in the model) and its size. */
   function template(kind) {
@@ -21,6 +49,7 @@ export function makeNature(THREE, S) {
         const material = o.material.clone();
         if (COATS[kind]?.[material.name]) material.color.set(COATS[kind][material.name]);
         Object.assign(material, FINISH);
+        if (!STILL.has(kind)) sway(material, wind);
         parts.push({ geometry: o.geometry, material, matrix: o.matrixWorld.clone() });
       });
       templates.set(kind, { parts, size: box.getSize(new THREE.Vector3()), floor: box.min.y });
@@ -68,6 +97,10 @@ export function makeNature(THREE, S) {
   }
   return {
     group, build,
+    /** The wind for this frame: t the farm's clock in seconds (0 while still), strength 1 calm, more in rain. */
+    blow(t, strength) { if (t) wind.time.value = t; wind.strength.value = strength; },
+    /** The wind now (for the check). */
+    wind: () => ({ time: wind.time.value, strength: wind.strength.value }),
     /** Whether the models are drawn (the stand-ins can go). */
     ready: () => Boolean(built),
     /** How many plants are drawn, by kind (for the check). */
