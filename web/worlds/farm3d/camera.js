@@ -66,6 +66,20 @@ export function followStep(target, point, dt) {
   return { x: target.x + (point.x - target.x) * k, z: target.z + (point.z - target.z) * k };
 }
 
+/**
+ * Where the farm is fitted at 100%: the window less the panel's corner (`panel`: its width and height with its
+ * margin; null when folded), beside it or below it, whichever shows the farm bigger (the part's height over the fit
+ * distance at its shape, `fitFor(aspect)`), as the engine's fitClear chooses; folded, the whole window.
+ */
+export function clearRect(W, H, panel, fitFor) {
+  if (!panel) return { x: 0, y: 0, w: W, h: H };
+  const beside = { x: panel.w, y: 0, w: Math.max(1, W - panel.w), h: H }, below = { x: 0, y: panel.h, w: W, h: Math.max(1, H - panel.h) };
+  const size = r => r.h / fitFor(r.w / r.h);
+  return size(beside) >= size(below) ? beside : below;
+}
+/** The panel's box, held while it shows: it grows and never shrinks, so the farm doesn't jump as its figures change (null: folded). */
+export const holdBox = (kept, now) => (now ? (kept ? { w: Math.max(kept.w, now.w), h: Math.max(kept.h, now.h) } : now) : null);
+
 const ease = t => (t < 0.5 ? 2 * t * t : 1 - (-2 * t + 2) ** 2 / 2);
 
 /**
@@ -75,26 +89,36 @@ const ease = t => (t < 0.5 ? 2 * t * t : 1 - (-2 * t + 2) ** 2 / 2);
  */
 export function makeCameraRig(THREE, camera, dom, { yaw = DEFAULT_VIEW.yaw, pitch = DEFAULT_VIEW.pitch, zoom = 1, onChange = () => {} } = {}) {
   const state = { yaw: Number.isFinite(yaw) ? yaw : DEFAULT_VIEW.yaw, pitch: clampPitch(Number.isFinite(pitch) ? pitch : DEFAULT_VIEW.pitch), zoom: Math.min(MAX_ZOOM, Math.max(MIN_ZOOM, zoom || 1)), target: { x: 0, z: 0 }, fit: 60 };
-  let farm = { half: { x: 25, z: 20 }, points: [] }, anim = null, glide = null, aspect = 1;
+  let farm = { half: { x: 25, z: 20 }, points: [] }, anim = null, glide = null;
+  let frame = { W: 1, H: 1 }, clear = null; // the window, and the part of it the farm is fitted to at 100% (clear of the panel)
+  const aspect = () => (clear ? clear.w / clear.h : frame.W / frame.H);
   let follow = null; // Follow: { get() → the farmer's point or null, off() } while the view keeps a farmer in the middle
   const unfollow = () => { if (!follow) return; const o = follow.off; follow = null; o?.(); };
   camera.fov = FOV;
   const distance = () => state.fit / state.zoom;
   function refit() { // 100% is the whole farm, from wherever it is seen
-    state.fit = farm.points.length ? fitDistance(farm.points, { yaw: state.yaw, pitch: state.pitch, fov: FOV * DEG, aspect, target: { x: 0, y: 0, z: 0 } }) : 60;
+    state.fit = farm.points.length ? rig.fitFor(aspect()) : 60;
   }
   function place() {
     const d = distance(), sp = Math.sin(state.pitch), cp = Math.cos(state.pitch);
     camera.position.set(state.target.x + d * cp * Math.sin(state.yaw), d * sp, state.target.z + d * cp * Math.cos(state.yaw));
     camera.lookAt(state.target.x, 0, state.target.z);
     camera.near = Math.max(0.5, d * 0.05); camera.far = d * 4 + GROUND_HALF;
+    // the farm's middle in the middle of the part clear of the panel: the picture is that part's, run on over the window
+    camera.aspect = aspect();
+    if (clear) camera.setViewOffset(clear.w, clear.h, -clear.x, -clear.y, frame.W, frame.H); else camera.clearViewOffset();
     camera.updateProjectionMatrix();
   }
   const keep = () => { state.target = clampTarget(state.target, farm.half); if (state.zoom <= 1) state.target = { x: 0, z: 0 }; };
   const view = () => ({ yaw: state.yaw, pitch: state.pitch, zoom: state.zoom, distance: distance() });
   function changed() { refit(); keep(); place(); onChange(view()); }
   const rig = {
-    setAspect(a) { aspect = a; camera.aspect = a; changed(); },
+    /** The window's size, in CSS pixels. */
+    setFrame(W, H) { frame = { W: Math.max(1, W), H: Math.max(1, H) }; changed(); },
+    /** The part of the window the farm is fitted to at 100% ({ x, y, w, h }: clearRect's), or null for all of it. */
+    setClear(r) { clear = r; changed(); },
+    /** The distance that fits the whole farm in a picture of this shape, from the view's heading and tilt. */
+    fitFor: a => (farm.points.length ? fitDistance(farm.points, { yaw: state.yaw, pitch: state.pitch, fov: FOV * DEG, aspect: a, target: { x: 0, y: 0, z: 0 } }) : 60),
     setFarm(f) { farm = f; changed(); },
     /** Turns 15° one way (dir 1 or -1), easing over a moment. */
     turn(dir) { const from = state.yaw; anim = { from, to: stepYaw(anim ? anim.to : from, dir), t: 0 }; },
@@ -182,7 +206,7 @@ export function makeCameraRig(THREE, camera, dom, { yaw = DEFAULT_VIEW.yaw, pitc
     }
     if (state.zoom <= 1) return; // the whole farm is in view: nothing to pan to
     unfollow(); // you took the view back
-    const perPx = (2 * distance() * Math.tan((FOV * DEG) / 2)) / Math.max(1, dom.clientHeight);
+    const perPx = (2 * distance() * Math.tan((FOV * DEG) / 2)) / Math.max(1, clear?.h ?? dom.clientHeight); // the picture's height is the clear part's
     const sy = Math.sin(state.yaw), cy = Math.cos(state.yaw), sp = Math.sin(state.pitch);
     // right on the screen is the camera's right; up on the screen is away from the camera, along the ground
     state.target = clampTarget({ x: state.target.x - dx * perPx * cy - (dy * perPx * sy) / sp, z: state.target.z + dx * perPx * sy - (dy * perPx * cy) / sp }, farm.half);

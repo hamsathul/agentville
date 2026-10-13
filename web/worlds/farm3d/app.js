@@ -3,7 +3,7 @@
 // selection.
 import * as THREE from './vendor/three.module.js';
 import { makeModel } from './model.js';
-import { makeCameraRig } from './camera.js';
+import { clearRect, holdBox, makeCameraRig } from './camera.js';
 import { makeOverlay } from './overlay.js';
 import { makeHud } from './hud.js';
 import { makeIconImg } from './icons.js';
@@ -176,7 +176,8 @@ export function start({ el, opts, prefs }) {
     opts, prefs, iconImg,
     hooks: {
       turn: d => rig.turn(d), reset: () => rig.reset(), zoom: d => rig.zoomBy(d), cycle: what => overlayHooks.cycle(what),
-      pick: id => pickFarmer(id), setFollow, setResting, help: () => overlay.help(), refresh: () => refreshHud(),
+      pick: id => pickFarmer(id), setFollow, setResting, help: () => overlay.help(),
+      refresh: o => { if (o?.panel) { kept = null; fitClear(); } refreshHud(); }, // folded or unfolded: the farm fits the room it now has
     },
   });
   function setFollow(on) {
@@ -192,6 +193,14 @@ export function start({ el, opts, prefs }) {
     refreshHud();
     dirty = true;
   }
+  // At 100% the farm is fitted clear of the panel, beside it or below it (camera.js clearRect); the panel's box is
+  // held while it shows (it only grows: holdBox), so the farm doesn't jump as its figures change.
+  let kept = null;
+  function fitClear() {
+    kept = holdBox(kept, hud.panelBox());
+    rig.setClear(kept ? clearRect(el.clientWidth || 1, el.clientHeight || 1, kept, a => rig.fitFor(a)) : null);
+    dirty = true;
+  }
   function refreshHud() {
     const sc = model?.scene ?? { farmers: [] };
     hud.render({
@@ -199,6 +208,8 @@ export function start({ el, opts, prefs }) {
       follow: Boolean(following), canFollow: Boolean(selected && farmers.headOf(selected)),
       restingHidden: restingShown ? null : sc.farmers.filter(resting).length, scene: sc, season: model?.season ?? 'summer',
     });
+    const box = hud.panelBox();
+    if (box ? !kept || box.w > kept.w || box.h > kept.h : kept) fitClear(); // the panel came, grew, or went
   }
   refreshHud();
   setInterval(refreshHud, 1000); // the page's buttons' state (the sidebar) and Motion can change from outside
@@ -206,7 +217,9 @@ export function start({ el, opts, prefs }) {
   const resize = () => {
     const w = el.clientWidth || 1, h = el.clientHeight || 1;
     renderer.setSize(w, h, false);
-    rig.setAspect(w / h);
+    rig.setFrame(w, h);
+    kept = null; // a new window: the panel's box is measured afresh
+    fitClear();
     dirty = true;
   };
   new ResizeObserver(resize).observe(el);

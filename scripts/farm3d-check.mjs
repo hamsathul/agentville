@@ -110,12 +110,16 @@ try {
       const r = JSON.parse(await chrome.inFrame('/world/farm3d/', `(() => {
         const tag = document.querySelector('.f3-tag:not(.st-waiting):not(.st-turn)'), id = tag?.dataset.id, at = id && window.__farm3d.screenOf(id);
         if (!at) return JSON.stringify({ none: true });
-        const c = document.querySelector('.f3-canvas'), box = c.getBoundingClientRect();
-        c.dispatchEvent(new PointerEvent('pointermove', { bubbles: true, clientX: box.left + at.x, clientY: box.top + at.y + 18, pointerId: 1 }));
-        return JSON.stringify({ id, tip: tag.title });
+        return JSON.stringify({ id, tip: tag.title, at });
       })()`));
       let title = '';
-      for (const end = Date.now() + 3000; Date.now() < end && !title; await sleep(100)) title = await chrome.inFrame('/world/farm3d/', "document.querySelector('.f3-canvas').title"); // the hover is read on the next frame, which waits while models load
+      // down its body from over its head (how far depends on how big the farm is drawn): the first point that is the farmer
+      for (const dy of [8, 12, 16, 20, 26]) {
+        if (r.none || title === r.tip) break;
+        await chrome.inFrame('/world/farm3d/', `(() => { const c = document.querySelector('.f3-canvas'), box = c.getBoundingClientRect(); c.dispatchEvent(new PointerEvent('pointermove', { bubbles: true, clientX: box.left + ${r.at?.x ?? 0}, clientY: box.top + ${r.at?.y ?? 0} + ${dy}, pointerId: 1 })); return true; })()`);
+        title = '';
+        for (const end = Date.now() + 1000; Date.now() < end && !title; await sleep(100)) title = await chrome.inFrame('/world/farm3d/', "document.querySelector('.f3-canvas').title");
+      }
       if (r.none || !r.tip || title !== r.tip) bad(`hover: pointing at ${r.id ?? 'a farmer'} gave the tooltip "${oneLine(title ?? '').slice(0, 80)}", not "${oneLine(r.tip ?? '').slice(0, 80)}"`);
       else console.log(`  ✓ hover: pointing at ${r.id} shows its tooltip`);
     }
@@ -130,6 +134,11 @@ try {
         '[data-farm-follow]', '[data-farm-resting]', '[data-farm-bubbles]', '[data-farm-animals]', '[data-farm-sky]', '[data-farm-season]', '[data-farm-motion]', '[data-farm-bell]', '[data-farm-help]', '[data-farm-zoom="1"]', '[data-f3-turn="-1"]', '[data-f3-reset]'];
       const hud = JSON.parse(await chrome.inFrame('/world/farm3d/', `JSON.stringify({ stats: Boolean(document.querySelector('.px-stats .px-brand[data-farm-panel]')), kpis: document.querySelectorAll('.px-kpi').length, gauges: document.querySelectorAll('.px-gauge').length, missing: ${JSON.stringify(WANT)}.filter(q => !document.querySelector(q)) })`));
       const corner = await chrome.js("Boolean(document.querySelector('.world-corner'))");
+      // at 100% no farmer is under the panel: the farm is fitted beside it or below it
+      const under = JSON.parse(await chrome.inFrame('/world/farm3d/', `(() => {
+        const r = document.querySelector('.px-stats').getBoundingClientRect(), m = window.__farm3d;
+        return JSON.stringify(m.farmerIds().filter(id => { const p = m.screenOf(id); return p && p.x < r.right && p.y < r.bottom; }));
+      })()`));
       await chrome.inFrame('/world/farm3d/', "document.querySelector('[data-farm-state=\"waiting\"]')?.click()");
       let picked = null; // the test page lists what the world asked of it: "pick <id>"
       for (const end = Date.now() + 3000; Date.now() < end && !picked; await sleep(100)) picked = await chrome.js("/^pick (\\S+)$/.exec(document.querySelector('#asked li')?.textContent ?? '')?.[1] ?? null");
@@ -143,7 +152,7 @@ try {
       const back = (await statsOf(chrome))?.drawn;
       const why = [
         !hud.stats && 'no panel', hud.kpis !== 4 && `${hud.kpis} count cards`, hud.gauges < 2 && `${hud.gauges} meters`, hud.missing.length && `missing ${hud.missing.join(' ')}`,
-        corner && "the page's corner is over it", !waitingIds.includes(picked) && `the waiting card picked ${picked}, not one of ${waitingIds.join(', ')}`,
+        corner && "the page's corner is over it", under.length && `farmers under the panel at 100%: ${under.join(', ')}`, !waitingIds.includes(picked) && `the waiting card picked ${picked}, not one of ${waitingIds.join(', ')}`,
         !(hidden < shown) && `Resting hid nothing (${shown} → ${hidden})`, !/hidden/.test(label ?? '') && `Resting says "${oneLine(label ?? '')}"`, back !== shown && `Resting back: ${back}, not ${shown}`,
         chrome.errors.length > before && `script errors: ${oneLine(chrome.errors[before]).slice(0, 160)}`,
       ].filter(Boolean);

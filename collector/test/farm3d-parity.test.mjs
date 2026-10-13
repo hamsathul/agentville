@@ -47,3 +47,17 @@ test('Follow eases the view to its farmer, 3.5× a second; a still farm (dt 0) s
   assert.deepEqual(followStep({ x: 0, z: 0 }, { x: 10, z: -4 }, 0), { x: 10, z: -4 });
   assert.deepEqual(followStep({ x: 0, z: 0 }, { x: 10, z: -4 }, 1), { x: 10, z: -4 });
 });
+
+import { clearRect, holdBox, fitDistance, FOV } from '../../web/worlds/farm3d/camera.js';
+test('at 100% the farm fits beside the panel or below it, whichever shows it bigger; folded, the whole window', () => {
+  const pts = [-1, 1].flatMap(sx => [-1, 1].map(sz => ({ x: sx * 36, y: 0, z: sz * 30 })));
+  const fitFor = aspect => fitDistance(pts, { yaw: 0, pitch: (55 * Math.PI) / 180, fov: (FOV * Math.PI) / 180, aspect, target: { x: 0, y: 0, z: 0 } });
+  assert.deepEqual(clearRect(1280, 820, null, fitFor), { x: 0, y: 0, w: 1280, h: 820 });
+  assert.deepEqual(clearRect(1600, 700, { w: 330, h: 240 }, fitFor), { x: 330, y: 0, w: 1270, h: 700 }); // a wide window: beside
+  assert.deepEqual(clearRect(700, 1200, { w: 330, h: 240 }, fitFor), { x: 0, y: 240, w: 700, h: 960 }); // a tall one: below
+});
+test("the panel's box only grows while it shows, so the farm doesn't jump as its figures change; folded, none", () => {
+  assert.deepEqual(holdBox(null, { w: 300, h: 200 }), { w: 300, h: 200 });
+  assert.deepEqual(holdBox({ w: 300, h: 200 }, { w: 290, h: 210 }), { w: 300, h: 210 });
+  assert.equal(holdBox({ w: 300, h: 200 }, null), null);
+});
