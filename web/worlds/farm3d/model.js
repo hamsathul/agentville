@@ -4,6 +4,7 @@
 // the SDK; lookFor and pick from the people kit), so Node can test it (collector/test/farm3d.test.mjs pins every copy
 // below against the farm's original).
 import { GRID_CONFIG, SILO_X, slotTables } from './layout.js';
+import { stallOf } from './dialogs.js';
 
 // The states an agent is out and about in (engine.js, ACTIVE).
 const ACTIVE = new Set(['waiting', 'working', 'turn']);
@@ -181,7 +182,7 @@ export function makeModel({ makeGrid, engineScene, tagText, cutMid, lastPart, ag
     }
     return {
       scene: e, // the engine scene (engine.js engineScene, with the farm's looks): the panel, the dialogs and the diary read it
-      ground, beds: bedsOut, farmers, over, season: seasonOf(e.plan), silos: silosOf(e),
+      ground, beds: bedsOut, farmers, over, season: seasonOf(e.plan), silos: silosOf(e), stall: stallOf(e),
       keep: { beds: ground.beds ?? beds, packed: packed || e.fields.length > 0 },
     };
   }

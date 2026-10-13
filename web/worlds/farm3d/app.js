@@ -7,6 +7,7 @@ import { clearRect, holdBox, makeCameraRig } from './camera.js';
 import { makeOverlay } from './overlay.js';
 import { makeHud } from './hud.js';
 import { makeIconImg } from './icons.js';
+import { BOARD_TITLE, boardHtml, boardSessions, buildingTip, dialogFor } from './dialogs.js';
 import { makeMaterials } from './build/materials.js';
 import { makeSky, skyFor } from './build/sky.js';
 import { makeTerrain } from './build/terrain.js';
@@ -108,7 +109,7 @@ export function start({ el, opts, prefs }) {
   scene3.add(terrain.group, buildings.group, beds.group, crops.group, farmers.group, animals.group, nature.group);
   /** The ball trees, bushes and rocks stand in until the plants' models are drawn. */
   const standIns = () => { const on = !nature.ready(); terrain.setForest(on); buildings.setPlants(on); };
-  let snow = null, night = 0;
+  let snow = null, night = 0, blinkTags = []; // blinkTags: the stall's tags for pull requests whose checks run
 
   // The world's own settings, kept by the page.
   const pref = (name, allowed, fallback) => (allowed.includes(prefs.get(name)) ? prefs.get(name) : fallback);
@@ -245,7 +246,8 @@ export function start({ el, opts, prefs }) {
   }
   /** The farmstead and the yard: rebuilt when the rows, the season or the silos change. */
   function rebuildBuildings() {
-    const info = buildings.build(model.ground, shownSeason(), model.silos.map(({ x, name, silo }) => ({ x, name, silo: silo && { fill: silo.fill, lamp: silo.lamp } })));
+    const info = buildings.build(model.ground, shownSeason(), model.silos.map(({ x, name, silo }) => ({ x, name, silo: silo && { fill: silo.fill, lamp: silo.lamp } })), { crates: model.stall.crates });
+    blinkTags = info.blink ?? [];
     standIns();
     const lk = JSON.stringify(info.lamps);
     if (lk !== lampsKey) { lampsKey = lk; sky.setLamps(info.lamps); }
@@ -290,6 +292,19 @@ export function start({ el, opts, prefs }) {
     if (b) { let o = b.object; while (o && !o.userData.hit) o = o.parent; if (o) return { building: o.userData.hit }; }
     return null;
   }
+  /** A building, clicked: the barn starts a session; the board reads each project's memory; the rest open their dialog. */
+  function openBuilding(k) {
+    if (k === 'barn') { opts.onStartSession(); return; }
+    if (!model) return;
+    if (k === 'board') { void openBoard(); return; }
+    overlay.openDialog(dialogFor(k, model.scene, { esc, ago }));
+  }
+  /** The notice board: each project's CLAUDE.md and memory, read from one of its sessions (the engine's openBoard). */
+  async function openBoard() {
+    overlay.openDialog({ title: BOARD_TITLE, html: '<div class="loading"><span class="spinner"></span>Reading…</div>' });
+    const rows = await Promise.all(boardSessions(model.scene).map(async f => ({ f, r: await opts.request('agentFiles', { agentId: f.id }).catch(() => null) })));
+    overlay.setDialogBody(boardHtml(rows, { esc, lastPart }));
+  }
   function pickFarmer(id) {
     opts.onPickAgent(id);
     const h = farmers.headOf(id);
@@ -300,7 +315,7 @@ export function start({ el, opts, prefs }) {
     const hit = hitAt(e);
     if (hit?.id) pickFarmer(hit.id);
     else if (hit?.animal !== undefined) { overlay.openPet(hit.animal); dirty = true; }
-    else if (hit?.building === 'barn') opts.onStartSession();
+    else if (hit?.building) openBuilding(hit.building);
   });
   let hoverPending = false;
   canvas.addEventListener('pointermove', e => {
@@ -312,7 +327,7 @@ export function start({ el, opts, prefs }) {
       overlay.setHover(hit?.id ?? null);
       canvas.style.cursor = hit ? 'pointer' : '';
       // a farmer's tooltip, as its name tag has it (what it is doing, its context, its cost…); the barn's
-      canvas.title = hit?.id ? model?.farmers.find(f => f.id === hit.id)?.tip ?? '' : hit?.animal !== undefined ? `The ${animals.info(hit.animal)?.title.toLowerCase() ?? 'animal'}: click for what you can ask it to do` : hit?.building === 'barn' ? 'The barn: start or resume a session' : '';
+      canvas.title = hit?.id ? model?.farmers.find(f => f.id === hit.id)?.tip ?? '' : hit?.animal !== undefined ? `The ${animals.info(hit.animal)?.title.toLowerCase() ?? 'animal'}: click for what you can ask it to do` : hit?.building ? buildingTip(hit.building) : '';
     });
   });
 
@@ -351,6 +366,7 @@ export function start({ el, opts, prefs }) {
       const top = typeof b.who === 'number' ? animals.info(b.who)?.top : (h => h && { x: h.x, y: h.y + 0.55, z: h.z })(farmers.headOf(b.who));
       return { key: `${b.conversation}|${b.who}`, text: b.text, toYou: b.toYou, top };
     }) : []);
+    if (!opts.still && blinkTags.length) { const k = Math.floor(now / 500) % 2; for (const b of blinkTags) if (b.mesh.material !== b.mats[k]) { b.mesh.material = b.mats[k]; dirty = true; } }
     if (!opts.still) { // the world moves: the wind in the crops, the weather, the snow
       crops.tick(t);
       beds.tick(t, dt);
@@ -367,6 +383,10 @@ export function start({ el, opts, prefs }) {
   window.__farm3d = {
     stats: () => ({ calls: renderer.info.render.calls, triangles: renderer.info.render.triangles, geometries: renderer.info.memory.geometries, textures: renderer.info.memory.textures, farmers: farmers.count(), drawn: shownModel()?.farmers.length ?? 0, tags: overlay.count(), beds: model?.beds.length ?? 0, animals: animals.count() }),
     screenOf: id => { const h = farmers.headOf(id); return h ? project(h) : null; }, // where a farmer's head is in the picture, in pixels
+    /** Where a building's click box is in the picture (its upper part, clear of who stands in front), in pixels. */
+    buildingAt(k) { const b = buildings.hits().find(o => o.userData.hit === k && o.isMesh); if (!b) return null; const p = new THREE.Vector3(); b.getWorldPosition(p); return project({ x: p.x, y: p.y * 1.6, z: p.z }); },
+    /** The buildings' dialog: open or not, and its title. */
+    dialog: () => ({ open: overlay.dialogOpen(), title: document.querySelector('.px-dlg-title')?.textContent ?? '' }),
     /** The plants drawn, by kind (none until their models have loaded). */
     plants: () => nature.count(),
     /** A farmer as drawn: its character, the clip it plays, its shirt's colour (null while the figurine stands in). */

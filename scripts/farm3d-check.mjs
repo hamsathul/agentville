@@ -160,6 +160,42 @@ try {
       else console.log(`  ✓ the panel and the Menu: the farm's, every button; no corner; the waiting card picks ${picked}; Resting hides ${shown - hidden}`);
     }
 
+    // 3c. the buildings: each opens the 2D farm's dialog (the barn starts a session); Open in the porch's picks its farmer
+    {
+      await open(chrome, 'everyone');
+      await sleep(600);
+      const before = chrome.errors.length, got = {};
+      const clickAt = js => chrome.inFrame('/world/farm3d/', `(() => { const at = ${js}; if (!at) return false; const c = document.querySelector('.f3-canvas'), b = c.getBoundingClientRect(), o = { bubbles: true, clientX: b.left + at.x, clientY: b.top + at.y, pointerId: 7, button: 0 }; for (const type of ['pointerdown', 'pointerup']) c.dispatchEvent(new PointerEvent(type, o)); return true; })()`);
+      const TITLES = { house: 'Your porch', silo: 'The silo: your plan', henhouse: 'The henhouse: subagents', stall: 'The market stall: pull requests', board: 'The notice board: what your projects remember' };
+      for (const k of Object.keys(TITLES)) {
+        await clickAt(`window.__farm3d.buildingAt('${k}')`);
+        await sleep(400);
+        got[k] = JSON.parse(await chrome.inFrame('/world/farm3d/', 'JSON.stringify(window.__farm3d.dialog())'));
+        if (k !== 'house') await chrome.inFrame('/world/farm3d/', "document.querySelector('dialog.px-dlg')?.close(); true");
+        else {
+          await chrome.inFrame('/world/farm3d/', "document.querySelector('dialog.px-dlg [data-farm-pick]')?.click(); true");
+          await sleep(300);
+          got.pick = /^pick /.test(await chrome.js("document.querySelector('#asked li')?.textContent ?? ''")) && !JSON.parse(await chrome.inFrame('/world/farm3d/', 'JSON.stringify(window.__farm3d.dialog())')).open;
+        }
+      }
+      // open pull requests: a crate each on the stall's counter, and its "N PRs" label
+      const tour = JSON.parse(await chrome.js("JSON.stringify(window.AgentvilleTour.stops.find(s => s.name === 'everyone').frames[0])"));
+      tour.repos = tour.repos.map((r, i) => (i ? r : { ...r, prs: { open: [{ number: 7, title: 'Faster carts', checks: 'running' }, { number: 8, title: 'Hens', checks: 'ok' }], merged: [] } }));
+      await chrome.js(`window.TrackerFarm.update(${JSON.stringify(tour)})`);
+      await sleep(700);
+      got.prs = await chrome.inFrame('/world/farm3d/', "[...document.querySelectorAll('.f3-ov .f3-cnt')].some(e => e.title.startsWith('Open pull requests: #7 Faster carts · #8 Hens'))");
+      await clickAt("window.__farm3d.buildingAt('barn')");
+      await sleep(300);
+      const barn = await chrome.js("document.querySelector('#asked li')?.textContent ?? ''");
+      const why = [
+        ...Object.entries(TITLES).filter(([k, t]) => !got[k]?.open || got[k].title !== t).map(([k, t]) => `${k}: ${JSON.stringify(got[k])}, not "${t}"`),
+        !got.pick && "Open in the porch's dialog didn't pick its farmer", !got.prs && 'no "2 PRs" label at the stall', barn !== 'start a session' && `the barn asked "${barn}"`,
+        chrome.errors.length > before && `script errors: ${oneLine(chrome.errors[before]).slice(0, 160)}`,
+      ].filter(Boolean);
+      if (why.length) bad(`the buildings: ${why.join('; ')}`);
+      else console.log("  ✓ the buildings: the porch, the silo, the henhouse, the stall and the notice board open their dialogs; Open picks; the barn starts a session");
+    }
+
     // 4. the animals: the twelve of Quaternius's Animated Animal Pack and the pond's frog and fish, all out once their
     // models have loaded (they load after the farm has drawn), in the farm's colours (coats.js) with no metal, the cows
     // spotted; clicking one opens its menu (the frog's its own), a pick from it sets it going and shuts the menu, Esc

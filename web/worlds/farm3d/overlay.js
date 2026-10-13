@@ -2,7 +2,7 @@
 // text, in its pixel font), their speech bubbles, the fields' labels and counts, the silos' figures, an animal's menu
 // (what you can ask it to do), and a short Help (the panel and the Menu are hud.js's). Everything is placed each
 // frame from the camera (place(project)).
-import { signsOf } from './layout.js';
+import { STALL, signsOf } from './layout.js';
 
 const CSS = `
   .f3-ov { position: absolute; inset: 0; pointer-events: none; overflow: hidden; z-index: 3; }
@@ -61,7 +61,19 @@ export function makeOverlay(el, { opts, hooks }) {
   document.head.append(style);
   const ov = document.createElement('div');
   ov.className = 'f3-ov';
-  el.append(ov);
+  // The buildings' dialog (the engine's markup and styles): the porch, the silo, the henhouse, the stall, the board
+  const dlg = document.createElement('dialog');
+  dlg.className = 'px-help px-dlg';
+  dlg.setAttribute('aria-label', 'The farm');
+  dlg.innerHTML = '<header><b class="px-dlg-title"></b><button type="button" class="x" data-farm-dlg-close aria-label="Close">×</button></header><div class="px-dlg-body"></div>';
+  el.append(ov, dlg);
+  dlg.addEventListener('click', e => {
+    const pick = e.target.closest?.('[data-farm-pick]'), mem = e.target.closest?.('[data-farm-mem]');
+    if (pick) { dlg.close(); hooks.pick(pick.dataset.farmPick); return; }
+    if (mem) { dlg.close(); opts.onOpenDoc?.(mem.dataset.farmMem, mem.dataset.path); return; }
+    if (e.target.closest?.('[data-farm-dlg-close]') || e.target === dlg) dlg.close(); // × or the backdrop
+  });
+  let stallTag = null; // the stall's "N PRs" label
   const tags = new Map(), says = new Map(), fields = new Map(), cnts = new Map(), silos = new Map(), signs = new Map(), talks = new Map();
   let talkItems = []; // what the animals and farmers are saying to each other now (talk.js), each over its speaker
   // Farmers beyond a place's room aren't drawn: a sign says how many, in the 2D farm's words (web/worlds/farm/world.js,
@@ -129,6 +141,13 @@ export function makeOverlay(el, { opts, hooks }) {
       d.title = `The silo${s.name ? ` of ${s.name}` : ''}: ${s.silo ? `${s.name ? 'its' : 'your'} plan's weekly limit, ${s.silo.label} used` : `no reading of ${s.name ? 'its' : 'your'} plan's limits yet`}`; // an account with no reading yet has no silo figures
     }
     prune(silos, keepSilo);
+    const st = m.stall;
+    if (st?.label) {
+      if (!stallTag) { stallTag = document.createElement('div'); stallTag.className = 'f3-cnt'; ov.append(stallTag); }
+      const h = pxt(st.label, '#5a3a1a', null);
+      if (stallTag.dataset.html !== h) { stallTag.innerHTML = h; stallTag.dataset.html = h; }
+      stallTag.title = st.tip;
+    } else if (stallTag) { stallTag.remove(); stallTag = null; }
     const keepSign = new Set(), more = m.ground.more ?? 0;
     const SIGNS = signsOf(m.ground);
     for (const [group, n] of [...Object.entries(m.over ?? {}), ['more', more]]) {
@@ -172,6 +191,7 @@ export function makeOverlay(el, { opts, hooks }) {
       for (const [k, dx] of [['behind', -40], ['ahead', -24], ['dirty', 24]]) { const c = cnts.get(`${b.key}|${k}`); if (c) put(c, project(at3(b.cx + dx, b.rowTop + 4, 1.4))); }
     }
     for (const [x, d] of silos) put(d, project(silo3(Number(x))));
+    if (stallTag) put(stallTag, project(at3(STALL.x + 14, STALL.y + 36, 0.2)), 0, true);
     const at = model ? signsOf(model.ground) : {};
     for (const [group, d] of signs) if (at[group]) put(d, project(at3(at[group][0], at[group][1], at[group][1] < 90 ? 2.8 : 0.4)));
     if (empty && model) { const G = model.ground.GRID; put(empty, project(at3((G.x0 + G.x1) / 2, (G.y0 + G.y1) / 2, 0))); }
@@ -245,6 +265,11 @@ export function makeOverlay(el, { opts, hooks }) {
 
   return {
     sync, place, openPet, closePet,
+    /** A building's dialog ({ title, html }), opened (or its body replaced, when it is open). */
+    openDialog(d) { if (!d) return; dlg.querySelector('.px-dlg-title').textContent = d.title; dlg.querySelector('.px-dlg-body').innerHTML = d.html; if (!dlg.open) dlg.showModal(); },
+    /** The open dialog's body, replaced (the notice board's, once read). */
+    setDialogBody(html) { if (dlg.open) dlg.querySelector('.px-dlg-body').innerHTML = html; },
+    dialogOpen: () => dlg.open,
     /** Help: opened, shut, or (no argument) the other way round. */
     help(on = !help) { openHelp(on); },
     /** The animal whose menu is open, or null. */

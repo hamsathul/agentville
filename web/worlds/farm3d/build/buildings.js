@@ -4,18 +4,20 @@
 // string lights, the henhouse and its run, the market stall, the scarecrow patch, the hammocks, the shade tree, the
 // orchard that comes with more rows, the woodpile and the rock, and the fence round the fields. Snow on the roofs in
 // winter. Rebuilt only when the rows, the season or the silos change.
-import { BARN, BARN_DOOR, BUSHES, CORR, DECK, HENHOUSE, HOUSE, NAPS, PASTURE_GATES, PORCH_Y, PX, SCARECROWS, SHADE, SILO_Y, STALL, WOODPILE, orchardOf, pastureOf, rocksOf } from '../layout.js';
+import { BARN, BARN_DOOR, BOARD, BUSHES, CORR, DECK, HENHOUSE, HOUSE, NAPS, PASTURE_GATES, PORCH_Y, PX, SCARECROWS, SHADE, SILO_Y, STALL, WOODPILE, orchardOf, pastureOf, rocksOf } from '../layout.js';
 import { disposeTree, seasonPalette } from './util.js';
+import { TAG_COLOURS } from '../dialogs.js';
 
 const m = v => v / PX; // 2D pixels to metres
 export const DECK_H = 0.35; // the porch's deck: farmers on it stand this high
 
 export function makeBuildings(THREE, mats, S) {
+  const hitMat = new THREE.MeshBasicMaterial({ visible: false }); // the click boxes': never drawn
   const group = new THREE.Group();
   let built = null, key = '';
 
-  function build(ground, season, silos) {
-    const k = `${ground.rows}|${season}|${JSON.stringify(silos)}`;
+  function build(ground, season, silos, stall = { crates: [] }) {
+    const k = `${ground.rows}|${season}|${JSON.stringify(silos)}|${JSON.stringify(stall.crates)}`;
     if (k === key) return built.userData.info;
     key = k;
     if (built) disposeTree(built);
@@ -180,6 +182,15 @@ export function makeBuildings(THREE, mats, S) {
       if (snow) { const cap = S.box(w, 0.08, 1.5, '#ffffff', c.x, 0, c.z - 0.6, g); cap.position.y = 2.58; cap.rotation.x = 0.22; }
     }
 
+    /* ---------- the notice board: two posts, a board with notes pinned on it (what your projects remember) ---------- */
+    {
+      const c = P(BOARD.x + BOARD.w / 2, BOARD.y + BOARD.h / 2), w = m(BOARD.w) * 0.8;
+      for (const sx of [-1, 1]) S.box(0.12, 1.9, 0.12, '#6b4320', c.x + sx * (w / 2 - 0.1), 0, c.z, g);
+      S.box(w, 0.95, 0.1, '#8b5a2b', c.x, 0.85, c.z + 0.04, g);
+      S.box(w + 0.2, 0.1, 0.24, '#4e3626', c.x, 1.82, c.z + 0.04, g); // a little roof over it
+      [['#f4ecd8', -0.42, 1.38], ['#ffe08a', 0.02, 1.45], ['#cfe8f7', 0.4, 1.3], ['#f4ecd8', -0.15, 1.05], ['#f6c6c0', 0.3, 1.02]].forEach(([col, dx, y]) => S.box(0.3, 0.26, 0.02, col, c.x + dx, y - 0.13, c.z + 0.1, g));
+    }
+
     /* ---------- the scarecrow patch: stubble behind a low fence, a hay bale ---------- */
     {
       const { x: sx0, y: sy0, w: sw } = SCARECROWS, c = P(sx0 + sw / 2, (sy0 + PORCH_Y + 4) / 2), dd = m(PORCH_Y + 4 - sy0);
@@ -276,14 +287,40 @@ export function makeBuildings(THREE, mats, S) {
     // one draw call for the barn (its own, so it can still be clicked), one for the rest
     for (const o of g.children.filter(c => c.userData.hit || c.userData.plants)) S.bake(o);
     S.bake(g, { keep: o => Boolean(o.userData.hit || o.userData.plants) });
+    // What a click finds: a box round each building (invisible, not baked), the 2D farm's buildings by name
+    const hitBox = (k, x0, y0, w2, h2, tall) => {
+      const a = P(x0 + w2 / 2, y0 + h2 / 2), hb = new THREE.Mesh(new THREE.BoxGeometry(m(w2), tall, m(h2)), hitMat);
+      hb.position.set(a.x, tall / 2, a.z);
+      hb.userData.hit = k;
+      g.add(hb);
+    };
+    hitBox('barn', BARN.x, BARN.front - 45, 55, 45, 7);
+    for (const { x } of silos) hitBox('silo', x, SILO_Y - 10, 20, 20, 9);
+    hitBox('house', HOUSE.x + 4, PORCH_Y - 52, HOUSE.w - 8, 55, 4.5);
+    hitBox('henhouse', HENHOUSE.x, HENHOUSE.y, 92, 36, 2.6);
+    hitBox('stall', STALL.x - 2, STALL.y, 34, 36, 3);
+    hitBox('board', BOARD.x, BOARD.y, BOARD.w, BOARD.h, 2.2);
+    // the stall's crates, a crate for each open pull request with its checks' tag (not baked: running tags blink)
+    const blink = [];
+    {
+      const c = P(STALL.x + 14, STALL.y + 34), w = m(30);
+      stall.crates.slice(0, 8).forEach((cr, i) => {
+        const x = c.x - w / 2 + 0.55 + (i % 4) * 0.85, z = c.z - 0.5 + (i < 4 ? 0.22 : -0.22), y = 0.98 + (i < 4 ? 0 : 0.02);
+        S.box(0.42, 0.34, 0.36, '#8b5a2b', x, y, z, g).userData.crate = true;
+        const cols = TAG_COLOURS[cr.tag] ?? TAG_COLOURS.none;
+        const tag = S.box(0.14, 0.12, 0.02, Array.isArray(cols) ? cols[0] : cols, x, y + 0.12, z + 0.19, g);
+        tag.userData.crate = true;
+        if (Array.isArray(cols)) blink.push({ mesh: tag, mats: cols.map(col => mats.std(col)) });
+      });
+    }
     const barnDoor = P(BARN_DOOR[0], BARN.front + 2);
-    const info = { porch, siloTops, lamps: [...porch.lamps, { x: barnDoor.x, y: 3.2, z: barnDoor.z + 0.6, color: '#ffe0a0', distance: 9 }] };
+    const info = { porch, siloTops, blink, lamps: [...porch.lamps, { x: barnDoor.x, y: 3.2, z: barnDoor.z + 0.6, color: '#ffe0a0', distance: 9 }] };
     g.userData.info = info;
     group.add(g);
     built = g;
     return info;
   }
-  /** The barn, for clicks (its meshes carry userData.hit on their group). */
+  /** What a click can find: each building's box (userData.hit: barn, silo, house, henhouse, stall, board). */
   const hits = () => (built ? built.children.filter(o => o.userData.hit) : []);
   return {
     group, build, hits,

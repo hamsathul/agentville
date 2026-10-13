@@ -61,3 +61,45 @@ test("the panel's box only grows while it shows, so the farm doesn't jump as its
   assert.deepEqual(holdBox({ w: 300, h: 200 }, { w: 290, h: 210 }), { w: 300, h: 210 });
   assert.equal(holdBox({ w: 300, h: 200 }, null), null);
 });
+
+import { dialogFor, buildingTip, boardSessions, boardHtml, stallOf, BOARD_TITLE } from '../../web/worlds/farm3d/dialogs.js';
+const fx = { esc: g('esc'), ago: g('ago'), lastPart: g('lastPart') };
+test("each building's dialog and tooltip is the 2D farm's for the same scene", () => {
+  const pr = n => ({ number: n, title: `PR ${n}`, url: `https://github.com/x/y/pull/${n}`, checks: n % 2 ? 'ok' : 'failed', draft: n === 4 });
+  const windows = [{ kind: 'five_hour', percentUsed: 40, resetsAt: NOW + 3600e3 }, { kind: 'seven_day', percentUsed: 72, resetsAt: NOW + 86400e3 }];
+  const scenes = {
+    busy: { ...snap([agent('a1', { state: 'waiting', stateReason: 'permission', ask: 'Run npm test?' }), agent('a2', { state: 'yourTurn', lastReply: 'Done.' }),
+      agent('a3', { children: [{ id: 'c1', kind: 'subagent', state: 'running', label: 'Look around', agentType: 'Explore', startedAt: NOW - 5000 }] })],
+    [repo('shop', { prs: { open: [pr(1), pr(2), pr(4)], merged: [{ number: 3, title: 'Old', url: 'https://github.com/x/y/pull/3', at: NOW - 60e3 }] } })]), plan: { from: 't', at: NOW, windows } },
+    empty: snap([], [repo('blog')]),
+  };
+  for (const [name, s] of Object.entries(scenes)) {
+    const e = engineOf(s), hooks = farm.makeFarm();
+    hooks.setScene(e);
+    for (const k of ['house', 'silo', 'henhouse', 'stall']) assert.deepEqual(dialogFor(k, e, fx), plain(hooks.dialog(k)), `${name} ${k}`);
+    assert.deepEqual(boardSessions(e).map(f => f.id), plain(hooks.boardSessions()).map(f => f.id), name);
+  }
+  for (const k of ['barn', 'silo', 'board', 'house', 'stall', 'henhouse', 'nothing']) assert.equal(buildingTip(k), farm.makeFarm().buildingTip(k), k);
+});
+test("the notice board's dialog, as the engine's: each project's memory as buttons; nothing remembered; couldn't read it; no sessions", () => {
+  const h = boardHtml([
+    { f: { id: 'a1', cwd: '/u/shop' }, r: { ok: true, status: 200, data: { memory: [{ path: '/u/shop/CLAUDE.md', label: 'CLAUDE.md', where: 'project' }] } } },
+    { f: { id: 'a2', cwd: '/u/blog' }, r: { ok: false, status: 404, error: 'gone' } },
+    { f: { id: 'a3', cwd: '/u/x' }, r: { ok: false, status: 0, error: 'refused' } },
+  ], fx);
+  assert.equal(h, '<h4>shop</h4><ul class="px-dl"><li><button type="button" class="act" data-farm-mem="a1" data-path="/u/shop/CLAUDE.md">CLAUDE.md</button><span class="muted">project</span></li></ul>'
+    + '<h4>blog</h4><p class="muted">Nothing remembered here yet.</p><h4>/u/x</h4><p class="muted">Could not read it.</p>');
+  assert.equal(boardHtml([], fx), '<p class="muted">No sessions here.</p>');
+  assert.equal(BOARD_TITLE, 'The notice board: what your projects remember');
+});
+test("the stall: a crate on its counter for each open pull request (8 at most), tagged as the 2D farm's; its label and tooltip", () => {
+  const prs = Array.from({ length: 10 }, (_, i) => ({ number: i + 1, title: `t${i + 1}`, checks: ['ok', 'failed', 'running', null][i % 4], draft: i === 9 }));
+  const st = stallOf({ fields: [{ name: 'shop', prs: { open: prs, merged: [] } }] });
+  assert.equal(st.crates.length, 8);
+  assert.deepEqual(st.crates.slice(0, 4).map(c => c.tag), ['ok', 'failed', 'running', 'none']);
+  assert.equal(stallOf({ fields: [{ name: 'x', prs: { open: [{ number: 1, title: 'd', draft: true, checks: 'ok' }] } }] }).crates[0].tag, 'draft');
+  assert.equal(st.label, '10 PRs');
+  assert.equal(st.tip, 'Open pull requests: #1 t1 · #2 t2 · #3 t3 · #4 t4 · #5 t5 · #6 t6 …. Click the stall for them all');
+  assert.equal(stallOf({ fields: [{ name: 'x', prs: { open: [{ number: 7, title: '' }] } }] }).label, '1 PR');
+  assert.deepEqual(stallOf({ fields: [] }), { crates: [], label: null, tip: null });
+});

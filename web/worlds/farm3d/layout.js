@@ -19,6 +19,8 @@ export const BARN_DOOR = [61, LANE];
 export const HOUSE = { x: 176, y: 30, w: 136 }; // its walls from x + 4 to x + w - 4, its front at PORCH_Y - 10
 export const DECK = { x0: 150, x1: 362, y0: PORCH_Y - 10, y1: PORCH_Y + 3 }; // longer than the house: six farmers 4 m apart
 export const STALL = { x: 384, y: 62 };
+/** The notice board (what your projects remember): by the porch's steps, between the silo and the deck, as the 2D farm has it. */
+export const BOARD = { x: 128, y: 74, w: 16, h: 10 };
 export const SCARECROWS = { x: 430, y: 36, w: 120 };
 // The yard on the left: the henhouse and its run, the pond, the hammocks, the shade tree, a woodpile, bushes, rocks.
 export const HENHOUSE = { x: 10, y: 122 };
@@ -51,7 +53,7 @@ export const pastureOf = L => ({ x0: 16, x1: 544, y0: L.GRID.y1 + 26, y1: L.GRID
 export const PASTURE_GATES = { top: [CORR[0] - 36, CORR[0] + 14], bottom: [W / 2 - 20, W / 2 + 20] };
 /**
  * What stands on the farm that an animal walks round (2D pixels, rectangles): the barn, the silos (both accounts'
- * places), the farmhouse and its deck, the henhouse and its run, the market stall, the scarecrow patch.
+ * places), the farmhouse and its deck, the henhouse and its run, the market stall, the notice board, the scarecrow patch.
  */
 export const FARMSTEAD = [
   { x: BARN.x, y: BARN.front - 45, w: 55, h: 45 },
@@ -60,6 +62,7 @@ export const FARMSTEAD = [
   { x: DECK.x0, y: DECK.y0, w: DECK.x1 - DECK.x0, h: DECK.y1 - DECK.y0 + 3 },
   { x: HENHOUSE.x, y: HENHOUSE.y, w: 92, h: 36 },
   { x: STALL.x - 2, y: STALL.y, w: 34, h: 36 },
+  { x: BOARD.x - 1, y: BOARD.y - 1, w: BOARD.w + 2, h: BOARD.h + 2 },
   { x: SCARECROWS.x - 2, y: SCARECROWS.y - 2, w: SCARECROWS.w + 4, h: PORCH_Y + 4 - SCARECROWS.y + 2 },
 ];
 /** The forest's edge, where the deer and the fox come out: a strip of grass between the pasture's fence and the trees. */
