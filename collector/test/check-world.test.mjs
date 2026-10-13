@@ -429,3 +429,12 @@ test("the starter draws several accounts (a meter for each), so check-world does
   const r = await checkWorld({ dir: builtIn('starter') });
   assert.ok(!r.same.some(s => s.includes('several accounts')), r.same.join('\n'));
 });
+
+test('a world that draws itself and imports modules (the 3D farm): one note saying check-world can\'t load them, not a failure each stop; exit 0', () => {
+  // through the command, in a process of its own, as the other promise tests: the vm's failed imports are promise rejections
+  const c = run('farm3d');
+  assert.equal(c.status, 0, c.stdout + c.stderr);
+  assert.doesNotMatch(c.stdout, /✗/, 'no stop fails for the import check-world cannot do');
+  assert.doesNotMatch(c.stdout, /may draw the same/, 'and no "draws the same" pointers: it drew nothing here');
+  assert.match(c.stdout, /· it draws itself and imports modules from its folder, which check-world can't load, so it ran none of its drawing: look at it with npm run world-shots and on the test page/);
+});

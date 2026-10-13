@@ -230,6 +230,7 @@ export async function checkWorld({ dir, file = 'world.js', json = 'world.json', 
       // bookkeeping of async callbacks half done.
       const r = await new Promise((resolve, reject) => setImmediate(() => { try { resolve(runStop(stop)); } catch (err) { reject(err); } }));
       out.ran++;
+      if (r.raw) out.raw = true;
       for (const u of r.unknown ?? []) unknown.add(u);
       if (r.defaults && !out.defaults.length) out.defaults = r.defaults;
       if (r.error) {
@@ -241,6 +242,13 @@ export async function checkWorld({ dir, file = 'world.js', json = 'world.json', 
     }
   } finally {
     process.off('unhandledRejection', onRejection);
+  }
+  // A world that draws itself and imports modules from its folder (the 3D farm): the vm here can't load them, so
+  // it drew nothing; that is one note, not a failure at every stop. Its other problems are still reported.
+  if (out.raw && out.errors.length && out.errors.every(e => /dynamic import/i.test(e.message))) {
+    out.errors = [];
+    out.notes.push("it draws itself and imports modules from its folder, which check-world can't load, so it ran none of its drawing: look at it with npm run world-shots and on the test page");
+    return out;
   }
   for (const [item, a, b] of checks) if (sigs.has(a) && sigs.has(b) && sigs.get(a) === sigs.get(b)) out.same.push(`${item}: "${b}" draws the same as "${a}"`);
   out.unknown = [...unknown].sort();
@@ -311,7 +319,7 @@ export async function checkWorld({ dir, file = 'world.js', json = 'world.json', 
       }
       log.length = 0;
       step(1);
-    } catch (err) { return { ...fail(err), defaults }; }
-    return { sig: hash(JSON.stringify(log)), defaults, unknown: unknownOf() };
+    } catch (err) { return { ...fail(err), defaults, raw: handlers.raw === true }; }
+    return { sig: hash(JSON.stringify(log)), defaults, unknown: unknownOf(), raw: handlers.raw === true };
   }
 }
