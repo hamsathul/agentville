@@ -2,6 +2,23 @@
 // about its area and rests, now and then gets up to something of its own (its habits), and does what you pick from its
 // menu (a command). A thing to do is a list of steps, each a part to play (a clip, by what the farm does with it:
 // models/index.js names the clip) for a while, once, or while it goes somewhere. Positions are in the 2D farm's pixels.
+// Where it may go is the env's (roam.js): only where the straight way is clear for its body (r, half its length).
+
+/** Who lives where, and their pace (2D pixels a second: 8 a metre): walking, and running. */
+export const HERDS = [
+  { kind: 'cow', n: 2, area: 'pasture', walk: 7, run: 40 },
+  { kind: 'bull', n: 1, area: 'pasture', walk: 7, run: 40 },
+  { kind: 'alpaca', n: 2, area: 'pasture', walk: 8, run: 40 },
+  { kind: 'donkey', n: 1, area: 'pasture', walk: 8, run: 40 },
+  { kind: 'horse', n: 1, area: 'pasture', walk: 10, run: 52 },
+  { kind: 'whitehorse', n: 1, area: 'pasture', walk: 10, run: 52 },
+  { kind: 'husky', n: 1, area: 'yard', walk: 12, run: 44, bandana: '#d64545' },
+  { kind: 'shiba', n: 1, area: 'yard', walk: 11, run: 40, bandana: '#3b74d6' },
+  { kind: 'deer', n: 1, area: 'edge', walk: 9, run: 48 },
+  { kind: 'stag', n: 1, area: 'edge', walk: 9, run: 48 },
+  { kind: 'fox', n: 1, area: 'edge', walk: 11, run: 40 },
+  { kind: 'wolf', n: 1, area: 'edge', walk: 11, run: 44 },
+];
 
 /** Everything an animal can do, by its menu's words. "fly" (a fly bothers it) is a habit only. */
 export const ACTS = {
@@ -71,9 +88,9 @@ export function stepsFor(act, a, env, { habit = false } = {}) {
   }
 }
 
-/** A new animal at (x, y): walk and run its speeds in pixels a second. */
-export function makeAnimal({ kind, family, area, walk = 8, run = 36 }, x, y, rand = Math.random) {
-  return { kind, family, area, walk, run, x, y, tx: x, ty: y, face: rand() * 6.28, rest: rand() * 4, phase: rand() * 6.28, clock: 0, queue: [], cur: null, curT: 0, act: null, home: [x, y], stick: null, part: 'idle', once: false, hold: false, fade: 0.3, timeScale: 1, seq: 0 };
+/** A new animal at (x, y): walk and run its speeds in pixels a second, r its size (half its length) in pixels. */
+export function makeAnimal({ kind, family, area, walk = 8, run = 36, r = 0 }, x, y, rand = Math.random) {
+  return { kind, family, area, walk, run, r, trail: [], x, y, tx: x, ty: y, face: rand() * 6.28, rest: rand() * 4, phase: rand() * 6.28, clock: 0, queue: [], cur: null, curT: 0, act: null, home: [x, y], stick: null, part: 'idle', once: false, hold: false, fade: 0.3, timeScale: 1, seq: 0 };
 }
 /** Asks it to do something (an act from its menu): whatever it was doing stops, and a stick it carried is dropped. */
 export function command(a, act, env) {
@@ -81,6 +98,7 @@ export function command(a, act, env) {
   a.cur = null;
   a.act = act;
   a.home = [a.x, a.y];
+  a.trail = [];
   a.stick = null;
 }
 
@@ -98,15 +116,28 @@ function go(a, [x, y], speed, dt) {
   a.face = Math.atan2(dx, dy);
   return d - step < 1;
 }
+/**
+ * The way home: back along the places it set off from (its trail), straight to the furthest back it can reach in a
+ * straight line, so a run and a leap come back the way they went and never through what they went round.
+ */
+function homeward(a, env) {
+  if (!env.clear || !a.trail.length) { a.trail = []; return a.home; }
+  const k = a.trail.findIndex(p => env.clear(a.area, [a.x, a.y], p, a.r)), to = a.trail[k < 0 ? a.trail.length - 1 : k];
+  a.trail = a.trail.slice(0, k < 0 ? a.trail.length - 1 : k);
+  return to;
+}
 /** Starts the next step: where it goes is settled now; a stick step happens at once. */
 function begin(a, env) {
   while (a.queue.length) {
     const s = { ...a.queue.shift() };
-    if (s.stick === 'throw') { a.stick = { at: env.spot(a.area, [a.x, a.y], 60), from: [a.x, a.y], held: false, t: 0 }; continue; }
+    if (s.stick === 'throw') { a.stick = { at: env.spot(a.area, [a.x, a.y], 60, a.r), from: [a.x, a.y], held: false, t: 0 }; continue; }
     if (s.stick === 'pick') { if (a.stick) a.stick.held = true; continue; }
     if (s.stick === 'drop') { a.stick = null; continue; }
-    if (s.to === 'far') s.to = env.spot(a.area, [a.x, a.y], 80);
-    else if (s.to === 'home') s.to = a.home;
+    if (s.to === 'home') {
+      s.to = homeward(a, env);
+      if (a.trail.length) a.queue.unshift({ part: s.part, to: 'home' }); // then further back still
+    } else if (s.to || s.go) a.trail.push([a.x, a.y]);
+    if (s.to === 'far') s.to = env.spot(a.area, [a.x, a.y], 80, a.r);
     else if (s.to === 'stick') s.to = a.stick?.at ?? [a.x, a.y];
     s.len = s.secs ?? (s.to ? 20 : env.duration(a.kind, s.part) + (s.hold ?? 0));
     a.cur = s;
@@ -133,7 +164,7 @@ export function advance(a, dt, env) {
     if (s.to) done = go(a, s.to, s.part === 'walk' ? a.walk : a.run, dt) || done;
     else if (s.go) { // a leap carries it forward, inside its area
       const nx = a.x + Math.sin(a.face) * a.run * 0.8 * dt, ny = a.y + Math.cos(a.face) * a.run * 0.8 * dt;
-      if (env.inside(a.area, nx, ny)) { a.x = nx; a.y = ny; }
+      if (env.inside(a.area, nx, ny, a.r)) { a.x = nx; a.y = ny; }
     }
     if (!done) return;
     a.cur = null;
@@ -150,8 +181,8 @@ export function advance(a, dt, env) {
   }
   if (go(a, [a.tx, a.ty], a.walk, dt)) {
     a.rest = 3 + env.rand() * 8;
-    [a.tx, a.ty] = env.spot(a.area);
-    if (env.rand() < env.habitChance) { const act = pickHabit(a, env.rand); a.queue = stepsFor(act, a, env, { habit: true }); a.act = act; a.home = [a.x, a.y]; begin(a, env); return; }
+    [a.tx, a.ty] = env.spot(a.area, [a.x, a.y], 0, a.r);
+    if (env.rand() < env.habitChance) { const act = pickHabit(a, env.rand); a.queue = stepsFor(act, a, env, { habit: true }); a.act = act; a.home = [a.x, a.y]; a.trail = []; begin(a, env); return; }
     show(a, 'idle');
     return;
   }

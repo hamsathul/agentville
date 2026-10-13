@@ -3,6 +3,8 @@
 // room, and the same bed for each repo; only the distances are the 3D farm's own, roomier, since the 3D farm has the
 // space: 5 m walkways and rows between the fields, farmers 4 m apart on a longer deck, a wider yard, and a pasture
 // across the front. collector/test/farm3d.test.mjs pins both.
+import { noise } from './build/util.js';
+
 export const W = 560, PX = 8;
 export const COLW = 116, ROWH = 82, MIN_ROWS = 3, MAX_ROWS = 6, MAX_FIELDS = 18;
 export const LANE = 110, LANE_HALF = 10; // the lane in front of the buildings (2.5 m wide)
@@ -34,12 +36,30 @@ export const GRID_CONFIG = {
   cols: 3, colW: COLW, rowH: ROWH, cx0: 248, top0: 130, minRows: MIN_ROWS, maxRows: MAX_ROWS, max: MAX_FIELDS,
   slot: (cx, rowTop) => ({ lane: rowTop + 44, x0: cx - 36, y0: rowTop + 12 }),
   fence: rows => ({ x0: 192, x1: 528, y0: 124, y1: 132 + rows * ROWH }),
-  height: fence => fence.y1 + 180, // the pasture and the meadow under the fields
+  height: fence => fence.y1 + 204, // the pasture under the fields, and the forest's edge under that
 };
 /** The pasture across the front of the farm, under the fields: the cows, the sheep and the horses graze there. */
 export const pastureOf = L => ({ x0: 16, x1: 544, y0: L.GRID.y1 + 26, y1: L.GRID.y1 + 150 });
-/** The forest's edge inside the map, where the deer and the fox come out: right of the fields, and under the pasture. */
-export const forestEdgeOf = L => [{ x: 534, y: 126, w: 20, h: L.GRID.y1 - 126 }, { x: 20, y: L.GRID.y1 + 156, w: 520, h: 16 }];
+/** The forest's edge, where the deer and the fox come out: a strip of grass between the pasture's fence and the trees. */
+export const forestEdgeOf = L => [{ x: 0, y: pastureOf(L).y1 + 1, w: W, h: L.H + 22 - pastureOf(L).y1 - 1 }];
+
+export const MARGIN_X = 48, MARGIN_TOP = 40, MARGIN_BOTTOM = 40; // the forest's ring past the farm's edges
+/** The ground's rectangle for a farm H high: the farm and its forest ring. */
+export const extentOf = H => ({ x0: -MARGIN_X, x1: W + MARGIN_X, y0: -MARGIN_TOP, y1: H + MARGIN_BOTTOM });
+/**
+ * The forest's trees round a farm H high, each [x, y, r, n]: round trees just past the farm's edges, a crown r * 1.25
+ * across from its middle (build/terrain.js draws them; roam.js keeps the animals out of them), n its own noise.
+ */
+export function forestOf(H) {
+  const ext = extentOf(H), trees = [];
+  for (let gy = Math.floor((ext.y0 - 20) / 18); gy * 18 < ext.y1 + 10; gy++) for (let gx = Math.floor((ext.x0 - 24) / 20); gx * 20 < ext.x1 + 10; gx++) {
+    const n = noise(gx * 31, gy * 17), x = gx * 20 + (n % 13) - 6 + (gy % 2) * 10, y = gy * 18 + ((n >> 4) % 9);
+    if (!(x < -4 || x > W + 4 || y <= 12 || y >= H + 22)) continue;
+    if (x < ext.x0 + 6 || x > ext.x1 - 6 || y < ext.y0 + 6 || y > ext.y1 - 4) continue;
+    trees.push([x, y, 9 + ((n >> 6) % 5), n]);
+  }
+  return trees;
+}
 
 /** The places that hold a few farmers each, for a ground L (the shade tree moves down with more rows). */
 export function slotTables(L) {

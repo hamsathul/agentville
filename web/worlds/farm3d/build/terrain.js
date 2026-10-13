@@ -3,17 +3,14 @@
 // round, as on the 2D farm (web/worlds/farm/world.js, drawLand); and past it a wide meadow with more forest, out
 // past every edge of the window (camera.js, GROUND_HALF), fading into the haze, so the farm fills the window as the
 // 2D farm does.
-import { CORR, LANE, LANE_HALF, POND, PX, W, pastureOf, toWorld } from '../layout.js';
+import { CORR, LANE, LANE_HALF, POND, PX, W, extentOf, forestOf, pastureOf, toWorld } from '../layout.js';
 import { GROUND_HALF } from '../camera.js';
 import { disposeTree, noise, seasonPalette, vnoise } from './util.js';
 
-const MARGIN_X = 48, MARGIN_TOP = 40, MARGIN_BOTTOM = 40; // the forest's ring past the farm's edges, in 2D px
 
 export function makeTerrain(THREE, mats) {
   const group = new THREE.Group();
   let built = null;
-  /** The ground's 2D rectangle (the farm and its forest ring) and its size in metres. */
-  const extentOf = H => ({ x0: -MARGIN_X, x1: W + MARGIN_X, y0: -MARGIN_TOP, y1: H + MARGIN_BOTTOM });
 
   function build(ground, season) {
     if (built) { disposeTree(built); built = null; }
@@ -69,14 +66,8 @@ export function makeTerrain(THREE, mats) {
     disc(0, 0.075, S.snow ? mats.std('#e6f3fa', { roughness: 0.2 }) : mats.std('#5ab4ff', { roughness: 0.2 }), 0.6);
     if (!S.snow) for (const [dx, dz] of [[-2.4, 0.5], [1.8, -0.6], [2.9, 0.7]]) { const pad = new THREE.Mesh(new THREE.CylinderGeometry(0.35, 0.35, 0.03, 9), mats.std('#3f9b3a')); pad.position.set(p.x + dx, 0.12, p.z + dz); g.add(pad); }
 
-    // the forest: round trees just past the farm's edges, thicker further out (and in its top left corner)
-    const trees = [];
-    for (let gy = Math.floor((ext.y0 - 20) / 18); gy * 18 < ext.y1 + 10; gy++) for (let gx = Math.floor((ext.x0 - 24) / 20); gx * 20 < ext.x1 + 10; gx++) {
-      const n = noise(gx * 31, gy * 17), x = gx * 20 + (n % 13) - 6 + (gy % 2) * 10, y = gy * 18 + ((n >> 4) % 9);
-      if (!(x < -4 || x > W + 4 || y <= 12 || y >= H + 22)) continue;
-      if (x < ext.x0 + 6 || x > ext.x1 - 6 || y < ext.y0 + 6 || y > ext.y1 - 4) continue;
-      trees.push([x, y, 9 + ((n >> 6) % 5), n]);
-    }
+    // the forest: round trees just past the farm's edges (layout.js's forestOf)
+    const trees = forestOf(H);
     const trunkGeo = new THREE.CylinderGeometry(0.16, 0.26, 1, 6), crownGeo = new THREE.IcosahedronGeometry(1, 0);
     const trunks = new THREE.InstancedMesh(trunkGeo, mats.std('#6b4320'), trees.length);
     const crowns = new THREE.InstancedMesh(crownGeo, mats.std('#ffffff'), trees.length * 2);

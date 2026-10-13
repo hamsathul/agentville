@@ -7,26 +7,12 @@
 // for each part (models/index.js), repainted in the farm's colours and finish (coats.js). The Animals switch hides them all.
 import { GLTFLoader } from '../vendor/GLTFLoader.js';
 import { clone as cloneSkinned } from '../vendor/SkeletonUtils.js';
-import { NAPS, POND, SHADE, WOODPILE, forestEdgeOf, pastureOf } from '../layout.js';
+import { PX } from '../layout.js';
 import { MODELS } from '../models/index.js';
-import { ACTS, advance, command, makeAnimal, menuFor } from '../antics.js';
+import { ACTS, HERDS, advance, command, makeAnimal, menuFor } from '../antics.js';
+import { roamOf } from '../roam.js';
 import { COATS, FINISH, SPOTS, spotsOf } from '../coats.js';
 
-// Who lives where, and their pace (2D pixels a second: 8 a metre): walking, and running.
-const HERDS = [
-  { kind: 'cow', n: 2, area: 'pasture', walk: 7, run: 40 },
-  { kind: 'bull', n: 1, area: 'pasture', walk: 7, run: 40 },
-  { kind: 'alpaca', n: 2, area: 'pasture', walk: 8, run: 40 },
-  { kind: 'donkey', n: 1, area: 'pasture', walk: 8, run: 40 },
-  { kind: 'horse', n: 1, area: 'pasture', walk: 10, run: 52 },
-  { kind: 'whitehorse', n: 1, area: 'pasture', walk: 10, run: 52 },
-  { kind: 'husky', n: 1, area: 'yard', walk: 12, run: 44, bandana: '#d64545' },
-  { kind: 'shiba', n: 1, area: 'yard', walk: 11, run: 40, bandana: '#3b74d6' },
-  { kind: 'deer', n: 1, area: 'edge', walk: 9, run: 48 },
-  { kind: 'stag', n: 1, area: 'edge', walk: 9, run: 48 },
-  { kind: 'fox', n: 1, area: 'edge', walk: 11, run: 40 },
-  { kind: 'wolf', n: 1, area: 'edge', walk: 11, run: 44 },
-];
 // Larger than life, as the farmers are (figurine.js): at their true size a cow is a speck from the whole farm's view.
 const BIGGER = 1.5;
 const HABIT_CHANCE = 0.25; // how often one gets up to something when it stops
@@ -37,7 +23,7 @@ export function makeAnimals(THREE, mats, S) {
   const group = new THREE.Group(), loader = new GLTFLoader(), rand = seeded(424242);
   const templates = new Map(); // kind → { scene, clips, scale, lift, raw, box }
   const animals = [], hidden = new THREE.MeshBasicMaterial({ visible: false }), v = new THREE.Vector3();
-  let H = 400, ground = null, areas = {}, avoid = [], on = true, started = false, shown = 0;
+  let H = 400, ground = null, roam = null, on = true, started = false, shown = 0;
 
   /** A kind's model, loaded once: its module, the GLB in it, repainted, sized to its height (larger than life) with its feet at 0. */
   async function template(kind) {
@@ -53,7 +39,8 @@ export function makeAnimals(THREE, mats, S) {
     // what a click finds: a box round it, larger than its body so a small one is easy to hit
     const hit = new THREE.BoxGeometry(Math.max(0.8, size.x * scale * 1.2), size.y * scale * 1.1, Math.max(0.8, size.z * scale * 1.1));
     hit.translate(0, (size.y * scale * 1.1) / 2, (box.min.z + box.max.z) * 0.5 * scale);
-    const t = { scene: gltf.scene, clips, scale, lift: -box.min.y * scale, raw, hit, top: size.y * scale };
+    // its size, for where it may go (roam.js): half its length, so it fits whichever way it faces, in 2D px
+    const t = { scene: gltf.scene, clips, scale, lift: -box.min.y * scale, raw, hit, top: size.y * scale, r: (Math.max(size.x, size.z) * scale * PX) / 2 };
     templates.set(kind, t);
     return t;
   }
@@ -110,8 +97,8 @@ export function makeAnimals(THREE, mats, S) {
     if (SPOTS[h.kind]) paintSpots(model, h.kind, i + 1);
     let head = null;
     model.traverse(o => { if (!head && o.isBone && /head/i.test(o.name)) head = o; });
-    const spot = ground ? pickSpot(h.area) : [0, 0];
-    const a = makeAnimal({ kind: h.kind, family: MODELS[h.kind].family, area: h.area, walk: h.walk, run: h.run }, spot[0], spot[1], rand);
+    const spot = roam ? roam.spot(h.area, rand, { r: t.r }) : [0, 0];
+    const a = makeAnimal({ kind: h.kind, family: MODELS[h.kind].family, area: h.area, walk: h.walk, run: h.run, r: t.r }, spot[0], spot[1], rand);
     return { a, root, model, mixer, actions, head, t, hitBox: hit, playing: null, seq: -1, yaw: a.face, placed: Boolean(ground), stick: null };
   }
   /** A dog's bandana, round its neck bone, so it follows the head as it moves; sized to the dog. */
@@ -149,41 +136,20 @@ export function makeAnimals(THREE, mats, S) {
       for (let k = 0; k < h.n; k++) animals.push(instance(h, t, animals.length));
     }
   }
-  const inRect = (x, y, r) => x >= r.x && x <= r.x + r.w && y >= r.y && y <= r.y + r.h;
-  const blocked = (x, y) => avoid.some(r => (r.rx ? ((x - r.cx) / r.rx) ** 2 + ((y - r.cy) / r.ry) ** 2 <= 1 : inRect(x, y, r)));
-  const inside = (area, x, y) => Boolean(areas[area]?.some(r => inRect(x, y, r))) && !blocked(x, y);
-  /** A free place in an area; with from and far, one at least that far from there if it can find one (else the farthest). */
-  function pickSpot(area, from, far = 0) {
-    const rects = areas[area];
-    let best = null, bestD = -1;
-    for (let i = 0; i < 30; i++) {
-      const r = rects[Math.floor(rand() * rects.length)], x = r.x + rand() * r.w, y = r.y + rand() * r.h;
-      if (blocked(x, y)) continue;
-      const d = from ? Math.hypot(x - from[0], y - from[1]) : 0;
-      if (d >= far) return [x, y];
-      if (d > bestD) { best = [x, y]; bestD = d; }
-    }
-    return best ?? [rects[0].x + rects[0].w / 2, rects[0].y + rects[0].h / 2];
-  }
-  const env = { resting: false, rand, habitChance: HABIT_CHANCE, spot: pickSpot, inside, duration: (kind, part) => templates.get(kind)?.clips.get(MODELS[kind].clips[part])?.duration ?? 1 };
-  /** Their areas for a ground (in 2D pixels): the pasture, the yard (off the pond, the hammocks, the woodpile and the shade tree), the forest's edge. */
+  const env = {
+    resting: false, rand, habitChance: HABIT_CHANCE,
+    spot: (area, from, far, r) => roam.spot(area, rand, { from, far, r }),
+    inside: (area, x, y, r) => roam.inside(area, x, y, r),
+    clear: (area, from, to, r) => roam.clear(area, from, to, r),
+    duration: (kind, part) => templates.get(kind)?.clips.get(MODELS[kind].clips[part])?.duration ?? 1,
+  };
+  /** Their grounds for a farm (roam.js): the pasture, the yard (off the pond, its trees and things), the forest's edge. */
   function setGround(g) {
     ground = g; H = g.H;
-    const pa = pastureOf(g), y1 = g.GRID.y1;
-    areas = {
-      pasture: [{ x: pa.x0 + 14, y: pa.y0 + 14, w: pa.x1 - pa.x0 - 28, h: pa.y1 - pa.y0 - 28 }],
-      yard: [{ x: 12, y: 172, w: 150, h: Math.max(30, y1 - 196) }],
-      edge: forestEdgeOf(g),
-    };
-    avoid = [
-      { cx: POND.cx, cy: POND.cy, rx: POND.rx + 12, ry: POND.ry + 12 },
-      { x: NAPS[0][0] - 20, y: NAPS[0][1] - 16, w: 40, h: NAPS.at(-1)[1] - NAPS[0][1] + 24 },
-      { x: WOODPILE[0] - 14, y: WOODPILE[1] - 10, w: 28, h: 20 },
-      { x: SHADE.x - 14, y: y1 + SHADE.dy - 12, w: 28, h: 24 },
-    ];
-    for (const w of animals) if (!w.placed || !inside(w.a.area, w.a.x, w.a.y)) { // each inside its area: when the ground changes, or it has just arrived
-      const [x, y] = pickSpot(w.a.area);
-      Object.assign(w.a, { x, y, tx: x, ty: y, queue: [], cur: null, act: null, stick: null, home: [x, y] });
+    roam = roamOf(g);
+    for (const w of animals) if (!w.placed || !roam.inside(w.a.area, w.a.x, w.a.y, w.a.r)) { // each on its ground: when the ground changes, or it has just arrived
+      const [x, y] = roam.spot(w.a.area, rand, { r: w.a.r });
+      Object.assign(w.a, { x, y, tx: x, ty: y, queue: [], cur: null, act: null, stick: null, home: [x, y], trail: [] });
       w.placed = true;
     }
     start().catch(err => { started = false; throw err; }); // a model that won't load: the bridge reports it, the farm goes on
