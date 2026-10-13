@@ -73,3 +73,20 @@ export function spotsOf(middles, seed, { share = SPOTS.cow.share, patches = 7 } 
   const cut = [...depth].sort((a, b) => a - b)[Math.min(n - 1, Math.round(share * n))];
   return depth.map(d => d < cut);
 }
+
+/**
+ * Each farmer character's shirt: the colour area (a material) the agent's colour goes on, and the meshes it is
+ * recoloured on (a material shared with the shoes keeps its colour there). The rest keep the character's own colours,
+ * in the farm's finish (FINISH).
+ */
+export const SHIRTS = {
+  farmer: { material: 'Brown', meshes: ['Farmer_Body'] },
+  worker: { material: 'Worker_Vest', meshes: ['Worker_Body'] },
+  casual: { material: 'LightBrown', meshes: ['Casual2_Body'] },
+  hoodie: { material: 'Purple', meshes: ['Casual_Body'] },
+  business: { material: 'Suit', meshes: ['Suit_Body'] },
+  beach: { material: 'LightBrown', meshes: ['Beach_Body'] },
+  woman: { material: 'LimeGreen', meshes: ['Formal_Body', 'Formal_Legs'] }, // her dress
+  womancasual: { material: 'White', meshes: ['Casual_Body'] },
+  womanadventurer: { material: 'LightGreen', meshes: ['Adventurer_Body'] },
+};

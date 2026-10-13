@@ -577,5 +577,203 @@ export const MODELS = {
     "height": 0.6,
     "family": "still",
     "clips": {}
+  },
+  "farmer": {
+    "title": "Farmer",
+    "author": "Quaternius",
+    "licence": "CC0 (public domain)",
+    "pack": "Ultimate Modular Men Pack",
+    "page": "https://poly.pizza/m/7pn3R6hPvE",
+    "source": "https://static.poly.pizza/81f2f0cf-6f53-4b57-92ea-dba0928620f2.glb",
+    "height": 1.95,
+    "family": "person",
+    "clips": {
+      "walk": "Walk",
+      "run": "Run",
+      "swing": "Sword_Slash",
+      "hold": "Idle_Sword",
+      "raise": "Interact",
+      "carry": "Idle_Gun",
+      "wave": "Wave",
+      "idle": "Idle",
+      "idle2": "Idle_Neutral",
+      "nap": "Death"
+    }
+  },
+  "worker": {
+    "title": "Worker",
+    "author": "Quaternius",
+    "licence": "CC0 (public domain)",
+    "pack": "Ultimate Modular Men Pack",
+    "page": "https://poly.pizza/m/Yg2bQZO6Hj",
+    "source": "https://static.poly.pizza/3a5f3056-ffe6-42eb-bd52-122afcbd22b2.glb",
+    "height": 1.95,
+    "family": "person",
+    "clips": {
+      "walk": "Walk",
+      "run": "Run",
+      "swing": "Sword_Slash",
+      "hold": "Idle_Sword",
+      "raise": "Interact",
+      "carry": "Idle_Gun",
+      "wave": "Wave",
+      "idle": "Idle",
+      "idle2": "Idle_Neutral",
+      "nap": "Death"
+    }
+  },
+  "casual": {
+    "title": "Casual Character",
+    "author": "Quaternius",
+    "licence": "CC0 (public domain)",
+    "pack": "Ultimate Modular Men Pack",
+    "page": "https://poly.pizza/m/kZ3DmIoGip",
+    "source": "https://static.poly.pizza/90a9e2d4-053f-42f1-99a2-8f5e1180ea7f.glb",
+    "height": 1.95,
+    "family": "person",
+    "clips": {
+      "walk": "Walk",
+      "run": "Run",
+      "swing": "Sword_Slash",
+      "hold": "Idle_Sword",
+      "raise": "Interact",
+      "carry": "Idle_Gun",
+      "wave": "Wave",
+      "idle": "Idle",
+      "idle2": "Idle_Neutral",
+      "nap": "Death"
+    }
+  },
+  "hoodie": {
+    "title": "Hoodie Character",
+    "author": "Quaternius",
+    "licence": "CC0 (public domain)",
+    "pack": "Ultimate Modular Men Pack",
+    "page": "https://poly.pizza/m/gKLBoRsyKe",
+    "source": "https://static.poly.pizza/bcd66ec5-5e81-4901-a222-47abc875fe2a.glb",
+    "height": 1.95,
+    "family": "person",
+    "clips": {
+      "walk": "Walk",
+      "run": "Run",
+      "swing": "Sword_Slash",
+      "hold": "Idle_Sword",
+      "raise": "Interact",
+      "carry": "Idle_Gun",
+      "wave": "Wave",
+      "idle": "Idle",
+      "idle2": "Idle_Neutral",
+      "nap": "Death"
+    }
+  },
+  "business": {
+    "title": "Business Man",
+    "author": "Quaternius",
+    "licence": "CC0 (public domain)",
+    "pack": "Ultimate Modular Men Pack",
+    "page": "https://poly.pizza/m/JFrLIKqvCH",
+    "source": "https://static.poly.pizza/e599abbe-7d73-488c-9d7e-3ead281e705c.glb",
+    "height": 1.95,
+    "family": "person",
+    "clips": {
+      "walk": "Walk",
+      "run": "Run",
+      "swing": "Sword_Slash",
+      "hold": "Idle_Sword",
+      "raise": "Interact",
+      "carry": "Idle_Gun",
+      "wave": "Wave",
+      "idle": "Idle",
+      "idle2": "Idle_Neutral",
+      "nap": "Death"
+    }
+  },
+  "beach": {
+    "title": "Beach Character",
+    "author": "Quaternius",
+    "licence": "CC0 (public domain)",
+    "pack": "Ultimate Modular Men Pack",
+    "page": "https://poly.pizza/m/DojKLcO34E",
+    "source": "https://static.poly.pizza/f771a536-1c18-4a47-bb56-ceea4b603455.glb",
+    "height": 1.95,
+    "family": "person",
+    "clips": {
+      "walk": "Walk",
+      "run": "Run",
+      "swing": "Sword_Slash",
+      "hold": "Idle_Sword",
+      "raise": "Interact",
+      "carry": "Idle_Gun",
+      "wave": "Wave",
+      "idle": "Idle",
+      "idle2": "Idle_Neutral",
+      "nap": "Death"
+    }
+  },
+  "woman": {
+    "title": "Animated Woman",
+    "author": "Quaternius",
+    "licence": "CC0 (public domain)",
+    "pack": "Ultimate Modular Women Pack",
+    "page": "https://poly.pizza/m/nIItLV9nxS",
+    "source": "https://static.poly.pizza/46d6db5a-3c9f-4238-8cdf-8eb7194498dc.glb",
+    "height": 1.95,
+    "family": "person",
+    "clips": {
+      "walk": "Walk",
+      "run": "Run",
+      "swing": "Sword_Slash",
+      "hold": "Idle_Sword",
+      "raise": "Interact",
+      "carry": "Idle_Gun",
+      "wave": "Wave",
+      "idle": "Idle",
+      "idle2": "Idle_Neutral",
+      "nap": "Death"
+    }
+  },
+  "womancasual": {
+    "title": "Animated Woman",
+    "author": "Quaternius",
+    "licence": "CC0 (public domain)",
+    "pack": "Ultimate Modular Women Pack",
+    "page": "https://poly.pizza/m/qJ2gsTUBHL",
+    "source": "https://static.poly.pizza/ba7a1955-ea51-4cb9-a561-188bdef0a6c7.glb",
+    "height": 1.95,
+    "family": "person",
+    "clips": {
+      "walk": "Walk",
+      "run": "Run",
+      "swing": "Sword_Slash",
+      "hold": "Idle_Sword",
+      "raise": "Interact",
+      "carry": "Idle_Gun",
+      "wave": "Wave",
+      "idle": "Idle",
+      "idle2": "Idle_Neutral",
+      "nap": "Death"
+    }
+  },
+  "womanadventurer": {
+    "title": "Adventurer",
+    "author": "Quaternius",
+    "licence": "CC0 (public domain)",
+    "pack": "Ultimate Modular Women Pack",
+    "page": "https://poly.pizza/m/ZwF0K7WBmu",
+    "source": "https://static.poly.pizza/69689495-028d-4b81-8678-792338a5693e.glb",
+    "height": 1.95,
+    "family": "person",
+    "clips": {
+      "walk": "Walk",
+      "run": "Run",
+      "swing": "Sword_Slash",
+      "hold": "Idle_Sword",
+      "raise": "Interact",
+      "carry": "Idle_Gun",
+      "wave": "Wave",
+      "idle": "Idle",
+      "idle2": "Idle_Neutral",
+      "nap": "Death"
+    }
   }
 };

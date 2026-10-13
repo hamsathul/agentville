@@ -14,7 +14,7 @@ const BODY = { cow: 16, bull: 18, alpaca: 9, donkey: 10, horse: 14, whitehorse: 
 const inPond = (x, y, r) => ((x - POND.cx) / (POND.rx + r)) ** 2 + ((y - POND.cy) / (POND.ry + r)) ** 2 < 1;
 
 test("the herds: every animal of the pack and the pond's, each with a ground to roam (the frog its lily pads, the fish the water)", () => {
-  assert.deepEqual([...new Set(HERDS.map(h => h.kind))].sort(), Object.keys(MODELS).filter(k => MODELS[k].family !== 'still').sort());
+  assert.deepEqual([...new Set(HERDS.map(h => h.kind))].sort(), Object.keys(MODELS).filter(k => !['still', 'person'].includes(MODELS[k].family)).sort());
   assert.equal(HERDS.reduce((n, h) => n + h.n, 0), 18);
   for (const h of HERDS) assert.equal(h.area, { frog: 'pond', fish: 'water' }[MODELS[h.kind].family] ?? h.area, h.kind);
   for (const h of HERDS) assert.ok(['pasture', 'yard', 'edge', 'pond', 'water'].includes(h.area), h.kind);

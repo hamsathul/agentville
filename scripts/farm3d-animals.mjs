@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // The 3D farm's animals: the twelve animated models of Quaternius's Animated Animal Pack on poly.pizza (CC0), for the
-// pond his frog, three of his fish and a lily pad, and his flat-coloured trees, bushes, rocks and forest-floor things
-// for the farm's plants (CC0, single models on poly.pizza). Downloads
+// pond his frog, three of his fish and a lily pad, his flat-coloured trees, bushes, rocks and forest-floor things for
+// the farm's plants (CC0, single models on poly.pizza), and for the farmers ten of his modular men and women. Downloads
 // each (a GLB, by its pinned id), keeps every animation once (the pack holds two copies) and fails if one goes unused,
 // drops what the farm's flat shading doesn't use (normals, texture coordinates, textures), packs what is left small
 // (scripts/lib/glb.mjs), and writes it to web/worlds/farm3d/models/<kind>.js (a world's frame can't fetch a model file:
@@ -25,6 +25,11 @@ const PAWS = { walk: 'Walk', run: 'Gallop', leap: 'Gallop_Jump', hop: 'Jump_ToId
 /** The pond's frog: it sits, hops (pad to pad, into the water and out), snaps at a fly, and plays dead. A fish swims, at every pace. */
 const FROG = { idle: 'Frog_Idle', hop: 'Frog_Jump', snap: 'Frog_Attack', dead: 'Frog_Death' };
 const SWIM = clip => ({ idle: clip, walk: clip, run: clip });
+/**
+ * A farmer's poses (build/character.js plays them): the only clips a character keeps, so its guns go (the "every clip
+ * used" rule is the animals'). A hoe swings as a sword does, a tool is held as one is, a crate is carried as a gun.
+ */
+const PERSON = { walk: 'Walk', run: 'Run', swing: 'Sword_Slash', hold: 'Idle_Sword', raise: 'Interact', carry: 'Idle_Gun', wave: 'Wave', idle: 'Idle', idle2: 'Idle_Neutral', nap: 'Death' };
 /** The pack's animals, each with its height on the farm in metres (before the farm makes them larger than life). */
 export const MODELS = [
   { kind: 'cow', title: 'Cow', id: '382b3d4a-a7c9-4c03-9858-3df630d90047', height: 1.5, family: 'hooves' },
@@ -69,7 +74,21 @@ export const MODELS = [
     ['mushroom', 'Mushroom', 'c30dcc3b-c43d-4ce8-9b2d-6dd942b81fd7', 'db1tjMhmiA', { height: 0.5 }],
     ['flowers', 'Flowers', '1c2f8472-750c-4169-b2d7-573b0a4f8ba6', 'dOO6kMDd8L', { height: 0.6 }],
   ].map(([kind, title, id, page, size]) => ({ kind, title, id, page: `https://poly.pizza/m/${page}`, ...size, family: 'still', clips: {} })),
-].map(m => ({ ...m, ...QUATERNIUS, pack: null, packUrl: null })));
+].map(m => ({ ...m, ...QUATERNIUS, pack: null, packUrl: null })), [
+  // the farmers: Quaternius's modular men and women (CC0 ones only), each 1.95 m (before the farm makes them larger than life)
+  ['farmer', 'Farmer', '81f2f0cf-6f53-4b57-92ea-dba0928620f2', '7pn3R6hPvE', 'Men'],
+  ['worker', 'Worker', '3a5f3056-ffe6-42eb-bd52-122afcbd22b2', 'Yg2bQZO6Hj', 'Men'],
+  ['casual', 'Casual Character', '90a9e2d4-053f-42f1-99a2-8f5e1180ea7f', 'kZ3DmIoGip', 'Men'],
+  ['hoodie', 'Hoodie Character', 'bcd66ec5-5e81-4901-a222-47abc875fe2a', 'gKLBoRsyKe', 'Men'],
+  ['business', 'Business Man', 'e599abbe-7d73-488c-9d7e-3ead281e705c', 'JFrLIKqvCH', 'Men'],
+  ['beach', 'Beach Character', 'f771a536-1c18-4a47-bb56-ceea4b603455', 'DojKLcO34E', 'Men'],
+  ['woman', 'Animated Woman', '46d6db5a-3c9f-4238-8cdf-8eb7194498dc', 'nIItLV9nxS', 'Women'],
+  ['womancasual', 'Animated Woman', 'ba7a1955-ea51-4cb9-a561-188bdef0a6c7', 'qJ2gsTUBHL', 'Women'],
+  ['womanadventurer', 'Adventurer', '69689495-028d-4b81-8678-792338a5693e', 'ZwF0K7WBmu', 'Women'],
+].map(([kind, title, id, page, sex]) => ({
+  kind, title, id, page: `https://poly.pizza/m/${page}`, height: 1.95, family: 'person', clips: PERSON, ...QUATERNIUS,
+  pack: `Ultimate Modular ${sex} Pack`, packUrl: sex === 'Men' ? 'https://poly.pizza/bundle/Ultimate-Modular-Men-Pack-ZiH8muWqwQ' : 'https://poly.pizza/bundle/Ultimate-Modular-Women-Pack-aCBDXDdTNN',
+})));
 const dir = join(ROOT, 'web', 'worlds', 'farm3d', 'models');
 mkdirSync(dir, { recursive: true });
 for (const f of readdirSync(dir)) if (f.endsWith('.js')) rmSync(join(dir, f)); // what the last run wrote, so a dropped animal goes too
@@ -81,7 +100,7 @@ for (const m of MODELS) {
   const keep = [...new Set(Object.values(m.clips))];
   const have = new Set((g.json.animations ?? []).map(a => a.name.replace(/^.*\|/, '')));
   for (const c of keep) if (!have.has(c)) throw new Error(`${m.kind}: no clip "${c}" (it has ${[...have].join(', ')})`);
-  for (const c of have) if (!keep.includes(c)) throw new Error(`${m.kind}: its clip "${c}" isn't used: give it a part in its clips (HOOVES, PAWS, FROG, SWIM)`);
+  if (m.family !== 'person') for (const c of have) if (!keep.includes(c)) throw new Error(`${m.kind}: its clip "${c}" isn't used: give it a part in its clips (HOOVES, PAWS, FROG, SWIM)`);
   const glb = trimGlb(g, keep), source = `https://static.poly.pizza/${m.id}.glb`;
   writeFileSync(join(dir, `${m.kind}.js`), `// ${m.title}, by ${m.author}, ${m.pack ? `from ${m.pack} (${m.packUrl})` : `on poly.pizza (${m.page})`}, ${m.licence}: see LICENSE.md beside this file.
 // Made by scripts/farm3d-animals.mjs (npm run farm3d-animals) from ${source}: don't edit by hand. A GLB, base64.

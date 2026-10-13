@@ -42,12 +42,13 @@ test("slimming a model: skin weights packed in bytes still add up to one, each v
 const PACK = 'https://poly.pizza/bundle/Animated-Animal-Pack-ILAPXeUYiS';
 const KINDS = ['alpaca', 'bull', 'cow', 'deer', 'donkey', 'fox', 'horse', 'husky', 'shiba', 'stag', 'whitehorse', 'wolf'];
 const POND_KINDS = ['frog', 'koi', 'lilypad', 'roach', 'trout'];
+const PERSON_KINDS = ['beach', 'business', 'casual', 'farmer', 'hoodie', 'woman', 'womanadventurer', 'womancasual', 'worker'];
 const NATURE_KINDS = ['autumntree', 'birch', 'birchdead', 'birchsnow', 'bush', 'bushberries', 'bushsnow', 'deadtreesnow', 'flowers', 'log', 'mushroom', 'pine', 'pineautumn', 'pinesnow', 'rockmoss', 'rocks', 'rocksnow', 'stump', 'tree', 'tree2'];
 
 test("the models: all twelve of Quaternius's Animated Animal Pack, each with every one of its animations, slimmed", async () => {
   const { MODELS } = await import('../../web/worlds/farm3d/models/index.js');
   const { readGlb } = await import('../../scripts/lib/glb.mjs');
-  assert.deepEqual(Object.keys(MODELS).sort(), [...KINDS, ...POND_KINDS, ...NATURE_KINDS].sort());
+  assert.deepEqual(Object.keys(MODELS).sort(), [...KINDS, ...POND_KINDS, ...NATURE_KINDS, ...PERSON_KINDS].sort());
   let total = 0;
   for (const kind of Object.keys(MODELS)) total += (await import(`../../web/worlds/farm3d/models/${kind}.js`)).default.length;
   for (const kind of KINDS) {
@@ -73,7 +74,7 @@ test("the models: all twelve of Quaternius's Animated Animal Pack, each with eve
     assert.ok(m.height > 0.4 && m.height < 2.2, `${kind}: ${m.height} m`);
     assert.ok(glb.length < 420 * 1024, `${kind}: ${Math.round(glb.length / 1024)} KB, slimmed`);
   }
-  assert.ok(total < 7.5 * 1024 * 1024, `all the animals, the pond's and the plants: ${Math.round(total / 1024)} KB served`);
+  assert.ok(total < 12.5 * 1024 * 1024, `all the animals, the pond's, the plants and the farmers: ${Math.round(total / 1024)} KB served`);
   assert.ok(MODELS.horse.height > MODELS.cow.height && MODELS.cow.height > MODELS.donkey.height && MODELS.donkey.height > MODELS.wolf.height && MODELS.wolf.height > MODELS.husky.height && MODELS.husky.height > MODELS.fox.height, 'sizes that make sense side by side');
 });
 
@@ -113,6 +114,29 @@ test("the farm's plants: Quaternius's flat-coloured trees, bushes, rocks and thi
     assert.ok(glb.length < 160 * 1024, `${kind}: ${Math.round(glb.length / 1024)} KB`);
   }
   for (const [kind, snowy] of [['pine', 'pinesnow'], ['bush', 'bushsnow'], ['birch', 'birchsnow'], ['rockmoss', 'rocksnow']]) assert.ok(MODELS[kind] && MODELS[snowy], `${kind} has a winter`);
+});
+
+test("the farmers' characters: Quaternius's modular men and women (CC0), each with only the clips the farm's poses use, and a shirt for the agent's colour", async () => {
+  const { MODELS } = await import('../../web/worlds/farm3d/models/index.js');
+  const { SHIRTS } = await import('../../web/worlds/farm3d/coats.js');
+  const { readGlb } = await import('../../scripts/lib/glb.mjs');
+  const PARTS = { walk: 'Walk', run: 'Run', swing: 'Sword_Slash', hold: 'Idle_Sword', raise: 'Interact', carry: 'Idle_Gun', wave: 'Wave', idle: 'Idle', idle2: 'Idle_Neutral', nap: 'Death' };
+  assert.deepEqual(Object.keys(SHIRTS).sort(), PERSON_KINDS);
+  for (const kind of PERSON_KINDS) {
+    const m = MODELS[kind], glb = Buffer.from((await import(`../../web/worlds/farm3d/models/${kind}.js`)).default, 'base64'), { json } = readGlb(glb);
+    assert.equal(m.author, 'Quaternius', kind);
+    assert.match(m.licence, /^CC0/, kind);
+    assert.match(m.pack, /^Ultimate Modular (Men|Women) Pack$/, kind);
+    assert.equal(m.family, 'person', kind);
+    assert.deepEqual(m.clips, PARTS, `${kind}: the poses' clips`);
+    assert.deepEqual(json.animations.map(a => a.name).sort(), Object.values(PARTS).sort(), `${kind}: no other clip (no guns)`);
+    assert.ok(!json.images && !json.textures, kind);
+    assert.ok(m.height > 1.6 && m.height < 2.2, `${kind}: ${m.height} m`);
+    assert.ok(glb.length < 520 * 1024, `${kind}: ${Math.round(glb.length / 1024)} KB`);
+    const shirt = SHIRTS[kind], meshes = json.meshes.filter(x => shirt.meshes.includes(x.name));
+    assert.equal(meshes.length, shirt.meshes.length, `${kind}: its shirt's meshes ${shirt.meshes}`);
+    assert.ok(meshes.every(x => x.primitives.some(p => json.materials[p.material].name === shirt.material)), `${kind}: ${shirt.material} on ${shirt.meshes}`);
+  }
 });
 
 // The colour areas a model's eyes are, where their names don't say so.
@@ -194,7 +218,7 @@ function run(a, secs, env) {
 
 test("antics: every animal's menu and habits give every one of its clips a part; playing dead and headbutts are asked for, never habits", async () => {
   const { MODELS } = await import('../../web/worlds/farm3d/models/index.js');
-  for (const [kind, m] of Object.entries(MODELS).filter(([, m]) => m.family !== 'still')) {
+  for (const [kind, m] of Object.entries(MODELS).filter(([, m]) => !['still', 'person'].includes(m.family))) {
     const menu = menuFor(kind, m.family), habits = Object.keys(habitsOf(kind, m.family));
     const always = { frog: ['idle'], fish: ['walk', 'idle'] }[m.family] ?? ['walk', 'idle', 'eat']; // what it does when not up to anything
     const parts = new Set([...always, ...[...menu, ...habits].flatMap(act => PARTS_OF(stepsFor(act, makeAnimal({ kind, family: m.family, area: 'yard' }, 0, 0), world())))]);

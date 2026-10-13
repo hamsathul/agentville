@@ -55,3 +55,26 @@ Licence: **CC0 (public domain)**, https://creativecommons.org/publicdomain/zero/
 - Wood Log with Moss (on the farm: the log), https://poly.pizza/m/nwsYvcI0bC, https://static.poly.pizza/5283865a-f61a-4787-b02d-28b5b76df7b9.glb
 - Mushroom (on the farm: the mushroom), https://poly.pizza/m/db1tjMhmiA, https://static.poly.pizza/c30dcc3b-c43d-4ce8-9b2d-6dd942b81fd7.glb
 - Flowers (on the farm: the flowers), https://poly.pizza/m/dOO6kMDd8L, https://static.poly.pizza/1c2f8472-750c-4169-b2d7-573b0a4f8ba6.glb
+
+## Ultimate Modular Men Pack, by Quaternius
+
+https://poly.pizza/bundle/Ultimate-Modular-Men-Pack-ZiH8muWqwQ (Quaternius: https://poly.pizza/u/Quaternius)
+
+Licence: **CC0 (public domain)**, https://creativecommons.org/publicdomain/zero/1.0/ (no credit is required; it is given with thanks)
+
+- Farmer (on the farm: the farmer), https://poly.pizza/m/7pn3R6hPvE, https://static.poly.pizza/81f2f0cf-6f53-4b57-92ea-dba0928620f2.glb
+- Worker (on the farm: the worker), https://poly.pizza/m/Yg2bQZO6Hj, https://static.poly.pizza/3a5f3056-ffe6-42eb-bd52-122afcbd22b2.glb
+- Casual Character (on the farm: the casual), https://poly.pizza/m/kZ3DmIoGip, https://static.poly.pizza/90a9e2d4-053f-42f1-99a2-8f5e1180ea7f.glb
+- Hoodie Character (on the farm: the hoodie), https://poly.pizza/m/gKLBoRsyKe, https://static.poly.pizza/bcd66ec5-5e81-4901-a222-47abc875fe2a.glb
+- Business Man (on the farm: the business), https://poly.pizza/m/JFrLIKqvCH, https://static.poly.pizza/e599abbe-7d73-488c-9d7e-3ead281e705c.glb
+- Beach Character (on the farm: the beach), https://poly.pizza/m/DojKLcO34E, https://static.poly.pizza/f771a536-1c18-4a47-bb56-ceea4b603455.glb
+
+## Ultimate Modular Women Pack, by Quaternius
+
+https://poly.pizza/bundle/Ultimate-Modular-Women-Pack-aCBDXDdTNN (Quaternius: https://poly.pizza/u/Quaternius)
+
+Licence: **CC0 (public domain)**, https://creativecommons.org/publicdomain/zero/1.0/ (no credit is required; it is given with thanks)
+
+- Animated Woman (on the farm: the woman), https://poly.pizza/m/nIItLV9nxS, https://static.poly.pizza/46d6db5a-3c9f-4238-8cdf-8eb7194498dc.glb
+- Animated Woman (on the farm: the womancasual), https://poly.pizza/m/qJ2gsTUBHL, https://static.poly.pizza/ba7a1955-ea51-4cb9-a561-188bdef0a6c7.glb
+- Adventurer (on the farm: the womanadventurer), https://poly.pizza/m/ZwF0K7WBmu, https://static.poly.pizza/69689495-028d-4b81-8678-792338a5693e.glb
