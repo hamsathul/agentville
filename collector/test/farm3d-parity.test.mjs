@@ -216,3 +216,25 @@ test("a web call's cart goes out to town and back every 8 s; only for a web step
   assert.notEqual(cartOf(f, 1).x, cartOf(f, 3).x);
   assert.equal(cartOf(f, 1).x, cartOf(f, 9).x); // every 8 s
 });
+
+import { flightAt } from '../../web/worlds/farm3d/build/pigeons.js';
+test('a pigeon flies from head to head on an arc about 4 m high, easing in and out', () => {
+  const a = { x: 0, y: 2, z: 0 }, b = { x: 10, y: 2, z: 0 };
+  assert.deepEqual(flightAt(0, a, b), a);
+  assert.deepEqual(flightAt(1, a, b), b);
+  const mid = flightAt(0.5, a, b);
+  assert.ok(Math.abs(mid.y - 6) < 1e-9 && Math.abs(mid.x - 5) < 1e-9);
+  assert.ok(flightAt(0.1, a, b).x < 1); // slow to start
+});
+test('a note flies only between two farmers both drawn; its diary line is told all the same', () => {
+  const d = createDiary(), feed = [{ at: NOW - 5000, kind: 'peer', dir: 'out', other: 'a2', text: 'hi' }];
+  const m0 = M3.farmModel(toScene(snap([agent('a1'), agent('a2')], [repo('shop')])));
+  d.update(m0, ids(m0), NOW);
+  const m1 = M3.farmModel(toScene(snap([agent('a1', { feed }), agent('a2')], [repo('shop')])));
+  const r = d.update(m1, new Set(['a1']), NOW + 1); // a2 hidden
+  assert.deepEqual(r.flights, []);
+  assert.match(r.entries[0].text, /^sends a note to a2: hi$/);
+  const d2 = createDiary();
+  d2.update(m0, ids(m0), NOW);
+  assert.deepEqual(d2.update(m1, ids(m1), NOW + 1).flights, [{ from: 'a1', to: 'a2' }]);
+});

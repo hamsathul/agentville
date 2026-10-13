@@ -260,6 +260,23 @@ try {
       else console.log(`  ✓ the carts: ${c.server}'s drives beside the farmer calling it ("${oneLine(label)}"), then home`);
     }
 
+    // 3g. a note from one agent to another: a pigeon flies it over, a ✉ pops over the receiver
+    {
+      await open(chrome, 'pigeon');
+      const before = chrome.errors.length;
+      let flying = 0, envelope = false, after = null;
+      const tour = JSON.parse(await chrome.js("JSON.stringify(window.AgentvilleTour.stops.find(s => s.name === 'pigeon').frames[0])"));
+      for (const a of tour.agents) for (const item of a.feed ?? []) if (item.kind === 'peer') item.at = Date.now() - 1000; // a fresh note (the clock stands still)
+      tour.agents[0].feed = (tour.agents[0].feed ?? []).map(item => (item.kind === 'peer' ? { ...item, at: item.at + 7 } : item));
+      await chrome.js(`window.TrackerFarm.update(${JSON.stringify(tour)})`);
+      for (const end = Date.now() + 1500; Date.now() < end && !flying; await sleep(100)) flying = Number(await chrome.inFrame('/world/farm3d/', 'window.__farm3d.pigeons()'));
+      for (const end = Date.now() + 4000; Date.now() < end && !envelope; await sleep(100)) envelope = JSON.parse(await chrome.inFrame('/world/farm3d/', 'JSON.stringify(window.__farm3d.pops())')).some(p => p.includes('✉'));
+      for (const end = Date.now() + 6000; Date.now() < end && after !== 0; await sleep(200)) after = Number(await chrome.inFrame('/world/farm3d/', 'window.__farm3d.pigeons()')); // each lands in 2.4 s (the stop may send its note again)
+      const why = [!flying && 'no pigeon took off', !envelope && 'no ✉ over the receiver', after !== 0 && `${after} pigeons still in the air`, chrome.errors.length > before && `script errors: ${oneLine(chrome.errors[before]).slice(0, 160)}`].filter(Boolean);
+      if (why.length) bad(`the pigeons: ${why.join('; ')}`);
+      else console.log('  ✓ the pigeons: a note between two agents flies over and lands with a ✉');
+    }
+
     // 4. the animals: the twelve of Quaternius's Animated Animal Pack and the pond's frog and fish, all out once their
     // models have loaded (they load after the farm has drawn), in the farm's colours (coats.js) with no metal, the cows
     // spotted; clicking one opens its menu (the frog's its own), a pick from it sets it going and shuts the menu, Esc

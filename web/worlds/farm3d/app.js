@@ -25,6 +25,7 @@ import { makeFlock } from './build/flock.js';
 import { henhouseView } from './flock.js';
 import { makeCarts } from './build/carts.js';
 import { cartOf, createCarts } from './carts.js';
+import { makePigeons } from './build/pigeons.js';
 import { createTalk } from './talk.js';
 import { HERDS } from './antics.js';
 
@@ -100,6 +101,7 @@ export function start({ el, opts, prefs }) {
   const flock = makeFlock(THREE, mats, shapes, { copy: animals.copy }); // subagents: hens, the Explore dog, the henhouse's eggs
   const cartMeshes = makeCarts(THREE, mats, shapes, { copy: animals.copy }), carts = createCarts(); // the MCP servers' carts, the web calls' carts to town
   let cartItems = [];
+  const pigeons = makePigeons(THREE, mats); // notes between agents
   /** Who is where and what is happening, for talk.js: refreshed twice a second. */
   let talkScene = null, talkSceneAt = -1e9, castSaid = null;
   function sceneForTalk(now) {
@@ -114,7 +116,7 @@ export function start({ el, opts, prefs }) {
     talkSceneAt = now;
     return talkScene;
   }
-  scene3.add(terrain.group, buildings.group, beds.group, crops.group, farmers.group, animals.group, nature.group, flock.group, cartMeshes.group);
+  scene3.add(terrain.group, buildings.group, beds.group, crops.group, farmers.group, animals.group, nature.group, flock.group, cartMeshes.group, pigeons.group);
   /** The ball trees, bushes and rocks stand in until the plants' models are drawn. */
   const standIns = () => { const on = !nature.ready(); terrain.setForest(on); buildings.setPlants(on); };
   const diary = createDiary();
@@ -290,6 +292,7 @@ export function start({ el, opts, prefs }) {
     // the diary (the sidebar's Farm diary) and the pops: who came, went where, harvested, sold, sent a note
     const told = diary.update(model, new Set(shownModel().farmers.map(f => f.id)), Date.now());
     if (told.entries) opts.onDiary?.(told.entries);
+    if (!opts.still) for (const f of told.flights) pigeons.launch(f.from, f.to);
     if (!opts.still) for (const p of told.pops) overlay.pop(p.id ? () => (h => h && { x: h.x, y: h.y + 0.5, z: h.z })(farmers.headOf(p.id)) : () => at3(STALL.x + 14, STALL.y + 20, 3), p.text, p.cls);
     refreshHud();
     firstScene = false;
@@ -394,6 +397,8 @@ export function start({ el, opts, prefs }) {
         ...road.map(r => { const f = shown.find(x => x.id === r.id); return { key: `cart:${r.id}`, x: r.x, y: 114, h: 2.4, text: clip(f.service, 18), title: `${f.name}: ${f.summary || f.service}` }; }),
       ]);
       if (cartItems.some(c => c.moving) || road.length) dirty = true;
+      for (const id of pigeons.tick(dt, fid => farmers.headOf(fid), opts.still)) overlay.pop(() => farmers.headOf(id) && { ...farmers.headOf(id), y: farmers.headOf(id).y + 0.5 }, '✉', 'good');
+      if (pigeons.count()) dirty = true;
     }
     if (animals.tick(t, dt, night)) dirty = true;
     nature.blow(t, model?.beds.some(b => b.weather === 'rain') ? 2.2 : 1); // the wind in the trees, harder while a field rains
@@ -431,6 +436,8 @@ export function start({ el, opts, prefs }) {
     bedAt(key) { const b = beds.hits().find(o => o.userData.field === key); if (!b) return null; const p = new THREE.Vector3(); b.getWorldPosition(p); return project({ x: p.x, y: 0.5, z: p.z }); },
     /** The fields drawn, by key. */
     bedKeys: () => (model?.beds ?? []).map(b => b.key),
+    /** How many pigeons are in the air. */
+    pigeons: () => pigeons.count(),
     /** The MCP carts now: where each is, whether it is out of its place, who calls it. */
     carts: () => cartItems.map(c => ({ ...c })),
     /** Where a farmer is on the 2D map (and how high it stands, whether it walks). */
