@@ -2,7 +2,8 @@
 // text, in its pixel font), their speech bubbles, the fields' labels and counts, the silos' figures, an animal's menu
 // (what you can ask it to do), and a short Help (the panel and the Menu are hud.js's). Everything is placed each
 // frame from the camera (place(project)).
-import { STALL, signsOf } from './layout.js';
+import { HENHOUSE, STALL, signsOf } from './layout.js';
+import { henhouseView } from './flock.js';
 
 const CSS = `
   .f3-ov { position: absolute; inset: 0; pointer-events: none; overflow: hidden; z-index: 3; }
@@ -77,6 +78,7 @@ export function makeOverlay(el, { opts, hooks }) {
     if (e.target.closest?.('[data-farm-dlg-close]') || e.target === dlg) dlg.close(); // × or the backdrop
   });
   let stallTag = null; // the stall's "N PRs" label
+  const coopTags = new Map(); // the henhouse's "+N" (hens no farmer can lead) and "N eggs"
   let pops = []; // words that rise and fade over something: { el, at() (its point in the world, or null), born }
   const POP_COLOURS = { good: '#8ef0a0', warn: '#ffd166', dim: '#c9b48a' };
   const tags = new Map(), says = new Map(), fields = new Map(), cnts = new Map(), silos = new Map(), signs = new Map(), talks = new Map();
@@ -153,6 +155,16 @@ export function makeOverlay(el, { opts, hooks }) {
       if (stallTag.dataset.html !== h) { stallTag.innerHTML = h; stallTag.dataset.html = h; }
       stallTag.title = st.tip;
     } else if (stallTag) { stallTag.remove(); stallTag = null; }
+    const hv = henhouseView(m.henhouse), keepCoop = new Set();
+    for (const [k, lab] of [['plus', hv.plus], ['eggs', hv.eggsLabel]]) {
+      if (!lab) continue;
+      keepCoop.add(k);
+      const d = keyed(coopTags, k, () => { const e = document.createElement('div'); e.className = 'f3-cnt'; return e; });
+      const h = pxt(lab.text, '#5a3a1a', null);
+      if (d.dataset.html !== h) { d.innerHTML = h; d.dataset.html = h; }
+      d.title = lab.tip;
+    }
+    prune(coopTags, keepCoop);
     const keepSign = new Set(), more = m.ground.more ?? 0;
     const SIGNS = signsOf(m.ground);
     for (const [group, n] of [...Object.entries(m.over ?? {}), ['more', more]]) {
@@ -197,6 +209,7 @@ export function makeOverlay(el, { opts, hooks }) {
     }
     for (const [x, d] of silos) put(d, project(silo3(Number(x))));
     if (stallTag) put(stallTag, project(at3(STALL.x + 14, STALL.y + 36, 0.2)), 0, true);
+    for (const [k, d] of coopTags) put(d, project(k === 'plus' ? at3(HENHOUSE.x + 62, HENHOUSE.y + 4, 1.6) : at3(HENHOUSE.x + 12, HENHOUSE.y + 38, 0.2)), 0, k !== 'plus');
     const at = model ? signsOf(model.ground) : {};
     for (const [group, d] of signs) if (at[group]) put(d, project(at3(at[group][0], at[group][1], at[group][1] < 90 ? 2.8 : 0.4)));
     if (empty && model) { const G = model.ground.GRID; put(empty, project(at3((G.x0 + G.x1) / 2, (G.y0 + G.y1) / 2, 0))); }

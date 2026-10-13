@@ -227,6 +227,19 @@ try {
       else console.log(`  ✓ the diary: ${lines} lines in the Farm diary; a harvest pops "Harvest!" and is told`);
     }
 
+    // 3e. subagents: a hen and the Explore dog at their farmer's heels, an egg in the henhouse for the one done
+    {
+      await open(chrome, 'subagents');
+      const before = chrome.errors.length;
+      let s = null;
+      for (const end = Date.now() + 15_000; Date.now() < end && !(s?.dogs === 1); await sleep(250)) s = await statsOf(chrome); // the dog's model loads after the farm draws
+      const labels = await chrome.inFrame('/world/farm3d/', "[...document.querySelectorAll('.f3-ov .f3-cnt')].map(e => e.title).join(' | ')");
+      const why = [s?.hens !== 1 && `${s?.hens} hens, not 1`, s?.dogs !== 1 && `${s?.dogs} Explore dogs, not 1`, s?.eggs !== 1 && `${s?.eggs} eggs, not 1`, !/subagents that finished lately/.test(labels ?? '') && 'no eggs label',
+        chrome.errors.length > before && `script errors: ${oneLine(chrome.errors[before]).slice(0, 160)}`].filter(Boolean);
+      if (why.length) bad(`subagents: ${why.join('; ')}`);
+      else console.log('  ✓ subagents: a hen and the Explore dog follow their farmer; an egg in the henhouse, its label');
+    }
+
     // 4. the animals: the twelve of Quaternius's Animated Animal Pack and the pond's frog and fish, all out once their
     // models have loaded (they load after the farm has drawn), in the farm's colours (coats.js) with no metal, the cows
     // spotted; clicking one opens its menu (the frog's its own), a pick from it sets it going and shuts the menu, Esc

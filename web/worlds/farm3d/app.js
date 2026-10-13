@@ -21,6 +21,8 @@ import { makeFigures } from './build/figurine.js';
 import { makeFarmers } from './build/farmers.js';
 import { makeAnimals } from './build/animals.js';
 import { makeNature } from './build/nature.js';
+import { makeFlock } from './build/flock.js';
+import { henhouseView } from './flock.js';
 import { createTalk } from './talk.js';
 import { HERDS } from './antics.js';
 
@@ -93,6 +95,7 @@ export function start({ el, opts, prefs }) {
   const crops = makeCrops(THREE, mats), beds = makeBeds(THREE, mats, shapes, makeWeather(THREE, mats, shapes), crops);
   const farmers = makeFarmers(THREE, makeFigures(THREE, mats, shapes), shapes), animals = makeAnimals(THREE, mats, shapes), weather = makeWeather(THREE, mats, shapes);
   const nature = makeNature(THREE, shapes), talk = createTalk();
+  const flock = makeFlock(THREE, mats, shapes, { copy: animals.copy }); // subagents: hens, the Explore dog, the henhouse's eggs
   /** Who is where and what is happening, for talk.js: refreshed twice a second. */
   let talkScene = null, talkSceneAt = -1e9, castSaid = null;
   function sceneForTalk(now) {
@@ -107,7 +110,7 @@ export function start({ el, opts, prefs }) {
     talkSceneAt = now;
     return talkScene;
   }
-  scene3.add(terrain.group, buildings.group, beds.group, crops.group, farmers.group, animals.group, nature.group);
+  scene3.add(terrain.group, buildings.group, beds.group, crops.group, farmers.group, animals.group, nature.group, flock.group);
   /** The ball trees, bushes and rocks stand in until the plants' models are drawn. */
   const standIns = () => { const on = !nature.ready(); terrain.setForest(on); buildings.setPlants(on); };
   const diary = createDiary();
@@ -272,6 +275,8 @@ export function start({ el, opts, prefs }) {
     keep = model.keep;
     rebuildAll();
     farmers.sync(shownModel(), { instant: firstScene || opts.still });
+    flock.sync(new Map(shownModel().farmers.map(f => [f.id, f.kids])), id => farmers.posOf(id));
+    flock.setHenhouse(henhouseView(model.henhouse), model.ground.H);
     farmers.select(selected);
     overlay.sync(shownModel(), { bubblesOn, near: near() });
     overlay.setSelected(selected);
@@ -371,6 +376,10 @@ export function start({ el, opts, prefs }) {
     if (now - lastSky > 2000) { lastSky = now; const n = sky.set(skyFor(new Date(), skyMode, skyAt)); if (n !== night) { night = n; dirty = true; } }
     const moving = rig.update(dt, opts.still), t = opts.still ? 0 : now / 1000;
     const walking = farmers.tick(t, dt, opts.still);
+    if (model) {
+      flock.tick(t, dt, id => farmers.posOf(id), opts.still, farmers.groundAt);
+      flock.whistle(t, shownModel().farmers.filter(f => f.prop === 'whistle').map(f => farmers.headOf(f.id)).filter(Boolean), opts.still);
+    }
     if (animals.tick(t, dt, night)) dirty = true;
     nature.blow(t, model?.beds.some(b => b.weather === 'rain') ? 2.2 : 1); // the wind in the trees, harder while a field rains
     if (!opts.still && model) for (const pair of talk.tick(sceneForTalk(now), dt)) { // conversations now and then; held still with Motion off
@@ -399,7 +408,7 @@ export function start({ el, opts, prefs }) {
 
   // For the browser check (scripts/farm3d-check.mjs) and close-up pictures: what is drawn, and a view to hold.
   window.__farm3d = {
-    stats: () => ({ calls: renderer.info.render.calls, triangles: renderer.info.render.triangles, geometries: renderer.info.memory.geometries, textures: renderer.info.memory.textures, farmers: farmers.count(), drawn: shownModel()?.farmers.length ?? 0, tags: overlay.count(), beds: model?.beds.length ?? 0, animals: animals.count() }),
+    stats: () => ({ calls: renderer.info.render.calls, triangles: renderer.info.render.triangles, geometries: renderer.info.memory.geometries, textures: renderer.info.memory.textures, farmers: farmers.count(), drawn: shownModel()?.farmers.length ?? 0, ...flock.count(), tags: overlay.count(), beds: model?.beds.length ?? 0, animals: animals.count() }),
     screenOf: id => { const h = farmers.headOf(id); return h ? project(h) : null; }, // where a farmer's head is in the picture, in pixels
     /** Where a building's click box is in the picture (its upper part, clear of who stands in front), in pixels. */
     buildingAt(k) { const b = buildings.hits().find(o => o.userData.hit === k && o.isMesh); if (!b) return null; const p = new THREE.Vector3(); b.getWorldPosition(p); return project({ x: p.x, y: p.y * 1.6, z: p.z }); },
@@ -407,6 +416,8 @@ export function start({ el, opts, prefs }) {
     bedAt(key) { const b = beds.hits().find(o => o.userData.field === key); if (!b) return null; const p = new THREE.Vector3(); b.getWorldPosition(p); return project({ x: p.x, y: 0.5, z: p.z }); },
     /** The fields drawn, by key. */
     bedKeys: () => (model?.beds ?? []).map(b => b.key),
+    /** Where a farmer is on the 2D map (and how high it stands, whether it walks). */
+    posOf: id => farmers.posOf(id),
     /** The pops showing now (their words). */
     pops: () => overlay.popsShown(),
     /** The buildings' dialog: open or not, and its title. */

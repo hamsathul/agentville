@@ -52,6 +52,9 @@ export const COATS = {
 };
 
 /** Spotted coats: the colour area the spots are on, their colour, and how much of it they cover. */
+/** The Explore dog (a farmer's Explore subagent): the Shiba's model, tan and cream, so it is never the yard's Shiba. */
+export const EXPLORE_DOG = { Main: '#c98d4f', Main_Light: '#f4ecd8', Black: '#3a3a3a' };
+
 export const SPOTS = { cow: { area: 'Main', colour: '#262422', share: 0.36 } };
 
 /**

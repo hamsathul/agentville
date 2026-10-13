@@ -83,8 +83,15 @@ export function makeFarmers(THREE, figures, S) {
     const p = b.fig.root.position, top = (b.farmer.nap ? 1.4 : b.farmer.scarecrow ? 2.15 : 1.95) * FIGURE_SCALE;
     return { x: p.x, y: p.y + top, z: p.z };
   }
+  /** Where a farmer is on the 2D map, how high it stands, and whether it is walking; null for one not drawn. */
+  function posOf(id) {
+    const b = bodies.get(id);
+    return b ? { x: b.x, y: b.y, h: b.h, moving: b.path.length > 0 && !(b.wait > 0) } : null;
+  }
   return {
-    group, sync, tick, headOf,
+    group, sync, tick, headOf, posOf,
+    /** How high the ground is at a 2D point: the deck, a bed's soil, or the ground (for what walks with a farmer). */
+    groundAt: (x, y) => groundAt(x, y),
     hits: () => [...bodies.values()].map(b => b.fig.root),
     select(id) { for (const [k, b] of bodies) b.fig.setSelected(k === id); },
     count: () => bodies.size,

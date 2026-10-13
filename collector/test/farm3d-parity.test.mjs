@@ -164,3 +164,22 @@ test('a note between two farmers is told once, its first 60 characters; a merged
   assert.deepEqual([r2.entries[0].who, r2.entries[0].text], ['The market', 'shop: pull request #9 merged (Hens)']);
   assert.deepEqual(r2.pops, [{ at: 'stall', text: 'Sold! #9', cls: 'good' }]);
 });
+
+import { kidSpot, henhouseView } from '../../web/worlds/farm3d/flock.js';
+test("hens keep to their farmer's sides, two a step behind; the Explore dog circles it, 30 px out", () => {
+  const h = k => kidSpot([100, 100], k, 0, false);
+  assert.ok(h(0)[0] < 100 && h(1)[0] > 100 && h(2)[0] < 100 && h(3)[0] > 100);
+  assert.ok(h(2)[1] < h(0)[1] && h(3)[1] < h(1)[1]);
+  const d = [0, 1, 2, 3].map(t => kidSpot([100, 100], 0, t, true));
+  for (const [x] of d) assert.ok(Math.abs(x - 100) <= 30.0001);
+  assert.ok(new Set(d.map(p => p[0].toFixed(2))).size > 1); // it moves
+});
+test("the henhouse: six eggs and three roosting hens at most; its labels as the 2D farm's", () => {
+  const v = henhouseView({ eggs: 9, roosting: 5 });
+  assert.equal(v.eggs, 6); assert.equal(v.roosting, 3);
+  assert.deepEqual(v.plus, { text: '+5', tip: '5 more subagents running than the farmers can lead' });
+  assert.deepEqual(henhouseView({ eggs: 1, roosting: 1 }).eggsLabel, { text: '1 egg', tip: 'Eggs: subagents that finished lately' });
+  assert.equal(henhouseView({ eggs: 1, roosting: 1 }).plus.tip, '1 more subagent running than the farmers can lead');
+  assert.deepEqual(henhouseView({ eggs: 0, roosting: 0 }), { eggs: 0, roosting: 0, plus: null, eggsLabel: null });
+  assert.deepEqual(henhouseView(undefined), { eggs: 0, roosting: 0, plus: null, eggsLabel: null });
+});

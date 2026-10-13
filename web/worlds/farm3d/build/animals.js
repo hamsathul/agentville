@@ -111,7 +111,7 @@ export function makeAnimals(THREE, mats, S) {
     return { a, root, holder, model, mixer, actions, head, t, hitBox: hit, wet: null, playing: null, seq: -1, yaw: a.face, placed: Boolean(ground), stick: null };
   }
   /** A dog's bandana, round its neck bone, so it follows the head as it moves; sized to the dog. */
-  function bandana(model, colour, raw) {
+  function bandana(model, colour, raw, size = 1) {
     let neck = null;
     model.traverse(o => { if (!neck && o.isBone && /neck/i.test(o.name)) neck = o; });
     if (!neck) return;
@@ -119,10 +119,47 @@ export function makeAnimals(THREE, mats, S) {
     const s = new THREE.Vector3();
     neck.getWorldScale(s);
     const band = new THREE.Mesh(new THREE.TorusGeometry(0.054 * raw, 0.019 * raw, 6, 14), mats.std(colour));
-    band.scale.setScalar(1 / (s.x || 1)); // in step with the dog's size, whatever the bone's scale
+    band.scale.setScalar(size / (s.x || 1)); // in step with the dog's size, whatever the bone's scale
     band.rotation.x = Math.PI / 2; // round the neck: the bone points along it
     band.castShadow = true;
     neck.add(band);
+    return band;
+  }
+  /**
+   * A copy of a kind's model for something that isn't one of the farm's animals (the Explore dog, a cart's pony): its
+   * own animation player, `size` times the animal's size, in its own `coat` (colour areas, as coats.js's) or its kind's,
+   * a bandana when given. part(name) plays one of the kind's parts (models/index.js), round and round; tick(dt) moves it.
+   */
+  async function copy(kind, { size = 1, coat = null, scarf = null } = {}) {
+    const t = await template(kind), root = new THREE.Group(), holder = new THREE.Group(), model = cloneSkinned(t.scene);
+    holder.scale.setScalar(t.scale * size);
+    holder.position.y = t.lift * size;
+    holder.add(model);
+    root.add(holder);
+    const own = [];
+    if (coat) model.traverse(o => {
+      if (!o.isMesh) return;
+      const re = m => { const c = m.clone(); if (coat[m.name]) c.color.set(coat[m.name]); own.push(c); return c; };
+      o.material = Array.isArray(o.material) ? o.material.map(re) : re(o.material);
+    });
+    const band = scarf ? bandana(model, scarf, t.raw, size) : null; // its own ring: freed with it
+    const mixer = new THREE.AnimationMixer(model);
+    let playing = null, now = null;
+    return {
+      root,
+      part(name) {
+        if (name === now) return;
+        now = name;
+        const clip = t.clips.get(MODELS[kind].clips[name]);
+        if (!clip) return;
+        const next = mixer.clipAction(clip);
+        next.reset().setEffectiveWeight(1).play();
+        if (playing && playing !== next) { next.fadeIn(0.25); playing.fadeOut(0.25); }
+        playing = next;
+      },
+      tick(dt) { mixer.update(dt); },
+      dispose() { mixer.stopAllAction(); mixer.uncacheRoot(model); root.removeFromParent(); for (const m of own) m.dispose(); band?.geometry.dispose(); },
+    };
   }
   /** Plays an animal's part as antics.js set it: a clip once (staying at its end) or round and round, faded from the last. */
   function play(w) {
@@ -254,7 +291,7 @@ export function makeAnimals(THREE, mats, S) {
     return changed && !t;
   }
   return {
-    group, setGround, tick,
+    group, setGround, tick, copy,
     setOn(v) { on = v; creatures.visible = v; },
     /** In winter the pond is ice: its frog, fish and lily pads are out of sight. */
     setWinter(v) { winter = Boolean(v); },
