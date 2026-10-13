@@ -2,8 +2,8 @@
 // models/LICENSE.md). Two cows, a bull, two alpacas, a donkey and two horses in the pasture; the husky (in a red
 // bandana) and the Shiba Inu (in a blue one) in the yard, so neither is taken for a dog that means something; a deer,
 // a stag, a fox and a wolf at the forest's edge; and in the pond his frog on his lily pads and three of his fish. What
-// they do is antics.js's, where they may go roam.js's: they walk, rest and graze, get up to something now and then,
-// rest at night, and do what you pick from an animal's menu. This draws it: each kind's model loaded once (after the
+// they do is antics.js's, where they may go roam.js's (the whole farm, round what stands on it): they walk, rest and
+// graze, get up to something now and then, rest at night, and do what you pick from an animal's menu. This draws it: each kind's model loaded once (after the
 // farm has drawn), every animal its own copy with its own animation player, playing the clip for each part
 // (models/index.js), repainted in the farm's colours and finish (coats.js), the cows spotted; the frog on a pad, the
 // fish just under the water, a splash where one breaks it. The Animals switch hides them all (not the lily pads).
@@ -175,9 +175,10 @@ export function makeAnimals(THREE, mats, S) {
   }
   const env = {
     resting: false, rand, habitChance: HABIT_CHANCE,
-    spot: (area, from, far, r) => roam.spot(area, rand, { from, far, r }),
+    spot: (area, from, far, r, o) => roam.spot(area, rand, { from, far, r, ...o }),
     inside: (area, x, y, r) => roam.inside(area, x, y, r),
     clear: (area, from, to, r) => roam.clear(area, from, to, r),
+    route: (from, to, r) => roam.route(from, to, r), // a way round, for roaming the farm
     duration: (kind, part) => templates.get(kind)?.clips.get(MODELS[kind].clips[part])?.duration ?? 1,
   };
   /** Their grounds for a farm (roam.js): the pasture, the yard (off the pond, its trees and things), the forest's edge. */

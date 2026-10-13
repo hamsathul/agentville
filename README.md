@@ -1318,17 +1318,21 @@ patch, the pasture across the front, and the meadow and the forest running on al
   its own animations, and repainted to match the farm: lighter, warmer colours in the farm's matte
   finish, where the models come darker and partly metallic (`web/worlds/farm3d/coats.js`, a colour for
   each part of each animal; the eyes keep theirs). Two cows, white with black spots (each her own), a
-  bull, two alpacas, a donkey and two horses graze in the pasture; a husky in a red bandana and a Shiba
-  Inu in a blue one (so neither is taken for a dog that means something) run about the yard; a deer, a
-  stag, a fox and a wolf keep to the forest's edge, a strip of grass between the pasture's fence and the
-  trees. They wander, differently every time you open the farm: a walk that bends, at a pace of its
+  bull, two alpacas, a donkey and two horses live in the pasture; a husky in a red bandana and a Shiba
+  Inu in a blue one (so neither is taken for a dog that means something) in the yard; a deer, a stag, a
+  fox and a wolf at the forest's edge, a strip of grass between the pasture's fence and the trees. They
+  wander, differently every time you open the farm: a walk that bends, at a pace of its
   own, rests short and long, now and then strolling straight on or stopping at a bend to look round.
   They graze, and now and then get up to something of their own: a look round, a sniff, a hop, a fly to
   shake off, a gallop and a leap, the donkey kicking up its heels, the bull and the stag butting the
   air, the dogs running laps and pouncing, the fox mousing. At night they stand and rest.
-  - **They keep to their ground**, all of their body: one walks only where the way there is clear, round
-    the pond, the trees, the bushes and rocks, never through a fence, and a gallop comes back the way it
-    went (`web/worlds/farm3d/roam.js`).
+  - **They roam the whole farm**: the yard, the pasture, the lane, round the buildings, the forest's edge,
+    and (the small ones) the walkways between the beds, through the pasture's two gates (one where the
+    yard's path comes down, one to the forest). Mostly a wander near where they are, now and then
+    somewhere else on the farm, and the longer one has been away, the likelier it heads home, so the
+    herds spread out without piling up. A walk finds its way round what stands in it, never into water,
+    a tree, a bed, a building, the deck, the henhouse's run or the scarecrow patch, never through a
+    fence, and a gallop comes back the way it went (`web/worlds/farm3d/roam.js`).
   - **The pond**: Quaternius's lily pads (two in flower), his frog and three of his fish (single models,
     CC0). A trout, a koi and a roach swim just under the surface and now and then leap out with a
     splash; the frog sits on a pad, hops pad to pad, snaps at flies, and dives, to come up on a pad a

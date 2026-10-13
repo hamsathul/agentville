@@ -159,12 +159,45 @@ export function forgetWalk(a) {
 export const restFor = rand => 1 + 29 * rand() ** 2.2;
 /** Its next walk: 1 to 3 points, each reached by a clear straight way from the last, so the walk bends; its own pace. */
 function planWalk(a, env) {
+  a.pace = 0.7 + env.rand() * 0.6;
+  if (env.route && roams(a)) { roamWalk(a, env); return; }
   const points = [];
   let from = [a.x, a.y];
   for (let k = 1 + Math.floor(env.rand() * 3); k > 0; k--) { const p = env.spot(a.area, from, 0, a.r); points.push(p); from = p; }
   [a.tx, a.ty] = points.shift();
   a.path = points;
-  a.pace = 0.7 + env.rand() * 0.6;
+}
+
+/** Whether it roams the farm (all but the pond's frog and fish). */
+const roams = a => a.family !== 'frog' && a.family !== 'fish';
+/**
+ * How wide it is for getting about the farm: about its width (it walks lengthways), not its length; where it stops
+ * and turns, a.r keeps its body clear.
+ */
+export const reachOf = a => Math.max(5, a.r * 0.6);
+/** The ground it gets about on: the whole farm for one that roams, its own for the frog and the fish. */
+const groundFor = a => (roams(a) ? 'farm' : a.area);
+/**
+ * A walk about the farm: mostly a wander near where it is, now and then somewhere else on the farm, and, the longer it
+ * has been away from its own ground, the likelier back there. The way there goes round whatever is in it (env.route).
+ */
+function roamWalk(a, env) {
+  const atHome = env.inside(a.area, a.x, a.y, 0);
+  if (atHome) a.awaySince = null;
+  else a.awaySince ??= a.clock;
+  const away = atHome ? 0 : a.clock - a.awaySince, rw = reachOf(a);
+  for (let k = 0; k < 4; k++) {
+    const roll = env.rand(), goHome = !atHome && roll < Math.min(0.9, 0.2 + away / 120);
+    const to = goHome ? env.spot(a.area, null, 0, a.r)
+      : roll < 0.15 ? env.spot('farm', null, 0, a.r) // somewhere else on the farm
+        : env.spot('farm', [a.x, a.y], 24, a.r, { near: 110, straight: false }); // a wander near where it is
+    const way = to && env.route([a.x, a.y], to, rw);
+    if (!way?.length) continue;
+    [a.tx, a.ty] = way.shift();
+    a.path = way;
+    return;
+  }
+  a.tx = a.x; a.ty = a.y; a.path = []; // nowhere it can get to just now: it stays
 }
 
 function show(a, part, { once = false, hold = false, fade = 0.3, timeScale = 1, restart = false } = {}) {
@@ -187,7 +220,7 @@ function go(a, [x, y], speed, dt) {
  */
 function homeward(a, env) {
   if (!env.clear || !a.trail.length) { a.trail = []; return a.home; }
-  const k = a.trail.findIndex(p => env.clear(a.area, [a.x, a.y], p, a.r)), to = a.trail[k < 0 ? a.trail.length - 1 : k];
+  const k = a.trail.findIndex(p => env.clear(groundFor(a), [a.x, a.y], p, roams(a) ? reachOf(a) : a.r)), to = a.trail[k < 0 ? a.trail.length - 1 : k];
   a.trail = a.trail.slice(0, k < 0 ? a.trail.length - 1 : k);
   return to;
 }
@@ -195,14 +228,14 @@ function homeward(a, env) {
 function begin(a, env) {
   while (a.queue.length) {
     const s = { ...a.queue.shift() };
-    if (s.stick === 'throw') { a.stick = { at: env.spot(a.area, [a.x, a.y], 60, a.r), from: [a.x, a.y], held: false, t: 0 }; continue; }
+    if (s.stick === 'throw') { a.stick = { at: env.spot(groundFor(a), [a.x, a.y], 60, reachOf(a)), from: [a.x, a.y], held: false, t: 0 }; continue; }
     if (s.stick === 'pick') { if (a.stick) a.stick.held = true; continue; }
     if (s.stick === 'drop') { a.stick = null; continue; }
     if (s.to === 'home') {
       s.to = homeward(a, env);
       if (a.trail.length) a.queue.unshift({ part: s.part, to: 'home' }); // then further back still
     } else if (s.to || s.go) a.trail.push([a.x, a.y]);
-    if (s.to === 'far') s.to = env.spot(a.area, [a.x, a.y], 80, a.r);
+    if (s.to === 'far') s.to = env.spot(groundFor(a), [a.x, a.y], 80, roams(a) ? reachOf(a) : a.r);
     else if (s.to === 'stick') s.to = a.stick?.at ?? [a.x, a.y];
     else if (s.to === 'pad') s.to = env.spot('pond', [a.x, a.y], 8, a.r);
     else if (s.to === 'water') s.to = env.spot('water', [a.x, a.y], 8, a.r);
@@ -243,7 +276,7 @@ export function advance(a, dt, env) {
     } else if (s.to) done = go(a, s.to, s.part === 'walk' ? a.walk : a.run, dt) || done;
     else if (s.go) { // a leap carries it forward, inside its area
       const nx = a.x + Math.sin(a.face) * a.run * 0.8 * dt, ny = a.y + Math.cos(a.face) * a.run * 0.8 * dt;
-      if (env.inside(a.area, nx, ny, a.r)) { a.x = nx; a.y = ny; }
+      if (env.inside(groundFor(a), nx, ny, roams(a) ? reachOf(a) : a.r)) { a.x = nx; a.y = ny; }
     }
     if (!done) return;
     a.cur = null;

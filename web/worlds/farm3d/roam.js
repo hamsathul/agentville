@@ -3,12 +3,24 @@
 // the trees, bushes and rocks, the woodpile, the hammocks), for a body of a given size; and in the pond, the water
 // for the fish (clear of its bank) and the lily pads for the frog, which jumps between them. An animal is a circle as wide
 // as it is long (r, half its length, in px), so it fits whichever way it faces, and it goes only where the straight
-// way there is clear. Positions are in the 2D farm's pixels. No three.js: build/animals.js uses it, the tests run it.
-import { BUSHES, LILY_PADS, NAPS, POND, SHADE, WOODPILE, forestEdgeOf, forestOf, orchardOf, pastureOf, rocksOf } from './layout.js';
+// way there is clear. The animals roam the whole farm (`farm`: everything walkable on it, round the buildings, the
+// fields but their walkways, and through the pasture's gates in its fence), and route() finds a way there, round what
+// stands between. Positions are in the 2D farm's pixels. No three.js: build/animals.js uses it, the tests run it.
+import { BUSHES, CORR, FARMSTEAD, LILY_PADS, NAPS, PASTURE_GATES, POND, SHADE, W, WOODPILE, forestEdgeOf, forestOf, orchardOf, pastureOf, rocksOf } from './layout.js';
 
 const STEP = 2; // how finely a way is checked, in px
 const TRUNK = 4; // a yard tree's trunk, in px: the dogs run under its crown
 const WET = new Set(['water', 'pond']); // grounds in the pond: nothing on land is in their way, and the frog jumps
+const CELL = 4; // route()'s grid, in px
+const SIZES = [6, 9, 12, 15, 18]; // the bodies route() keeps a grid for: an animal's is the next up
+
+/** How far (x, y) is from a line from (x0, y0) to (x1, y1). */
+function toSegment(x, y, [x0, y0, x1, y1]) {
+  const dx = x1 - x0, dy = y1 - y0, l = dx * dx + dy * dy, t = l ? Math.max(0, Math.min(1, ((x - x0) * dx + (y - y0) * dy) / l)) : 0;
+  return Math.hypot(x - x0 - t * dx, y - y0 - t * dy);
+}
+/** A fence from (a, y) to (b, y), less its gates ([from, to] in x), as the lines left. */
+const fenceX = (a, b, y, gates) => { const out = []; let from = a; for (const [g0, g1] of gates.slice().sort((p, q) => p[0] - q[0])) { out.push([from, y, g0, y]); from = g1; } out.push([from, y, b, y]); return out; };
 
 /** The grounds and what stands on them, for a farm L (its GRID, rows and H, as model.js makes it). */
 export function roamOf(L) {
@@ -19,22 +31,31 @@ export function roamOf(L) {
     edge: forestEdgeOf(L),
     water: [{ cx: POND.cx, cy: POND.cy, rx: POND.rx - 3, ry: POND.ry - 3 }], // clear of the bank
     pond: LILY_PADS.map(([cx, cy]) => ({ cx, cy, r: 0.5 })), // the middle of a pad
+    farm: [{ x: 0, y: 0, w: W, h: L.H + 22 }], // the whole farm, for roaming: everything walkable on it
   };
-  const near = (x, y, pad) => ['pasture', 'yard', 'edge'].flatMap(k => areas[k]).some(a => x > a.x - pad && x < a.x + a.w + pad && y > a.y - pad && y < a.y + a.h + pad);
+  const near = (x, y, pad) => x > -pad && x < W + pad && y > -pad && y < L.H + 22 + pad;
+  const G = L.GRID;
+  // the pasture's fence, less its gates; the fields, less their walkways (open at the top, to the lane)
+  const fences = [...fenceX(pa.x0, pa.x1, pa.y0, [PASTURE_GATES.top]), ...fenceX(pa.x0, pa.x1, pa.y1, [PASTURE_GATES.bottom]), [pa.x0, pa.y0, pa.x0, pa.y1], [pa.x1, pa.y0, pa.x1, pa.y1]];
+  const fields = { x: G.x0 - 2, y: G.y0 - 2, w: G.x1 - G.x0 + 4, h: G.y1 - G.y0 + 4, holes: CORR.slice(1).map(c => ({ x: c - 7, y: G.y0 - 12, w: 14, h: G.y1 - G.y0 + 8 })) };
   const obstacles = [
     { cx: POND.cx, cy: POND.cy, rx: POND.rx + 4, ry: POND.ry + 4 }, // the water and its sandy bank
-    { x: NAPS[0][0] - 20, y: NAPS[0][1] - 16, w: 40, h: NAPS.at(-1)[1] - NAPS[0][1] + 24 },
+    { x: NAPS[0][0] - 15, y: NAPS[0][1] - 8, w: 29, h: NAPS.at(-1)[1] - NAPS[0][1] + 16 }, // the hammocks, post to post
     { x: WOODPILE[0] - 14, y: WOODPILE[1] - 10, w: 28, h: 20 },
     { cx: SHADE.x, cy: y1 + SHADE.dy - 10, r: TRUNK + 1 }, // the shade tree's trunk stands behind its middle
     ...orchardOf(L).map(([cx, cy]) => ({ cx, cy, r: TRUNK })),
     ...BUSHES.map(([cx, cy, r]) => ({ cx, cy, r: r * 1.4 })),
     ...rocksOf(L).map(([cx, cy, s]) => ({ cx, cy, r: s * 1.4 })),
     ...forestOf(L.H).filter(([x, y, r]) => near(x, y, r * 1.25 + 24)).map(([cx, cy, r]) => ({ cx, cy, r: r * 1.25 })), // their crowns: the deer would stand in them
+    ...FARMSTEAD, // the buildings, the deck, the henhouse's run, the stall, the scarecrow patch
   ];
-  /** Whether a body of size r at (x, y) touches something. */
+  const box = (o, x, y, r) => x > o.x - r && x < o.x + o.w + r && y > o.y - r && y < o.y + o.h + r;
+  /** Whether a body of size r at (x, y) touches something: a thing on the ground, a fence, or the fields (but in a walkway). */
   const hits = (x, y, r) => obstacles.some(o => (o.rx ? ((x - o.cx) / (o.rx + r)) ** 2 + ((y - o.cy) / (o.ry + r)) ** 2 < 1
     : o.r !== undefined ? Math.hypot(x - o.cx, y - o.cy) < o.r + r
-      : x > o.x - r && x < o.x + o.w + r && y > o.y - r && y < o.y + o.h + r));
+      : box(o, x, y, r)))
+    || fences.some(f => toSegment(x, y, f) < r + 1)
+    || (box(fields, x, y, r) && !fields.holes.some(h => x - r >= h.x && x + r <= h.x + h.w && y >= h.y && y <= h.y + h.h));
   /** Whether a body of size r is all inside one of a ground's shapes: a rectangle, an ellipse, or a pad's middle. */
   const within = (a, x, y, r) => (a.w !== undefined ? x - r >= a.x && x + r <= a.x + a.w && y - r >= a.y && y + r <= a.y + a.h
     : a.rx !== undefined ? a.rx > r && a.ry > r && ((x - a.cx) / (a.rx - r)) ** 2 + ((y - a.cy) / (a.ry - r)) ** 2 <= 1
@@ -51,22 +72,101 @@ export function roamOf(L) {
     return true;
   }
   /**
-   * A free place on a ground for a body of size r. From somewhere: one it can walk to in a straight line, at least far
-   * away if it can find one (else the farthest it found; else where it is).
+   * A free place on a ground for a body of size r. From somewhere: one it can walk to in a straight line (unless
+   * `straight` is false: route() finds the way), at least far away if it can find one (else the farthest it found; else
+   * where it is), and within `near` of it if that is given.
    */
-  function spot(area, rand, { from, far = 0, r = 0 } = {}) {
+  function spot(area, rand, { from, far = 0, near: within2 = Infinity, straight = true, r = 0 } = {}) {
     const rects = areas[area];
     let best = null, bestD = -1;
     for (let i = 0; i < 40; i++) {
       const a = rects[Math.floor(rand() * rects.length)], u = rand(), v = rand();
-      const [x, y] = a.w !== undefined ? [a.x + r + u * Math.max(0, a.w - 2 * r), a.y + r + v * Math.max(0, a.h - 2 * r)]
+      let [x, y] = a.w !== undefined ? [a.x + r + u * Math.max(0, a.w - 2 * r), a.y + r + v * Math.max(0, a.h - 2 * r)]
         : a.rx !== undefined ? [a.cx + (u * 2 - 1) * (a.rx - r), a.cy + (v * 2 - 1) * (a.ry - r)] : [a.cx, a.cy];
-      if (!inside(area, x, y, r) || (from && !clear(area, from, [x, y], r))) continue;
+      if (from && Number.isFinite(within2)) [x, y] = [from[0] + (u * 2 - 1) * within2, from[1] + (v * 2 - 1) * within2]; // somewhere near: within that of it
+      if (!inside(area, x, y, r) || (from && straight && !clear(area, from, [x, y], r))) continue;
       const d = from ? Math.hypot(x - from[0], y - from[1]) : 0;
       if (d >= far) return [x, y];
       if (d > bestD) { best = [x, y]; bestD = d; }
     }
     return best ?? (from ? [...from] : rects[0].w !== undefined ? [rects[0].x + rects[0].w / 2, rects[0].y + rects[0].h / 2] : [rects[0].cx, rects[0].cy]);
   }
-  return { areas, obstacles, inside, clear, spot };
+  /**
+   * The way for a body of size r from one place to another on the farm, round whatever stands between: its turning
+   * points then the place itself (just the place when the straight way is clear), or null when there is none.
+   */
+  const grids = new Map(), cols = Math.ceil(W / CELL) + 1, rows = Math.ceil((L.H + 22) / CELL) + 1;
+  function gridFor(r) {
+    const size = SIZES.find(c => c >= r) ?? Math.ceil(r);
+    if (!grids.has(size)) {
+      const g = new Uint8Array(cols * rows);
+      for (let j = 0; j < rows; j++) for (let i = 0; i < cols; i++) g[j * cols + i] = inside('farm', i * CELL, j * CELL, size) ? 1 : 0;
+      grids.set(size, g);
+    }
+    return grids.get(size);
+  }
+  function route(from, to, r = 0) {
+    if (clear('farm', from, to, r)) return [to];
+    const g = gridFor(r), id = (i, j) => j * cols + i;
+    const nearest = ([x, y]) => { const i0 = Math.round(x / CELL), j0 = Math.round(y / CELL); for (let d = 0; d <= 3; d++) for (let j = j0 - d; j <= j0 + d; j++) for (let i = i0 - d; i <= i0 + d; i++) if (i >= 0 && j >= 0 && i < cols && j < rows && g[id(i, j)]) return id(i, j); return -1; };
+    const s = nearest(from), e = nearest(to);
+    if (s < 0 || e < 0) return null;
+    // A*: eight ways, a corner cut only where both sides are open; the open list a binary heap in typed arrays
+    const n = cols * rows, cost = new Float32Array(n).fill(Infinity), came = new Int32Array(n).fill(-1), done = new Uint8Array(n);
+    let hf = new Float32Array(1024), hk = new Int32Array(1024), size = 0;
+    const ei = e % cols, ej = Math.floor(e / cols);
+    const h = k => { const dx = Math.abs((k % cols) - ei), dy = Math.abs(Math.floor(k / cols) - ej); return Math.max(dx, dy) + 0.414 * Math.min(dx, dy); };
+    const push = (k, f) => {
+      if (size === hf.length) { const f2 = new Float32Array(size * 2), k2 = new Int32Array(size * 2); f2.set(hf); k2.set(hk); hf = f2; hk = k2; }
+      let c = size++;
+      while (c > 0) { const p = (c - 1) >> 1; if (hf[p] <= f) break; hf[c] = hf[p]; hk[c] = hk[p]; c = p; }
+      hf[c] = f; hk[c] = k;
+    };
+    const pop = () => {
+      const top = hk[0], lf = hf[--size], lk = hk[size];
+      let c = 0;
+      for (;;) { const a = 2 * c + 1, b = a + 1; let m = -1, mf = lf; if (a < size && hf[a] < mf) { m = a; mf = hf[a]; } if (b < size && hf[b] < mf) { m = b; } if (m < 0) break; hf[c] = hf[m]; hk[c] = hk[m]; c = m; }
+      if (size) { hf[c] = lf; hk[c] = lk; }
+      return top;
+    };
+    cost[s] = 0;
+    push(s, h(s));
+    while (size) {
+      const k = pop();
+      if (done[k]) continue;
+      done[k] = 1;
+      if (k === e) break;
+      const i = k % cols, j = Math.floor(k / cols);
+      for (let dj = -1; dj <= 1; dj++) for (let di = -1; di <= 1; di++) {
+        if (!di && !dj) continue;
+        const ni = i + di, nj = j + dj;
+        if (ni < 0 || nj < 0 || ni >= cols || nj >= rows) continue;
+        const m = id(ni, nj);
+        if (!g[m] || done[m] || (di && dj && (!g[id(i + di, j)] || !g[id(i, j + dj)]))) continue;
+        const c = cost[k] + (di && dj ? 1.414 : 1);
+        if (c < cost[m]) { cost[m] = c; came[m] = k; push(m, c + h(m)); }
+      }
+    }
+    if (e !== s && came[e] < 0) return null;
+    const cells = [];
+    for (let k = e; k !== s && k >= 0; k = came[k]) cells.push(k);
+    cells.reverse();
+    // straight legs: on to the furthest cell (40 at most ahead) the grid sees in a straight line, then the place itself
+    const xy = k => [(k % cols) * CELL, Math.floor(k / cols) * CELL];
+    const sees = ([x0, y0], [x1, y1]) => { const steps = Math.ceil(Math.hypot(x1 - x0, y1 - y0) / (CELL / 2)); for (let t = 0; t <= steps; t++) { const q = id(Math.round((x0 + ((x1 - x0) * t) / steps) / CELL), Math.round((y0 + ((y1 - y0) * t) / steps) / CELL)); if (!g[q]) return false; } return true; };
+    const out = [];
+    let at = xy(s);
+    for (let k = 0; k < cells.length;) {
+      let far = k;
+      for (let m = Math.min(cells.length - 1, k + 40); m > k; m--) if (sees(at, xy(cells[m]))) { far = m; break; }
+      while (far > k && !clear('farm', at, xy(cells[far]), r)) far--; // the grid rounds: each leg walkable for this body exactly
+      at = xy(cells[far]);
+      out.push(at);
+      k = far + 1;
+    }
+    if (!out.length || !clear('farm', from, out[0], r)) out.unshift(xy(s)); // onto the grid first, where the start isn't on it
+    if (clear('farm', out.at(-1), to, r)) out.push(to);
+    return out;
+  }
+  return { areas, obstacles, inside, clear, spot, route };
 }

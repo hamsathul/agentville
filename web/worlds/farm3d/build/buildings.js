@@ -4,7 +4,7 @@
 // string lights, the henhouse and its run, the market stall, the scarecrow patch, the hammocks, the shade tree, the
 // orchard that comes with more rows, the woodpile and the rock, and the fence round the fields. Snow on the roofs in
 // winter. Rebuilt only when the rows, the season or the silos change.
-import { BARN, BARN_DOOR, BUSHES, CORR, DECK, HENHOUSE, HOUSE, NAPS, PORCH_Y, PX, SCARECROWS, SHADE, SILO_Y, STALL, WOODPILE, orchardOf, pastureOf, rocksOf } from '../layout.js';
+import { BARN, BARN_DOOR, BUSHES, CORR, DECK, HENHOUSE, HOUSE, NAPS, PASTURE_GATES, PORCH_Y, PX, SCARECROWS, SHADE, SILO_Y, STALL, WOODPILE, orchardOf, pastureOf, rocksOf } from '../layout.js';
 import { disposeTree, seasonPalette } from './util.js';
 
 const m = v => v / PX; // 2D pixels to metres
@@ -255,8 +255,8 @@ export function makeBuildings(THREE, mats, S) {
     fence(GRID.x1, GRID.y0, GRID.x1, GRID.y1);
     // the pasture across the front: a fence all round, a gate where the yard's path comes down
     const pa = pastureOf(ground);
-    fence(pa.x0, pa.y0, pa.x1, pa.y0, [[CORR[0] - 10, CORR[0] + 10]]);
-    fence(pa.x0, pa.y1, pa.x1, pa.y1);
+    fence(pa.x0, pa.y0, pa.x1, pa.y0, [PASTURE_GATES.top]); // gates: up to the yard's path, and down to the forest (the animals roam)
+    fence(pa.x0, pa.y1, pa.x1, pa.y1, [PASTURE_GATES.bottom]);
     fence(pa.x0, pa.y0, pa.x0, pa.y1);
     fence(pa.x1, pa.y0, pa.x1, pa.y1);
     {

@@ -28,11 +28,11 @@ export const WATER = { y: 0.06, deep: 0.6 };
 /** The pond's lily pads, [x, y, size, in flower]: the frog's stepping stones, a hop apart. */
 export const LILY_PADS = [[46, 263, 1, true], [60, 256, 0.8, false], [73, 266, 1.1, false], [84, 257, 0.75, false], [96, 263, 0.9, true]];
 export const MEADOW = [[30, 196], [96, 200], [36, 304], [120, 304]]; // farmers working outside any repo
-export const NAPS = [[150, 236], [150, 262]]; // hammocks: sessions that wake up by themselves (/loop)
+export const NAPS = [[142, 236], [142, 262]]; // hammocks: sessions that wake up by themselves (/loop); room to their right for a cow to pass
 export const SHADE = { x: 96, dy: -24 }; // the shade tree, this far above the fields' fence's bottom
 export const WOODPILE = [150, 300];
 export const BUSHES = [[150, 196, 4], [112, 226, 3]];
-export const rocksOf = L => [[120, L.GRID.y1 - 30, 4], [10, L.GRID.y1 - 14, 3], [150, L.GRID.y1 - 4, 2]];
+export const rocksOf = L => [[120, L.GRID.y1 - 30, 4], [10, L.GRID.y1 - 14, 3], [56, L.GRID.y1 - 2, 2]]; // the last kept clear of the way down to the pasture's gate
 /** The yard's orchard, which grows a tree pair with each row of fields past the third. */
 export const orchardOf = L => Array.from({ length: Math.max(0, L.rows - 3) }, (_, k) => [[40, 130 + (k + 3) * ROWH - 30], [130, 130 + (k + 3) * ROWH - 14]]).flat();
 
@@ -44,6 +44,24 @@ export const GRID_CONFIG = {
 };
 /** The pasture across the front of the farm, under the fields: the cows, the sheep and the horses graze there. */
 export const pastureOf = L => ({ x0: 16, x1: 544, y0: L.GRID.y1 + 26, y1: L.GRID.y1 + 150 });
+/**
+ * The pasture's gates, [from, to] along its top fence and its bottom one: a 6 m double gate where the yard's path comes
+ * down (wide to its left, so a bull coming down beside the fields fits through), and a 5 m one to the forest.
+ */
+export const PASTURE_GATES = { top: [CORR[0] - 36, CORR[0] + 14], bottom: [W / 2 - 20, W / 2 + 20] };
+/**
+ * What stands on the farm that an animal walks round (2D pixels, rectangles): the barn, the silos (both accounts'
+ * places), the farmhouse and its deck, the henhouse and its run, the market stall, the scarecrow patch.
+ */
+export const FARMSTEAD = [
+  { x: BARN.x, y: BARN.front - 45, w: 55, h: 45 },
+  ...SILO_X.map(x => ({ x: x, y: SILO_Y - 10, w: 20, h: 20 })),
+  { x: HOUSE.x + 4, y: PORCH_Y - 52, w: HOUSE.w - 8, h: 42 },
+  { x: DECK.x0, y: DECK.y0, w: DECK.x1 - DECK.x0, h: DECK.y1 - DECK.y0 + 3 },
+  { x: HENHOUSE.x, y: HENHOUSE.y, w: 92, h: 36 },
+  { x: STALL.x - 2, y: STALL.y, w: 34, h: 36 },
+  { x: SCARECROWS.x - 2, y: SCARECROWS.y - 2, w: SCARECROWS.w + 4, h: PORCH_Y + 4 - SCARECROWS.y + 2 },
+];
 /** The forest's edge, where the deer and the fox come out: a strip of grass between the pasture's fence and the trees. */
 export const forestEdgeOf = L => [{ x: 0, y: pastureOf(L).y1 + 1, w: W, h: L.H + 22 - pastureOf(L).y1 - 1 }];
 
