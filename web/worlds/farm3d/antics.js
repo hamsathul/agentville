@@ -118,7 +118,7 @@ function frogSteps(act, env) {
 
 /** A new animal at (x, y): walk and run its speeds in pixels a second, r its size (half its length) in pixels. */
 export function makeAnimal({ kind, family, area, walk = 8, run = 36, r = 0 }, x, y, rand = Math.random) {
-  return { kind, family, area, walk, run, r, trail: [], lift: 0, under: false, x, y, tx: x, ty: y, face: rand() * 6.28, rest: rand() * 4, phase: rand() * 6.28, clock: 0, queue: [], cur: null, curT: 0, act: null, home: [x, y], stick: null, part: 'idle', once: false, hold: false, fade: 0.3, timeScale: 1, seq: 0 };
+  return { kind, family, area, walk, run, r, trail: [], lift: 0, under: false, path: [], pace: 1, looked: false, x, y, tx: x, ty: y, face: rand() * 6.28, rest: rand() * 4, phase: rand() * 6.28, clock: 0, queue: [], cur: null, curT: 0, act: null, home: [x, y], stick: null, part: 'idle', once: false, hold: false, fade: 0.3, timeScale: 1, seq: 0 };
 }
 /**
  * Asks it to do something (an act from its menu): whatever it was doing stops, and a stick it carried is dropped. In
@@ -136,7 +136,20 @@ export function command(a, act, env) {
   a.act = act;
   a.home = [a.x, a.y];
   a.trail = [];
+  a.path = []; // the walk it was on was planned from somewhere else
   a.stick = null;
+}
+
+/** How long it rests where it stops: 1 to 30 s, mostly short. */
+export const restFor = rand => 1 + 29 * rand() ** 2.2;
+/** Its next walk: 1 to 3 points, each reached by a clear straight way from the last, so the walk bends; its own pace. */
+function planWalk(a, env) {
+  const points = [];
+  let from = [a.x, a.y];
+  for (let k = 1 + Math.floor(env.rand() * 3); k > 0; k--) { const p = env.spot(a.area, from, 0, a.r); points.push(p); from = p; }
+  [a.tx, a.ty] = points.shift();
+  a.path = points;
+  a.pace = 0.7 + env.rand() * 0.6;
 }
 
 function show(a, part, { once = false, hold = false, fade = 0.3, timeScale = 1, restart = false } = {}) {
@@ -232,11 +245,18 @@ export function advance(a, dt, env) {
     return;
   }
   if (a.family === 'frog') { a.rest = 3 + env.rand() * 6; habit(a, env); return; } // it never walks: it sits, then gets up to something
-  if (go(a, [a.tx, a.ty], a.walk, dt)) {
-    a.rest = 3 + env.rand() * 8;
-    [a.tx, a.ty] = env.spot(a.area, [a.x, a.y], 0, a.r);
-    if (env.rand() < env.habitChance) { habit(a, env); return; }
-    show(a, 'idle');
+  if (go(a, [a.tx, a.ty], a.walk * a.pace, dt)) {
+    if (a.path.length) { // a bend: now and then a look round first, then on to the next point
+      if (!a.looked && env.rand() < 0.25) { a.looked = true; a.queue = [{ part: 'look' }]; begin(a, env); return; }
+      a.looked = false;
+      [a.tx, a.ty] = a.path.shift();
+      show(a, 'walk');
+      return;
+    }
+    planWalk(a, env);
+    a.rest = env.rand() < 0.2 ? 0 : restFor(env.rand); // now and then it strolls straight on
+    if (a.rest > 0 && env.rand() < env.habitChance) { habit(a, env); return; }
+    show(a, a.rest > 0 ? 'idle' : 'walk');
     return;
   }
   show(a, 'walk');
@@ -248,5 +268,6 @@ function habit(a, env) {
   a.act = act;
   a.home = [a.x, a.y];
   a.trail = [];
+  a.path = [];
   begin(a, env);
 }

@@ -18,8 +18,6 @@ import { COATS, FINISH, SPOTS, spotsOf } from '../coats.js';
 // Larger than life, as the farmers are (figurine.js): at their true size a cow is a speck from the whole farm's view.
 const BIGGER = 1.5;
 const HABIT_CHANCE = 0.25; // how often one gets up to something when it stops
-/** A small seeded random, so the farm's animals start the same every time. */
-const seeded = seed => () => { seed = (seed * 16807) % 2147483647; return seed / 2147483647; };
 
 const POND_KINDS = new Set(['frog', 'fish']); // the pond's families: under the ice in winter
 /** How high an animal stands: on the ground, on a lily pad (the frog), or just under the water (a fish, its back too). */
@@ -27,7 +25,7 @@ const baseOf = w => (w.a.family === 'frog' ? WATER.y + 0.05 : w.a.family === 'fi
 const PLUMP = 1.8; // a fish is as thin as a fish: a little plumper, it shows from above
 
 export function makeAnimals(THREE, mats, S) {
-  const group = new THREE.Group(), loader = new GLTFLoader(), rand = seeded(424242);
+  const group = new THREE.Group(), loader = new GLTFLoader(), rand = Math.random; // a different wander every time
   const creatures = new THREE.Group(), pads = new THREE.Group(), splashes = []; // the Animals switch hides the creatures, not the pads
   group.add(creatures, pads);
   let winter = false;

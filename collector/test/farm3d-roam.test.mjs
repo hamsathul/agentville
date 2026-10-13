@@ -87,3 +87,27 @@ test('an hour of the farm: whatever they do, by habit or asked, no body touches 
     assert.ok(acts > 500, `${acts} things asked of them`);
   }
 });
+
+test('left alone they wander: walks bend, paces and rests spread, and two days differ', () => {
+  const L = groundOf(4), roam = roamOf(L);
+  const day = seed => {
+    const rand = seeded(seed), env = { resting: false, rand, habitChance: 0, duration: () => 1, spot: (area, from, far, r) => roam.spot(area, rand, { from, far, r }), inside: roam.inside, clear: roam.clear };
+    const h = HERDS.find(x => x.kind === 'horse'), [x, y] = roam.spot('pasture', rand, { r: BODY.horse });
+    const a = makeAnimal({ ...h, family: 'hooves', r: BODY.horse }, x, y, rand);
+    const paces = new Set(), rests = [];
+    let resting = false, restStart = 0, longest = 0;
+    for (let t = 0; t < 1800; t += 0.1) {
+      advance(a, 0.1, env);
+      if (a.part === 'walk') paces.add(a.pace.toFixed(2));
+      if (a.path.length) longest = Math.max(longest, a.path.length + 1);
+      if (a.rest > 0 && !resting) { resting = true; restStart = t; }
+      if (a.rest <= 0 && resting) { resting = false; rests.push(t - restStart); }
+    }
+    return { at: [a.x, a.y], paces, rests, longest };
+  };
+  const one = day(1), two = day(2);
+  assert.ok(one.longest >= 2, 'a walk goes by more than one point');
+  assert.ok(one.paces.size >= 5, `paces: ${[...one.paces]}`);
+  assert.ok(Math.min(...one.rests) < 3 && Math.max(...one.rests) > 15, `rests from ${Math.min(...one.rests).toFixed(1)} to ${Math.max(...one.rests).toFixed(1)} s`);
+  assert.notDeepEqual(one.at, two.at, 'another day, another wander');
+});

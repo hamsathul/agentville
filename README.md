@@ -1302,10 +1302,11 @@ patch, the pasture across the front, and the meadow and the forest running on al
   bull, two alpacas, a donkey and two horses graze in the pasture; a husky in a red bandana and a Shiba
   Inu in a blue one (so neither is taken for a dog that means something) run about the yard; a deer, a
   stag, a fox and a wolf keep to the forest's edge, a strip of grass between the pasture's fence and the
-  trees. They walk, graze and rest, and now and then get up to something of their own: a look round, a
-  sniff, a hop, a fly to shake off, a gallop and a leap, the donkey kicking up its heels, the bull and
-  the stag butting the air, the dogs running laps and pouncing, the fox mousing. At night they stand and
-  rest.
+  trees. They wander, differently every time you open the farm: a walk that bends, at a pace of its
+  own, rests short and long, now and then strolling straight on or stopping at a bend to look round.
+  They graze, and now and then get up to something of their own: a look round, a sniff, a hop, a fly to
+  shake off, a gallop and a leap, the donkey kicking up its heels, the bull and the stag butting the
+  air, the dogs running laps and pouncing, the fox mousing. At night they stand and rest.
   - **They keep to their ground**, all of their body: one walks only where the way there is clear, round
     the pond, the trees, the bushes and rocks, never through a fence, and a gallop comes back the way it
     went (`web/worlds/farm3d/roam.js`).
