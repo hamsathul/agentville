@@ -86,6 +86,9 @@ export function makeBeds(THREE, mats, S, weather, crops) {
       else fxOf.object.position.set(c.x, 0, c.z - (b.weather === 'rainbow' ? d / 2 - 0.2 : 0));
       fx.push(fxOf);
     }
+    if (flag) flag.userData.live = true;
+    for (const f of fx) f.object.userData.live = true;
+    S.bake(g, { keep: o => Boolean(o.userData.live) }); // the bed in one draw call; its flag and weather move
     group.add(g);
     return { obj: g, fx, flag };
   }
@@ -95,6 +98,7 @@ export function makeBeds(THREE, mats, S, weather, crops) {
     patch.castShadow = false;
     S.box(m(74), 0.035, m(36), pal.grass[0], c.x, 0.03, c.z, g).castShadow = false;
     for (let n = 0; n < 14; n++) { const p = P(s.x0 + 3 + (noise(n, s.cx) % 66), s.y0 + 3 + (noise(s.cx, n) % 28)); S.cone(0.05, 0.22, n % 3 ? pal.tuft : pal.blade, p.x, 0.05, p.z, g, 4); }
+    S.bake(g);
     group.add(g);
     return { obj: g, fx: [], flag: null };
   }

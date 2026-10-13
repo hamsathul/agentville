@@ -37,12 +37,12 @@ export function makeShapes(THREE, mats) {
      * unit shapes in UNIT (or a geometry). One mesh then draws them all, in one call.
      */
     merge(parts) {
-      const pos = [], nor = [], col = [], m4 = new THREE.Matrix4(), q = new THREE.Quaternion(), e = new THREE.Euler(), c = new THREE.Color(), n3 = new THREE.Matrix3();
+      const pos = [], nor = [], col = [], m4 = new THREE.Matrix4(), q = new THREE.Quaternion(), e = new THREE.Euler(), c = new THREE.Color();
       for (const p of parts) {
         const src = typeof p.geo === 'string' ? unit(p.geo) : p.geo, g = src.index ? src.toNonIndexed() : src.clone();
-        m4.compose(new THREE.Vector3(...(p.pos ?? [0, 0, 0])), q.setFromEuler(e.set(...(p.rot ?? [0, 0, 0]))), new THREE.Vector3(...(p.scale ?? [1, 1, 1])));
+        if (p.matrix) m4.copy(p.matrix);
+        else m4.compose(new THREE.Vector3(...(p.pos ?? [0, 0, 0])), q.setFromEuler(e.set(...(p.rot ?? [0, 0, 0]))), new THREE.Vector3(...(p.scale ?? [1, 1, 1])));
         g.applyMatrix4(m4);
-        n3.getNormalMatrix(m4);
         c.set(p.color);
         const P = g.attributes.position, N = g.attributes.normal;
         for (let i = 0; i < P.count; i++) { pos.push(P.getX(i), P.getY(i), P.getZ(i)); nor.push(N.getX(i), N.getY(i), N.getZ(i)); col.push(c.r, c.g, c.b); }
@@ -54,6 +54,28 @@ export function makeShapes(THREE, mats) {
       out.setAttribute('color', new THREE.Float32BufferAttribute(col, 3));
       out.computeBoundingSphere();
       return out;
+    },
+    /**
+     * The still, opaque, plain-coloured meshes under a group baked into one mesh (a colour per vertex), so a building
+     * of a hundred parts is one draw call. Glowing, see-through and instanced meshes stay as they are, and so does
+     * anything `keep(o)` names (what moves, what is clicked). Returns the baked mesh, or null.
+     */
+    bake(root, { keep = () => false } = {}) {
+      root.updateMatrixWorld(true);
+      const inv = new THREE.Matrix4().copy(root.matrixWorld).invert(), parts = [], drop = [];
+      const kept = o => { for (let p = o; p && p !== root; p = p.parent) if (keep(p)) return true; return false; };
+      root.traverse(o => {
+        const mt = o.material;
+        if (!o.isMesh || o.isInstancedMesh || !mt || Array.isArray(mt) || !mt.isMeshStandardMaterial || mt.transparent || mt.vertexColors || mt.userData.glow || kept(o)) return;
+        parts.push({ geo: o.geometry, color: `#${mt.color.getHexString()}`, matrix: new THREE.Matrix4().multiplyMatrices(inv, o.matrixWorld) });
+        drop.push(o);
+      });
+      if (parts.length < 2) return null;
+      const baked = new THREE.Mesh(this.merge(parts), mats.std('#ffffff', { vertexColors: true }));
+      baked.castShadow = baked.receiveShadow = true;
+      for (const o of drop) { o.removeFromParent(); if (!o.geometry.userData?.shared) o.geometry.dispose(); }
+      root.add(baked);
+      return baked;
     },
     /** A one-off geometry (its own, freed with its builder). */
     mesh,

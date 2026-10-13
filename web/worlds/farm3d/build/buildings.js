@@ -265,6 +265,9 @@ export function makeBuildings(THREE, mats, S) {
       g.add(posts, rails);
     }
 
+    // one draw call for the barn (its own, so it can still be clicked), one for the rest
+    for (const o of g.children.filter(c => c.userData.hit)) S.bake(o);
+    S.bake(g, { keep: o => Boolean(o.userData.hit) });
     const barnDoor = P(62, 84);
     const info = { porch, siloTops, lamps: [...porch.lamps, { x: barnDoor.x, y: 3.2, z: barnDoor.z + 0.6, color: '#ffe0a0', distance: 9 }] };
     g.userData.info = info;
