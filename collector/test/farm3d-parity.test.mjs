@@ -316,3 +316,89 @@ test("an animal in a play does its steps, then waits where it is (its act the pl
   assert.equal(a.act, null);
   assert.equal(a.romp, null);
 });
+
+import { ROMPS, partnerFor, createRomps, ROMP_SCRIPTS } from '../../web/worlds/farm3d/romps.js';
+import { menuFor } from '../../web/worlds/farm3d/antics.js';
+const W = list => list.map((a, i) => ({ i, family: 'paws', free: true, resting: false, area: 'yard', run: 40, ...a, a: { x: a.x, y: a.y } }));
+const rompCtx = over => ({ perform() {}, release() {}, settled: () => true, say() {}, fx() {}, spot: (area, from, far) => [from[0] + far, from[1]], clear: () => true, still: false, animalsOn: true, ...over });
+test('which pairs romp: dogs tag and wrestle, horses race, two of a family greet; Play never starts a fight; 25 m at most', () => {
+  const w = W([{ kind: 'husky', x: 0, y: 0 }, { kind: 'shiba', x: 30, y: 0 }, { kind: 'bull', family: 'hooves', x: 400, y: 400 }, { kind: 'cow', family: 'hooves', x: 420, y: 400 }]);
+  assert.equal(partnerFor(0, w, { playOnly: true }), 1);
+  assert.equal(partnerFor(2, w, { playOnly: true }), 3); // the bull and the cow may only greet from the menu (a duel is a fight)
+  assert.deepEqual(ROMPS.filter(r => !r.play).map(r => r.id).sort(), ['chaseoff', 'duel', 'squabble']);
+  assert.deepEqual(ROMPS.filter(r => r.play).map(r => r.id).sort(), ['greet', 'race', 'tag', 'wrestle']);
+  assert.equal(partnerFor(0, W([{ kind: 'husky', x: 0, y: 0 }, { kind: 'shiba', x: 300, y: 0 }]), { playOnly: true }), null); // over 25 m
+  assert.equal(partnerFor(0, W([{ kind: 'husky', x: 0, y: 0 }, { kind: 'shiba', x: 30, y: 0, free: false }]), { playOnly: true }), null);
+  assert.equal(partnerFor(0, W([{ kind: 'husky', x: 0, y: 0 }, { kind: 'fox', x: 30, y: 0 }]), { playOnly: true }), null); // only a chase-off: a fight
+});
+test('one romp at a time, every 60 to 120 s; none with Motion or the animals off; a squabble when a horse crowds the donkey', () => {
+  const w = W([{ kind: 'husky', x: 0, y: 0 }, { kind: 'shiba', x: 30, y: 0 }]);
+  const r = createRomps({ rand: () => 0.5 });
+  assert.equal(r.tick(w, 30, rompCtx()).starts.length, 0);
+  assert.equal(r.tick(w, 100, rompCtx()).starts.length, 1);
+  assert.equal(r.tick(w, 200, rompCtx()).starts.length, 0); // one is running
+  r.releaseAll(rompCtx());
+  const off = createRomps({ rand: () => 0.5 });
+  assert.equal(off.tick(w, 200, rompCtx({ still: true })).starts.length, 0);
+  assert.equal(off.tick(w, 200, rompCtx({ animalsOn: false })).starts.length, 0);
+  const sq = createRomps({ rand: () => 0.5 });
+  assert.deepEqual(sq.tick(W([{ kind: 'donkey', family: 'hooves', x: 0, y: 0 }, { kind: 'horse', family: 'hooves', x: 20, y: 0 }]), 1, rompCtx()).starts.map(x => x.romp), ['squabble']);
+  const far = createRomps({ rand: () => 0.5 });
+  assert.equal(far.tick(W([{ kind: 'donkey', family: 'hooves', x: 0, y: 0 }, { kind: 'horse', family: 'hooves', x: 60, y: 0 }]), 1, rompCtx()).starts.length, 0);
+});
+test('a romp plays its beats in turn when both are settled, says its lines tied to them, and frees both at the end', () => {
+  const r = createRomps({ rand: () => 0 }), said = [], done = [], did = [];
+  const ctx = rompCtx({ perform: (i, steps) => did.push([i, steps.map(s => s.part ?? Object.keys(s)[0])]), release: i => done.push(i), say: (i, text) => said.push([i, text]) });
+  const w = W([{ kind: 'husky', x: 0, y: 0 }, { kind: 'shiba', x: 30, y: 0 }]);
+  assert.ok(r.start('tag', 0, 1, w, ctx));
+  assert.deepEqual([...r.busy()].sort(), [0, 1]);
+  for (let k = 0; k < 60; k++) r.tick(w, 0.5, ctx);
+  assert.deepEqual(done.sort(), [0, 1]);
+  assert.ok(said.length >= 4, JSON.stringify(said));
+  assert.ok(said.some(([i]) => i === 0) && said.some(([i]) => i === 1));
+  assert.ok(did.some(([, parts]) => parts.includes('run')), 'they ran');
+  assert.equal(r.running().length, 0);
+  assert.equal(r.busy().size, 0);
+});
+test("every romp has three scripts or more, 4-6 lines in turn with a start and an end, its blanks filled; the menus gain Play (the frog's doesn't)", () => {
+  for (const romp of ROMPS) {
+    const list = ROMP_SCRIPTS[romp.id];
+    assert.ok(list.length >= 3, romp.id);
+    for (const s of list) {
+      assert.ok(s.length >= 4 && s.length <= 6, romp.id);
+      s.forEach((l, k) => { assert.ok(l.text.length <= 48, l.text); if (k) assert.notEqual(l.by, s[k - 1].by, romp.id); });
+      for (const b of ['start', 'end']) assert.ok(s.some(l => l.beat === b), `${romp.id} ${b}`);
+    }
+  }
+  assert.ok(menuFor('cow', 'hooves').includes('play'));
+  assert.ok(menuFor('koi', 'fish').includes('play'));
+  assert.ok(!menuFor('frog', 'frog').includes('play'));
+});
+
+test('romp steps: face turns at once, chase catches a moving one, flee runs away from it, meet stops a gap short; a romp keeps its home', () => {
+  const env = { resting: false, rand: seq(0.5), habitChance: 0, duration: () => 1, spot: () => [0, 0], inside: () => true, clear: () => true };
+  const mk = (x, y) => makeAnimal({ kind: 'husky', family: 'paws', area: 'yard', walk: 12, run: 44 }, x, y, seq(0.5));
+  const a = mk(0, 0), b = mk(60, 0);
+  perform(a, [{ face: b }], env, 'romp');
+  advance(a, 0.01, env);
+  assert.ok(Math.abs(a.face - Math.atan2(60, 0)) < 1e-9, 'facing b');
+  perform(b, [{ part: 'walk', to: [200, 0] }], env, 'romp');
+  perform(a, [{ part: 'run', chase: b, within: 8, secs: 10 }], env, 'romp');
+  let k = 0;
+  for (; k < 100 && (a.cur || a.queue.length); k++) { advance(b, 0.1, env); advance(a, 0.1, env); }
+  assert.ok(Math.hypot(a.x - b.x, a.y - b.y) <= 9, `caught: ${a.x.toFixed(1)} vs ${b.x.toFixed(1)}`);
+  const c = mk(100, 100), d = mk(110, 100);
+  perform(c, [{ part: 'run', flee: d, far: 50 }], env, 'romp');
+  for (let n = 0; n < 60; n++) advance(c, 0.1, env);
+  assert.ok(Math.hypot(c.x - d.x, c.y - d.y) >= 49, `fled: ${Math.hypot(c.x - d.x, c.y - d.y).toFixed(1)}`);
+  const e = mk(0, 0), f = mk(100, 0);
+  perform(e, [{ part: 'walk', meet: f, gap: 16 }], env, 'romp');
+  for (let n = 0; n < 200; n++) advance(e, 0.1, env);
+  assert.ok(Math.abs(Math.hypot(e.x - f.x, e.y - f.y) - 16) < 1.5, `met: ${Math.hypot(e.x - f.x, e.y - f.y).toFixed(1)}`);
+  const h = mk(10, 10);
+  perform(h, [{ part: 'walk', to: [50, 10] }], env, 'romp');
+  for (let n = 0; n < 60; n++) advance(h, 0.1, env);
+  perform(h, [{ part: 'walk', to: 'home' }], env, 'romp'); // the next beat: home is where the romp began
+  for (let n = 0; n < 80; n++) advance(h, 0.1, env);
+  assert.ok(Math.hypot(h.x - 10, h.y - 10) < 2, `home: ${h.x.toFixed(1)},${h.y.toFixed(1)}`);
+});

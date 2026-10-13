@@ -200,6 +200,18 @@ export function makeAnimals(THREE, mats, S) {
     s.userData.age = 0;
     s.visible = true;
   }
+  // dust kicked up (a headbutt, a kick): a few tan puffs that spread, rise a little and fade; pooled
+  const dust = [], dustGeo = new THREE.SphereGeometry(0.16, 6, 4);
+  function puff(x, z) {
+    for (let k = 0; k < 6; k++) {
+      let d = dust.find(p => !p.visible);
+      if (!d) { d = new THREE.Mesh(dustGeo, new THREE.MeshBasicMaterial({ color: '#c9a46a', transparent: true, depthWrite: false })); dust.push(d); group.add(d); }
+      const ang = (k / 6) * Math.PI * 2 + Math.random() * 0.5;
+      d.position.set(x, 0.15, z);
+      d.userData = { vx: Math.sin(ang) * 1.4, vz: Math.cos(ang) * 1.4, age: 0 };
+      d.visible = true;
+    }
+  }
   /** Loads every kind, then lets them out (in the background: the farm draws before they are here). */
   async function start() {
     if (started) return;
@@ -259,6 +271,14 @@ export function makeAnimals(THREE, mats, S) {
     creatures.visible = on;
     pads.visible = !winter;
     if (t) for (const pad of pads.children) { const r = pad.userData.rest; pad.position.y = r.y + Math.sin(t * 1.2 + r.phase) * 0.012; pad.rotation.y = r.turn + Math.sin(t * 0.4 + r.phase) * 0.05; } // bobbing on the water
+    for (const d of dust) if (d.visible) { // spreading, rising, fading
+      const u = d.userData;
+      u.age += dt;
+      d.position.x += u.vx * dt; d.position.z += u.vz * dt; d.position.y += 0.4 * dt;
+      d.scale.setScalar(1 + u.age * 2);
+      d.material.opacity = Math.max(0, 0.7 * (1 - u.age / 0.6));
+      if (u.age >= 0.6 || !t) d.visible = false;
+    }
     for (const s of splashes) if (s.visible) { // spreading, fading
       s.userData.age += dt;
       const k = s.userData.age / 0.9;
@@ -318,10 +338,12 @@ export function makeAnimals(THREE, mats, S) {
     /** Animal i does these steps with another (a play, a romp: `tag`), then waits till release(i). */
     perform(i, steps, tag) { const w = animals[i]; if (w) perform(w.a, steps, env, tag); },
     release(i) { const w = animals[i]; if (w?.a.romp) release(w.a); },
+    /** Something to see over animal i: dust at its feet (a headbutt, a kick). */
+    fx(i, kind) { const w = animals[i]; if (w && kind === 'dust') puff(w.root.position.x, w.root.position.z); },
     /** Whether animal i has done its steps (it waits, or has nothing to do). */
     settled: i => { const w = animals[i]; return !w || (!w.a.cur && !w.a.queue.length); },
-    /** The animals as plays and romps see them: kind, family, where, free (doing nothing asked of it, shown), resting (standing still). */
-    world: () => (on ? animals.map((w, i) => ({ i, kind: w.a.kind, family: w.a.family, area: w.a.area, x: w.a.x, y: w.a.y, run: w.a.run, free: !w.a.act && !w.a.romp && w.root.visible && !w.a.under, resting: !w.a.act && w.a.rest > 0 && !w.a.cur, a: w.a })) : []),
+    /** The animals as plays and romps see them: kind, family, where, free (doing nothing asked of it, shown, not resting at night), resting (standing still). */
+    world: () => (on ? animals.map((w, i) => ({ i, kind: w.a.kind, family: w.a.family, area: w.a.area, x: w.a.x, y: w.a.y, run: w.a.run, free: !w.a.act && !w.a.romp && w.root.visible && !w.a.under && !env.resting, resting: !w.a.act && w.a.rest > 0 && !w.a.cur, a: w.a })) : []),
     dispose() { for (const w of animals) w.mixer.stopAllAction(); creatures.clear(); pads.clear(); animals.length = 0; templates.clear(); },
   };
 }

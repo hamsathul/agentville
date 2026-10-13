@@ -30,6 +30,7 @@ export const HERDS = [
 export const ACTS = {
   pet: { label: 'Pet' },
   talk: { label: 'Talk' },
+  play: { label: 'Play' }, // with the nearest it can play with (romps.js); app.js starts it
   feed: { label: 'Feed' },
   run: { label: 'Run' },
   leap: { label: 'Leap' },
@@ -50,9 +51,9 @@ const DOGS = ['husky', 'shiba'], GRAZERS = ['cow', 'bull', 'alpaca', 'donkey', '
 /** Its menu: everything it can be asked to do, in the menu's order. */
 export function menuFor(kind, family) {
   if (family === 'frog') return ['talk', 'hop', 'snap', 'dive', 'dead'];
-  if (family === 'fish') return ['talk', 'leap'];
+  if (family === 'fish') return ['talk', 'play', 'leap'];
   const own = family === 'hooves' ? ['kick', 'headbutt'] : ['pounce', ...(DOGS.includes(kind) ? ['fetch'] : [])];
-  return ['pet', 'talk', 'feed', 'run', 'leap', 'hop', ...own, 'sniff', 'look', 'dead'];
+  return ['pet', 'talk', 'play', 'feed', 'run', 'leap', 'hop', ...own, 'sniff', 'look', 'dead'];
 }
 /** Its habits, each with how often it picks it. Never playing dead (only when asked), never fetching (it needs you). */
 export function habitsOf(kind, family) {
@@ -128,6 +129,7 @@ export function makeAnimal({ kind, family, area, walk = 8, run = 36, r = 0 }, x,
  * the air or under the water it gets back first: it lands, or comes up onto a pad.
  */
 export function command(a, act, env) {
+  if (act === 'play') return; // with another: romps.js plays it (app.js), not a step of its own
   if (a.cur && (a.cur.jump !== undefined || a.cur.wet)) {
     const back = a.cur.wet ? a.queue.slice(0, a.queue.findIndex(s => !s.wet) + 1) : [];
     a.queue = [...back, ...stepsFor(act, a, env)];
@@ -148,7 +150,9 @@ export function command(a, act, env) {
  * stops; when they are done it waits where it is, its act still `tag`, till release() lets it go.
  */
 export function perform(a, steps, env, tag) {
+  const going = a.romp === tag ? { home: a.home, trail: a.trail } : null; // its next beat: home is where it began
   command(a, 'look', env);
+  if (going) Object.assign(a, going);
   a.queue = steps.map(s => ({ ...s }));
   a.cur = null;
   a.act = tag;
@@ -241,6 +245,16 @@ function homeward(a, env) {
   a.trail = a.trail.slice(0, k < 0 ? a.trail.length - 1 : k);
   return to;
 }
+/** A place `far` from `other`, the way most directly away that is clear for its body (else where it is). */
+function awayFrom(a, other, far, env) {
+  const base = Math.atan2(a.x - other.x, a.y - other.y), ground = groundFor(a), r = roams(a) ? reachOf(a) : a.r;
+  const d0 = Math.hypot(a.x - other.x, a.y - other.y), go = Math.max(8, far - d0 + 4);
+  for (const turn of [0, 0.5, -0.5, 1, -1, 1.6, -1.6]) {
+    const ang = base + turn, to = [a.x + Math.sin(ang) * go, a.y + Math.cos(ang) * go];
+    if (env.inside(ground, to[0], to[1], r) && (!env.clear || env.clear(ground, [a.x, a.y], to, r))) return to;
+  }
+  return [a.x, a.y];
+}
 /** Starts the next step: where it goes is settled now; a stick step happens at once. */
 function begin(a, env) {
   while (a.queue.length) {
@@ -248,6 +262,9 @@ function begin(a, env) {
     if (s.stick === 'throw') { a.stick = { at: env.spot(groundFor(a), [a.x, a.y], 60, reachOf(a)), from: [a.x, a.y], held: false, t: 0 }; continue; }
     if (s.stick === 'pick') { if (a.stick) a.stick.held = true; continue; }
     if (s.stick === 'drop') { a.stick = null; continue; }
+    if (s.face) { const [fx, fy] = Array.isArray(s.face) ? s.face : [s.face.x, s.face.y]; if (Math.hypot(fx - a.x, fy - a.y) > 0.5) a.face = Math.atan2(fx - a.x, fy - a.y); continue; } // turns to it at once
+    if (s.flee) s.to = awayFrom(a, s.flee, s.far ?? 60, env); // away from the other, the clearest way
+    if (s.meet) { const dx = a.x - s.meet.x, dy = a.y - s.meet.y, d = Math.hypot(dx, dy) || 1, gap = s.gap ?? 16; s.to = [s.meet.x + (dx / d) * gap, s.meet.y + (dy / d) * gap]; } // a gap short of the other
     if (s.to === 'home') {
       s.to = homeward(a, env);
       if (a.trail.length) a.queue.unshift({ part: s.part, to: 'home' }); // then further back still
@@ -257,7 +274,7 @@ function begin(a, env) {
     else if (s.to === 'pad') s.to = env.spot('pond', [a.x, a.y], 8, a.r);
     else if (s.to === 'water') s.to = env.spot('water', [a.x, a.y], 8, a.r);
     else if (s.to === 'near') s.to = env.spot(a.area, [a.x, a.y], 16, a.r);
-    s.len = s.secs ?? (s.to && s.jump === undefined ? 20 : env.duration(a.kind, s.part) + (s.hold ?? 0));
+    s.len = s.secs ?? (s.chase ? 6 : s.to && s.jump === undefined ? 20 : env.duration(a.kind, s.part) + (s.hold ?? 0));
     if (s.jump !== undefined) { // in an arc, from here to there, in its time: facing there
       s.from = [a.x, a.y];
       if (Math.hypot(s.to[0] - a.x, s.to[1] - a.y) > 0.01) a.face = Math.atan2(s.to[0] - a.x, s.to[1] - a.y);
@@ -266,7 +283,7 @@ function begin(a, env) {
     a.curT = 0;
     a.lift = 0;
     a.under = Boolean(s.under);
-    show(a, s.part, { once: s.jump !== undefined ? !s.secs : !s.secs && !s.to, hold: s.hold !== undefined, fade: s.fade ?? 0.25, restart: true });
+    show(a, s.part, { once: s.jump !== undefined ? !s.secs : !s.secs && !s.to && !s.chase, hold: s.hold !== undefined, fade: s.fade ?? 0.25, restart: true });
     return;
   }
 }
@@ -291,6 +308,13 @@ export function advance(a, dt, env) {
       a.x = s.from[0] + (s.to[0] - s.from[0]) * p;
       a.y = s.from[1] + (s.to[1] - s.from[1]) * p;
       a.lift = done ? 0 : s.jump * Math.sin(Math.PI * p);
+    } else if (s.chase) { // after the other, where it is now, till within reach (or its time is up); never off its ground
+      const tx = s.chase.x, ty = s.chase.y, d = Math.hypot(tx - a.x, ty - a.y);
+      if (d <= (s.within ?? 8)) done = true;
+      else {
+        const step = Math.min(d, a.run * dt), nx = a.x + ((tx - a.x) / d) * step, ny = a.y + ((ty - a.y) / d) * step;
+        if (env.inside(groundFor(a), nx, ny, roams(a) ? reachOf(a) : a.r)) { a.x = nx; a.y = ny; a.face = Math.atan2(tx - a.x, ty - a.y); } else done = true;
+      }
     } else if (s.to) done = go(a, s.to, s.part === 'walk' ? a.walk : a.run, dt) || done;
     else if (s.go) { // a leap carries it forward, inside its area
       const nx = a.x + Math.sin(a.face) * a.run * 0.8 * dt, ny = a.y + Math.cos(a.face) * a.run * 0.8 * dt;

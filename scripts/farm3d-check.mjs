@@ -300,6 +300,33 @@ try {
       else console.log(`  ✓ a farmer at play: ${id} walked ${Math.round(moved)} px to an animal, they talked ("${oneLine([...said][0] ?? '')}"…), and it came back`);
     }
 
+    // 3i. the animals with each other: a romp starts by the usual rules (two free, near, a clear way between them); they
+    // move and talk, and both are free at the end; Play is on every menu
+    {
+      await open(chrome, 'everyone');
+      const before = chrome.errors.length;
+      for (const end = Date.now() + 30_000; Date.now() < end && (await statsOf(chrome))?.animals !== ANIMALS; await sleep(250));
+      let pair = [];
+      for (const end = Date.now() + 40_000; Date.now() < end && pair.length < 2; await sleep(500)) { await chrome.inFrame('/world/farm3d/', 'window.__farm3d.rompSoon(); true'); await sleep(200); pair = JSON.parse(await chrome.inFrame('/world/farm3d/', 'JSON.stringify(window.__farm3d.romping())')); }
+      const at = i => chrome.inFrame('/world/farm3d/', `JSON.stringify(window.__farm3d.animal(${i}).spot)`).then(JSON.parse);
+      const from = pair.length ? await Promise.all(pair.map(at)) : [];
+      let moved = 0, said = new Set();
+      for (const end = Date.now() + 20_000; pair.length && Date.now() < end && !(moved > 4 && said.size >= 2); await sleep(300)) {
+        const now = await Promise.all(pair.map(at));
+        moved = Math.max(moved, ...now.map((p, k) => Math.hypot(p[0] - from[k][0], p[1] - from[k][1])));
+        for (const t of JSON.parse(await chrome.inFrame('/world/farm3d/', 'JSON.stringify(window.__farm3d.talk())'))) said.add(t);
+      }
+      let busy = pair;
+      for (const end = Date.now() + 60_000; Date.now() < end && busy.length; await sleep(500)) busy = JSON.parse(await chrome.inFrame('/world/farm3d/', 'JSON.stringify(window.__farm3d.romping())'));
+      const kinds = await Promise.all(pair.map(i => chrome.inFrame('/world/farm3d/', `window.__farm3d.animal(${i}).kind`)));
+      const menu = JSON.parse(await chrome.inFrame('/world/farm3d/', 'JSON.stringify(window.__farm3d.menuOf(0))')), play = menu?.find(m => m.id === 'play');
+      const why = [pair.length < 2 && 'no romp started in 40 s', pair.length && !(moved > 4) && `they never moved (${moved.toFixed(1)} px)`, pair.length && said.size < 2 && `${said.size} lines (${[...said].join(' | ')})`, busy.length && `still romping after a minute (${busy.join(', ')})`,
+        !play && "no Play on the cow's menu", play?.disabled && play.title !== 'Nobody to play with nearby' && `Play greyed out as "${play.title}"`,
+        chrome.errors.length > before && `script errors: ${oneLine(chrome.errors[before]).slice(0, 160)}`].filter(Boolean);
+      if (why.length) bad(`the animals with each other: ${why.join('; ')}`);
+      else console.log(`  ✓ the animals with each other: the ${kinds.join(' and the ')} romp (${Math.round(moved)} px; "${oneLine([...said][0] ?? '')}"…), both free after; Play on the menu`);
+    }
+
     // 4. the animals: the twelve of Quaternius's Animated Animal Pack and the pond's frog and fish, all out once their
     // models have loaded (they load after the farm has drawn), in the farm's colours (coats.js) with no metal, the cows
     // spotted; clicking one opens its menu (the frog's its own), a pick from it sets it going and shuts the menu, Esc

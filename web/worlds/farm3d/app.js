@@ -30,6 +30,7 @@ import { createTalk } from './talk.js';
 import { HERDS } from './antics.js';
 import { roamOf } from './roam.js';
 import { SENDS, chooseDoer, createPlays } from './play.js';
+import { createRomps, partnerFor } from './romps.js';
 
 // what a farmer is doing, as a word, from the tool in its hands (for what it says to the animals)
 const STEP_WORDS = { hoe: 'editing', rake: 'editing', sickle: 'editing', hammer: 'fixing', seeds: 'writing', almanac: 'reading', recipe: 'reading', clipboard: 'planning', blueprint: 'planning', spyglass: 'searching', magnifier: 'searching', pigeon: 'browsing', parcel: 'calling tools', mailbag: 'calling tools', crate: 'committing', cart: 'pushing', barrow: 'pushing', lantern: 'thinking', whistle: 'delegating', can: 'working' };
@@ -129,11 +130,22 @@ export function start({ el, opts, prefs }) {
     get now() { return performance.now(); }, get still() { return opts.still; }, get animalsOn() { return animalsOn; }, idleSince,
     get farmers() { return (shownModel()?.farmers ?? []).filter(f => !f.scarecrow).map(f => { const p = farmers.posOf(f.id); return p && { id: f.id, name: f.name, x: p.x, y: p.y, state: f.state, nap: f.nap, errand: farmers.onErrand(f.id) }; }).filter(Boolean); },
     get animals() { return animals.world(); },
-    get busy() { return talk.busyIds(); },
+    get busy() { return new Set([...talk.busyIds(), ...romps.busy()]); },
     animal: i => { const a = animals.info(i); return a && { x: a.spot[0], y: a.spot[1], act: a.act }; },
     errand: (id, to, o) => farmers.errand(id, to, o), endErrand: id => farmers.endErrand(id), onErrand: id => farmers.onErrand(id), arrived: id => farmers.arrived(id), setPose: (id, p) => farmers.setPose(id, p),
     perform: (i, steps, tag) => animals.perform(i, steps, tag), release: i => animals.release(i), command: (i, act) => animals.command(i, act), face: (i, at) => animals.face(i, at),
     pop: (i, text) => overlay.pop(() => animals.info(i)?.top ?? null, text, 'good'),
+  };
+  // The animals with each other (romps.js): play and play-fights, one at a time; the farm as a romp sees it
+  const romps = createRomps();
+  const clearBetween = (A, B) => !farmRoam || farmRoam.clear('farm', [A.x, A.y], [B.x, B.y], 5);
+  /** The animals, as free for a romp as they are: not talking, not at play with a farmer. */
+  const rompWorld = () => { const busy = new Set([...talk.busyIds(), ...plays.busy()]); return animals.world().map(w => (busy.has(w.i) ? { ...w, free: false } : w)); };
+  const rompCtx = {
+    get still() { return opts.still; }, get animalsOn() { return animalsOn; },
+    perform: (i, steps, tag) => animals.perform(i, steps, tag), release: i => animals.release(i), settled: i => animals.settled(i),
+    fx: (i, kind) => { if (kind === 'hearts') overlay.pop(() => animals.info(i)?.top ?? null, '♥', 'good'); else animals.fx(i, kind); },
+    spot: (area, from, far) => farmRoam?.spot(area, Math.random, { from, far, r: 6 }) ?? null, clear: clearBetween,
   };
   let snow = null, night = 0, blinkTags = []; // blinkTags: the stall's tags for pull requests whose checks run
 
@@ -174,7 +186,12 @@ export function start({ el, opts, prefs }) {
     pick: id => pickFarmer(id),
     openField: key => field.open(key),
     hover: id => overlay.setHover(id),
-    animal: i => animals.info(i),
+    animal: i => { // its menu's Play is greyed out with no one near to play with
+      const info = animals.info(i);
+      if (!info) return info;
+      const alone = partnerFor(i, rompWorld(), { playOnly: true }, clearBetween) === null;
+      return { ...info, menu: info.menu.map(m => (m.id === 'play' && alone ? { ...m, disabled: true, title: 'Nobody to play with nearby' } : m)) };
+    },
     /** Who would go for animal i's Pet, Feed or Throw a stick: { doer, others: [{ id, name, shirt }] } (none while still). */
     doers(i) {
       const a = animals.info(i);
@@ -183,6 +200,12 @@ export function start({ el, opts, prefs }) {
       return { doer: who.doer && of(who.doer), others: who.others.map(of).filter(Boolean).slice(0, 4) };
     },
     act(i, act, doer) {
+      if (act === 'play') { // with the nearest it can play with: a romp, never a fight
+        const w = rompWorld(), j = partnerFor(i, w, { playOnly: true }, clearBetween), id = j !== null && romps.playFor(i, j, w);
+        if (id) romps.start(id, i, j, w, rompCtx);
+        dirty = true;
+        return;
+      }
       if (SENDS[act] !== undefined && doer && !opts.still && plays.send(i, act, doer, playCtx)) { dirty = true; return; } // a farmer walks over and does it
       animals.command(i, act);
       if (act === 'talk') { // it talks at once: to the nearest animal or farmer, facing it, or to you
@@ -196,7 +219,7 @@ export function start({ el, opts, prefs }) {
     cycle(what) {
       if (what === 'sky') { skyMode = SKIES[(SKIES.indexOf(skyMode) + 1) % SKIES.length]; prefs.set('sky', skyMode); lastSky = -Infinity; }
       if (what === 'season') { seasonMode = SEASON_MODES[(SEASON_MODES.indexOf(seasonMode) + 1) % SEASON_MODES.length]; prefs.set('season', seasonMode); rebuildAll(); }
-      if (what === 'animals') { animalsOn = !animalsOn; prefs.set('animals', animalsOn ? 'on' : 'off'); if (!animalsOn) plays.endAll(playCtx); animals.setOn(animalsOn); if (!animalsOn) overlay.closePet(); }
+      if (what === 'animals') { animalsOn = !animalsOn; prefs.set('animals', animalsOn ? 'on' : 'off'); if (!animalsOn) { plays.endAll(playCtx); romps.releaseAll(rompCtx); } animals.setOn(animalsOn); if (!animalsOn) overlay.closePet(); }
       if (what === 'bubbles') { bubblesOn = !bubblesOn; prefs.set('bubbles', bubblesOn ? 'on' : 'off'); if (model) overlay.sync(shownModel(), { bubblesOn, near: near() }); }
       dirty = true;
     },
@@ -269,6 +292,7 @@ export function start({ el, opts, prefs }) {
     const ext = terrain.build(model.ground, season);
     farmRoam = roamOf(model.ground);
     plays.endAll(playCtx); // a new ground: whoever was at play goes back
+    romps.releaseAll(rompCtx);
     nature.build(model.ground, season).then(done => { if (done) { standIns(); dirty = true; } }).catch(err => report(err, 'plants')); // the farm draws first
     sky.setExtent(ext.x, ext.z);
     animals.setGround(model.ground);
@@ -438,7 +462,8 @@ export function start({ el, opts, prefs }) {
     // farmers at play with the animals: now and then one starts; their lines join the conversations' bubbles
     if (model && !opts.still) plays.tick(dt, playCtx);
     else if (opts.still && plays.busy().size) plays.endAll(playCtx);
-    overlay.setTalk(bubblesOn ? [...talk.bubbles().map(b => ({ ...b, key: `${b.conversation}|${b.who}` })), ...plays.bubbles()].map(b => {
+    if (model) romps.tick(rompWorld(), dt, rompCtx); // and the animals with each other (none while still or hidden)
+    overlay.setTalk(bubblesOn ? [...talk.bubbles().map(b => ({ ...b, key: `${b.conversation}|${b.who}` })), ...plays.bubbles(), ...romps.bubbles()].map(b => {
       const top = typeof b.who === 'number' ? animals.info(b.who)?.top : (h => h && { x: h.x, y: h.y + 0.55, z: h.z })(farmers.headOf(b.who));
       return { key: b.key, text: b.text, toYou: b.toYou, top };
     }) : []);
@@ -467,6 +492,14 @@ export function start({ el, opts, prefs }) {
     bedKeys: () => (model?.beds ?? []).map(b => b.key),
     /** A play starts now (for the check): every idle farmer counts as idle long enough. */
     playNow() { for (const k of idleSince.keys()) idleSince.set(k, -1e9); plays.soon(); },
+    /** A romp now, between animals i and j (for the check), whatever their distance. */
+    rompNow: (id, i, j) => romps.start(id, i, j, rompWorld(), rompCtx),
+    /** A romp soon, by the usual rules (two free, near, a clear way between them). */
+    rompSoon: () => romps.soon(),
+    /** Who romps now (animals' indices). */
+    romping: () => [...romps.busy()],
+    /** An animal's menu as shown (Play greyed out with no one near). */
+    menuOf: i => overlayHooks.animal(i)?.menu ?? null,
     /** Who is at play now (farmers' ids, animals' indices). */
     playing: () => [...plays.busy()],
     /** How many pigeons are in the air. */
