@@ -37,6 +37,7 @@ Keys: a built-in world is named by its folder in `web/worlds/` (the farm is `far
 | 🌾 **Farm** | `farm` | Built in, and the default: every agent a farmer, every repo a field, with animals of its own. The README's "The farm" says what each thing on it means |
 | 🤖 **Robot factory** | `factory` | Built in: a bright workshop where every agent is a robot put together from parts picked by its id, and every repo an assembly bay where a robot is built as the context fills. It shows everything the farm shows, its own way: the 5-hour limit is floor heat (its season switch is **Heat**: `seasonNames`), a message is a capsule through pneumatic tubes (its own `flight`), and its panel and Menu are the farm's (`panelHud`) in its words. A robot dog, a robot vacuum and a cat live there. `factory.png` below is taken from the golden `factory-day` view (`npm run golden`, the factory chosen by day, animals off), so retake it from that view. The README's "The robot factory" says what each thing means; `web/worlds/factory/world.js` is the second full example after the farm |
 | 🎖️ **Field exercise** | `military` | Built in: a bright, friendly army base on manoeuvres where every agent is a soldier in a field jacket of its colour (the people kit's `jacket`), and every repo a position fortified as the context fills, until its flag is raised. It shows everything the farm shows, its own way, and nobody is ever shown hurt: the 5-hour limit is the alert level (its season switch is **Alert**: `seasonNames`; its `coldSeason` is `null`, so its animals never act cold at max), a message is the engine's carrier pigeon, and its panel and Menu are the farm's (`panelHud`) in drill words. The regimental mascots live there: a goat in a red dress coat (the goat's `mascot` look), the mess cat and two depot mice. `military.png` below is taken from the golden `military-day` view (`npm run golden`, the field exercise chosen by day, animals off), so retake it from that view. The README's "The field exercise" says what each thing means; `web/worlds/military/world.js` is the third full example |
+| 🚜 **3D farm** | `farm3d` | Built in, a prototype: the farm drawn in 3D with three.js, a low-poly diorama. It is the example of a world that draws itself (`Agentville.raw`) and imports ES modules from its own folder (`world.js` registers, then `import('./app.js')`; see "Modules", in "Running a world"), with three.js 0.186.1 copied into its `vendor/` (the frame may load scripts from the dashboard only) and every shape built in code (a frame can't fetch a model file, and the dashboard's pictures can't be WebGL textures). It follows the farm's rules from the scene (its `model.js`, whose copies of the farm's tables and rules `collector/test/farm3d.test.mjs` pins to the farm's own), and shows less than the farm for now (the README's "The 3D farm (prototype)"). `farm3d.png` below is taken from `npm run world-shots -- farm3d --stop everyone`, cropped to the world. check-world can't run it (its vm has no modules or WebGL) and says so; `npm run farm3d-check` checks it in headless Chrome |
 | 🌱 **Starter** | `starter` | The template `npm run new-world` copies: plain, short, and not in the list of worlds (see "The starter world"). It can still be framed, so the test page and `check-world` run it |
 
 ![The farm: every agent a farmer, every repo a field](farm.png)
@@ -44,6 +45,8 @@ Keys: a built-in world is named by its folder in `web/worlds/` (the farm is `far
 ![The robot factory: every agent a robot, every repo an assembly bay](factory.png)
 
 ![The field exercise: every agent a soldier, every repo a position](military.png)
+
+![The 3D farm: the farm as a low-poly diorama, in 3D](farm3d.png)
 
 ![The starter: people at the door and on the bench, a plot for each repo, and a cat](starter.png)
 
@@ -1467,6 +1470,33 @@ as `raw` in `loaded`; the page uses that only to decide a built-in world's corne
 has a way to the list of worlds of its own too: the **▾** beside its view toggle. A world that sends
 you to the list view (`nav { what: 'list' }`, `showRepos`) can't act once it is out of sight, so it
 can't keep you from choosing another world there.
+
+**Modules.** A world may import ES modules from its own folder. `world.js` stays a classic script and
+registers first, as the bridge needs; its `start` then imports the rest, as the 3D farm's does
+(`web/worlds/farm3d/world.js`):
+
+```js
+(() => {
+  let app = null, latest = null;
+  Agentville.raw({
+    start({ el, opts, prefs }) {
+      import('./app.js').then(m => { app = m.start({ el, opts, prefs }); if (latest) app.scene(latest); });
+    },
+    scene(s) { if (app) app.scene(s); else latest = s; }, // a scene that comes before the modules: kept
+  });
+})();
+```
+
+The browser loads a module in CORS mode, which the dashboard allows for a world's own `.js` files (it
+answers the frame's requests for scripts with `access-control-allow-origin: null`). Import by a relative
+path (`./vendor/three.module.js`, `./model.js`): a bare name such as `'three'` can't be resolved, because a
+frame has no import map and can't add one (no inline scripts). A library's own `import … from 'three'` needs
+its path made relative when you copy it in (the 3D farm's `vendor/RoundedBoxGeometry.js` says so). A module
+that fails to load or throws as it starts rejects the import: the bridge hears that rejection and the page
+shows its message (a failed load names the file; there is no line, as there is for a classic script). An
+error thrown later, in a frame or a handler, reaches the page as any other, with its file and line. check-world runs a world's code in a vm that has no modules: for a world
+that draws itself and imports them, it says so in one note and draws nothing, so look at it with
+`npm run world-shots` and on the test page.
 
 `opts` holds the page's settings and the world's way out. Each function sends one message:
 

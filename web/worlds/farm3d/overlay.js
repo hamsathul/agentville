@@ -121,7 +121,8 @@ export function makeOverlay(el, { opts, hooks }) {
 
   /** Places everything from the camera: project({ x, y, z }) → { x, y, visible } in pixels. */
   function place(project, headOf, at3, silo3) {
-    const put = (e, p, dy = 0) => { if (!p?.visible) { e.style.display = 'none'; return null; } e.style.display = ''; e.style.transform = `translate(${Math.round(p.x)}px, ${Math.round(p.y + dy)}px) translate(-50%, -100%)`; return p; };
+    // over its point (a tag, a count), or hanging under it (a field's label, under its bed as on the 2D farm)
+    const put = (e, p, dy = 0, under = false) => { if (!p?.visible) { e.style.display = 'none'; return null; } e.style.display = ''; e.style.transform = `translate(${Math.round(p.x)}px, ${Math.round(p.y + dy)}px) translate(-50%, ${under ? '0' : '-100%'})`; return p; };
     const boxes = [];
     for (const [id, t] of tags) {
       const h = headOf(id), p = h && put(t, project(h), t.dataset.raise ? -16 : -2);
@@ -140,7 +141,7 @@ export function makeOverlay(el, { opts, hooks }) {
     }
     for (const b of model?.beds ?? []) {
       const f = fields.get(b.key);
-      if (f) put(f, project(at3(b.x0 + 36, b.y0 + 47, 0)));
+      if (f) put(f, project(at3(b.x0 + 36, b.y0 + 38, 0)), 2, true);
       for (const [k, dx] of [['behind', -40], ['ahead', -24], ['dirty', 24]]) { const c = cnts.get(`${b.key}|${k}`); if (c) put(c, project(at3(b.cx + dx, b.rowTop + 4, 1.4))); }
     }
     for (const [x, d] of silos) put(d, project(silo3(Number(x))));

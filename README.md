@@ -48,6 +48,7 @@ It listens on the loopback addresses only (`127.0.0.1`, and `::1` where the mach
     - [The farm](#the-farm)
     - [The robot factory](#the-robot-factory)
     - [The field exercise](#the-field-exercise)
+    - [The 3D farm (prototype)](#the-3d-farm-prototype)
   - [Notifications and the bell](#notifications-and-the-bell)
   - [Inside Claude Code: the mod](#inside-claude-code-the-mod)
 - [Configuration](#configuration)
@@ -131,8 +132,8 @@ It listens on the loopback addresses only (`127.0.0.1`, and `::1` where the mach
 - Inside Claude Code: a `/tracker` pane, a status line and toasts.
 
 **Watch it as a farm, a robot factory, a field exercise, or a world of your own** (optional)
-- Choose how the dashboard draws your agents: the farm, the robot factory, the field exercise, or a
-  world of your own.
+- Choose how the dashboard draws your agents: the farm, the robot factory, the field exercise, the 3D
+  farm (a prototype), or a world of your own.
 - A pixel farm where every agent is a farmer and every repo a field. Crops grow as context
   fills, weather shows the last deploy, the season follows your 5-hour limit (or hold one with the
   **Season** switch), a cart runs to town for each web call, each MCP server's cart drives to the
@@ -155,7 +156,11 @@ It listens on the loopback addresses only (`127.0.0.1`, and `::1` where the mach
   follows your 5-hour limit (or hold one with the **Alert** switch). It is a drill: nobody is ever
   shown hurt. The regimental mascots, a goat in a dress coat, the mess cat and the depot mice, live
   there just for fun.
-- The farm, the factory and the field exercise are worlds: each runs in a sandboxed frame
+- The 3D farm, a prototype: the same live farm as a low-poly diorama in 3D (three.js). Farmers walk
+  the lanes with their tools, crops grow as context fills, the sun follows your clock and the seasons
+  your 5-hour limit, deploys bring rain or a rainbow, and a few animals wander. Turn the view a
+  quarter at a time and zoom in to one farmer. It shows less than the farm for now.
+- The farm, the factory, the field exercise and the 3D farm are worlds: each runs in a sandboxed frame
   of its own, with no access to the token, and asks the page for the little it needs
   ([docs/worlds.md](docs/worlds.md)). A world from your own folder sees no words or paths until
   you tick **Can see what agents say** for it.
@@ -771,9 +776,10 @@ The **⚙ Claude Code** button in the top bar opens your Claude Code setup in th
 
 ### Worlds
 
-A world is a way to draw what the dashboard knows. Three come built in: **the farm** (the default;
-[The farm](#the-farm)), **the robot factory** ([The robot factory](#the-robot-factory)) and **the
-field exercise** ([The field exercise](#the-field-exercise)). **World**,
+A world is a way to draw what the dashboard knows. Four come built in: **the farm** (the default;
+[The farm](#the-farm)), **the robot factory** ([The robot factory](#the-robot-factory)), **the
+field exercise** ([The field exercise](#the-field-exercise)) and **the 3D farm**, a prototype
+([The 3D farm (prototype)](#the-3d-farm-prototype)). **World**,
 in a world's **Menu** (top right), opens the list of worlds: pick one. A world that might draw no
 buttons of its own — any world of yours, and a built-in one that draws itself — gets a small
 control from the page in a corner instead: **World ▾** for the list of worlds and **☰ List** for
@@ -1257,6 +1263,55 @@ files agents touched there, a speech bubble for its conversation, and a building
 The base pauses when its tab is hidden, or while the list shows, and follows the system's
 reduce-motion setting.
 
+#### The 3D farm (prototype)
+
+The same live farm in 3D: a low-poly diorama on a wooden slab, drawn with three.js. Choose **3D farm**
+in the list of worlds (**World**). It is a prototype, to see how a farm in 3D feels: it follows the
+farm's own rules, so every farmer stands where the farm would put it and every repo lies in the bed the
+farm gives it (when both are opened fresh), but it shows less than the farm for now.
+
+![The 3D farm: the farm as a low-poly diorama](docs/farm3d.png)
+
+**What it shows.** The farmstead (the black barn, the silo with your plan's week as grain and a lamp near
+the limit, the timber farmhouse and its deck, your porch, with string lights), a raised bed for each repo
+in the fenced grid, the yard with the henhouse, the pond, the hammocks and the shade tree, the scarecrow
+patch and the forest all round.
+- **Farmers** are figurines dressed as on the farm: the agent's colour for the shirt, a hat by its id
+  with the model's pin, and the tool for its step in hand (a hoe for edits, an almanac for reads, a crate
+  for a commit, a cart for a push, with a flag to deploy…). Waiting on you: on the porch's left, waving,
+  with a red **!** (a scroll for a plan). Turn ended: on the porch's right with a basket (**?** when it
+  asked you something). At work: in its bed. Idle: under the shade tree. Stale: a scarecrow. Waking up
+  by itself (`/loop`): in a hammock. A newcomer walks out of the barn and along the lanes to its place.
+- **Fields**: crops grow from seed to ripe as context fills (seven crops, one per repo, as on the farm);
+  hay, crates and a mailbox for uncommitted files, unpushed commits and commits behind; a pennant for a
+  branch, a rope with orange flags when two agents write at once, a greenhouse over a worktree; rain over
+  a failed deploy, a rainbow over one that worked, a windmill while it runs.
+- **Light and seasons**: the sun crosses the sky by your clock and the windows and lamps glow at night;
+  the season follows your 5-hour limit, with blossom in spring, orange leaves in autumn and snow in
+  winter. **Sky** and **Season** in the Menu hold one, as on the farm.
+- **Animals**, just for fun: two cows and the sheepdog wander the yard, the ducks paddle round the pond.
+  **Animals** in the Menu hides them.
+- **Names and bubbles**: a farmer's name (in the farm's pixel font) shows when it needs you, when its turn
+  ended, when you pick it or point at it, and for every farmer once you zoom in; its speech bubble shows
+  for one that needs you, and for all when you zoom in. **Bubbles** in the Menu hides them; × hides one.
+
+**Moving around.** Drag to pan, scroll or pinch to zoom (from the whole farm in to one farmer), and turn
+the view a quarter at a time with **↺ ↻** beside the Menu, or **Q** and **E**. Click a farmer (or its name)
+to open it in the sidebar: the view glides to it. Click its bubble for its whole conversation, and the barn
+to start a session. The Menu has the farm's buttons (List, World, Sidebar, Broadcast, Chats, Sky, Season,
+Motion, Animals, Help, zoom) and **Help** says what each thing means. The view and the switches are kept.
+
+**Not here yet:** the farm's stats panel, a field's close-up, the diary, subagents (the hens and the
+Explore dog), the carts for web and MCP calls, the pigeons between agents, the market stall's pull
+requests, the notice board, and the animals' games and menus.
+
+**What it needs.** WebGL, which every current browser has unless hardware acceleration is switched off:
+without it the world says so and you can pick another. It uses the graphics card, at most 30 frames a
+second, and draws nothing while the page shows its list or the tab is hidden; with **Motion** off (or
+reduced motion) it draws only when something changes. three.js (0.186.1, MIT licence) is part of
+Agentville, in `web/worlds/farm3d/vendor/`: nothing is downloaded from anywhere, and the world sees the
+same scene as the farm and sends nothing.
+
 ### Notifications and the bell
 
 - **Desktop notifications** (macOS's, or Windows toasts) come from the collector: an agent needs you, finished its turn,
@@ -1565,6 +1620,7 @@ and can do is in [docs/worlds.md](docs/worlds.md).
 | The farm stays empty, or says "not found" | The farm loads in a frame of its own from the collector (`/world/farm/`). After an update, restart the service (`agent-tracker restart`) and reload the page. The page's console says what a world reported, if anything |
 | The animals never say anything new | Tick **Animal lines** in ✨ Helper (the helper on). A session with mod 0.9.0 must be open (0.9.1 for the robot dog and the robot vacuum; `/reload-plugins` in it), and a world with animals on screen. ✨ Helper shows the last error and today's count. The field exercise's mascots talking in plain words, not drill words: their session's mod is older than 0.9.3 (`/reload-plugins` in it) |
 | **✨** says no name came, or the ✨ Helper shows a last error | No session is listening with mod 0.8.0 (`/reload-plugins` in it), today's limit is reached (it resets at midnight), or your organisation doesn't allow Haiku (the error says so) |
+| The 3D farm is blank, or says it needs WebGL | The browser has no WebGL here: switch on hardware acceleration (Chrome: Settings → System → Use graphics acceleration when available) and reload, or choose another world. `npm run farm3d-check` checks it in headless Chrome |
 
 ## Known limits
 
@@ -1606,7 +1662,8 @@ collector/   the collector: sources/, transcript/, derive/, server.mjs; platform
              and on Windows, the start-up check, the Windows launcher); its tests in test/
 web/         the dashboard: index.html, app.js, panels.js, scene.js, worlds.js…; worlds/ holds the
              farm (worlds/farm/), the robot factory (worlds/factory/), the field exercise
-             (worlds/military/), the starter (worlds/starter/), the test page and its tour (worlds/test/)
+             (worlds/military/), the 3D farm (worlds/farm3d/, with three.js in its vendor/), the starter
+             (worlds/starter/), the test page and its tour (worlds/test/)
              and what every world's frame loads (worlds/sdk/)
 mod/         the Claude Code mod: hooks/register.tsx; its tests in tests/
 bin/         the agent-tracker command and the launchd entry point; on Windows agent-tracker.cmd,
@@ -1624,6 +1681,7 @@ npm run test:ui             # the dashboard, the farm and other worlds in headle
 npm run kit-sheet           # redraw docs/kits.png, the picture of the people and props kits
 npm run world-shots -- <world>  # a picture of a world at every stop of its test tour (.private/shots/)
 npm run check-world -- <world>  # the test tour run headless against a world: exceptions, loops, creatures, pointers
+npm run farm3d-check        # the 3D farm in headless Chrome: every tour stop drawn with its name tags, memory, no WebGL
 npm run golden              # reference pictures of the list, the farm, the factory and the field exercise on a fixed snapshot,
                             # compared byte for byte (.private/golden/); --record saves them
 claude plugin test mod      # the Claude Code mod
