@@ -37,7 +37,7 @@ Keys: a built-in world is named by its folder in `web/worlds/` (the farm is `far
 | 🌾 **Farm** | `farm` | Built in, and the default: every agent a farmer, every repo a field, with animals of its own. The README's "The farm" says what each thing on it means |
 | 🤖 **Robot factory** | `factory` | Built in: a bright workshop where every agent is a robot put together from parts picked by its id, and every repo an assembly bay where a robot is built as the context fills. It shows everything the farm shows, its own way: the 5-hour limit is floor heat (its season switch is **Heat**: `seasonNames`), a message is a capsule through pneumatic tubes (its own `flight`), and its panel and Menu are the farm's (`panelHud`) in its words. A robot dog, a robot vacuum and a cat live there. `factory.png` below is taken from the golden `factory-day` view (`npm run golden`, the factory chosen by day, animals off), so retake it from that view. The README's "The robot factory" says what each thing means; `web/worlds/factory/world.js` is the second full example after the farm |
 | 🎖️ **Field exercise** | `military` | Built in: a bright, friendly army base on manoeuvres where every agent is a soldier in a field jacket of its colour (the people kit's `jacket`), and every repo a position fortified as the context fills, until its flag is raised. It shows everything the farm shows, its own way, and nobody is ever shown hurt: the 5-hour limit is the alert level (its season switch is **Alert**: `seasonNames`; its `coldSeason` is `null`, so its animals never act cold at max), a message is the engine's carrier pigeon, and its panel and Menu are the farm's (`panelHud`) in drill words. The regimental mascots live there: a goat in a red dress coat (the goat's `mascot` look), the mess cat and two depot mice. `military.png` below is taken from the golden `military-day` view (`npm run golden`, the field exercise chosen by day, animals off), so retake it from that view. The README's "The field exercise" says what each thing means; `web/worlds/military/world.js` is the third full example |
-| 🚜 **3D farm** | `farm3d` | Built in, a prototype: the farm drawn in 3D with three.js, a low-poly diorama. It is the example of a world that draws itself (`Agentville.raw`) and imports ES modules from its own folder (`world.js` registers, then `import('./app.js')`; see "Modules", in "Running a world"), with three.js 0.186.1 copied into its `vendor/` (the frame may load scripts from the dashboard only) and every shape built in code (a frame can't fetch a model file, and the dashboard's pictures can't be WebGL textures), but for its animals and plants: the twelve animated models of a CC0 pack, for its pond a frog, three fish and a lily pad, and flat-coloured trees, bushes and rocks (CC0 single models: where each grows is its `nature.js`, drawn one `InstancedMesh` per model part, swayed by the wind in their materials' vertex shader), and for its farmers nine animated characters (CC0; `characters.js` picks one by the agent's id, a clip for each pose and an idle one's own moves (`makeIdler`); `build/character.js` bakes each into two skinned meshes, the shirt in the agent's colour and the rest coloured per vertex, the figurine standing in until it loads), packed into JS files in its `models/` and read with three.js's glTF loader (see "Modules"), then repainted as they load from its `coats.js` (a colour for each of a model's materials, by the material's name, and the farm's matte finish; the cows' spots a colour per face), so the model files stay as their maker made them. What they get up to, their habits and the menu a click on one opens, is plain logic in its `antics.js`, and where they may go (each herd's ground less the pond, the trees and the fences, for a body of its size; the pond's water and lily pads) is its `roam.js`, both apart from three.js, so its tests run them in Node; the animals' hit boxes are invisible meshes the click's ray finds. The far meadow under the farm is drawn first and hides nothing (`depthWrite` off), so the pond's hollow and its fish can lie below it. It follows the farm's rules from the scene (its `model.js`, whose copies of the farm's tables and rules `collector/test/farm3d.test.mjs` pins to the farm's own), and shows less than the farm for now (the README's "The 3D farm (prototype)"). `farm3d.png` below is taken from `npm run world-shots -- farm3d --stop everyone`, cropped to the world. check-world can't run it (its vm has no modules or WebGL) and says so; `npm run farm3d-check` checks it in headless Chrome |
+| 🚜 **3D farm** | `farm3d` | Built in, a prototype: the farm drawn in 3D with three.js, a low-poly diorama, with the farm's panel and Menu (`panelHud`, its clicks its own: `web/worlds/farm3d/hud.js`), its building dialogs, a field's close-up (`makeField`), the Farm diary, hens and the Explore dog for subagents, MCP carts, pigeons, farmers playing with the animals and animals playing and play-fighting with each other. It is the example of a world that draws itself (`Agentville.raw`) and imports ES modules from its own folder (`world.js` registers, then `import('./app.js')`; see "Modules", in "Running a world"), with three.js 0.186.1 copied into its `vendor/` (the frame may load scripts from the dashboard only) and every shape built in code (a frame can't fetch a model file, and the dashboard's pictures can't be WebGL textures), but for its animals and plants: the twelve animated models of a CC0 pack, for its pond a frog, three fish and a lily pad, and flat-coloured trees, bushes and rocks (CC0 single models: where each grows is its `nature.js`, drawn one `InstancedMesh` per model part, swayed by the wind in their materials' vertex shader), and for its farmers nine animated characters (CC0; `characters.js` picks one by the agent's id, a clip for each pose and an idle one's own moves (`makeIdler`); `build/character.js` bakes each into two skinned meshes, the shirt in the agent's colour and the rest coloured per vertex, the figurine standing in until it loads), packed into JS files in its `models/` and read with three.js's glTF loader (see "Modules"), then repainted as they load from its `coats.js` (a colour for each of a model's materials, by the material's name, and the farm's matte finish; the cows' spots a colour per face), so the model files stay as their maker made them. What they get up to, their habits and the menu a click on one opens, is plain logic in its `antics.js`, and where they may go (each herd's ground less the pond, the trees and the fences, for a body of its size; the pond's water and lily pads) is its `roam.js`, both apart from three.js, so its tests run them in Node; the animals' hit boxes are invisible meshes the click's ray finds. The far meadow under the farm is drawn first and hides nothing (`depthWrite` off), so the pond's hollow and its fish can lie below it. It follows the farm's rules from the scene (its `model.js`, whose copies of the farm's tables and rules `collector/test/farm3d.test.mjs` pins to the farm's own), and shows less than the farm for now (the README's "The 3D farm (prototype)"). `farm3d.png` below is taken from `npm run world-shots -- farm3d --stop everyone`, cropped to the world. check-world can't run it (its vm has no modules or WebGL) and says so; `npm run farm3d-check` checks it in headless Chrome |
 | 🌱 **Starter** | `starter` | The template `npm run new-world` copies: plain, short, and not in the list of worlds (see "The starter world"). It can still be framed, so the test page and `check-world` run it |
 
 ![The farm: every agent a farmer, every repo a field](farm.png)
@@ -600,6 +600,62 @@ brass edge, and an icon class of its own for `compactedIcon`: a little red flag 
 ```js
 // A class of your own for costIcon or compactedIcon: its look in the same style element.
 glass.textContent += '\n.px-hud .advance { display: inline-block; width: 9px; height: 11px; background: linear-gradient(#e04a3a, #e04a3a) 2px 1px / 7px 5px no-repeat, linear-gradient(#e6c25a, #e6c25a) 0 0 / 2px 11px no-repeat; }';
+```
+
+#### In a world that draws itself
+
+`panelHud` is a global in every world's frame (the frame loads `engine.js` for all of them), so a world
+registered with `Agentville.raw` can show the same panel and Menu: render its HTML into a
+`<div class="px-hud">` of its own (the engine's styles lay it out there) and handle its clicks itself, by
+their `data-farm-*` attributes. The 3D farm does (`web/worlds/farm3d/hud.js`, `makeHud`): it puts its own
+turn buttons in `.px-nav` before the Menu button, and wires the clicks the engine's way:
+
+| Attribute | What it does |
+|---|---|
+| `data-farm-menu` | opens and shuts the menu (a click elsewhere or Esc shuts it too) |
+| `data-farm-panel` | folds the panel to its title and back (keep it in your prefs: the engine's key is `panel`) |
+| `data-farm-nav="…"` | `opts.onNav(what)`: list, worlds, session, setup, side, broadcast, chats, theme (all but Theme shut the menu) |
+| `data-farm-state="…"`, `data-farm-need` | open the first agent in that state, or the first waiting on you (else with a question): `opts.onPickAgent(id)` |
+| `data-farm-bell` | the bell, on or off: `opts.onBell(on)` (its state is the page's: `prefs.get('bell')`) |
+| `data-farm-motion` | `opts.onMotion(!opts.still)` |
+| `data-farm-follow`, `data-farm-resting`, `data-farm-bubbles`, `data-farm-animals`, `data-farm-sky`, `data-farm-season`, `data-farm-zoom`, `data-farm-help` | your world's own switches: what each does is yours |
+
+A world that shows the Menu's List and World says so when it registers, `Agentville.raw(handlers,
+{ menu: true })`, and the page adds no corner of its own over a built-in one ("Give a way back").
+
+```js
+// In your start({ el, opts, prefs }): the panel and Menu over your world, kept in step with each scene.
+const hud = document.createElement('div');
+hud.className = 'px-hud';
+el.append(hud);
+let last = { farmers: [] }, menuOpen = false;
+const draw = () => { hud.innerHTML = panelHud({ scene: last, season: 'summer', nav: opts.navState?.() ?? {}, menuOpen, still: opts.still }, { place: 'garden', agent: 'gardener', agents: 'gardeners' }); };
+hud.addEventListener('click', e => {
+  const b = e.target.closest('button');
+  if (!b) return;
+  if (b.matches('[data-farm-menu]')) { menuOpen = !menuOpen; draw(); }
+  else if (b.dataset.farmNav) { menuOpen = false; opts.onNav(b.dataset.farmNav); draw(); }
+  else if (b.dataset.farmState) { const f = last.farmers.find(x => x.state === b.dataset.farmState); if (f) opts.onPickAgent(f.id); }
+});
+draw();
+// and in scene(s): last = engineScene(s); draw();
+```
+
+#### A field's close-up in a world that draws itself
+
+The engine's field close-up (the files agents read or wrote in a repo, `makeField`) is a global too. Give it
+what it needs to know of your world, its options, and open it with a repo's key:
+
+```js
+const field = makeField({
+  nouns: { repo: 'field', agent: 'farmer', agents: 'farmers' }, // the words in its header and labels
+  field: key => last.fields.find(f => f.key === key),          // the engine scene's field
+  farmerColor: id => last.farmers.find(f => f.id === id)?.shirt ?? '#9aa0a6',
+  farmerName: id => last.farmers.find(f => f.id === id)?.name,
+  isStill: () => opts.still,
+});
+field.setOptions(opts); // it reads the repo with opts.request('repoTouched'), opens a document with opts.onOpenDoc
+// a click on a repo of yours: field.open(key); with each scene: field.refresh() (an open one reads again, every 5 s at most)
 ```
 
 ## The people kit
@@ -1411,7 +1467,7 @@ gaps").
 
 | Message | What the page does |
 |---|---|
-| `loaded { raw? }` | The world has registered: the page sends `start`, then the newest scene and the selection. `raw: true` (the bridge adds it for a world registered with `Agentville.raw`, not by the engine) is one of two things the page weighs for the corner control — see "Give a way back". The page builds a new frame for every load, and takes `loaded` once from each: an extra one is dropped, `raw` and all. Replies to an earlier frame's requests are not posted to the new one, and the paths they named are forgotten |
+| `loaded { raw? }` | The world has registered: the page sends `start`, then the newest scene and the selection. `raw: true` (the bridge adds it for a world registered with `Agentville.raw`, not by the engine or with `{ menu: true }`) is one of two things the page weighs for the corner control — see "Give a way back". The page builds a new frame for every load, and takes `loaded` once from each: an extra one is dropped, `raw` and all. Replies to an earlier frame's requests are not posted to the new one, and the paths they named are forgotten |
 | `ready` | The world has started: the page stops waiting for it (see "When a world breaks") |
 | `leaving` | Sent by the bridge itself (`beforeunload` / `pagehide`, captured at load through the page it first saw): the document is going away. The page stops the world at once, with a panel |
 | `error { message, where }` | Shows it (300 and 120 characters at most): before `ready`, in the panel that replaces a world that doesn't start; after it, in a strip over the world. Also written to the page's console, each once (50 at most) |
@@ -1478,7 +1534,11 @@ own List and World buttons is optional for a raw world; a world that gives its o
 a List and a World button (`data-farm-nav="list"` and `data-farm-nav="worlds"`, as the farm's do),
 since the page adds no corner to a built-in engine world. (The engine registers through the bridge as
 `Agentville.raw(handlers, { engine: true })`, so the bridge marks only a plain `Agentville.raw` world
-as `raw` in `loaded`; the page uses that only to decide a built-in world's corner.) The list view
+as `raw` in `loaded`; the page uses that only to decide a built-in world's corner.) A world that draws
+itself and keeps the Menu's List and World (`panelHud` or `defaultHud`, "In a world that draws itself")
+registers with `Agentville.raw(handlers, { menu: true })`: the bridge doesn't mark it `raw` either, so a
+built-in one gets no corner (a world of yours always does). The 3D farm does, and if its modules fail to
+load it writes the error and draws the engine's `defaultHud`, whose List and World still work. The list view
 has a way to the list of worlds of its own too: the **▾** beside its view toggle. A world that sends
 you to the list view (`nav { what: 'list' }`, `showRepos`) can't act once it is out of sight, so it
 can't keep you from choosing another world there.

@@ -48,19 +48,23 @@ const CSS = `
   .f3-pet .who button { width: 14px; height: 14px; padding: 0; border: 1.5px solid #4e3626; border-radius: 50%; cursor: pointer; }
 `;
 const HELP = `<h2>The 3D farm <small>(a prototype)</small></h2>
-  <p>The same live farm as the 2D one, in 3D. Every farmer is an agent, every field a repo.</p>
+  <p>The same live farm as the 2D one, in 3D, with the same panel and Menu. Every farmer is an agent, every field a repo.</p>
   <dl>
-    <dt>Your porch</dt><dd>On the deck: waiting on you (left, waving, a red <b>!</b>; a scroll for a plan to approve), its turn ended (right, a basket; <b>?</b> when it asked you something)</dd>
-    <dt>A field</dt><dd>A farmer at work in a repo, holding the tool for its step (hoe = editing, almanac = reading, spyglass = searching, crate = commit, cart = push, with a flag to deploy…)</dd>
+    <dt>The panel</dt><dd>Top left: cost, harvests (compactions), the season, the counts (click one for its first farmer), the meters, and who needs you. Click AGENTVILLE to fold it</dd>
+    <dt>Your porch</dt><dd>On the deck: waiting on you (left, waving, a red <b>!</b>; a scroll for a plan to approve), its turn ended (right, a basket; <b>?</b> when it asked you something). Click the farmhouse for the list</dd>
+    <dt>A field</dt><dd>A farmer at work in a repo, holding the tool for its step (hoe = editing, almanac = reading, spyglass = searching, crate = commit, cart = push, with a flag to deploy, whistle = calling subagents…). Click a field for the files agents read or wrote there</dd>
     <dt>Crops</dt><dd>Grow from seed to ripe as its context fills</dd>
-    <dt>Above a field</dt><dd>Hay: uncommitted files · crates: unpushed commits · a mailbox: behind · a pennant: a branch · a rope with flags: two agents writing at once</dd>
+    <dt>Above a field</dt><dd>Hay: uncommitted files · crates: unpushed commits · a mailbox: behind · a pennant: a branch · a rope with flags: two agents writing at once · a pump: a background command running</dd>
     <dt>Weather</dt><dd>Rain: its deploy failed · a rainbow: it worked · a windmill: it runs</dd>
-    <dt>Elsewhere</dt><dd>The shade tree: idle · scarecrows: stale · hammocks: it wakes up by itself · the meadow: working outside any repo · a cloud: thinking</dd>
-    <dt>Silo</dt><dd>Your plan's weekly use as grain; a lamp near the limit. The season follows the 5-hour limit</dd>
-    <dt>Animals</dt><dd>Just for fun, never for data. They walk, graze and rest, round the pond and the trees and inside their fences, and now and then get up to something; a frog and three fish live in the pond. They talk to each other and to the farmers near them now and then (Bubbles hides it). Click one for what you can ask it to do: talk, pet it, feed it, send it running, throw the dogs a stick, send the frog diving…</dd>
-    <dt>Moving</dt><dd>Drag to pan, scroll or pinch to zoom. Right-drag (or Shift-drag) to turn and tilt the farm; ↺ ↻ (or Q / E) turn it 15°, ⌂ puts it back square-on. Click a farmer to open it; its bubble for its whole conversation; the barn to start a session</dd>
+    <dt>Elsewhere</dt><dd>The shade tree: idle · scarecrows: stale · hammocks: it wakes up by itself (when, over it) · the meadow: working outside any repo · a cloud: thinking</dd>
+    <dt>Hens and the dog</dt><dd>Subagents follow their farmer as hens; an Explore one as a small tan dog. The henhouse: eggs for subagents done lately, hens for those no farmer can lead (click it for the list)</dd>
+    <dt>Carts</dt><dd>A cart pulled by a donkey for each MCP server called lately: it drives to the farmer calling it. A cart to town and back for a web call</dd>
+    <dt>Pigeons</dt><dd>A note from one agent to another, flying over</dd>
+    <dt>Buildings</dt><dd>The barn: start a session · the silo: your plan's week as grain, a lamp near the limit (click for the meters) · the stall: pull requests, a crate each · the notice board: what your projects remember</dd>
+    <dt>Animals</dt><dd>Just for fun, never for data. They roam the farm round what stands on it, play and play-fight with each other (tag, a race, a headbutt duel…), and idle farmers come and play with them; they all talk now and then. Click one for its menu: Talk, Play, and Pet, Feed or Throw a stick, which send a farmer over</dd>
+    <dt>Moving</dt><dd>Drag to pan, scroll or pinch to zoom. Right-drag (or Shift-drag) to turn and tilt the farm; ↺ ↻ (or Q / E) turn it 15°, ⌂ puts it back square-on. Follow in the Menu keeps the farmer you picked in the middle. Click a farmer to open it; its bubble for its whole conversation; a building or a field for what it holds</dd>
   </dl>
-  <p>Not here yet: the stats panel, a field's close-up, the diary, subagents, carts, and the farmers playing with the animals.</p>`;
+  <p>Not here yet: the 2D farm's animal pranks.</p>`;
 
 export function makeOverlay(el, { opts, hooks }) {
   const style = document.createElement('style');

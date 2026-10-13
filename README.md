@@ -160,8 +160,10 @@ It listens on the loopback addresses only (`127.0.0.1`, and `::1` where the mach
   the lanes with their tools, crops grow as context fills, the sun follows your clock and the seasons
   your 5-hour limit, deploys bring rain or a rainbow, and eighteen animated animals graze, gallop and get
   up to things, a frog and three fish in the pond among them (click one to pet it, feed it, throw the
-  dogs a stick or send the frog diving). It fills the window as the farm does; turn and tilt it as you
-  like, and zoom in to one farmer. It shows less than the farm for now.
+  dogs a stick or send the frog diving), play tag and play-fight with each other, and talk. It has the
+  farm's panel and Menu, buildings, close-up, diary, hens, carts and pigeons, and idle farmers play with
+  the animals. It fills the window as the farm does; turn and tilt it as you like, and zoom in to one
+  farmer.
 - The farm, the factory, the field exercise and the 3D farm are worlds: each runs in a sandboxed frame
   of its own, with no access to the token, and asks the page for the little it needs
   ([docs/worlds.md](docs/worlds.md)). A world from your own folder sees no words or paths until
@@ -268,7 +270,7 @@ two views: the list, and the world you chose (**🌾 Farm** until you choose ano
 after them opens the list of worlds. Both show the same live data, updated every few seconds. A
 world fills the window, so its **Menu** (top right) has **List** to come back and **World** for the
 list of worlds; where a world might not have them (any world of yours, and a built-in one that draws
-itself), the page adds **World ▾** and **☰ List** in a corner.
+itself without a Menu of its own), the page adds **World ▾** and **☰ List** in a corner.
 
 ### The list view
 
@@ -791,8 +793,8 @@ A world is a way to draw what the dashboard knows. Four come built in: **the far
 field exercise** ([The field exercise](#the-field-exercise)) and **the 3D farm**, a prototype
 ([The 3D farm (prototype)](#the-3d-farm-prototype)). **World**,
 in a world's **Menu** (top right), opens the list of worlds: pick one. A world that might draw no
-buttons of its own — any world of yours, and a built-in one that draws itself — gets a small
-control from the page in a corner instead: **World ▾** for the list of worlds and **☰ List** for
+buttons of its own — any world of yours, and a built-in one that draws itself without a Menu of its own
+(the 3D farm has the farm's) — gets a small control from the page in a corner instead: **World ▾** for the list of worlds and **☰ List** for
 the list view, so it can't leave you with no way back. In the list view, the button beside **☰
 List** carries the name of the world you will see, and the **▾** after it opens the list of worlds
 there too, so a world that keeps sending you back to the list view can't keep you from choosing
@@ -1279,7 +1281,8 @@ The same live farm in 3D, low-poly and drawn with three.js, filling the window a
 and the forest run on past every edge. Choose **3D farm**
 in the list of worlds (**World**). It is a prototype, to see how a farm in 3D feels: it follows the
 farm's own rules, so every farmer stands where the farm would put it and every repo lies in the bed the
-farm gives it (when both are opened fresh), but it shows less than the farm for now. It has more room
+farm gives it (when both are opened fresh), and it has the farm's panel, Menu, buildings, close-up, diary,
+hens, carts and pigeons, so moving between the worlds you find the same buttons doing the same things. It has more room
 than the farm: 5 m walkways and rows between the fields, farmers 4 m apart on a longer deck, a wider yard,
 a fenced pasture across the front, and a strip of grass under it where the forest begins.
 
@@ -1348,15 +1351,60 @@ patch, the pasture across the front, and the meadow and the forest running on al
     The lines are the farm's own, and with ✨ Helper's Animal lines ticked also Haiku's ("✨ Helper and
     suggested names"); either way nothing reaches any agent's conversation or task. **Bubbles** in the
     Menu hides them too.
+  - **Farmers play with them**: now and then a farmer idle three minutes or more walks over to throw a
+    dog a stick, pet a cow, an alpaca, the donkey or a horse, or nap beside one; two at most, and work,
+    or you, call it back at once. They talk as it happens, a line at each turn (setting off, there, done).
+  - **They play and play-fight with each other**: the dogs, or the fox and the wolf, or two fish play tag
+    and talk as they run; the dogs wrestle; the horses and the donkey race across the pasture; two of a
+    family greet nose to nose. And play-fights, where nobody is hurt and one gives way: a headbutt duel
+    (the bull and a cow, the two alpacas, the stag and the deer) with dust flying, the donkey kicking at a
+    horse that crowds it, a dog chasing the fox back to the trees when it comes near the farmstead. One
+    at a time, every minute or two, each a little conversation in talk bubbles; none at night, or with
+    one busy talking or at play.
   - **Click one for its menu**: Talk (it talks at once to the nearest animal or farmer, turning to it,
-    or to you if no one is near), Pet, Feed, Run (a gallop out and back), Leap, Hop, Sniff, Look around and
+    or to you if no one is near), Play (a game with the nearest it can play with, never a fight; greyed
+    out with no one near), Pet, Feed, Run (a gallop out and back), Leap, Hop, Sniff, Look around and
     Play dead (it falls over, lies still, and gets up again), with Kick and Headbutt for the hoofed ones,
     Pounce for the dogs, the fox and the wolf, and Throw a stick for the dogs (the dog runs for it and
-    brings it back). The frog's: Talk, Hop, Catch a fly, Dive and Play dead; a fish's: Talk and Leap. Esc or a click
-    elsewhere shuts it. With **Motion** off they stand still and the menu says so.
+    brings it back). Pet, Feed and Throw a stick send the nearest free farmer over to do it, as on the
+    farm: the menu says who will go (or that you do it, with no one free), with a dot for each other
+    farmer who could. The frog's: Talk, Hop, Catch a fly, Dive and Play dead; a fish's: Talk, Play and
+    Leap. Esc or a click elsewhere shuts it. With **Motion** off they stand still and the menu says so.
   - They load just after the farm (a moment's pause the first time), and **Animals** in the Menu hides
     them (not the lily pads). `web/worlds/farm3d/models/LICENSE.md` lists each model, and
     `npm run farm3d-animals` makes them again from poly.pizza.
+- **The panel and the Menu** are the other worlds' (the farm's, the factory's, the field exercise's), in
+  the farm's words. Top left, the panel: what the sessions cost, the harvests (compactions), the season,
+  the count cards (waiting on you with the oldest, working with subagents, your turn with asks, idle and
+  stale, collisions; click one for its first farmer), RAM, CPU, your 5-hour and weekly limits (one meter
+  per account with two), the tracker's own use, and **N need you**; click **AGENTVILLE** to fold it to
+  its title. At 100% the farm sits beside the panel or below it, whichever shows it bigger, never under
+  it; folded, it has the whole window. Top right, **↺ ↻ ⌂** and the **Menu**: the dashboard's buttons
+  (List, World, Session, Claude Code, Sidebar, Broadcast, Chats, Theme), then Follow (keeps the farmer you
+  picked in the middle, zoomed in; a drag ends it), Resting (hides the idle and stale farmers), Bubbles,
+  Animals, Sky, Season, Motion, Bell, Help and zoom. The page adds no World ▾ / List corner of its own.
+- **Buildings**: the barn starts a session; the farmhouse lists who waits on you on your porch (Open
+  picks one); the silo shows your plan's limits (two silos with two accounts); the henhouse lists the
+  subagents; the market stall lists the pull requests, a crate on its counter for each open one with its
+  checks' colour (yellow blinks while they run) and **N PRs** under it; and the notice board by the porch
+  shows what each project remembers (its CLAUDE.md and memory, a click opens one in the reader). The same
+  dialogs as the farm's. A field (its bed or its label) opens its close-up: the files agents read or wrote
+  there, as on the farm. **+N more fields** opens the list.
+- **The Farm diary** in the sidebar fills as on the farm: the morning's count, a farmer walking out of the
+  barn and where it goes, notes between agents, harvests, pull requests sold. "Needs you!", "A plan for
+  you", "Done!", "…zzz", "Harvest!", "Sold! #N" and "✉" rise and fade over the farm.
+- **Subagents** follow their farmer as hens, hopping while it walks, and an Explore one as a small tan dog
+  in a green bandana, circling and sniffing; notes rise from the whistle of a farmer calling subagents. The
+  henhouse keeps an egg for each one done lately (six at most) and roosting hens for those no farmer can
+  lead, with the farm's labels.
+- **Carts**: each MCP server called in the last hour has a cart in a row at the lane's end, a crate in its
+  colour, pulled by a small donkey. While a farmer calls it, it drives over beside the farmer, stays while
+  the call goes on and a few seconds after, then drives home. A web call has a cart going to town and back.
+- **Pigeons** carry notes between agents: a grey pigeon with a sealed letter flies from the sender to the
+  receiver and lands with a ✉.
+- **Pumps, hammocks, the minimap**: a pump by a bed for each background command running there; "wakes in
+  12m" over a napper's hammock; while zoomed in, the whole farm small in the bottom left with the view
+  outlined (click it to go there).
 - **Names and bubbles**: a farmer's name (in the farm's pixel font) shows when it needs you, when its turn
   ended, when you pick it or point at it, and for every farmer once you zoom in; pointing at a farmer also
   shows what it is doing, as its name's tooltip does. Its speech bubble shows for one that needs you or
@@ -1370,15 +1418,15 @@ Shift-drag, or click and drag with two fingers on a trackpad) to turn the farm t
 nearly flat (30°) to nearly top-down (80°); **↺ ↻** beside the Menu (or **Q** and **E**) turn it 15° at a time,
 and **⌂** puts it back square-on. At 100% it always shows the whole farm, from any angle. Click a farmer (or its name)
 to open it in the sidebar: the view glides to it. Click its bubble for its whole conversation, an animal for
-its menu, and the barn to start a session. The Menu has the farm's buttons (List, World, Sidebar, Broadcast, Chats, Sky, Season,
-Motion, Animals, Help, zoom) and **Help** says what each thing means. The view and the switches are kept.
+its menu, a building for what it holds, and a field for its close-up. **Help** in the Menu says what each
+thing means. The view, the switches and the panel folded or not are kept.
 
-**Not here yet:** the farm's stats panel, a field's close-up, the diary, subagents (the hens and the
-Explore dog), the carts for web and MCP calls, the pigeons between agents, the market stall's pull
-requests, the notice board, and the farmers playing with the animals.
+**Not here yet:** the farm's animal pranks (a goat stealing a hat, the ostrich's bucket and the rest),
+which need animals the 3D farm doesn't have.
 
 **What it needs.** WebGL, which every current browser has unless hardware acceleration is switched off:
-without it the world says so and you can pick another. It uses the graphics card, at most 30 frames a
+without it the world says so, and its panel and Menu (World, List) still work. If its files fail to load,
+it says that and the Menu's World and List still work. It uses the graphics card, at most 30 frames a
 second, and draws nothing while the page shows its list or the tab is hidden; with **Motion** off (or
 reduced motion) it draws only when something changes. three.js (0.186.1, MIT licence; with its glTF loader
 for the animals) is part of Agentville, in `web/worlds/farm3d/vendor/`, and the models (the animals, the
@@ -1700,6 +1748,7 @@ and can do is in [docs/worlds.md](docs/worlds.md).
 | The animals never say anything new | Tick **Animal lines** in ✨ Helper (the helper on). A session with mod 0.9.0 must be open (0.9.1 for the robot dog and the robot vacuum; `/reload-plugins` in it), and a world with animals on screen. ✨ Helper shows the last error and today's count. The field exercise's mascots talking in plain words, not drill words: their session's mod is older than 0.9.3 (`/reload-plugins` in it) |
 | **✨** says no name came, or the ✨ Helper shows a last error | No session is listening with mod 0.8.0 (`/reload-plugins` in it), today's limit is reached (it resets at midnight), or your organisation doesn't allow Haiku (the error says so) |
 | The 3D farm is blank, or says it needs WebGL | The browser has no WebGL here: switch on hardware acceleration (Chrome: Settings → System → Use graphics acceleration when available) and reload, or choose another world. `npm run farm3d-check` checks it in headless Chrome |
+| The 3D farm says it could not load | Its files failed to load (an error strip says which): reload the page. Its Menu's **World** and **List** still work, to choose another world meanwhile |
 | The 3D farm's animals stand still when you pick something from an animal's menu | **Motion** is off (or the browser asks for reduced motion): they don't move then, and the menu says so. Switch Motion on in the Menu. The animals come a moment after the farm draws, the first time |
 
 ## Known limits
