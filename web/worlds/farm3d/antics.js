@@ -121,7 +121,7 @@ function frogSteps(act, env) {
 
 /** A new animal at (x, y): walk and run its speeds in pixels a second, r its size (half its length) in pixels. */
 export function makeAnimal({ kind, family, area, walk = 8, run = 36, r = 0 }, x, y, rand = Math.random) {
-  return { kind, family, area, walk, run, r, trail: [], lift: 0, under: false, path: [], pace: 1, looked: false, x, y, tx: x, ty: y, face: rand() * 6.28, rest: rand() * 4, phase: rand() * 6.28, clock: 0, queue: [], cur: null, curT: 0, act: null, home: [x, y], stick: null, part: 'idle', once: false, hold: false, fade: 0.3, timeScale: 1, seq: 0 };
+  return { kind, family, area, walk, run, r, romp: null, trail: [], lift: 0, under: false, path: [], pace: 1, looked: false, x, y, tx: x, ty: y, face: rand() * 6.28, rest: rand() * 4, phase: rand() * 6.28, clock: 0, queue: [], cur: null, curT: 0, act: null, home: [x, y], stick: null, part: 'idle', once: false, hold: false, fade: 0.3, timeScale: 1, seq: 0 };
 }
 /**
  * Asks it to do something (an act from its menu): whatever it was doing stops, and a stick it carried is dropped. In
@@ -141,6 +141,23 @@ export function command(a, act, env) {
   a.trail = [];
   a.path = []; // the walk it was on was planned from somewhere else
   a.stick = null;
+}
+
+/**
+ * Plays these steps now, for something it does with another (a farmer's play, a romp: `tag`): whatever it was doing
+ * stops; when they are done it waits where it is, its act still `tag`, till release() lets it go.
+ */
+export function perform(a, steps, env, tag) {
+  command(a, 'look', env);
+  a.queue = steps.map(s => ({ ...s }));
+  a.cur = null;
+  a.act = tag;
+  a.romp = tag;
+}
+/** Lets it go after a play or a romp: it rests a moment where it is, then goes about as before. */
+export function release(a) {
+  Object.assign(a, { romp: null, act: null, queue: [], cur: null, tx: a.x, ty: a.y, path: [], trail: [], stick: null });
+  a.rest = 1 + Math.random() * 2;
 }
 
 /** Puts it somewhere new (its ground moved): whatever it was doing and the walk it was on are forgotten. */
@@ -264,6 +281,7 @@ export function advance(a, dt, env) {
   a.clock += dt;
   if (a.stick && !a.stick.held) a.stick.t += dt;
   if (!a.cur && a.queue.length) begin(a, env);
+  if (a.romp && !a.cur && !a.queue.length) { show(a, 'idle'); return; } // with another, between its steps: it waits
   if (a.cur) {
     const s = a.cur;
     a.curT += dt;
@@ -282,6 +300,7 @@ export function advance(a, dt, env) {
     a.cur = null;
     a.under = false;
     if (a.queue.length) { begin(a, env); return; }
+    if (a.romp) { a.act = a.romp; show(a, 'idle'); return; } // with another: it waits for what comes next
     a.act = null;
     a.tx = a.x; a.ty = a.y;
     a.rest = 2 + env.rand() * 4;

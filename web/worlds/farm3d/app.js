@@ -28,6 +28,8 @@ import { cartOf, createCarts } from './carts.js';
 import { makePigeons } from './build/pigeons.js';
 import { createTalk } from './talk.js';
 import { HERDS } from './antics.js';
+import { roamOf } from './roam.js';
+import { SENDS, chooseDoer, createPlays } from './play.js';
 
 // what a farmer is doing, as a word, from the tool in its hands (for what it says to the animals)
 const STEP_WORDS = { hoe: 'editing', rake: 'editing', sickle: 'editing', hammer: 'fixing', seeds: 'writing', almanac: 'reading', recipe: 'reading', clipboard: 'planning', blueprint: 'planning', spyglass: 'searching', magnifier: 'searching', pigeon: 'browsing', parcel: 'calling tools', mailbag: 'calling tools', crate: 'committing', cart: 'pushing', barrow: 'pushing', lantern: 'thinking', whistle: 'delegating', can: 'working' };
@@ -96,7 +98,8 @@ export function start({ el, opts, prefs }) {
   const mats = makeMaterials(THREE), sky = makeSky(THREE, scene3, mats), terrain = makeTerrain(THREE, mats);
   const shapes = makeShapes(THREE, mats), buildings = makeBuildings(THREE, mats, shapes);
   const crops = makeCrops(THREE, mats), beds = makeBeds(THREE, mats, shapes, makeWeather(THREE, mats, shapes), crops);
-  const farmers = makeFarmers(THREE, makeFigures(THREE, mats, shapes), shapes), animals = makeAnimals(THREE, mats, shapes), weather = makeWeather(THREE, mats, shapes);
+  let farmRoam = null; // the walkable farm (roam.js), for a farmer's errand to an animal
+  const farmers = makeFarmers(THREE, makeFigures(THREE, mats, shapes), shapes, { route: (a, b) => farmRoam?.route(a, b, 4) ?? null }), animals = makeAnimals(THREE, mats, shapes), weather = makeWeather(THREE, mats, shapes);
   const nature = makeNature(THREE, shapes), talk = createTalk();
   const flock = makeFlock(THREE, mats, shapes, { copy: animals.copy }); // subagents: hens, the Explore dog, the henhouse's eggs
   const cartMeshes = makeCarts(THREE, mats, shapes, { copy: animals.copy }), carts = createCarts(); // the MCP servers' carts, the web calls' carts to town
@@ -107,10 +110,10 @@ export function start({ el, opts, prefs }) {
   function sceneForTalk(now) {
     if (talkScene && now - talkSceneAt < 500) return talkScene;
     const list = [];
-    for (let i = 0; i < animals.count(); i++) { const a = animals.info(i); if (a?.shown) list.push({ i, kind: a.kind, x: a.spot[0], y: a.spot[1] }); }
+    for (let i = 0; i < animals.count(); i++) { const a = animals.info(i); if (a?.shown && a.act !== 'play' && a.act !== 'romp') list.push({ i, kind: a.kind, x: a.spot[0], y: a.spot[1] }); } // one at play is busy
     const beds = model?.beds ?? [], season = shownSeason();
     const repoName = key => beds.find(b => b.key === key)?.name ?? null; // a field's name, never its path
-    const people = (shownModel()?.farmers ?? []).filter(f => !f.scarecrow).map(f => ({ id: f.id, name: f.name, state: f.state, x: f.at[0], y: f.at[1], step: STEP_WORDS[f.prop] ?? null, repo: repoName(f.field) }));
+    const people = (shownModel()?.farmers ?? []).filter(f => !f.scarecrow && !farmers.onErrand(f.id)).map(f => ({ id: f.id, name: f.name, state: f.state, x: f.at[0], y: f.at[1], step: STEP_WORDS[f.prop] ?? null, repo: repoName(f.field) }));
     const events = beds.filter(b => b.weather === 'rain' || b.weather === 'rainbow').map(b => ({ kind: b.weather === 'rain' ? 'deployFailed' : 'deployOk', repo: b.name }));
     talkScene = { animals: list, farmers: people, facts: { night: night > 0.5, weather: season === 'winter' ? 'snow' : beds.some(b => b.weather === 'rain') ? 'rain' : null, events } };
     talkSceneAt = now;
@@ -120,6 +123,18 @@ export function start({ el, opts, prefs }) {
   /** The ball trees, bushes and rocks stand in until the plants' models are drawn. */
   const standIns = () => { const on = !nature.ready(); terrain.setForest(on); buildings.setPlants(on); };
   const diary = createDiary();
+  // Farmers at play with the animals (play.js): how long each has been idle, and the farm as a play sees it
+  const plays = createPlays(), idleSince = new Map();
+  const playCtx = {
+    get now() { return performance.now(); }, get still() { return opts.still; }, get animalsOn() { return animalsOn; }, idleSince,
+    get farmers() { return (shownModel()?.farmers ?? []).filter(f => !f.scarecrow).map(f => { const p = farmers.posOf(f.id); return p && { id: f.id, name: f.name, x: p.x, y: p.y, state: f.state, nap: f.nap, errand: farmers.onErrand(f.id) }; }).filter(Boolean); },
+    get animals() { return animals.world(); },
+    get busy() { return talk.busyIds(); },
+    animal: i => { const a = animals.info(i); return a && { x: a.spot[0], y: a.spot[1], act: a.act }; },
+    errand: (id, to, o) => farmers.errand(id, to, o), endErrand: id => farmers.endErrand(id), onErrand: id => farmers.onErrand(id), arrived: id => farmers.arrived(id), setPose: (id, p) => farmers.setPose(id, p),
+    perform: (i, steps, tag) => animals.perform(i, steps, tag), release: i => animals.release(i), command: (i, act) => animals.command(i, act), face: (i, at) => animals.face(i, at),
+    pop: (i, text) => overlay.pop(() => animals.info(i)?.top ?? null, text, 'good'),
+  };
   let snow = null, night = 0, blinkTags = []; // blinkTags: the stall's tags for pull requests whose checks run
 
   // The world's own settings, kept by the page.
@@ -160,7 +175,15 @@ export function start({ el, opts, prefs }) {
     openField: key => field.open(key),
     hover: id => overlay.setHover(id),
     animal: i => animals.info(i),
-    act(i, act) {
+    /** Who would go for animal i's Pet, Feed or Throw a stick: { doer, others: [{ id, name, shirt }] } (none while still). */
+    doers(i) {
+      const a = animals.info(i);
+      if (!a || opts.still) return { doer: null, others: [] };
+      const fs = playCtx.farmers, who = chooseDoer(fs, a.spot, d => d / 40), of = id => { const f = shownModel().farmers.find(x => x.id === id); return f && { id, name: f.name, shirt: f.shirt }; };
+      return { doer: who.doer && of(who.doer), others: who.others.map(of).filter(Boolean).slice(0, 4) };
+    },
+    act(i, act, doer) {
+      if (SENDS[act] !== undefined && doer && !opts.still && plays.send(i, act, doer, playCtx)) { dirty = true; return; } // a farmer walks over and does it
       animals.command(i, act);
       if (act === 'talk') { // it talks at once: to the nearest animal or farmer, facing it, or to you
         if (!talk.stock()) opts.onTalkMore?.(); // Haiku's are used up: more, if the ✨ Helper may ask (its own lines meanwhile)
@@ -173,7 +196,7 @@ export function start({ el, opts, prefs }) {
     cycle(what) {
       if (what === 'sky') { skyMode = SKIES[(SKIES.indexOf(skyMode) + 1) % SKIES.length]; prefs.set('sky', skyMode); lastSky = -Infinity; }
       if (what === 'season') { seasonMode = SEASON_MODES[(SEASON_MODES.indexOf(seasonMode) + 1) % SEASON_MODES.length]; prefs.set('season', seasonMode); rebuildAll(); }
-      if (what === 'animals') { animalsOn = !animalsOn; prefs.set('animals', animalsOn ? 'on' : 'off'); animals.setOn(animalsOn); if (!animalsOn) overlay.closePet(); }
+      if (what === 'animals') { animalsOn = !animalsOn; prefs.set('animals', animalsOn ? 'on' : 'off'); if (!animalsOn) plays.endAll(playCtx); animals.setOn(animalsOn); if (!animalsOn) overlay.closePet(); }
       if (what === 'bubbles') { bubblesOn = !bubblesOn; prefs.set('bubbles', bubblesOn ? 'on' : 'off'); if (model) overlay.sync(shownModel(), { bubblesOn, near: near() }); }
       dirty = true;
     },
@@ -244,6 +267,8 @@ export function start({ el, opts, prefs }) {
     if (key === groundKey) return;
     groundKey = key;
     const ext = terrain.build(model.ground, season);
+    farmRoam = roamOf(model.ground);
+    plays.endAll(playCtx); // a new ground: whoever was at play goes back
     nature.build(model.ground, season).then(done => { if (done) { standIns(); dirty = true; } }).catch(err => report(err, 'plants')); // the farm draws first
     sky.setExtent(ext.x, ext.z);
     animals.setGround(model.ground);
@@ -289,6 +314,7 @@ export function start({ el, opts, prefs }) {
     overlay.setSelected(selected);
     if (following && !farmers.headOf(following)) setFollow(false); // its farmer went, or Resting hid it
     field.refresh(); // an open close-up reads its field again (at most every 5 s)
+    for (const f of model.farmers) if (f.state === 'idle') { if (!idleSince.has(f.id)) idleSince.set(f.id, performance.now()); } else idleSince.delete(f.id); // how long each has been idle, for play
     // the diary (the sidebar's Farm diary) and the pops: who came, went where, harvested, sold, sent a note
     const told = diary.update(model, new Set(shownModel().farmers.map(f => f.id)), Date.now());
     if (told.entries) opts.onDiary?.(told.entries);
@@ -409,9 +435,12 @@ export function start({ el, opts, prefs }) {
     // the animals, by kind, for Haiku's talk, once all have loaded (none while the Animals switch hides them): said when it changes
     const kinds = animalsOn && animals.count() === animals.total ? [...new Set(HERDS.map(h => h.kind))].sort() : [];
     if (kinds.join() !== castSaid) { castSaid = kinds.join(); opts.onTalkCast?.(kinds.map(kind => ({ kind }))); }
-    overlay.setTalk(bubblesOn ? talk.bubbles().map(b => {
+    // farmers at play with the animals: now and then one starts; their lines join the conversations' bubbles
+    if (model && !opts.still) plays.tick(dt, playCtx);
+    else if (opts.still && plays.busy().size) plays.endAll(playCtx);
+    overlay.setTalk(bubblesOn ? [...talk.bubbles().map(b => ({ ...b, key: `${b.conversation}|${b.who}` })), ...plays.bubbles()].map(b => {
       const top = typeof b.who === 'number' ? animals.info(b.who)?.top : (h => h && { x: h.x, y: h.y + 0.55, z: h.z })(farmers.headOf(b.who));
-      return { key: `${b.conversation}|${b.who}`, text: b.text, toYou: b.toYou, top };
+      return { key: b.key, text: b.text, toYou: b.toYou, top };
     }) : []);
     if (!opts.still && blinkTags.length) { const k = Math.floor(now / 500) % 2; for (const b of blinkTags) if (b.mesh.material !== b.mats[k]) { b.mesh.material = b.mats[k]; dirty = true; } }
     if (!opts.still) { // the world moves: the wind in the crops, the weather, the snow
@@ -436,6 +465,10 @@ export function start({ el, opts, prefs }) {
     bedAt(key) { const b = beds.hits().find(o => o.userData.field === key); if (!b) return null; const p = new THREE.Vector3(); b.getWorldPosition(p); return project({ x: p.x, y: 0.5, z: p.z }); },
     /** The fields drawn, by key. */
     bedKeys: () => (model?.beds ?? []).map(b => b.key),
+    /** A play starts now (for the check): every idle farmer counts as idle long enough. */
+    playNow() { for (const k of idleSince.keys()) idleSince.set(k, -1e9); plays.soon(); },
+    /** Who is at play now (farmers' ids, animals' indices). */
+    playing: () => [...plays.busy()],
     /** How many pigeons are in the air. */
     pigeons: () => pigeons.count(),
     /** The MCP carts now: where each is, whether it is out of its place, who calls it. */

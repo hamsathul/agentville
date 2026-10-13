@@ -10,9 +10,14 @@ import { SOIL_Y } from './beds.js';
 
 const onDeck = (x, y) => x >= DECK.x0 && x <= DECK.x1 && y >= DECK.y0 - 2 && y <= DECK.y1;
 
-export function makeFarmers(THREE, figures, S) {
+/**
+ * route(from, to): a way over the farm round what stands on it (roam.js's), for an errand; null when there is none
+ * (the lanes then, as walkRoute goes).
+ */
+export function makeFarmers(THREE, figures, S, { route = () => null } = {}) {
   const group = new THREE.Group();
-  const bodies = new Map(); // id → { fig, x, y, path, farmer, face, h }
+  const bodies = new Map(); // id → { fig, x, y, path, farmer, face, h, errand }
+  const wayTo = (b, to) => route([b.x, b.y], to) ?? walkRoute([b.x, b.y], to, CORR);
   let H = 400, beds = [];
   const inBed = (x, y) => beds.some(b => x >= b.x0 - 2 && x <= b.x0 + 74 && y >= b.y0 - 2 && y <= b.y0 + 36);
   const groundAt = (x, y) => (onDeck(x, y) ? DECK_H : inBed(x, y) ? SOIL_Y : 0);
@@ -34,11 +39,12 @@ export function makeFarmers(THREE, figures, S) {
       }
       b.fig.update(f);
       b.farmer = f;
+      if (b.errand && f.state !== b.errand.state) endErrand(f.id); // called back: work, or you
       const [tx, ty] = f.at;
       if (!b.target || b.target[0] !== tx || b.target[1] !== ty) {
         b.target = [tx, ty];
-        if (instant) { b.x = tx; b.y = ty; b.path = []; b.h = groundAt(tx, ty); }
-        else b.path = walkRoute([b.x, b.y], [tx, ty], CORR);
+        if (instant) { b.x = tx; b.y = ty; b.path = []; b.h = groundAt(tx, ty); b.errand = null; }
+        else if (!b.errand) b.path = walkRoute([b.x, b.y], [tx, ty], CORR); // on an errand: it goes there afterwards
       }
     }
     for (const [id, b] of bodies) if (!seen.has(id)) { b.fig.dispose(); bodies.delete(id); }
@@ -61,17 +67,20 @@ export function makeFarmers(THREE, figures, S) {
         }
       }
       walking ||= moving;
+      const e = b.errand;
+      if (e && !e.arrived && !b.path.length) { e.arrived = true; if (e.face) b.face = Math.atan2(e.face[0] - b.x, e.face[1] - b.y); }
+      if (e && !e.arrived && performance.now() > e.until) endErrand(f.id); // it couldn't get there in time
       // step up onto the deck or into a bed, and down again, smoothly
       const want = groundAt(b.x, b.y);
       b.h += Math.sign(want - b.h) * Math.min(Math.abs(want - b.h), dt * 3 || Math.abs(want - b.h));
       const p = S.at(b.x, b.y, H), fig = b.fig;
       fig.root.position.set(p.x, b.h, p.z);
       // at its place: working farmers turn a little towards their bed's middle; everyone else faces out, towards the lane
-      if (!moving) b.face = f.group.startsWith('st:') ? (f.at[0] < (beds.find(x => `st:${x.key}` === f.group)?.cx ?? f.at[0]) ? 0.45 : f.at[0] > (beds.find(x => `st:${x.key}` === f.group)?.cx ?? f.at[0]) ? -0.45 : 0) : 0;
+      if (!moving && b.errand) { /* there: it faces what it came for */ } else if (!moving) b.face = f.group.startsWith('st:') ? (f.at[0] < (beds.find(x => `st:${x.key}` === f.group)?.cx ?? f.at[0]) ? 0.45 : f.at[0] > (beds.find(x => `st:${x.key}` === f.group)?.cx ?? f.at[0]) ? -0.45 : 0) : 0;
       fig.root.rotation.y = b.face;
-      fig.setProp(moving ? null : f.prop, f.flag);
+      fig.setProp(moving || b.errand ? null : f.prop, f.flag);
       fig.setBadge(f.badge === 'basket' && moving ? null : f.badge, f.thinking);
-      const kind = moving ? (f.fast ? 'run' : 'walk') : f.scarecrow ? 'scarecrow' : f.nap ? 'nap' : f.state === 'waiting' ? 'wave' : f.badge === 'basket' ? 'basket' : f.state === 'working' ? fig.propPose() ?? 'hold' : 'idle';
+      const kind = moving ? (f.fast ? 'run' : 'walk') : b.errand ? b.errand.pose : f.scarecrow ? 'scarecrow' : f.nap ? 'nap' : f.state === 'waiting' ? 'wave' : f.badge === 'basket' ? 'basket' : f.state === 'working' ? fig.propPose() ?? 'hold' : 'idle';
       if (fig.pose(kind, still ? 0 : t)) walking = true; // a character just arrived: draw it, still or not
     }
     return walking;
@@ -83,13 +92,35 @@ export function makeFarmers(THREE, figures, S) {
     const p = b.fig.root.position, top = (b.farmer.nap ? 1.4 : b.farmer.scarecrow ? 2.15 : 1.95) * FIGURE_SCALE;
     return { x: p.x, y: p.y + top, z: p.z };
   }
+  /**
+   * An errand: the farmer walks to `to` (a 2D point) round what stands in the way, and stays there facing `face`, in
+   * `pose`, till endErrand; it gives up if it isn't there in `timeout` s. Its state changing calls it back.
+   */
+  function errand(id, to, { face = null, pose = 'idle', timeout = 20 } = {}) {
+    const b = bodies.get(id);
+    if (!b) return false;
+    b.errand = { to, face, pose, state: b.farmer.state, until: performance.now() + timeout * 1000, arrived: false };
+    b.path = wayTo(b, to);
+    return true;
+  }
+  /** The errand is over: back to its place. */
+  function endErrand(id) {
+    const b = bodies.get(id);
+    if (!b?.errand) return;
+    b.errand = null;
+    if (b.target) b.path = wayTo(b, b.target);
+  }
   /** Where a farmer is on the 2D map, how high it stands, and whether it is walking; null for one not drawn. */
   function posOf(id) {
     const b = bodies.get(id);
     return b ? { x: b.x, y: b.y, tx: b.target?.[0], ty: b.target?.[1], h: b.h, moving: b.path.length > 0 && !(b.wait > 0) } : null; // tx, ty: where it is going
   }
   return {
-    group, sync, tick, headOf, posOf,
+    group, sync, tick, headOf, posOf, errand, endErrand,
+    onErrand: id => Boolean(bodies.get(id)?.errand),
+    arrived: id => Boolean(bodies.get(id)?.errand?.arrived),
+    /** What it does where its errand took it (idle; nap beside an animal). */
+    setPose(id, pose) { const e = bodies.get(id)?.errand; if (e) e.pose = pose; },
     /** How high the ground is at a 2D point: the deck, a bed's soil, or the ground (for what walks with a farmer). */
     groundAt: (x, y) => groundAt(x, y),
     hits: () => [...bodies.values()].map(b => b.fig.root),

@@ -238,3 +238,81 @@ test('a note flies only between two farmers both drawn; its diary line is told a
   d2.update(m0, ids(m0), NOW);
   assert.deepEqual(d2.update(m1, ids(m1), NOW + 1).flights, [{ from: 'a1', to: 'a2' }]);
 });
+
+import { PLAYS, SENDS, castPlay, chooseDoer, PLAY_SCRIPTS, scriptFor, createPlays } from '../../web/worlds/farm3d/play.js';
+const seq = (...v) => { let k = 0; return () => v[k++ % v.length]; };
+test('a play needs a farmer idle 3 minutes or more (not napping, not busy) and a free animal of its kind', () => {
+  const farmers = [{ id: 'a', x: 0, y: 0, state: 'idle' }, { id: 'b', x: 50, y: 0, state: 'idle' }, { id: 'c', x: 5, y: 0, state: 'working' }];
+  const animals = [{ i: 0, kind: 'husky', x: 10, y: 0, free: true }, { i: 1, kind: 'cow', x: 60, y: 0, free: false }];
+  const idleSince = new Map([['a', 0], ['b', 0]]);
+  assert.equal(castPlay(PLAYS, { farmers, animals, idleSince, now: 100e3, busy: new Set(), rand: seq(0) }), null); // idle under 3 minutes
+  const p = castPlay(PLAYS, { farmers, animals, idleSince, now: 200e3, busy: new Set(), rand: seq(0) });
+  assert.deepEqual([p.play.id, p.farmer, p.animal], ['fetch', 'a', 0]);
+  assert.equal(castPlay(PLAYS, { farmers, animals, idleSince, now: 200e3, busy: new Set(['a', 'b']), rand: seq(0) }), null);
+  assert.equal(castPlay(PLAYS, { farmers, animals, idleSince, now: 200e3, busy: new Set([0]), rand: seq(0) }), null); // the dog is busy, the cow isn't free
+  assert.equal(castPlay(PLAYS, { farmers: farmers.map(f => ({ ...f, nap: true })), animals, idleSince, now: 200e3, busy: new Set(), rand: seq(0) }), null);
+  assert.equal(castPlay(PLAYS, { farmers: farmers.map(f => ({ ...f, errand: true })), animals, idleSince, now: 200e3, busy: new Set(), rand: seq(0) }), null);
+  assert.deepEqual(Object.keys(SENDS).sort(), ['feed', 'fetch', 'pet']);
+});
+test("who goes for Pet, Feed or Throw a stick: the nearest free farmer, idle first; a busy one only for a short trip; none waiting on you", () => {
+  const fs = [{ id: 'w', x: 1, y: 0, state: 'working' }, { id: 'i', x: 100, y: 0, state: 'idle' }, { id: 'q', x: 0, y: 0, state: 'waiting' }, { id: 't', x: 0, y: 1, state: 'turn' }, { id: 'e', x: 2, y: 0, state: 'idle', errand: true }];
+  assert.deepEqual(chooseDoer(fs, [0, 0], d => d / 40), { doer: 'i', others: ['w'] });
+  assert.deepEqual(chooseDoer(fs.filter(f => f.id !== 'i'), [0, 0], d => d / 40), { doer: 'w', others: [] });
+  assert.deepEqual(chooseDoer([{ id: 'w', x: 400, y: 0, state: 'working' }], [0, 0], d => d / 40), { doer: null, others: [] });
+});
+test("the farmers' play conversations: three or more scripts each, 4-6 lines in turn with a start and an end, never the same twice running", () => {
+  for (const [id, list] of Object.entries(PLAY_SCRIPTS)) {
+    assert.ok(list.length >= 3, id);
+    for (const s of list) {
+      assert.ok(s.length >= 4 && s.length <= 6, id);
+      s.forEach((l, k) => { assert.ok(l.text.length <= 60, l.text); if (k) assert.notEqual(l.by, s[k - 1].by, id); });
+      for (const b of ['start', 'end']) assert.ok(s.some(l => l.beat === b), `${id} ${b}`);
+    }
+  }
+  let last = -1;
+  for (let k = 0; k < 20; k++) { const r = scriptFor('pet', seq([0.1, 0.5, 0.9][k % 3]), last); assert.notEqual(r.idx, last); last = r.idx; }
+});
+test('a play from start to end: the farmer goes over, they talk at each beat, the animal does its part, both are free after', () => {
+  const plays = createPlays({ rand: seq(0) }), log = [];
+  let arrived = false, onErrand = false, act = null;
+  const ctx = {
+    now: 0, still: false, animalsOn: true, busy: new Set(), idleSince: new Map(), farmers: [{ id: 'f', name: 'Ada', x: 0, y: 0, state: 'idle' }], animals: [{ i: 3, kind: 'husky', x: 40, y: 0, free: true }],
+    animal: i => (i === 3 ? { x: 40, y: 0, act } : null), errand: (id, to) => { onErrand = true; log.push(`errand ${id} ${to.map(Math.round)}`); }, endErrand: id => { onErrand = false; log.push(`home ${id}`); },
+    onErrand: () => onErrand, arrived: () => arrived, setPose() {}, perform: (i, steps, tag) => { act = tag; log.push(`wait ${i}`); }, release: i => { act = null; log.push(`free ${i}`); },
+    command: (i, a) => { act = a; log.push(`${a} ${i}`); }, face() {}, pop: (i, t) => log.push(`pop ${t}`),
+  };
+  plays.send(3, 'fetch', 'f', ctx);
+  assert.deepEqual([...plays.busy()].sort(), [3, 'f'].sort());
+  assert.match(log[0], /^errand f 3\d,0$/); // beside the dog, on the farmer's side
+  const said = new Set();
+  const step = s => { for (let k = 0; k < s * 10; k++) { plays.tick(0.1, ctx); for (const b of plays.bubbles()) said.add(`${b.who === 'f' ? 'F' : 'A'}:${b.text}`); } };
+  step(2);
+  arrived = true;
+  step(0.2);
+  assert.equal(plays.bubbles()[0]?.text, 'Go on, get it!', "there: the middle's first line at once, not what was left of the start's");
+  step(0.8);
+  assert.ok(log.includes('fetch 3'));
+  act = null; // the dog is back at once: the farmer still stays for the middle's lines
+  step(3);
+  assert.ok(!log.includes('home f'), 'it stays while they talk');
+  act = null; // the dog brought the stick back
+  step(25);
+  assert.ok(log.includes('home f'));
+  assert.equal(plays.busy().size, 0);
+  assert.ok(said.size >= 4, [...said].join(' | '));
+  assert.ok([...said].some(t => t.startsWith('F:')) && [...said].some(t => t.startsWith('A:')));
+  assert.ok(![...said].some(t => /\{/.test(t)), 'blanks filled');
+});
+
+import { perform, release, makeAnimal, advance } from '../../web/worlds/farm3d/antics.js';
+test("an animal in a play does its steps, then waits where it is (its act the play's) till it is let go", () => {
+  const env = { resting: false, rand: seq(0.5), habitChance: 0, duration: () => 1, spot: () => [0, 0], inside: () => true, clear: () => true };
+  const a = makeAnimal({ kind: 'cow', family: 'hooves', area: 'pasture', walk: 7, run: 40 }, 100, 100, seq(0.5));
+  perform(a, [{ part: 'look' }], env, 'play');
+  assert.equal(a.act, 'play');
+  for (let k = 0; k < 50; k++) advance(a, 0.1, env);
+  assert.deepEqual([a.act, a.part, a.x, a.y], ['play', 'idle', 100, 100]); // waiting, not wandering off
+  release(a);
+  assert.equal(a.act, null);
+  assert.equal(a.romp, null);
+});

@@ -277,6 +277,29 @@ try {
       else console.log('  ✓ the pigeons: a note between two agents flies over and lands with a ✉');
     }
 
+    // 3h. a farmer at play: an idle one walks over to an animal, they talk as it happens, and it comes back
+    {
+      await open(chrome, 'idle');
+      const before = chrome.errors.length;
+      for (const end = Date.now() + 30_000; Date.now() < end && (await statsOf(chrome))?.animals !== ANIMALS; await sleep(250));
+      const id = await chrome.inFrame('/world/farm3d/', 'window.__farm3d.farmerIds()[0]');
+      const from = JSON.parse(await chrome.inFrame('/world/farm3d/', `JSON.stringify(window.__farm3d.posOf(${JSON.stringify(id)}))`));
+      await chrome.inFrame('/world/farm3d/', 'window.__farm3d.playNow(); true');
+      let playing = [], moved = 0, said = new Set();
+      for (const end = Date.now() + 15_000; Date.now() < end && !(moved > 8 && said.size >= 2); await sleep(300)) {
+        playing = JSON.parse(await chrome.inFrame('/world/farm3d/', 'JSON.stringify(window.__farm3d.playing())'));
+        const p = JSON.parse(await chrome.inFrame('/world/farm3d/', `JSON.stringify(window.__farm3d.posOf(${JSON.stringify(id)}))`));
+        moved = Math.max(moved, Math.hypot(p.x - from.x, p.y - from.y));
+        for (const t of JSON.parse(await chrome.inFrame('/world/farm3d/', 'JSON.stringify(window.__farm3d.talk())'))) said.add(t);
+      }
+      let back = playing;
+      for (const end = Date.now() + 45_000; Date.now() < end && back.length; await sleep(500)) back = JSON.parse(await chrome.inFrame('/world/farm3d/', 'JSON.stringify(window.__farm3d.playing())'));
+      const why = [!(moved > 8) && `the farmer never set off (${moved.toFixed(1)} px)`, said.size < 2 && `${said.size} lines said (${[...said].join(' | ')})`, back.length && `still at play after 45 s (${back.join(', ')})`,
+        chrome.errors.length > before && `script errors: ${oneLine(chrome.errors[before]).slice(0, 160)}`].filter(Boolean);
+      if (why.length) bad(`a farmer at play: ${why.join('; ')}`);
+      else console.log(`  ✓ a farmer at play: ${id} walked ${Math.round(moved)} px to an animal, they talked ("${oneLine([...said][0] ?? '')}"…), and it came back`);
+    }
+
     // 4. the animals: the twelve of Quaternius's Animated Animal Pack and the pond's frog and fish, all out once their
     // models have loaded (they load after the farm has drawn), in the farm's colours (coats.js) with no metal, the cows
     // spotted; clicking one opens its menu (the frog's its own), a pick from it sets it going and shuts the menu, Esc
@@ -293,7 +316,7 @@ try {
         return new Promise(done => setTimeout(() => {
           const at = m.animal(${i}).at, c = document.querySelector('.f3-canvas'), b = c.getBoundingClientRect(), o = { bubbles: true, clientX: b.left + at.x, clientY: b.top + at.y, pointerId: 9, button: 0 };
           for (const type of ['pointerdown', 'pointerup']) c.dispatchEvent(new PointerEvent(type, o));
-          done(JSON.stringify({ kind: m.animal(${i}).kind, menu: [...document.querySelectorAll('.f3-pet [data-act]')].map(b => b.dataset.act) }));
+          done(JSON.stringify({ kind: m.animal(${i}).kind, menu: [...document.querySelectorAll('.f3-pet [data-act]')].map(b => b.dataset.act), who: document.querySelector('.f3-pet .who')?.textContent ?? null }));
         }, 1200));
       })()`);
       const cow = JSON.parse(await clickAnimal(0));
@@ -323,7 +346,7 @@ try {
       await sleep(500);
       const stocked = Number(await chrome.inFrame('/world/farm3d/', 'window.__farm3d.talkStock()')) - stockBefore;
       const shut = await chrome.inFrame('/world/farm3d/', "Boolean(document.querySelector('.f3-pet'))");
-      const menuOk = cow.kind === 'cow' && cow.menu.includes('headbutt') && cow.menu.includes('dead') && doing.act === 'hop' && !doing.open && dog.kind === 'husky' && dog.menu.includes('fetch') && shut === false && frog.kind === 'frog' && frog.menu.join(' ') === 'talk hop snap dive dead' && cow.menu.includes('talk') && said.length >= 1 && said.every(t => t.length) && hushed.length === 0 && stocked === 1;
+      const menuOk = /will go|You do it/.test(cow.who ?? '') && cow.kind === 'cow' && cow.menu.includes('headbutt') && cow.menu.includes('dead') && doing.act === 'hop' && !doing.open && dog.kind === 'husky' && dog.menu.includes('fetch') && shut === false && frog.kind === 'frog' && frog.menu.join(' ') === 'talk hop snap dive dead' && cow.menu.includes('talk') && said.length >= 1 && said.every(t => t.length) && hushed.length === 0 && stocked === 1;
       await chrome.inFrame('/world/farm3d/', "document.querySelector('[data-farm-menu]').click()");
       await sleep(200);
       await chrome.inFrame('/world/farm3d/', "document.querySelector('[data-farm-animals]').click()");

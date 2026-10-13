@@ -293,6 +293,8 @@ export function createTalk({ rand = Math.random } = {}) {
         .filter(ex => !used.has(exKey(ex))).slice(0, 24);
     },
     stock: () => stockList.length,
+    /** Who is talking now: animals by their index, farmers by their id (no one else starts a play or a romp with them). */
+    busyIds: () => new Set(talks.flatMap(c => c.ids)),
     bubbles: () => talks.map(c => {
       const l = c.lines[Math.min(c.lines.length - 1, Math.floor(c.at / LINE_S))];
       return { who: l.who, text: l.text, ...(l.toYou ? { toYou: true } : {}), conversation: c.n, to: c.to[l.who] ?? null };

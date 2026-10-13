@@ -11,7 +11,7 @@ import { GLTFLoader } from '../vendor/GLTFLoader.js';
 import { clone as cloneSkinned } from '../vendor/SkeletonUtils.js';
 import { LILY_PADS, PX, WATER } from '../layout.js';
 import { MODELS } from '../models/index.js';
-import { ACTS, HERDS, advance, command, forgetWalk, makeAnimal, menuFor, placeAt } from '../antics.js';
+import { ACTS, HERDS, advance, command, forgetWalk, makeAnimal, menuFor, perform, placeAt, release } from '../antics.js';
 import { roamOf } from '../roam.js';
 import { COATS, FINISH, SPOTS, spotsOf } from '../coats.js';
 
@@ -221,6 +221,7 @@ export function makeAnimals(THREE, mats, S) {
   /** Their grounds for a farm (roam.js): the pasture, the yard (off the pond, its trees and things), the forest's edge. */
   function setGround(g) {
     ground = g; H = g.H;
+    for (const w of animals) if (w.a.romp) release(w.a); // a new ground: whatever they did together stops
     roam = roamOf(g);
     for (const w of animals) { // each on its ground: when the ground changes, or it has just arrived; a walk planned on the old one is dropped
       if (!w.placed || !roam.inside(w.a.area, w.a.x, w.a.y, w.a.r)) { const [x, y] = roam.spot(w.a.area, rand, { r: w.a.r }); placeAt(w.a, x, y); }
@@ -292,7 +293,7 @@ export function makeAnimals(THREE, mats, S) {
   }
   return {
     group, setGround, tick, copy,
-    setOn(v) { on = v; creatures.visible = v; },
+    setOn(v) { on = v; creatures.visible = v; if (!v) for (const w of animals) if (w.a.romp) release(w.a); }, // hidden: no one stays in a play
     /** In winter the pond is ice: its frog, fish and lily pads are out of sight. */
     setWinter(v) { winter = Boolean(v); },
     /** How many animals are out (0 with the switch off); they arrive as their models load. */
@@ -314,6 +315,13 @@ export function makeAnimals(THREE, mats, S) {
     face(i, [x, y]) { const w = animals[i]; if (w && Math.hypot(x - w.a.x, y - w.a.y) > 1) w.a.face = Math.atan2(x - w.a.x, y - w.a.y); },
     /** Asks animal i to do act (from its menu). */
     command(i, act) { const w = animals[i]; if (w && menuFor(w.a.kind, w.a.family).includes(act)) command(w.a, act, env); },
+    /** Animal i does these steps with another (a play, a romp: `tag`), then waits till release(i). */
+    perform(i, steps, tag) { const w = animals[i]; if (w) perform(w.a, steps, env, tag); },
+    release(i) { const w = animals[i]; if (w?.a.romp) release(w.a); },
+    /** Whether animal i has done its steps (it waits, or has nothing to do). */
+    settled: i => { const w = animals[i]; return !w || (!w.a.cur && !w.a.queue.length); },
+    /** The animals as plays and romps see them: kind, family, where, free (doing nothing asked of it, shown), resting (standing still). */
+    world: () => (on ? animals.map((w, i) => ({ i, kind: w.a.kind, family: w.a.family, area: w.a.area, x: w.a.x, y: w.a.y, run: w.a.run, free: !w.a.act && !w.a.romp && w.root.visible && !w.a.under, resting: !w.a.act && w.a.rest > 0 && !w.a.cur, a: w.a })) : []),
     dispose() { for (const w of animals) w.mixer.stopAllAction(); creatures.clear(); pads.clear(); animals.length = 0; templates.clear(); },
   };
 }

@@ -4,6 +4,7 @@
 // frame from the camera (place(project)).
 import { HENHOUSE, STALL, signsOf } from './layout.js';
 import { henhouseView } from './flock.js';
+import { SENDS } from './play.js';
 
 const CSS = `
   .f3-ov { position: absolute; inset: 0; pointer-events: none; overflow: hidden; z-index: 3; }
@@ -43,6 +44,8 @@ const CSS = `
   .f3-pet .acts button:hover { background: #fffdf6; } .f3-pet .acts button:disabled { opacity: .5; cursor: default; }
   .f3-pet p { margin: 6px 2px 0; color: #6b4320; font-size: 11px; }
   .f3-pop { pointer-events: none; z-index: 4; line-height: 0; }
+  .f3-pet .who { display: flex; flex-wrap: wrap; align-items: center; gap: 4px; margin: 6px 2px 0; color: #6b4320; font-size: 11px; }
+  .f3-pet .who button { width: 14px; height: 14px; padding: 0; border: 1.5px solid #4e3626; border-radius: 50%; cursor: pointer; }
 `;
 const HELP = `<h2>The 3D farm <small>(a prototype)</small></h2>
   <p>The same live farm as the 2D one, in 3D. Every farmer is an agent, every field a repo.</p>
@@ -264,11 +267,16 @@ export function makeOverlay(el, { opts, hooks }) {
     el2.setAttribute('role', 'dialog');
     el2.setAttribute('aria-label', `The ${info.title.toLowerCase()}: what to ask it`);
     const esc = t => t.replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]);
-    el2.innerHTML = `<b>${esc(info.title)}</b><button type="button" class="close" aria-label="Close">×</button><div class="acts">${info.menu.map(m => `<button type="button" data-act="${m.id}"${opts.still ? ' disabled' : ''}>${esc(m.label)}</button>`).join('')}</div>${opts.still ? '<p>Motion is off, so the animals stand still. Turn it on in the Menu to play with them.</p>' : ''}`;
+    // Pet, Feed and Throw a stick send a farmer, as on the 2D farm: who will go (you, with no one free), and the others
+    const sends = info.menu.some(m => SENDS[m.id] !== undefined) && !opts.still, who = sends ? hooks.doers(i) : { doer: null, others: [] };
+    let doer = who.doer;
+    const whoHtml = () => `${doer ? `${esc(doer.name)} will go` : 'You do it'}${[who.doer, ...who.others].filter(f => f && f.id !== doer?.id).map(f => `<button type="button" data-send="${esc(f.id)}" title="Send ${esc(f.name)} instead" aria-label="Send ${esc(f.name)} instead" style="background:${esc(f.shirt ?? '#9aa0a6')}"></button>`).join('')}`;
+    el2.innerHTML = `<b>${esc(info.title)}</b><button type="button" class="close" aria-label="Close">×</button><div class="acts">${info.menu.map(m => `<button type="button" data-act="${m.id}"${opts.still || (m.disabled ?? false) ? ' disabled' : ''}${m.title ? ` title="${esc(m.title)}"` : ''}>${esc(m.label)}</button>`).join('')}</div>${sends ? `<p class="who">${whoHtml()}</p>` : ''}${opts.still ? '<p>Motion is off, so the animals stand still. Turn it on in the Menu to play with them.</p>' : ''}`;
     el2.addEventListener('click', e => {
       const b = e.target.closest('button');
       if (!b) return;
-      if (b.dataset.act) hooks.act(i, b.dataset.act);
+      if (b.dataset.send) { const all = [who.doer, ...who.others].filter(Boolean); doer = all.find(f => f.id === b.dataset.send) ?? doer; el2.querySelector('.who').innerHTML = whoHtml(); return; }
+      if (b.dataset.act) hooks.act(i, b.dataset.act, doer?.id ?? null);
       closePet();
     });
     ov.append(el2);

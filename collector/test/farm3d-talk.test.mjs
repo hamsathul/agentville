@@ -141,3 +141,17 @@ test("talk's bubbles sit under a farmer's own and hide rather than cover one (ov
   assert.ok(z('.f3-talk') < z('.f3-say'), `talk ${z('.f3-talk')} under a farmer's bubble ${z('.f3-say')}`);
   assert.match(src, /if \(hits\(y\)\) \{ e\.style\.display = 'none'; continue; \}/, 'one still in the way after its nudges waits');
 });
+
+test('busyIds: who is talking now (an animal by its index, a farmer by its id), none once it is over', () => {
+  const talk = createTalk({ rand: seeded(5) });
+  const scene = { animals: [animal(0, 'cow', 100, 100), animal(1, 'horse', 120, 100)], farmers: [] };
+  assert.deepEqual([...talk.busyIds()], []);
+  talk.start(0, scene);
+  assert.deepEqual([...talk.busyIds()].sort(), [0, 1]);
+  for (let k = 0; k < 200; k++) talk.tick(scene, 0.1);
+  assert.deepEqual([...talk.busyIds()].filter(i => i === 0 || i === 1).length <= 2, true);
+  const quiet = createTalk({ rand: seeded(5) });
+  quiet.start(0, scene);
+  for (let k = 0; k < 200; k++) quiet.tick({ animals: [], farmers: [] }, 0.1);
+  assert.deepEqual([...quiet.busyIds()], []);
+});
