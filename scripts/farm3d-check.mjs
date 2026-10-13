@@ -109,13 +109,29 @@ try {
         c.dispatchEvent(new PointerEvent('pointermove', { bubbles: true, clientX: box.left + at.x, clientY: box.top + at.y + 18, pointerId: 1 }));
         return JSON.stringify({ id, tip: tag.title });
       })()`));
-      await sleep(300);
-      const title = await chrome.inFrame('/world/farm3d/', "document.querySelector('.f3-canvas').title");
+      let title = '';
+      for (const end = Date.now() + 3000; Date.now() < end && !title; await sleep(100)) title = await chrome.inFrame('/world/farm3d/', "document.querySelector('.f3-canvas').title"); // the hover is read on the next frame, which waits while models load
       if (r.none || !r.tip || title !== r.tip) bad(`hover: pointing at ${r.id ?? 'a farmer'} gave the tooltip "${oneLine(title ?? '').slice(0, 80)}", not "${oneLine(r.tip ?? '').slice(0, 80)}"`);
       else console.log(`  ✓ hover: pointing at ${r.id} shows its tooltip`);
     }
 
-    // 4. memory: the busiest stop and an empty one, swapped 300 times; the geometry held comes back to the same
+    // 4. the animals: Quaternius's animated cows, sheep, horses, sheepdog, deer, stag and fox and the pond's duck family,
+    // 16 in all once their models have loaded (they load after the farm has drawn), and the Animals switch hides them all
+    {
+      await open(chrome, 'everyone');
+      let on = 0;
+      for (const end = Date.now() + 20_000; Date.now() < end && on !== 16; await sleep(250)) on = (await statsOf(chrome))?.animals;
+      const before = chrome.errors.length;
+      await chrome.inFrame('/world/farm3d/', "document.querySelector('[data-farm-menu]').click()");
+      await sleep(200);
+      await chrome.inFrame('/world/farm3d/', "document.querySelector('[data-farm-animals]').click()");
+      await sleep(400);
+      const off = (await statsOf(chrome))?.animals, strip = await stripOf(chrome);
+      if (on !== 16 || off !== 0 || strip || chrome.errors.length > before) bad(`animals: ${on} out (16 wanted), ${off} after the Animals switch (0 wanted)${strip ? `; an error strip: ${oneLine(strip).slice(0, 160)}` : ''}`);
+      else console.log('  ✓ animals: 16 out once loaded, none after the Animals switch');
+    }
+
+    // 5. memory: the busiest stop and an empty one, swapped 300 times; the geometry held comes back to the same
     await open(chrome, 'everyone');
     const frames = JSON.parse(await chrome.js("JSON.stringify(['everyone', 'nobody'].map(n => window.AgentvilleTour.stops.find(s => s.name === n).frames[0]))"));
     await chrome.js(`window.__f3frames = ${JSON.stringify(frames)}`);
@@ -129,7 +145,7 @@ try {
     else console.log(`  ✓ memory: ${g0} geometries before 300 scene swaps, ${g1} after`);
   } finally { await chrome.close(); }
 
-  // 5. no WebGL: the plain panel, the world started all the same, and no error
+  // 6. no WebGL: the plain panel, the world started all the same, and no error
   const noGl = await openChrome({ prepare: async (send, session) => { await send('Page.addScriptToEvaluateOnNewDocument', { source: `${freezeScript(NOW)}\nwindow.__farm3dForceNoWebGL = true;` }, session); } });
   try {
     await noGl.send('Emulation.setDeviceMetricsOverride', { width: 1280, height: 820, deviceScaleFactor: 1, mobile: false });

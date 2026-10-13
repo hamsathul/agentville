@@ -262,7 +262,7 @@ export function start({ el, opts, prefs }) {
 
   // For the browser check (scripts/farm3d-check.mjs) and close-up pictures: what is drawn, and a view to hold.
   window.__farm3d = {
-    stats: () => ({ calls: renderer.info.render.calls, triangles: renderer.info.render.triangles, geometries: renderer.info.memory.geometries, textures: renderer.info.memory.textures, farmers: farmers.count(), drawn: model?.farmers.length ?? 0, tags: overlay.count(), beds: model?.beds.length ?? 0 }),
+    stats: () => ({ calls: renderer.info.render.calls, triangles: renderer.info.render.triangles, geometries: renderer.info.memory.geometries, textures: renderer.info.memory.textures, farmers: farmers.count(), drawn: model?.farmers.length ?? 0, tags: overlay.count(), beds: model?.beds.length ?? 0, animals: animals.count() }),
     screenOf: id => { const h = farmers.headOf(id); return h ? project(h) : null; }, // where a farmer's head is in the picture, in pixels
     /** A view to hold: yaw and pitch in degrees, zoom, and a 2D farm point to glide to. */
     view({ yaw, pitch, zoom, at } = {}) {

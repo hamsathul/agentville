@@ -1269,14 +1269,16 @@ The same live farm in 3D, low-poly and drawn with three.js, filling the window a
 and the forest run on past every edge. Choose **3D farm**
 in the list of worlds (**World**). It is a prototype, to see how a farm in 3D feels: it follows the
 farm's own rules, so every farmer stands where the farm would put it and every repo lies in the bed the
-farm gives it (when both are opened fresh), but it shows less than the farm for now.
+farm gives it (when both are opened fresh), but it shows less than the farm for now. It has more room
+than the farm: 5 m walkways and rows between the fields, farmers 4 m apart on a longer deck, a wider yard,
+and a fenced pasture across the front.
 
 ![The 3D farm: the farm as a low-poly diorama](docs/farm3d.png)
 
 **What it shows.** The farmstead (the black barn, the silo with your plan's week as grain and a lamp near
 the limit, the timber farmhouse and its deck, your porch, with string lights), a raised bed for each repo
 in the fenced grid, the yard with the henhouse, the pond, the hammocks and the shade tree, the scarecrow
-patch and the forest all round.
+patch, the pasture across the front, and the meadow and the forest running on all round.
 - **Farmers** are figurines dressed as on the farm: the agent's colour for the shirt, a hat by its id
   with the model's pin, and the tool for its step in hand (a hoe for edits, an almanac for reads, a crate
   for a commit, a cart for a push, with a flag to deploy…). Waiting on you: on the porch's left, waving,
@@ -1290,8 +1292,18 @@ patch and the forest all round.
 - **Light and seasons**: the sun crosses the sky by your clock and the windows and lamps glow at night;
   the season follows your 5-hour limit, with blossom in spring, orange leaves in autumn and snow in
   winter. **Sky** and **Season** in the Menu hold one, as on the farm.
-- **Animals**, just for fun: two cows and the sheepdog wander the yard, the ducks paddle round the pond.
-  **Animals** in the Menu hides them.
+- **Animals**, just for fun, never for data, each playing its own animations: two cows, three sheep (they
+  hop) and two horses walk and graze in the pasture; the sheepdog (a husky in a red bandana) runs about the
+  yard; a deer, a stag and a fox keep to the forest's edge; a mallard pair and three ducklings paddle round
+  the pond, and slide on it in winter. At night they stand and rest. They load just after the farm (a
+  moment's pause the first time), and **Animals** in the Menu hides them. None is a chicken or another
+  bird but the ducks (on the farm those are subagents and messages), and the sheepdog is the one dog.
+  The animated animals are Quaternius's (the
+  [Farm Animal Pack](https://poly.pizza/bundle/Farm-Animal-Pack-1kUvRTPLzT) and the
+  [Animated Animal Pack](https://poly.pizza/bundle/Animated-Animal-Pack-ILAPXeUYiS), CC0); the ducks are
+  [jeremy's](https://poly.pizza/m/2KHEgw1ztVI) and [Ashley Alicea's](https://poly.pizza/m/77BpUN4DEMT) (CC BY 3.0).
+  `web/worlds/farm3d/models/LICENSE.md` lists each model; `npm run farm3d-animals` makes them again from
+  poly.pizza.
 - **Names and bubbles**: a farmer's name (in the farm's pixel font) shows when it needs you, when its turn
   ended, when you pick it or point at it, and for every farmer once you zoom in; pointing at a farmer also
   shows what it is doing, as its name's tooltip does. Its speech bubble shows for one that needs you or
@@ -1315,9 +1327,10 @@ requests, the notice board, and the animals' games and menus.
 **What it needs.** WebGL, which every current browser has unless hardware acceleration is switched off:
 without it the world says so and you can pick another. It uses the graphics card, at most 30 frames a
 second, and draws nothing while the page shows its list or the tab is hidden; with **Motion** off (or
-reduced motion) it draws only when something changes. three.js (0.186.1, MIT licence) is part of
-Agentville, in `web/worlds/farm3d/vendor/`: nothing is downloaded from anywhere, and the world sees the
-same scene as the farm and sends nothing.
+reduced motion) it draws only when something changes. three.js (0.186.1, MIT licence; with its glTF loader
+for the animals) is part of Agentville, in `web/worlds/farm3d/vendor/`, and the animals' models are in
+`web/worlds/farm3d/models/` (about 2.3 MB, packed into JS files the world imports): nothing is downloaded
+from anywhere, and the world sees the same scene as the farm and sends nothing.
 
 ### Notifications and the bell
 
@@ -1688,7 +1701,8 @@ npm run test:ui             # the dashboard, the farm and other worlds in headle
 npm run kit-sheet           # redraw docs/kits.png, the picture of the people and props kits
 npm run world-shots -- <world>  # a picture of a world at every stop of its test tour (.private/shots/)
 npm run check-world -- <world>  # the test tour run headless against a world: exceptions, loops, creatures, pointers
-npm run farm3d-check        # the 3D farm in headless Chrome: every tour stop drawn with its name tags, memory, no WebGL
+npm run farm3d-check        # the 3D farm in headless Chrome: every tour stop drawn with its name tags, the animals, memory, no WebGL
+npm run farm3d-animals      # make the 3D farm's animals again from poly.pizza (web/worlds/farm3d/models/; needs the network)
 npm run golden              # reference pictures of the list, the farm, the factory and the field exercise on a fixed snapshot,
                             # compared byte for byte (.private/golden/); --record saves them
 claude plugin test mod      # the Claude Code mod
