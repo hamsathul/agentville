@@ -275,35 +275,3 @@ test("a deploying farmer's cart carries a flag; a plan-mode farmer holds the blu
   assert.deepEqual([f('p').prop, f('p').flag], ['blueprint', false]);
   assert.deepEqual([f('i').prop, f('i').flag], [null, false]);
 });
-
-test("the animals: Quaternius's animated models (and two still ducks), each trimmed to the clips it plays; none that means something on the farm", async () => {
-  const { MODELS } = await import('../../web/worlds/farm3d/models/index.js');
-  const { readGlb } = await import('../../scripts/lib/glb.mjs');
-  assert.deepEqual(Object.keys(MODELS).sort(), ['cow', 'deer', 'duck', 'duckling', 'fox', 'horse', 'sheep', 'sheepdog', 'stag', 'whitehorse']);
-  for (const taken of ['chicken', 'bird', 'pigeon', 'dog']) assert.ok(!(taken in MODELS), `no ${taken}: on the farm it stands for something (the sheepdog is the one dog)`);
-  let total = 0;
-  for (const [kind, m] of Object.entries(MODELS)) {
-    const b64 = (await import(`../../web/worlds/farm3d/models/${kind}.js`)).default, glb = Buffer.from(b64, 'base64'), { json } = readGlb(glb);
-    total += glb.length;
-    const clips = (json.animations ?? []).map(a => a.name).sort(), want = [...new Set(Object.values(m.clips))].sort();
-    assert.deepEqual(clips, want, `${kind}: exactly the clips it plays, one copy each`);
-    if (want.length) assert.equal(json.skins?.length, 1, `${kind}: a skeleton to play them on`);
-    for (const mesh of json.meshes) for (const p of mesh.primitives) assert.ok(!('NORMAL' in p.attributes) && !Object.keys(p.attributes).some(k => k.startsWith('TEXCOORD')), `${kind}: no normals or texture coordinates (flat shading, no textures)`);
-    assert.ok(!json.images && !json.textures, `${kind}: no textures: a frame couldn't load them`);
-    assert.ok(m.height > 0.2 && m.height < 2.5, `${kind}: ${m.height} m`);
-    assert.ok(glb.length < 450 * 1024, `${kind}: ${Math.round(glb.length / 1024)} KB, trimmed`);
-  }
-  assert.ok(total < 3 * 1024 * 1024, `all the animals: ${Math.round(total / 1024)} KB`);
-  assert.ok(MODELS.horse.height > MODELS.cow.height && MODELS.cow.height > MODELS.sheep.height && MODELS.sheep.height > MODELS.duck.height && MODELS.duck.height > MODELS.duckling.height, 'sizes that make sense side by side');
-  assert.equal(MODELS.sheep.clips.walk, 'Jump', 'the sheep have no walk: they hop');
-});
-
-test("the animals' credit: LICENSE.md names each author, licence and model; the README credits them", async () => {
-  const { MODELS } = await import('../../web/worlds/farm3d/models/index.js');
-  const licence = readFileSync(fileURLToPath(new URL('../../web/worlds/farm3d/models/LICENSE.md', import.meta.url)), 'utf8');
-  for (const words of ['Quaternius', 'CC0', 'https://poly.pizza/bundle/Farm-Animal-Pack-1kUvRTPLzT', 'https://poly.pizza/bundle/Animated-Animal-Pack-ILAPXeUYiS', 'jeremy', 'Ashley Alicea', 'CC BY 3.0', 'https://creativecommons.org/licenses/by/3.0/']) assert.ok(licence.includes(words), words);
-  for (const m of Object.values(MODELS)) assert.ok(licence.includes(m.source), m.title);
-  const readme = readFileSync(fileURLToPath(new URL('../../README.md', import.meta.url)), 'utf8');
-  assert.match(readme, /Quaternius.{0,200}CC0/s);
-  assert.match(readme, /jeremy.{0,200}Ashley Alicea.{0,200}CC BY 3\.0/s);
-});

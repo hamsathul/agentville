@@ -115,20 +115,37 @@ try {
       else console.log(`  ✓ hover: pointing at ${r.id} shows its tooltip`);
     }
 
-    // 4. the animals: Quaternius's animated cows, sheep, horses, sheepdog, deer, stag and fox and the pond's duck family,
-    // 16 in all once their models have loaded (they load after the farm has drawn), and the Animals switch hides them all
+    // 4. the animals: the twelve of Quaternius's Animated Animal Pack, 14 in all once their models have loaded (they
+    // load after the farm has drawn); clicking one opens its menu, a pick from it sets it going and shuts the menu,
+    // Esc shuts it too; and the Animals switch hides them all
     {
       await open(chrome, 'everyone');
       let on = 0;
-      for (const end = Date.now() + 20_000; Date.now() < end && on !== 16; await sleep(250)) on = (await statsOf(chrome))?.animals;
+      for (const end = Date.now() + 30_000; Date.now() < end && on !== 14; await sleep(250)) on = (await statsOf(chrome))?.animals;
       const before = chrome.errors.length;
+      const clickAnimal = i => chrome.inFrame('/world/farm3d/', `(() => {
+        const m = window.__farm3d; m.view({ zoom: 3, at: m.animal(${i}).spot });
+        return new Promise(done => setTimeout(() => {
+          const at = m.animal(${i}).at, c = document.querySelector('.f3-canvas'), b = c.getBoundingClientRect(), o = { bubbles: true, clientX: b.left + at.x, clientY: b.top + at.y, pointerId: 9, button: 0 };
+          for (const type of ['pointerdown', 'pointerup']) c.dispatchEvent(new PointerEvent(type, o));
+          done(JSON.stringify({ kind: m.animal(${i}).kind, menu: [...document.querySelectorAll('.f3-pet [data-act]')].map(b => b.dataset.act) }));
+        }, 1200));
+      })()`);
+      const cow = JSON.parse(await clickAnimal(0));
+      await chrome.inFrame('/world/farm3d/', "document.querySelector('.f3-pet [data-act=\"hop\"]')?.click()");
+      await sleep(150);
+      const doing = JSON.parse(await chrome.inFrame('/world/farm3d/', "JSON.stringify({ act: window.__farm3d.animal(0).act, open: Boolean(document.querySelector('.f3-pet')) })"));
+      const dog = JSON.parse(await clickAnimal(8));
+      await chrome.inFrame('/world/farm3d/', "document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }))");
+      const shut = await chrome.inFrame('/world/farm3d/', "Boolean(document.querySelector('.f3-pet'))");
+      const menuOk = cow.kind === 'cow' && cow.menu.includes('headbutt') && cow.menu.includes('dead') && doing.act === 'hop' && !doing.open && dog.kind === 'husky' && dog.menu.includes('fetch') && shut === false;
       await chrome.inFrame('/world/farm3d/', "document.querySelector('[data-farm-menu]').click()");
       await sleep(200);
       await chrome.inFrame('/world/farm3d/', "document.querySelector('[data-farm-animals]').click()");
       await sleep(400);
       const off = (await statsOf(chrome))?.animals, strip = await stripOf(chrome);
-      if (on !== 16 || off !== 0 || strip || chrome.errors.length > before) bad(`animals: ${on} out (16 wanted), ${off} after the Animals switch (0 wanted)${strip ? `; an error strip: ${oneLine(strip).slice(0, 160)}` : ''}`);
-      else console.log('  ✓ animals: 16 out once loaded, none after the Animals switch');
+      if (on !== 14 || off !== 0 || !menuOk || strip || chrome.errors.length > before) bad(`animals: ${on} out (14 wanted), ${off} after the Animals switch (0 wanted); the cow's menu ${cow.menu.join(' ') || 'never opened'}, after Hop ${JSON.stringify(doing)}; the husky's menu ${dog.menu.join(' ') || 'never opened'}, after Esc ${shut ? 'still open' : 'shut'}${strip ? `; an error strip: ${oneLine(strip).slice(0, 160)}` : ''}`);
+      else console.log('  ✓ animals: 14 out once loaded; a click opens one\'s menu (the husky\'s has Throw a stick), Hop sets the cow hopping, Esc shuts it; none after the Animals switch');
     }
 
     // 5. memory: the busiest stop and an empty one, swapped 300 times; the geometry held comes back to the same

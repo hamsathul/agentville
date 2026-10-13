@@ -1,71 +1,144 @@
-// The 3D farm's animals: for each, its model's credit, its height on the farm in metres, and the clips it plays
-// (walk, idle, graze; run for the sheepdog), from the models in this folder. Made by scripts/farm3d-animals.mjs: don't edit by hand.
+// The 3D farm's animals: for each, its model's credit, its height on the farm in metres, its family (hooves or paws)
+// and its clips by what the farm does with them, from the models in this folder. Made by scripts/farm3d-animals.mjs:
+// don't edit by hand.
 export const MODELS = {
   "cow": {
     "title": "Cow",
     "author": "Quaternius",
     "licence": "CC0 (public domain)",
-    "source": "https://static.poly.pizza/48c5f4af-07d6-4493-a261-0919967afe85.glb",
-    "height": 1.45,
+    "source": "https://static.poly.pizza/382b3d4a-a7c9-4c03-9858-3df630d90047.glb",
+    "height": 1.5,
+    "family": "hooves",
     "clips": {
       "walk": "Walk",
+      "run": "Gallop",
+      "leap": "Gallop_Jump",
+      "hop": "Jump_toIdle",
       "idle": "Idle",
-      "graze": "Idle"
-    },
-    "hop": false
+      "look": "Idle_2",
+      "headlow": "Idle_Headlow",
+      "eat": "Eating",
+      "flinchLeft": "Idle_HitReact_Left",
+      "flinchRight": "Idle_HitReact_Right",
+      "kick": "Attack_Kick",
+      "headbutt": "Attack_Headbutt",
+      "dead": "Death"
+    }
   },
-  "sheep": {
-    "title": "Sheep",
+  "bull": {
+    "title": "Bull",
     "author": "Quaternius",
     "licence": "CC0 (public domain)",
-    "source": "https://static.poly.pizza/a4bd2c4e-fe71-4dbd-9881-cf3ac8a00bbf.glb",
-    "height": 1,
+    "source": "https://static.poly.pizza/5704ef69-2c27-4de8-a942-70a29458af21.glb",
+    "height": 1.65,
+    "family": "hooves",
     "clips": {
-      "walk": "Jump",
+      "walk": "Walk",
+      "run": "Gallop",
+      "leap": "Gallop_Jump",
+      "hop": "Jump_toIdle",
       "idle": "Idle",
-      "graze": "Idle"
-    },
-    "hop": true
+      "look": "Idle_2",
+      "headlow": "Idle_Headlow",
+      "eat": "Eating",
+      "flinchLeft": "Idle_HitReact_Left",
+      "flinchRight": "Idle_HitReact_Right",
+      "kick": "Attack_Kick",
+      "headbutt": "Attack_Headbutt",
+      "dead": "Death"
+    }
+  },
+  "alpaca": {
+    "title": "Alpaca",
+    "author": "Quaternius",
+    "licence": "CC0 (public domain)",
+    "source": "https://static.poly.pizza/444228bb-745d-49b2-89ef-cc12805deaa8.glb",
+    "height": 1.75,
+    "family": "hooves",
+    "clips": {
+      "walk": "Walk",
+      "run": "Gallop",
+      "leap": "Gallop_Jump",
+      "hop": "Jump_toIdle",
+      "idle": "Idle",
+      "look": "Idle_2",
+      "headlow": "Idle_Headlow",
+      "eat": "Eating",
+      "flinchLeft": "Idle_HitReact_Left",
+      "flinchRight": "Idle_HitReact_Right",
+      "kick": "Attack_Kick",
+      "headbutt": "Attack_Headbutt",
+      "dead": "Death"
+    }
+  },
+  "donkey": {
+    "title": "Donkey",
+    "author": "Quaternius",
+    "licence": "CC0 (public domain)",
+    "source": "https://static.poly.pizza/ca29f94e-0874-41b6-8334-66642af56a61.glb",
+    "height": 1.35,
+    "family": "hooves",
+    "clips": {
+      "walk": "Walk",
+      "run": "Gallop",
+      "leap": "Gallop_Jump",
+      "hop": "Jump_toIdle",
+      "idle": "Idle",
+      "look": "Idle_2",
+      "headlow": "Idle_Headlow",
+      "eat": "Eating",
+      "flinchLeft": "Idle_HitReact_Left",
+      "flinchRight": "Idle_HitReact_Right",
+      "kick": "Attack_Kick",
+      "headbutt": "Attack_Headbutt",
+      "dead": "Death"
+    }
   },
   "horse": {
     "title": "Horse",
     "author": "Quaternius",
     "licence": "CC0 (public domain)",
     "source": "https://static.poly.pizza/d37dbc87-ca61-4b2c-a2da-d2f0c4240bef.glb",
-    "height": 1.8,
+    "height": 1.85,
+    "family": "hooves",
     "clips": {
       "walk": "Walk",
+      "run": "Gallop",
+      "leap": "Gallop_Jump",
+      "hop": "Jump_toIdle",
       "idle": "Idle",
-      "graze": "Eating"
-    },
-    "hop": false
+      "look": "Idle_2",
+      "headlow": "Idle_Headlow",
+      "eat": "Eating",
+      "flinchLeft": "Idle_HitReact_Left",
+      "flinchRight": "Idle_HitReact_Right",
+      "kick": "Attack_Kick",
+      "headbutt": "Attack_Headbutt",
+      "dead": "Death"
+    }
   },
   "whitehorse": {
     "title": "White Horse",
     "author": "Quaternius",
     "licence": "CC0 (public domain)",
     "source": "https://static.poly.pizza/3edc2bd9-3378-4b43-a50d-d5e1f858562b.glb",
-    "height": 1.8,
+    "height": 1.85,
+    "family": "hooves",
     "clips": {
       "walk": "Walk",
+      "run": "Gallop",
+      "leap": "Gallop_Jump",
+      "hop": "Jump_toIdle",
       "idle": "Idle",
-      "graze": "Eating"
-    },
-    "hop": false
-  },
-  "sheepdog": {
-    "title": "Husky",
-    "author": "Quaternius",
-    "licence": "CC0 (public domain)",
-    "source": "https://static.poly.pizza/611d25c7-430f-4bb5-ab2c-d8f5f3cb9712.glb",
-    "height": 0.85,
-    "clips": {
-      "walk": "Walk",
-      "idle": "Idle",
-      "graze": "Idle_2_HeadLow",
-      "run": "Gallop"
-    },
-    "hop": false
+      "look": "Idle_2",
+      "headlow": "Idle_Headlow",
+      "eat": "Eating",
+      "flinchLeft": "Idle_HitReact_Left",
+      "flinchRight": "Idle_HitReact_Right",
+      "kick": "Attack_Kick",
+      "headbutt": "Attack_Headbutt",
+      "dead": "Death"
+    }
   },
   "deer": {
     "title": "Deer",
@@ -73,55 +146,132 @@ export const MODELS = {
     "licence": "CC0 (public domain)",
     "source": "https://static.poly.pizza/4b6c2a41-43c7-404c-ae37-e8c4645ff93b.glb",
     "height": 1.5,
+    "family": "hooves",
     "clips": {
       "walk": "Walk",
+      "run": "Gallop",
+      "leap": "Gallop_Jump",
+      "hop": "Jump_toIdle",
       "idle": "Idle",
-      "graze": "Eating"
-    },
-    "hop": false
+      "look": "Idle_2",
+      "headlow": "Idle_Headlow",
+      "eat": "Eating",
+      "flinchLeft": "Idle_HitReact_Left",
+      "flinchRight": "Idle_HitReact_Right",
+      "kick": "Attack_Kick",
+      "headbutt": "Attack_Headbutt",
+      "dead": "Death"
+    }
   },
   "stag": {
     "title": "Stag",
     "author": "Quaternius",
     "licence": "CC0 (public domain)",
     "source": "https://static.poly.pizza/a9c69fbc-bf7c-4585-9a49-a82e0be1ac6b.glb",
-    "height": 1.8,
+    "height": 1.9,
+    "family": "hooves",
     "clips": {
       "walk": "Walk",
+      "run": "Gallop",
+      "leap": "Gallop_Jump",
+      "hop": "Jump_toIdle",
       "idle": "Idle",
-      "graze": "Eating"
-    },
-    "hop": false
+      "look": "Idle_2",
+      "headlow": "Idle_Headlow",
+      "eat": "Eating",
+      "flinchLeft": "Idle_HitReact_Left",
+      "flinchRight": "Idle_HitReact_Right",
+      "kick": "Attack_Kick",
+      "headbutt": "Attack_Headbutt",
+      "dead": "Death"
+    }
+  },
+  "husky": {
+    "title": "Husky",
+    "author": "Quaternius",
+    "licence": "CC0 (public domain)",
+    "source": "https://static.poly.pizza/611d25c7-430f-4bb5-ab2c-d8f5f3cb9712.glb",
+    "height": 0.85,
+    "family": "paws",
+    "clips": {
+      "walk": "Walk",
+      "run": "Gallop",
+      "leap": "Gallop_Jump",
+      "hop": "Jump_ToIdle",
+      "idle": "Idle",
+      "look": "Idle_2",
+      "headlow": "Idle_2_HeadLow",
+      "eat": "Eating",
+      "flinchLeft": "Idle_HitReact_Left",
+      "flinchRight": "Idle_HitReact_Right",
+      "pounce": "Attack",
+      "dead": "Death"
+    }
+  },
+  "shiba": {
+    "title": "Shiba Inu",
+    "author": "Quaternius",
+    "licence": "CC0 (public domain)",
+    "source": "https://static.poly.pizza/ba6d0ee3-bcc0-4ef0-9d3c-a3e245b41c77.glb",
+    "height": 0.7,
+    "family": "paws",
+    "clips": {
+      "walk": "Walk",
+      "run": "Gallop",
+      "leap": "Gallop_Jump",
+      "hop": "Jump_ToIdle",
+      "idle": "Idle",
+      "look": "Idle_2",
+      "headlow": "Idle_2_HeadLow",
+      "eat": "Eating",
+      "flinchLeft": "Idle_HitReact_Left",
+      "flinchRight": "Idle_HitReact_Right",
+      "pounce": "Attack",
+      "dead": "Death"
+    }
   },
   "fox": {
     "title": "Fox",
     "author": "Quaternius",
     "licence": "CC0 (public domain)",
     "source": "https://static.poly.pizza/e18e86df-1692-48d8-ac6e-1e25ab4ad574.glb",
-    "height": 0.65,
+    "height": 0.6,
+    "family": "paws",
     "clips": {
       "walk": "Walk",
+      "run": "Gallop",
+      "leap": "Gallop_Jump",
+      "hop": "Jump_ToIdle",
       "idle": "Idle",
-      "graze": "Eating"
-    },
-    "hop": false
+      "look": "Idle_2",
+      "headlow": "Idle_2_HeadLow",
+      "eat": "Eating",
+      "flinchLeft": "Idle_HitReact_Left",
+      "flinchRight": "Idle_HitReact_Right",
+      "pounce": "Attack",
+      "dead": "Death"
+    }
   },
-  "duck": {
-    "title": "Duck",
-    "author": "jeremy",
-    "licence": "CC BY 3.0",
-    "source": "https://static.poly.pizza/ea819ee1-f814-4d70-8997-04a33a54c11c.glb",
-    "height": 0.5,
-    "clips": {},
-    "hop": false
-  },
-  "duckling": {
-    "title": "Duck 🦆",
-    "author": "Ashley Alicea",
-    "licence": "CC BY 3.0",
-    "source": "https://static.poly.pizza/ae89a98c-fa10-4c4e-bfa3-48f33095c136.glb",
-    "height": 0.32,
-    "clips": {},
-    "hop": false
+  "wolf": {
+    "title": "Wolf",
+    "author": "Quaternius",
+    "licence": "CC0 (public domain)",
+    "source": "https://static.poly.pizza/f1d12388-e39b-4157-b32a-646a1d089fc4.glb",
+    "height": 0.95,
+    "family": "paws",
+    "clips": {
+      "walk": "Walk",
+      "run": "Gallop",
+      "leap": "Gallop_Jump",
+      "hop": "Jump_ToIdle",
+      "idle": "Idle",
+      "look": "Idle_2",
+      "headlow": "Idle_2_HeadLow",
+      "eat": "Eating",
+      "flinchLeft": "Idle_HitReact_Left",
+      "flinchRight": "Idle_HitReact_Right",
+      "pounce": "Attack",
+      "dead": "Death"
+    }
   }
 };

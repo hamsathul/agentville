@@ -158,8 +158,9 @@ It listens on the loopback addresses only (`127.0.0.1`, and `::1` where the mach
   there just for fun.
 - The 3D farm, a prototype: the same live farm as a low-poly diorama in 3D (three.js). Farmers walk
   the lanes with their tools, crops grow as context fills, the sun follows your clock and the seasons
-  your 5-hour limit, deploys bring rain or a rainbow, and a few animals wander. It fills the window as the
-  farm does; turn and tilt it as you like, and zoom in to one farmer. It shows less than the farm for now.
+  your 5-hour limit, deploys bring rain or a rainbow, and fourteen animated animals graze, gallop and get
+  up to things (click one to pet it, feed it or throw the dogs a stick). It fills the window as the farm
+  does; turn and tilt it as you like, and zoom in to one farmer. It shows less than the farm for now.
 - The farm, the factory, the field exercise and the 3D farm are worlds: each runs in a sandboxed frame
   of its own, with no access to the token, and asks the page for the little it needs
   ([docs/worlds.md](docs/worlds.md)). A world from your own folder sees no words or paths until
@@ -1292,18 +1293,22 @@ patch, the pasture across the front, and the meadow and the forest running on al
 - **Light and seasons**: the sun crosses the sky by your clock and the windows and lamps glow at night;
   the season follows your 5-hour limit, with blossom in spring, orange leaves in autumn and snow in
   winter. **Sky** and **Season** in the Menu hold one, as on the farm.
-- **Animals**, just for fun, never for data, each playing its own animations: two cows, three sheep (they
-  hop) and two horses walk and graze in the pasture; the sheepdog (a husky in a red bandana) runs about the
-  yard; a deer, a stag and a fox keep to the forest's edge; a mallard pair and three ducklings paddle round
-  the pond, and slide on it in winter. At night they stand and rest. They load just after the farm (a
-  moment's pause the first time), and **Animals** in the Menu hides them. None is a chicken or another
-  bird but the ducks (on the farm those are subagents and messages), and the sheepdog is the one dog.
-  The animated animals are Quaternius's (the
-  [Farm Animal Pack](https://poly.pizza/bundle/Farm-Animal-Pack-1kUvRTPLzT) and the
-  [Animated Animal Pack](https://poly.pizza/bundle/Animated-Animal-Pack-ILAPXeUYiS), CC0); the ducks are
-  [jeremy's](https://poly.pizza/m/2KHEgw1ztVI) and [Ashley Alicea's](https://poly.pizza/m/77BpUN4DEMT) (CC BY 3.0).
-  `web/worlds/farm3d/models/LICENSE.md` lists each model; `npm run farm3d-animals` makes them again from
-  poly.pizza.
+- **Animals**, just for fun, never for data: all twelve of Quaternius's
+  [Animated Animal Pack](https://poly.pizza/bundle/Animated-Animal-Pack-ILAPXeUYiS) (CC0), each playing
+  its own animations. Two cows, a bull, two alpacas, a donkey and two horses graze in the pasture; a husky
+  in a red bandana and a Shiba Inu in a blue one (so neither is taken for a dog that means something) run
+  about the yard; a deer, a stag, a fox and a wolf keep to the forest's edge. They walk, graze and rest,
+  and now and then get up to something of their own: a look round, a sniff, a hop, a fly to shake off, a
+  gallop and a leap, the donkey kicking up its heels, the bull and the stag butting the air, the dogs
+  running laps and pouncing, the fox mousing. At night they stand and rest.
+  - **Click one for its menu**: Pet, Feed, Run (a gallop out and back), Leap, Hop, Sniff, Look around and
+    Play dead (it falls over, lies still, and gets up again), with Kick and Headbutt for the hoofed ones,
+    Pounce for the dogs, the fox and the wolf, and Throw a stick for the dogs (the dog runs for it and
+    brings it back). Esc or a click elsewhere shuts it. With **Motion** off they stand still and the menu
+    says so.
+  - They load just after the farm (a moment's pause the first time), and **Animals** in the Menu hides
+    them. `web/worlds/farm3d/models/LICENSE.md` lists each model, and `npm run farm3d-animals` makes them
+    again from poly.pizza.
 - **Names and bubbles**: a farmer's name (in the farm's pixel font) shows when it needs you, when its turn
   ended, when you pick it or point at it, and for every farmer once you zoom in; pointing at a farmer also
   shows what it is doing, as its name's tooltip does. Its speech bubble shows for one that needs you or
@@ -1316,21 +1321,22 @@ window (100%). Drag to pan, scroll or pinch to zoom (from the whole farm in to o
 Shift-drag, or click and drag with two fingers on a trackpad) to turn the farm to any angle and tilt it, from
 nearly flat (30°) to nearly top-down (80°); **↺ ↻** beside the Menu (or **Q** and **E**) turn it 15° at a time,
 and **⌂** puts it back square-on. At 100% it always shows the whole farm, from any angle. Click a farmer (or its name)
-to open it in the sidebar: the view glides to it. Click its bubble for its whole conversation, and the barn
-to start a session. The Menu has the farm's buttons (List, World, Sidebar, Broadcast, Chats, Sky, Season,
+to open it in the sidebar: the view glides to it. Click its bubble for its whole conversation, an animal for
+its menu, and the barn to start a session. The Menu has the farm's buttons (List, World, Sidebar, Broadcast, Chats, Sky, Season,
 Motion, Animals, Help, zoom) and **Help** says what each thing means. The view and the switches are kept.
 
 **Not here yet:** the farm's stats panel, a field's close-up, the diary, subagents (the hens and the
 Explore dog), the carts for web and MCP calls, the pigeons between agents, the market stall's pull
-requests, the notice board, and the animals' games and menus.
+requests, the notice board, and the farmers playing with the animals.
 
 **What it needs.** WebGL, which every current browser has unless hardware acceleration is switched off:
 without it the world says so and you can pick another. It uses the graphics card, at most 30 frames a
 second, and draws nothing while the page shows its list or the tab is hidden; with **Motion** off (or
 reduced motion) it draws only when something changes. three.js (0.186.1, MIT licence; with its glTF loader
 for the animals) is part of Agentville, in `web/worlds/farm3d/vendor/`, and the animals' models are in
-`web/worlds/farm3d/models/` (about 3 MB, packed into JS files the world imports): nothing is downloaded
-from anywhere, and the world sees the same scene as the farm and sends nothing.
+`web/worlds/farm3d/models/` (about 5 MB, packed into JS files the world imports; the fourteen animals add
+about 200 draw calls, shadows included): nothing is downloaded from anywhere, and the world sees the same
+scene as the farm and sends nothing.
 
 ### Notifications and the bell
 
@@ -1641,6 +1647,7 @@ and can do is in [docs/worlds.md](docs/worlds.md).
 | The animals never say anything new | Tick **Animal lines** in ✨ Helper (the helper on). A session with mod 0.9.0 must be open (0.9.1 for the robot dog and the robot vacuum; `/reload-plugins` in it), and a world with animals on screen. ✨ Helper shows the last error and today's count. The field exercise's mascots talking in plain words, not drill words: their session's mod is older than 0.9.3 (`/reload-plugins` in it) |
 | **✨** says no name came, or the ✨ Helper shows a last error | No session is listening with mod 0.8.0 (`/reload-plugins` in it), today's limit is reached (it resets at midnight), or your organisation doesn't allow Haiku (the error says so) |
 | The 3D farm is blank, or says it needs WebGL | The browser has no WebGL here: switch on hardware acceleration (Chrome: Settings → System → Use graphics acceleration when available) and reload, or choose another world. `npm run farm3d-check` checks it in headless Chrome |
+| The 3D farm's animals stand still when you pick something from an animal's menu | **Motion** is off (or the browser asks for reduced motion): they don't move then, and the menu says so. Switch Motion on in the Menu. The animals come a moment after the farm draws, the first time |
 
 ## Known limits
 
@@ -1682,7 +1689,8 @@ collector/   the collector: sources/, transcript/, derive/, server.mjs; platform
              and on Windows, the start-up check, the Windows launcher); its tests in test/
 web/         the dashboard: index.html, app.js, panels.js, scene.js, worlds.js…; worlds/ holds the
              farm (worlds/farm/), the robot factory (worlds/factory/), the field exercise
-             (worlds/military/), the 3D farm (worlds/farm3d/, with three.js in its vendor/), the starter
+             (worlds/military/), the 3D farm (worlds/farm3d/, with three.js in its vendor/ and its
+             animals' models in models/), the starter
              (worlds/starter/), the test page and its tour (worlds/test/)
              and what every world's frame loads (worlds/sdk/)
 mod/         the Claude Code mod: hooks/register.tsx; its tests in tests/
@@ -1701,7 +1709,7 @@ npm run test:ui             # the dashboard, the farm and other worlds in headle
 npm run kit-sheet           # redraw docs/kits.png, the picture of the people and props kits
 npm run world-shots -- <world>  # a picture of a world at every stop of its test tour (.private/shots/)
 npm run check-world -- <world>  # the test tour run headless against a world: exceptions, loops, creatures, pointers
-npm run farm3d-check        # the 3D farm in headless Chrome: every tour stop drawn with its name tags, the animals, memory, no WebGL
+npm run farm3d-check        # the 3D farm in headless Chrome: every tour stop drawn with its name tags, the animals and their menus, memory, no WebGL
 npm run farm3d-animals      # make the 3D farm's animals again from poly.pizza (web/worlds/farm3d/models/; needs the network)
 npm run golden              # reference pictures of the list, the farm, the factory and the field exercise on a fixed snapshot,
                             # compared byte for byte (.private/golden/); --record saves them

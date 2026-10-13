@@ -117,10 +117,12 @@ export function start({ el, opts, prefs }) {
       zoom: d => rig.zoomBy(d),
       pick: id => pickFarmer(id),
       hover: id => overlay.setHover(id),
+      animal: i => animals.info(i),
+      act(i, act) { animals.command(i, act); dirty = true; },
       cycle(what) {
         if (what === 'sky') { skyMode = SKIES[(SKIES.indexOf(skyMode) + 1) % SKIES.length]; prefs.set('sky', skyMode); lastSky = -Infinity; }
         if (what === 'season') { seasonMode = SEASON_MODES[(SEASON_MODES.indexOf(seasonMode) + 1) % SEASON_MODES.length]; prefs.set('season', seasonMode); rebuildAll(); }
-        if (what === 'animals') { animalsOn = !animalsOn; prefs.set('animals', animalsOn ? 'on' : 'off'); animals.setOn(animalsOn); }
+        if (what === 'animals') { animalsOn = !animalsOn; prefs.set('animals', animalsOn ? 'on' : 'off'); animals.setOn(animalsOn); if (!animalsOn) overlay.closePet(); }
         if (what === 'bubbles') { bubblesOn = !bubblesOn; prefs.set('bubbles', bubblesOn ? 'on' : 'off'); if (model) overlay.sync(model, { bubblesOn, near: near() }); }
         dirty = true;
       },
@@ -149,7 +151,6 @@ export function start({ el, opts, prefs }) {
     const ext = terrain.build(model.ground, season);
     sky.setExtent(ext.x, ext.z);
     animals.setGround(model.ground);
-    animals.setIce(season === 'winter');
     // snow falling over the whole farm in winter
     if (snow) { snow.object.removeFromParent(); snow.object.geometry.dispose(); snow = null; }
     if (season === 'winter') { snow = weather.snowfall(ext.x, ext.z); snow.object.position.set(ext.center.x, 0, ext.center.z); scene3.add(snow.object); }
@@ -188,7 +189,7 @@ export function start({ el, opts, prefs }) {
     dirty = true;
   }
 
-  /* ---------- clicks: a farmer opens it in the sidebar (and the camera glides to it); the barn starts a session ---------- */
+  /* ---------- clicks: a farmer opens it in the sidebar (and the camera glides to it); an animal, its menu; the barn starts a session ---------- */
   const ray = new THREE.Raycaster(), ndc = new THREE.Vector2();
   function hitAt(e) {
     const r = canvas.getBoundingClientRect();
@@ -196,6 +197,8 @@ export function start({ el, opts, prefs }) {
     ray.setFromCamera(ndc, camera);
     const f = ray.intersectObjects(farmers.hits(), true)[0];
     if (f) { let o = f.object; while (o && !o.userData.id) o = o.parent; if (o) return { id: o.userData.id }; }
+    const a = ray.intersectObjects(animals.hits(), false)[0];
+    if (a) return { animal: a.object.userData.animal };
     const b = ray.intersectObjects(buildings.hits(), true)[0];
     if (b) { let o = b.object; while (o && !o.userData.hit) o = o.parent; if (o) return { building: o.userData.hit }; }
     return null;
@@ -209,6 +212,7 @@ export function start({ el, opts, prefs }) {
     if (rig.wasDrag() || e.button !== 0) return;
     const hit = hitAt(e);
     if (hit?.id) pickFarmer(hit.id);
+    else if (hit?.animal !== undefined) { overlay.openPet(hit.animal); dirty = true; }
     else if (hit?.building === 'barn') opts.onStartSession();
   });
   let hoverPending = false;
@@ -221,7 +225,7 @@ export function start({ el, opts, prefs }) {
       overlay.setHover(hit?.id ?? null);
       canvas.style.cursor = hit ? 'pointer' : '';
       // a farmer's tooltip, as its name tag has it (what it is doing, its context, its cost…); the barn's
-      canvas.title = hit?.id ? model?.farmers.find(f => f.id === hit.id)?.tip ?? '' : hit?.building === 'barn' ? 'The barn: start or resume a session' : '';
+      canvas.title = hit?.id ? model?.farmers.find(f => f.id === hit.id)?.tip ?? '' : hit?.animal !== undefined ? `The ${animals.info(hit.animal)?.title.toLowerCase() ?? 'animal'}: click for what you can ask it to do` : hit?.building === 'barn' ? 'The barn: start or resume a session' : '';
     });
   });
 
@@ -247,7 +251,7 @@ export function start({ el, opts, prefs }) {
     if (now - lastSky > 2000) { lastSky = now; const n = sky.set(skyFor(new Date(), skyMode, skyAt)); if (n !== night) { night = n; dirty = true; } }
     const moving = rig.update(dt), t = opts.still ? 0 : now / 1000;
     const walking = farmers.tick(t, dt, opts.still);
-    animals.tick(t, dt, night);
+    if (animals.tick(t, dt, night)) dirty = true;
     if (!opts.still) { // the world moves: the wind in the crops, the weather, the snow
       crops.tick(t);
       beds.tick(t, dt);
@@ -264,6 +268,8 @@ export function start({ el, opts, prefs }) {
   window.__farm3d = {
     stats: () => ({ calls: renderer.info.render.calls, triangles: renderer.info.render.triangles, geometries: renderer.info.memory.geometries, textures: renderer.info.memory.textures, farmers: farmers.count(), drawn: model?.farmers.length ?? 0, tags: overlay.count(), beds: model?.beds.length ?? 0, animals: animals.count() }),
     screenOf: id => { const h = farmers.headOf(id); return h ? project(h) : null; }, // where a farmer's head is in the picture, in pixels
+    /** Animal i: its kind, what it is doing, where it is on the 2D map, and where its middle is in the picture, in pixels. */
+    animal: i => { const a = animals.info(i); return a && { kind: a.kind, act: a.act, part: a.part, spot: a.spot, at: project({ x: a.top.x, y: a.top.y * 0.5, z: a.top.z }) }; },
     /** A view to hold: yaw and pitch in degrees, zoom, and a 2D farm point to glide to. */
     view({ yaw, pitch, zoom, at } = {}) {
       rig.hold({ yaw: Number.isFinite(yaw) ? (yaw * Math.PI) / 180 : undefined, pitch: Number.isFinite(pitch) ? (pitch * Math.PI) / 180 : undefined, zoom });

@@ -1,37 +1,42 @@
-// The farm's animals, just for fun, never for data: Quaternius's animated models (CC0) and two still ducks (CC BY 3.0;
-// see models/LICENSE.md). Two cows, three sheep and two horses graze in the pasture; the sheepdog (a husky in a red
-// bandana, so it is never taken for the Explore dog) runs about the yard; a deer, a stag and a fox keep to the
-// forest's edge; the duck family paddles round the pond, and slides on it in winter. Each plays its own animations:
-// walking, grazing, standing; a sheep hops; at night they stand and rest. The models load after the farm has drawn,
-// each kind once, and every animal of a kind is its own copy of it. The Animals switch hides them all. None of them is
-// a chicken (subagents) or another bird but the ducks, and the sheepdog is the one dog.
+// The farm's animals, just for fun, never for data: all twelve of Quaternius's Animated Animal Pack (CC0; see
+// models/LICENSE.md). Two cows, a bull, two alpacas, a donkey and two horses in the pasture; the husky (in a red
+// bandana) and the Shiba Inu (in a blue one) in the yard, so neither is taken for a dog that means something; a deer,
+// a stag, a fox and a wolf at the forest's edge. What they do is antics.js's: they walk, rest and graze, get up to
+// something now and then, rest at night, and do what you pick from an animal's menu. This draws it: each kind's model
+// loaded once (after the farm has drawn), every animal its own copy with its own animation player, playing the clip
+// for each part (models/index.js). The Animals switch hides them all.
 import { GLTFLoader } from '../vendor/GLTFLoader.js';
 import { clone as cloneSkinned } from '../vendor/SkeletonUtils.js';
 import { NAPS, POND, SHADE, WOODPILE, forestEdgeOf, pastureOf } from '../layout.js';
 import { MODELS } from '../models/index.js';
+import { ACTS, advance, command, makeAnimal, menuFor } from '../antics.js';
 
-// Who lives where, and their pace (2D pixels a second; the sheepdog's is a run).
+// Who lives where, and their pace (2D pixels a second: 8 a metre): walking, and running.
 const HERDS = [
-  { kind: 'cow', n: 2, area: 'pasture', speed: 7 },
-  { kind: 'sheep', n: 3, area: 'pasture', speed: 8 },
-  { kind: 'horse', n: 1, area: 'pasture', speed: 10 },
-  { kind: 'whitehorse', n: 1, area: 'pasture', speed: 10 },
-  { kind: 'sheepdog', n: 1, area: 'yard', speed: 26 },
-  { kind: 'deer', n: 1, area: 'edge', speed: 9 },
-  { kind: 'stag', n: 1, area: 'edge', speed: 9 },
-  { kind: 'fox', n: 1, area: 'edge', speed: 14 },
+  { kind: 'cow', n: 2, area: 'pasture', walk: 7, run: 40 },
+  { kind: 'bull', n: 1, area: 'pasture', walk: 7, run: 40 },
+  { kind: 'alpaca', n: 2, area: 'pasture', walk: 8, run: 40 },
+  { kind: 'donkey', n: 1, area: 'pasture', walk: 8, run: 40 },
+  { kind: 'horse', n: 1, area: 'pasture', walk: 10, run: 52 },
+  { kind: 'whitehorse', n: 1, area: 'pasture', walk: 10, run: 52 },
+  { kind: 'husky', n: 1, area: 'yard', walk: 12, run: 44, bandana: '#d64545' },
+  { kind: 'shiba', n: 1, area: 'yard', walk: 11, run: 40, bandana: '#3b74d6' },
+  { kind: 'deer', n: 1, area: 'edge', walk: 9, run: 48 },
+  { kind: 'stag', n: 1, area: 'edge', walk: 9, run: 48 },
+  { kind: 'fox', n: 1, area: 'edge', walk: 11, run: 40 },
+  { kind: 'wolf', n: 1, area: 'edge', walk: 11, run: 44 },
 ];
-const DUCKS = ['duck', 'duck', 'duckling', 'duckling', 'duckling']; // a mallard pair and three ducklings
 // Larger than life, as the farmers are (figurine.js): at their true size a cow is a speck from the whole farm's view.
-const BIGGER = 1.5, DUCK_BIGGER = 1.2;
+const BIGGER = 1.5;
+const HABIT_CHANCE = 0.25; // how often one gets up to something when it stops
 /** A small seeded random, so the farm's animals start the same every time. */
 const seeded = seed => () => { seed = (seed * 16807) % 2147483647; return seed / 2147483647; };
 
 export function makeAnimals(THREE, mats, S) {
   const group = new THREE.Group(), loader = new GLTFLoader(), rand = seeded(424242);
-  const templates = new Map(); // kind → { scene, clips, scale, lift }
-  const walkers = [], ducks = [];
-  let H = 400, ground = null, areas = {}, avoid = [], on = true, ice = false, started = false;
+  const templates = new Map(); // kind → { scene, clips, scale, lift, raw, box }
+  const animals = [], hidden = new THREE.MeshBasicMaterial({ visible: false }), v = new THREE.Vector3();
+  let H = 400, ground = null, areas = {}, avoid = [], on = true, started = false, shown = 0;
 
   /** A kind's model, loaded once: its module, the GLB in it, sized to its height (larger than life) with its feet at 0. */
   async function template(kind) {
@@ -39,75 +44,89 @@ export function makeAnimals(THREE, mats, S) {
     const b64 = (await import(`../models/${kind}.js`)).default, bytes = Uint8Array.from(atob(b64), c => c.charCodeAt(0));
     const gltf = await loader.parseAsync(bytes.buffer, '');
     gltf.scene.updateMatrixWorld(true);
-    const box = new THREE.Box3().setFromObject(gltf.scene), h = box.max.y - box.min.y || 1;
-    const scale = (MODELS[kind].height * (kind.startsWith('duck') ? DUCK_BIGGER : BIGGER)) / h;
+    const clips = new Map(gltf.animations.map(c => [c.name, c]));
+    const box = new THREE.Box3().setFromObject(gltf.scene), size = box.getSize(new THREE.Vector3()), raw = size.y || 1;
+    const scale = (MODELS[kind].height * BIGGER) / raw;
     gltf.scene.traverse(o => { if (o.isMesh) { o.castShadow = true; o.receiveShadow = true; o.frustumCulled = false; } });
-    const t = { scene: gltf.scene, clips: new Map(gltf.animations.map(c => [c.name, c])), scale, lift: -box.min.y * scale };
+    // what a click finds: a box round it, larger than its body so a small one is easy to hit
+    const hit = new THREE.BoxGeometry(Math.max(0.8, size.x * scale * 1.2), size.y * scale * 1.1, Math.max(0.8, size.z * scale * 1.1));
+    hit.translate(0, (size.y * scale * 1.1) / 2, (box.min.z + box.max.z) * 0.5 * scale);
+    const t = { scene: gltf.scene, clips, scale, lift: -box.min.y * scale, raw, hit, top: size.y * scale };
     templates.set(kind, t);
     return t;
   }
-  /** One animal: its own copy of the model, in a holder that sizes it, and its own animation player. */
-  function instance(kind, t) {
+  /** One animal: its own copy of the model in a holder that sizes it, its own animation player, and its hit box. */
+  function instance(h, t, i) {
     const root = new THREE.Group(), holder = new THREE.Group(), model = cloneSkinned(t.scene);
     holder.scale.setScalar(t.scale);
     holder.position.y = t.lift;
     holder.add(model);
     root.add(holder);
+    const hit = new THREE.Mesh(t.hit, hidden);
+    hit.userData.animal = i;
+    root.add(hit);
     group.add(root);
-    const mixer = t.clips.size ? new THREE.AnimationMixer(model) : null, actions = new Map();
+    const mixer = new THREE.AnimationMixer(model), actions = new Map();
     for (const [name, clip] of t.clips) actions.set(name, mixer.clipAction(clip));
-    if (kind === 'sheepdog') bandana(model);
-    return { root, holder, mixer, actions, playing: null };
+    if (h.bandana) bandana(model, h.bandana, t.raw);
+    let head = null;
+    model.traverse(o => { if (!head && o.isBone && /head/i.test(o.name)) head = o; });
+    const spot = ground ? pickSpot(h.area) : [0, 0];
+    const a = makeAnimal({ kind: h.kind, family: MODELS[h.kind].family, area: h.area, walk: h.walk, run: h.run }, spot[0], spot[1], rand);
+    return { a, root, mixer, actions, head, t, hitBox: hit, playing: null, seq: -1, yaw: a.face, placed: Boolean(ground), stick: null };
   }
-  /** The sheepdog's red bandana, round its neck bone, so it follows the head as it moves. */
-  function bandana(model) {
+  /** A dog's bandana, round its neck bone, so it follows the head as it moves; sized to the dog. */
+  function bandana(model, colour, raw) {
     let neck = null;
     model.traverse(o => { if (!neck && o.isBone && /neck/i.test(o.name)) neck = o; });
     if (!neck) return;
     model.updateMatrixWorld(true);
     const s = new THREE.Vector3();
     neck.getWorldScale(s);
-    const band = new THREE.Mesh(new THREE.TorusGeometry(0.17, 0.06, 6, 14), mats.std('#d64545'));
-    band.scale.setScalar(1 / (s.x || 1)); // in metres, whatever the bone's own scale
+    const band = new THREE.Mesh(new THREE.TorusGeometry(0.054 * raw, 0.019 * raw, 6, 14), mats.std(colour));
+    band.scale.setScalar(1 / (s.x || 1)); // in step with the dog's size, whatever the bone's scale
     band.rotation.x = Math.PI / 2; // round the neck: the bone points along it
     band.castShadow = true;
     neck.add(band);
   }
-  /** Plays a clip, fading from the one before. */
-  function play(a, name, timeScale = 1) {
-    const next = a.actions.get(name);
+  /** Plays an animal's part as antics.js set it: a clip once (staying at its end) or round and round, faded from the last. */
+  function play(w) {
+    const a = w.a, next = w.actions.get(MODELS[a.kind].clips[a.part]);
+    w.seq = a.seq;
     if (!next) return;
-    next.timeScale = timeScale;
-    if (a.playing === next) return;
-    next.reset().setEffectiveWeight(1).fadeIn(0.3).play();
-    if (a.playing) a.playing.fadeOut(0.3);
-    a.playing = next;
+    next.setLoop(a.once ? THREE.LoopOnce : THREE.LoopRepeat, Infinity);
+    next.clampWhenFinished = a.once;
+    next.timeScale = a.timeScale;
+    next.reset().setEffectiveWeight(1).play();
+    if (w.playing && w.playing !== next) { next.fadeIn(a.fade); w.playing.fadeOut(a.fade); }
+    w.playing = next;
   }
   /** Loads every kind, then lets them out (in the background: the farm draws before they are here). */
   async function start() {
     if (started) return;
     started = true;
     for (const h of HERDS) {
-      const t = await template(h.kind), m = MODELS[h.kind];
-      for (let i = 0; i < h.n; i++) walkers.push({ ...h, ...instance(h.kind, t), clips: m.clips, x: 0, y: 0, tx: 0, ty: 0, rest: rand() * 4, face: rand() * 6, phase: rand() * 6, placed: false });
-      if (ground) place();
+      const t = await template(h.kind);
+      for (let k = 0; k < h.n; k++) animals.push(instance(h, t, animals.length));
     }
-    for (const [i, kind] of DUCKS.entries()) ducks.push({ ...instance(kind, await template(kind)), lag: i === 0 ? 0 : i === 1 ? 0.35 : 0.6 + (i - 2) * 0.22 });
   }
   const inRect = (x, y, r) => x >= r.x && x <= r.x + r.w && y >= r.y && y <= r.y + r.h;
   const blocked = (x, y) => avoid.some(r => (r.rx ? ((x - r.cx) / r.rx) ** 2 + ((y - r.cy) / r.ry) ** 2 <= 1 : inRect(x, y, r)));
-  function pickSpot(area) {
+  const inside = (area, x, y) => Boolean(areas[area]?.some(r => inRect(x, y, r))) && !blocked(x, y);
+  /** A free place in an area; with from and far, one at least that far from there if it can find one (else the farthest). */
+  function pickSpot(area, from, far = 0) {
     const rects = areas[area];
+    let best = null, bestD = -1;
     for (let i = 0; i < 30; i++) {
       const r = rects[Math.floor(rand() * rects.length)], x = r.x + rand() * r.w, y = r.y + rand() * r.h;
-      if (!blocked(x, y)) return [x, y];
+      if (blocked(x, y)) continue;
+      const d = from ? Math.hypot(x - from[0], y - from[1]) : 0;
+      if (d >= far) return [x, y];
+      if (d > bestD) { best = [x, y]; bestD = d; }
     }
-    return [rects[0].x + rects[0].w / 2, rects[0].y + rects[0].h / 2];
+    return best ?? [rects[0].x + rects[0].w / 2, rects[0].y + rects[0].h / 2];
   }
-  /** Each walker inside its area (when the ground changes, or it has just arrived). */
-  function place() {
-    for (const w of walkers) if (!w.placed || !areas[w.area].some(r => inRect(w.x, w.y, r)) || blocked(w.x, w.y)) { [w.x, w.y] = pickSpot(w.area); [w.tx, w.ty] = [w.x, w.y]; w.placed = true; }
-  }
+  const env = { resting: false, rand, habitChance: HABIT_CHANCE, spot: pickSpot, inside, duration: (kind, part) => templates.get(kind)?.clips.get(MODELS[kind].clips[part])?.duration ?? 1 };
   /** Their areas for a ground (in 2D pixels): the pasture, the yard (off the pond, the hammocks, the woodpile and the shade tree), the forest's edge. */
   function setGround(g) {
     ground = g; H = g.H;
@@ -123,47 +142,77 @@ export function makeAnimals(THREE, mats, S) {
       { x: WOODPILE[0] - 14, y: WOODPILE[1] - 10, w: 28, h: 20 },
       { x: SHADE.x - 14, y: y1 + SHADE.dy - 12, w: 28, h: 24 },
     ];
-    place();
+    for (const w of animals) if (!w.placed || !inside(w.a.area, w.a.x, w.a.y)) { // each inside its area: when the ground changes, or it has just arrived
+      const [x, y] = pickSpot(w.a.area);
+      Object.assign(w.a, { x, y, tx: x, ty: y, queue: [], cur: null, act: null, stick: null, home: [x, y] });
+      w.placed = true;
+    }
     start().catch(err => { started = false; throw err; }); // a model that won't load: the bridge reports it, the farm goes on
   }
-  /** Moves them on; t the clock (0 while still), dt the seconds since the last frame, night 0 by day … 1 at night. */
+  /** The fetch stick: flying from the thrower to where it lands, lying there, or in the dog's mouth. */
+  function stickOf(w) {
+    const s = w.a.stick;
+    if (!s) { if (w.stick) w.stick.visible = false; return; }
+    if (!w.stick) {
+      w.stick = new THREE.Mesh(new THREE.CylinderGeometry(0.04, 0.05, 0.7, 6), mats.std('#8a5a2b'));
+      w.stick.castShadow = true;
+      group.add(w.stick);
+    }
+    w.stick.visible = true;
+    const across = yaw => new THREE.Quaternion().setFromUnitVectors(new THREE.Vector3(0, 1, 0), new THREE.Vector3(Math.cos(yaw), 0, -Math.sin(yaw)));
+    if (s.held && w.head) {
+      w.head.getWorldPosition(v);
+      w.stick.position.set(v.x + Math.sin(w.yaw) * 0.35, v.y - 0.12, v.z + Math.cos(w.yaw) * 0.35);
+      w.stick.quaternion.copy(across(w.yaw));
+      return;
+    }
+    const u = Math.min(1, s.t / 0.7), x = s.from[0] + (s.at[0] - s.from[0]) * u, y = s.from[1] + (s.at[1] - s.from[1]) * u, p = S.at(x, y, H);
+    w.stick.position.set(p.x, 0.05 + Math.sin(u * Math.PI) * 3, p.z);
+    w.stick.quaternion.copy(across(Math.atan2(s.at[0] - s.from[0], s.at[1] - s.from[1]) + u * 8));
+  }
+  /**
+   * Moves them on; t the clock (0 while still: they stand where they are), dt the seconds since the last frame, night
+   * 0 by day … 1 at night. True when the picture changed while still (an animal arrived, or stood up in a new pose).
+   */
   function tick(t, dt, night) {
     group.visible = on;
-    if (!on || !ground) return;
-    const resting = night > 0.7;
-    for (const w of walkers) {
-      let moving = false;
-      if (t && !resting) {
-        const dx = w.tx - w.x, dy = w.ty - w.y, d = Math.hypot(dx, dy);
-        if (w.rest > 0) w.rest -= dt;
-        else if (d < 1) { w.rest = 3 + rand() * 8; [w.tx, w.ty] = pickSpot(w.area); }
-        else { const step = Math.min(d, w.speed * dt); w.x += (dx / d) * step; w.y += (dy / d) * step; w.face = Math.atan2(dx, dy); moving = true; }
-      }
-      const p = S.at(w.x, w.y, H);
+    if (!on || !ground) return false;
+    env.resting = night > 0.7;
+    let changed = animals.length !== shown;
+    shown = animals.length;
+    for (const w of animals) {
+      if (t) advance(w.a, dt, env);
+      const fresh = w.a.seq !== w.seq;
+      if (fresh) play(w);
+      const d = Math.atan2(Math.sin(w.a.face - w.yaw), Math.cos(w.a.face - w.yaw)); // it turns toward where it is going
+      w.yaw = t ? w.yaw + d * Math.min(1, dt * 8) : w.a.face;
+      const p = S.at(w.a.x, w.a.y, H);
       w.root.position.set(p.x, 0, p.z);
-      w.root.rotation.y = w.face;
-      // walking (the sheepdog runs; a sheep hops), grazing now and then while it stands, standing; at night resting
-      if (moving) play(w, w.clips.run && w.speed > 20 ? w.clips.run : w.clips.walk);
-      else if (resting) play(w, w.clips.idle, 0.35);
-      else play(w, Math.sin((t || 0) * 0.35 + w.phase) > 0 ? w.clips.graze : w.clips.idle);
-      if (t && w.mixer) w.mixer.update(dt);
+      w.root.rotation.y = w.yaw;
+      if (t) w.mixer.update(dt);
+      else if (fresh) { w.mixer.update(0); changed = true; } // still: its pose, not the model's T-pose
+      stickOf(w);
     }
-    // the ducks: round the pond in a line, the littlest last; on the ice in winter they slide, faster and wobbling
-    const speed = ice ? 0.32 : 0.12;
-    for (const d of ducks) {
-      const a = (t || 0.5) * speed - d.lag, x = POND.cx + Math.cos(a) * (POND.rx - 10), y = POND.cy + Math.sin(a) * (POND.ry - 5), p = S.at(x, y, H);
-      d.root.position.set(p.x, ice ? 0.1 : 0.04 + (t ? Math.sin(t * 3 + d.lag * 5) * 0.012 : 0), p.z);
-      d.root.rotation.y = Math.atan2(-Math.sin(a) * (POND.rx - 10), Math.cos(a) * (POND.ry - 5)) + (ice ? Math.sin(t * 4 + d.lag) * 0.3 : 0);
-    }
+    return changed && !t;
   }
   return {
     group, setGround, tick,
     setOn(v) { on = v; group.visible = v; },
-    setIce(v) { ice = v; },
     /** How many animals are out (0 with the switch off); they arrive as their models load. */
-    count: () => (on ? walkers.length + ducks.length : 0),
+    count: () => (on ? animals.length : 0),
     /** How many there will be, once every model has loaded. */
-    total: HERDS.reduce((n, h) => n + h.n, 0) + DUCKS.length,
-    dispose() { for (const w of walkers) w.mixer?.stopAllAction(); group.clear(); walkers.length = 0; ducks.length = 0; templates.clear(); },
+    total: HERDS.reduce((n, h) => n + h.n, 0),
+    /** What a click can find: each animal's hit box (none with the switch off). */
+    hits: () => (on ? animals.map(w => w.hitBox) : []),
+    /** An animal: its kind and name, its menu, what it is doing, where it is on the map, and the point over its head, in the world. */
+    info(i) {
+      const w = animals[i];
+      if (!w || !on) return null;
+      w.root.updateMatrixWorld();
+      return { kind: w.a.kind, title: MODELS[w.a.kind].title, menu: menuFor(w.a.kind, w.a.family).map(id => ({ id, label: ACTS[id].label })), act: w.a.act, part: w.a.part, spot: [w.a.x, w.a.y], top: { x: w.root.position.x, y: w.t.top + 0.3, z: w.root.position.z } };
+    },
+    /** Asks animal i to do act (from its menu). */
+    command(i, act) { const w = animals[i]; if (w && menuFor(w.a.kind, w.a.family).includes(act)) command(w.a, act, env); },
+    dispose() { for (const w of animals) w.mixer.stopAllAction(); group.clear(); animals.length = 0; templates.clear(); },
   };
 }

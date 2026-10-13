@@ -1,16 +1,8 @@
 # The 3D farm's animals
 
-Made into this folder by `scripts/farm3d-animals.mjs`: each model trimmed to the animations the farm plays (one copy
-of each), its normals, texture coordinates and textures dropped, and its data packed again; nothing else changed.
-
-## Farm Animal Pack, by Quaternius
-
-https://poly.pizza/bundle/Farm-Animal-Pack-1kUvRTPLzT (Quaternius: https://poly.pizza/u/Quaternius)
-
-Licence: **CC0 (public domain)**, https://creativecommons.org/publicdomain/zero/1.0/ (no credit is required; it is given with thanks)
-
-- Cow (on the farm: the cow), https://static.poly.pizza/48c5f4af-07d6-4493-a261-0919967afe85.glb
-- Sheep (on the farm: the sheep), https://static.poly.pizza/a4bd2c4e-fe71-4dbd-9881-cf3ac8a00bbf.glb
+Made into this folder by `scripts/farm3d-animals.mjs`: each model with every animation once (the pack holds two
+copies), its normals, texture coordinates and textures dropped, its animation keys thinned and its data packed again
+(scripts/lib/glb.mjs); nothing else changed.
 
 ## Animated Animal Pack, by Quaternius
 
@@ -18,25 +10,15 @@ https://poly.pizza/bundle/Animated-Animal-Pack-ILAPXeUYiS (Quaternius: https://p
 
 Licence: **CC0 (public domain)**, https://creativecommons.org/publicdomain/zero/1.0/ (no credit is required; it is given with thanks)
 
+- Cow (on the farm: the cow), https://static.poly.pizza/382b3d4a-a7c9-4c03-9858-3df630d90047.glb
+- Bull (on the farm: the bull), https://static.poly.pizza/5704ef69-2c27-4de8-a942-70a29458af21.glb
+- Alpaca (on the farm: the alpaca), https://static.poly.pizza/444228bb-745d-49b2-89ef-cc12805deaa8.glb
+- Donkey (on the farm: the donkey), https://static.poly.pizza/ca29f94e-0874-41b6-8334-66642af56a61.glb
 - Horse (on the farm: the horse), https://static.poly.pizza/d37dbc87-ca61-4b2c-a2da-d2f0c4240bef.glb
 - White Horse (on the farm: the whitehorse), https://static.poly.pizza/3edc2bd9-3378-4b43-a50d-d5e1f858562b.glb
-- Husky (on the farm: the sheepdog), https://static.poly.pizza/611d25c7-430f-4bb5-ab2c-d8f5f3cb9712.glb
 - Deer (on the farm: the deer), https://static.poly.pizza/4b6c2a41-43c7-404c-ae37-e8c4645ff93b.glb
 - Stag (on the farm: the stag), https://static.poly.pizza/a9c69fbc-bf7c-4585-9a49-a82e0be1ac6b.glb
+- Husky (on the farm: the husky), https://static.poly.pizza/611d25c7-430f-4bb5-ab2c-d8f5f3cb9712.glb
+- Shiba Inu (on the farm: the shiba), https://static.poly.pizza/ba6d0ee3-bcc0-4ef0-9d3c-a3e245b41c77.glb
 - Fox (on the farm: the fox), https://static.poly.pizza/e18e86df-1692-48d8-ac6e-1e25ab4ad574.glb
-
-## Duck, by jeremy
-
-https://poly.pizza/m/2KHEgw1ztVI (jeremy: https://poly.pizza/u/jeremy)
-
-Licence: **CC BY 3.0**, https://creativecommons.org/licenses/by/3.0/ (credit required, given here)
-
-- Duck (on the farm: the duck), https://static.poly.pizza/ea819ee1-f814-4d70-8997-04a33a54c11c.glb
-
-## Duck 🦆, by Ashley Alicea
-
-https://poly.pizza/m/77BpUN4DEMT (Ashley Alicea: https://poly.pizza/u/Ashley%20Alicea)
-
-Licence: **CC BY 3.0**, https://creativecommons.org/licenses/by/3.0/ (credit required, given here)
-
-- Duck 🦆 (on the farm: the duckling), https://static.poly.pizza/ae89a98c-fa10-4c4e-bfa3-48f33095c136.glb
+- Wolf (on the farm: the wolf), https://static.poly.pizza/f1d12388-e39b-4157-b32a-646a1d089fc4.glb

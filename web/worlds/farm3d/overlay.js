@@ -1,7 +1,7 @@
 // What lies over the 3D farm in HTML, so text stays sharp at any angle: the farmers' name tags (the 2D farm's tag
-// text, in its pixel font), their speech bubbles, the fields' labels and counts, the silos' figures, and the farm's
-// Menu (the engine's defaultHud, wired here) with the turn buttons, plus a short Help. Everything is placed each
-// frame from the camera (place(project)).
+// text, in its pixel font), their speech bubbles, the fields' labels and counts, the silos' figures, an animal's menu
+// (what you can ask it to do), and the farm's Menu (the engine's defaultHud, wired here) with the turn buttons, plus a
+// short Help. Everything is placed each frame from the camera (place(project)).
 import { signsOf } from './layout.js';
 
 const CSS = `
@@ -29,6 +29,13 @@ const CSS = `
   .f3-help { position: absolute; z-index: 90; top: 56px; right: 10px; width: min(420px, calc(100% - 20px)); max-height: calc(100% - 76px); overflow: auto; padding: 12px 14px; background: linear-gradient(#fbf3dc, #f1e3bd); color: #2b2116; border: 2px solid #6b4320; border-radius: 6px; box-shadow: 0 3px 0 #4e3626; font: 13px/1.45 system-ui, sans-serif; }
   .f3-help h2 { margin: 0 0 6px; font-size: 15px; } .f3-help dl { display: grid; grid-template-columns: auto 1fr; gap: 3px 10px; margin: 6px 0; } .f3-help dt { font-weight: 700; }
   .f3-help .close { position: absolute; top: 6px; right: 8px; border: 0; background: none; font-size: 18px; cursor: pointer; color: #6b4320; }
+  .f3-pet { pointer-events: auto; z-index: 8; width: 212px; padding: 7px 8px 8px; background: linear-gradient(#fbf3dc, #f1e3bd); color: #2b2116; border: 2px solid #6b4320; border-radius: 6px; box-shadow: 0 3px 0 #4e3626; font: 12px/1.35 system-ui, sans-serif; }
+  .f3-pet b { display: block; margin: 0 18px 5px 2px; font-size: 13px; }
+  .f3-pet .close { position: absolute; top: 2px; right: 4px; border: 0; background: none; font-size: 17px; line-height: 1; cursor: pointer; color: #6b4320; padding: 2px 4px; }
+  .f3-pet .acts { display: grid; grid-template-columns: 1fr 1fr; gap: 4px; }
+  .f3-pet .acts button { padding: 4px 6px; background: linear-gradient(#fffaf0, #f4e6c4); border: 1.5px solid #6b4320; border-radius: 4px; box-shadow: 0 2px 0 #4e3626; font: 600 12px system-ui, sans-serif; color: #4e3626; cursor: pointer; text-align: left; }
+  .f3-pet .acts button:hover { background: #fffdf6; } .f3-pet .acts button:disabled { opacity: .5; cursor: default; }
+  .f3-pet p { margin: 6px 2px 0; color: #6b4320; font-size: 11px; }
 `;
 const HELP = `<h2>The 3D farm <small>(a prototype)</small></h2>
   <p>The same live farm as the 2D one, in 3D. Every farmer is an agent, every field a repo.</p>
@@ -40,9 +47,10 @@ const HELP = `<h2>The 3D farm <small>(a prototype)</small></h2>
     <dt>Weather</dt><dd>Rain: its deploy failed · a rainbow: it worked · a windmill: it runs</dd>
     <dt>Elsewhere</dt><dd>The shade tree: idle · scarecrows: stale · hammocks: it wakes up by itself · the meadow: working outside any repo · a cloud: thinking</dd>
     <dt>Silo</dt><dd>Your plan's weekly use as grain; a lamp near the limit. The season follows the 5-hour limit</dd>
+    <dt>Animals</dt><dd>Just for fun, never for data. They walk, graze and rest, and now and then get up to something. Click one for what you can ask it to do: pet it, feed it, send it running, throw the dogs a stick…</dd>
     <dt>Moving</dt><dd>Drag to pan, scroll or pinch to zoom. Right-drag (or Shift-drag) to turn and tilt the farm; ↺ ↻ (or Q / E) turn it 15°, ⌂ puts it back square-on. Click a farmer to open it; its bubble for its whole conversation; the barn to start a session</dd>
   </dl>
-  <p>Not here yet: the stats panel, a field's close-up, the diary, subagents, carts, and the animals' games.</p>`;
+  <p>Not here yet: the stats panel, a field's close-up, the diary, subagents, carts, and the farmers playing with the animals.</p>`;
 
 export function makeOverlay(el, { opts, hooks }) {
   const style = document.createElement('style');
@@ -57,7 +65,7 @@ export function makeOverlay(el, { opts, hooks }) {
   // Farmers beyond a place's room aren't drawn: a sign says how many, in the 2D farm's words (web/worlds/farm/world.js,
   // labels), by the place (layout.js, signsOf); and fields beyond the grid's 18 beds.
   const closed = new Map(); // id → the words its bubble had when × closed it
-  let farmers = [], model = null, hover = null, selected = null, empty = null;
+  let farmers = [], model = null, hover = null, selected = null, empty = null, pet = null; // pet: the open animal menu
 
   function keyed(map, key, make) { let e = map.get(key); if (!e) { e = make(); ov.append(e); map.set(key, e); } return e; }
   function prune(map, keep) { for (const [k, e] of map) if (!keep.has(k)) { e.remove(); map.delete(k); } }
@@ -164,7 +172,31 @@ export function makeOverlay(el, { opts, hooks }) {
     const at = model ? signsOf(model.ground) : {};
     for (const [group, d] of signs) if (at[group]) put(d, project(at3(at[group][0], at[group][1], at[group][1] < 90 ? 2.8 : 0.4)));
     if (empty && model) { const G = model.ground.GRID; put(empty, project(at3((G.x0 + G.x1) / 2, (G.y0 + G.y1) / 2, 0))); }
+    if (pet) { const top = hooks.animal(pet.i)?.top; if (top) put(pet.el, project(top), -4); else closePet(); }
   }
+
+  /** An animal's menu, over it: its name, and what you can ask it to do (nothing while the farm stands still). */
+  function openPet(i) {
+    const info = hooks.animal(i);
+    closePet();
+    if (!info) return;
+    const el2 = document.createElement('div');
+    el2.className = 'f3-pet';
+    el2.setAttribute('role', 'dialog');
+    el2.setAttribute('aria-label', `The ${info.title.toLowerCase()}: what to ask it`);
+    const esc = t => t.replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]);
+    el2.innerHTML = `<b>${esc(info.title)}</b><button type="button" class="close" aria-label="Close">×</button><div class="acts">${info.menu.map(m => `<button type="button" data-act="${m.id}"${opts.still ? ' disabled' : ''}>${esc(m.label)}</button>`).join('')}</div>${opts.still ? '<p>Motion is off, so the animals stand still. Turn it on in the Menu to play with them.</p>' : ''}`;
+    el2.addEventListener('click', e => {
+      const b = e.target.closest('button');
+      if (!b) return;
+      if (b.dataset.act) hooks.act(i, b.dataset.act);
+      closePet();
+    });
+    ov.append(el2);
+    pet = { i, el: el2 };
+    el2.querySelector('button[data-act]:not(:disabled)')?.focus({ preventScroll: true });
+  }
+  function closePet() { pet?.el.remove(); pet = null; }
 
   // The Menu: the engine's markup, with the turn buttons beside it and a Bubbles switch in it.
   let hudHtml = '', menuOpen = false, help = null;
@@ -201,9 +233,9 @@ export function makeOverlay(el, { opts, hooks }) {
     else if (b.dataset.farmZoom !== undefined) hooks.zoom(Number(b.dataset.farmZoom));
     hooks.refresh();
   });
-  // a click anywhere else, or Esc, shuts the Menu (and Help)
-  el.addEventListener('pointerdown', e => { if (menuOpen && !hud.contains(e.target)) { menuOpen = false; hooks.refresh(); } if (help && !help.contains(e.target) && !hud.contains(e.target)) openHelp(false); }, true);
-  document.addEventListener('keydown', e => { if (e.key === 'Escape') { if (help) openHelp(false); else if (menuOpen) { menuOpen = false; hooks.refresh(); hud.querySelector('[data-farm-menu]')?.focus(); } } });
+  // a click anywhere else, or Esc, shuts the Menu (and Help, and an animal's menu)
+  el.addEventListener('pointerdown', e => { if (menuOpen && !hud.contains(e.target)) { menuOpen = false; hooks.refresh(); } if (help && !help.contains(e.target) && !hud.contains(e.target)) openHelp(false); if (pet && !pet.el.contains(e.target)) closePet(); }, true);
+  document.addEventListener('keydown', e => { if (e.key === 'Escape') { if (pet) closePet(); else if (help) openHelp(false); else if (menuOpen) { menuOpen = false; hooks.refresh(); hud.querySelector('[data-farm-menu]')?.focus(); } } });
   // a farmer's tag opens it; its bubble opens its whole conversation; × hides the bubble until it says something new
   ov.addEventListener('click', e => {
     const x = e.target.closest('.x'), say = e.target.closest('.f3-say'), tag = e.target.closest('.f3-tag');
@@ -214,7 +246,9 @@ export function makeOverlay(el, { opts, hooks }) {
   ov.addEventListener('pointerover', e => { const t = e.target.closest('.f3-tag'); if (t) hooks.hover(t.dataset.id); });
 
   return {
-    sync, place, renderHud,
+    sync, place, renderHud, openPet, closePet,
+    /** The animal whose menu is open, or null. */
+    petOpen: () => pet?.i ?? null,
     setSelected(id) { selected = id; for (const [k, t] of tags) t.classList.toggle('sel', k === id); },
     setHover(id) { if (id === hover) return; hover = id; for (const [k, t] of tags) t.classList.toggle('hover', k === id); },
     count: () => tags.size,
