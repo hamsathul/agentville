@@ -184,16 +184,29 @@ try {
       await chrome.js(`window.TrackerFarm.update(${JSON.stringify(tour)})`);
       await sleep(700);
       got.prs = await chrome.inFrame('/world/farm3d/', "[...document.querySelectorAll('.f3-ov .f3-cnt')].some(e => e.title.startsWith('Open pull requests: #7 Faster carts · #8 Hens'))");
+      // a field: its label opens its close-up (the engine's), Esc shuts it; on the canvas too
+      await chrome.inFrame('/world/farm3d/', "document.querySelector('.f3-field')?.click(); true");
+      let fv = '';
+      for (const end = Date.now() + 3000; Date.now() < end && !/Could not load/.test(fv); await sleep(100)) fv = await chrome.inFrame('/world/farm3d/', "document.querySelector('.fv-back')?.textContent ?? ''");
+      got.field = /the files agents read or wrote here|Could not load/.test(fv);
+      await chrome.inFrame('/world/farm3d/', "document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' })); true");
+      await sleep(200);
+      got.fieldShut = !(await chrome.inFrame('/world/farm3d/', "Boolean(document.querySelector('.fv-back'))"));
+      await clickAt("window.__farm3d.bedAt(window.__farm3d.bedKeys()[0])");
+      await sleep(400);
+      got.bed = await chrome.inFrame('/world/farm3d/', "Boolean(document.querySelector('.fv-back'))");
+      await chrome.inFrame('/world/farm3d/', "document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' })); true");
+      await sleep(200);
       await clickAt("window.__farm3d.buildingAt('barn')");
       await sleep(300);
       const barn = await chrome.js("document.querySelector('#asked li')?.textContent ?? ''");
       const why = [
         ...Object.entries(TITLES).filter(([k, t]) => !got[k]?.open || got[k].title !== t).map(([k, t]) => `${k}: ${JSON.stringify(got[k])}, not "${t}"`),
-        !got.pick && "Open in the porch's dialog didn't pick its farmer", !got.prs && 'no "2 PRs" label at the stall', barn !== 'start a session' && `the barn asked "${barn}"`,
+        !got.pick && "Open in the porch's dialog didn't pick its farmer", !got.field && `a field's label opened no close-up ("${oneLine(fv).slice(0, 80)}")`, !got.fieldShut && 'Esc left the close-up open', !got.bed && 'a click on a bed opened no close-up', !got.prs && 'no "2 PRs" label at the stall', barn !== 'start a session' && `the barn asked "${barn}"`,
         chrome.errors.length > before && `script errors: ${oneLine(chrome.errors[before]).slice(0, 160)}`,
       ].filter(Boolean);
       if (why.length) bad(`the buildings: ${why.join('; ')}`);
-      else console.log("  ✓ the buildings: the porch, the silo, the henhouse, the stall and the notice board open their dialogs; Open picks; the barn starts a session");
+      else console.log("  ✓ the buildings: the porch, the silo, the henhouse, the stall and the notice board open their dialogs; Open picks; the barn starts a session; a field's label opens its close-up");
     }
 
     // 4. the animals: the twelve of Quaternius's Animated Animal Pack and the pond's frog and fish, all out once their

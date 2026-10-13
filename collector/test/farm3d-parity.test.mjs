@@ -103,3 +103,12 @@ test("the stall: a crate on its counter for each open pull request (8 at most), 
   assert.equal(stallOf({ fields: [{ name: 'x', prs: { open: [{ number: 7, title: '' }] } }] }).label, '1 PR');
   assert.deepEqual(stallOf({ fields: [] }), { crates: [], label: null, tip: null });
 });
+
+import { clickOrder } from '../../web/worlds/farm3d/hud.js';
+test('a click finds a farmer first, then an animal, then a building, then a field', () => {
+  assert.deepEqual(clickOrder([{ field: 'k' }, { building: 'barn' }, { animal: 2 }, { id: 'a' }]), { id: 'a' });
+  assert.deepEqual(clickOrder([{ field: 'k' }, { building: 'barn' }, { animal: 0 }]), { animal: 0 });
+  assert.deepEqual(clickOrder([{ field: 'k' }, { building: 'barn' }]), { building: 'barn' });
+  assert.deepEqual(clickOrder([{ field: 'k' }]), { field: 'k' });
+  assert.equal(clickOrder([]), null);
+});

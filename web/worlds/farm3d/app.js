@@ -5,7 +5,7 @@ import * as THREE from './vendor/three.module.js';
 import { makeModel } from './model.js';
 import { clearRect, holdBox, makeCameraRig } from './camera.js';
 import { makeOverlay } from './overlay.js';
-import { makeHud } from './hud.js';
+import { clickOrder, makeHud } from './hud.js';
 import { makeIconImg } from './icons.js';
 import { BOARD_TITLE, boardHtml, boardSessions, buildingTip, dialogFor } from './dialogs.js';
 import { makeMaterials } from './build/materials.js';
@@ -146,6 +146,7 @@ export function start({ el, opts, prefs }) {
     reset: () => rig.reset(),
     zoom: d => rig.zoomBy(d),
     pick: id => pickFarmer(id),
+    openField: key => field.open(key),
     hover: id => overlay.setHover(id),
     animal: i => animals.info(i),
     act(i, act) {
@@ -273,6 +274,7 @@ export function start({ el, opts, prefs }) {
     overlay.sync(shownModel(), { bubblesOn, near: near() });
     overlay.setSelected(selected);
     if (following && !farmers.headOf(following)) setFollow(false); // its farmer went, or Resting hid it
+    field.refresh(); // an open close-up reads its field again (at most every 5 s)
     refreshHud();
     firstScene = false;
     dirty = true;
@@ -284,14 +286,23 @@ export function start({ el, opts, prefs }) {
     const r = canvas.getBoundingClientRect();
     ndc.set(((e.clientX - r.left) / r.width) * 2 - 1, -((e.clientY - r.top) / r.height) * 2 + 1);
     ray.setFromCamera(ndc, camera);
-    const f = ray.intersectObjects(farmers.hits(), true)[0];
-    if (f) { let o = f.object; while (o && !o.userData.id) o = o.parent; if (o) return { id: o.userData.id }; }
-    const a = ray.intersectObjects(animals.hits(), false)[0];
-    if (a) return { animal: a.object.userData.animal };
-    const b = ray.intersectObjects(buildings.hits(), true)[0];
-    if (b) { let o = b.object; while (o && !o.userData.hit) o = o.parent; if (o) return { building: o.userData.hit }; }
-    return null;
+    // the nearest of each kind under the pointer, then the engine's order: a farmer, an animal, a building, a field
+    const first = (list, deep, of) => { let o = ray.intersectObjects(list, deep)[0]?.object; while (o && of(o) === undefined) o = o.parent; return o ? of(o) : undefined; };
+    return clickOrder([
+      { id: first(farmers.hits(), true, o => o.userData.id) }, { animal: first(animals.hits(), false, o => o.userData.animal) },
+      { building: first(buildings.hits(), true, o => o.userData.hit) }, { field: first(beds.hits(), false, o => o.userData.field) },
+    ]);
   }
+  // A field's close-up: the engine's (makeField, a global in the frame), with what it needs to know of the 3D farm.
+  const field = makeField({
+    nouns: { repo: 'field', agent: 'farmer', agents: 'farmers' },
+    field: key => model?.scene.fields.find(f => f.key === key),
+    farmerColor: id => model?.scene.farmers.find(f => f.id === id)?.shirt ?? '#9aa0a6',
+    farmerName: id => model?.scene.farmers.find(f => f.id === id)?.name,
+    isStill: () => opts.still,
+  });
+  field.setOptions(opts);
+  const fieldTip = key => { const b = model?.beds.find(x => x.key === key); return b ? `${b.tip} · Click to see the files agents touched here` : ''; };
   /** A building, clicked: the barn starts a session; the board reads each project's memory; the rest open their dialog. */
   function openBuilding(k) {
     if (k === 'barn') { opts.onStartSession(); return; }
@@ -316,6 +327,7 @@ export function start({ el, opts, prefs }) {
     if (hit?.id) pickFarmer(hit.id);
     else if (hit?.animal !== undefined) { overlay.openPet(hit.animal); dirty = true; }
     else if (hit?.building) openBuilding(hit.building);
+    else if (hit?.field) field.open(hit.field);
   });
   let hoverPending = false;
   canvas.addEventListener('pointermove', e => {
@@ -327,7 +339,7 @@ export function start({ el, opts, prefs }) {
       overlay.setHover(hit?.id ?? null);
       canvas.style.cursor = hit ? 'pointer' : '';
       // a farmer's tooltip, as its name tag has it (what it is doing, its context, its cost…); the barn's
-      canvas.title = hit?.id ? model?.farmers.find(f => f.id === hit.id)?.tip ?? '' : hit?.animal !== undefined ? `The ${animals.info(hit.animal)?.title.toLowerCase() ?? 'animal'}: click for what you can ask it to do` : hit?.building ? buildingTip(hit.building) : '';
+      canvas.title = hit?.id ? model?.farmers.find(f => f.id === hit.id)?.tip ?? '' : hit?.animal !== undefined ? `The ${animals.info(hit.animal)?.title.toLowerCase() ?? 'animal'}: click for what you can ask it to do` : hit?.building ? buildingTip(hit.building) : hit?.field ? fieldTip(hit.field) : '';
     });
   });
 
@@ -385,6 +397,10 @@ export function start({ el, opts, prefs }) {
     screenOf: id => { const h = farmers.headOf(id); return h ? project(h) : null; }, // where a farmer's head is in the picture, in pixels
     /** Where a building's click box is in the picture (its upper part, clear of who stands in front), in pixels. */
     buildingAt(k) { const b = buildings.hits().find(o => o.userData.hit === k && o.isMesh); if (!b) return null; const p = new THREE.Vector3(); b.getWorldPosition(p); return project({ x: p.x, y: p.y * 1.6, z: p.z }); },
+    /** Where a field's bed is in the picture (its middle), in pixels. */
+    bedAt(key) { const b = beds.hits().find(o => o.userData.field === key); if (!b) return null; const p = new THREE.Vector3(); b.getWorldPosition(p); return project({ x: p.x, y: 0.5, z: p.z }); },
+    /** The fields drawn, by key. */
+    bedKeys: () => (model?.beds ?? []).map(b => b.key),
     /** The buildings' dialog: open or not, and its title. */
     dialog: () => ({ open: overlay.dialogOpen(), title: document.querySelector('.px-dlg-title')?.textContent ?? '' }),
     /** The plants drawn, by kind (none until their models have loaded). */

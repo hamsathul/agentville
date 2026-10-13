@@ -19,7 +19,9 @@ const CSS = `
   .f3-say.st-waiting { background: #ffe9e6; border-color: #b3261e; } .f3-say.q { background: #fff4cc; }
   .f3-say::after { content: ''; position: absolute; left: 50%; top: 100%; width: 2px; height: var(--lead, 6px); margin-left: -1px; background: #2a1d14; }
   .f3-say.st-waiting::after { background: #b3261e; }
-  .f3-field { display: flex; flex-direction: column; align-items: center; gap: 3px; padding: 3px 6px; border-radius: 4px; background: rgba(28, 20, 12, .62); line-height: 0; white-space: nowrap; }
+  .f3-field { display: flex; flex-direction: column; align-items: center; gap: 3px; padding: 3px 6px; border: 0; border-radius: 4px; background: rgba(28, 20, 12, .62); line-height: 0; white-space: nowrap; pointer-events: auto; cursor: pointer; font: inherit; }
+  .f3-field:hover { background: rgba(28, 20, 12, .82); }
+  .f3-more { pointer-events: auto; cursor: pointer; border: 0; font: inherit; }
   .f3-cnt { padding: 2px 4px; border-radius: 3px; background: #f4e6c4; line-height: 0; box-shadow: 0 1px 0 rgba(0,0,0,.3); }
   .f3-cnt.silo-amber { background: #f0b429; } .f3-cnt.silo-red { background: #e04a3a; }
   .f3-empty { padding: 6px 10px; border-radius: 5px; background: rgba(28, 20, 12, .7); line-height: 0; }
@@ -114,10 +116,10 @@ export function makeOverlay(el, { opts, hooks }) {
     const keepF = new Set(), keepC = new Set();
     for (const b of m.beds) {
       keepF.add(b.key);
-      const f = keyed(fields, b.key, () => { const d = document.createElement('div'); d.className = 'f3-field'; return d; });
+      const f = keyed(fields, b.key, () => { const d = document.createElement('button'); d.type = 'button'; d.className = 'f3-field'; d.dataset.farmField = b.key; return d; }); // a click: its close-up
       const html = b.label.map((line, i) => `<span>${pxt(line, i === 0 ? (b.collision ? '#ffd166' : '#e6eef5') : b.deploy?.state === 'failed' ? '#ff8a80' : b.deploy?.state === 'ok' ? '#8ef0a0' : b.deploy?.state === 'running' ? '#ffd166' : '#a9dcf7', '#1b1420')}</span>`).join('');
       if (f.dataset.html !== html) { f.innerHTML = html; f.dataset.html = html; }
-      f.title = b.tip;
+      f.title = `${b.tip} · Click to see the files agents touched here`;
       for (const [k, n, text, tip] of [['behind', b.piles.behind, `↓${b.piles.behind}`, 'behind the remote'], ['ahead', b.piles.ahead, `↑${b.piles.ahead}`, 'unpushed'], ['dirty', b.piles.dirty, `+${b.piles.dirty}`, 'uncommitted']]) {
         if (!(n > 0)) continue;
         const key = `${b.key}|${k}`;
@@ -153,7 +155,7 @@ export function makeOverlay(el, { opts, hooks }) {
     for (const [group, n] of [...Object.entries(m.over ?? {}), ['more', more]]) {
       if (!(n > 0) || !SIGNS[group]) continue;
       keepSign.add(group);
-      const d = keyed(signs, group, () => { const e = document.createElement('div'); e.className = 'f3-cnt'; return e; });
+      const d = keyed(signs, group, () => { const e = document.createElement(group === 'more' ? 'button' : 'div'); e.className = group === 'more' ? 'f3-cnt f3-more' : 'f3-cnt'; if (group === 'more') { e.type = 'button'; e.dataset.farmMore = ''; } return e; }); // "+N more fields": the list view
       const text = group === 'more' ? `+${n} more field${n === 1 ? '' : 's'}` : `+${n} ${SIGNS[group][2]}`;
       const h = pxt(text, '#5a3a1a', null);
       if (d.dataset.html !== h) { d.innerHTML = h; d.dataset.html = h; }
@@ -256,6 +258,9 @@ export function makeOverlay(el, { opts, hooks }) {
   document.addEventListener('keydown', e => { if (e.key === 'Escape') { if (pet) closePet(); else if (help) openHelp(false); } });
   // a farmer's tag opens it; its bubble opens its whole conversation; × hides the bubble until it says something new
   ov.addEventListener('click', e => {
+    const fieldBtn = e.target.closest('[data-farm-field]');
+    if (fieldBtn) { hooks.openField(fieldBtn.dataset.farmField); return; }
+    if (e.target.closest('[data-farm-more]')) { opts.onShowRepos?.(); return; }
     const x = e.target.closest('.x'), say = e.target.closest('.f3-say'), tag = e.target.closest('.f3-tag');
     if (x && say) { closed.set(say.dataset.id, (farmers.find(f => f.id === say.dataset.id)?.say ?? '').trim()); say.remove(); says.delete(say.dataset.id); return; }
     if (say) opts.onPickAgent(say.dataset.id, { from: 'say' });

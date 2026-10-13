@@ -11,7 +11,8 @@ const m = v => v / PX;
 
 export function makeBeds(THREE, mats, S, weather, crops) {
   const group = new THREE.Group();
-  const shown = new Map(); // key → { obj, sig, fx: [{ tick }], flag }
+  const shown = new Map(); // key → { obj, sig, fx: [{ tick }], flag, hit }
+  const hitMat = new THREE.MeshBasicMaterial({ visible: false }); // the click boxes': never drawn
 
   const shade = (hex, k) => `#${[1, 3, 5].map(i => Math.min(255, Math.round(parseInt(hex.slice(i, i + 2), 16) * k)).toString(16).padStart(2, '0')).join('')}`;
 
@@ -89,8 +90,13 @@ export function makeBeds(THREE, mats, S, weather, crops) {
     if (flag) flag.userData.live = true;
     for (const f of fx) f.object.userData.live = true;
     S.bake(g, { keep: o => Boolean(o.userData.live) }); // the bed in one draw call; its flag and weather move
+    // what a click finds: a box over the bed and its piles (invisible), its field's key on it
+    const hit = new THREE.Mesh(new THREE.BoxGeometry(w, 1.6, d), hitMat);
+    hit.position.set(c.x, 0.8, c.z);
+    hit.userData.field = b.key;
+    g.add(hit);
     group.add(g);
-    return { obj: g, fx, flag };
+    return { obj: g, fx, flag, hit };
   }
   function buildFallow(s, H, season) {
     const g = new THREE.Group(), P = (x, y) => S.at(x, y, H), pal = seasonPalette(season), c = P(s.x0 + 36, s.y0 + 17);
@@ -132,5 +138,9 @@ export function makeBeds(THREE, mats, S, weather, crops) {
       if (v.flag) v.flag.rotation.y = Math.sin(t * 3) * 0.25;
     }
   }
-  return { group, sync, tick, dispose: () => { for (const v of shown.values()) disposeTree(v.obj); shown.clear(); } };
+  return {
+    group, sync, tick,
+    /** What a click can find: each bed's box (userData.field: its key). */
+    hits: () => [...shown.values()].map(v => v.hit).filter(Boolean),
+    dispose: () => { for (const v of shown.values()) disposeTree(v.obj); shown.clear(); } };
 }

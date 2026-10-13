@@ -101,3 +101,6 @@ export function makeHud(host, { opts, prefs, hooks, iconImg }) {
     },
   };
 }
+
+/** What a click is on, of what is under the pointer: a farmer first, then an animal, then a building, then a field (the engine's order). */
+export const clickOrder = hits => ['id', 'animal', 'building', 'field'].map(k => hits.find(h => h?.[k] !== undefined)).find(Boolean) ?? null;
