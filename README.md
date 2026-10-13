@@ -1329,7 +1329,7 @@ without it the world says so and you can pick another. It uses the graphics card
 second, and draws nothing while the page shows its list or the tab is hidden; with **Motion** off (or
 reduced motion) it draws only when something changes. three.js (0.186.1, MIT licence; with its glTF loader
 for the animals) is part of Agentville, in `web/worlds/farm3d/vendor/`, and the animals' models are in
-`web/worlds/farm3d/models/` (about 2.3 MB, packed into JS files the world imports): nothing is downloaded
+`web/worlds/farm3d/models/` (about 3 MB, packed into JS files the world imports): nothing is downloaded
 from anywhere, and the world sees the same scene as the farm and sends nothing.
 
 ### Notifications and the bell
