@@ -29,6 +29,9 @@ const CSS = `
   .f3-help { position: absolute; z-index: 90; top: 56px; right: 10px; width: min(420px, calc(100% - 20px)); max-height: calc(100% - 76px); overflow: auto; padding: 12px 14px; background: linear-gradient(#fbf3dc, #f1e3bd); color: #2b2116; border: 2px solid #6b4320; border-radius: 6px; box-shadow: 0 3px 0 #4e3626; font: 13px/1.45 system-ui, sans-serif; }
   .f3-help h2 { margin: 0 0 6px; font-size: 15px; } .f3-help dl { display: grid; grid-template-columns: auto 1fr; gap: 3px 10px; margin: 6px 0; } .f3-help dt { font-weight: 700; }
   .f3-help .close { position: absolute; top: 6px; right: 8px; border: 0; background: none; font-size: 18px; cursor: pointer; color: #6b4320; }
+  .f3-talk { position: absolute; left: 0; top: 0; width: max-content; max-width: 170px; padding: 3px 8px 4px; background: #ffffff; color: #2b2116; border: 1.5px solid #8a7a66; border-radius: 12px; font: italic 600 11px/1.3 system-ui, sans-serif; box-shadow: 0 2px 0 rgba(0, 0, 0, .18); z-index: 3; pointer-events: none; }
+  .f3-talk::after { content: ''; position: absolute; left: 50%; top: 100%; margin-left: -5px; border: 5px solid transparent; border-top-color: #8a7a66; }
+  .f3-talk.you { background: #fff8d6; border-color: #c9a24a; } .f3-talk.you::after { border-top-color: #c9a24a; }
   .f3-pet { pointer-events: auto; z-index: 8; width: 212px; padding: 7px 8px 8px; background: linear-gradient(#fbf3dc, #f1e3bd); color: #2b2116; border: 2px solid #6b4320; border-radius: 6px; box-shadow: 0 3px 0 #4e3626; font: 12px/1.35 system-ui, sans-serif; }
   .f3-pet b { display: block; margin: 0 18px 5px 2px; font-size: 13px; }
   .f3-pet .close { position: absolute; top: 2px; right: 4px; border: 0; background: none; font-size: 17px; line-height: 1; cursor: pointer; color: #6b4320; padding: 2px 4px; }
@@ -47,7 +50,7 @@ const HELP = `<h2>The 3D farm <small>(a prototype)</small></h2>
     <dt>Weather</dt><dd>Rain: its deploy failed · a rainbow: it worked · a windmill: it runs</dd>
     <dt>Elsewhere</dt><dd>The shade tree: idle · scarecrows: stale · hammocks: it wakes up by itself · the meadow: working outside any repo · a cloud: thinking</dd>
     <dt>Silo</dt><dd>Your plan's weekly use as grain; a lamp near the limit. The season follows the 5-hour limit</dd>
-    <dt>Animals</dt><dd>Just for fun, never for data. They walk, graze and rest, round the pond and the trees and inside their fences, and now and then get up to something; a frog and three fish live in the pond. Click one for what you can ask it to do: pet it, feed it, send it running, throw the dogs a stick, send the frog diving…</dd>
+    <dt>Animals</dt><dd>Just for fun, never for data. They walk, graze and rest, round the pond and the trees and inside their fences, and now and then get up to something; a frog and three fish live in the pond. They talk to each other and to the farmers near them now and then (Bubbles hides it). Click one for what you can ask it to do: talk, pet it, feed it, send it running, throw the dogs a stick, send the frog diving…</dd>
     <dt>Moving</dt><dd>Drag to pan, scroll or pinch to zoom. Right-drag (or Shift-drag) to turn and tilt the farm; ↺ ↻ (or Q / E) turn it 15°, ⌂ puts it back square-on. Click a farmer to open it; its bubble for its whole conversation; the barn to start a session</dd>
   </dl>
   <p>Not here yet: the stats panel, a field's close-up, the diary, subagents, carts, and the farmers playing with the animals.</p>`;
@@ -61,7 +64,8 @@ export function makeOverlay(el, { opts, hooks }) {
   const hud = document.createElement('div');
   hud.className = 'px-hud';
   el.append(ov, hud);
-  const tags = new Map(), says = new Map(), fields = new Map(), cnts = new Map(), silos = new Map(), signs = new Map();
+  const tags = new Map(), says = new Map(), fields = new Map(), cnts = new Map(), silos = new Map(), signs = new Map(), talks = new Map();
+  let talkItems = []; // what the animals and farmers are saying to each other now (talk.js), each over its speaker
   // Farmers beyond a place's room aren't drawn: a sign says how many, in the 2D farm's words (web/worlds/farm/world.js,
   // labels), by the place (layout.js, signsOf); and fields beyond the grid's 18 beds.
   const closed = new Map(); // id → the words its bubble had when × closed it
@@ -172,6 +176,24 @@ export function makeOverlay(el, { opts, hooks }) {
     const at = model ? signsOf(model.ground) : {};
     for (const [group, d] of signs) if (at[group]) put(d, project(at3(at[group][0], at[group][1], at[group][1] < 90 ? 2.8 : 0.4)));
     if (empty && model) { const G = model.ground.GRID; put(empty, project(at3((G.x0 + G.x1) / 2, (G.y0 + G.y1) / 2, 0))); }
+    // a conversation's bubbles: over the speaker, moved up while they would cover a farmer's own bubble or another
+    const keepTalk = new Set();
+    for (const it of talkItems) {
+      const e = keyed(talks, it.key, () => { const d = document.createElement('div'); d.className = 'f3-talk'; return d; });
+      keepTalk.add(it.key);
+      if (e.textContent !== it.text) e.textContent = it.text;
+      e.classList.toggle('you', Boolean(it.toYou));
+      const p = it.top && project(it.top);
+      if (!p?.visible) { e.style.display = 'none'; continue; }
+      const w = e.offsetWidth || 120, hh = e.offsetHeight || 22;
+      let y = p.y - 8, tries = 0;
+      const hits = yy => boxes.some(b => p.x - w / 2 < b.x1 && p.x + w / 2 > b.x0 && yy - hh < b.y1 && yy > b.y0);
+      while (hits(y) && tries++ < 6) y -= hh * 0.8;
+      boxes.push({ x0: p.x - w / 2, x1: p.x + w / 2, y0: y - hh, y1: y });
+      e.style.display = '';
+      e.style.transform = `translate(${Math.round(p.x)}px, ${Math.round(y)}px) translate(-50%, -100%)`;
+    }
+    prune(talks, keepTalk);
     if (pet) { const top = hooks.animal(pet.i)?.top; if (top) put(pet.el, project(top), -4); else closePet(); }
   }
 
@@ -249,6 +271,10 @@ export function makeOverlay(el, { opts, hooks }) {
     sync, place, renderHud, openPet, closePet,
     /** The animal whose menu is open, or null. */
     petOpen: () => pet?.i ?? null,
+    /** What is being said now: [{ key, text, top (the point over the speaker, in the world), toYou }] (none with Bubbles off). */
+    setTalk(items) { talkItems = items; },
+    /** The talk bubbles on the page (for the check). */
+    talkShown: () => [...talks.values()].filter(e => e.style.display !== 'none').map(e => e.textContent),
     setSelected(id) { selected = id; for (const [k, t] of tags) t.classList.toggle('sel', k === id); },
     setHover(id) { if (id === hover) return; hover = id; for (const [k, t] of tags) t.classList.toggle('hover', k === id); },
     count: () => tags.size,

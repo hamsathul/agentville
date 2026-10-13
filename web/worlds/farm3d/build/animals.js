@@ -268,10 +268,12 @@ export function makeAnimals(THREE, mats, S) {
       const w = animals[i];
       if (!w || !on) return null;
       w.root.updateMatrixWorld();
-      return { kind: w.a.kind, title: MODELS[w.a.kind].title, menu: menuFor(w.a.kind, w.a.family).map(id => ({ id, label: ACTS[id].label })), act: w.a.act, part: w.a.part, spot: [w.a.x, w.a.y], top: { x: w.root.position.x, y: w.t.top + 0.3, z: w.root.position.z } };
+      return { shown: w.root.visible, kind: w.a.kind, title: MODELS[w.a.kind].title, menu: menuFor(w.a.kind, w.a.family).map(id => ({ id, label: ACTS[id].label })), act: w.a.act, part: w.a.part, spot: [w.a.x, w.a.y], top: { x: w.root.position.x, y: w.t.top + 0.3, z: w.root.position.z } };
     },
     /** Animal i's colours, by colour area, and how metallic its most metallic part is (for the check). */
     coat: i => (animals[i] && on ? coatOf(animals[i].model) : null),
+    /** Turns animal i to face a place on the map (one it talks to). */
+    face(i, [x, y]) { const w = animals[i]; if (w && Math.hypot(x - w.a.x, y - w.a.y) > 1) w.a.face = Math.atan2(x - w.a.x, y - w.a.y); },
     /** Asks animal i to do act (from its menu). */
     command(i, act) { const w = animals[i]; if (w && menuFor(w.a.kind, w.a.family).includes(act)) command(w.a, act, env); },
     dispose() { for (const w of animals) w.mixer.stopAllAction(); creatures.clear(); pads.clear(); animals.length = 0; templates.clear(); },

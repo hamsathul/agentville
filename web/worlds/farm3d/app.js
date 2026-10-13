@@ -17,6 +17,10 @@ import { makeFigures } from './build/figurine.js';
 import { makeFarmers } from './build/farmers.js';
 import { makeAnimals } from './build/animals.js';
 import { makeNature } from './build/nature.js';
+import { createTalk } from './talk.js';
+
+// what a farmer is doing, as a word, from the tool in its hands (for what it says to the animals)
+const STEP_WORDS = { hoe: 'editing', rake: 'editing', sickle: 'editing', hammer: 'fixing', seeds: 'writing', almanac: 'reading', recipe: 'reading', clipboard: 'planning', blueprint: 'planning', spyglass: 'searching', magnifier: 'searching', pigeon: 'browsing', parcel: 'calling tools', mailbag: 'calling tools', crate: 'committing', cart: 'pushing', barrow: 'pushing', lantern: 'thinking', whistle: 'delegating', can: 'working' };
 import { PX, SILO_Y, W } from './layout.js';
 
 const SKIES = ['live', 'day', 'night'], SEASON_MODES = ['live', 'spring', 'summer', 'autumn', 'winter'];
@@ -77,7 +81,21 @@ export function start({ el, opts, prefs }) {
   const shapes = makeShapes(THREE, mats), buildings = makeBuildings(THREE, mats, shapes);
   const crops = makeCrops(THREE, mats), beds = makeBeds(THREE, mats, shapes, makeWeather(THREE, mats, shapes), crops);
   const farmers = makeFarmers(THREE, makeFigures(THREE, mats, shapes), shapes), animals = makeAnimals(THREE, mats, shapes), weather = makeWeather(THREE, mats, shapes);
-  const nature = makeNature(THREE, shapes);
+  const nature = makeNature(THREE, shapes), talk = createTalk();
+  /** Who is where and what is happening, for talk.js: refreshed twice a second. */
+  let talkScene = null, talkSceneAt = -1e9;
+  function sceneForTalk(now) {
+    if (talkScene && now - talkSceneAt < 500) return talkScene;
+    const list = [];
+    for (let i = 0; i < animals.count(); i++) { const a = animals.info(i); if (a?.shown) list.push({ i, kind: a.kind, x: a.spot[0], y: a.spot[1] }); }
+    const beds = model?.beds ?? [], season = shownSeason();
+    const repoName = key => beds.find(b => b.key === key)?.name ?? null; // a field's name, never its path
+    const people = (model?.farmers ?? []).filter(f => !f.scarecrow).map(f => ({ id: f.id, name: f.name, state: f.state, x: f.at[0], y: f.at[1], step: STEP_WORDS[f.prop] ?? null, repo: repoName(f.field) }));
+    const events = beds.filter(b => b.weather === 'rain' || b.weather === 'rainbow').map(b => ({ kind: b.weather === 'rain' ? 'deployFailed' : 'deployOk', repo: b.name }));
+    talkScene = { animals: list, farmers: people, facts: { night: night > 0.5, weather: season === 'winter' ? 'snow' : beds.some(b => b.weather === 'rain') ? 'rain' : null, events } };
+    talkSceneAt = now;
+    return talkScene;
+  }
   scene3.add(terrain.group, buildings.group, beds.group, crops.group, farmers.group, animals.group, nature.group);
   /** The ball trees, bushes and rocks stand in until the plants' models are drawn. */
   const standIns = () => { const on = !nature.ready(); terrain.setForest(on); buildings.setPlants(on); };
@@ -122,7 +140,15 @@ export function start({ el, opts, prefs }) {
       pick: id => pickFarmer(id),
       hover: id => overlay.setHover(id),
       animal: i => animals.info(i),
-      act(i, act) { animals.command(i, act); dirty = true; },
+      act(i, act) {
+        animals.command(i, act);
+        if (act === 'talk') { // it talks at once: to the nearest animal or farmer, facing it, or to you
+          talk.start(i, sceneForTalk(performance.now()));
+          const to = talk.bubbles().find(b => b.who === i)?.to;
+          if (to) animals.face(i, [to.x, to.y]);
+        }
+        dirty = true;
+      },
       cycle(what) {
         if (what === 'sky') { skyMode = SKIES[(SKIES.indexOf(skyMode) + 1) % SKIES.length]; prefs.set('sky', skyMode); lastSky = -Infinity; }
         if (what === 'season') { seasonMode = SEASON_MODES[(SEASON_MODES.indexOf(seasonMode) + 1) % SEASON_MODES.length]; prefs.set('season', seasonMode); rebuildAll(); }
@@ -260,6 +286,11 @@ export function start({ el, opts, prefs }) {
     const walking = farmers.tick(t, dt, opts.still);
     if (animals.tick(t, dt, night)) dirty = true;
     nature.blow(t, model?.beds.some(b => b.weather === 'rain') ? 2.2 : 1); // the wind in the trees, harder while a field rains
+    if (!opts.still && model) talk.tick(sceneForTalk(now), dt); // conversations now and then; held still with Motion off
+    overlay.setTalk(bubblesOn ? talk.bubbles().map(b => {
+      const top = typeof b.who === 'number' ? animals.info(b.who)?.top : (h => h && { x: h.x, y: h.y + 0.55, z: h.z })(farmers.headOf(b.who));
+      return { key: `${b.conversation}|${b.who}`, text: b.text, toYou: b.toYou, top };
+    }) : []);
     if (!opts.still) { // the world moves: the wind in the crops, the weather, the snow
       crops.tick(t);
       beds.tick(t, dt);
@@ -284,6 +315,8 @@ export function start({ el, opts, prefs }) {
     farmerIds: () => (model?.farmers ?? []).filter(f => !f.scarecrow).map(f => f.id),
     /** The wind in the trees: its clock and strength. */
     wind: () => nature.wind(),
+    /** The talk bubbles shown now (their words). */
+    talk: () => overlay.talkShown(),
     /** Animal i: its kind, what it is doing, where it is on the 2D map, and where its middle is in the picture, in pixels. */
     animal: i => { const a = animals.info(i); return a && { kind: a.kind, act: a.act, part: a.part, spot: a.spot, at: project({ x: a.top.x, y: a.top.y * 0.5, z: a.top.z }), coat: animals.coat(i) }; },
     /** A view to hold: yaw and pitch in degrees, zoom, and a 2D farm point to glide to. */

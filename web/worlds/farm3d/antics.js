@@ -29,6 +29,7 @@ export const HERDS = [
 /** Everything an animal can do, by its menu's words. "fly" (a fly bothers it) is a habit only. */
 export const ACTS = {
   pet: { label: 'Pet' },
+  talk: { label: 'Talk' },
   feed: { label: 'Feed' },
   run: { label: 'Run' },
   leap: { label: 'Leap' },
@@ -48,10 +49,10 @@ const DOGS = ['husky', 'shiba'], GRAZERS = ['cow', 'bull', 'alpaca', 'donkey', '
 
 /** Its menu: everything it can be asked to do, in the menu's order. */
 export function menuFor(kind, family) {
-  if (family === 'frog') return ['hop', 'snap', 'dive', 'dead'];
-  if (family === 'fish') return ['leap'];
+  if (family === 'frog') return ['talk', 'hop', 'snap', 'dive', 'dead'];
+  if (family === 'fish') return ['talk', 'leap'];
   const own = family === 'hooves' ? ['kick', 'headbutt'] : ['pounce', ...(DOGS.includes(kind) ? ['fetch'] : [])];
-  return ['pet', 'feed', 'run', 'leap', 'hop', ...own, 'sniff', 'look', 'dead'];
+  return ['pet', 'talk', 'feed', 'run', 'leap', 'hop', ...own, 'sniff', 'look', 'dead'];
 }
 /** Its habits, each with how often it picks it. Never playing dead (only when asked), never fetching (it needs you). */
 export function habitsOf(kind, family) {
@@ -83,7 +84,7 @@ function pickHabit(a, rand) {
  */
 export function stepsFor(act, a, env, { habit = false } = {}) {
   if (a.family === 'frog') return frogSteps(act, env);
-  if (a.family === 'fish') return act === 'leap' ? [{ part: 'run', to: 'near', jump: 0.9, secs: 1.1 }] : [];
+  if (a.family === 'fish') return act === 'leap' ? [{ part: 'run', to: 'near', jump: 0.9, secs: 1.1 }] : act === 'talk' ? [{ part: 'idle', secs: 4 }] : [];
   switch (act) {
     case 'pet': return [{ part: env.rand() < 0.5 ? 'flinchLeft' : 'flinchRight' }, { part: 'look' }];
     case 'fly': return [{ part: env.rand() < 0.5 ? 'flinchLeft' : 'flinchRight' }];
@@ -97,6 +98,7 @@ export function stepsFor(act, a, env, { habit = false } = {}) {
     case 'fetch': return [{ stick: 'throw' }, { part: 'idle', secs: 0.6 }, { part: 'run', to: 'stick' }, { part: 'headlow', secs: 0.5 }, { stick: 'pick' }, { part: 'run', to: 'home' }, { stick: 'drop' }, { part: 'hop' }];
     case 'sniff': return [{ part: 'headlow', secs: 4 }];
     case 'look': return [{ part: 'look' }];
+    case 'talk': return [{ part: 'look' }, { part: 'idle', secs: 5 }]; // it stops, looks up and talks (talk.js says what)
     case 'dead': return [{ part: 'dead', hold: 2.5 }, { part: 'idle', secs: 1, fade: 0.9 }, { part: 'look' }];
     default: return [];
   }
@@ -109,6 +111,7 @@ export function stepsFor(act, a, env, { habit = false } = {}) {
 function frogSteps(act, env) {
   switch (act) {
     case 'hop': return [{ part: 'hop', to: 'pad', jump: 0.6 }];
+    case 'talk': return [{ part: 'idle', secs: 6 }]; // it sits and talks (talk.js says what)
     case 'snap': return [{ part: 'snap' }];
     case 'dive': return [{ part: 'hop', to: 'water', jump: 0.5, wet: true }, { part: 'idle', secs: 3 + env.rand() * 4, under: true, wet: true }, { part: 'hop', to: 'pad', jump: 0.6 }];
     case 'dead': return [{ part: 'dead', hold: 2.5 }, { part: 'idle', secs: 1, fade: 0.9 }];

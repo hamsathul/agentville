@@ -1325,10 +1325,18 @@ patch, the pasture across the front, and the meadow and the forest running on al
     CC0). A trout, a koi and a roach swim just under the surface and now and then leap out with a
     splash; the frog sits on a pad, hops pad to pad, snaps at flies, and dives, to come up on a pad a
     while later. In winter the pond is ice and they are out of sight.
-  - **Click one for its menu**: Pet, Feed, Run (a gallop out and back), Leap, Hop, Sniff, Look around and
+  - **They talk**: now and then two animals near each other trade a few lines, or a farmer and an animal
+    near it do (one at work in its bed over the pasture's fence, one idle under the shade tree with the
+    dogs), each in its own voice and about what is happening: the farmer's name, what it is doing
+    (editing, reading, pushing…), its repo's name, a deploy that failed or went out, the night, the
+    rain. A farmer waiting on you or whose turn ended is never drawn in, and their bubbles stay clear.
+    The lines are the world's own; nothing is sent anywhere or to any session. **Bubbles** in the Menu
+    hides them too.
+  - **Click one for its menu**: Talk (it talks at once to the nearest animal or farmer, turning to it,
+    or to you if no one is near), Pet, Feed, Run (a gallop out and back), Leap, Hop, Sniff, Look around and
     Play dead (it falls over, lies still, and gets up again), with Kick and Headbutt for the hoofed ones,
     Pounce for the dogs, the fox and the wolf, and Throw a stick for the dogs (the dog runs for it and
-    brings it back). The frog's: Hop, Catch a fly, Dive and Play dead; a fish's: Leap. Esc or a click
+    brings it back). The frog's: Talk, Hop, Catch a fly, Dive and Play dead; a fish's: Talk and Leap. Esc or a click
     elsewhere shuts it. With **Motion** off they stand still and the menu says so.
   - They load just after the farm (a moment's pause the first time), and **Animals** in the Menu hides
     them (not the lily pads). `web/worlds/farm3d/models/LICENSE.md` lists each model, and

@@ -148,15 +148,27 @@ try {
       await chrome.inFrame('/world/farm3d/', "document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }))");
       const dog = JSON.parse(await clickAnimal(8));
       await chrome.inFrame('/world/farm3d/', "document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }))");
+      // Talk: the cow says something at once; with Bubbles off nothing shows
+      await clickAnimal(0);
+      await chrome.inFrame('/world/farm3d/', "document.querySelector('.f3-pet [data-act=\"talk\"]')?.click()");
+      await sleep(400);
+      const said = JSON.parse(await chrome.inFrame('/world/farm3d/', 'JSON.stringify(window.__farm3d.talk())'));
+      await chrome.inFrame('/world/farm3d/', "document.querySelector('[data-farm-menu]').click()");
+      await sleep(150);
+      await chrome.inFrame('/world/farm3d/', "document.querySelector('[data-f3-bubbles]').click()");
+      await sleep(400);
+      const hushed = JSON.parse(await chrome.inFrame('/world/farm3d/', 'JSON.stringify(window.__farm3d.talk())'));
+      await chrome.inFrame('/world/farm3d/', "document.querySelector('[data-f3-bubbles]').click()"); // back on
+      await chrome.inFrame('/world/farm3d/', "document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }))");
       const shut = await chrome.inFrame('/world/farm3d/', "Boolean(document.querySelector('.f3-pet'))");
-      const menuOk = cow.kind === 'cow' && cow.menu.includes('headbutt') && cow.menu.includes('dead') && doing.act === 'hop' && !doing.open && dog.kind === 'husky' && dog.menu.includes('fetch') && shut === false && frog.kind === 'frog' && frog.menu.join(' ') === 'hop snap dive dead';
+      const menuOk = cow.kind === 'cow' && cow.menu.includes('headbutt') && cow.menu.includes('dead') && doing.act === 'hop' && !doing.open && dog.kind === 'husky' && dog.menu.includes('fetch') && shut === false && frog.kind === 'frog' && frog.menu.join(' ') === 'talk hop snap dive dead' && cow.menu.includes('talk') && said.length >= 1 && said.every(t => t.length) && hushed.length === 0;
       await chrome.inFrame('/world/farm3d/', "document.querySelector('[data-farm-menu]').click()");
       await sleep(200);
       await chrome.inFrame('/world/farm3d/', "document.querySelector('[data-farm-animals]').click()");
       await sleep(400);
       const off = (await statsOf(chrome))?.animals, strip = await stripOf(chrome);
-      if (on !== ANIMALS || off !== 0 || !coatOk || !menuOk || strip || chrome.errors.length > before) bad(`animals: ${on} out (${ANIMALS} wanted), ${off} after the Animals switch (0 wanted); the cow's colours ${JSON.stringify(coat)} (coats.js's, no metal, spots on about ${SPOTS.cow.share} of her coat, wanted); the cow's menu ${cow.menu.join(' ') || 'never opened'}, after Hop ${JSON.stringify(doing)}; the frog's menu ${frog.menu.join(' ') || 'never opened'}; the husky's menu ${dog.menu.join(' ') || 'never opened'}, after Esc ${shut ? 'still open' : 'shut'}${strip ? `; an error strip: ${oneLine(strip).slice(0, 160)}` : ''}`);
-      else console.log(`  ✓ animals: ${ANIMALS} out once loaded (the frog and the fish too), in coats.js's colours with no metal, the cow spotted; a click opens one's menu (the frog's its own, the husky's has Throw a stick), Hop sets the cow hopping, Esc shuts it; none after the Animals switch`);
+      if (on !== ANIMALS || off !== 0 || !coatOk || !menuOk || strip || chrome.errors.length > before) bad(`animals: ${on} out (${ANIMALS} wanted), ${off} after the Animals switch (0 wanted); the cow's colours ${JSON.stringify(coat)} (coats.js's, no metal, spots on about ${SPOTS.cow.share} of her coat, wanted); the cow's menu ${cow.menu.join(' ') || 'never opened'}, after Hop ${JSON.stringify(doing)}; the frog's menu ${frog.menu.join(' ') || 'never opened'}; Talk said ${JSON.stringify(said)}, with Bubbles off ${JSON.stringify(hushed)}; the husky's menu ${dog.menu.join(' ') || 'never opened'}, after Esc ${shut ? 'still open' : 'shut'}${strip ? `; an error strip: ${oneLine(strip).slice(0, 160)}` : ''}`);
+      else console.log(`  ✓ animals: ${ANIMALS} out once loaded (the frog and the fish too), in coats.js's colours with no metal, the cow spotted; a click opens one's menu (the frog's its own, the husky's has Throw a stick), Hop sets the cow hopping, Talk makes it say something (none shown with Bubbles off), Esc shuts it; none after the Animals switch`);
     }
 
     // 5. the plants: Quaternius's trees, bushes and rocks drawn once their models load (the ball trees stand in till
