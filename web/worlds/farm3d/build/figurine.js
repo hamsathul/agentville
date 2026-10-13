@@ -13,8 +13,17 @@ export const FIGURE_SCALE = 1.2; // a little larger than life, as the 2D farm's 
 
 export function makeFigures(THREE, mats, S) {
   const material = mats.std('#ffffff', { vertexColors: true });
-  const cache = new Map();
-  const baked = (key, parts) => { if (!cache.has(key)) cache.set(key, S.merge(parts)); return cache.get(key); };
+  // Baked geometry, shared by every figure that looks the same, and freed when the last of them goes (a day of
+  // agents coming and going leaves nothing behind).
+  const cache = new Map(); // key → { geo, users }
+  const KEEP = /^(badge|pole|prop)\|/; // the few shared by everyone stay
+  const baked = (key, parts, owner) => {
+    let e = cache.get(key);
+    if (!e) { e = { geo: S.merge(parts), users: new Set() }; cache.set(key, e); }
+    if (owner) e.users.add(owner);
+    return e.geo;
+  };
+  const release = owner => { for (const [k, e] of cache) if (e.users.delete(owner) && !e.users.size && !KEEP.test(k)) { e.geo.dispose(); cache.delete(k); } };
   const piece = (geometry, parent) => { const m = new THREE.Mesh(geometry, material); m.castShadow = m.receiveShadow = true; parent.add(m); return m; };
 
   /** The body's parts: torso, overalls, head and face, hair or hat, extras, the model's pin. */
@@ -69,7 +78,7 @@ export function makeFigures(THREE, mats, S) {
     root.add(fig);
     root.scale.setScalar(FIGURE_SCALE);
     root.userData.id = f.id;
-    const pivots = {};
+    const pivots = {}, owner = {};
     let dressed = '', prop = null, propName = '', badge = null, badgeName = '', think = null, pole = null;
     const ring = new THREE.Mesh(ringGeo, ringMat);
     ring.visible = false; ring.position.y = 0.03;
@@ -83,12 +92,13 @@ export function makeFigures(THREE, mats, S) {
       if (key === dressed) return;
       dressed = key;
       for (const k of Object.keys(pivots)) { fig.remove(pivots[k]); delete pivots[k]; }
-      piece(baked(`body|${key}`, bodyParts(c, lk, pin)), fig);
-      const hip = (x, parts, k) => { const g = new THREE.Group(); g.position.set(x, 0.5, 0); fig.add(g); piece(baked(k, parts), g); return g; };
+      release(owner);
+      piece(baked(`body|${key}`, bodyParts(c, lk, pin), owner), fig);
+      const hip = (x, parts, k) => { const g = new THREE.Group(); g.position.set(x, 0.5, 0); fig.add(g); piece(baked(k, parts, owner), g); return g; };
       pivots.body = fig.children.at(-1);
       pivots.legL = hip(-0.12, legParts(c), `leg|${c.bottom}`);
       pivots.legR = hip(0.12, legParts(c), `leg|${c.bottom}`);
-      const shoulder = (x, k) => { const g = new THREE.Group(); g.position.set(x, 1.02, 0); fig.add(g); piece(baked(k, armParts(c)), g); return g; };
+      const shoulder = (x, k) => { const g = new THREE.Group(); g.position.set(x, 1.02, 0); fig.add(g); piece(baked(k, armParts(c), owner), g); return g; };
       pivots.armL = shoulder(-0.33, `arm|${c.shirt}|${c.skin}`);
       pivots.armR = shoulder(0.33, `arm|${c.shirt}|${c.skin}`);
       if (pole) { root.remove(pole); pole = null; }
@@ -156,10 +166,10 @@ export function makeFigures(THREE, mats, S) {
       root, pivots, pose, setProp, setBadge, propPose: () => prop?.userData.pose ?? null,
       setSelected(on) { ring.visible = on; },
       update(f2) { dress(f2); },
-      dispose() { root.removeFromParent(); },
+      dispose() { root.removeFromParent(); release(owner); },
     };
     dress(f);
     return figure;
   }
-  return { make, dispose() { for (const g of cache.values()) g.dispose(); cache.clear(); ringGeo.dispose(); } };
+  return { make, dispose() { for (const e of cache.values()) e.geo.dispose(); cache.clear(); ringGeo.dispose(); }, cached: () => cache.size };
 }

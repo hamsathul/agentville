@@ -47,7 +47,7 @@ export function makeSky(THREE, scene, mats) {
   /** The light for this hour ({ phase, light, hour } from skyAt). Returns the night factor, 0 by day … 1 at night. */
   function set({ phase, light, hour }) {
     const key = `${phase}|${light.toFixed(2)}|${Math.round(hour * 4)}`;
-    const night = 1 - light;
+    const night = Math.round((1 - light) * 100) / 100;
     if (key === last) return night;
     last = key;
     // between day and night the light passes through dusk's warm colours

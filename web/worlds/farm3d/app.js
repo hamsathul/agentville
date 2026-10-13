@@ -24,7 +24,26 @@ const NEAR_ZOOM = 2; // from here in, every farmer's name and bubble shows
 const STYLE = `
   #farm.f3 { position: relative; overflow: hidden; background: #cfe6f5; }
   #farm.f3 .f3-canvas { position: absolute; inset: 0; width: 100%; height: 100%; display: block; touch-action: none; }
+  #farm.f3 .f3-nogl { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 8px; padding: 24px; text-align: center; background: #1c3320; color: #fff3d6; font: 600 15px/1.45 system-ui, sans-serif; }
+  #farm.f3 .f3-nogl small { max-width: 520px; font-weight: 400; color: #c9b48a; }
 `;
+/** Each error once (by its words and where), to the page through the bridge; the farm carries on. */
+const told = new Set();
+function report(err, where) {
+  const message = String(err?.message ?? err).slice(0, 300), key = `${message}@${where}`;
+  if (told.has(key) || told.size >= 20) return;
+  told.add(key);
+  window.Agentville?.send?.({ type: 'error', message, where });
+}
+/** A renderer, or why there is none (the browser has WebGL switched off, or none at all). */
+function makeRenderer(THREE) {
+  if (window.__farm3dForceNoWebGL === true) return { error: 'WebGL is switched off for this test.' };
+  try {
+    const probe = document.createElement('canvas');
+    if (!probe.getContext('webgl2') && !probe.getContext('webgl')) return { error: 'This browser gives this page no WebGL context (hardware acceleration may be off).' };
+    return { renderer: new THREE.WebGLRenderer({ antialias: true, powerPreference: 'low-power' }) };
+  } catch (err) { return { error: String(err?.message ?? err) }; }
+}
 
 export function start({ el, opts, prefs }) {
   el.innerHTML = '';
@@ -36,7 +55,13 @@ export function start({ el, opts, prefs }) {
   const kit = { makeGrid, engineScene, tagText, cutMid, lastPart, ago, lookFor: window.Agentville.people.lookFor, pick: window.Agentville.people.pick };
   const M = makeModel(kit);
 
-  const renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: 'low-power' });
+  const made = makeRenderer(THREE);
+  if (!made.renderer) { // no WebGL: say so plainly, and start all the same (the page's corner still has World ▾ and List)
+    el.innerHTML = `<div class="f3-nogl" role="status">The 3D farm needs WebGL, which this browser has switched off or doesn't have.<small>${made.error.replace(/[&<>]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' })[c])} Choose another world with World ▾ at the top left; the farm draws without it.</small></div>`;
+    window.__farm3d = { stats: () => ({ noWebGL: true }) };
+    return { scene() {}, select() {} };
+  }
+  const { renderer } = made;
   renderer.shadowMap.enabled = true;
   renderer.shadowMap.type = THREE.PCFSoftShadowMap;
   renderer.toneMapping = THREE.ACESFilmicToneMapping;
@@ -136,6 +161,9 @@ export function start({ el, opts, prefs }) {
   }
 
   function onScene(s) {
+    try { applyScene(s); } catch (err) { report(err, 'scene'); }
+  }
+  function applyScene(s) {
     model = M.farmModel(s, keep);
     const bedMap = JSON.stringify(model.keep.beds);
     if (bedMap !== JSON.stringify(keep.beds)) prefs.set('beds', bedMap);
@@ -196,11 +224,15 @@ export function start({ el, opts, prefs }) {
   const silo3 = x => at3(x + 10, 86, 0.6);
   let lastFrame = 0, lastTick = performance.now(), lastSky = -Infinity, wasNear = false;
   renderer.setAnimationLoop(now => {
-    if (document.hidden || now - lastFrame < FRAME_MS - 2) return;
+    // nothing while the tab is hidden or the page shows its list (the frame has no size then), at most 30 a second
+    if (document.hidden || !el.clientWidth || now - lastFrame < FRAME_MS - 2) return;
     lastFrame = now;
+    try { frame(now); } catch (err) { report(err, 'frame'); }
+  });
+  function frame(now) {
     const dt = Math.min(0.1, (now - lastTick) / 1000);
     lastTick = now;
-    if (now - lastSky > 2000) { lastSky = now; night = sky.set(skyFor(new Date(), skyMode, skyAt)); dirty = true; }
+    if (now - lastSky > 2000) { lastSky = now; const n = sky.set(skyFor(new Date(), skyMode, skyAt)); if (n !== night) { night = n; dirty = true; } }
     const moving = rig.update(dt), t = opts.still ? 0 : now / 1000;
     const walking = farmers.tick(t, dt, opts.still);
     animals.tick(t, dt, night);
@@ -214,7 +246,7 @@ export function start({ el, opts, prefs }) {
     dirty = false;
     renderer.render(scene3, camera);
     if (model) overlay.place(project, id => farmers.headOf(id), at3, silo3);
-  });
+  }
 
   // For the browser check (scripts/farm3d-check.mjs) and close-up pictures: what is drawn, and a view to hold.
   window.__farm3d = {
