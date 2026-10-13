@@ -16,7 +16,7 @@ import { makeBeds } from './build/beds.js';
 import { makeFigures } from './build/figurine.js';
 import { makeFarmers } from './build/farmers.js';
 import { makeAnimals } from './build/animals.js';
-import { PX, W } from './layout.js';
+import { PX, SILO_Y, W } from './layout.js';
 
 const SKIES = ['live', 'day', 'night'], SEASON_MODES = ['live', 'spring', 'summer', 'autumn', 'winter'];
 const FRAME_MS = 1000 / 30; // at most 30 frames a second
@@ -233,7 +233,7 @@ export function start({ el, opts, prefs }) {
     return { x: (v.x * 0.5 + 0.5) * w, y: (-v.y * 0.5 + 0.5) * h, visible: v.z < 1 && v.x > -1.2 && v.x < 1.2 && v.y > -1.2 && v.y < 1.3 };
   };
   const at3 = (x, y, h = 0) => { const p = shapes.at(x, y, model.ground.H); return { x: p.x, y: h, z: p.z }; };
-  const silo3 = x => at3(x + 10, 86, 0.6);
+  const silo3 = x => at3(x + 10, SILO_Y + 18, 0.6);
   let lastFrame = 0, lastTick = performance.now(), lastSky = -Infinity, wasNear = false;
   renderer.setAnimationLoop(now => {
     // nothing while the tab is hidden or the page shows its list (the frame has no size then), at most 30 a second

@@ -2,13 +2,13 @@
 // uses (route.js), at the farm's pace (40 px a second, 68 in fast mode); a newcomer walks out of the barn door. On the
 // porch they stand on the deck, in a field on the soil, by the pond in a hammock. Still (Motion off, or reduced
 // motion), or on the first scene, every farmer is simply at its place.
-import { BARN_DOOR, CORR, HOUSE, PORCH_Y } from '../layout.js';
+import { BARN_DOOR, CORR, DECK } from '../layout.js';
 import { walkRoute } from '../route.js';
 import { DECK_H } from './buildings.js';
 import { FIGURE_SCALE } from './figurine.js';
 import { SOIL_Y } from './beds.js';
 
-const onDeck = (x, y) => x >= HOUSE.x - 5 && x <= HOUSE.x + HOUSE.w + 5 && y >= PORCH_Y - 12 && y <= PORCH_Y + 3;
+const onDeck = (x, y) => x >= DECK.x0 && x <= DECK.x1 && y >= DECK.y0 - 2 && y <= DECK.y1;
 
 export function makeFarmers(THREE, figures, S) {
   const group = new THREE.Group();

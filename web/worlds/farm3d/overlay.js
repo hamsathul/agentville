@@ -2,6 +2,8 @@
 // text, in its pixel font), their speech bubbles, the fields' labels and counts, the silos' figures, and the farm's
 // Menu (the engine's defaultHud, wired here) with the turn buttons, plus a short Help. Everything is placed each
 // frame from the camera (place(project)).
+import { signsOf } from './layout.js';
+
 const CSS = `
   .f3-ov { position: absolute; inset: 0; pointer-events: none; overflow: hidden; z-index: 3; }
   .f3-ov > * { position: absolute; left: 0; top: 0; will-change: transform; }
@@ -52,9 +54,8 @@ export function makeOverlay(el, { opts, hooks }) {
   hud.className = 'px-hud';
   el.append(ov, hud);
   const tags = new Map(), says = new Map(), fields = new Map(), cnts = new Map(), silos = new Map(), signs = new Map();
-  // Farmers beyond a place's room aren't drawn: a sign says how many, where and in what words the 2D farm puts it
-  // (web/worlds/farm/world.js, labels); and fields beyond the grid's 18 beds.
-  const SIGNS = { desk: [154, -34, 'waiting'], turn: [246, -34, 'your turn'], storage: [340, -34, 'stale'], charge: [60, 262, 'idle'], meadow: [56, 152, 'in the meadow'], nap: [97, 190, 'napping'] };
+  // Farmers beyond a place's room aren't drawn: a sign says how many, in the 2D farm's words (web/worlds/farm/world.js,
+  // labels), by the place (layout.js, signsOf); and fields beyond the grid's 18 beds.
   const closed = new Map(); // id → the words its bubble had when × closed it
   let farmers = [], model = null, hover = null, selected = null, empty = null;
 
@@ -119,8 +120,9 @@ export function makeOverlay(el, { opts, hooks }) {
     }
     prune(silos, keepSilo);
     const keepSign = new Set(), more = m.ground.more ?? 0;
+    const SIGNS = signsOf(m.ground);
     for (const [group, n] of [...Object.entries(m.over ?? {}), ['more', more]]) {
-      if (!(n > 0) || (group !== 'more' && !SIGNS[group])) continue;
+      if (!(n > 0) || !SIGNS[group]) continue;
       keepSign.add(group);
       const d = keyed(signs, group, () => { const e = document.createElement('div'); e.className = 'f3-cnt'; return e; });
       const text = group === 'more' ? `+${n} more field${n === 1 ? '' : 's'}` : `+${n} ${SIGNS[group][2]}`;
@@ -159,11 +161,9 @@ export function makeOverlay(el, { opts, hooks }) {
       for (const [k, dx] of [['behind', -40], ['ahead', -24], ['dirty', 24]]) { const c = cnts.get(`${b.key}|${k}`); if (c) put(c, project(at3(b.cx + dx, b.rowTop + 4, 1.4))); }
     }
     for (const [x, d] of silos) put(d, project(silo3(Number(x))));
-    for (const [group, d] of signs) {
-      const [x, y] = group === 'more' ? [350, (model?.ground.GRID.y1 ?? 300) + 8] : SIGNS[group];
-      put(d, project(at3(x, y < 0 ? 78 + y : y, y < 0 ? 2.8 : 0.4)));
-    }
-    if (empty) put(empty, project(at3(262, 170, 0)));
+    const at = model ? signsOf(model.ground) : {};
+    for (const [group, d] of signs) if (at[group]) put(d, project(at3(at[group][0], at[group][1], at[group][1] < 90 ? 2.8 : 0.4)));
+    if (empty && model) { const G = model.ground.GRID; put(empty, project(at3((G.x0 + G.x1) / 2, (G.y0 + G.y1) / 2, 0))); }
   }
 
   // The Menu: the engine's markup, with the turn buttons beside it and a Bubbles switch in it.

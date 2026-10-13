@@ -8,7 +8,7 @@ import { fileURLToPath } from 'node:url';
 import vm from 'node:vm';
 import { makeModel } from '../../web/worlds/farm3d/model.js';
 import { walkRoute } from '../../web/worlds/farm3d/route.js';
-import { CORR, toWorld, W } from '../../web/worlds/farm3d/layout.js';
+import { CORR, DECK, GRID_CONFIG, PX, PORCH_Y, pastureOf, slotTables, toWorld, W } from '../../web/worlds/farm3d/layout.js';
 
 const web = f => readFileSync(fileURLToPath(new URL(`../../web/${f}`, import.meta.url)), 'utf8');
 const plain = v => JSON.parse(JSON.stringify(v)); // objects made inside the vm have another realm's prototypes
@@ -52,7 +52,7 @@ const repo = (name, over = {}) => ({ path: `${HOME}/${name}`, name, branch: 'mai
 const snap = (agents, repos = []) => ({ generatedAt: NOW, agents, repos, collisions: [], settings: { cpuAlertPct: 90 } });
 const model = (s, state = { beds: {}, packed: false }) => M.farmModel(toScene(s), state);
 
-test("each state goes to the 2D farm's place, in order; a farmer over the cap is left out and counted", () => {
+test("each state goes to the 2D farm's place (its group, in order, with its room), on the 3D farm's roomier map", () => {
   const idle = { state: 'idle', now: null };
   const agents = [
     ...['w1', 'w2', 'w3', 'w4'].map(id => agent(id, { state: 'waiting', now: null })),
@@ -63,16 +63,17 @@ test("each state goes to the 2D farm's place, in order; a farmer over the cap is
   ];
   const m = model(snap(agents));
   const at = id => m.farmers.find(f => f.id === id)?.at;
-  assert.deepEqual([at('w1'), at('w2'), at('w3')], [[142, 78], [166, 78], [190, 78]], 'waiting: the porch, left');
+  assert.deepEqual([at('w1'), at('w2'), at('w3')], [[168, PORCH_Y], [200, PORCH_Y], [232, PORCH_Y]], 'waiting: the porch, left, 4 m apart');
   assert.equal(at('w4'), undefined, 'a fourth waiting farmer is not drawn');
   assert.equal(m.over.desk, 1);
-  assert.deepEqual([at('t1'), at('t2')], [[258, 78], [234, 78]], 'turn: the porch, right');
-  assert.deepEqual(at('s1'), [328, 78]);
+  assert.deepEqual([at('t1'), at('t2')], [[344, PORCH_Y], [312, PORCH_Y]], 'turn: the porch, right');
+  assert.deepEqual(at('s1'), [446, PORCH_Y]);
   assert.equal(m.over.storage, 1);
   assert.ok(m.farmers.find(f => f.id === 's1').scarecrow);
   const y = m.ground.GRID.y1 - 6;
-  assert.deepEqual([at('i1'), at('i2')], [[64, y], [40, y + 2]], 'idle: under the shade tree');
-  assert.deepEqual(at('m1'), [28, 162], 'working outside any repo: the meadow');
+  assert.deepEqual([at('i1'), at('i2')], [[96, y], [64, y + 3]], 'idle: under the shade tree');
+  assert.deepEqual(at('m1'), slotTables(m.ground).meadow.at(0), 'working outside any repo: the meadow');
+  assert.deepEqual(Object.fromEntries(Object.entries(slotTables(m.ground)).map(([k, v]) => [k, v.cap])), { desk: 3, turn: 3, storage: 4, charge: 4, meadow: 4, nap: 2 }, "the 2D farm's room in each place");
   assert.equal(m.over.meadow, 1);
   assert.equal(m.farmers.length, 3 + 2 + 4 + 2 + 4);
 });
@@ -97,15 +98,30 @@ test("the props and the verbs are the farm's, step by step", () => {
   assert.deepEqual(plain(M.actionOf(null, 'Grep')), plain(farm.actionOf(null, 'Grep')), 'an older snapshot: by its tool');
 });
 
-test("beds: the same places as the 2D farm's, from an empty bed map", () => {
+test("beds: each repo in the same bed as on the 2D farm (from an empty bed map), the beds further apart", () => {
   const names = ['api', 'web', 'docs', 'infra', 'mobile', 'site', 'cli'];
   const repos = names.map(n => repo(n)), agents = names.map((n, i) => agent(`a${i}`, { touching: [touch(`${HOME}/${n}`)] }));
   const s = toScene(snap(agents, repos));
   const mine = M.farmModel(s, { beds: {}, packed: false }).ground;
   const theirs = farm.packedLayout(farm.farmScene(s).fields, {});
-  assert.deepEqual(plain(mine.ST.map(x => [x.key, x.i, x.cx, x.lane, x.x0, x.y0])), plain(theirs.ST.map(x => [x.key, x.i, x.cx, x.lane, x.x0, x.y0])));
+  assert.deepEqual(plain(mine.ST.map(x => [x.key, x.i])), plain(theirs.ST.map(x => [x.key, x.i])), 'the same bed number for each repo');
   assert.equal(mine.rows, theirs.rows);
-  assert.deepEqual(plain(mine.GRID), plain(theirs.GRID));
+  for (const b of mine.ST) assert.deepEqual([b.cx, b.rowTop], [GRID_CONFIG.cx0 + (b.i % 3) * GRID_CONFIG.colW, GRID_CONFIG.top0 + Math.floor(b.i / 3) * GRID_CONFIG.rowH], `bed ${b.i} on the 3D map`);
+});
+
+test('the roomier map: 5 m walkways and 5 m between rows, porch places 4 m apart on the deck, a pasture under the fields, all inside the map', () => {
+  const metres = px => px / PX, BED_W = 76, BED_D = 38;
+  assert.ok(metres(GRID_CONFIG.colW - BED_W) >= 5, 'a walkway between two columns of beds');
+  assert.ok(metres(GRID_CONFIG.rowH - BED_D) >= 5, 'the gap between two rows of beds');
+  for (const rows of [3, 4, 6]) {
+    const fence = GRID_CONFIG.fence(rows), H = GRID_CONFIG.height(fence), L = { GRID: fence, rows, H }, T = slotTables(L), pasture = pastureOf(L);
+    for (const g of ['desk', 'turn']) for (let i = 1; i < T[g].cap; i++) assert.equal(Math.abs(T[g].at(i)[0] - T[g].at(i - 1)[0]) / PX, 4, `${g}: 4 m apart`);
+    for (const g of ['desk', 'turn']) for (let i = 0; i < T[g].cap; i++) { const [x, y] = T[g].at(i); assert.ok(x > DECK.x0 && x < DECK.x1 && y > DECK.y0 && y < DECK.y1, `${g} ${i} stands on the deck`); }
+    assert.ok(pasture.y0 > fence.y1 && pasture.y1 < H && pasture.x0 >= 0 && pasture.x1 <= W, `the pasture under the fields, inside the map (${rows} rows)`);
+    assert.ok(metres(pasture.y1 - pasture.y0) >= 12 && metres(pasture.x1 - pasture.x0) >= 50, 'and big enough for a herd');
+    for (const [g, t] of Object.entries(T)) for (let i = 0; i < t.cap; i++) { const [x, y] = t.at(i); assert.ok(x > 0 && x < W && y > 0 && y < pasture.y0, `${g} ${i} inside the map, off the pasture`); }
+    assert.ok(fence.x1 < W && fence.x0 > CORR[0], 'the fields inside the map, the yard path outside their fence');
+  }
 });
 
 test('a field keeps its bed while you look: the bed map comes back to remember, and the next scene packs no more', () => {
@@ -149,7 +165,8 @@ test("the season and the silos follow the farm's thresholds; two accounts, two s
   }
   assert.equal(M.seasonOf(null), 'summer');
   const s = toScene({ ...snap([], []), accounts: [{ key: 'main', name: 'work', plan: { windows: [{ kind: 'seven_day', percentUsed: 40 }] } }, { key: 'zeta', name: 'home', plan: { windows: [{ kind: 'seven_day', percentUsed: 92 }] } }] });
-  assert.deepEqual(plain(M.farmModel(s, { beds: {}, packed: false }).silos), plain(farm.silosOf(farm.farmScene(s))));
+  const figures = list => plain(list.map(({ name, silo }) => ({ name, silo }))); // where each silo stands is the 3D map's own
+  assert.deepEqual(figures(M.farmModel(s, { beds: {}, packed: false }).silos), figures(farm.silosOf(farm.farmScene(s))));
 });
 
 test("labels: the name, a branch other than main, and a worktree's repo by its folder's name, on Windows too", () => {
@@ -183,17 +200,19 @@ test('every stop of the tour runs through the model, and each drawn farmer has a
 });
 
 test('walking: along the row to the nearest path, down it, along to the spot; a door first', () => {
-  assert.deepEqual(walkRoute([62, 87], [200, 87], CORR), [[200, 87]]);
-  assert.deepEqual(walkRoute([62, 87], [200, 144], CORR), [[116, 87], [116, 144], [200, 144]]);
-  assert.deepEqual(walkRoute([62, 87], [300, 206], CORR), [[116, 87], [116, 206], [300, 206]], 'a tie between paths: the first, as the engine has it');
-  assert.deepEqual(walkRoute([330, 87], [300, 206], CORR), [[306, 87], [306, 206], [300, 206]]);
-  assert.deepEqual(walkRoute([62, 80], [200, 144], CORR, [62, 87]), [[62, 87], [116, 87], [116, 144], [200, 144]]);
+  assert.deepEqual(CORR, [176, 306, 422], "the yard's path, then the walkways between the columns of beds");
+  assert.deepEqual(walkRoute([61, 110], [200, 110], CORR), [[200, 110]]);
+  assert.deepEqual(walkRoute([61, 110], [248, 174], CORR), [[176, 110], [176, 174], [248, 174]]);
+  assert.deepEqual(walkRoute([61, 110], [421, 174], CORR), [[176, 110], [176, 174], [421, 174]], 'a tie between paths: the first, as the engine has it');
+  assert.deepEqual(walkRoute([500, 110], [440, 174], CORR), [[422, 110], [422, 174], [440, 174]]);
+  assert.deepEqual(walkRoute([61, 100], [248, 174], CORR, [61, 110]), [[61, 110], [176, 110], [176, 174], [248, 174]]);
 });
 
 test('the 2D → 3D mapping: 8 px a metre, centred on the farm', () => {
   assert.deepEqual(toWorld(W / 2, 200, 400), { x: 0, z: 0 });
-  assert.deepEqual(toWorld(W, 400, 400), { x: 25, z: 25 });
-  assert.deepEqual(toWorld(0, 0, 400), { x: -25, z: -25 });
+  assert.deepEqual(toWorld(W, 400, 400), { x: W / 2 / 8, z: 25 });
+  assert.deepEqual(toWorld(0, 0, 400), { x: -W / 2 / 8, z: -25 });
+  assert.equal(W / 8, 70, 'the map is 70 m across');
 });
 
 const DEG = Math.PI / 180;

@@ -4,7 +4,7 @@
 // string lights, the henhouse and its run, the market stall, the scarecrow patch, the hammocks, the shade tree, the
 // orchard that comes with more rows, the woodpile and the rock, and the fence round the fields. Snow on the roofs in
 // winter. Rebuilt only when the rows, the season or the silos change.
-import { BARN, CORR, HENHOUSE, HOUSE, NAPS, PORCH_Y, PX, ROWH, SCARECROWS, STALL } from '../layout.js';
+import { BARN, BARN_DOOR, BUSHES, CORR, DECK, HENHOUSE, HOUSE, NAPS, PORCH_Y, PX, SCARECROWS, SHADE, SILO_Y, STALL, WOODPILE, orchardOf, pastureOf, rocksOf } from '../layout.js';
 import { disposeTree, seasonPalette } from './util.js';
 
 const m = v => v / PX; // 2D pixels to metres
@@ -58,7 +58,7 @@ export function makeBuildings(THREE, mats, S) {
 
     /* ---------- the barn: black board-and-batten, a light metal roof, a big glass door ---------- */
     {
-      const w = m(55), d = 5.6, wallH = 4.2, c = P(BARN.x + 27.5, 81), z = c.z - d / 2;
+      const w = m(55), d = 5.6, wallH = 4.2, c = P(BARN.x + 27.5, BARN.front), z = c.z - d / 2;
       const barn = new THREE.Group();
       barn.userData = { hit: 'barn', wall: mats.std('#26262b') };
       g.add(barn);
@@ -77,7 +77,7 @@ export function makeBuildings(THREE, mats, S) {
     /* ---------- the silo(s): black steel, a dome, a catwalk, a grain gauge, a lamp near the limit ---------- */
     const siloTops = [];
     for (const { x, silo } of silos) {
-      const c = P(x + 10, 70), r = 1.25, h = 8, front = c.z + r;
+      const c = P(x + 10, SILO_Y), r = 1.25, h = 8, front = c.z + r;
       S.box(3, 0.5, 3, '#8d8f92', c.x, 0, c.z, g);
       S.cyl(r, r, h, '#26262b', c.x, 0.5, c.z, g, 22);
       for (const y of [2.5, 4.5, 6.5]) S.cyl(r + 0.02, r + 0.02, 0.07, '#1d1d21', c.x, 0.5 + y, c.z, g, 22);
@@ -124,7 +124,7 @@ export function makeBuildings(THREE, mats, S) {
       S.cyl(0.22, 0.22, 2.1, '#8a8f96', flue.x, wallH, z - 0.8, g, 10);
       S.cyl(0.3, 0.3, 0.12, '#5f6b7a', flue.x, wallH + 2.1, z - 0.8, g, 10);
       // the deck: wide boards, a slim steel railing open at the steps, a planter of grasses at each end
-      const dx0 = HOUSE.x - 5, dx1 = HOUSE.x + HOUSE.w + 5, dfront = PORCH_Y + 3, dd = m(dfront - front) + 0.1, dcx = P((dx0 + dx1) / 2, front).x, dz = c.z + dd / 2 - 0.1;
+      const dx0 = DECK.x0, dx1 = DECK.x1, dfront = DECK.y1, dd = m(dfront - front) + 0.1, dcx = P((dx0 + dx1) / 2, front).x, dz = c.z + dd / 2 - 0.1;
       S.box(m(dx1 - dx0), DECK_H, dd, '#8d7e6e', dcx, 0, dz, g);
       for (let i = 1; i < 5; i++) S.box(m(dx1 - dx0), 0.012, 0.03, '#776a5c', dcx, DECK_H, c.z + (i * dd) / 5 - 0.1, g);
       const steps = P(HOUSE.x + 68, dfront);
@@ -191,7 +191,7 @@ export function makeBuildings(THREE, mats, S) {
       stubble.forEach((p, i) => st.setMatrixAt(i, m4.makeTranslation(p.x, 0.18, p.z)));
       g.add(st);
       fence(sx0 - 2, sy0, sx0 + sw + 2, sy0);
-      const bale = S.cyl(0.42, 0.42, 0.9, '#e9c46a', 0, 0, 0, g, 12), hb = P(386, 44);
+      const bale = S.cyl(0.42, 0.42, 0.9, '#e9c46a', 0, 0, 0, g, 12), hb = P(SCARECROWS.x + SCARECROWS.w - 12, SCARECROWS.y + 14);
       bale.rotation.z = Math.PI / 2; bale.position.set(hb.x, 0.42, hb.z);
     }
 
@@ -226,19 +226,19 @@ export function makeBuildings(THREE, mats, S) {
       if (fruit) for (let i = 0; i < 9; i++) { const a = seed + i * 2.4, rr = s * (0.75 + (i % 3) * 0.12); S.ball(0.11, fruit, p.x + Math.cos(a) * rr, h + s * (0.5 + (i % 4) * 0.28), p.z + Math.sin(a) * rr, g, 0); }
     }
     const fruit = season === 'spring' ? pal.bloom : season === 'autumn' ? '#e9a23b' : '#e04a3a';
-    tree(66, ground.GRID.y1 - 18, 21, { fruit, seed: 3, shade: true });
-    for (let r = 3; r < ground.rows; r++) for (const [x, dy] of [[30, 20], [88, 34]]) tree(x, 100 + r * ROWH + dy - 62, 10, { seed: r + x });
-    for (const [x, y, r] of [[100, 136, 4], [92, 188, 3]]) {
+    tree(SHADE.x, ground.GRID.y1 + SHADE.dy, 21, { fruit, seed: 3, shade: true });
+    for (const [x, y] of orchardOf(ground)) tree(x, y, 10, { seed: x + y });
+    for (const [x, y, r] of BUSHES) {
       const p = P(x, y);
       S.ball(m(r) * 1.4, snow ? '#dfe9f2' : canopy[2], p.x, m(r) * 0.9, p.z, g, 0);
       if (season === 'summer') for (let i = 0; i < 4; i++) S.ball(0.06, '#e04a3a', p.x + Math.cos(i * 1.7) * m(r), m(r) * (0.9 + (i % 2) * 0.4), p.z + Math.sin(i * 1.7) * m(r), g, 0);
     }
-    for (const [x, y, s] of [[96, ground.GRID.y1 - 22, 2], [6, ground.GRID.y1 - 16, 3], [94, ground.GRID.y1 - 42, 4]]) {
+    for (const [x, y, s] of rocksOf(ground)) {
       const p = P(x, y), rock = S.mesh(new THREE.DodecahedronGeometry(m(s) * 1.4, 0), '#8c96a0', p.x, m(s) * 0.6, p.z, g);
       rock.scale.y = 0.6;
     }
     {
-      const p = P(14, 186);
+      const p = P(...WOODPILE);
       for (let layer = 0; layer < 3; layer++) for (let i = 0; i < 3 - layer; i++) {
         const log = S.cyl(0.14, 0.14, 1.3, layer % 2 ? '#a8703c' : '#8b5a2b', 0, 0, 0, g, 8);
         log.rotation.z = Math.PI / 2; log.position.set(p.x, 0.14 + layer * 0.26, p.z - 0.3 + i * 0.3 + layer * 0.15);
@@ -251,6 +251,12 @@ export function makeBuildings(THREE, mats, S) {
     fence(GRID.x0, GRID.y1, GRID.x1 + 2, GRID.y1);
     fence(GRID.x0, GRID.y0, GRID.x0, GRID.y1, lanes.map(y => [y - 4, y + 5]));
     fence(GRID.x1, GRID.y0, GRID.x1, GRID.y1);
+    // the pasture across the front: a fence all round, a gate where the yard's path comes down
+    const pa = pastureOf(ground);
+    fence(pa.x0, pa.y0, pa.x1, pa.y0, [[CORR[0] - 10, CORR[0] + 10]]);
+    fence(pa.x0, pa.y1, pa.x1, pa.y1);
+    fence(pa.x0, pa.y0, pa.x0, pa.y1);
+    fence(pa.x1, pa.y0, pa.x1, pa.y1);
     {
       const posts = new THREE.InstancedMesh(new THREE.BoxGeometry(0.14, 0.85, 0.14), mats.std('#a8703c'), fencePosts.length);
       const rails = new THREE.InstancedMesh(new THREE.BoxGeometry(1, 0.08, 0.06), mats.std(snow ? '#e6eef5' : '#e2b07a'), fenceRails.length * 2);
@@ -268,7 +274,7 @@ export function makeBuildings(THREE, mats, S) {
     // one draw call for the barn (its own, so it can still be clicked), one for the rest
     for (const o of g.children.filter(c => c.userData.hit)) S.bake(o);
     S.bake(g, { keep: o => Boolean(o.userData.hit) });
-    const barnDoor = P(62, 84);
+    const barnDoor = P(BARN_DOOR[0], BARN.front + 2);
     const info = { porch, siloTops, lamps: [...porch.lamps, { x: barnDoor.x, y: 3.2, z: barnDoor.z + 0.6, color: '#ffe0a0', distance: 9 }] };
     g.userData.info = info;
     group.add(g);

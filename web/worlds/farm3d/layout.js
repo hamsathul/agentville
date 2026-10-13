@@ -1,33 +1,63 @@
-// The 2D farm's ground, in its own pixels (web/worlds/farm/world.js), and the 3D farm's mapping from it: 8 px a
-// metre, the 2D x along 3D x, the 2D y along 3D z, centred on the farm. Copies of the farm's numbers, pinned by
-// collector/test/farm3d.test.mjs.
-export const W = 400, PX = 8;
-export const COLW = 88, ROWH = 62, MIN_ROWS = 3, MAX_ROWS = 6, MAX_FIELDS = 18;
-export const PORCH_Y = 78, LANE = 87; // where farmers stand on the porch (and among the scarecrows); the lane in front of the buildings
-export const CORR = [116, 218, 306]; // the paths running down: the yard's, then the walkways between the field columns
-export const BARN_DOOR = [62, LANE];
-export const MEADOW = [[28, 162], [74, 166], [40, 186], [86, 186]]; // farmers working outside any repo
-export const NAPS = [[97, 204], [97, 224]]; // hammocks by the pond: sessions that wake up by themselves (/loop)
-export const STALL = { x: 284, y: 48 };
-export const POND = { cx: 42, cy: 210, rx: 34, ry: 15 };
-export const SILO_X = [92, 8]; // the first account's silo; a second account's left of the barn
-export const BARN = { x: 36, y: 14 }, HOUSE = { x: 132, y: 10, w: 136 }, HENHOUSE = { x: 8, y: 98 }, SCARECROWS = { x: 316, y: 30, w: 80 };
+// The 3D farm's map, in the 2D farm's pixels (8 px a metre; the 2D x along 3D x, the 2D y along 3D z, centred on the
+// map). The places are the 2D farm's (web/worlds/farm/world.js): the same groups, in the same order, with the same
+// room, and the same bed for each repo; only the distances are the 3D farm's own, roomier, since the 3D farm has the
+// space: 5 m walkways and rows between the fields, farmers 4 m apart on a longer deck, a wider yard, and a pasture
+// across the front. collector/test/farm3d.test.mjs pins both.
+export const W = 560, PX = 8;
+export const COLW = 116, ROWH = 82, MIN_ROWS = 3, MAX_ROWS = 6, MAX_FIELDS = 18;
+export const LANE = 110, LANE_HALF = 10; // the lane in front of the buildings (2.5 m wide)
+export const PORCH_Y = 98; // where farmers stand on the deck (and among the scarecrows)
+export const CORR = [176, 306, 422]; // the paths running down: the yard's, then the walkways between the columns of beds
+// The farmstead along the back, left to right: a second account's silo, the barn, the silo, the farmhouse on its
+// long deck (your porch), the market stall, the scarecrow patch.
+export const SILO_X = [100, 6]; // the first account's silo beside the barn; a second account's on the barn's other side
+export const SILO_Y = 86; // the silos' middle (their front 1.25 m nearer)
+export const BARN = { x: 34, front: 100 };
+export const BARN_DOOR = [61, LANE];
+export const HOUSE = { x: 176, y: 30, w: 136 }; // its walls from x + 4 to x + w - 4, its front at PORCH_Y - 10
+export const DECK = { x0: 150, x1: 362, y0: PORCH_Y - 10, y1: PORCH_Y + 3 }; // longer than the house: six farmers 4 m apart
+export const STALL = { x: 384, y: 62 };
+export const SCARECROWS = { x: 430, y: 36, w: 120 };
+// The yard on the left: the henhouse and its run, the pond, the hammocks, the shade tree, a woodpile, bushes, rocks.
+export const HENHOUSE = { x: 10, y: 122 };
+export const POND = { cx: 70, cy: 262, rx: 40, ry: 17 };
+export const MEADOW = [[30, 196], [96, 200], [36, 304], [120, 304]]; // farmers working outside any repo
+export const NAPS = [[150, 236], [150, 262]]; // hammocks: sessions that wake up by themselves (/loop)
+export const SHADE = { x: 96, dy: -24 }; // the shade tree, this far above the fields' fence's bottom
+export const WOODPILE = [150, 300];
+export const BUSHES = [[150, 196, 4], [112, 226, 3]];
+export const rocksOf = L => [[120, L.GRID.y1 - 30, 4], [10, L.GRID.y1 - 14, 3], [150, L.GRID.y1 - 4, 2]];
+/** The yard's orchard, which grows a tree pair with each row of fields past the third. */
+export const orchardOf = L => Array.from({ length: Math.max(0, L.rows - 3) }, (_, k) => [[40, 130 + (k + 3) * ROWH - 30], [130, 130 + (k + 3) * ROWH - 14]]).flat();
+
 export const GRID_CONFIG = {
-  cols: 3, colW: COLW, rowH: ROWH, cx0: 174, top0: 100, minRows: MIN_ROWS, maxRows: MAX_ROWS, max: MAX_FIELDS,
+  cols: 3, colW: COLW, rowH: ROWH, cx0: 248, top0: 130, minRows: MIN_ROWS, maxRows: MAX_ROWS, max: MAX_FIELDS,
   slot: (cx, rowTop) => ({ lane: rowTop + 44, x0: cx - 36, y0: rowTop + 12 }),
-  fence: rows => ({ x0: 128, x1: 396, y0: 96, y1: 104 + rows * ROWH }), height: fence => fence.y1 + 28,
+  fence: rows => ({ x0: 192, x1: 528, y0: 124, y1: 132 + rows * ROWH }),
+  height: fence => fence.y1 + 180, // the pasture and the meadow under the fields
 };
+/** The pasture across the front of the farm, under the fields: the cows, the sheep and the horses graze there. */
+export const pastureOf = L => ({ x0: 16, x1: 544, y0: L.GRID.y1 + 26, y1: L.GRID.y1 + 150 });
+/** The forest's edge inside the map, where the deer and the fox come out: right of the fields, and under the pasture. */
+export const forestEdgeOf = L => [{ x: 534, y: 126, w: 20, h: L.GRID.y1 - 126 }, { x: 20, y: L.GRID.y1 + 156, w: 520, h: 16 }];
+
 /** The places that hold a few farmers each, for a ground L (the shade tree moves down with more rows). */
 export function slotTables(L) {
   const y = L.GRID.y1 - 6;
   return {
-    desk: { cap: 3, at: i => [142 + 24 * i, PORCH_Y] }, // waiting on you: the porch's left
-    turn: { cap: 3, at: i => [258 - 24 * i, PORCH_Y] }, // its turn ended: the porch's right
-    storage: { cap: 4, at: i => [328 + 20 * i, PORCH_Y] }, // stale: the scarecrows
-    charge: { cap: 4, at: i => [[64, y], [40, y + 2], [88, y + 2], [16, y + 4]][i] }, // idle: under the shade tree
+    desk: { cap: 3, at: i => [168 + 32 * i, PORCH_Y] }, // waiting on you: the porch's left
+    turn: { cap: 3, at: i => [344 - 32 * i, PORCH_Y] }, // its turn ended: the porch's right
+    storage: { cap: 4, at: i => [446 + 30 * i, PORCH_Y] }, // stale: the scarecrows
+    charge: { cap: 4, at: i => [[96, y], [64, y + 3], [128, y + 3], [32, y + 6]][i] }, // idle: under the shade tree
     meadow: { cap: MEADOW.length, at: i => MEADOW[i] },
     nap: { cap: NAPS.length, at: i => NAPS[i] },
   };
 }
-/** A 2D farm point, in metres on the 3D ground. */
+/** Where the "+N" signs stand for farmers beyond a place's room, and the words they say. */
+export const signsOf = L => ({
+  desk: [200, PORCH_Y - 34, 'waiting'], turn: [312, PORCH_Y - 34, 'your turn'], storage: [490, PORCH_Y - 34, 'stale'],
+  charge: [SHADE.x, L.GRID.y1 + 10, 'idle'], meadow: [70, 182, 'in the meadow'], nap: [150, 222, 'napping'],
+  more: [480, L.GRID.y1 + 12, 'more'],
+});
+/** A 2D map point, in metres on the 3D ground. */
 export const toWorld = (x, y, H) => ({ x: (x - W / 2) / PX, z: (y - H / 2) / PX });

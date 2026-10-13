@@ -3,7 +3,7 @@
 // round, as on the 2D farm (web/worlds/farm/world.js, drawLand); and past it a wide meadow with more forest, out
 // past every edge of the window (camera.js, GROUND_HALF), fading into the haze, so the farm fills the window as the
 // 2D farm does.
-import { CORR, LANE, POND, PX, W, toWorld } from '../layout.js';
+import { CORR, LANE, LANE_HALF, POND, PX, W, pastureOf, toWorld } from '../layout.js';
 import { GROUND_HALF } from '../camera.js';
 import { disposeTree, noise, seasonPalette, vnoise } from './util.js';
 
@@ -33,11 +33,12 @@ export function makeTerrain(THREE, mats) {
     }
 
     // the grass: one vertex every half metre, coloured and raised by where it is
-    const lane = (x, y) => (Math.abs(y - LANE) <= 5)
-      || (x >= 111 && x <= 121 && y >= LANE && y <= GRID.y1)
+    const pasture = pastureOf(ground);
+    const lane = (x, y) => (Math.abs(y - LANE) <= LANE_HALF)
+      || (Math.abs(x - CORR[0]) <= 6 && y >= LANE && y <= pasture.y0) // the yard's path, down to the pasture's gate
       || CORR.slice(1).some(c => Math.abs(x - c) <= 6 && y >= GRID.y0 - 2 && y <= GRID.y1 - 4);
     const flat = (x, y) => (x >= GRID.x0 - 4 && x <= GRID.x1 + 4 && y >= GRID.y0 - 6 && y <= GRID.y1 + 6) // the fields
-      || (y < LANE + 8 && x > 20 && x < 400) // the farmstead
+      || (y < LANE + LANE_HALF + 4 && x > 0 && x < W) // the farmstead
       || (((x - POND.cx) / (POND.rx + 8)) ** 2 + ((y - POND.cy) / (POND.ry + 8)) ** 2 <= 1); // the pond
     const segX = Math.round(w * 2), segZ = Math.round(d * 2);
     const geo = new THREE.PlaneGeometry(w, d, segX, segZ);
@@ -72,7 +73,7 @@ export function makeTerrain(THREE, mats) {
     const trees = [];
     for (let gy = Math.floor((ext.y0 - 20) / 18); gy * 18 < ext.y1 + 10; gy++) for (let gx = Math.floor((ext.x0 - 24) / 20); gx * 20 < ext.x1 + 10; gx++) {
       const n = noise(gx * 31, gy * 17), x = gx * 20 + (n % 13) - 6 + (gy % 2) * 10, y = gy * 18 + ((n >> 4) % 9);
-      if (!(x < -4 || x > W + 4 || y <= 12 || y >= H + 22 || (x < 22 && y < 84))) continue;
+      if (!(x < -4 || x > W + 4 || y <= 12 || y >= H + 22)) continue;
       if (x < ext.x0 + 6 || x > ext.x1 - 6 || y < ext.y0 + 6 || y > ext.y1 - 4) continue;
       trees.push([x, y, 9 + ((n >> 6) % 5), n]);
     }
