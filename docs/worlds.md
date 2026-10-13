@@ -1003,6 +1003,14 @@ plain words. The kit says them first, each once:
   `merged`, `arrive`), as `lines` keys of the same names;
 - never for actions you click, gags or play: those keep your fixed lines.
 
+**Talk.** A world that draws itself and has the 3D farm's animals can have Haiku write conversations
+too: it says its animals with `talkCast` (`opts.onTalkCast`), and with Animal lines ticked the
+collector asks a session's mod (0.9.5 or newer) for a batch, from the same facts: the first at once,
+after news 5 minutes on, else every 15, and a minute after the world says `talkMore` (it has used
+them all). The page sends them as `talk`: exchanges of 2 to 4 lines between two of its animals, or a
+farmer (one not waiting on you) and an animal. The 3D farm uses one when it fits who is talking, else
+its own lines (its `talk.js`).
+
 A creature needs no fixed line for a situation to get a fresh one, but give it fixed lines for each:
 they are what it says with the helper off, and between batches. The engine tells the page the world's
 animals (`cast`) when it starts; a world does nothing for any of this. A world of yours that can't see
@@ -1396,6 +1404,7 @@ gaps").
 | `scene { scene }` | Every snapshot, as the scene above (none while the page shows its list view). Until the world has drawn once after `start`, the bridge keeps only the newest and hands it over then |
 | `select { id }` | The agent shown in the page's sidebar, or `null` |
 | `chatter { lines }` | The ✨ Helper's latest animal lines for this world ("Creatures", "The helper's lines"): at most 40 `{ kind, when, text }`, each `kind` one of the world's `cast`, `when` one of `idle`, `deployFailed`, `deployOk`, `harvest`, `merged`, `arrive`, `text` plain, 1 to 40 characters. A world that can't see what agents say gets only lines with no agent, repo or branch name in them, nor any name the collector sent (an agent gone since, a name before a rename). An empty list when the helper's lines are gone. Like `scene`, the bridge holds the newest until the world has drawn once |
+| `talk { exchanges }` | For a world that talks (it sent `talkCast`): the ✨ Helper's latest conversations ("The helper's lines"), at most 12 `{ lines: [{ who, text }] }` of 2 to 4 lines, each `who` one of its `talkCast` kinds or an agent's name, text of 1 to 60; a private world gets none with a name. An empty list when they are gone |
 | `reply { id, ok, status, data?, error? }` | The answer to a `request`: `{ ok: true, status, data }`; `{ ok: false, status, error }` for an error from the collector (its own words, if any); `status: 0` with the reason when the request itself failed; `status: 403` with why when the page refused it |
 
 **From the frame to the page**
@@ -1413,6 +1422,8 @@ gaps").
 | `showRepos` | Shows the repos in the list view |
 | `nav { what }` | Presses one of the top bar's buttons: `list`, `session`, `setup`, `side`, `broadcast` (📣 Broadcast: one message to the agents you tick, in the page, where you write it), `chats` (💬 All chats: every agent's conversation in one live timeline, in the page; the world gets none of it) or `theme` (`worlds` opens the list of worlds) |
 | `bell { on }` | Turns the page's bell on or off (`on` must be `true` or `false`) |
+| `talkCast { animals }` | A world that talks says its animals, for Haiku's conversations: at most 16 `{ kind }`, each one of the 3D farm's kinds (`cow`, `bull`, `alpaca`, `donkey`, `horse`, `whitehorse`, `deer`, `stag`, `fox`, `wolf`, `husky`, `shiba`, `frog`, `trout`, `koi`, `roach`); an empty list while they're hidden. The page tells the collector while Animal lines are ticked |
+| `talkMore` | It has used every exchange: the page asks the collector for another batch (at most one a minute) |
 | `motion { still }` | The world stood still, or moves again (`true` or `false`); the page keeps it for `settings` |
 | `diary { entries }` | Shows the world's diary in the sidebar: at most 20 entries `{ at, state, who, text }`, in the order given (the farm puts the newest first), with `state` one of the agents' states and `at` a time. `who` is cut to 80 characters and `text` to 300, and both are shown as text, never as HTML. One bad entry drops the whole message. Drawn at most every quarter second: the newest entries are drawn when their turn comes |
 | `cast { animals }` | The world's animals, for the ✨ Helper's lines: at most 12 `{ kind, name }`, each `kind` one of the creature library's, each `name` 30 characters or fewer (others are dropped). The engine sends it when a world with animals starts. While ✨ Helper's Animal lines is ticked, the page tells the collector which kinds are on screen, then every 5 minutes. Only the kinds reach Haiku (its names for them stay on the page). For the farm, the factory and the field exercise the page also sends the world's key (`farm`, `factory` or `military`), so the lines are in that world's words; the starter and your own worlds are never named. Nothing else changes: not how often. The page takes one `cast` per second at most, and none while the world is out of sight. The engine sends an empty one while the Animals switch is off |
@@ -1441,6 +1452,7 @@ Agentville.raw({
   scene(scene) { /* every snapshot */ },
   select(id) { /* the agent picked in the page's sidebar, or null (optional) */ },
   chatter(lines) { /* the ✨ Helper's animal lines, as the chatter message has them (optional) */ },
+  talk(exchanges) { /* the ✨ Helper's conversations, as the talk message has them (optional; say talkCast first) */ },
 });
 ```
 
@@ -1451,7 +1463,7 @@ where a layer first lay to the fraction of a pixel: this keeps the farm looking 
 
 `Agentville.send(message)` sends any of the messages above itself. A click on a link (`<a href>`)
 in the world goes through the page as `openLink`. Script errors, scripts that fail to load and
-errors thrown by `start`, `scene`, `select` or `chatter` reach the page as `error`, each once (20 at most). A
+errors thrown by `start`, `scene`, `select`, `chatter` or `talk` reach the page as `error`, each once (20 at most). A
 `world.js` that registers nothing is reported too.
 
 **Give a way back.** While a world shows, the page hides its own top bar: the world fills the
@@ -1523,6 +1535,8 @@ give, rotations in 16-bit integers, skin weights in bytes, normals and texture c
 | `onMotion(still)` | `motion` |
 | `onDiary(entries)` | `diary`, with the first 20 entries; the same diary twice is sent once |
 | `onCast(animals)` | `cast`, with the first 12 `{ kind, name }` |
+| `onTalkCast(animals)` | `talkCast`, with the first 16 `{ kind }` |
+| `onTalkMore()` | `talkMore` |
 
 `prefs.get(name)` and `prefs.set(name, value)` keep the world's own settings: the page stores them
 (a frame has no storage) and hands them back in the next `start`. Values are strings. `bell` is the

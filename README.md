@@ -515,12 +515,20 @@ tick there. The farm's Menu has no ✨ Helper yet: to change it from the farm, g
     is on screen (and 10 minutes after) it needs 0.9.1: older mods aren't asked, so no lines come
     until a session has it. ✨ Helper says when no session can run it. The field exercise's lines are
     in its drill words with 0.9.3; an older mod is still asked, and writes them in plain words.
+- **Talk (the 3D farm):** with Animal lines ticked, Haiku also writes conversations for the 3D farm:
+  between two of its animals, and between a farmer (one not waiting on you) and an animal, from the
+  same facts as the lines (never code, paths, commands, branches or anything said in a conversation).
+  A batch when something happens (at most every 5 minutes), one every 15 minutes while the 3D farm
+  is on screen, and, when **Talk** on an animal finds none left, another a minute after the last;
+  each one call in the daily limit. The farm uses them when they fit who is talking, and its own
+  lines otherwise. It needs mod 0.9.5 in a session (`/reload-plugins`); with an older mod no session
+  is asked and the farm's own lines run.
 - **A daily limit** (200 to start, 1 to 2,000) caps the calls. The dialog shows today's count and
   the last error, and says when today's limit is reached (it resets at midnight). **Switch off**
   asks for nothing more at once; a call already under way finishes, and its answer is dropped.
 - Names need mod 0.8.0 in the session, animal lines 0.9.0 (0.9.1 for the robot dog and the robot
   vacuum; 0.9.3 for the field exercise's lines in its drill words: an older mod writes them in plain
-  words). For a session started before you updated, run `/reload-plugins` in it.
+  words), the 3D farm's talk 0.9.5. For a session started before you updated, run `/reload-plugins` in it.
 
 ### Model, effort and permission mode
 
@@ -1330,8 +1338,9 @@ patch, the pasture across the front, and the meadow and the forest running on al
     dogs), each in its own voice and about what is happening: the farmer's name, what it is doing
     (editing, reading, pushing…), its repo's name, a deploy that failed or went out, the night, the
     rain. A farmer waiting on you or whose turn ended is never drawn in, and their bubbles stay clear.
-    The lines are the world's own; nothing is sent anywhere or to any session. **Bubbles** in the Menu
-    hides them too.
+    The lines are the farm's own, and with ✨ Helper's Animal lines ticked also Haiku's ("✨ Helper and
+    suggested names"); either way nothing reaches any agent's conversation or task. **Bubbles** in the
+    Menu hides them too.
   - **Click one for its menu**: Talk (it talks at once to the nearest animal or farmer, turning to it,
     or to you if no one is near), Pet, Feed, Run (a gallop out and back), Leap, Hop, Sniff, Look around and
     Play dead (it falls over, lies still, and gets up again), with Kick and Headbutt for the hoofed ones,
@@ -1630,7 +1639,10 @@ and can do is in [docs/worlds.md](docs/worlds.md).
   animals a world has (kinds and names; only the kinds reach Haiku) and, for the farm, the factory
   or the field exercise only, its key. The lines come back as plain text of 40 characters at
   most; a world of yours that can't see what agents say gets only those with no names, by the names
-  it was sent (an agent gone since, or one renamed, too) and the names on the dashboard now. Its setting (with today's
+  it was sent (an agent gone since, or one renamed, too) and the names on the dashboard now. The 3D
+  farm's talk is asked for the same way, with the same facts and the 3D farm's animals (kinds only, and
+  its key `farm3d`); its conversations come back as lines of 60 characters at most, and one with a
+  farmer or a name in it never reaches a world of yours that can't see what agents say. Its setting (with today's
   count) and what you chose for each session's name (renamed, edited, dismissed) are kept in
   `state/helper.json` and `state/names.json`, readable only by you. No world is told the helper's setting, a suggested name or a pending offer: a world gets only the fields in the scene (see [docs/worlds.md](docs/worlds.md)).
 - **↺ Restore** is the one thing that writes to Claude Code's own files. Once the session has ended,

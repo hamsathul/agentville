@@ -83,7 +83,7 @@ export function start({ el, opts, prefs }) {
   const farmers = makeFarmers(THREE, makeFigures(THREE, mats, shapes), shapes), animals = makeAnimals(THREE, mats, shapes), weather = makeWeather(THREE, mats, shapes);
   const nature = makeNature(THREE, shapes), talk = createTalk();
   /** Who is where and what is happening, for talk.js: refreshed twice a second. */
-  let talkScene = null, talkSceneAt = -1e9;
+  let talkScene = null, talkSceneAt = -1e9, castSaid = null;
   function sceneForTalk(now) {
     if (talkScene && now - talkSceneAt < 500) return talkScene;
     const list = [];
@@ -143,6 +143,7 @@ export function start({ el, opts, prefs }) {
       act(i, act) {
         animals.command(i, act);
         if (act === 'talk') { // it talks at once: to the nearest animal or farmer, facing it, or to you
+          if (!talk.stock()) opts.onTalkMore?.(); // Haiku's are used up: more, if the ✨ Helper may ask (its own lines meanwhile)
           talk.start(i, sceneForTalk(performance.now()));
           const to = talk.bubbles().find(b => b.who === i)?.to;
           if (to) animals.face(i, [to.x, to.y]);
@@ -287,6 +288,9 @@ export function start({ el, opts, prefs }) {
     if (animals.tick(t, dt, night)) dirty = true;
     nature.blow(t, model?.beds.some(b => b.weather === 'rain') ? 2.2 : 1); // the wind in the trees, harder while a field rains
     if (!opts.still && model) talk.tick(sceneForTalk(now), dt); // conversations now and then; held still with Motion off
+    // the animals out, by kind, for Haiku's talk (none while the Animals switch hides them): said when it changes
+    const kinds = animalsOn && animals.count() === animals.total ? [...new Set((talkScene?.animals ?? []).map(a => a.kind))].sort() : [];
+    if (kinds.join() !== castSaid) { castSaid = kinds.join(); opts.onTalkCast?.(kinds.map(kind => ({ kind }))); }
     overlay.setTalk(bubblesOn ? talk.bubbles().map(b => {
       const top = typeof b.who === 'number' ? animals.info(b.who)?.top : (h => h && { x: h.x, y: h.y + 0.55, z: h.z })(farmers.headOf(b.who));
       return { key: `${b.conversation}|${b.who}`, text: b.text, toYou: b.toYou, top };
@@ -317,6 +321,8 @@ export function start({ el, opts, prefs }) {
     wind: () => nature.wind(),
     /** The talk bubbles shown now (their words). */
     talk: () => overlay.talkShown(),
+    /** How many of Haiku's exchanges are waiting to be used. */
+    talkStock: () => talk.stock(),
     /** Animal i: its kind, what it is doing, where it is on the 2D map, and where its middle is in the picture, in pixels. */
     animal: i => { const a = animals.info(i); return a && { kind: a.kind, act: a.act, part: a.part, spot: a.spot, at: project({ x: a.top.x, y: a.top.y * 0.5, z: a.top.z }), coat: animals.coat(i) }; },
     /** A view to hold: yaw and pitch in degrees, zoom, and a 2D farm point to glide to. */
@@ -330,5 +336,7 @@ export function start({ el, opts, prefs }) {
   return {
     scene: onScene,
     select(id) { selected = id ?? null; farmers.select(selected); overlay.setSelected(selected); dirty = true; },
+    /** Haiku's exchanges (the ✨ Helper's talk), kept for when they fit who is talking. */
+    talk(exchanges) { talk.take(exchanges); },
   };
 }

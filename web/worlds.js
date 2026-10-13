@@ -16,6 +16,8 @@
   // The built-in worlds the helper's lines are written for by name (the mod has its own words for each): a cast names
   // its world only if it is one of these, and not private. Copy: worlds.test.mjs fails when it drifts.
   const LINE_WORLDS = ['farm', 'factory', 'military'];
+  // The animals of a world that talks (the 3D farm): the collector's TALK_KINDS (a test fails when they drift).
+  const TALK_KINDS = ['cow', 'bull', 'alpaca', 'donkey', 'horse', 'whitehorse', 'deer', 'stag', 'fox', 'wolf', 'husky', 'shiba', 'frog', 'trout', 'koi', 'roach'];
   const CONTROL = /[\x00-\x1f\x7f-\x9f]/g;
   const PREF_MAX = 16_384, DIARY_MAX = 20, IN_FLIGHT_MAX = 4, ID_MAX = 200, PATH_MAX = 4096;
   // A world keeps at most 64 settings, 64 KB in all (names and values, what is saved already included):
@@ -126,6 +128,13 @@
         for (const c of m.animals) if (c && CREATURE_KINDS.includes(c.kind) && typeof c.name === 'string' && c.name.length <= 30 && !out.has(c.kind)) out.set(c.kind, { kind: c.kind, name: noBidi(c.name).replace(CONTROL, '').trim() || c.kind });
         return { kind: 'cast', animals: [...out.values()] };
       }
+      case 'talkCast': { // a world that talks (the 3D farm): its animals' kinds, for Haiku's talk
+        if (!Array.isArray(m.animals) || m.animals.length > 16) return null;
+        const out = new Map();
+        for (const c of m.animals) if (c && TALK_KINDS.includes(c.kind) && !out.has(c.kind)) out.set(c.kind, { kind: c.kind });
+        return { kind: 'talkCast', animals: [...out.values()] };
+      }
+      case 'talkMore': return { kind: 'talkMore' }; // it has used every exchange: another batch, if one may be asked for
       default: return null;
     }
   }
@@ -159,6 +168,19 @@
     return priv ? namelessLines(lines, snap) : lines;
   }
 
+  /**
+   * What a talking world gets of Haiku's latest talk: exchanges of 2 to 4 lines whose speakers are its kinds or the
+   * dashboard's agents, plain text of 1 to 60, rechecked; for a private world none the collector marked as named.
+   */
+  function talkFor(snap, cast, priv) {
+    const kinds = new Set((cast ?? []).map(c => c.kind)), names = new Set((snap?.agents ?? []).map(a => a.name));
+    if (!kinds.size) return [];
+    return (Array.isArray(snap?.talk?.exchanges) ? snap.talk.exchanges : []).slice(0, 12)
+      .filter(e => e && Array.isArray(e.lines) && e.lines.length >= 2 && e.lines.length <= 4 && !(priv && e.named))
+      .filter(e => e.lines.every(l => l && (kinds.has(l.who) || names.has(l.who)) && typeof l.text === 'string' && l.text.length >= 1 && l.text.length <= 60) && e.lines.some(l => kinds.has(l.who)))
+      .map(e => ({ lines: e.lines.map(l => ({ who: l.who, text: noBidi(l.text).replace(CONTROL, '') })) }));
+  }
+
   /** The diary in the page's sidebar: newest first, as text (a world never writes the page's HTML). */
   function renderDiary(el, entries) {
     if (!el) return;
@@ -187,6 +209,7 @@
   let host = null, frame = null, opts = {}, world = 'farm', scene = null, selectedId = null, loaded = false;
   let diary = [], timer = 0, lastSettings = '', inFlight = 0, generation = 0;
   let sent = null; // the scene the world was last given (private, or not)
+  let talkCast = null, talkTimer = 0, talkAt = null; // a talking world's animals (its talkCast message), the talk last sent
   let cast = null, castTimer = 0, lastSnap = null, chatterAt = null, castKey = '', castAt = -Infinity, castNext = null, castLater = 0; // the world's animals (its cast message), the snapshot last seen, the batch last sent
   let port = null; // the MessageChannel port to this frame: made on `loaded`, one end handed to the bridge in `start`
   let heardLoaded = false; // the frame's `loaded`, heard: once per frame (every load builds a new one)
@@ -290,6 +313,7 @@
         sendScene();
         post({ type: 'select', id: selectedId });
         sendChatter(true);
+        sendTalk(true);
         // The page decides who gets the way back, not the frame: every world of yours (its HUD, if any, is
         // its own doing), and a built-in one only when it draws itself (the farm's buttons are already there).
         if (world.startsWith('u/') || act.raw) showCorner();
@@ -334,6 +358,8 @@
       }
       case 'diary': showDiary(act.entries); break;
       case 'cast': takeCast(act.animals); break;
+      case 'talkCast': takeTalkCast(act.animals); break;
+      case 'talkMore': void postTalk(true); break;
       case 'refuse': post({ type: 'reply', id: act.id, ok: false, status: 403, error: act.error }); break;
       case 'request': {
         const mine = generation;
@@ -398,6 +424,7 @@
     loaded = false;
     heardLoaded = false;
     cast = null; clearInterval(castTimer); chatterAt = null; castKey = ''; castAt = -Infinity; castNext = null; clearTimeout(castLater); castLater = 0; // a new frame says its animals again
+    talkCast = null; clearInterval(talkTimer); talkAt = null;
     generation++;
     closePort();
     sent = null; // nothing is given to the new frame until it says `loaded`
@@ -608,8 +635,8 @@
     const linesWas = Boolean(lastSnap?.helper?.on && lastSnap?.helper?.uses?.lines);
     lastSnap = snap;
     scene = window.AgentvilleScene.toScene(snap);
-    if (loaded) { sendScene(); sendChatter(); }
-    if (!linesWas && snap?.helper?.on && snap?.helper?.uses?.lines) void postCast(); // ticked just now: say the animals at once
+    if (loaded) { sendScene(); sendChatter(); sendTalk(); }
+    if (!linesWas && snap?.helper?.on && snap?.helper?.uses?.lines) { void postCast(); void postTalk(); } // ticked just now: say the animals at once
   }
   /** A world's cast, taken once a second at most: the same again is dropped; a new one within the second waits for its end (the newest wins). The page keeps it alive itself. */
   function takeCast(animals) {
@@ -637,6 +664,26 @@
     if (!force && at === chatterAt) return;
     chatterAt = at;
     post({ type: 'chatter', lines: chatterFor(lastSnap, cast, isPrivate(world)) });
+  }
+  /** A talking world's animals: kept, said to the collector now and every 5 minutes (while Animal lines are ticked). */
+  function takeTalkCast(animals) {
+    const was = JSON.stringify(talkCast);
+    talkCast = animals;
+    if (JSON.stringify(animals) === was) return;
+    clearInterval(talkTimer); talkTimer = setInterval(() => void postTalk(), 300_000); void postTalk(); sendTalk(true);
+  }
+  /** The talk cast to the collector; `more` when the world has used every exchange. Only while the world is on screen. */
+  async function postTalk(more = false) {
+    if (hidden || !talkCast?.length || !lastSnap?.helper?.on || !lastSnap?.helper?.uses?.lines || document.hidden) return;
+    try { await fetch('/api/actions/talk', { method: 'POST', headers: { 'x-tracker-token': token, 'content-type': 'application/json' }, body: JSON.stringify({ cast: talkCast, ...(more ? { more: true } : {}) }) }); } catch { /* the next one, in 5 minutes */ }
+  }
+  /** Haiku's latest talk to the world when it changes; an empty one once it's gone. */
+  function sendTalk(force = false) {
+    const at = lastSnap?.talk?.at ?? null;
+    if (at === null) { if (talkAt !== null) post({ type: 'talk', exchanges: [] }); talkAt = null; return; }
+    if (!force && at === talkAt) return;
+    talkAt = at;
+    post({ type: 'talk', exchanges: talkFor(lastSnap, talkCast, isPrivate(world)) });
   }
   /** The newest scene to the world: the whole of it, or (one of your worlds, not allowed) without words and paths. */
   function sendScene() {
@@ -671,6 +718,7 @@
     loaded = false;
     heardLoaded = false;
     cast = null; clearInterval(castTimer); chatterAt = null; castKey = ''; castAt = -Infinity; castNext = null; clearTimeout(castLater); castLater = 0;
+    talkCast = null; clearInterval(talkTimer); talkAt = null;
     clearTimeout(startTimer);
     resetStrip();
     failed = false;
@@ -714,5 +762,5 @@
   function clickGuardBlocks(detail) { return clickGuarded || (detail > 0 && guardPointerAt < guardChangedAt); }
 
   window.TrackerFarm = { mount, update, select, unmount, hide, current, openList, worldsChanged, armClickGuard, clickGuardPointerDown, clickGuardKeyDown, clickGuardBlocks, colorOf: id => window.AgentvilleScene.colorOf(id), toScene: snap => window.AgentvilleScene.toScene(snap) };
-  window.AgentvilleWorlds = { checkMessage, loadPrefs, renderDiary, prefKey, choose, setCanSee, namelessLines, chatterFor };
+  window.AgentvilleWorlds = { checkMessage, loadPrefs, renderDiary, prefKey, choose, setCanSee, namelessLines, chatterFor, talkFor };
 })();

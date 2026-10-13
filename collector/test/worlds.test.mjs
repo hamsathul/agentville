@@ -1198,10 +1198,36 @@ test('the cast names its world only for a built-in world the helper has words fo
 test("the page's copies of the creature kinds, situations and worlds named for lines match the collector's (drift fails here)", async () => {
   const src = readFileSync(fileURLToPath(new URL('../../web/worlds.js', import.meta.url)), 'utf8');
   const listOf = name => JSON.parse(src.match(new RegExp(`const ${name} = (\\[[^\\]]*\\])`))[1].replaceAll("'", '"'));
-  const { CREATURE_KINDS, SITUATIONS, LINE_WORLDS } = await import('../sources/lines.mjs');
+  const { CREATURE_KINDS, SITUATIONS, LINE_WORLDS, TALK_KINDS } = await import('../sources/lines.mjs');
   assert.deepEqual(listOf('CREATURE_KINDS'), CREATURE_KINDS);
   assert.deepEqual(listOf('SITUATIONS'), SITUATIONS);
   assert.deepEqual(listOf('LINE_WORLDS'), LINE_WORLDS);
+  assert.deepEqual(listOf('TALK_KINDS'), TALK_KINDS);
+});
+
+test("a world that talks: its talk cast (the 3D farm's kinds only, each once, 16 at most) and its ask for more", async () => {
+  const W = (await page()).worlds;
+  const check = m => W.checkMessage(m, { scene: { agents: [], repos: [] }, private: false, sentPaths: new Map(), inFlight: 0 });
+  assert.deepEqual(plain(check({ type: 'talkCast', animals: [{ kind: 'cow', name: 'Daisy' }, { kind: 'cow' }, { kind: 'dragon' }, { kind: 'husky' }] })), { kind: 'talkCast', animals: [{ kind: 'cow' }, { kind: 'husky' }] });
+  assert.equal(check({ type: 'talkCast', animals: Array.from({ length: 17 }, () => ({ kind: 'cow' })) }), null);
+  assert.equal(check({ type: 'talkCast', animals: 'cow' }), null);
+  assert.deepEqual(plain(check({ type: 'talkMore', extra: 'ignored' })), { kind: 'talkMore' });
+});
+
+test("talkFor: the batch's exchanges whose speakers are this world's kinds or the dashboard's agents, rechecked; a private world gets none with a name", async () => {
+  const W = (await page()).worlds;
+  const snap = { agents: [{ name: 'deploy-bot' }], repos: [], talk: { at: 9, exchanges: [
+    { lines: [{ who: 'cow', text: 'Grass again.' }, { who: 'husky', text: 'Run!' }] },
+    { lines: [{ who: 'deploy-bot', text: 'Morning, cow.' }, { who: 'cow', text: 'Moo.' }], named: true },
+    { lines: [{ who: 'dragon', text: 'Rawr.' }, { who: 'cow', text: 'Eek.' }] },
+    { lines: [{ who: 'cow', text: 'x'.repeat(61) }, { who: 'husky', text: 'Hm.' }] },
+    { lines: [{ who: 'cow', text: 'Alone.' }] },
+  ] } };
+  const cast = [{ kind: 'cow' }, { kind: 'husky' }];
+  assert.deepEqual(plain(W.talkFor(snap, cast, false)).map(e => e.lines.map(l => l.who).join('+')), ['cow+husky', 'deploy-bot+cow']);
+  assert.deepEqual(plain(W.talkFor(snap, cast, true)).map(e => e.lines.map(l => l.who).join('+')), ['cow+husky']);
+  assert.deepEqual(plain(W.talkFor({ ...snap, talk: null }, cast, false)), []);
+  assert.deepEqual(plain(W.talkFor(snap, null, false)), [], 'no talk cast yet: nothing');
 });
 
 test('chatterFor: a private world never gets a row the collector marked as naming someone (an agent gone since, a name before a rename)', async () => {
