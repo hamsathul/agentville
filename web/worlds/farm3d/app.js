@@ -1,8 +1,10 @@
-// The 3D farm: the renderer and the frame loop, the model, and the builders put together. world.js imports this
-// once the world has registered; start() returns what the bridge calls with each scene and selection.
+// The 3D farm: the renderer and the frame loop, the model, the builders, the camera and the overlay put together.
+// world.js imports this once the world has registered; start() returns what the bridge calls with each scene and
+// selection.
 import * as THREE from './vendor/three.module.js';
 import { makeModel } from './model.js';
 import { makeCameraRig } from './camera.js';
+import { makeOverlay } from './overlay.js';
 import { makeMaterials } from './build/materials.js';
 import { makeSky, skyFor } from './build/sky.js';
 import { makeTerrain } from './build/terrain.js';
@@ -17,6 +19,7 @@ import { PX, W } from './layout.js';
 
 const SKIES = ['live', 'day', 'night'], SEASON_MODES = ['live', 'spring', 'summer', 'autumn', 'winter'];
 const FRAME_MS = 1000 / 30; // at most 30 frames a second
+const NEAR_ZOOM = 2; // from here in, every farmer's name and bubble shows
 const STYLE = `
   #farm.f3 { position: relative; overflow: hidden; background: #cfe6f5; }
   #farm.f3 .f3-canvas { position: absolute; inset: 0; width: 100%; height: 100%; display: block; touch-action: none; }
@@ -40,6 +43,7 @@ export function start({ el, opts, prefs }) {
   renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
   const canvas = renderer.domElement;
   canvas.className = 'f3-canvas';
+  canvas.setAttribute('aria-label', 'The 3D farm: every farmer is an agent, every field a repo');
   el.append(canvas);
   const scene3 = new THREE.Scene(), camera = new THREE.PerspectiveCamera(30, 1, 0.5, 400);
   const mats = makeMaterials(THREE), sky = makeSky(THREE, scene3, mats), terrain = makeTerrain(THREE, mats);
@@ -47,13 +51,13 @@ export function start({ el, opts, prefs }) {
   const crops = makeCrops(THREE, mats), beds = makeBeds(THREE, mats, shapes, makeWeather(THREE, mats, shapes), crops);
   const farmers = makeFarmers(THREE, makeFigures(THREE, mats, shapes), shapes);
   scene3.add(terrain.group, buildings.group, beds.group, crops.group, farmers.group);
-  let firstScene = true, selected = null;
-  let lampsKey = '';
 
+  // The world's own settings, kept by the page.
   const pref = (name, allowed, fallback) => (allowed.includes(prefs.get(name)) ? prefs.get(name) : fallback);
   let skyMode = pref('sky', SKIES, 'live'), seasonMode = pref('season', SEASON_MODES, 'live');
+  let animalsOn = prefs.get('animals') !== 'off', bubblesOn = prefs.get('bubbles') !== 'off';
   let keep = { beds: (() => { try { const b = JSON.parse(prefs.get('beds') ?? '{}'); return b && typeof b === 'object' && !Array.isArray(b) ? b : {}; } catch { return {}; } })(), packed: false };
-  let model = null, groundKey = '', dirty = true, saveTimer = 0;
+  let model = null, groundKey = '', lampsKey = '', dirty = true, saveTimer = 0, firstScene = true, selected = null;
 
   // The view's turn and zoom are kept (a moment after they stop changing, so a drag sends one message, not fifty).
   const rig = makeCameraRig(THREE, camera, canvas, {
@@ -61,9 +65,35 @@ export function start({ el, opts, prefs }) {
     onChange: ({ turn, zoom }) => {
       dirty = true;
       clearTimeout(saveTimer);
-      saveTimer = setTimeout(() => { prefs.set('turn', String(turn)); prefs.set('zoom', String(+zoom.toFixed(2))); }, 500);
+      saveTimer = setTimeout(() => { prefs.set('turn', String(turn)); prefs.set('zoom', String(+zoom.toFixed(2))); refreshHud(); }, 300);
     },
   });
+
+  const shownSeason = () => (seasonMode === 'live' ? model?.season ?? 'summer' : seasonMode);
+  const near = () => rig.state().zoom >= NEAR_ZOOM;
+  const overlay = makeOverlay(el, {
+    opts,
+    hooks: {
+      refresh: () => refreshHud(),
+      turn: d => rig.turn(d),
+      zoom: d => rig.zoomBy(d),
+      pick: id => pickFarmer(id),
+      hover: id => overlay.setHover(id),
+      cycle(what) {
+        if (what === 'sky') { skyMode = SKIES[(SKIES.indexOf(skyMode) + 1) % SKIES.length]; prefs.set('sky', skyMode); lastSky = -Infinity; }
+        if (what === 'season') { seasonMode = SEASON_MODES[(SEASON_MODES.indexOf(seasonMode) + 1) % SEASON_MODES.length]; prefs.set('season', seasonMode); rebuildAll(); }
+        if (what === 'animals') { animalsOn = !animalsOn; prefs.set('animals', animalsOn ? 'on' : 'off'); }
+        if (what === 'bubbles') { bubblesOn = !bubblesOn; prefs.set('bubbles', bubblesOn ? 'on' : 'off'); if (model) overlay.sync(model, { bubblesOn, near: near() }); }
+        dirty = true;
+      },
+    },
+  });
+  function refreshHud() {
+    overlay.renderHud({ zoom: rig.state().zoom, skyMode, seasonMode, still: opts.still, nav: opts.navState?.() ?? {}, animals: animalsOn, bubbles: bubblesOn });
+  }
+  refreshHud();
+  setInterval(refreshHud, 1000); // the page's buttons' state (the sidebar) and Motion can change from outside
+
   const resize = () => {
     const w = el.clientWidth || 1, h = el.clientHeight || 1;
     renderer.setSize(w, h, false);
@@ -73,10 +103,8 @@ export function start({ el, opts, prefs }) {
   new ResizeObserver(resize).observe(el);
   resize();
 
-  const shownSeason = () => (seasonMode === 'live' ? model?.season ?? 'summer' : seasonMode);
   /** The ground is rebuilt when the bed rows or the season shown change. */
   function rebuildGround() {
-    if (!model) return;
     const season = shownSeason(), key = `${model.ground.rows}|${season}`;
     if (key === groundKey) return;
     groundKey = key;
@@ -86,12 +114,17 @@ export function start({ el, opts, prefs }) {
     const hx = W / 2 / PX, hz = model.ground.H / 2 / PX, edge = 1.5;
     rig.setFarm({ half: { x: hx, z: hz }, points: [-1, 1].flatMap(sx => [-1, 1].map(sz => ({ x: sx * (hx + edge), y: sz < 0 ? 8 : 0, z: sz * (hz + edge) }))) });
   }
-
   /** The farmstead and the yard: rebuilt when the rows, the season or the silos change. */
   function rebuildBuildings() {
     const info = buildings.build(model.ground, shownSeason(), model.silos.map(({ x, name, silo }) => ({ x, name, silo: silo && { fill: silo.fill, lamp: silo.lamp } })));
     const lk = JSON.stringify(info.lamps);
     if (lk !== lampsKey) { lampsKey = lk; sky.setLamps(info.lamps); }
+  }
+  function rebuildAll() {
+    if (!model) return;
+    rebuildGround();
+    rebuildBuildings();
+    beds.sync(model.beds, model.ground, shownSeason());
   }
 
   function onScene(s) {
@@ -99,16 +132,61 @@ export function start({ el, opts, prefs }) {
     const bedMap = JSON.stringify(model.keep.beds);
     if (bedMap !== JSON.stringify(keep.beds)) prefs.set('beds', bedMap);
     keep = model.keep;
-    rebuildGround();
-    rebuildBuildings();
-    beds.sync(model.beds, model.ground, shownSeason());
+    rebuildAll();
     farmers.sync(model, { instant: firstScene || opts.still });
     farmers.select(selected);
+    overlay.sync(model, { bubblesOn, near: near() });
+    overlay.setSelected(selected);
     firstScene = false;
     dirty = true;
   }
 
-  let lastFrame = 0, lastTick = performance.now(), lastSky = -Infinity;
+  /* ---------- clicks: a farmer opens it in the sidebar (and the camera glides to it); the barn starts a session ---------- */
+  const ray = new THREE.Raycaster(), ndc = new THREE.Vector2();
+  function hitAt(e) {
+    const r = canvas.getBoundingClientRect();
+    ndc.set(((e.clientX - r.left) / r.width) * 2 - 1, -((e.clientY - r.top) / r.height) * 2 + 1);
+    ray.setFromCamera(ndc, camera);
+    const f = ray.intersectObjects(farmers.hits(), true)[0];
+    if (f) { let o = f.object; while (o && !o.userData.id) o = o.parent; if (o) return { id: o.userData.id }; }
+    const b = ray.intersectObjects(buildings.hits(), true)[0];
+    if (b) { let o = b.object; while (o && !o.userData.hit) o = o.parent; if (o) return { building: o.userData.hit }; }
+    return null;
+  }
+  function pickFarmer(id) {
+    opts.onPickAgent(id);
+    const h = farmers.headOf(id);
+    if (h) rig.glideTo({ x: h.x, z: h.z });
+  }
+  canvas.addEventListener('pointerup', e => {
+    if (rig.wasDrag() || e.button !== 0) return;
+    const hit = hitAt(e);
+    if (hit?.id) pickFarmer(hit.id);
+    else if (hit?.building === 'barn') opts.onStartSession();
+  });
+  let hoverPending = false;
+  canvas.addEventListener('pointermove', e => {
+    if (hoverPending || e.buttons) return;
+    hoverPending = true;
+    requestAnimationFrame(() => {
+      hoverPending = false;
+      const hit = hitAt(e);
+      overlay.setHover(hit?.id ?? null);
+      canvas.style.cursor = hit ? 'pointer' : '';
+      canvas.title = hit?.building === 'barn' ? 'The barn: start or resume a session' : '';
+    });
+  });
+
+  /* ---------- the frame loop: at most 30 a second; none while hidden; while still, only when something changed ---------- */
+  const v = new THREE.Vector3();
+  const project = p => {
+    v.set(p.x, p.y, p.z).project(camera);
+    const w = el.clientWidth, h = el.clientHeight;
+    return { x: (v.x * 0.5 + 0.5) * w, y: (-v.y * 0.5 + 0.5) * h, visible: v.z < 1 && v.x > -1.2 && v.x < 1.2 && v.y > -1.2 && v.y < 1.3 };
+  };
+  const at3 = (x, y, h = 0) => { const p = shapes.at(x, y, model.ground.H); return { x: p.x, y: h, z: p.z }; };
+  const silo3 = x => at3(x + 10, 86, 0.6);
+  let lastFrame = 0, lastTick = performance.now(), lastSky = -Infinity, wasNear = false;
   renderer.setAnimationLoop(now => {
     if (document.hidden || now - lastFrame < FRAME_MS - 2) return;
     lastFrame = now;
@@ -116,19 +194,21 @@ export function start({ el, opts, prefs }) {
     lastTick = now;
     if (now - lastSky > 2000) { lastSky = now; sky.set(skyFor(new Date(), skyMode, skyAt)); dirty = true; }
     const moving = rig.update(dt), t = opts.still ? 0 : now / 1000;
-    farmers.tick(t, dt, opts.still);
+    const walking = farmers.tick(t, dt, opts.still);
     if (!opts.still) { // the world moves: the wind in the crops, the weather
       crops.tick(t);
       beds.tick(t, dt);
     }
-    if (!dirty && !moving && opts.still) return;
+    if (model && near() !== wasNear) { wasNear = near(); overlay.sync(model, { bubblesOn, near: wasNear }); }
+    if (!dirty && !moving && !walking && opts.still) return;
     dirty = false;
     renderer.render(scene3, camera);
+    if (model) overlay.place(project, id => farmers.headOf(id), at3, silo3);
   });
 
   // For the browser check (scripts/farm3d-check.mjs) and close-up pictures: what is drawn, and a view to hold.
   window.__farm3d = {
-    stats: () => ({ calls: renderer.info.render.calls, triangles: renderer.info.render.triangles, geometries: renderer.info.memory.geometries, textures: renderer.info.memory.textures, farmers: model?.farmers.length ?? 0, beds: model?.beds.length ?? 0 }),
+    stats: () => ({ calls: renderer.info.render.calls, triangles: renderer.info.render.triangles, geometries: renderer.info.memory.geometries, textures: renderer.info.memory.textures, farmers: farmers.count(), drawn: model?.farmers.length ?? 0, tags: overlay.count(), beds: model?.beds.length ?? 0 }),
     view({ turn, zoom, at } = {}) {
       if (Number.isInteger(turn)) while (rig.state().turn !== ((turn % 4) + 4) % 4) rig.turn(1);
       if (zoom) rig.setZoom(zoom);
@@ -139,6 +219,6 @@ export function start({ el, opts, prefs }) {
 
   return {
     scene: onScene,
-    select(id) { selected = id ?? null; farmers.select(selected); dirty = true; },
+    select(id) { selected = id ?? null; farmers.select(selected); overlay.setSelected(selected); dirty = true; },
   };
 }

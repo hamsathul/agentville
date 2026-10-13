@@ -121,7 +121,7 @@ export function makeFigures(THREE, mats, S) {
         badgeName = name;
         if (badge) { badge.removeFromParent(); badge = null; }
         if (name === 'basket') { badge = new THREE.Mesh(baked('badge|basket', BADGES.basket), material); badge.position.set(0, 0.62, 0.42); fig.add(badge); }
-        else if (name) { badge = new THREE.Mesh(baked(`badge|${name}`, BADGES[name]), material); badge.position.set(0.42, 2.25, 0); root.add(badge); }
+        else if (name) { badge = new THREE.Mesh(baked(`badge|${name}`, BADGES[name]), material); badge.position.set(0.58, 1.75, 0); root.add(badge); } // beside the head, as the 2D farm has it, so the name tag can sit just over the hat
         if (badge) badge.castShadow = true;
       }
       if (Boolean(thinking) !== Boolean(think)) {
@@ -149,7 +149,7 @@ export function makeFigures(THREE, mats, S) {
       else if (kind === 'wave') { armR.rotation.z = 2.6 + Math.sin(t * 8) * 0.35; }
       else if (kind === 'nap') { fig.rotation.x = -Math.PI / 2; fig.position.y = 1.05; armL.rotation.z = -0.2; armR.rotation.z = 0.2; }
       else if (kind === 'idle') { armL.rotation.z = -0.08; armR.rotation.z = 0.08; fig.position.y = Math.sin(t * 1.4) * 0.01; }
-      if (badge && badgeName !== 'basket') badge.position.y = 2.25 + (t ? Math.abs(Math.sin(t * 3)) * 0.1 : 0);
+      if (badge && badgeName !== 'basket') badge.position.y = 1.75 + (t ? Math.abs(Math.sin(t * 3)) * 0.1 : 0);
       if (think) think.position.y = 2.1 + (t ? Math.sin(t * 2) * 0.05 : 0);
     }
     const figure = {
