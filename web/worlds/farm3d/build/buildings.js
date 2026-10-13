@@ -207,34 +207,36 @@ export function makeBuildings(THREE, mats, S) {
     }
 
     /* ---------- the shade tree, the orchard, bushes, stones, the woodpile and the rock ---------- */
-    const canopy = pal.canopy;
+    const canopy = pal.canopy, plants = new THREE.Group(); // stand-ins until build/nature.js has drawn the models
+    plants.userData.plants = true;
+    g.add(plants);
     // `shade`: the shade tree, whose idle farmers stand in front of its trunk: its crown higher and set back, so they show
     function tree(x, y, r, { fruit = null, seed = 0, shade = false } = {}) {
       const p0 = P(x, y), s = m(r) * (shade ? 0.95 : 1.15), h = 1.4 + s * 0.4 + (shade ? 1.2 : 0), p = shade ? { x: p0.x, z: p0.z - 1.3 } : p0;
-      S.cyl(0.18 + s * 0.06, 0.28 + s * 0.08, h + s * 0.5, '#4e3626', p.x, 0, p.z, g, 7);
+      S.cyl(0.18 + s * 0.06, 0.28 + s * 0.08, h + s * 0.5, '#4e3626', p.x, 0, p.z, plants, 7);
       if (snow) { // bare branches reaching up, with snow along them
         for (let i = 0; i < 5; i++) {
-          const a = seed + i * 1.25, br = S.box(s * 0.9, 0.11, 0.11, '#4e3626', 0, 0, 0, g);
+          const a = seed + i * 1.25, br = S.box(s * 0.9, 0.11, 0.11, '#4e3626', 0, 0, 0, plants);
           br.position.set(p.x + Math.cos(a) * s * 0.3, h + s * 0.2 + (i % 3) * 0.3, p.z + Math.sin(a) * s * 0.3); br.rotation.set(0, -a, 0.85);
-          const sn = S.box(s * 0.8, 0.05, 0.12, '#ffffff', 0, 0, 0, g); sn.position.copy(br.position); sn.position.y += 0.07; sn.rotation.copy(br.rotation);
+          const sn = S.box(s * 0.8, 0.05, 0.12, '#ffffff', 0, 0, 0, plants); sn.position.copy(br.position); sn.position.y += 0.07; sn.rotation.copy(br.rotation);
         }
         return;
       }
-      S.ball(s, canopy[1], p.x, h + s * 0.8, p.z, g, 0);
-      S.ball(s * 0.8, canopy[2], p.x + s * 0.45, h + s * 0.65, p.z + s * 0.3, g, 0);
-      S.ball(s * 0.65, canopy[3], p.x - s * 0.3, h + s * 1.35, p.z - s * 0.2, g, 0);
-      if (fruit) for (let i = 0; i < 9; i++) { const a = seed + i * 2.4, rr = s * (0.75 + (i % 3) * 0.12); S.ball(0.11, fruit, p.x + Math.cos(a) * rr, h + s * (0.5 + (i % 4) * 0.28), p.z + Math.sin(a) * rr, g, 0); }
+      S.ball(s, canopy[1], p.x, h + s * 0.8, p.z, plants, 0);
+      S.ball(s * 0.8, canopy[2], p.x + s * 0.45, h + s * 0.65, p.z + s * 0.3, plants, 0);
+      S.ball(s * 0.65, canopy[3], p.x - s * 0.3, h + s * 1.35, p.z - s * 0.2, plants, 0);
+      if (fruit) for (let i = 0; i < 9; i++) { const a = seed + i * 2.4, rr = s * (0.75 + (i % 3) * 0.12); S.ball(0.11, fruit, p.x + Math.cos(a) * rr, h + s * (0.5 + (i % 4) * 0.28), p.z + Math.sin(a) * rr, plants, 0); }
     }
     const fruit = season === 'spring' ? pal.bloom : season === 'autumn' ? '#e9a23b' : '#e04a3a';
     tree(SHADE.x, ground.GRID.y1 + SHADE.dy, 21, { fruit, seed: 3, shade: true });
     for (const [x, y] of orchardOf(ground)) tree(x, y, 10, { seed: x + y });
     for (const [x, y, r] of BUSHES) {
       const p = P(x, y);
-      S.ball(m(r) * 1.4, snow ? '#dfe9f2' : canopy[2], p.x, m(r) * 0.9, p.z, g, 0);
-      if (season === 'summer') for (let i = 0; i < 4; i++) S.ball(0.06, '#e04a3a', p.x + Math.cos(i * 1.7) * m(r), m(r) * (0.9 + (i % 2) * 0.4), p.z + Math.sin(i * 1.7) * m(r), g, 0);
+      S.ball(m(r) * 1.4, snow ? '#dfe9f2' : canopy[2], p.x, m(r) * 0.9, p.z, plants, 0);
+      if (season === 'summer') for (let i = 0; i < 4; i++) S.ball(0.06, '#e04a3a', p.x + Math.cos(i * 1.7) * m(r), m(r) * (0.9 + (i % 2) * 0.4), p.z + Math.sin(i * 1.7) * m(r), plants, 0);
     }
     for (const [x, y, s] of rocksOf(ground)) {
-      const p = P(x, y), rock = S.mesh(new THREE.DodecahedronGeometry(m(s) * 1.4, 0), '#8c96a0', p.x, m(s) * 0.6, p.z, g);
+      const p = P(x, y), rock = S.mesh(new THREE.DodecahedronGeometry(m(s) * 1.4, 0), '#8c96a0', p.x, m(s) * 0.6, p.z, plants);
       rock.scale.y = 0.6;
     }
     {
@@ -272,8 +274,8 @@ export function makeBuildings(THREE, mats, S) {
     }
 
     // one draw call for the barn (its own, so it can still be clicked), one for the rest
-    for (const o of g.children.filter(c => c.userData.hit)) S.bake(o);
-    S.bake(g, { keep: o => Boolean(o.userData.hit) });
+    for (const o of g.children.filter(c => c.userData.hit || c.userData.plants)) S.bake(o);
+    S.bake(g, { keep: o => Boolean(o.userData.hit || o.userData.plants) });
     const barnDoor = P(BARN_DOOR[0], BARN.front + 2);
     const info = { porch, siloTops, lamps: [...porch.lamps, { x: barnDoor.x, y: 3.2, z: barnDoor.z + 0.6, color: '#ffe0a0', distance: 9 }] };
     g.userData.info = info;
@@ -283,5 +285,10 @@ export function makeBuildings(THREE, mats, S) {
   }
   /** The barn, for clicks (its meshes carry userData.hit on their group). */
   const hits = () => (built ? built.children.filter(o => o.userData.hit) : []);
-  return { group, build, hits, dispose: () => { if (built) disposeTree(built); built = null; key = ''; } };
+  return {
+    group, build, hits,
+    /** Shows or hides the yard's ball trees, bushes and rocks (they stand in until build/nature.js has drawn the models). */
+    setPlants(on) { for (const o of built?.children ?? []) if (o.userData.plants) o.visible = on; },
+    dispose: () => { if (built) disposeTree(built); built = null; key = ''; },
+  };
 }

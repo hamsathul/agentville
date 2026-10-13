@@ -16,6 +16,7 @@ import { makeBeds } from './build/beds.js';
 import { makeFigures } from './build/figurine.js';
 import { makeFarmers } from './build/farmers.js';
 import { makeAnimals } from './build/animals.js';
+import { makeNature } from './build/nature.js';
 import { PX, SILO_Y, W } from './layout.js';
 
 const SKIES = ['live', 'day', 'night'], SEASON_MODES = ['live', 'spring', 'summer', 'autumn', 'winter'];
@@ -76,7 +77,10 @@ export function start({ el, opts, prefs }) {
   const shapes = makeShapes(THREE, mats), buildings = makeBuildings(THREE, mats, shapes);
   const crops = makeCrops(THREE, mats), beds = makeBeds(THREE, mats, shapes, makeWeather(THREE, mats, shapes), crops);
   const farmers = makeFarmers(THREE, makeFigures(THREE, mats, shapes), shapes), animals = makeAnimals(THREE, mats, shapes), weather = makeWeather(THREE, mats, shapes);
-  scene3.add(terrain.group, buildings.group, beds.group, crops.group, farmers.group, animals.group);
+  const nature = makeNature(THREE, shapes);
+  scene3.add(terrain.group, buildings.group, beds.group, crops.group, farmers.group, animals.group, nature.group);
+  /** The ball trees, bushes and rocks stand in until the plants' models are drawn. */
+  const standIns = () => { const on = !nature.ready(); terrain.setForest(on); buildings.setPlants(on); };
   let snow = null, night = 0;
 
   // The world's own settings, kept by the page.
@@ -149,6 +153,7 @@ export function start({ el, opts, prefs }) {
     if (key === groundKey) return;
     groundKey = key;
     const ext = terrain.build(model.ground, season);
+    nature.build(model.ground, season).then(done => { if (done) { standIns(); dirty = true; } }).catch(err => report(err, 'plants')); // the farm draws first
     sky.setExtent(ext.x, ext.z);
     animals.setGround(model.ground);
     animals.setWinter(season === 'winter'); // the pond is ice: its frog, fish and lily pads out of sight
@@ -163,6 +168,7 @@ export function start({ el, opts, prefs }) {
   /** The farmstead and the yard: rebuilt when the rows, the season or the silos change. */
   function rebuildBuildings() {
     const info = buildings.build(model.ground, shownSeason(), model.silos.map(({ x, name, silo }) => ({ x, name, silo: silo && { fill: silo.fill, lamp: silo.lamp } })));
+    standIns();
     const lk = JSON.stringify(info.lamps);
     if (lk !== lampsKey) { lampsKey = lk; sky.setLamps(info.lamps); }
   }
@@ -269,6 +275,8 @@ export function start({ el, opts, prefs }) {
   window.__farm3d = {
     stats: () => ({ calls: renderer.info.render.calls, triangles: renderer.info.render.triangles, geometries: renderer.info.memory.geometries, textures: renderer.info.memory.textures, farmers: farmers.count(), drawn: model?.farmers.length ?? 0, tags: overlay.count(), beds: model?.beds.length ?? 0, animals: animals.count() }),
     screenOf: id => { const h = farmers.headOf(id); return h ? project(h) : null; }, // where a farmer's head is in the picture, in pixels
+    /** The plants drawn, by kind (none until their models have loaded). */
+    plants: () => nature.count(),
     /** Animal i: its kind, what it is doing, where it is on the 2D map, and where its middle is in the picture, in pixels. */
     animal: i => { const a = animals.info(i); return a && { kind: a.kind, act: a.act, part: a.part, spot: a.spot, at: project({ x: a.top.x, y: a.top.y * 0.5, z: a.top.z }), coat: animals.coat(i) }; },
     /** A view to hold: yaw and pitch in degrees, zoom, and a 2D farm point to glide to. */

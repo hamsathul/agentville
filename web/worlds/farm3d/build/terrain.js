@@ -116,6 +116,7 @@ export function makeTerrain(THREE, mats) {
     trunks.castShadow = crowns.castShadow = true;
     trunks.receiveShadow = crowns.receiveShadow = true;
     g.add(trunks, crowns);
+    g.userData.forest = [trunks, crowns]; // stand-ins until build/nature.js has drawn the forest
 
     // more forest past the farm's own, out to 160 m, thinning, with clearings; too far for shadows
     {
@@ -157,5 +158,10 @@ export function makeTerrain(THREE, mats) {
     built = g;
     return { x: w / 2, z: d / 2, center: c0 };
   }
-  return { group, build, dispose: () => { if (built) disposeTree(built); built = null; } };
+  return {
+    group, build,
+    /** Shows or hides the ball trees (they stand in until the forest's models are drawn). */
+    setForest(on) { for (const m of built?.userData.forest ?? []) m.visible = on; },
+    dispose: () => { if (built) disposeTree(built); built = null; },
+  };
 }

@@ -111,3 +111,28 @@ test('left alone they wander: walks bend, paces and rests spread, and two days d
   assert.ok(Math.min(...one.rests) < 3 && Math.max(...one.rests) > 15, `rests from ${Math.min(...one.rests).toFixed(1)} to ${Math.max(...one.rests).toFixed(1)} s`);
   assert.notDeepEqual(one.at, two.at, 'another day, another wander');
 });
+
+test("the farm's plants: a forest tree wherever forestOf puts one, the season's variants, the yard's where the layout puts them, the forest floor under the trees' fringe", async () => {
+  const { plantsOf } = await import('../../web/worlds/farm3d/nature.js');
+  const { BUSHES, SHADE, orchardOf, rocksOf } = await import('../../web/worlds/farm3d/layout.js');
+  const STILL = Object.keys(MODELS).filter(k => MODELS[k].family === 'still' && k !== 'lilypad');
+  const SNOWY = ['birchsnow', 'birchdead', 'deadtreesnow', 'pinesnow', 'bushsnow', 'rocksnow'], GREEN = ['tree', 'tree2', 'autumntree', 'bush', 'bushberries', 'rockmoss', 'flowers'];
+  for (const rows of [GRID_CONFIG.minRows, GRID_CONFIG.maxRows]) for (const season of ['spring', 'summer', 'autumn', 'winter']) {
+    const L = groundOf(rows), plants = plantsOf(L, season), forest = forestOf(L.H), crowns = forest.map(([x, y, r]) => [x, y, r * 1.25]);
+    const where = `${rows} rows, ${season}`;
+    assert.ok(plants.every(p => STILL.includes(p.kind) && p.w > 0 && p.h > 0 && Number.isFinite(p.turn)), `${where}: every plant a model, with a size`);
+    assert.equal(plants.filter(p => p.role === 'forest').length, forest.length, `${where}: the forest`);
+    assert.ok(plants.filter(p => p.role === 'forest').every((p, k) => p.x === forest[k][0] && p.y === forest[k][1] && p.w <= (forest[k][2] * 1.25 * 2.2) / 8), `${where}: each where forestOf puts it, no wider than roam's crown`);
+    assert.ok(plants.some(p => p.role === 'shade' && p.x === SHADE.x && p.y === L.GRID.y1 + SHADE.dy - 10), `${where}: the shade tree over roam's trunk`);
+    assert.equal(plants.filter(p => p.role === 'orchard').length, orchardOf(L).length);
+    assert.equal(plants.filter(p => p.role === 'bush').length, BUSHES.length);
+    assert.equal(plants.filter(p => p.role === 'rock').length, rocksOf(L).length);
+    const floor = plants.filter(p => p.role === 'floor');
+    assert.ok(floor.length >= 8, `${where}: ${floor.length} things on the forest floor`);
+    for (const p of floor) assert.ok(crowns.some(([x, y, r]) => Math.hypot(p.x - x, p.y - y) <= r + 3), `${where}: the ${p.kind} at ${p.x},${p.y} out from under the trees`);
+    const kinds = new Set(plants.map(p => p.kind));
+    if (season === 'winter') assert.ok(!GREEN.some(k => kinds.has(k)), `${where}: ${[...kinds]}`);
+    else assert.ok(!SNOWY.some(k => kinds.has(k)), `${where}: ${[...kinds]}`);
+    if (season === 'autumn') assert.ok(kinds.has('autumntree'), `${where}: autumn colours`);
+  }
+});

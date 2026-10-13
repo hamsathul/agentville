@@ -143,7 +143,8 @@ try {
       await chrome.inFrame('/world/farm3d/', "document.querySelector('.f3-pet [data-act=\"hop\"]')?.click()");
       await sleep(150);
       const doing = JSON.parse(await chrome.inFrame('/world/farm3d/', "JSON.stringify({ act: window.__farm3d.animal(0).act, open: Boolean(document.querySelector('.f3-pet')) })"));
-      const frog = JSON.parse(await clickAnimal(FROG));
+      let frog = { menu: [] }; // it may be under water or mid-hop (out of reach): a few tries
+      for (let k = 0; k < 6 && !frog.menu.length; k++) { frog = JSON.parse(await clickAnimal(FROG)); if (!frog.menu.length) await sleep(1500); }
       await chrome.inFrame('/world/farm3d/', "document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }))");
       const dog = JSON.parse(await clickAnimal(8));
       await chrome.inFrame('/world/farm3d/', "document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }))");
@@ -158,7 +159,21 @@ try {
       else console.log(`  ✓ animals: ${ANIMALS} out once loaded (the frog and the fish too), in coats.js's colours with no metal, the cow spotted; a click opens one's menu (the frog's its own, the husky's has Throw a stick), Hop sets the cow hopping, Esc shuts it; none after the Animals switch`);
     }
 
-    // 5. memory: the busiest stop and an empty one, swapped 300 times; the geometry held comes back to the same
+    // 5. the plants: Quaternius's trees, bushes and rocks drawn once their models load (the ball trees stand in till
+    // then), the season's: snow on the pines in winter
+    {
+      const plantsAt = async stop => {
+        await open(chrome, stop);
+        let p = {};
+        for (const end = Date.now() + 20_000; Date.now() < end && !Object.keys(p).length; await sleep(250)) p = JSON.parse(await chrome.inFrame('/world/farm3d/', 'JSON.stringify(window.__farm3d.plants())'));
+        return p;
+      };
+      const summer = await plantsAt('everyone'), winter = await plantsAt('limits-high'), total = o => Object.values(o).reduce((n, k) => n + k, 0);
+      if (total(summer) < 100 || !summer.pine || summer.pinesnow || !winter.pinesnow || winter.pine) bad(`plants: ${JSON.stringify(summer)} by day in summer, ${JSON.stringify(winter)} in winter (100 or more, pines; snowy pines in winter)`);
+      else console.log(`  ✓ plants: ${total(summer)} trees, bushes, rocks and things on the forest floor; snowy pines in winter`);
+    }
+
+    // 6. memory: the busiest stop and an empty one, swapped 300 times; the geometry held comes back to the same
     await open(chrome, 'everyone');
     const frames = JSON.parse(await chrome.js("JSON.stringify(['everyone', 'nobody'].map(n => window.AgentvilleTour.stops.find(s => s.name === n).frames[0]))"));
     await chrome.js(`window.__f3frames = ${JSON.stringify(frames)}`);
