@@ -1,0 +1,8 @@
+{
+  "name": "3D farm",
+  "icon": "🚜",
+  "description": "The farm in 3D, a prototype: every agent a farmer, every repo a field",
+  "api": 1,
+  "nouns": { "agent": "farmer", "agents": "farmers", "repo": "field", "repos": "fields", "start": "barn", "diary": "Farm diary" },
+  "taken": ["chicken", "dog", "pigeon"]
+}
