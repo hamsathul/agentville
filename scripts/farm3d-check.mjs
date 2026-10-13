@@ -1,7 +1,9 @@
 #!/usr/bin/env node
 // The 3D farm in a real browser (it needs WebGL, so check-world's vm can't run it): every stop of the tour on the
 // test page, checked from inside the world's frame (window.__farm3d.stats): it started, drew something, and has a
-// name tag for each farmer it shows, with no error strip, panel or script error. Then memory: the busiest stop
+// name tag for each farmer it shows, with no error strip, panel or script error. Then a crowd with no repos (the
+// "+N" signs for farmers beyond a place's room) and a fresh farm with nothing at all; a farmer's tooltip when
+// you point at it on the canvas. Then memory: the busiest stop
 // and an empty one swapped 300 times, and the geometry it holds is the same at the end. Then with WebGL forced
 // off: the plain panel, and no error. Its own server on made-up data, a frozen clock, Chrome. No dependencies.
 //
@@ -69,7 +71,48 @@ try {
       else console.log(`  ✓ ${stop}  (${s.drawn} farmers, ${s.beds} fields, ${s.calls} draw calls)`);
     }
 
-    // 2. memory: the busiest stop and an empty one, swapped 300 times; the geometry held comes back to the same
+    // 2. a crowd with no repos (more farmers than places: the 2D farm's "+N" signs), and a fresh farm with nothing at all
+    const person = (id, state, over = {}) => ({ id, kind: 'interactive', name: id, cwd: '/Users/you/elsewhere', state, stateReason: 'busy', stateSince: NOW, feed: [], children: [], touching: [], contextTokens: 40_000,
+      proc: { cpu: 1, rssMb: 100, pid: 1, childCount: 0, children: [] }, usage: { costUsd: 0.1 }, mode: 'default', model: 'claude-sonnet-5-5', fast: false, tasks: null, compactions: 0, mcp: [],
+      now: state === 'working' ? { tool: 'Edit', step: 'edit', summary: 'x', startedAt: NOW } : null, ...over });
+    const many = (n, state, tag) => Array.from({ length: n }, (_, i) => person(`${tag}${i}`, state));
+    const crowd = { generatedAt: NOW, collisions: [], repos: [], settings: { cpuAlertPct: 90 }, agents: [...many(7, 'waiting', 'w'), ...many(3, 'yourTurn', 't'), ...many(6, 'stale', 's'), ...many(9, 'idle', 'i'), ...many(6, 'working', 'm')] };
+    for (const [name, snap, want, signs] of [['a crowd with no repos', crowd, 18, ['+4 waiting', '+2 stale', '+5 idle', '+2 in the meadow']], ['a fresh farm with nothing at all', { generatedAt: NOW, collisions: [], repos: [], agents: [] }, 0, ['No fields yet']]]) {
+      await open(chrome, 'everyone');
+      const before = chrome.errors.length;
+      await chrome.js(`window.TrackerFarm.update(${JSON.stringify(snap)})`);
+      await sleep(900);
+      const s = await statsOf(chrome), text = await chrome.inFrame('/world/farm3d/', "[...document.querySelectorAll('.f3-ov > *')].filter(e => e.style.display !== 'none').map(e => e.textContent).join(' | ')"), strip = await stripOf(chrome);
+      const why = [
+        !(s?.calls > 0) && 'it drew nothing',
+        s && s.drawn !== want && `${s.drawn} farmers drawn, not ${want}`,
+        s && s.tags !== s.drawn && `${s.tags} name tags for ${s.drawn} farmers`,
+        ...signs.filter(t => !(text ?? '').includes(t)).map(t => `no "${t}" sign`),
+        strip && `an error strip: ${oneLine(strip).slice(0, 160)}`,
+        chrome.errors.length > before && `script errors: ${oneLine(chrome.errors[before]).slice(0, 160)}`,
+      ].filter(Boolean);
+      if (why.length) bad(`${name}: ${why.join('; ')}`);
+      else console.log(`  ✓ ${name}: ${want} farmers drawn${signs.length ? `, ${signs.join(', ')}` : ''}`);
+    }
+
+    // 3. hovering a farmer on the canvas shows its tooltip (the same words as its name tag's)
+    {
+      await open(chrome, 'everyone');
+      await sleep(600);
+      const r = JSON.parse(await chrome.inFrame('/world/farm3d/', `(() => {
+        const tag = document.querySelector('.f3-tag:not(.st-waiting):not(.st-turn)'), id = tag?.dataset.id, at = id && window.__farm3d.screenOf(id);
+        if (!at) return JSON.stringify({ none: true });
+        const c = document.querySelector('.f3-canvas'), box = c.getBoundingClientRect();
+        c.dispatchEvent(new PointerEvent('pointermove', { bubbles: true, clientX: box.left + at.x, clientY: box.top + at.y + 18, pointerId: 1 }));
+        return JSON.stringify({ id, tip: tag.title });
+      })()`));
+      await sleep(300);
+      const title = await chrome.inFrame('/world/farm3d/', "document.querySelector('.f3-canvas').title");
+      if (r.none || !r.tip || title !== r.tip) bad(`hover: pointing at ${r.id ?? 'a farmer'} gave the tooltip "${oneLine(title ?? '').slice(0, 80)}", not "${oneLine(r.tip ?? '').slice(0, 80)}"`);
+      else console.log(`  ✓ hover: pointing at ${r.id} shows its tooltip`);
+    }
+
+    // 4. memory: the busiest stop and an empty one, swapped 300 times; the geometry held comes back to the same
     await open(chrome, 'everyone');
     const frames = JSON.parse(await chrome.js("JSON.stringify(['everyone', 'nobody'].map(n => window.AgentvilleTour.stops.find(s => s.name === n).frames[0]))"));
     await chrome.js(`window.__f3frames = ${JSON.stringify(frames)}`);
@@ -83,7 +126,7 @@ try {
     else console.log(`  ✓ memory: ${g0} geometries before 300 scene swaps, ${g1} after`);
   } finally { await chrome.close(); }
 
-  // 3. no WebGL: the plain panel, the world started all the same, and no error
+  // 5. no WebGL: the plain panel, the world started all the same, and no error
   const noGl = await openChrome({ prepare: async (send, session) => { await send('Page.addScriptToEvaluateOnNewDocument', { source: `${freezeScript(NOW)}\nwindow.__farm3dForceNoWebGL = true;` }, session); } });
   try {
     await noGl.send('Emulation.setDeviceMetricsOverride', { width: 1280, height: 820, deviceScaleFactor: 1, mobile: false });

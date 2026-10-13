@@ -209,7 +209,8 @@ export function start({ el, opts, prefs }) {
       const hit = hitAt(e);
       overlay.setHover(hit?.id ?? null);
       canvas.style.cursor = hit ? 'pointer' : '';
-      canvas.title = hit?.building === 'barn' ? 'The barn: start or resume a session' : '';
+      // a farmer's tooltip, as its name tag has it (what it is doing, its context, its cost…); the barn's
+      canvas.title = hit?.id ? model?.farmers.find(f => f.id === hit.id)?.tip ?? '' : hit?.building === 'barn' ? 'The barn: start or resume a session' : '';
     });
   });
 
@@ -251,6 +252,7 @@ export function start({ el, opts, prefs }) {
   // For the browser check (scripts/farm3d-check.mjs) and close-up pictures: what is drawn, and a view to hold.
   window.__farm3d = {
     stats: () => ({ calls: renderer.info.render.calls, triangles: renderer.info.render.triangles, geometries: renderer.info.memory.geometries, textures: renderer.info.memory.textures, farmers: farmers.count(), drawn: model?.farmers.length ?? 0, tags: overlay.count(), beds: model?.beds.length ?? 0 }),
+    screenOf: id => { const h = farmers.headOf(id); return h ? project(h) : null; }, // where a farmer's head is in the picture, in pixels
     view({ turn, zoom, at } = {}) {
       if (Number.isInteger(turn)) while (rig.state().turn !== ((turn % 4) + 4) % 4) rig.turn(1);
       if (zoom) rig.setZoom(zoom);

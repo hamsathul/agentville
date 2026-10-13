@@ -51,7 +51,10 @@ export function makeOverlay(el, { opts, hooks }) {
   const hud = document.createElement('div');
   hud.className = 'px-hud';
   el.append(ov, hud);
-  const tags = new Map(), says = new Map(), fields = new Map(), cnts = new Map(), silos = new Map();
+  const tags = new Map(), says = new Map(), fields = new Map(), cnts = new Map(), silos = new Map(), signs = new Map();
+  // Farmers beyond a place's room aren't drawn: a sign says how many, where and in what words the 2D farm puts it
+  // (web/worlds/farm/world.js, labels); and fields beyond the grid's 18 beds.
+  const SIGNS = { desk: [154, -34, 'waiting'], turn: [246, -34, 'your turn'], storage: [340, -34, 'stale'], charge: [60, 262, 'idle'], meadow: [56, 152, 'in the meadow'], nap: [97, 190, 'napping'] };
   const closed = new Map(); // id → the words its bubble had when × closed it
   let farmers = [], model = null, hover = null, selected = null, empty = null;
 
@@ -115,6 +118,17 @@ export function makeOverlay(el, { opts, hooks }) {
       d.title = `The silo${s.name ? ` of ${s.name}` : ''}: ${s.name ? 'its' : 'your'} plan's weekly limit, ${s.silo.label} used`;
     }
     prune(silos, keepSilo);
+    const keepSign = new Set(), more = m.ground.more ?? 0;
+    for (const [group, n] of [...Object.entries(m.over ?? {}), ['more', more]]) {
+      if (!(n > 0) || (group !== 'more' && !SIGNS[group])) continue;
+      keepSign.add(group);
+      const d = keyed(signs, group, () => { const e = document.createElement('div'); e.className = 'f3-cnt'; return e; });
+      const text = group === 'more' ? `+${n} more field${n === 1 ? '' : 's'}` : `+${n} ${SIGNS[group][2]}`;
+      const h = pxt(text, '#5a3a1a', null);
+      if (d.dataset.html !== h) { d.innerHTML = h; d.dataset.html = h; }
+      d.title = group === 'more' ? `${n} more repo${n === 1 ? '' : 's'} than the grid's 18 beds: see them all in the list view` : `${n} more ${n === 1 ? 'farmer' : 'farmers'} ${SIGNS[group][2]} than there is room to draw here`;
+    }
+    prune(signs, keepSign);
     if (!m.beds.length && !empty) { empty = document.createElement('div'); empty.className = 'f3-empty'; empty.innerHTML = pxt('No fields yet: no agent has touched a repo in the last 30 minutes', '#fff3d6', '#4e3626'); ov.append(empty); }
     else if (m.beds.length && empty) { empty.remove(); empty = null; }
   }
@@ -145,6 +159,10 @@ export function makeOverlay(el, { opts, hooks }) {
       for (const [k, dx] of [['behind', -40], ['ahead', -24], ['dirty', 24]]) { const c = cnts.get(`${b.key}|${k}`); if (c) put(c, project(at3(b.cx + dx, b.rowTop + 4, 1.4))); }
     }
     for (const [x, d] of silos) put(d, project(silo3(Number(x))));
+    for (const [group, d] of signs) {
+      const [x, y] = group === 'more' ? [350, (model?.ground.GRID.y1 ?? 300) + 8] : SIGNS[group];
+      put(d, project(at3(x, y < 0 ? 78 + y : y, y < 0 ? 2.8 : 0.4)));
+    }
     if (empty) put(empty, project(at3(262, 170, 0)));
   }
 

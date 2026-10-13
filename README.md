@@ -1292,8 +1292,11 @@ patch and the forest all round.
 - **Animals**, just for fun: two cows and the sheepdog wander the yard, the ducks paddle round the pond.
   **Animals** in the Menu hides them.
 - **Names and bubbles**: a farmer's name (in the farm's pixel font) shows when it needs you, when its turn
-  ended, when you pick it or point at it, and for every farmer once you zoom in; its speech bubble shows
-  for one that needs you, and for all when you zoom in. **Bubbles** in the Menu hides them; × hides one.
+  ended, when you pick it or point at it, and for every farmer once you zoom in; pointing at a farmer also
+  shows what it is doing, as its name's tooltip does. Its speech bubble shows for one that needs you or
+  whose turn ended, and for all when you zoom in. **Bubbles** in the Menu hides them; × hides one. When
+  more farmers wait, rest or work in the meadow than there is room for, a sign says how many more
+  (`+4 waiting`), as on the farm.
 
 **Moving around.** Drag to pan, scroll or pinch to zoom (from the whole farm in to one farmer), and turn
 the view a quarter at a time with **↺ ↻** beside the Menu, or **Q** and **E**. Click a farmer (or its name)
