@@ -80,7 +80,7 @@ export function makeTerrain(THREE, mats) {
       crowns.setMatrixAt(i * 2, m4.compose(new THREE.Vector3(t.x, h + s * 0.7, t.z), q.setFromEuler(e), new THREE.Vector3(s, s * 0.95, s)));
       crowns.setColorAt(i * 2, canopy[n % 2]);
       crowns.setMatrixAt(i * 2 + 1, m4.compose(new THREE.Vector3(t.x - s * 0.25, h + s * 1.3, t.z + s * 0.2), q.setFromEuler(e.set(0.4, (n % 13) * 0.4, 0.2)), new THREE.Vector3(s * 0.6, s * 0.6, s * 0.6)));
-      crowns.setColorAt(i * 2 + 1, canopy[S.snow ? 2 : 1 + (n % 2)]);
+      crowns.setColorAt(i * 2 + 1, S.bloom && n % 3 === 0 ? new THREE.Color(S.bloom) : canopy[S.snow ? 2 : 1 + (n % 2)]); // blossom in spring, snow in winter
     });
     trunks.castShadow = crowns.castShadow = true;
     trunks.receiveShadow = crowns.receiveShadow = true;

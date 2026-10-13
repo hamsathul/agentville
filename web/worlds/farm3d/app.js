@@ -15,6 +15,7 @@ import { makeWeather } from './build/weather.js';
 import { makeBeds } from './build/beds.js';
 import { makeFigures } from './build/figurine.js';
 import { makeFarmers } from './build/farmers.js';
+import { makeAnimals } from './build/animals.js';
 import { PX, W } from './layout.js';
 
 const SKIES = ['live', 'day', 'night'], SEASON_MODES = ['live', 'spring', 'summer', 'autumn', 'winter'];
@@ -49,13 +50,15 @@ export function start({ el, opts, prefs }) {
   const mats = makeMaterials(THREE), sky = makeSky(THREE, scene3, mats), terrain = makeTerrain(THREE, mats);
   const shapes = makeShapes(THREE, mats), buildings = makeBuildings(THREE, mats, shapes);
   const crops = makeCrops(THREE, mats), beds = makeBeds(THREE, mats, shapes, makeWeather(THREE, mats, shapes), crops);
-  const farmers = makeFarmers(THREE, makeFigures(THREE, mats, shapes), shapes);
-  scene3.add(terrain.group, buildings.group, beds.group, crops.group, farmers.group);
+  const farmers = makeFarmers(THREE, makeFigures(THREE, mats, shapes), shapes), animals = makeAnimals(THREE, mats, shapes), weather = makeWeather(THREE, mats, shapes);
+  scene3.add(terrain.group, buildings.group, beds.group, crops.group, farmers.group, animals.group);
+  let snow = null, night = 0;
 
   // The world's own settings, kept by the page.
   const pref = (name, allowed, fallback) => (allowed.includes(prefs.get(name)) ? prefs.get(name) : fallback);
   let skyMode = pref('sky', SKIES, 'live'), seasonMode = pref('season', SEASON_MODES, 'live');
   let animalsOn = prefs.get('animals') !== 'off', bubblesOn = prefs.get('bubbles') !== 'off';
+  animals.setOn(animalsOn);
   let keep = { beds: (() => { try { const b = JSON.parse(prefs.get('beds') ?? '{}'); return b && typeof b === 'object' && !Array.isArray(b) ? b : {}; } catch { return {}; } })(), packed: false };
   let model = null, groundKey = '', lampsKey = '', dirty = true, saveTimer = 0, firstScene = true, selected = null;
 
@@ -82,7 +85,7 @@ export function start({ el, opts, prefs }) {
       cycle(what) {
         if (what === 'sky') { skyMode = SKIES[(SKIES.indexOf(skyMode) + 1) % SKIES.length]; prefs.set('sky', skyMode); lastSky = -Infinity; }
         if (what === 'season') { seasonMode = SEASON_MODES[(SEASON_MODES.indexOf(seasonMode) + 1) % SEASON_MODES.length]; prefs.set('season', seasonMode); rebuildAll(); }
-        if (what === 'animals') { animalsOn = !animalsOn; prefs.set('animals', animalsOn ? 'on' : 'off'); }
+        if (what === 'animals') { animalsOn = !animalsOn; prefs.set('animals', animalsOn ? 'on' : 'off'); animals.setOn(animalsOn); }
         if (what === 'bubbles') { bubblesOn = !bubblesOn; prefs.set('bubbles', bubblesOn ? 'on' : 'off'); if (model) overlay.sync(model, { bubblesOn, near: near() }); }
         dirty = true;
       },
@@ -110,6 +113,11 @@ export function start({ el, opts, prefs }) {
     groundKey = key;
     const ext = terrain.build(model.ground, season);
     sky.setExtent(ext.x, ext.z);
+    animals.setGround(model.ground);
+    animals.setIce(season === 'winter');
+    // snow falling over the whole farm in winter
+    if (snow) { snow.object.removeFromParent(); snow.object.geometry.dispose(); snow = null; }
+    if (season === 'winter') { snow = weather.snowfall(ext.x, ext.z); snow.object.position.set(ext.center.x, 0, ext.center.z); scene3.add(snow.object); }
     // pan and fit over the farm itself (the forest round it may run off the edges), its buildings' height at the back
     const hx = W / 2 / PX, hz = model.ground.H / 2 / PX, edge = 1.5;
     rig.setFarm({ half: { x: hx, z: hz }, points: [-1, 1].flatMap(sx => [-1, 1].map(sz => ({ x: sx * (hx + edge), y: sz < 0 ? 8 : 0, z: sz * (hz + edge) }))) });
@@ -192,12 +200,14 @@ export function start({ el, opts, prefs }) {
     lastFrame = now;
     const dt = Math.min(0.1, (now - lastTick) / 1000);
     lastTick = now;
-    if (now - lastSky > 2000) { lastSky = now; sky.set(skyFor(new Date(), skyMode, skyAt)); dirty = true; }
+    if (now - lastSky > 2000) { lastSky = now; night = sky.set(skyFor(new Date(), skyMode, skyAt)); dirty = true; }
     const moving = rig.update(dt), t = opts.still ? 0 : now / 1000;
     const walking = farmers.tick(t, dt, opts.still);
-    if (!opts.still) { // the world moves: the wind in the crops, the weather
+    animals.tick(t, dt, night);
+    if (!opts.still) { // the world moves: the wind in the crops, the weather, the snow
       crops.tick(t);
       beds.tick(t, dt);
+      snow?.tick(t);
     }
     if (model && near() !== wasNear) { wasNear = near(); overlay.sync(model, { bubblesOn, near: wasNear }); }
     if (!dirty && !moving && !walking && opts.still) return;

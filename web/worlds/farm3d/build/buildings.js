@@ -208,14 +208,15 @@ export function makeBuildings(THREE, mats, S) {
 
     /* ---------- the shade tree, the orchard, bushes, stones, the woodpile and the rock ---------- */
     const canopy = pal.canopy;
-    function tree(x, y, r, { fruit = null, seed = 0 } = {}) {
-      const p = P(x, y), s = m(r) * 1.15, h = 1.4 + s * 0.4;
+    // `shade`: the shade tree, whose idle farmers stand in front of its trunk: its crown higher and set back, so they show
+    function tree(x, y, r, { fruit = null, seed = 0, shade = false } = {}) {
+      const p0 = P(x, y), s = m(r) * (shade ? 0.95 : 1.15), h = 1.4 + s * 0.4 + (shade ? 1.2 : 0), p = shade ? { x: p0.x, z: p0.z - 1.3 } : p0;
       S.cyl(0.18 + s * 0.06, 0.28 + s * 0.08, h + s * 0.5, '#4e3626', p.x, 0, p.z, g, 7);
-      if (snow) { // bare branches with snow along them
-        for (let i = 0; i < 4; i++) {
-          const a = seed + i * 1.6, br = S.box(s * 1.1, 0.12, 0.12, '#4e3626', 0, 0, 0, g);
-          br.position.set(p.x + Math.cos(a) * s * 0.45, h + s * 0.35 + i * 0.25, p.z + Math.sin(a) * s * 0.45); br.rotation.set(0, -a, 0.5);
-          const sn = S.box(s * 1.0, 0.06, 0.13, '#ffffff', 0, 0, 0, g); sn.position.copy(br.position); sn.position.y += 0.08; sn.rotation.copy(br.rotation);
+      if (snow) { // bare branches reaching up, with snow along them
+        for (let i = 0; i < 5; i++) {
+          const a = seed + i * 1.25, br = S.box(s * 0.9, 0.11, 0.11, '#4e3626', 0, 0, 0, g);
+          br.position.set(p.x + Math.cos(a) * s * 0.3, h + s * 0.2 + (i % 3) * 0.3, p.z + Math.sin(a) * s * 0.3); br.rotation.set(0, -a, 0.85);
+          const sn = S.box(s * 0.8, 0.05, 0.12, '#ffffff', 0, 0, 0, g); sn.position.copy(br.position); sn.position.y += 0.07; sn.rotation.copy(br.rotation);
         }
         return;
       }
@@ -225,7 +226,7 @@ export function makeBuildings(THREE, mats, S) {
       if (fruit) for (let i = 0; i < 9; i++) { const a = seed + i * 2.4, rr = s * (0.75 + (i % 3) * 0.12); S.ball(0.11, fruit, p.x + Math.cos(a) * rr, h + s * (0.5 + (i % 4) * 0.28), p.z + Math.sin(a) * rr, g, 0); }
     }
     const fruit = season === 'spring' ? pal.bloom : season === 'autumn' ? '#e9a23b' : '#e04a3a';
-    tree(66, ground.GRID.y1 - 18, 21, { fruit, seed: 3 });
+    tree(66, ground.GRID.y1 - 18, 21, { fruit, seed: 3, shade: true });
     for (let r = 3; r < ground.rows; r++) for (const [x, dy] of [[30, 20], [88, 34]]) tree(x, 100 + r * ROWH + dy - 62, 10, { seed: r + x });
     for (const [x, y, r] of [[100, 136, 4], [92, 188, 3]]) {
       const p = P(x, y);
