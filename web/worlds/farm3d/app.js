@@ -151,6 +151,7 @@ export function start({ el, opts, prefs }) {
     const ext = terrain.build(model.ground, season);
     sky.setExtent(ext.x, ext.z);
     animals.setGround(model.ground);
+    animals.setWinter(season === 'winter'); // the pond is ice: its frog, fish and lily pads out of sight
     // snow falling over the whole farm in winter
     if (snow) { snow.object.removeFromParent(); snow.object.geometry.dispose(); snow = null; }
     if (season === 'winter') { snow = weather.snowfall(ext.x, ext.z); snow.object.position.set(ext.center.x, 0, ext.center.z); scene3.add(snow.object); }

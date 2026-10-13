@@ -2,7 +2,7 @@
 // the fences, their bodies and not just their middles, whatever they get up to (antics.js), on every size of farm.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { GRID_CONFIG, POND, forestOf, pastureOf } from '../../web/worlds/farm3d/layout.js';
+import { GRID_CONFIG, LILY_PADS, POND, forestOf, pastureOf } from '../../web/worlds/farm3d/layout.js';
 import { roamOf } from '../../web/worlds/farm3d/roam.js';
 import { HERDS, advance, command, makeAnimal, menuFor } from '../../web/worlds/farm3d/antics.js';
 import { MODELS } from '../../web/worlds/farm3d/models/index.js';
@@ -10,13 +10,26 @@ import { MODELS } from '../../web/worlds/farm3d/models/index.js';
 const groundOf = rows => { const GRID = GRID_CONFIG.fence(rows); return { GRID, rows, H: GRID_CONFIG.height(GRID) }; };
 const seeded = seed => () => { seed = (seed * 16807) % 2147483647; return seed / 2147483647; };
 // each animal's half-length on the farm in 2D px (8 a metre), as build/animals.js measures it from its model, rounded up
-const BODY = { cow: 16, bull: 18, alpaca: 9, donkey: 10, horse: 14, whitehorse: 14, husky: 7, shiba: 6, deer: 10, stag: 11, fox: 8, wolf: 12 };
+const BODY = { cow: 16, bull: 18, alpaca: 9, donkey: 10, horse: 14, whitehorse: 14, husky: 7, shiba: 6, deer: 10, stag: 11, fox: 8, wolf: 12, frog: 3, trout: 4, koi: 4, roach: 4 };
 const inPond = (x, y, r) => ((x - POND.cx) / (POND.rx + r)) ** 2 + ((y - POND.cy) / (POND.ry + r)) ** 2 < 1;
 
-test('the herds: every animal of the pack, each with a ground to roam', () => {
-  assert.deepEqual([...new Set(HERDS.map(h => h.kind))].sort(), Object.keys(MODELS).sort());
-  assert.equal(HERDS.reduce((n, h) => n + h.n, 0), 14);
-  for (const h of HERDS) assert.ok(['pasture', 'yard', 'edge'].includes(h.area), h.kind);
+test("the herds: every animal of the pack and the pond's, each with a ground to roam (the frog its lily pads, the fish the water)", () => {
+  assert.deepEqual([...new Set(HERDS.map(h => h.kind))].sort(), Object.keys(MODELS).filter(k => MODELS[k].family !== 'still').sort());
+  assert.equal(HERDS.reduce((n, h) => n + h.n, 0), 18);
+  for (const h of HERDS) assert.equal(h.area, { frog: 'pond', fish: 'water' }[MODELS[h.kind].family] ?? h.area, h.kind);
+  for (const h of HERDS) assert.ok(['pasture', 'yard', 'edge', 'pond', 'water'].includes(h.area), h.kind);
+});
+
+test("the pond: a fish's places are in the water clear of its bank, the frog's on a lily pad, and nothing on land goes in", () => {
+  const roam = roamOf(groundOf(3)), rand = seeded(5);
+  assert.ok(LILY_PADS.length >= 4 && LILY_PADS.every(([x, y]) => inPond(x, y, -8)), 'the pads float well inside the pond');
+  for (let i = 0; i < 100; i++) {
+    const [x, y] = roam.spot('water', rand, { r: BODY.koi });
+    assert.ok(inPond(x, y, -BODY.koi - 3), `a fish at ${x},${y}, by the bank`);
+    const pad = roam.spot('pond', rand, { r: BODY.frog });
+    assert.ok(LILY_PADS.some(([px, py]) => Math.hypot(pad[0] - px, pad[1] - py) < 0.5), `the frog at ${pad}, off its pads`);
+    for (const area of ['pasture', 'yard', 'edge']) { const [lx, ly] = roam.spot(area, rand, { r: 6 }); assert.ok(!inPond(lx, ly, 6), `${area} at ${lx},${ly}`); }
+  }
 });
 
 test('a way across the pond is refused, and a spot picked from beside it is never in it or reached through it', () => {
@@ -60,6 +73,7 @@ test('an hour of the farm: whatever they do, by habit or asked, no body touches 
       for (const a of herd) {
         advance(a, 0.1, env);
         const { x, y, r } = a, where = `${rows} rows, ${t.toFixed(1)} s: the ${a.kind} (${a.act ?? a.part}) at ${x.toFixed(1)},${y.toFixed(1)}`;
+        if (a.area === 'pond') { if (!a.cur?.jump && !a.under) assert.ok(LILY_PADS.some(([px, py]) => Math.hypot(x - px, y - py) < 0.5), `${where}: off its pads`); continue; }
         assert.ok(roam.inside(a.area, x, y, r - 1), where);
         if (a.area === 'pasture') assert.ok(x - r > pa.x0 && x + r < pa.x1 && y - r > pa.y0 && y + r < pa.y1, `${where}: through the pasture's fence`);
         if (a.area === 'yard') assert.ok(!inPond(x, y, r - 1), `${where}: in the pond`);

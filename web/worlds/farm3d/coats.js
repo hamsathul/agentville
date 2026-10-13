@@ -22,6 +22,12 @@ export const COATS = {
   shiba: { Main: '#cf8c48', Main_Light: '#f3ebd9', Black: '#3a3a3a' },
   fox: { Main: '#dc7a3a', Main_Light: '#f3ede2', Grey: '#6f6a66', Black: '#3a3433' },
   wolf: { Main: '#909189', Main_Light: '#dcdcd3', Nose: '#3a3a3a' },
+  // the pond's: a green frog with a yellow belly, pond fish (an olive trout, an orange and white koi, a silver roach), lily pads in flower
+  frog: { Green: '#86bd5c', Yellow: '#e6d27a', Red: '#d9504a' },
+  trout: { Top: '#c7c49a', Bottom: '#eef0e6', Fins: '#f0c8a8' },
+  koi: { Outline: '#d9541e', Body: '#f07a2c', Stripes: '#fbf7ee' },
+  roach: { Body: '#c9d0d6', Front: '#dfe5ea', Fins: '#f2c9a0' },
+  lilypad: { Green: '#5f9a48', Pink: '#f08cc0' },
 };
 
 /** Spotted coats: the colour area the spots are on, their colour, and how much of it they cover. */

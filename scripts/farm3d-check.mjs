@@ -16,6 +16,10 @@ import { freezeScript } from './lib/freeze.mjs';
 import { oneLine } from './lib/plain-text.mjs';
 import { ROOT } from './lib/worlds-dir.mjs';
 import { COATS, SPOTS } from '../web/worlds/farm3d/coats.js';
+import { HERDS } from '../web/worlds/farm3d/antics.js';
+
+// how many animals there are, and which is the frog (the farm numbers them herd by herd)
+const ANIMALS = HERDS.reduce((n, h) => n + h.n, 0), FROG = HERDS.slice(0, HERDS.findIndex(h => h.kind === 'frog')).reduce((n, h) => n + h.n, 0);
 
 const NOW = Date.UTC(2026, 9, 9, 9, 0); // the tour's moment (web/worlds/test/tour.js)
 const none = async () => ({ status: 404, error: 'none' });
@@ -116,13 +120,14 @@ try {
       else console.log(`  ✓ hover: pointing at ${r.id} shows its tooltip`);
     }
 
-    // 4. the animals: the twelve of Quaternius's Animated Animal Pack, 14 in all once their models have loaded (they
-    // load after the farm has drawn), in the farm's colours (coats.js) with no metal, the cows spotted; clicking one opens its menu, a pick
-    // from it sets it going and shuts the menu, Esc shuts it too; and the Animals switch hides them all
+    // 4. the animals: the twelve of Quaternius's Animated Animal Pack and the pond's frog and fish, all out once their
+    // models have loaded (they load after the farm has drawn), in the farm's colours (coats.js) with no metal, the cows
+    // spotted; clicking one opens its menu (the frog's its own), a pick from it sets it going and shuts the menu, Esc
+    // shuts it too; and the Animals switch hides them all
     {
       await open(chrome, 'everyone');
       let on = 0;
-      for (const end = Date.now() + 30_000; Date.now() < end && on !== 14; await sleep(250)) on = (await statsOf(chrome))?.animals;
+      for (const end = Date.now() + 30_000; Date.now() < end && on !== ANIMALS; await sleep(250)) on = (await statsOf(chrome))?.animals;
       const before = chrome.errors.length;
       const coat = JSON.parse(await chrome.inFrame('/world/farm3d/', 'JSON.stringify(window.__farm3d.animal(0)?.coat ?? null)'));
       const coatOk = Boolean(coat) && coat.metal === 0 && Object.entries(COATS.cow).every(([name, hex]) => coat.colours[name] === hex) && Math.abs((coat.spots ?? 0) - SPOTS.cow.share) < 0.05;
@@ -138,17 +143,19 @@ try {
       await chrome.inFrame('/world/farm3d/', "document.querySelector('.f3-pet [data-act=\"hop\"]')?.click()");
       await sleep(150);
       const doing = JSON.parse(await chrome.inFrame('/world/farm3d/', "JSON.stringify({ act: window.__farm3d.animal(0).act, open: Boolean(document.querySelector('.f3-pet')) })"));
+      const frog = JSON.parse(await clickAnimal(FROG));
+      await chrome.inFrame('/world/farm3d/', "document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }))");
       const dog = JSON.parse(await clickAnimal(8));
       await chrome.inFrame('/world/farm3d/', "document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }))");
       const shut = await chrome.inFrame('/world/farm3d/', "Boolean(document.querySelector('.f3-pet'))");
-      const menuOk = cow.kind === 'cow' && cow.menu.includes('headbutt') && cow.menu.includes('dead') && doing.act === 'hop' && !doing.open && dog.kind === 'husky' && dog.menu.includes('fetch') && shut === false;
+      const menuOk = cow.kind === 'cow' && cow.menu.includes('headbutt') && cow.menu.includes('dead') && doing.act === 'hop' && !doing.open && dog.kind === 'husky' && dog.menu.includes('fetch') && shut === false && frog.kind === 'frog' && frog.menu.join(' ') === 'hop snap dive dead';
       await chrome.inFrame('/world/farm3d/', "document.querySelector('[data-farm-menu]').click()");
       await sleep(200);
       await chrome.inFrame('/world/farm3d/', "document.querySelector('[data-farm-animals]').click()");
       await sleep(400);
       const off = (await statsOf(chrome))?.animals, strip = await stripOf(chrome);
-      if (on !== 14 || off !== 0 || !coatOk || !menuOk || strip || chrome.errors.length > before) bad(`animals: ${on} out (14 wanted), ${off} after the Animals switch (0 wanted); the cow's colours ${JSON.stringify(coat)} (coats.js's, no metal, spots on about ${SPOTS.cow.share} of her coat, wanted); the cow's menu ${cow.menu.join(' ') || 'never opened'}, after Hop ${JSON.stringify(doing)}; the husky's menu ${dog.menu.join(' ') || 'never opened'}, after Esc ${shut ? 'still open' : 'shut'}${strip ? `; an error strip: ${oneLine(strip).slice(0, 160)}` : ''}`);
-      else console.log('  ✓ animals: 14 out once loaded, in coats.js\'s colours with no metal, the cow spotted; a click opens one\'s menu (the husky\'s has Throw a stick), Hop sets the cow hopping, Esc shuts it; none after the Animals switch');
+      if (on !== ANIMALS || off !== 0 || !coatOk || !menuOk || strip || chrome.errors.length > before) bad(`animals: ${on} out (${ANIMALS} wanted), ${off} after the Animals switch (0 wanted); the cow's colours ${JSON.stringify(coat)} (coats.js's, no metal, spots on about ${SPOTS.cow.share} of her coat, wanted); the cow's menu ${cow.menu.join(' ') || 'never opened'}, after Hop ${JSON.stringify(doing)}; the frog's menu ${frog.menu.join(' ') || 'never opened'}; the husky's menu ${dog.menu.join(' ') || 'never opened'}, after Esc ${shut ? 'still open' : 'shut'}${strip ? `; an error strip: ${oneLine(strip).slice(0, 160)}` : ''}`);
+      else console.log(`  ✓ animals: ${ANIMALS} out once loaded (the frog and the fish too), in coats.js's colours with no metal, the cow spotted; a click opens one's menu (the frog's its own, the husky's has Throw a stick), Hop sets the cow hopping, Esc shuts it; none after the Animals switch`);
     }
 
     // 5. memory: the busiest stop and an empty one, swapped 300 times; the geometry held comes back to the same

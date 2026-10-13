@@ -41,18 +41,21 @@ test("slimming a model: skin weights packed in bytes still add up to one, each v
 
 const PACK = 'https://poly.pizza/bundle/Animated-Animal-Pack-ILAPXeUYiS';
 const KINDS = ['alpaca', 'bull', 'cow', 'deer', 'donkey', 'fox', 'horse', 'husky', 'shiba', 'stag', 'whitehorse', 'wolf'];
+const POND_KINDS = ['frog', 'koi', 'lilypad', 'roach', 'trout'];
 
 test("the models: all twelve of Quaternius's Animated Animal Pack, each with every one of its animations, slimmed", async () => {
   const { MODELS } = await import('../../web/worlds/farm3d/models/index.js');
   const { readGlb } = await import('../../scripts/lib/glb.mjs');
-  assert.deepEqual(Object.keys(MODELS).sort(), KINDS);
+  assert.deepEqual(Object.keys(MODELS).sort(), [...KINDS, ...POND_KINDS].sort());
   let total = 0;
-  for (const [kind, m] of Object.entries(MODELS)) {
+  for (const kind of Object.keys(MODELS)) total += (await import(`../../web/worlds/farm3d/models/${kind}.js`)).default.length;
+  for (const kind of KINDS) {
+    const m = MODELS[kind];
     assert.equal(m.author, 'Quaternius', kind);
+    assert.equal(m.pack, 'Animated Animal Pack', kind);
     assert.match(m.licence, /^CC0/, kind);
     assert.ok(['hooves', 'paws'].includes(m.family), kind);
     const b64 = (await import(`../../web/worlds/farm3d/models/${kind}.js`)).default, glb = Buffer.from(b64, 'base64'), { json } = readGlb(glb);
-    total += b64.length;
     const clips = json.animations.map(a => a.name).sort();
     assert.deepEqual(clips, [...new Set(Object.values(m.clips))].sort(), `${kind}: every clip once, and every clip has a part`);
     assert.equal(clips.length, m.family === 'hooves' ? 13 : 12, kind);
@@ -69,20 +72,41 @@ test("the models: all twelve of Quaternius's Animated Animal Pack, each with eve
     assert.ok(m.height > 0.4 && m.height < 2.2, `${kind}: ${m.height} m`);
     assert.ok(glb.length < 420 * 1024, `${kind}: ${Math.round(glb.length / 1024)} KB, slimmed`);
   }
-  assert.ok(total < 6 * 1024 * 1024, `all the animals: ${Math.round(total / 1024)} KB served`);
+  assert.ok(total < 6.5 * 1024 * 1024, `all the animals and the pond's: ${Math.round(total / 1024)} KB served`);
   assert.ok(MODELS.horse.height > MODELS.cow.height && MODELS.cow.height > MODELS.donkey.height && MODELS.donkey.height > MODELS.wolf.height && MODELS.wolf.height > MODELS.husky.height && MODELS.husky.height > MODELS.fox.height, 'sizes that make sense side by side');
 });
 
+test("the pond's models: Quaternius's frog with its four animations, three fish that swim, and a lily pad; CC0, slimmed", async () => {
+  const { MODELS } = await import('../../web/worlds/farm3d/models/index.js');
+  const { readGlb } = await import('../../scripts/lib/glb.mjs');
+  const families = { frog: 'frog', koi: 'fish', roach: 'fish', trout: 'fish', lilypad: 'still' };
+  for (const kind of POND_KINDS) {
+    const m = MODELS[kind], glb = Buffer.from((await import(`../../web/worlds/farm3d/models/${kind}.js`)).default, 'base64'), { json } = readGlb(glb);
+    assert.equal(m.author, 'Quaternius', kind);
+    assert.match(m.licence, /^CC0/, kind);
+    assert.match(m.page, /^https:\/\/poly\.pizza\/m\//, `${kind}: its page, for the credit`);
+    assert.equal(m.family, families[kind], kind);
+    const clips = (json.animations ?? []).map(a => a.name).sort();
+    assert.deepEqual(clips, [...new Set(Object.values(m.clips))].sort(), `${kind}: every clip once, and every clip has a part`);
+    if (m.family === 'frog') assert.deepEqual(Object.keys(m.clips).sort(), ['dead', 'hop', 'idle', 'snap']);
+    if (m.family === 'fish') assert.ok(clips.length === 1 && ['idle', 'walk', 'run'].every(p => m.clips[p] === clips[0]), `${kind}: one swim, for every pace`);
+    assert.equal(json.skins?.length ?? 0, m.family === 'still' ? 0 : 1, `${kind}: a skeleton, if it moves`);
+    assert.ok(!json.images && !json.textures, kind);
+    assert.ok(m.family === 'frog' ? m.height > 0.15 && m.height < 0.4 : m.length > 0.3 && m.length < 1.2, `${kind}: its size`);
+    assert.ok(glb.length < 300 * 1024, `${kind}: ${Math.round(glb.length / 1024)} KB`);
+  }
+});
+
 // The colour areas a model's eyes are, where their names don't say so.
-const EYES = { husky: ['Material.002', 'Material.003'], stag: ['Material.011'] };
+const EYES = { husky: ['Material.002', 'Material.003'], stag: ['Material.011'], frog: ['Black'] };
 
 test("their colours: the farm's matte finish, and every colour area but the eyes repainted, by a name the model has, no darker than before", async () => {
   const { COATS, FINISH } = await import('../../web/worlds/farm3d/coats.js');
   const { readGlb } = await import('../../scripts/lib/glb.mjs');
   assert.deepEqual(FINISH, { roughness: 0.85, metalness: 0 }, "build/materials.js's std(): no metal");
-  assert.deepEqual(Object.keys(COATS).sort(), KINDS);
+  assert.deepEqual(Object.keys(COATS).sort(), [...KINDS, ...POND_KINDS].sort());
   const linear = v => (v <= 0.04045 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4), lum = ([r, g, b]) => 0.2126 * r + 0.7152 * g + 0.0722 * b;
-  for (const kind of KINDS) {
+  for (const kind of [...KINDS, ...POND_KINDS]) {
     const { json } = readGlb(Buffer.from((await import(`../../web/worlds/farm3d/models/${kind}.js`)).default, 'base64'));
     const own = new Map(json.materials.map(m => [m.name, m.pbrMetallicRoughness.baseColorFactor]));
     for (const [name, hex] of Object.entries(COATS[kind])) {
@@ -122,15 +146,16 @@ test("a cow's spots: about a third of her coat, in a few clumps, the same for th
   assert.deepEqual(spotsOf([], 1), []);
 });
 
-test("the models' credit: LICENSE.md names the pack, its author, its licence and each model; the README credits it", async () => {
+test("the models' credit: LICENSE.md names the pack, its author, its licence and each model (the pond's by its page); the README credits them", async () => {
   const { MODELS } = await import('../../web/worlds/farm3d/models/index.js');
   const licence = readFileSync(fileURLToPath(new URL('../../web/worlds/farm3d/models/LICENSE.md', import.meta.url)), 'utf8');
   for (const words of ['Quaternius', 'CC0', PACK, 'https://creativecommons.org/publicdomain/zero/1.0/']) assert.ok(licence.includes(words), words);
-  for (const m of Object.values(MODELS)) assert.ok(licence.includes(m.source), m.title);
+  for (const m of Object.values(MODELS)) assert.ok(licence.includes(m.source) && (!m.page || licence.includes(m.page)), m.title);
   assert.ok(!/CC BY|Farm-Animal-Pack/.test(licence), 'only the one pack');
   const readme = readFileSync(fileURLToPath(new URL('../../README.md', import.meta.url)), 'utf8');
   const section = readme.slice(readme.indexOf('### The 3D farm (prototype)'), readme.indexOf('### Notifications and the bell'));
   assert.match(section, /Quaternius.{0,200}Animated Animal Pack.{0,200}CC0/s);
+  assert.match(section, /frog.{0,300}fish.{0,300}lily pad|lily pad.{0,300}frog.{0,300}fish/is, "the pond's models too");
   assert.ok(!/Farm Animal Pack|CC BY/.test(section), 'the README credits only the one pack');
 });
 
@@ -151,9 +176,10 @@ function run(a, secs, env) {
 
 test("antics: every animal's menu and habits give every one of its clips a part; playing dead and headbutts are asked for, never habits", async () => {
   const { MODELS } = await import('../../web/worlds/farm3d/models/index.js');
-  for (const [kind, m] of Object.entries(MODELS)) {
+  for (const [kind, m] of Object.entries(MODELS).filter(([, m]) => m.family !== 'still')) {
     const menu = menuFor(kind, m.family), habits = Object.keys(habitsOf(kind, m.family));
-    const parts = new Set(['walk', 'idle', 'eat', ...[...menu, ...habits].flatMap(act => PARTS_OF(stepsFor(act, makeAnimal({ kind, family: m.family, area: 'yard' }, 0, 0), world())))]);
+    const always = { frog: ['idle'], fish: ['walk', 'idle'] }[m.family] ?? ['walk', 'idle', 'eat']; // what it does when not up to anything
+    const parts = new Set([...always, ...[...menu, ...habits].flatMap(act => PARTS_OF(stepsFor(act, makeAnimal({ kind, family: m.family, area: 'yard' }, 0, 0), world())))]);
     for (const part of parts) assert.ok(m.clips[part], `${kind}: plays "${part}", which it has`);
     for (const part of Object.keys(m.clips)) assert.ok(parts.has(part) || (part.startsWith('flinch') && menu.includes('pet')), `${kind}: its "${part}" clip has a part`); // a pet wriggles one way or the other
     assert.ok(!habits.includes('dead'), `${kind}: plays dead only when asked`);
@@ -161,7 +187,8 @@ test("antics: every animal's menu and habits give every one of its clips a part;
     assert.equal(menu.includes('fetch'), ['husky', 'shiba'].includes(kind), `${kind}: only the dogs fetch`);
     const labels = menu.map(act => ACTS[act].label);
     assert.equal(new Set(labels).size, labels.length, `${kind}: a menu with no two the same`);
-    assert.ok(menu.length >= 9 && labels.every(l => l && l.length <= 14), `${kind}: ${labels.join(', ')}`);
+    assert.ok(menu.length >= ({ frog: 4, fish: 1 }[m.family] ?? 9), `${kind}: ${labels.join(', ')}`);
+    assert.ok(labels.every(l => l && l.length <= 14), `${kind}: ${labels.join(', ')}`);
   }
 });
 
@@ -204,6 +231,64 @@ test('antics: fetch: the stick flies, the dog runs to it, brings it back and dro
   assert.ok(seen.held && seen.at[0] > 100, 'picked up out where it fell');
   assert.equal(a.stick, null, 'dropped once home');
   assert.ok(Math.hypot(a.x - 50, a.y - 50) < 1);
+});
+
+/** A stand-in pond: lily pads at (0, 0), (20, 0) and (40, 0); a spot in the water 16 px on from wherever it asks. */
+const PADS = [[0, 0], [20, 0], [40, 0]];
+const pondWorld = (over = {}) => world({
+  spot: (area, from, far = 0) => (area === 'pond' ? PADS.find(p => !from || Math.hypot(p[0] - from[0], p[1] - from[1]) >= Math.max(far, 1)) : from ? [from[0] + 16, from[1] + 4] : [10, 10]),
+  duration: (kind, part) => (part === 'hop' ? 0.9 : 1),
+  ...over,
+});
+const onPad = a => PADS.some(p => Math.hypot(a.x - p[0], a.y - p[1]) < 0.01);
+
+test('antics: the frog hops pad to pad in an arc, its jump played once, and lands on the next', () => {
+  const a = makeAnimal({ kind: 'frog', family: 'frog', area: 'pond', r: 3 }, 0, 0);
+  command(a, 'hop', pondWorld());
+  let top = 0;
+  advance(a, 0.05, pondWorld());
+  assert.deepEqual([a.part, a.once], ['hop', true]);
+  for (let i = 0; i < 40 && a.act; i++) { advance(a, 0.05, pondWorld()); top = Math.max(top, a.lift); }
+  assert.ok(top > 0.4, `up in the air mid-hop: ${top}`);
+  assert.ok(onPad(a) && a.x === 20, `on the next pad: ${a.x}, ${a.y}`);
+  assert.equal(a.lift, 0);
+});
+
+test('antics: the frog dives: into the water, out of sight a while, then up onto a pad', () => {
+  const a = makeAnimal({ kind: 'frog', family: 'frog', area: 'pond', r: 3 }, 20, 0), env = pondWorld();
+  command(a, 'dive', env);
+  const under = [];
+  for (let i = 0; i < 400 && a.act; i++) { advance(a, 0.05, env); under.push(a.under); }
+  const first = under.indexOf(true), last = under.lastIndexOf(true);
+  assert.ok(first > 5, 'a hop into the water first');
+  assert.ok((last - first) * 0.05 >= 2.5 && under.slice(first, last + 1).every(Boolean), `under for ${((last - first) * 0.05).toFixed(1)} s`);
+  assert.equal(a.under, false);
+  assert.ok(onPad(a), `back on a pad: ${a.x}, ${a.y}`);
+});
+
+test("antics: left alone the frog never walks: it sits, hops pad to pad, snaps at flies and dives; a command can't land it in the water", () => {
+  let seed = 3;
+  const env = pondWorld({ rand: () => { seed = (seed * 16807) % 2147483647; return seed / 2147483647; }, habitChance: 0.25 });
+  const a = makeAnimal({ kind: 'frog', family: 'frog', area: 'pond', r: 3 }, 0, 0, env.rand), parts = new Set(), acts = new Set();
+  for (let i = 0; i < 20 * 300; i++) {
+    advance(a, 0.05, env);
+    parts.add(a.part);
+    if (a.act) acts.add(a.act);
+    if (!a.cur && !a.act) assert.ok(onPad(a), `between things, it sits on a pad: ${a.x}, ${a.y}`);
+    if (i % 97 === 0) command(a, ['snap', 'dead', 'hop'][i % 3], env); // asked mid-hop or under water: it finishes getting back first
+  }
+  assert.ok(!parts.has('walk'), 'no walking on water');
+  for (const act of ['hop', 'snap', 'dive']) assert.ok(acts.has(act), `it ${act}s`);
+});
+
+test('antics: a fish swims about, and leaps out of the water and back in a little way on', () => {
+  const f = makeAnimal({ kind: 'koi', family: 'fish', area: 'water', walk: 5, run: 26, r: 3 }, 10, 10);
+  command(f, 'leap', pondWorld());
+  let top = 0;
+  for (let i = 0; i < 60 && f.act; i++) { advance(f, 0.05, pondWorld()); top = Math.max(top, f.lift); }
+  assert.ok(top > 0.6, `out of the water: ${top}`);
+  assert.ok(Math.hypot(f.x - 26, f.y - 14) < 0.01, `in again a little way on: ${f.x}, ${f.y}`);
+  assert.equal(f.lift, 0);
 });
 
 test('antics: left alone they walk, rest and now and then get up to something; at night they rest and only a command wakes one', () => {

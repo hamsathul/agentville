@@ -3,6 +3,8 @@
 // menu (a command). A thing to do is a list of steps, each a part to play (a clip, by what the farm does with it:
 // models/index.js names the clip) for a while, once, or while it goes somewhere. Positions are in the 2D farm's pixels.
 // Where it may go is the env's (roam.js): only where the straight way is clear for its body (r, half its length).
+// The pond's are their own: the frog never walks (it sits on a lily pad, hops pad to pad, dives and comes up again),
+// and the fish swim about under the water and now and then leap out. A jump is a step in an arc (lift, in metres).
 
 /** Who lives where, and their pace (2D pixels a second: 8 a metre): walking, and running. */
 export const HERDS = [
@@ -18,6 +20,10 @@ export const HERDS = [
   { kind: 'stag', n: 1, area: 'edge', walk: 9, run: 48 },
   { kind: 'fox', n: 1, area: 'edge', walk: 11, run: 40 },
   { kind: 'wolf', n: 1, area: 'edge', walk: 11, run: 44 },
+  { kind: 'frog', n: 1, area: 'pond', walk: 0, run: 0 },
+  { kind: 'trout', n: 1, area: 'water', walk: 5, run: 26 },
+  { kind: 'koi', n: 1, area: 'water', walk: 5, run: 26 },
+  { kind: 'roach', n: 1, area: 'water', walk: 6, run: 28 },
 ];
 
 /** Everything an animal can do, by its menu's words. "fly" (a fly bothers it) is a habit only. */
@@ -34,17 +40,23 @@ export const ACTS = {
   sniff: { label: 'Sniff' },
   look: { label: 'Look around' },
   dead: { label: 'Play dead' },
+  snap: { label: 'Catch a fly' },
+  dive: { label: 'Dive' },
   fly: { label: 'A fly' },
 };
 const DOGS = ['husky', 'shiba'], GRAZERS = ['cow', 'bull', 'alpaca', 'donkey', 'horse', 'whitehorse', 'deer', 'stag'];
 
 /** Its menu: everything it can be asked to do, in the menu's order. */
 export function menuFor(kind, family) {
+  if (family === 'frog') return ['hop', 'snap', 'dive', 'dead'];
+  if (family === 'fish') return ['leap'];
   const own = family === 'hooves' ? ['kick', 'headbutt'] : ['pounce', ...(DOGS.includes(kind) ? ['fetch'] : [])];
   return ['pet', 'feed', 'run', 'leap', 'hop', ...own, 'sniff', 'look', 'dead'];
 }
 /** Its habits, each with how often it picks it. Never playing dead (only when asked), never fetching (it needs you). */
 export function habitsOf(kind, family) {
+  if (family === 'frog') return { hop: 3, snap: 2, dive: 1 };
+  if (family === 'fish') return { leap: 1 };
   const h = { look: 3, sniff: 2, hop: 1, fly: 1, run: 1 };
   if (GRAZERS.includes(kind)) h.feed = 3;
   if (['horse', 'whitehorse', 'deer', 'stag'].includes(kind)) h.run = 2;
@@ -70,6 +82,8 @@ function pickHabit(a, rand) {
  * run, leap and the rest at a walk; { part, go } once while it bounds forward; { stick } throws, picks up or drops the stick.
  */
 export function stepsFor(act, a, env, { habit = false } = {}) {
+  if (a.family === 'frog') return frogSteps(act, env);
+  if (a.family === 'fish') return act === 'leap' ? [{ part: 'run', to: 'near', jump: 0.9, secs: 1.1 }] : [];
   switch (act) {
     case 'pet': return [{ part: env.rand() < 0.5 ? 'flinchLeft' : 'flinchRight' }, { part: 'look' }];
     case 'fly': return [{ part: env.rand() < 0.5 ? 'flinchLeft' : 'flinchRight' }];
@@ -88,12 +102,35 @@ export function stepsFor(act, a, env, { habit = false } = {}) {
   }
 }
 
+/**
+ * The frog's: a hop to another pad; a snap at a fly; a dive (a hop into the water, a while out of sight, a hop up onto
+ * a pad: the wet steps, which a command lets it finish); playing dead on its pad.
+ */
+function frogSteps(act, env) {
+  switch (act) {
+    case 'hop': return [{ part: 'hop', to: 'pad', jump: 0.6 }];
+    case 'snap': return [{ part: 'snap' }];
+    case 'dive': return [{ part: 'hop', to: 'water', jump: 0.5, wet: true }, { part: 'idle', secs: 3 + env.rand() * 4, under: true, wet: true }, { part: 'hop', to: 'pad', jump: 0.6 }];
+    case 'dead': return [{ part: 'dead', hold: 2.5 }, { part: 'idle', secs: 1, fade: 0.9 }];
+    default: return [];
+  }
+}
+
 /** A new animal at (x, y): walk and run its speeds in pixels a second, r its size (half its length) in pixels. */
 export function makeAnimal({ kind, family, area, walk = 8, run = 36, r = 0 }, x, y, rand = Math.random) {
-  return { kind, family, area, walk, run, r, trail: [], x, y, tx: x, ty: y, face: rand() * 6.28, rest: rand() * 4, phase: rand() * 6.28, clock: 0, queue: [], cur: null, curT: 0, act: null, home: [x, y], stick: null, part: 'idle', once: false, hold: false, fade: 0.3, timeScale: 1, seq: 0 };
+  return { kind, family, area, walk, run, r, trail: [], lift: 0, under: false, x, y, tx: x, ty: y, face: rand() * 6.28, rest: rand() * 4, phase: rand() * 6.28, clock: 0, queue: [], cur: null, curT: 0, act: null, home: [x, y], stick: null, part: 'idle', once: false, hold: false, fade: 0.3, timeScale: 1, seq: 0 };
 }
-/** Asks it to do something (an act from its menu): whatever it was doing stops, and a stick it carried is dropped. */
+/**
+ * Asks it to do something (an act from its menu): whatever it was doing stops, and a stick it carried is dropped. In
+ * the air or under the water it gets back first: it lands, or comes up onto a pad.
+ */
 export function command(a, act, env) {
+  if (a.cur && (a.cur.jump !== undefined || a.cur.wet)) {
+    const back = a.cur.wet ? a.queue.slice(0, a.queue.findIndex(s => !s.wet) + 1) : [];
+    a.queue = [...back, ...stepsFor(act, a, env)];
+    a.act = act;
+    return;
+  }
   a.queue = stepsFor(act, a, env);
   a.cur = null;
   a.act = act;
@@ -139,10 +176,19 @@ function begin(a, env) {
     } else if (s.to || s.go) a.trail.push([a.x, a.y]);
     if (s.to === 'far') s.to = env.spot(a.area, [a.x, a.y], 80, a.r);
     else if (s.to === 'stick') s.to = a.stick?.at ?? [a.x, a.y];
-    s.len = s.secs ?? (s.to ? 20 : env.duration(a.kind, s.part) + (s.hold ?? 0));
+    else if (s.to === 'pad') s.to = env.spot('pond', [a.x, a.y], 8, a.r);
+    else if (s.to === 'water') s.to = env.spot('water', [a.x, a.y], 8, a.r);
+    else if (s.to === 'near') s.to = env.spot(a.area, [a.x, a.y], 16, a.r);
+    s.len = s.secs ?? (s.to && s.jump === undefined ? 20 : env.duration(a.kind, s.part) + (s.hold ?? 0));
+    if (s.jump !== undefined) { // in an arc, from here to there, in its time: facing there
+      s.from = [a.x, a.y];
+      if (Math.hypot(s.to[0] - a.x, s.to[1] - a.y) > 0.01) a.face = Math.atan2(s.to[0] - a.x, s.to[1] - a.y);
+    }
     a.cur = s;
     a.curT = 0;
-    show(a, s.part, { once: !s.secs && !s.to, hold: s.hold !== undefined, fade: s.fade ?? 0.25, restart: true });
+    a.lift = 0;
+    a.under = Boolean(s.under);
+    show(a, s.part, { once: s.jump !== undefined ? !s.secs : !s.secs && !s.to, hold: s.hold !== undefined, fade: s.fade ?? 0.25, restart: true });
     return;
   }
 }
@@ -161,13 +207,19 @@ export function advance(a, dt, env) {
     const s = a.cur;
     a.curT += dt;
     let done = a.curT >= s.len;
-    if (s.to) done = go(a, s.to, s.part === 'walk' ? a.walk : a.run, dt) || done;
+    if (s.jump !== undefined) {
+      const p = Math.min(1, a.curT / s.len);
+      a.x = s.from[0] + (s.to[0] - s.from[0]) * p;
+      a.y = s.from[1] + (s.to[1] - s.from[1]) * p;
+      a.lift = done ? 0 : s.jump * Math.sin(Math.PI * p);
+    } else if (s.to) done = go(a, s.to, s.part === 'walk' ? a.walk : a.run, dt) || done;
     else if (s.go) { // a leap carries it forward, inside its area
       const nx = a.x + Math.sin(a.face) * a.run * 0.8 * dt, ny = a.y + Math.cos(a.face) * a.run * 0.8 * dt;
       if (env.inside(a.area, nx, ny, a.r)) { a.x = nx; a.y = ny; }
     }
     if (!done) return;
     a.cur = null;
+    a.under = false;
     if (a.queue.length) { begin(a, env); return; }
     a.act = null;
     a.tx = a.x; a.ty = a.y;
@@ -179,12 +231,22 @@ export function advance(a, dt, env) {
     show(a, GRAZERS.includes(a.kind) && Math.sin(a.clock * 0.35 + a.phase) > 0.2 ? 'eat' : 'idle');
     return;
   }
+  if (a.family === 'frog') { a.rest = 3 + env.rand() * 6; habit(a, env); return; } // it never walks: it sits, then gets up to something
   if (go(a, [a.tx, a.ty], a.walk, dt)) {
     a.rest = 3 + env.rand() * 8;
     [a.tx, a.ty] = env.spot(a.area, [a.x, a.y], 0, a.r);
-    if (env.rand() < env.habitChance) { const act = pickHabit(a, env.rand); a.queue = stepsFor(act, a, env, { habit: true }); a.act = act; a.home = [a.x, a.y]; a.trail = []; begin(a, env); return; }
+    if (env.rand() < env.habitChance) { habit(a, env); return; }
     show(a, 'idle');
     return;
   }
   show(a, 'walk');
+}
+/** Gets up to something of its own. */
+function habit(a, env) {
+  const act = pickHabit(a, env.rand);
+  a.queue = stepsFor(act, a, env, { habit: true });
+  a.act = act;
+  a.home = [a.x, a.y];
+  a.trail = [];
+  begin(a, env);
 }

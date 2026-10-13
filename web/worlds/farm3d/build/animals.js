@@ -7,7 +7,7 @@
 // for each part (models/index.js), repainted in the farm's colours and finish (coats.js). The Animals switch hides them all.
 import { GLTFLoader } from '../vendor/GLTFLoader.js';
 import { clone as cloneSkinned } from '../vendor/SkeletonUtils.js';
-import { PX } from '../layout.js';
+import { LILY_PADS, PX, WATER } from '../layout.js';
 import { MODELS } from '../models/index.js';
 import { ACTS, HERDS, advance, command, makeAnimal, menuFor } from '../antics.js';
 import { roamOf } from '../roam.js';
@@ -19,8 +19,16 @@ const HABIT_CHANCE = 0.25; // how often one gets up to something when it stops
 /** A small seeded random, so the farm's animals start the same every time. */
 const seeded = seed => () => { seed = (seed * 16807) % 2147483647; return seed / 2147483647; };
 
+const POND_KINDS = new Set(['frog', 'fish']); // the pond's families: under the ice in winter
+/** How high an animal stands: on the ground, on a lily pad (the frog), or just under the water (a fish, its back too). */
+const baseOf = w => (w.a.family === 'frog' ? WATER.y + 0.05 : w.a.family === 'fish' ? WATER.y - 0.05 - w.t.top : 0);
+const PLUMP = 1.8; // a fish is as thin as a fish: a little plumper, it shows from above
+
 export function makeAnimals(THREE, mats, S) {
   const group = new THREE.Group(), loader = new GLTFLoader(), rand = seeded(424242);
+  const creatures = new THREE.Group(), pads = new THREE.Group(), splashes = []; // the Animals switch hides the creatures, not the pads
+  group.add(creatures, pads);
+  let winter = false;
   const templates = new Map(); // kind → { scene, clips, scale, lift, raw, box }
   const animals = [], hidden = new THREE.MeshBasicMaterial({ visible: false }), v = new THREE.Vector3();
   let H = 400, ground = null, roam = null, on = true, started = false, shown = 0;
@@ -33,7 +41,7 @@ export function makeAnimals(THREE, mats, S) {
     gltf.scene.updateMatrixWorld(true);
     const clips = new Map(gltf.animations.map(c => [c.name, c]));
     const box = new THREE.Box3().setFromObject(gltf.scene), size = box.getSize(new THREE.Vector3()), raw = size.y || 1;
-    const scale = (MODELS[kind].height * BIGGER) / raw;
+    const m = MODELS[kind], scale = m.height ? (m.height * BIGGER) / raw : (m.length * BIGGER) / (Math.max(size.x, size.z) || 1); // a fish or a pad by its length
     gltf.scene.traverse(o => { if (o.isMesh) { o.castShadow = true; o.receiveShadow = true; o.frustumCulled = false; } });
     paint(gltf.scene, kind); // its copies share its materials
     // what a click finds: a box round it, larger than its body so a small one is easy to hit
@@ -84,13 +92,14 @@ export function makeAnimals(THREE, mats, S) {
   function instance(h, t, i) {
     const root = new THREE.Group(), holder = new THREE.Group(), model = cloneSkinned(t.scene);
     holder.scale.setScalar(t.scale);
+    if (MODELS[h.kind].family === 'fish') holder.scale.x *= PLUMP;
     holder.position.y = t.lift;
     holder.add(model);
     root.add(holder);
     const hit = new THREE.Mesh(t.hit, hidden);
     hit.userData.animal = i;
     root.add(hit);
-    group.add(root);
+    creatures.add(root);
     const mixer = new THREE.AnimationMixer(model), actions = new Map();
     for (const [name, clip] of t.clips) actions.set(name, mixer.clipAction(clip));
     if (h.bandana) bandana(model, h.bandana, t.raw);
@@ -99,7 +108,7 @@ export function makeAnimals(THREE, mats, S) {
     model.traverse(o => { if (!head && o.isBone && /head/i.test(o.name)) head = o; });
     const spot = roam ? roam.spot(h.area, rand, { r: t.r }) : [0, 0];
     const a = makeAnimal({ kind: h.kind, family: MODELS[h.kind].family, area: h.area, walk: h.walk, run: h.run, r: t.r }, spot[0], spot[1], rand);
-    return { a, root, model, mixer, actions, head, t, hitBox: hit, playing: null, seq: -1, yaw: a.face, placed: Boolean(ground), stick: null };
+    return { a, root, holder, model, mixer, actions, head, t, hitBox: hit, wet: null, playing: null, seq: -1, yaw: a.face, placed: Boolean(ground), stick: null };
   }
   /** A dog's bandana, round its neck bone, so it follows the head as it moves; sized to the dog. */
   function bandana(model, colour, raw) {
@@ -127,10 +136,37 @@ export function makeAnimals(THREE, mats, S) {
     if (w.playing && w.playing !== next) { next.fadeIn(a.fade); w.playing.fadeOut(a.fade); }
     w.playing = next;
   }
+  /** The pond's lily pads (Quaternius's), each its size and turned its own way; those not in flower without one. */
+  async function lilyPads() {
+    const t = await template('lilypad');
+    LILY_PADS.forEach(([x, y, size, flower], k) => {
+      const pad = t.scene.clone(), p = S.at(x, y, H);
+      pad.scale.setScalar(t.scale * size);
+      pad.position.set(p.x, WATER.y + 0.005 + t.lift * size, p.z); // floating
+      pad.rotation.y = k * 2.1;
+      pad.traverse(o => { if (o.isMesh && o.material.name === 'Pink' && !flower) o.visible = false; });
+      pad.userData.at = [x, y];
+      pads.add(pad);
+    });
+  }
+  /** A splash where something breaks the water: a ring that spreads and fades. */
+  function splash(x, z) {
+    let s = splashes.find(r => !r.visible);
+    if (!s) {
+      s = new THREE.Mesh(new THREE.RingGeometry(0.75, 1, 24), new THREE.MeshBasicMaterial({ color: '#ffffff', transparent: true, depthWrite: false }));
+      s.rotation.x = -Math.PI / 2;
+      splashes.push(s);
+      group.add(s);
+    }
+    s.position.set(x, WATER.y + 0.02, z);
+    s.userData.age = 0;
+    s.visible = true;
+  }
   /** Loads every kind, then lets them out (in the background: the farm draws before they are here). */
   async function start() {
     if (started) return;
     started = true;
+    await lilyPads();
     for (const h of HERDS) {
       const t = await template(h.kind);
       for (let k = 0; k < h.n; k++) animals.push(instance(h, t, animals.length));
@@ -180,7 +216,15 @@ export function makeAnimals(THREE, mats, S) {
    * 0 by day … 1 at night. True when the picture changed while still (an animal arrived, or stood up in a new pose).
    */
   function tick(t, dt, night) {
-    group.visible = on;
+    creatures.visible = on;
+    pads.visible = !winter;
+    for (const s of splashes) if (s.visible) { // spreading, fading
+      s.userData.age += dt;
+      const k = s.userData.age / 0.9;
+      s.scale.setScalar(0.2 + k * 0.85);
+      s.material.opacity = 0.8 * (1 - k);
+      if (k >= 1 || !t) s.visible = false;
+    }
     if (!on || !ground) return false;
     env.resting = night > 0.7;
     let changed = animals.length !== shown;
@@ -191,9 +235,15 @@ export function makeAnimals(THREE, mats, S) {
       if (fresh) play(w);
       const d = Math.atan2(Math.sin(w.a.face - w.yaw), Math.cos(w.a.face - w.yaw)); // it turns toward where it is going
       w.yaw = t ? w.yaw + d * Math.min(1, dt * 8) : w.a.face;
-      const p = S.at(w.a.x, w.a.y, H);
-      w.root.position.set(p.x, 0, p.z);
+      const p = S.at(w.a.x, w.a.y, H), y = baseOf(w) + w.a.lift;
+      w.root.position.set(p.x, y, p.z);
       w.root.rotation.y = w.yaw;
+      const jump = w.a.cur?.jump !== undefined ? Math.min(1, w.a.curT / w.a.cur.len) : null;
+      if (w.a.family === 'fish') w.holder.rotation.x = jump === null ? 0 : -Math.cos(Math.PI * jump) * 0.9; // nose up out of the water, down into it
+      w.root.visible = !w.a.under && !(winter && POND_KINDS.has(w.a.family));
+      const wet = POND_KINDS.has(w.a.family) && (w.a.under || y < WATER.y); // in the water: a splash as it goes in or comes out
+      if (t && w.wet !== null && wet !== w.wet && !winter) splash(p.x, p.z);
+      w.wet = wet;
       if (t) w.mixer.update(dt);
       else if (fresh) { w.mixer.update(0); changed = true; } // still: its pose, not the model's T-pose
       stickOf(w);
@@ -202,13 +252,15 @@ export function makeAnimals(THREE, mats, S) {
   }
   return {
     group, setGround, tick,
-    setOn(v) { on = v; group.visible = v; },
+    setOn(v) { on = v; creatures.visible = v; },
+    /** In winter the pond is ice: its frog, fish and lily pads are out of sight. */
+    setWinter(v) { winter = Boolean(v); },
     /** How many animals are out (0 with the switch off); they arrive as their models load. */
     count: () => (on ? animals.length : 0),
     /** How many there will be, once every model has loaded. */
     total: HERDS.reduce((n, h) => n + h.n, 0),
     /** What a click can find: each animal's hit box (none with the switch off). */
-    hits: () => (on ? animals.map(w => w.hitBox) : []),
+    hits: () => (on ? animals.filter(w => w.root.visible).map(w => w.hitBox) : []),
     /** An animal: its kind and name, its menu, what it is doing, where it is on the map, and the point over its head, in the world. */
     info(i) {
       const w = animals[i];
@@ -220,6 +272,6 @@ export function makeAnimals(THREE, mats, S) {
     coat: i => (animals[i] && on ? coatOf(animals[i].model) : null),
     /** Asks animal i to do act (from its menu). */
     command(i, act) { const w = animals[i]; if (w && menuFor(w.a.kind, w.a.family).includes(act)) command(w.a, act, env); },
-    dispose() { for (const w of animals) w.mixer.stopAllAction(); group.clear(); animals.length = 0; templates.clear(); },
+    dispose() { for (const w of animals) w.mixer.stopAllAction(); creatures.clear(); pads.clear(); animals.length = 0; templates.clear(); },
   };
 }

@@ -3,7 +3,7 @@
 // round, as on the 2D farm (web/worlds/farm/world.js, drawLand); and past it a wide meadow with more forest, out
 // past every edge of the window (camera.js, GROUND_HALF), fading into the haze, so the farm fills the window as the
 // 2D farm does.
-import { CORR, LANE, LANE_HALF, POND, PX, W, extentOf, forestOf, pastureOf, toWorld } from '../layout.js';
+import { CORR, LANE, LANE_HALF, POND, PX, W, WATER, extentOf, forestOf, pastureOf, toWorld } from '../layout.js';
 import { GROUND_HALF } from '../camera.js';
 import { disposeTree, noise, seasonPalette, vnoise } from './util.js';
 
@@ -23,8 +23,9 @@ export function makeTerrain(THREE, mats) {
       const fp = far.attributes.position, fc = new Float32Array(fp.count * 3), shades = S.grass.map(h => new THREE.Color(h)), fcol = new THREE.Color();
       for (let i = 0; i < fp.count; i++) { fcol.copy(shades[noise(Math.round(fp.getX(i)), Math.round(fp.getZ(i))) % 2 ? 1 : 0]); fc.set([fcol.r, fcol.g, fcol.b], i * 3); }
       far.setAttribute('color', new THREE.BufferAttribute(fc, 3));
-      const meadow = new THREE.Mesh(far, mats.std('#ffffff', { vertexColors: true, roughness: 1 }));
+      const meadow = new THREE.Mesh(far, mats.std('#ffffff', { vertexColors: true, roughness: 1, depthWrite: false }));
       meadow.position.y = -0.04; // under the farm's own grass
+      meadow.renderOrder = -1; // drawn first, hiding nothing: the pond's hollow and its fish lie below it
       meadow.receiveShadow = true;
       g.add(meadow);
     }
@@ -42,14 +43,17 @@ export function makeTerrain(THREE, mats) {
     geo.rotateX(-Math.PI / 2);
     const pos = geo.attributes.position, colors = new Float32Array(pos.count * 3), col = new THREE.Color();
     const dirt = [new THREE.Color('#b08850'), new THREE.Color('#c9a46a'), new THREE.Color('#dcc08a')];
-    const greens = S.grass.map(h => new THREE.Color(h));
+    const greens = S.grass.map(h => new THREE.Color(h)), mud = [new THREE.Color('#8fae8a'), new THREE.Color('#35666e')];
+    // the pond's hollow: 0 in its middle, 1 at the water's edge; steep at the edge, so the fish swim clear of its bottom
+    const hollow = (x, y) => ((x - POND.cx) / POND.rx) ** 2 + ((y - POND.cy) / POND.ry) ** 2;
     for (let i = 0; i < pos.count; i++) {
       const x = pos.getX(i) * PX + (ext.x0 + ext.x1) / 2, y = pos.getZ(i) * PX + (ext.y0 + ext.y1) / 2;
-      const v = vnoise(x, y, 22) + (noise(x, y) / 1023 - 0.5) * 0.25;
-      if (lane(x, y)) col.copy(dirt[v < 0.4 ? 0 : v < 0.75 ? 1 : 2]);
+      const v = vnoise(x, y, 22) + (noise(x, y) / 1023 - 0.5) * 0.25, e = hollow(x, y);
+      if (e < 1) col.lerpColors(mud[0], mud[1], 1 - e);
+      else if (lane(x, y)) col.copy(dirt[v < 0.4 ? 0 : v < 0.75 ? 1 : 2]);
       else col.copy(greens[v < 0.36 ? 0 : v < 0.68 ? 1 : 2]);
       colors.set([col.r, col.g, col.b], i * 3);
-      pos.setY(i, lane(x, y) ? 0 : flat(x, y) ? 0.03 : 0.03 + (noise(x + 5, y + 9) / 1023) * 0.12);
+      pos.setY(i, e < 1 ? WATER.y - 0.02 - WATER.deep * (1 - e ** 3) : lane(x, y) ? 0 : flat(x, y) ? 0.03 : 0.03 + (noise(x + 5, y + 9) / 1023) * 0.12);
     }
     geo.setAttribute('color', new THREE.BufferAttribute(colors, 3));
     geo.translate(c0.x, 0, c0.z);
@@ -58,13 +62,41 @@ export function makeTerrain(THREE, mats) {
     grass.receiveShadow = true;
     g.add(grass);
 
-    // the pond: a sandy bank, deep water at the edge, lighter in the middle; ice in winter
+    // the pond: clear water over its hollow (deeper blue at the edge, lighter in the middle), a sandy bank round it; ice
+    // in winter. Its lily pads, frog and fish are build/animals.js's.
     const p = toWorld(POND.cx, POND.cy, H), rx = POND.rx / PX, rz = POND.ry / PX;
-    const disc = (r, y, color, k = 1) => { const m = new THREE.Mesh(new THREE.CylinderGeometry(1, 1, 0.08, 40), color); m.scale.set(rx * k + r, 1, rz * k + r); m.position.set(p.x, y, p.z); m.receiveShadow = true; g.add(m); return m; };
-    disc(0.5, 0.03, mats.std('#c9a46a'));
-    disc(0, 0.07, S.snow ? mats.std('#cfe6f2', { roughness: 0.3 }) : mats.std('#3d7be0', { roughness: 0.25 }));
-    disc(0, 0.075, S.snow ? mats.std('#e6f3fa', { roughness: 0.2 }) : mats.std('#5ab4ff', { roughness: 0.2 }), 0.6);
-    if (!S.snow) for (const [dx, dz] of [[-2.4, 0.5], [1.8, -0.6], [2.9, 0.7]]) { const pad = new THREE.Mesh(new THREE.CylinderGeometry(0.35, 0.35, 0.03, 9), mats.std('#3f9b3a')); pad.position.set(p.x + dx, 0.12, p.z + dz); g.add(pad); }
+    {
+      const bank = [], idx = [], n = 48;
+      for (let k = 0; k <= n; k++) {
+        const a = (k / n) * Math.PI * 2, c = Math.cos(a), sn = Math.sin(a);
+        bank.push(c * rx * 0.96, 0, sn * rz * 0.92, c * (rx + 0.5), 0, sn * (rz + 0.5));
+        if (k < n) idx.push(2 * k, 2 * k + 2, 2 * k + 1, 2 * k + 1, 2 * k + 2, 2 * k + 3);
+      }
+      const ring = new THREE.BufferGeometry();
+      ring.setAttribute('position', new THREE.Float32BufferAttribute(bank, 3));
+      ring.setIndex(idx);
+      ring.computeVertexNormals();
+      const sand = new THREE.Mesh(ring, mats.std('#c9a46a', { side: THREE.DoubleSide }));
+      sand.position.set(p.x, WATER.y + 0.004, p.z);
+      sand.receiveShadow = true;
+      g.add(sand);
+    }
+    if (S.snow) {
+      const disc = (y, color, k) => { const m = new THREE.Mesh(new THREE.CylinderGeometry(1, 1, 0.08, 40), color); m.scale.set(rx * k, 1, rz * k); m.position.set(p.x, y, p.z); m.receiveShadow = true; g.add(m); };
+      disc(WATER.y + 0.01, mats.std('#cfe6f2', { roughness: 0.3 }), 1);
+      disc(WATER.y + 0.015, mats.std('#e6f3fa', { roughness: 0.2 }), 0.6);
+    } else {
+      const surface = new THREE.CircleGeometry(1, 48), deep = new THREE.Color('#3d7be0'), light = new THREE.Color('#7cc4ff');
+      surface.rotateX(-Math.PI / 2);
+      const sc = new Float32Array(surface.attributes.position.count * 3);
+      for (let k = 0; k < surface.attributes.position.count; k++) (k === 0 ? light : deep).toArray(sc, k * 3); // the middle vertex first
+      surface.setAttribute('color', new THREE.BufferAttribute(sc, 3));
+      const water = new THREE.Mesh(surface, mats.std('#ffffff', { vertexColors: true, opacity: 0.42, roughness: 0.2, flat: false }));
+      water.scale.set(rx, 1, rz);
+      water.position.set(p.x, WATER.y, p.z);
+      water.receiveShadow = true;
+      g.add(water);
+    }
 
     // the forest: round trees just past the farm's edges (layout.js's forestOf)
     const trees = forestOf(H);

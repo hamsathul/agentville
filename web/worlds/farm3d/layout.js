@@ -23,6 +23,10 @@ export const SCARECROWS = { x: 430, y: 36, w: 120 };
 // The yard on the left: the henhouse and its run, the pond, the hammocks, the shade tree, a woodpile, bushes, rocks.
 export const HENHOUSE = { x: 10, y: 122 };
 export const POND = { cx: 70, cy: 262, rx: 40, ry: 17 };
+/** The pond's water: its surface's height, and how deep it is in the middle (metres); fish swim just under the surface. */
+export const WATER = { y: 0.06, deep: 0.6 };
+/** The pond's lily pads, [x, y, size, in flower]: the frog's stepping stones, a hop apart. */
+export const LILY_PADS = [[46, 263, 1, true], [60, 256, 0.8, false], [73, 266, 1.1, false], [84, 257, 0.75, false], [96, 263, 0.9, true]];
 export const MEADOW = [[30, 196], [96, 200], [36, 304], [120, 304]]; // farmers working outside any repo
 export const NAPS = [[150, 236], [150, 262]]; // hammocks: sessions that wake up by themselves (/loop)
 export const SHADE = { x: 96, dy: -24 }; // the shade tree, this far above the fields' fence's bottom
