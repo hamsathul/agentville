@@ -60,6 +60,12 @@ export function groundAt(sx, sy, { yaw, pitch, fov, aspect, target, distance }) 
   return { x: eye.x + dir.x * k, y: 0, z: eye.z + dir.z * k };
 }
 
+/** Follow: the view's target eased toward its farmer (×3.5 a second, never past it); dt 0 (the farm still) puts it there. */
+export function followStep(target, point, dt) {
+  const k = dt ? Math.min(1, dt * 3.5) : 1;
+  return { x: target.x + (point.x - target.x) * k, z: target.z + (point.z - target.z) * k };
+}
+
 const ease = t => (t < 0.5 ? 2 * t * t : 1 - (-2 * t + 2) ** 2 / 2);
 
 /**
@@ -70,6 +76,8 @@ const ease = t => (t < 0.5 ? 2 * t * t : 1 - (-2 * t + 2) ** 2 / 2);
 export function makeCameraRig(THREE, camera, dom, { yaw = DEFAULT_VIEW.yaw, pitch = DEFAULT_VIEW.pitch, zoom = 1, onChange = () => {} } = {}) {
   const state = { yaw: Number.isFinite(yaw) ? yaw : DEFAULT_VIEW.yaw, pitch: clampPitch(Number.isFinite(pitch) ? pitch : DEFAULT_VIEW.pitch), zoom: Math.min(MAX_ZOOM, Math.max(MIN_ZOOM, zoom || 1)), target: { x: 0, z: 0 }, fit: 60 };
   let farm = { half: { x: 25, z: 20 }, points: [] }, anim = null, glide = null, aspect = 1;
+  let follow = null; // Follow: { get() → the farmer's point or null, off() } while the view keeps a farmer in the middle
+  const unfollow = () => { if (!follow) return; const o = follow.off; follow = null; o?.(); };
   camera.fov = FOV;
   const distance = () => state.fit / state.zoom;
   function refit() { // 100% is the whole farm, from wherever it is seen
@@ -91,13 +99,21 @@ export function makeCameraRig(THREE, camera, dom, { yaw = DEFAULT_VIEW.yaw, pitc
     /** Turns 15° one way (dir 1 or -1), easing over a moment. */
     turn(dir) { const from = state.yaw; anim = { from, to: stepYaw(anim ? anim.to : from, dir), t: 0 }; },
     /** Back to square-on, the whole farm in view. */
-    reset() { anim = { from: state.yaw, to: Math.round(state.yaw / (2 * Math.PI)) * 2 * Math.PI, t: 0, pitchFrom: state.pitch }; state.zoom = 1; glide = null; changed(); },
+    reset() { unfollow(); anim = { from: state.yaw, to: Math.round(state.yaw / (2 * Math.PI)) * 2 * Math.PI, t: 0, pitchFrom: state.pitch }; state.zoom = 1; glide = null; changed(); },
     setZoom(z) { state.zoom = Math.min(MAX_ZOOM, Math.max(MIN_ZOOM, z)); changed(); },
     zoomBy(dir) { if (dir === 0) rig.reset(); else rig.setZoom(nextZoom(state.zoom, dir)); },
     /** Glides to a point; from the whole farm, in to 150% too (at 100% the view can't move off the middle). */
     glideTo({ x, z }) { if (state.zoom < 1.5) { state.zoom = 1.5; changed(); } glide = { from: { ...state.target }, to: clampTarget({ x, z }, farm.half), t: 0 }; },
-    /** Moves the view on; true while it is still moving (a turn, a reset or a glide). */
-    update(dt) {
+    /**
+     * Follow: keeps the farmer get() points at in the middle (zoomed in to 200% at least), till a pan, ⌂, or get()
+     * finding none (its farmer gone) turns it off, when off() is called; null turns it off quietly.
+     */
+    follow(get, off) {
+      follow = get ? { get, off } : null;
+      if (get && state.zoom < 2) { state.zoom = 2; changed(); }
+    },
+    /** Moves the view on; true while it is still moving (a turn, a reset, a glide or Follow). */
+    update(dt, still = false) {
       let moving = false;
       if (anim) {
         anim.t = Math.min(1, anim.t + dt / 0.35);
@@ -115,6 +131,14 @@ export function makeCameraRig(THREE, camera, dom, { yaw = DEFAULT_VIEW.yaw, pitc
         if (glide.t >= 1) glide = null;
         place();
         moving = true;
+      }
+      if (follow) {
+        const p = follow.get();
+        if (!p) unfollow();
+        else {
+          const to = clampTarget(followStep(state.target, p, still ? 0 : dt), farm.half); // still: there at once
+          if (Math.hypot(to.x - state.target.x, to.z - state.target.z) > 1e-4) { state.target = to; place(); moving = true; }
+        }
       }
       return moving;
     },
@@ -157,6 +181,7 @@ export function makeCameraRig(THREE, camera, dom, { yaw = DEFAULT_VIEW.yaw, pitc
       return;
     }
     if (state.zoom <= 1) return; // the whole farm is in view: nothing to pan to
+    unfollow(); // you took the view back
     const perPx = (2 * distance() * Math.tan((FOV * DEG) / 2)) / Math.max(1, dom.clientHeight);
     const sy = Math.sin(state.yaw), cy = Math.cos(state.yaw), sp = Math.sin(state.pitch);
     // right on the screen is the camera's right; up on the screen is away from the camera, along the ground

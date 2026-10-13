@@ -41,3 +41,63 @@ export function hudHtml(panelHud, p, words = FARM3D_WORDS) {
 export const firstIn = (farmers, state) => farmers.find(f => f.state === state)?.id ?? null;
 /** "N need you": the first farmer waiting on you, else the first with a question, or null. */
 export const firstNeed = farmers => (farmers.find(f => f.state === 'waiting') ?? farmers.find(f => f.question))?.id ?? null;
+
+/**
+ * The panel (top left) and the Menu (top right) over the farm in `host`, wired the engine's way (engine.js, the
+ * click handler): the Menu's button opens and shuts it (a click elsewhere or Esc shuts it); in it the switches and
+ * zoom leave it open, the dashboard's buttons (but Theme) and Help shut it. AGENTVILLE folds the panel; a count
+ * card or "N need you" opens that farmer; the Bell is kept with the world's prefs and told to the page.
+ * hooks: { turn(d), reset(), zoom(d), cycle(what), pick(id), setFollow(on), setResting(shown), help(), refresh(o) }.
+ * render(state): state is { zoom, skyMode, seasonMode, still, animals, bubbles, follow, canFollow, restingHidden,
+ * scene (the engine scene), season (the live one) }.
+ */
+export function makeHud(host, { opts, prefs, hooks, iconImg }) {
+  let menu = false, panelOpen = prefs.get('panel') !== 'folded', bell = prefs.get('bell') === 'on', html = '', last = null;
+  const el = document.createElement('div');
+  el.className = 'px-hud';
+  host.append(el);
+  function render(state = last) {
+    if (!state) return;
+    last = state;
+    const p = { ...state, saysOn: state.bubbles, seasons: true, bell, nav: opts.navState?.() ?? {}, panelOpen, menuOpen: menu, iconImg, seasonIcon, seasonTip: m => seasonTip(state.scene?.plan, state.season, m) };
+    const h = hudHtml(panelHud, p); // the engine's panelHud: a global in the frame
+    if (h !== html) { html = h; el.innerHTML = h; }
+  }
+  const shut = () => { if (menu) { menu = false; render(); } };
+  el.addEventListener('click', e => {
+    const b = e.target.closest('button');
+    if (!b || b.disabled) return;
+    if (b.matches('[data-farm-menu]')) { menu = !menu; render(); if (menu) el.querySelector('.px-menu button:not(:disabled)')?.focus(); return; }
+    if (b.dataset.f3Turn) { hooks.turn(Number(b.dataset.f3Turn)); return; }
+    if (b.matches('[data-f3-reset]')) { hooks.reset(); return; }
+    if (b.matches('[data-farm-panel]')) { panelOpen = !panelOpen; prefs.set('panel', panelOpen ? 'open' : 'folded'); render(); hooks.refresh({ panel: true }); return; }
+    if (b.dataset.farmNav) { if (b.dataset.farmNav !== 'theme') menu = false; opts.onNav(b.dataset.farmNav); render(); return; }
+    if (b.dataset.farmState) { const id = firstIn(last?.scene?.farmers ?? [], b.dataset.farmState); if (id) hooks.pick(id); return; }
+    if (b.matches('[data-farm-need]')) { const id = firstNeed(last?.scene?.farmers ?? []); if (id) hooks.pick(id); return; }
+    if (b.matches('[data-farm-bell]')) { bell = !bell; prefs.set('bell', bell ? 'on' : 'off'); opts.onBell?.(bell); render(); return; }
+    if (b.matches('[data-farm-follow]')) { hooks.setFollow(!last?.follow); return; }
+    if (b.matches('[data-farm-resting]')) { hooks.setResting(last?.restingHidden !== null); return; }
+    if (b.matches('[data-farm-help]')) { menu = false; render(); hooks.help(); return; }
+    if (b.matches('[data-farm-sky]')) hooks.cycle('sky');
+    else if (b.matches('[data-farm-season]')) hooks.cycle('season');
+    else if (b.matches('[data-farm-motion]')) opts.onMotion(!opts.still);
+    else if (b.matches('[data-farm-animals]')) hooks.cycle('animals');
+    else if (b.matches('[data-farm-bubbles]')) hooks.cycle('bubbles');
+    else if (b.dataset.farmZoom !== undefined) hooks.zoom(Number(b.dataset.farmZoom));
+    hooks.refresh();
+  });
+  // a click anywhere else shuts the Menu (and does what it does); Esc shuts it, back on its button
+  host.addEventListener('pointerdown', e => { if (menu && !e.target.closest?.('.px-menu, [data-farm-menu]')) shut(); }, true);
+  document.addEventListener('keydown', e => { if (e.key === 'Escape' && menu) { shut(); el.querySelector('[data-farm-menu]')?.focus(); } });
+  return {
+    render, close: shut,
+    menuOpen: () => menu,
+    /** The panel's box, its 10 px margin in, from the frame's top left (CSS pixels); null while folded or not drawn. */
+    panelBox() {
+      const s = el.querySelector('.px-stats');
+      if (!s || !panelOpen) return null;
+      const r = s.getBoundingClientRect(), h = host.getBoundingClientRect();
+      return r.width ? { w: Math.ceil(r.right - h.left + 10), h: Math.ceil(r.bottom - h.top + 10) } : null;
+    },
+  };
+}

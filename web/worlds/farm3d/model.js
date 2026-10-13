@@ -180,6 +180,7 @@ export function makeModel({ makeGrid, engineScene, tagText, cutMid, lastPart, ag
       });
     }
     return {
+      scene: e, // the engine scene (engine.js engineScene, with the farm's looks): the panel, the dialogs and the diary read it
       ground, beds: bedsOut, farmers, over, season: seasonOf(e.plan), silos: silosOf(e),
       keep: { beds: ground.beds ?? beds, packed: packed || e.fields.length > 0 },
     };

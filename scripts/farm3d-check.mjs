@@ -120,6 +120,37 @@ try {
       else console.log(`  ✓ hover: pointing at ${r.id} shows its tooltip`);
     }
 
+    // 3b. the panel and the Menu: the 2D farm's (panelHud), every button there; no page corner over it; a count card
+    // opens its first farmer (the page picks it, and the world shows it picked); Resting hides the idle and stale
+    {
+      await open(chrome, 'everyone');
+      await sleep(600);
+      const before = chrome.errors.length;
+      const WANT = ['[data-farm-nav="list"]', '[data-farm-nav="worlds"]', '[data-farm-nav="session"]', '[data-farm-nav="setup"]', '[data-farm-nav="side"]', '[data-farm-nav="broadcast"]', '[data-farm-nav="chats"]', '[data-farm-nav="theme"]',
+        '[data-farm-follow]', '[data-farm-resting]', '[data-farm-bubbles]', '[data-farm-animals]', '[data-farm-sky]', '[data-farm-season]', '[data-farm-motion]', '[data-farm-bell]', '[data-farm-help]', '[data-farm-zoom="1"]', '[data-f3-turn="-1"]', '[data-f3-reset]'];
+      const hud = JSON.parse(await chrome.inFrame('/world/farm3d/', `JSON.stringify({ stats: Boolean(document.querySelector('.px-stats .px-brand[data-farm-panel]')), kpis: document.querySelectorAll('.px-kpi').length, gauges: document.querySelectorAll('.px-gauge').length, missing: ${JSON.stringify(WANT)}.filter(q => !document.querySelector(q)) })`));
+      const corner = await chrome.js("Boolean(document.querySelector('.world-corner'))");
+      await chrome.inFrame('/world/farm3d/', "document.querySelector('[data-farm-state=\"waiting\"]')?.click()");
+      let picked = null; // the test page lists what the world asked of it: "pick <id>"
+      for (const end = Date.now() + 3000; Date.now() < end && !picked; await sleep(100)) picked = await chrome.js("/^pick (\\S+)$/.exec(document.querySelector('#asked li')?.textContent ?? '')?.[1] ?? null");
+      const waitingIds = JSON.parse(await chrome.inFrame('/world/farm3d/', "JSON.stringify([...document.querySelectorAll('.f3-tag.st-waiting')].map(t => t.dataset.id))"));
+      const shown = (await statsOf(chrome))?.drawn;
+      await chrome.inFrame('/world/farm3d/', "document.querySelector('[data-farm-menu]').click(); document.querySelector('[data-farm-resting]').click()");
+      await sleep(500);
+      const hidden = (await statsOf(chrome))?.drawn, label = await chrome.inFrame('/world/farm3d/', "document.querySelector('[data-farm-resting]').textContent");
+      await chrome.inFrame('/world/farm3d/', "document.querySelector('[data-farm-resting]').click(); document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }))");
+      await sleep(300);
+      const back = (await statsOf(chrome))?.drawn;
+      const why = [
+        !hud.stats && 'no panel', hud.kpis !== 4 && `${hud.kpis} count cards`, hud.gauges < 2 && `${hud.gauges} meters`, hud.missing.length && `missing ${hud.missing.join(' ')}`,
+        corner && "the page's corner is over it", !waitingIds.includes(picked) && `the waiting card picked ${picked}, not one of ${waitingIds.join(', ')}`,
+        !(hidden < shown) && `Resting hid nothing (${shown} → ${hidden})`, !/hidden/.test(label ?? '') && `Resting says "${oneLine(label ?? '')}"`, back !== shown && `Resting back: ${back}, not ${shown}`,
+        chrome.errors.length > before && `script errors: ${oneLine(chrome.errors[before]).slice(0, 160)}`,
+      ].filter(Boolean);
+      if (why.length) bad(`the panel and the Menu: ${why.join('; ')}`);
+      else console.log(`  ✓ the panel and the Menu: the farm's, every button; no corner; the waiting card picks ${picked}; Resting hides ${shown - hidden}`);
+    }
+
     // 4. the animals: the twelve of Quaternius's Animated Animal Pack and the pond's frog and fish, all out once their
     // models have loaded (they load after the farm has drawn), in the farm's colours (coats.js) with no metal, the cows
     // spotted; clicking one opens its menu (the frog's its own), a pick from it sets it going and shuts the menu, Esc
@@ -155,10 +186,10 @@ try {
       const said = JSON.parse(await chrome.inFrame('/world/farm3d/', 'JSON.stringify(window.__farm3d.talk())'));
       await chrome.inFrame('/world/farm3d/', "document.querySelector('[data-farm-menu]').click()");
       await sleep(150);
-      await chrome.inFrame('/world/farm3d/', "document.querySelector('[data-f3-bubbles]').click()");
+      await chrome.inFrame('/world/farm3d/', "document.querySelector('[data-farm-bubbles]').click()");
       await sleep(400);
       const hushed = JSON.parse(await chrome.inFrame('/world/farm3d/', 'JSON.stringify(window.__farm3d.talk())'));
-      await chrome.inFrame('/world/farm3d/', "document.querySelector('[data-f3-bubbles]').click()"); // back on
+      await chrome.inFrame('/world/farm3d/', "document.querySelector('[data-farm-bubbles]').click()"); // back on
       await chrome.inFrame('/world/farm3d/', "document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }))");
       // Haiku's talk: a snapshot carrying a batch reaches the world through the page (its talk cast said first)
       const stockBefore = Number(await chrome.inFrame('/world/farm3d/', 'window.__farm3d.talkStock()'));
@@ -232,8 +263,9 @@ try {
     const state = await open(noGl, 'everyone');
     await sleep(500);
     const s = await statsOf(noGl), text = await noGl.inFrame('/world/farm3d/', "document.querySelector('.f3-nogl')?.textContent ?? ''"), strip = await stripOf(noGl);
-    if (state !== 'shown' || !s?.noWebGL || !/needs WebGL/.test(text ?? '') || strip || noGl.errors.length) bad(`without WebGL: ${JSON.stringify({ state, s, text: oneLine(text ?? '').slice(0, 120), strip, errors: noGl.errors.length })}`);
-    else console.log('  ✓ without WebGL: the plain panel, started, no error');
+    const menu = await noGl.inFrame('/world/farm3d/', "Boolean(document.querySelector('.px-stats') && document.querySelector('[data-farm-nav=\"worlds\"]') && document.querySelector('[data-farm-nav=\"list\"]'))");
+    if (state !== 'shown' || !s?.noWebGL || !/needs WebGL/.test(text ?? '') || !menu || strip || noGl.errors.length) bad(`without WebGL: ${JSON.stringify({ state, s, text: oneLine(text ?? '').slice(0, 120), menu, strip, errors: noGl.errors.length })}`);
+    else console.log('  ✓ without WebGL: the plain panel, the farm\'s panel and Menu (World, List), started, no error');
   } finally { await noGl.close(); }
 } finally {
   await srv.close();

@@ -1,7 +1,7 @@
 // What lies over the 3D farm in HTML, so text stays sharp at any angle: the farmers' name tags (the 2D farm's tag
 // text, in its pixel font), their speech bubbles, the fields' labels and counts, the silos' figures, an animal's menu
-// (what you can ask it to do), and the farm's Menu (the engine's defaultHud, wired here) with the turn buttons, plus a
-// short Help. Everything is placed each frame from the camera (place(project)).
+// (what you can ask it to do), and a short Help (the panel and the Menu are hud.js's). Everything is placed each
+// frame from the camera (place(project)).
 import { signsOf } from './layout.js';
 
 const CSS = `
@@ -61,9 +61,7 @@ export function makeOverlay(el, { opts, hooks }) {
   document.head.append(style);
   const ov = document.createElement('div');
   ov.className = 'f3-ov';
-  const hud = document.createElement('div');
-  hud.className = 'px-hud';
-  el.append(ov, hud);
+  el.append(ov);
   const tags = new Map(), says = new Map(), fields = new Map(), cnts = new Map(), silos = new Map(), signs = new Map(), talks = new Map();
   let talkItems = []; // what the animals and farmers are saying to each other now (talk.js), each over its speaker
   // Farmers beyond a place's room aren't drawn: a sign says how many, in the 2D farm's words (web/worlds/farm/world.js,
@@ -222,15 +220,7 @@ export function makeOverlay(el, { opts, hooks }) {
   }
   function closePet() { pet?.el.remove(); pet = null; }
 
-  // The Menu: the engine's markup, with the turn buttons beside it and a Bubbles switch in it.
-  let hudHtml = '', menuOpen = false, help = null;
-  function renderHud(state) {
-    let html = defaultHud({ ...state, seasons: true, menuOpen });
-    html = html.replace('<div class="px-nav">', `<div class="px-nav"><span class="f3-turn"><button type="button" data-f3-turn="-1" title="Turn the farm 15° (Q). Or right-drag (or Shift-drag) to turn and tilt it as you like" aria-label="Turn left">↺</button><button type="button" data-f3-turn="1" title="Turn the farm 15° the other way (E)" aria-label="Turn right">↻</button><button type="button" data-f3-reset title="Back to square-on, the whole farm in view" aria-label="Reset the view">⌂</button></span>`);
-    const bubbles = `<button type="button" data-f3-bubbles title="Speech bubbles: always for farmers who need you; the rest when you zoom in" aria-pressed="${state.bubbles}">${pxImg(`Bubbles: ${state.bubbles ? 'on' : 'off'}`, '#4e3626', null)}<span class="px-sr">Bubbles</span></button>`;
-    html = html.replace('<button type="button" data-farm-help', `${bubbles}<button type="button" data-farm-help`);
-    if (html !== hudHtml) { hudHtml = html; hud.innerHTML = html; }
-  }
+  let help = null; // Help, open or not
   function openHelp(on) {
     if (!on) { help?.remove(); help = null; return; }
     if (help) return;
@@ -241,25 +231,9 @@ export function makeOverlay(el, { opts, hooks }) {
     el.append(help);
     help.querySelector('.close').addEventListener('click', () => openHelp(false));
   }
-  hud.addEventListener('click', e => {
-    const b = e.target.closest('button');
-    if (!b) return;
-    if (b.matches('[data-farm-menu]')) { menuOpen = !menuOpen; hooks.refresh(); return; }
-    if (b.dataset.f3Turn) { hooks.turn(Number(b.dataset.f3Turn)); return; }
-    if (b.matches('[data-f3-reset]')) { hooks.reset(); return; }
-    if (b.dataset.farmNav) { menuOpen = false; opts.onNav(b.dataset.farmNav); hooks.refresh(); return; }
-    if (b.matches('[data-farm-sky]')) hooks.cycle('sky');
-    else if (b.matches('[data-farm-season]')) hooks.cycle('season');
-    else if (b.matches('[data-farm-motion]')) opts.onMotion(!opts.still);
-    else if (b.matches('[data-farm-animals]')) hooks.cycle('animals');
-    else if (b.matches('[data-f3-bubbles]')) hooks.cycle('bubbles');
-    else if (b.matches('[data-farm-help]')) { menuOpen = false; openHelp(!help); }
-    else if (b.dataset.farmZoom !== undefined) hooks.zoom(Number(b.dataset.farmZoom));
-    hooks.refresh();
-  });
-  // a click anywhere else, or Esc, shuts the Menu (and Help, and an animal's menu)
-  el.addEventListener('pointerdown', e => { if (menuOpen && !hud.contains(e.target)) { menuOpen = false; hooks.refresh(); } if (help && !help.contains(e.target) && !hud.contains(e.target)) openHelp(false); if (pet && !pet.el.contains(e.target)) closePet(); }, true);
-  document.addEventListener('keydown', e => { if (e.key === 'Escape') { if (pet) closePet(); else if (help) openHelp(false); else if (menuOpen) { menuOpen = false; hooks.refresh(); hud.querySelector('[data-farm-menu]')?.focus(); } } });
+  // a click anywhere else, or Esc, shuts Help and an animal's menu (the panel's Help button toggles Help itself)
+  el.addEventListener('pointerdown', e => { if (help && !help.contains(e.target) && !e.target.closest?.('.px-hud')) openHelp(false); if (pet && !pet.el.contains(e.target)) closePet(); }, true);
+  document.addEventListener('keydown', e => { if (e.key === 'Escape') { if (pet) closePet(); else if (help) openHelp(false); } });
   // a farmer's tag opens it; its bubble opens its whole conversation; × hides the bubble until it says something new
   ov.addEventListener('click', e => {
     const x = e.target.closest('.x'), say = e.target.closest('.f3-say'), tag = e.target.closest('.f3-tag');
@@ -270,7 +244,9 @@ export function makeOverlay(el, { opts, hooks }) {
   ov.addEventListener('pointerover', e => { const t = e.target.closest('.f3-tag'); if (t) hooks.hover(t.dataset.id); });
 
   return {
-    sync, place, renderHud, openPet, closePet,
+    sync, place, openPet, closePet,
+    /** Help: opened, shut, or (no argument) the other way round. */
+    help(on = !help) { openHelp(on); },
     /** The animal whose menu is open, or null. */
     petOpen: () => pet?.i ?? null,
     /** What is being said now: [{ key, text, top (the point over the speaker, in the world), toYou }] (none with Bubbles off). */

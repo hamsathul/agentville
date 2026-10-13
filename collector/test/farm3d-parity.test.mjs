@@ -39,3 +39,11 @@ test('the count cards and "need you" open the first farmer in that state, or the
   assert.equal(firstNeed(fs.filter(f => f.id !== 'c')), 'b');
   assert.equal(firstNeed([{ id: 'a', state: 'working' }]), null);
 });
+
+import { followStep } from '../../web/worlds/farm3d/camera.js';
+test('Follow eases the view to its farmer, 3.5× a second; a still farm (dt 0) snaps; never past it', () => {
+  const t = followStep({ x: 0, z: 0 }, { x: 10, z: -4 }, 0.1);
+  assert.ok(Math.abs(t.x - 3.5) < 1e-9 && Math.abs(t.z + 1.4) < 1e-9);
+  assert.deepEqual(followStep({ x: 0, z: 0 }, { x: 10, z: -4 }, 0), { x: 10, z: -4 });
+  assert.deepEqual(followStep({ x: 0, z: 0 }, { x: 10, z: -4 }, 1), { x: 10, z: -4 });
+});

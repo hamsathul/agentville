@@ -5,6 +5,8 @@ import * as THREE from './vendor/three.module.js';
 import { makeModel } from './model.js';
 import { makeCameraRig } from './camera.js';
 import { makeOverlay } from './overlay.js';
+import { makeHud } from './hud.js';
+import { makeIconImg } from './icons.js';
 import { makeMaterials } from './build/materials.js';
 import { makeSky, skyFor } from './build/sky.js';
 import { makeTerrain } from './build/terrain.js';
@@ -62,10 +64,16 @@ export function start({ el, opts, prefs }) {
   const M = makeModel(kit);
 
   const made = makeRenderer(THREE);
-  if (!made.renderer) { // no WebGL: say so plainly, and start all the same (the page's corner still has World ▾ and List)
-    el.innerHTML = `<div class="f3-nogl" role="status">The 3D farm needs WebGL, which this browser has switched off or doesn't have.<small>${made.error.replace(/[&<>]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' })[c])} Choose another world with World ▾ at the top left; the farm draws without it.</small></div>`;
+  const iconImg = makeIconImg(makeSprite); // the farm's pixel icons, drawn with pixel.js
+  if (!made.renderer) { // no WebGL: say so plainly, and start all the same: the panel and the Menu (List, World…) still work
+    el.innerHTML = `<div class="f3-nogl" role="status">The 3D farm needs WebGL, which this browser has switched off or doesn't have.<small>${made.error.replace(/[&<>]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' })[c])} Choose another world with World in the Menu; the farm draws without it.</small></div>`;
+    const plainHud = makeHud(el, { opts, prefs, iconImg, hooks: { turn() {}, reset() {}, zoom() {}, cycle() {}, pick: id => opts.onPickAgent(id), setFollow() {}, setResting() {}, help() {}, refresh() {} } });
+    const draw = e => plainHud.render({ zoom: 1, skyMode: 'live', seasonMode: 'live', still: opts.still, animals: null, bubbles: true, follow: false, canFollow: false, restingHidden: null, scene: e, season: 'summer' });
+    let last = { farmers: [] };
+    draw(last);
+    setInterval(() => draw(last), 1000); // the page's buttons' state (the sidebar, the theme) can change from outside
     window.__farm3d = { stats: () => ({ noWebGL: true }) };
-    return { scene() {}, select() {} };
+    return { scene(s) { try { last = engineScene(s); draw(last); } catch (err) { report(err, 'scene'); } }, select() {} };
   }
   const { renderer } = made;
   renderer.shadowMap.enabled = true;
@@ -91,7 +99,7 @@ export function start({ el, opts, prefs }) {
     for (let i = 0; i < animals.count(); i++) { const a = animals.info(i); if (a?.shown) list.push({ i, kind: a.kind, x: a.spot[0], y: a.spot[1] }); }
     const beds = model?.beds ?? [], season = shownSeason();
     const repoName = key => beds.find(b => b.key === key)?.name ?? null; // a field's name, never its path
-    const people = (model?.farmers ?? []).filter(f => !f.scarecrow).map(f => ({ id: f.id, name: f.name, state: f.state, x: f.at[0], y: f.at[1], step: STEP_WORDS[f.prop] ?? null, repo: repoName(f.field) }));
+    const people = (shownModel()?.farmers ?? []).filter(f => !f.scarecrow).map(f => ({ id: f.id, name: f.name, state: f.state, x: f.at[0], y: f.at[1], step: STEP_WORDS[f.prop] ?? null, repo: repoName(f.field) }));
     const events = beds.filter(b => b.weather === 'rain' || b.weather === 'rainbow').map(b => ({ kind: b.weather === 'rain' ? 'deployFailed' : 'deployOk', repo: b.name }));
     talkScene = { animals: list, farmers: people, facts: { night: night > 0.5, weather: season === 'winter' ? 'snow' : beds.some(b => b.weather === 'rain') ? 'rain' : null, events } };
     talkSceneAt = now;
@@ -131,37 +139,66 @@ export function start({ el, opts, prefs }) {
 
   const shownSeason = () => (seasonMode === 'live' ? model?.season ?? 'summer' : seasonMode);
   const near = () => rig.state().zoom >= NEAR_ZOOM;
-  const overlay = makeOverlay(el, {
-    opts,
+  const overlayHooks = {
+    refresh: () => refreshHud(),
+    turn: d => rig.turn(d),
+    reset: () => rig.reset(),
+    zoom: d => rig.zoomBy(d),
+    pick: id => pickFarmer(id),
+    hover: id => overlay.setHover(id),
+    animal: i => animals.info(i),
+    act(i, act) {
+      animals.command(i, act);
+      if (act === 'talk') { // it talks at once: to the nearest animal or farmer, facing it, or to you
+        if (!talk.stock()) opts.onTalkMore?.(); // Haiku's are used up: more, if the ✨ Helper may ask (its own lines meanwhile)
+        talk.start(i, sceneForTalk(performance.now()));
+        const to = talk.bubbles().find(b => b.who === i)?.to;
+        if (to) animals.face(i, [to.x, to.y]);
+      }
+      dirty = true;
+    },
+    cycle(what) {
+      if (what === 'sky') { skyMode = SKIES[(SKIES.indexOf(skyMode) + 1) % SKIES.length]; prefs.set('sky', skyMode); lastSky = -Infinity; }
+      if (what === 'season') { seasonMode = SEASON_MODES[(SEASON_MODES.indexOf(seasonMode) + 1) % SEASON_MODES.length]; prefs.set('season', seasonMode); rebuildAll(); }
+      if (what === 'animals') { animalsOn = !animalsOn; prefs.set('animals', animalsOn ? 'on' : 'off'); animals.setOn(animalsOn); if (!animalsOn) overlay.closePet(); }
+      if (what === 'bubbles') { bubblesOn = !bubblesOn; prefs.set('bubbles', bubblesOn ? 'on' : 'off'); if (model) overlay.sync(shownModel(), { bubblesOn, near: near() }); }
+      dirty = true;
+    },
+  };
+  const overlay = makeOverlay(el, { opts, hooks: overlayHooks });
+  // The panel and the Menu (hud.js): the farm's, the other worlds' too. Follow keeps the picked farmer in the middle;
+  // Resting hides the idle and stale farmers (with their hens, and what goes to them).
+  let restingShown = prefs.get('resting') !== 'hidden', following = null;
+  const resting = f => f.state === 'idle' || f.state === 'stale';
+  /** The model as drawn: without the resting farmers while Resting hides them. */
+  const shownModel = () => (restingShown || !model ? model : { ...model, farmers: model.farmers.filter(f => !resting(f)) });
+  const hud = makeHud(el, {
+    opts, prefs, iconImg,
     hooks: {
-      refresh: () => refreshHud(),
-      turn: d => rig.turn(d),
-      reset: () => rig.reset(),
-      zoom: d => rig.zoomBy(d),
-      pick: id => pickFarmer(id),
-      hover: id => overlay.setHover(id),
-      animal: i => animals.info(i),
-      act(i, act) {
-        animals.command(i, act);
-        if (act === 'talk') { // it talks at once: to the nearest animal or farmer, facing it, or to you
-          if (!talk.stock()) opts.onTalkMore?.(); // Haiku's are used up: more, if the ✨ Helper may ask (its own lines meanwhile)
-          talk.start(i, sceneForTalk(performance.now()));
-          const to = talk.bubbles().find(b => b.who === i)?.to;
-          if (to) animals.face(i, [to.x, to.y]);
-        }
-        dirty = true;
-      },
-      cycle(what) {
-        if (what === 'sky') { skyMode = SKIES[(SKIES.indexOf(skyMode) + 1) % SKIES.length]; prefs.set('sky', skyMode); lastSky = -Infinity; }
-        if (what === 'season') { seasonMode = SEASON_MODES[(SEASON_MODES.indexOf(seasonMode) + 1) % SEASON_MODES.length]; prefs.set('season', seasonMode); rebuildAll(); }
-        if (what === 'animals') { animalsOn = !animalsOn; prefs.set('animals', animalsOn ? 'on' : 'off'); animals.setOn(animalsOn); if (!animalsOn) overlay.closePet(); }
-        if (what === 'bubbles') { bubblesOn = !bubblesOn; prefs.set('bubbles', bubblesOn ? 'on' : 'off'); if (model) overlay.sync(model, { bubblesOn, near: near() }); }
-        dirty = true;
-      },
+      turn: d => rig.turn(d), reset: () => rig.reset(), zoom: d => rig.zoomBy(d), cycle: what => overlayHooks.cycle(what),
+      pick: id => pickFarmer(id), setFollow, setResting, help: () => overlay.help(), refresh: () => refreshHud(),
     },
   });
+  function setFollow(on) {
+    following = on && selected && farmers.headOf(selected) ? selected : null;
+    rig.follow(following ? () => (following ? farmers.headOf(following) : null) : null, () => { following = null; refreshHud(); });
+    refreshHud();
+    dirty = true;
+  }
+  function setResting(shown) {
+    restingShown = shown;
+    prefs.set('resting', shown ? 'shown' : 'hidden');
+    if (model) { const m = shownModel(); farmers.sync(m, { instant: opts.still }); farmers.select(selected); overlay.sync(m, { bubblesOn, near: near() }); overlay.setSelected(selected); }
+    refreshHud();
+    dirty = true;
+  }
   function refreshHud() {
-    overlay.renderHud({ zoom: rig.state().zoom, skyMode, seasonMode, still: opts.still, nav: opts.navState?.() ?? {}, animals: animalsOn, bubbles: bubblesOn });
+    const sc = model?.scene ?? { farmers: [] };
+    hud.render({
+      zoom: rig.state().zoom, skyMode, seasonMode, still: opts.still, animals: animalsOn, bubbles: bubblesOn,
+      follow: Boolean(following), canFollow: Boolean(selected && farmers.headOf(selected)),
+      restingHidden: restingShown ? null : sc.farmers.filter(resting).length, scene: sc, season: model?.season ?? 'summer',
+    });
   }
   refreshHud();
   setInterval(refreshHud, 1000); // the page's buttons' state (the sidebar) and Motion can change from outside
@@ -216,10 +253,12 @@ export function start({ el, opts, prefs }) {
     if (bedMap !== JSON.stringify(keep.beds)) prefs.set('beds', bedMap);
     keep = model.keep;
     rebuildAll();
-    farmers.sync(model, { instant: firstScene || opts.still });
+    farmers.sync(shownModel(), { instant: firstScene || opts.still });
     farmers.select(selected);
-    overlay.sync(model, { bubblesOn, near: near() });
+    overlay.sync(shownModel(), { bubblesOn, near: near() });
     overlay.setSelected(selected);
+    if (following && !farmers.headOf(following)) setFollow(false); // its farmer went, or Resting hid it
+    refreshHud();
     firstScene = false;
     dirty = true;
   }
@@ -284,7 +323,7 @@ export function start({ el, opts, prefs }) {
     const dt = Math.min(0.1, (now - lastTick) / 1000);
     lastTick = now;
     if (now - lastSky > 2000) { lastSky = now; const n = sky.set(skyFor(new Date(), skyMode, skyAt)); if (n !== night) { night = n; dirty = true; } }
-    const moving = rig.update(dt), t = opts.still ? 0 : now / 1000;
+    const moving = rig.update(dt, opts.still), t = opts.still ? 0 : now / 1000;
     const walking = farmers.tick(t, dt, opts.still);
     if (animals.tick(t, dt, night)) dirty = true;
     nature.blow(t, model?.beds.some(b => b.weather === 'rain') ? 2.2 : 1); // the wind in the trees, harder while a field rains
@@ -304,7 +343,7 @@ export function start({ el, opts, prefs }) {
       beds.tick(t, dt);
       snow?.tick(t);
     }
-    if (model && near() !== wasNear) { wasNear = near(); overlay.sync(model, { bubblesOn, near: wasNear }); }
+    if (model && near() !== wasNear) { wasNear = near(); overlay.sync(shownModel(), { bubblesOn, near: wasNear }); }
     if (!dirty && !moving && !walking && opts.still) return;
     dirty = false;
     renderer.render(scene3, camera);
@@ -313,14 +352,14 @@ export function start({ el, opts, prefs }) {
 
   // For the browser check (scripts/farm3d-check.mjs) and close-up pictures: what is drawn, and a view to hold.
   window.__farm3d = {
-    stats: () => ({ calls: renderer.info.render.calls, triangles: renderer.info.render.triangles, geometries: renderer.info.memory.geometries, textures: renderer.info.memory.textures, farmers: farmers.count(), drawn: model?.farmers.length ?? 0, tags: overlay.count(), beds: model?.beds.length ?? 0, animals: animals.count() }),
+    stats: () => ({ calls: renderer.info.render.calls, triangles: renderer.info.render.triangles, geometries: renderer.info.memory.geometries, textures: renderer.info.memory.textures, farmers: farmers.count(), drawn: shownModel()?.farmers.length ?? 0, tags: overlay.count(), beds: model?.beds.length ?? 0, animals: animals.count() }),
     screenOf: id => { const h = farmers.headOf(id); return h ? project(h) : null; }, // where a farmer's head is in the picture, in pixels
     /** The plants drawn, by kind (none until their models have loaded). */
     plants: () => nature.count(),
     /** A farmer as drawn: its character, the clip it plays, its shirt's colour (null while the figurine stands in). */
     farmer: id => farmers.info(id),
     /** The farmers drawn, by id (stale ones are scarecrows). */
-    farmerIds: () => (model?.farmers ?? []).filter(f => !f.scarecrow).map(f => f.id),
+    farmerIds: () => (shownModel()?.farmers ?? []).filter(f => !f.scarecrow).map(f => f.id),
     /** The wind in the trees: its clock and strength. */
     wind: () => nature.wind(),
     /** The talk bubbles shown now (their words). */
@@ -339,7 +378,11 @@ export function start({ el, opts, prefs }) {
 
   return {
     scene: onScene,
-    select(id) { selected = id ?? null; farmers.select(selected); overlay.setSelected(selected); dirty = true; },
+    select(id) {
+      selected = id ?? null;
+      if (following && following !== selected) setFollow(false); // picking nobody, or another, ends Follow
+      farmers.select(selected); overlay.setSelected(selected); refreshHud(); dirty = true;
+    },
     /** Haiku's exchanges (the ✨ Helper's talk), kept for when they fit who is talking. */
     talk(exchanges) { talk.take(exchanges); },
   };
