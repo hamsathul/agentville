@@ -240,6 +240,26 @@ try {
       else console.log('  ✓ subagents: a hen and the Explore dog follow their farmer; an egg in the henhouse, its label');
     }
 
+    // 3f. an MCP call: its server's cart drives beside the farmer calling it, labelled; when the call is over it goes home
+    {
+      await open(chrome, 'mcp');
+      const before = chrome.errors.length;
+      const near = async () => JSON.parse(await chrome.inFrame('/world/farm3d/', `(() => { const m = window.__farm3d, c = m.carts()[0], id = m.farmerIds()[0], p = id && m.posOf(id); return JSON.stringify(c && p ? { away: c.away, d: Math.hypot(c.x - p.x, c.y - p.y), server: c.server } : null); })()`));
+      let c = null;
+      for (const end = Date.now() + 15_000; Date.now() < end && !(c?.away && c.d < 20); await sleep(250)) c = await near();
+      const label = await chrome.inFrame('/world/farm3d/', "[...document.querySelectorAll('.f3-ov .f3-cnt')].map(e => e.title).find(t => /an MCP server/.test(t)) ?? ''");
+      const tour = JSON.parse(await chrome.js("JSON.stringify(window.AgentvilleTour.stops.find(s => s.name === 'mcp').frames[0])"));
+      for (const a of tour.agents) { a.now = { tool: 'Edit', summary: 'x', step: 'edit', startedAt: Date.now() }; }
+      await chrome.js(`window.TrackerFarm.update(${JSON.stringify(tour)})`);
+      let home = null;
+      for (const end = Date.now() + 20_000; Date.now() < end && !(home && !home.away); await sleep(400)) home = await near();
+      const s = await statsOf(chrome);
+      const why = [!(c?.away && c.d < 20) && `the cart never came beside its farmer (${JSON.stringify(c)})`, !label && 'no label on the cart', !(home && !home.away) && `the cart never went home (${JSON.stringify(home)})`, !(s?.carts >= 1) && `${s?.carts} carts drawn`,
+        chrome.errors.length > before && `script errors: ${oneLine(chrome.errors[before]).slice(0, 160)}`].filter(Boolean);
+      if (why.length) bad(`the carts: ${why.join('; ')}`);
+      else console.log(`  ✓ the carts: ${c.server}'s drives beside the farmer calling it ("${oneLine(label)}"), then home`);
+    }
+
     // 4. the animals: the twelve of Quaternius's Animated Animal Pack and the pond's frog and fish, all out once their
     // models have loaded (they load after the farm has drawn), in the farm's colours (coats.js) with no metal, the cows
     // spotted; clicking one opens its menu (the frog's its own), a pick from it sets it going and shuts the menu, Esc

@@ -23,6 +23,8 @@ import { makeAnimals } from './build/animals.js';
 import { makeNature } from './build/nature.js';
 import { makeFlock } from './build/flock.js';
 import { henhouseView } from './flock.js';
+import { makeCarts } from './build/carts.js';
+import { cartOf, createCarts } from './carts.js';
 import { createTalk } from './talk.js';
 import { HERDS } from './antics.js';
 
@@ -96,6 +98,8 @@ export function start({ el, opts, prefs }) {
   const farmers = makeFarmers(THREE, makeFigures(THREE, mats, shapes), shapes), animals = makeAnimals(THREE, mats, shapes), weather = makeWeather(THREE, mats, shapes);
   const nature = makeNature(THREE, shapes), talk = createTalk();
   const flock = makeFlock(THREE, mats, shapes, { copy: animals.copy }); // subagents: hens, the Explore dog, the henhouse's eggs
+  const cartMeshes = makeCarts(THREE, mats, shapes, { copy: animals.copy }), carts = createCarts(); // the MCP servers' carts, the web calls' carts to town
+  let cartItems = [];
   /** Who is where and what is happening, for talk.js: refreshed twice a second. */
   let talkScene = null, talkSceneAt = -1e9, castSaid = null;
   function sceneForTalk(now) {
@@ -110,7 +114,7 @@ export function start({ el, opts, prefs }) {
     talkSceneAt = now;
     return talkScene;
   }
-  scene3.add(terrain.group, buildings.group, beds.group, crops.group, farmers.group, animals.group, nature.group, flock.group);
+  scene3.add(terrain.group, buildings.group, beds.group, crops.group, farmers.group, animals.group, nature.group, flock.group, cartMeshes.group);
   /** The ball trees, bushes and rocks stand in until the plants' models are drawn. */
   const standIns = () => { const on = !nature.ready(); terrain.setForest(on); buildings.setPlants(on); };
   const diary = createDiary();
@@ -241,6 +245,7 @@ export function start({ el, opts, prefs }) {
     nature.build(model.ground, season).then(done => { if (done) { standIns(); dirty = true; } }).catch(err => report(err, 'plants')); // the farm draws first
     sky.setExtent(ext.x, ext.z);
     animals.setGround(model.ground);
+    cartMeshes.setGround(model.ground.H, farmers.groundAt);
     animals.setWinter(season === 'winter'); // the pond is ice: its frog, fish and lily pads out of sight
     // snow falling over the whole farm in winter
     if (snow) { snow.object.removeFromParent(); snow.object.geometry.dispose(); snow = null; }
@@ -378,7 +383,17 @@ export function start({ el, opts, prefs }) {
     const walking = farmers.tick(t, dt, opts.still);
     if (model) {
       flock.tick(t, dt, id => farmers.posOf(id), opts.still, farmers.groundAt);
-      flock.whistle(t, shownModel().farmers.filter(f => f.prop === 'whistle').map(f => farmers.headOf(f.id)).filter(Boolean), opts.still);
+      const shown = shownModel().farmers, shownIds = new Set(shown.map(f => f.id)), byId = new Map(model.scene.farmers.map(f => [f.id, f]));
+      flock.whistle(t, shown.filter(f => f.prop === 'whistle').map(f => farmers.headOf(f.id)).filter(Boolean), opts.still);
+      // the carts: an MCP server's drives to the farmer calling it (one not drawn: it stays home); a web call's goes to town
+      cartItems = carts.tick(model.carts, dt, id => (shownIds.has(id) ? farmers.posOf(id) : null), opts.still, performance.now()); // a duration: the page clock may stand still
+      const road = shown.map(f => { const c = cartOf(f, now / 1000); return c && { id: f.id, ...c }; }).filter(Boolean);
+      cartMeshes.tick(cartItems, road, dt, opts.still);
+      overlay.setMovers([
+        ...cartItems.filter(c => c.away).map(c => ({ key: `mcp:${c.server}`, x: c.x, y: c.y, h: 2.4, text: cutMid(c.server, 16), title: `${c.server}, an MCP server${c.who && byId.get(c.who) ? `: ${byId.get(c.who).name} is calling it` : ''}` })),
+        ...road.map(r => { const f = shown.find(x => x.id === r.id); return { key: `cart:${r.id}`, x: r.x, y: 114, h: 2.4, text: clip(f.service, 18), title: `${f.name}: ${f.summary || f.service}` }; }),
+      ]);
+      if (cartItems.some(c => c.moving) || road.length) dirty = true;
     }
     if (animals.tick(t, dt, night)) dirty = true;
     nature.blow(t, model?.beds.some(b => b.weather === 'rain') ? 2.2 : 1); // the wind in the trees, harder while a field rains
@@ -408,7 +423,7 @@ export function start({ el, opts, prefs }) {
 
   // For the browser check (scripts/farm3d-check.mjs) and close-up pictures: what is drawn, and a view to hold.
   window.__farm3d = {
-    stats: () => ({ calls: renderer.info.render.calls, triangles: renderer.info.render.triangles, geometries: renderer.info.memory.geometries, textures: renderer.info.memory.textures, farmers: farmers.count(), drawn: shownModel()?.farmers.length ?? 0, ...flock.count(), tags: overlay.count(), beds: model?.beds.length ?? 0, animals: animals.count() }),
+    stats: () => ({ calls: renderer.info.render.calls, triangles: renderer.info.render.triangles, geometries: renderer.info.memory.geometries, textures: renderer.info.memory.textures, farmers: farmers.count(), drawn: shownModel()?.farmers.length ?? 0, ...flock.count(), ...cartMeshes.count(), tags: overlay.count(), beds: model?.beds.length ?? 0, animals: animals.count() }),
     screenOf: id => { const h = farmers.headOf(id); return h ? project(h) : null; }, // where a farmer's head is in the picture, in pixels
     /** Where a building's click box is in the picture (its upper part, clear of who stands in front), in pixels. */
     buildingAt(k) { const b = buildings.hits().find(o => o.userData.hit === k && o.isMesh); if (!b) return null; const p = new THREE.Vector3(); b.getWorldPosition(p); return project({ x: p.x, y: p.y * 1.6, z: p.z }); },
@@ -416,6 +431,8 @@ export function start({ el, opts, prefs }) {
     bedAt(key) { const b = beds.hits().find(o => o.userData.field === key); if (!b) return null; const p = new THREE.Vector3(); b.getWorldPosition(p); return project({ x: p.x, y: 0.5, z: p.z }); },
     /** The fields drawn, by key. */
     bedKeys: () => (model?.beds ?? []).map(b => b.key),
+    /** The MCP carts now: where each is, whether it is out of its place, who calls it. */
+    carts: () => cartItems.map(c => ({ ...c })),
     /** Where a farmer is on the 2D map (and how high it stands, whether it walks). */
     posOf: id => farmers.posOf(id),
     /** The pops showing now (their words). */

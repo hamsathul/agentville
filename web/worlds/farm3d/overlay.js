@@ -79,6 +79,7 @@ export function makeOverlay(el, { opts, hooks }) {
   });
   let stallTag = null; // the stall's "N PRs" label
   const coopTags = new Map(); // the henhouse's "+N" (hens no farmer can lead) and "N eggs"
+  const movers = new Map(); let moverItems = []; // labels on things that move: a cart out of its place, a cart to town, a hammock's countdown
   let pops = []; // words that rise and fade over something: { el, at() (its point in the world, or null), born }
   const POP_COLOURS = { good: '#8ef0a0', warn: '#ffd166', dim: '#c9b48a' };
   const tags = new Map(), says = new Map(), fields = new Map(), cnts = new Map(), silos = new Map(), signs = new Map(), talks = new Map();
@@ -209,6 +210,16 @@ export function makeOverlay(el, { opts, hooks }) {
     }
     for (const [x, d] of silos) put(d, project(silo3(Number(x))));
     if (stallTag) put(stallTag, project(at3(STALL.x + 14, STALL.y + 36, 0.2)), 0, true);
+    const keepM = new Set();
+    for (const it of moverItems) {
+      keepM.add(it.key);
+      const d = keyed(movers, it.key, () => { const e = document.createElement('div'); e.className = 'f3-cnt'; return e; });
+      const h = pxt(it.text, '#5a3a1a', null);
+      if (d.dataset.html !== h) { d.innerHTML = h; d.dataset.html = h; }
+      d.title = it.title;
+      put(d, project(at3(it.x, it.y, it.h ?? 2.2)));
+    }
+    prune(movers, keepM);
     for (const [k, d] of coopTags) put(d, project(k === 'plus' ? at3(HENHOUSE.x + 62, HENHOUSE.y + 4, 1.6) : at3(HENHOUSE.x + 12, HENHOUSE.y + 38, 0.2)), 0, k !== 'plus');
     const at = model ? signsOf(model.ground) : {};
     for (const [group, d] of signs) if (at[group]) put(d, project(at3(at[group][0], at[group][1], at[group][1] < 90 ? 2.8 : 0.4)));
@@ -294,6 +305,8 @@ export function makeOverlay(el, { opts, hooks }) {
 
   return {
     sync, place, openPet, closePet,
+    /** Labels on things that move ([{ key, x, y (the 2D map), h (metres up), text, title }]), placed each frame. */
+    setMovers(items) { moverItems = items; },
     /** Words that rise and fade over a point (`at()`: where, in the world, now; null once it has gone): good, warn or dim. */
     pop(at, text, cls = 'good') { const el2 = document.createElement('div'); el2.className = 'f3-pop'; el2.innerHTML = pxt(text, POP_COLOURS[cls] ?? POP_COLOURS.good, '#2a1d14'); ov.append(el2); pops.push({ el: el2, at, born: performance.now() }); if (pops.length > 12) pops.shift().el.remove(); },
     /** The pops showing now (their words; for the check). */

@@ -19,6 +19,8 @@ export const BARN_DOOR = [61, LANE];
 export const HOUSE = { x: 176, y: 30, w: 136 }; // its walls from x + 4 to x + w - 4, its front at PORCH_Y - 10
 export const DECK = { x0: 150, x1: 362, y0: PORCH_Y - 10, y1: PORCH_Y + 3 }; // longer than the house: six farmers 4 m apart
 export const STALL = { x: 384, y: 62 };
+/** The MCP servers' carts' places: a row on the lane at its end, by the road to town (the 2D farm's RANK, this map's). */
+export const CART_RANK = Array.from({ length: 6 }, (_, i) => [W - 20 - i * 18, LANE]);
 /** The notice board (what your projects remember): by the porch's steps, between the silo and the deck, as the 2D farm has it. */
 export const BOARD = { x: 128, y: 74, w: 16, h: 10 };
 export const SCARECROWS = { x: 430, y: 36, w: 120 };

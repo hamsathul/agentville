@@ -183,3 +183,36 @@ test("the henhouse: six eggs and three roosting hens at most; its labels as the 
   assert.deepEqual(henhouseView({ eggs: 0, roosting: 0 }), { eggs: 0, roosting: 0, plus: null, eggsLabel: null });
   assert.deepEqual(henhouseView(undefined), { eggs: 0, roosting: 0, plus: null, eggsLabel: null });
 });
+
+import { cartRoute, cartGoal, createCarts, cartOf, CART_STAY_MS } from '../../web/worlds/farm3d/carts.js';
+import { CART_RANK } from '../../web/worlds/farm3d/layout.js';
+test("a cart's way and when it heads home are the 2D farm's rules", () => {
+  for (const [a, b] of [[[388, 87], [120, 200]], [[300, 200], [388, 87]], [[200, 87], [250, 87]], [[100, 40], [306, 150]], [[50, 150], [60, 150]]]) assert.deepEqual(cartRoute(a, b, { lane: 87, corr: [116, 218, 306] }), plain(farm.cartRoute(a, b)), JSON.stringify([a, b]));
+  const c1 = {}, c2 = {};
+  for (const [busy, now] of [[[10, 10], 0], [[10, 10], 500], [null, 1000], [null, 2500], [null, 6000], [[20, 20], 7000]]) assert.deepEqual(cartGoal(c1, busy, [0, 0], now), plain(farm.cartGoal(c2, busy, [0, 0], now)), String(now));
+  assert.equal(CART_STAY_MS, 3000);
+});
+test('carts: a new server takes the first free place in the row; a busy one drives beside its farmer and stays; motion off puts it there', () => {
+  const carts = createCarts(), pos = () => ({ x: 300, y: 200 });
+  let out = carts.tick([{ server: 'a', busy: null }, { server: 'b', busy: null }], 0.1, pos, false, 0);
+  assert.deepEqual(out.map(c => [c.server, c.x, c.y, c.away]), [['a', ...CART_RANK[0], false], ['b', ...CART_RANK[1], false]]);
+  out = carts.tick([{ server: 'b', busy: 'f1' }], 0.1, pos, true, 1000); // a left: b keeps its place; it is busy, still: there at once
+  assert.deepEqual([out[0].x, out[0].y, out[0].away], [313, 200, true]);
+  out = carts.tick([{ server: 'c', busy: null }, { server: 'b', busy: 'f1' }], 0.1, pos, true, 1100);
+  assert.deepEqual(out.find(c => c.server === 'c') && [out.find(c => c.server === 'c').x, out.find(c => c.server === 'c').y], CART_RANK[0]); // the first free place
+  out = carts.tick([{ server: 'b', busy: 'f1' }], 0.5, () => null, false, 1200); // its farmer not drawn: it goes home
+  assert.equal(out[0].away, true); // on its way
+  const moving = createCarts();
+  moving.tick([{ server: 'x', busy: null }], 0.1, pos, false, 0);
+  const o2 = moving.tick([{ server: 'x', busy: 'f1' }], 0.5, pos, false, 100);
+  assert.ok(o2[0].moving && o2[0].x < CART_RANK[0][0]); // driving off, at 55 px a second
+});
+test("a web call's cart goes out to town and back every 8 s; only for a web step that isn't an MCP tool", () => {
+  const f = { id: 'a', state: 'working', service: 'example.com', step: 'web', tool: 'WebFetch' };
+  assert.ok(cartOf(f, 0));
+  assert.equal(cartOf({ ...f, tool: 'mcp__x__y' }, 0), null);
+  assert.equal(cartOf({ ...f, state: 'idle' }, 0), null);
+  assert.equal(cartOf({ ...f, service: null }, 0), null);
+  assert.notEqual(cartOf(f, 1).x, cartOf(f, 3).x);
+  assert.equal(cartOf(f, 1).x, cartOf(f, 9).x); // every 8 s
+});

@@ -6,7 +6,7 @@
 // way there is clear. The animals roam the whole farm (`farm`: everything walkable on it, round the buildings, the
 // fields but their walkways, and through the pasture's gates in its fence), and route() finds a way there, round what
 // stands between. Positions are in the 2D farm's pixels. No three.js: build/animals.js uses it, the tests run it.
-import { BUSHES, CORR, FARMSTEAD, LILY_PADS, NAPS, PASTURE_GATES, POND, SHADE, W, WOODPILE, forestEdgeOf, forestOf, orchardOf, pastureOf, rocksOf } from './layout.js';
+import { BUSHES, CORR, FARMSTEAD, LILY_PADS, NAPS, PASTURE_GATES, POND, SHADE, W, WOODPILE, forestEdgeOf, forestOf, orchardOf, pastureOf, rocksOf, CART_RANK } from './layout.js';
 
 const STEP = 2; // how finely a way is checked, in px
 const TRUNK = 4; // a yard tree's trunk, in px: the dogs run under its crown
@@ -48,6 +48,7 @@ export function roamOf(L) {
     ...rocksOf(L).map(([cx, cy, s]) => ({ cx, cy, r: s * 1.4 })),
     ...forestOf(L.H).filter(([x, y, r]) => near(x, y, r * 1.25 + 24)).map(([cx, cy, r]) => ({ cx, cy, r: r * 1.25 })), // their crowns: the deer would stand in them
     ...FARMSTEAD, // the buildings, the deck, the henhouse's run, the stall, the scarecrow patch
+    { x: CART_RANK.at(-1)[0] - 10, y: CART_RANK[0][1] - 8, w: CART_RANK[0][0] - CART_RANK.at(-1)[0] + 20, h: 16 }, // the row where the tool carts park
   ];
   const box = (o, x, y, r) => x > o.x - r && x < o.x + o.w + r && y > o.y - r && y < o.y + o.h + r;
   /** Whether a body of size r at (x, y) touches something: a thing on the ground, a fence, or the fields (but in a walkway). */

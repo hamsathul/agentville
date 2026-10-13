@@ -86,7 +86,7 @@ export function makeFarmers(THREE, figures, S) {
   /** Where a farmer is on the 2D map, how high it stands, and whether it is walking; null for one not drawn. */
   function posOf(id) {
     const b = bodies.get(id);
-    return b ? { x: b.x, y: b.y, h: b.h, moving: b.path.length > 0 && !(b.wait > 0) } : null;
+    return b ? { x: b.x, y: b.y, tx: b.target?.[0], ty: b.target?.[1], h: b.h, moving: b.path.length > 0 && !(b.wait > 0) } : null; // tx, ty: where it is going
   }
   return {
     group, sync, tick, headOf, posOf,
