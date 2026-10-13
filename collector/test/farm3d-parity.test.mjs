@@ -402,3 +402,24 @@ test('romp steps: face turns at once, chase catches a moving one, flee runs away
   for (let n = 0; n < 80; n++) advance(h, 0.1, env);
   assert.ok(Math.hypot(h.x - 10, h.y - 10) < 2, `home: ${h.x.toFixed(1)},${h.y.toFixed(1)}`);
 });
+
+import { until } from '../../web/worlds/farm3d/diary.js';
+test('pumps by a bed for the background commands running there, two at most, as the 2D farm counts them', () => {
+  const job = n => Array.from({ length: n }, (_, k) => ({ id: `j${k}`, kind: 'bgjob', state: 'running' }));
+  const m = M3.farmModel(toScene(snap([agent('a1', { children: job(1) }), agent('a2', { children: job(3) })], [repo('shop')])));
+  assert.equal(m.beds[0].pumps, 2);
+  assert.equal(M3.farmModel(toScene(snap([agent('a1', { children: job(1) })], [repo('shop')]))).beds[0].pumps, 1);
+  assert.equal(M3.farmModel(toScene(snap([agent('a1')], [repo('shop')]))).beds[0].pumps, 0);
+});
+test("the hammock's countdown, as the 2D farm says it", () => {
+  assert.equal(until(NOW + 12 * 60e3, NOW), '12m');
+  assert.equal(until(NOW + 150 * 60e3, NOW), '3h');
+  assert.equal(until(NOW + 20e3, NOW), 'a moment');
+  assert.equal(until(NOW - 5e3, NOW), 'a moment');
+});
+
+import { toMap } from '../../web/worlds/farm3d/minimap.js';
+import { toWorld } from '../../web/worlds/farm3d/layout.js';
+test("the minimap's point for a place on the ground is the 2D map's", () => {
+  for (const [x, y] of [[0, 0], [280, 200], [560, 410], [123.5, 77.25]]) { const [mx, my] = toMap(toWorld(x, y, 410), 410); assert.ok(Math.abs(mx - x) < 1e-9 && Math.abs(my - y) < 1e-9); }
+});

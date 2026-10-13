@@ -148,6 +148,7 @@ export function makeModel({ makeGrid, engineScene, tagText, cutMid, lastPart, ag
         key: s.key, name: f.name, i: s.i, cx: s.cx, rowTop: s.rowTop, lane: s.lane, x0: s.x0, y0: s.y0,
         crop: f.crop, fence: f.fence, soil: f.soil, worktree: Boolean(f.worktree), pennant: f.pennant, collision: f.collision ?? null,
         plot: plotState(f, e.farmers),
+        pumps: Math.min(2, e.farmers.filter(a => a.field === s.key).reduce((t, a) => t + (a.jobs ?? 0), 0)), // background commands running here
         piles: { hay: Math.min(4, Math.ceil(f.dirty / 3)), crates: Math.min(4, Math.ceil(f.ahead / 4)), mailbox: f.behind > 0, dirty: f.dirty, ahead: f.ahead, behind: f.behind },
         weather: f.weather, deploy: d ? { state: d.state ?? null, label: d.label ?? '' } : null, label: labelOf(f),
         tip: [f.key, f.branch && `on ${f.branch}`, d?.detail].filter(Boolean).join(' · '),

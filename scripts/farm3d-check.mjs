@@ -327,6 +327,24 @@ try {
       else console.log(`  ✓ the animals with each other: the ${kinds.join(' and the ')} romp (${Math.round(moved)} px; "${oneLine([...said][0] ?? '')}"…), both free after; Play on the menu`);
     }
 
+    // 3j. the minimap while zoomed in (and not at 100%); a napper's "wakes in" countdown
+    {
+      await open(chrome, 'everyone');
+      const before = chrome.errors.length;
+      await chrome.inFrame('/world/farm3d/', 'window.__farm3d.view({ zoom: 3 }); true');
+      await sleep(700);
+      const shown = await chrome.inFrame('/world/farm3d/', "getComputedStyle(document.querySelector('.f3-mini')).display !== 'none'");
+      await chrome.inFrame('/world/farm3d/', 'window.__farm3d.view({ zoom: 1 }); true');
+      await sleep(700);
+      const hidden = await chrome.inFrame('/world/farm3d/', "getComputedStyle(document.querySelector('.f3-mini')).display === 'none'");
+      await open(chrome, 'nap');
+      let nap = '';
+      for (const end = Date.now() + 3000; Date.now() < end && !nap; await sleep(200)) nap = await chrome.inFrame('/world/farm3d/', "[...document.querySelectorAll('.f3-ov .f3-cnt')].map(e => e.title).find(t => /wakes up by itself at/.test(t)) ?? ''");
+      const why = [!shown && 'no minimap at 300%', !hidden && 'a minimap at 100%', !nap && 'no "wakes in" label over the napper', chrome.errors.length > before && `script errors: ${oneLine(chrome.errors[before]).slice(0, 160)}`].filter(Boolean);
+      if (why.length) bad(`the minimap and the hammock: ${why.join('; ')}`);
+      else console.log(`  ✓ the minimap while zoomed in; the napper's countdown ("${oneLine(nap)}")`);
+    }
+
     // 4. the animals: the twelve of Quaternius's Animated Animal Pack and the pond's frog and fish, all out once their
     // models have loaded (they load after the farm has drawn), in the farm's colours (coats.js) with no metal, the cows
     // spotted; clicking one opens its menu (the frog's its own), a pick from it sets it going and shuts the menu, Esc

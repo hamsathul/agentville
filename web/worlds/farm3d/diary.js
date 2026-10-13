@@ -3,6 +3,8 @@
 // startText, arriveText, zoneText, onMove, setScene's harvests and sales); farm3d-parity.test.mjs pins the words.
 import { doing } from './model.js';
 
+/** How long until a time, in short (the 2D farm's): 12m, 2h; a moment. */
+export const until = (at, now = Date.now()) => { const m = Math.max(0, (at - now) / 60_000); return m < 1 ? 'a moment' : m < 60 ? `${Math.round(m)}m` : `${Math.round(m / 60)}h`; };
 const clip = (s, n) => (s.length > n ? `${s.slice(0, n - 1)}…` : s); // pixel.js's
 
 /** The words for a farmer reaching a place (its zone), as the 2D farm's zoneText; `fieldName` is its bed's field's. */

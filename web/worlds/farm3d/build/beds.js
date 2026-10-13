@@ -90,6 +90,17 @@ export function makeBeds(THREE, mats, S, weather, crops) {
     if (flag) flag.userData.live = true;
     for (const f of fx) f.object.userData.live = true;
     S.bake(g, { keep: o => Boolean(o.userData.live) }); // the bed in one draw call; its flag and weather move
+    // a pump at the bed's corner for each background command running here (two at most), its handle going while it runs
+    for (let j = 0; j < (b.pumps ?? 0); j++) {
+      const at = P(b.x0 - 9 + j * 5, b.y0 - 2 + j * 2), pump = new THREE.Group();
+      S.box(0.36, 0.08, 0.36, '#5f6b7a', 0, 0, 0, pump);
+      S.cyl(0.11, 0.13, 0.75, '#3d7be0', 0, 0.08, 0, pump);
+      S.box(0.22, 0.06, 0.06, '#3d7be0', 0.15, 0.55, 0, pump);
+      const handle = S.box(0.45, 0.05, 0.05, '#9aa4ad', -0.12, 0.85, 0, pump);
+      pump.position.set(at.x, 0, at.z);
+      g.add(pump);
+      fx.push({ object: pump, tick: t => { handle.rotation.z = Math.floor(t * 3 + j) % 2 ? 0.35 : -0.35; } });
+    }
     // what a click finds: a box over the bed and its piles (invisible), its field's key on it
     const hit = new THREE.Mesh(new THREE.BoxGeometry(w, 1.6, d), hitMat);
     hit.position.set(c.x, 0.8, c.z);
@@ -113,7 +124,7 @@ export function makeBeds(THREE, mats, S, weather, crops) {
   function sync(beds, ground, season) {
     const H = ground.H, winter = Boolean(seasonPalette(season).snow), keep = new Set(), plants = [];
     const want = [
-      ...beds.map(b => ({ key: `bed:${b.key}`, sig: JSON.stringify([H, b.cx, b.rowTop, b.x0, b.y0, b.fence, b.soil, b.worktree, b.pennant, b.collision, b.plot.kind, b.piles, b.weather, winter]), make: () => buildBed(b, H, winter) })),
+      ...beds.map(b => ({ key: `bed:${b.key}`, sig: JSON.stringify([H, b.cx, b.rowTop, b.x0, b.y0, b.fence, b.soil, b.worktree, b.pennant, b.collision, b.plot.kind, b.piles, b.weather, b.pumps, winter]), make: () => buildBed(b, H, winter) })),
       ...ground.empty.map(s => ({ key: `fallow:${s.i}`, sig: JSON.stringify([H, s.cx, s.x0, s.y0, season]), make: () => buildFallow(s, H, season) })),
     ];
     for (const { key, sig, make } of want) {

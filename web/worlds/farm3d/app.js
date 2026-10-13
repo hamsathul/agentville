@@ -8,7 +8,8 @@ import { makeOverlay } from './overlay.js';
 import { clickOrder, makeHud } from './hud.js';
 import { makeIconImg } from './icons.js';
 import { BOARD_TITLE, boardHtml, boardSessions, buildingTip, dialogFor } from './dialogs.js';
-import { createDiary } from './diary.js';
+import { createDiary, until } from './diary.js';
+import { makeMinimap, toMap } from './minimap.js';
 import { makeMaterials } from './build/materials.js';
 import { makeSky, skyFor } from './build/sky.js';
 import { makeTerrain } from './build/terrain.js';
@@ -239,6 +240,20 @@ export function start({ el, opts, prefs }) {
       refresh: o => { if (o?.panel) { kept = null; fitClear(); } refreshHud(); }, // folded or unfolded: the farm fits the room it now has
     },
   });
+  // the minimap while zoomed in: the whole farm small, the view outlined; a click goes there
+  const minimap = makeMinimap(el, { onGo: ([x, y]) => { if (!model) return; setFollow(false); rig.glideTo(shapes.at(x, y, model.ground.H)); dirty = true; } });
+  const groundPlane = new THREE.Plane(new THREE.Vector3(0, 1, 0), 0), corner = new THREE.Vector3(), cornerRay = new THREE.Raycaster();
+  /** The view's corners on the ground, as 2D map points (the part clear of the panel): the minimap's outline. */
+  function viewCorners() {
+    const W2 = el.clientWidth || 1, H2 = el.clientHeight || 1, r = kept ? clearRect(W2, H2, kept, a => rig.fitFor(a)) : { x: 0, y: 0, w: W2, h: H2 };
+    const out = [];
+    for (const [px, py] of [[r.x, r.y], [r.x + r.w, r.y], [r.x + r.w, r.y + r.h], [r.x, r.y + r.h]]) {
+      cornerRay.setFromCamera({ x: (px / W2) * 2 - 1, y: -((py / H2) * 2 - 1) }, camera);
+      if (!cornerRay.ray.intersectPlane(groundPlane, corner)) return null; // over the horizon
+      out.push(toMap({ x: corner.x, z: corner.z }, model.ground.H));
+    }
+    return out;
+  }
   function setFollow(on) {
     following = on && selected && farmers.headOf(selected) ? selected : null;
     rig.follow(following ? () => (following ? farmers.headOf(following) : null) : null, () => { following = null; refreshHud(); });
@@ -442,7 +457,11 @@ export function start({ el, opts, prefs }) {
       cartItems = carts.tick(model.carts, dt, id => (shownIds.has(id) ? farmers.posOf(id) : null), opts.still, performance.now()); // a duration: the page clock may stand still
       const road = shown.map(f => { const c = cartOf(f, now / 1000); return c && { id: f.id, ...c }; }).filter(Boolean);
       cartMeshes.tick(cartItems, road, dt, opts.still);
+      const zoomed = rig.state().zoom > 1.01;
+      minimap.show(zoomed);
+      if (zoomed) minimap.draw(shownModel(), fid => farmers.posOf(fid), viewCorners(), now);
       overlay.setMovers([
+        ...shown.filter(f => f.nap && f.wakeAt).map(f => { const p = farmers.posOf(f.id); return p && !p.moving && { key: `nap:${f.id}`, x: p.x, y: p.y, h: 2, text: `wakes in ${until(f.wakeAt)}`, title: `${f.name} wakes up by itself at ${new Date(f.wakeAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}` }; }).filter(Boolean),
         ...cartItems.filter(c => c.away).map(c => ({ key: `mcp:${c.server}`, x: c.x, y: c.y, h: 2.4, text: cutMid(c.server, 16), title: `${c.server}, an MCP server${c.who && byId.get(c.who) ? `: ${byId.get(c.who).name} is calling it` : ''}` })),
         ...road.map(r => { const f = shown.find(x => x.id === r.id); return { key: `cart:${r.id}`, x: r.x, y: 114, h: 2.4, text: clip(f.service, 18), title: `${f.name}: ${f.summary || f.service}` }; }),
       ]);
