@@ -501,16 +501,28 @@ try {
       await sleep(1200);
       const s = await statsOf(chrome), land = JSON.parse(await chrome.inFrame('/world/farm3d/', 'JSON.stringify(window.__farm3d.land())'));
       const theirs = JSON.parse(await chrome.inFrame('/world/farm3d/', "JSON.stringify(['barn2', 'house2', 'shed2'].filter(k => !window.__farm3d.buildingAt(k)?.visible))")); // its buildings, in view
+      // who lives where: the second account's on its farm (where each is going), the first's on yours
+      const homes = JSON.parse(await chrome.inFrame('/world/farm3d/', "JSON.stringify(['p1', 'p2', 'n1', 'n2', 'n3', 'n4', 'n5'].map(id => [id, window.__farm3d.farmerFarm(id), window.__farm3d.posOf(id)?.tx ?? null]))"));
+      const astray = homes.filter(([id, farm, tx]) => farm !== (id.startsWith('n') && id !== 'n5' ? 1 : 0) || tx === null || (farm ? tx < 952 : tx > 856)).map(([id]) => id);
+      const gateText = await chrome.inFrame('/world/farm3d/', "document.querySelector('.f3-gate')?.textContent ?? ''");
+      // its barn starts a session on its account
+      const clickAt = js => chrome.inFrame('/world/farm3d/', `(() => { const at = ${js}; if (!at) return false; const c = document.querySelector('.f3-canvas'), b = c.getBoundingClientRect(), o = { bubbles: true, clientX: b.left + at.x, clientY: b.top + at.y, pointerId: 7, button: 0 }; for (const type of ['pointerdown', 'pointerup']) c.dispatchEvent(new PointerEvent(type, o)); return true; })()`);
+      await clickAt("window.__farm3d.buildingAt('barn2')");
+      await sleep(300);
+      const barn2 = await chrome.js("document.querySelector('#asked li')?.textContent ?? ''");
       const why = [
         !s && 'no stats',
         s && s.drawn !== 7 && `${s?.drawn} farmers drawn, not 7`,
         s && s.calls > 400 && `${s.calls} draw calls (400 at most)`,
         JSON.stringify(land) !== JSON.stringify({ w: 1808, ox: 952, neighbour: true }) && `the land ${JSON.stringify(land)}`,
         theirs.length && `the neighbour's ${theirs.join(', ')} not in view`,
+        astray.length && `on the wrong farm: ${astray.join(', ')} (${JSON.stringify(homes)})`,
+        gateText !== 'home' && `the gate's sign says "${gateText}", not "home"`,
+        barn2 !== 'start a session on zeta' && `the neighbour's barn asked "${barn2}"`,
         chrome.errors.length > before && `script errors: ${oneLine(chrome.errors[before]).slice(0, 160)}`,
       ].filter(Boolean);
       if (why.length) bad(`the neighbour farm: ${why.join('; ')}`);
-      else console.log(`  ✓ the neighbour farm: both farms drawn (the land ${land.w} px across), its barn, farmhouse and shed in view, ${s.drawn} farmers, ${s.calls} draw calls`);
+      else console.log(`  ✓ the neighbour farm: both farms drawn (the land ${land.w} px across), its barn, farmhouse and shed in view, its sign "home", its barn starts a session on zeta, ${s.drawn} farmers each on its account's farm, ${s.calls} draw calls`);
     }
 
     // 5. the plants: Quaternius's trees, bushes and rocks drawn once their models load (the ball trees stand in till

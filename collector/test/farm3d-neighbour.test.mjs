@@ -6,6 +6,8 @@ import { kit, toScene, privateScene, NOW, HOME, touch, agent, repo, snap } from 
 import { makeModel } from '../../web/worlds/farm3d/model.js';
 import { clampTarget, makeCameraRig } from '../../web/worlds/farm3d/camera.js';
 import { plantsOf } from '../../web/worlds/farm3d/nature.js';
+import { landRoute, walkRoute } from '../../web/worlds/farm3d/route.js';
+import { dialogFor } from '../../web/worlds/farm3d/dialogs.js';
 import { CREEK, FARMSTEAD, GAP, LANE, NEIGHBOUR_X, PORCH_Y, ROAD, SILO_X, W, crossingsOf, east, extentOf, farmAt, farmOf, farmsteadOf, forestOf, landOf, pastureOf, slotTables } from '../../web/worlds/farm3d/layout.js';
 
 const M = makeModel(kit);
@@ -164,4 +166,29 @@ test("the plants: the neighbour's shade tree, bushes and rocks; the forest round
   assert.ok(!P.some(p => p.role === 'forest' && p.x > W + 4 && p.x < NEIGHBOUR_X - 4 && p.y > 12 && p.y < m.ground.H + 22), 'no forest between the farms');
   const one = plantsOf(model(snap([], [])).ground, 'summer');
   assert.equal(one.filter(p => p.role === 'shade').length, 1, 'one farm: one shade tree');
+});
+
+test('walks: within a farm as before; between the farms along the lane and over the bridge', () => {
+  const corridors = [176, 398, 602, ...[176, 398, 602].map(c => c + NEIGHBOUR_X)], gap = [W, NEIGHBOUR_X];
+  assert.deepEqual(landRoute([61, 110], [296, 232], { corridors, gap }), walkRoute([61, 110], [296, 232], corridors));
+  const r = landRoute([168, PORCH_Y], [168 + NEIGHBOUR_X, PORCH_Y], { corridors, gap });
+  assert.ok(r.some(([x, y]) => y === LANE && x < W) && r.some(([x, y]) => y === LANE && x > NEIGHBOUR_X), 'onto the lane, across, off it');
+  let from = [168, PORCH_Y];
+  for (const p of r) { if (Math.min(from[0], p[0]) < CREEK.x0 && Math.max(from[0], p[0]) > CREEK.x1) assert.ok(from[1] === LANE && p[1] === LANE, 'it crosses the creek on the lane'); from = p; }
+  assert.deepEqual(r.at(-1), [168 + NEIGHBOUR_X, PORCH_Y]);
+  const back = landRoute([400 + NEIGHBOUR_X, 300], [96, 520], { corridors, gap });
+  assert.deepEqual(back.at(-1), [96, 520], 'and back home, from a field to the shade tree');
+  assert.ok(back.some(([x, y]) => y === LANE && x > NEIGHBOUR_X) && back.some(([x, y]) => y === LANE && x < W));
+  assert.deepEqual(landRoute([61, 110], [200, 110], { corridors, gap: null }), [[200, 110]], 'no neighbour: as before');
+});
+
+test("the porches' dialogs: yours lists your account's, the neighbour's its own", () => {
+  const e = { farmers: [{ id: 'a', name: 'a', state: 'waiting', ask: 'x', account: 'main' }, { id: 'b', name: 'b', state: 'waiting', ask: 'y', account: 'zeta' }], accounts: [{ key: 'main', name: 'work' }, { key: 'zeta', name: 'home' }], fields: [] };
+  const esc = v => String(v), ago = () => '';
+  const mine = dialogFor('house', e, { esc, ago }), theirs = dialogFor('house2', e, { esc, ago });
+  assert.ok(mine.html.includes('data-farm-pick="a"') && !mine.html.includes('data-farm-pick="b"'));
+  assert.equal(theirs.title, "home's porch");
+  assert.ok(theirs.html.includes('data-farm-pick="b"') && !theirs.html.includes('data-farm-pick="a"'));
+  const one = dialogFor('house', { ...e, accounts: [e.accounts[0]] }, { esc, ago });
+  assert.ok(one.html.includes('data-farm-pick="a"') && one.html.includes('data-farm-pick="b"'), 'one account: everyone, as before');
 });

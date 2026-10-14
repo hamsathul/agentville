@@ -176,7 +176,7 @@ function setView(next, { remember = true } = {}) {
     $('fs-body')?.appendChild?.($('explorer'));
     reader = null;
     window.TrackerFarm.mount($('farm'), {
-      token: TOKEN, diary: $('farm-diary'), onPickAgent: pickFromFarm, onOpenDoc: openDocFromFarm, onShowRepos: showReposFromFarm, onStartSession: () => { window.TrackerFarm?.armClickGuard?.(); void openSessions(); }, onBell: bellSwitched,
+      token: TOKEN, diary: $('farm-diary'), onPickAgent: pickFromFarm, onOpenDoc: openDocFromFarm, onShowRepos: showReposFromFarm, onStartSession: account => { window.TrackerFarm?.armClickGuard?.(); void openSessions(account ? { account } : {}); }, onBell: bellSwitched,
       // the top bar's buttons, on the farm
       onWorld: showWorld, onNotice: notice,
       // A world pressing a button that raises a view or dialog arms the click guard, so it can't steer a

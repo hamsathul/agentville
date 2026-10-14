@@ -150,6 +150,8 @@ export function east(p, ox = NEIGHBOUR_X) {
   for (const k of ['x', 'x0', 'x1', 'cx']) if (typeof o[k] === 'number') o[k] += ox;
   return o;
 }
+/** A farm's paths down (CORR), on the farm at ox. */
+export const CORR_OF = ox => CORR.map(c => c + ox);
 /** What stands only on your farm: the henhouse, the market stall and the notice board. */
 export const HOME_ONLY = new Set(['henhouse', 'stall', 'board']);
 /** A farm's farmstead (FARMSTEAD's rectangles): yours, or the neighbour's moved east by ox, without what is only yours. */

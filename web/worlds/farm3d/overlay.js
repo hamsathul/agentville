@@ -2,7 +2,7 @@
 // text, in its pixel font), their speech bubbles, the fields' labels and counts, the silos' figures, an animal's menu
 // (what you can ask it to do), and a short Help (the panel and the Menu are hud.js's). Everything is placed each
 // frame from the camera (place(project)).
-import { BED, HENHOUSE, SPOT, STALL, signsOf } from './layout.js';
+import { BED, HENHOUSE, LANE, NEIGHBOUR_X, SPOT, STALL, signsOf } from './layout.js';
 import { henhouseView } from './flock.js';
 import { SENDS } from './play.js';
 
@@ -96,7 +96,7 @@ export function makeOverlay(el, { opts, hooks }) {
   // Farmers beyond a place's room aren't drawn: a sign says how many, in the 2D farm's words (web/worlds/farm/world.js,
   // labels), by the place (layout.js, signsOf); and fields beyond the grid's 18 beds.
   const closed = new Map(); // id → the words its bubble had when × closed it
-  let farmers = [], model = null, hover = null, selected = null, empty = null, pet = null; // pet: the open animal menu
+  let farmers = [], model = null, hover = null, selected = null, empty = null, pet = null, gateTag = null; // pet: the open animal menu; gateTag: the neighbour's name at its gate
 
   function keyed(map, key, make) { let e = map.get(key); if (!e) { e = make(); ov.append(e); map.set(key, e); } return e; }
   function prune(map, keep) { for (const [k, e] of map) if (!keep.has(k)) { e.remove(); map.delete(k); } }
@@ -175,18 +175,29 @@ export function makeOverlay(el, { opts, hooks }) {
       d.title = lab.tip;
     }
     prune(coopTags, keepCoop);
-    const keepSign = new Set(), more = m.ground.more ?? 0;
-    const SIGNS = signsOf(m.ground);
-    for (const [group, n] of [...Object.entries(m.over ?? {}), ['more', more]]) {
-      if (!(n > 0) || !SIGNS[group]) continue;
-      keepSign.add(group);
-      const d = keyed(signs, group, () => { const e = document.createElement(group === 'more' ? 'button' : 'div'); e.className = group === 'more' ? 'f3-cnt f3-more' : 'f3-cnt'; if (group === 'more') { e.type = 'button'; e.dataset.farmMore = ''; } return e; }); // "+N more fields": the list view
-      const text = group === 'more' ? `+${n} more field${n === 1 ? '' : 's'}` : `+${n} ${SIGNS[group][2]}`;
-      const h = pxt(text, '#5a3a1a', null);
-      if (d.dataset.html !== h) { d.innerHTML = h; d.dataset.html = h; }
-      d.title = group === 'more' ? `${n} more repo${n === 1 ? '' : 's'} than the grid's 18 beds: see them all in the list view` : `${n} more ${n === 1 ? 'farmer' : 'farmers'} ${SIGNS[group][2]} than there is room to draw here`;
+    const keepSign = new Set(), farms = [['', m.over ?? {}, m.ground]]; // each farm's signs: yours, and the neighbour's (keys 'n:…')
+    if (m.neighbour) farms.push(['n:', m.neighbour.over ?? {}, m.neighbour.ground]);
+    for (const [pre, over, ground] of farms) {
+      const SIGNS = signsOf(ground);
+      for (const [group, n] of [...Object.entries(over), ['more', ground.more ?? 0]]) {
+        if (!(n > 0) || !SIGNS[group]) continue;
+        keepSign.add(pre + group);
+        const d = keyed(signs, pre + group, () => { const e = document.createElement(group === 'more' ? 'button' : 'div'); e.className = group === 'more' ? 'f3-cnt f3-more' : 'f3-cnt'; if (group === 'more') { e.type = 'button'; e.dataset.farmMore = ''; } return e; }); // "+N more fields": the list view
+        const text = group === 'more' ? `+${n} more field${n === 1 ? '' : 's'}` : `+${n} ${SIGNS[group][2]}`;
+        const h = pxt(text, '#5a3a1a', null);
+        if (d.dataset.html !== h) { d.innerHTML = h; d.dataset.html = h; }
+        d.title = group === 'more' ? `${n} more repo${n === 1 ? '' : 's'} than the grid's 18 beds: see them all in the list view` : `${n} more ${n === 1 ? 'farmer' : 'farmers'} ${SIGNS[group][2]} than there is room to draw here`;
+      }
     }
     prune(signs, keepSign);
+    // the neighbour's gate sign: its account's name
+    if (m.neighbour && !gateTag) { gateTag = document.createElement('div'); gateTag.className = 'f3-cnt f3-gate'; ov.append(gateTag); }
+    else if (!m.neighbour && gateTag) { gateTag.remove(); gateTag = null; }
+    if (gateTag) {
+      const h = pxt(m.neighbour.name, '#5a3a1a', null);
+      if (gateTag.dataset.html !== h) { gateTag.innerHTML = h; gateTag.dataset.html = h; }
+      gateTag.title = `${m.neighbour.name}'s farm: the sessions on your ${m.neighbour.name} account`;
+    }
     if (!m.beds.length && !empty) { empty = document.createElement('div'); empty.className = 'f3-empty'; empty.innerHTML = pxt('No fields yet: no agent has touched a repo in the last 30 minutes', '#fff3d6', '#4e3626'); ov.append(empty); }
     else if (m.beds.length && empty) { empty.remove(); empty = null; }
   }
@@ -230,8 +241,12 @@ export function makeOverlay(el, { opts, hooks }) {
     }
     prune(movers, keepM);
     for (const [k, d] of coopTags) put(d, project(k === 'plus' ? at3(HENHOUSE.x + 62, HENHOUSE.y + 4, 1.6) : at3(HENHOUSE.x + 12, HENHOUSE.y + 38, 0.2)), 0, k !== 'plus');
-    const at = model ? signsOf(model.ground) : {};
-    for (const [group, d] of signs) if (at[group]) put(d, project(at3(at[group][0], at[group][1], at[group][1] < 90 ? 2.8 : 0.4)));
+    const at = model ? signsOf(model.ground) : {}, nat = model?.neighbour ? signsOf(model.neighbour.ground) : {};
+    for (const [key, d] of signs) {
+      const theirs = key.startsWith('n:'), group = theirs ? key.slice(2) : key, p = (theirs ? nat : at)[group];
+      if (p) put(d, project(at3(p[0] + (theirs ? model.neighbour.ox : 0), p[1], p[1] < 90 ? 2.8 : 0.4)));
+    }
+    if (gateTag) put(gateTag, project(at3(NEIGHBOUR_X - 10, LANE - 16, 2.0)));
     if (empty && model) { const G = model.ground.GRID; put(empty, project(at3((G.x0 + G.x1) / 2, (G.y0 + G.y1) / 2, 0))); }
     // a conversation's bubbles: over the speaker, moved up while they would cover a farmer's own bubble or another
     const keepTalk = new Set();

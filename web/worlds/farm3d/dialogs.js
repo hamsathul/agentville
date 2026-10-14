@@ -1,15 +1,17 @@
 // The farm's buildings, clicked: their dialogs and tooltips, copied from web/worlds/farm/world.js (dialog,
 // buildingTip, boardSessions; the stall's crates and label) and web/worlds/sdk/engine.js (openBoard), with the scene
 // and the frame's helpers (esc, ago, lastPart: pixel.js) passed in; collector/test/farm3d-parity.test.mjs pins them.
+import { farmOf } from './layout.js';
 
 /** A building's tooltip on the canvas (`names.neighbour`: the second account's name, for its farm's buildings). */
 export const buildingTip = (k, names = {}) => ({ barn2: `${names.neighbour ?? 'The neighbour'}'s barn: start a session on your ${names.neighbour ?? 'second'} account (a new farmer walks out of its door)`, house2: `${names.neighbour ?? 'The neighbour'}'s farmhouse: who is on its porch`, shed2: `${names.neighbour ?? 'The neighbour'}'s machine shed: who is out on a machine there`, barn: 'The barn: start a new session or resume one (a new farmer walks out of its door)', silo: "The silo: your plan's usage (a silo for each of your Claude accounts, when you have two)", board: 'The notice board: what your projects remember (CLAUDE.md and memory)', house: 'The farmhouse: who is on your porch', stall: 'The market stall: pull requests', henhouse: 'The henhouse: subagents', shed: 'The machine shed: who is out on a machine' })[k] ?? '';
 
 /** What a building shows when clicked: { title, html } (house, silo, henhouse, stall), or null. */
 export function dialogFor(k, scene, { esc, ago } = globalThis) {
-  if (k === 'house') {
-    const list = scene.farmers.filter(f => f.state === 'waiting' || f.state === 'turn');
-    return { title: 'Your porch', html: list.length ? `<ul class="px-dl">${list.map(f => `<li><button type="button" class="act" data-farm-pick="${esc(f.id)}">Open</button><span><b>${esc(f.name)}</b> ${esc(f.state === 'waiting' ? (f.planAsk ? 'has a plan for you to approve' : `needs you: ${f.ask}`) : f.question ? `asks: ${f.question}` : `finished${f.reply ? `: ${f.reply}` : ''}`)}</span></li>`).join('')}</ul>` : '<p class="muted">Nobody is waiting on you.</p>' };
+  if (k === 'house' || k === 'house2') { // with two accounts, each farmhouse's porch: yours, or the neighbour's (house2)
+    const accs = scene.accounts ?? [], farm = k === 'house2' ? 1 : 0;
+    const list = scene.farmers.filter(f => (f.state === 'waiting' || f.state === 'turn') && (accs.length < 2 || farmOf(f, accs) === farm));
+    return { title: farm ? `${accs[1]?.name ?? 'The neighbour'}'s porch` : 'Your porch', html: list.length ? `<ul class="px-dl">${list.map(f => `<li><button type="button" class="act" data-farm-pick="${esc(f.id)}">Open</button><span><b>${esc(f.name)}</b> ${esc(f.state === 'waiting' ? (f.planAsk ? 'has a plan for you to approve' : `needs you: ${f.ask}`) : f.question ? `asks: ${f.question}` : `finished${f.reply ? `: ${f.reply}` : ''}`)}</span></li>`).join('')}</ul>` : '<p class="muted">Nobody is waiting on you.</p>' };
   }
   if (k === 'silo') {
     const name = w => ({ five_hour: '5-hour limit', seven_day: 'Weekly limit' })[w.kind] ?? w.kind;

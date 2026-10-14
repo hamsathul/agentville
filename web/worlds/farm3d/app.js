@@ -201,7 +201,7 @@ export function start({ el, opts, prefs }) {
     reset: () => rig.reset(),
     zoom: d => rig.zoomBy(d),
     pick: id => pickFarmer(id),
-    openField: key => field.open(key),
+    openField: key => field.open(repoOf(key)),
     hover: id => overlay.setHover(id),
     animal: i => { // its menu: Play greyed out (and why) when it can't start a game; nothing to pick while it is in one
       const info = animals.info(i);
@@ -420,13 +420,20 @@ export function start({ el, opts, prefs }) {
     isStill: () => opts.still,
   });
   field.setOptions(opts);
+  /** The repo a field is: a neighbour's field (key + '@n') opens its repo's close-up. */
+  const repoOf = key => model?.beds.find(b => b.key === key)?.repo ?? key;
   const fieldTip = key => { const b = model?.beds.find(x => x.key === key); return b ? `${b.tip} · Click to see the files agents touched here` : ''; };
   /** A building, clicked: the barn starts a session; the board reads each project's memory; the rest open their dialog. */
   function openBuilding(k) {
     if (k === 'barn') { opts.onStartSession(); return; }
     if (!model) return;
+    if (k === 'barn2') { if (model.neighbour) opts.onStartSession(model.neighbour.key); return; } // a session on the neighbour's account
     if (k === 'board') { void openBoard(); return; }
-    if (k === 'shed') { overlay.openDialog(machinesDialog(machineItems, model.scene, { esc })); return; }
+    if (k === 'shed' || k === 'shed2') { // each shed: the machines out on its own farm
+      const theirs = i => model.beds.find(b => b.key === i.field)?.farm === 1;
+      overlay.openDialog(machinesDialog(machineItems.filter(i => (k === 'shed2') === theirs(i)), model.scene, k === 'shed2' ? { esc, title: `${model.neighbour?.name ?? 'The neighbour'}'s machine shed`, stock: false } : { esc }));
+      return;
+    }
     overlay.openDialog(dialogFor(k, model.scene, { esc, ago }));
   }
   /** The notice board: each project's CLAUDE.md and memory, read from one of its sessions (the engine's openBoard). */
@@ -446,7 +453,7 @@ export function start({ el, opts, prefs }) {
     if (hit?.id) pickFarmer(hit.id);
     else if (hit?.animal !== undefined) { overlay.openPet(hit.animal); dirty = true; }
     else if (hit?.building) openBuilding(hit.building);
-    else if (hit?.field) field.open(hit.field);
+    else if (hit?.field) field.open(repoOf(hit.field));
   });
   let hoverPending = false;
   canvas.addEventListener('pointermove', e => {
@@ -594,6 +601,8 @@ export function start({ el, opts, prefs }) {
     buildingAt(k) { const b = [...buildings.hits(), ...shed.hits()].find(o => o.userData.hit === k && o.isMesh); if (!b) return null; const p = new THREE.Vector3(); b.getWorldPosition(p); return project({ x: p.x, y: p.y * 1.6, z: p.z }); },
     /** Where a field's bed is in the picture (its middle), in pixels. */
     bedAt(key) { const b = beds.hits().find(o => o.userData.field === key); if (!b) return null; const p = new THREE.Vector3(); b.getWorldPosition(p); return project({ x: p.x, y: 0.5, z: p.z }); },
+    /** Which farm a farmer lives on: 1 the neighbour's, 0 yours. */
+    farmerFarm: id => model?.farmers.find(f => f.id === id)?.farm ?? 0,
     /** The land drawn: its width and the neighbour's offset on the 2D map (0: none), and whether there is a neighbour. */
     land: () => (model ? { ...model.land, neighbour: Boolean(model.neighbour) } : null),
     /** The fields drawn, by key. */

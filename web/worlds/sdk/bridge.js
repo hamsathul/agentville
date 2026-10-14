@@ -90,7 +90,7 @@
     onPickAgent: (agentId, o) => send({ type: 'pick', agentId, ...(o?.from === 'say' ? { from: 'say' } : {}) }),
     onOpenDoc: (agentId, path) => send({ type: 'openDoc', agentId, path }),
     onShowRepos: () => send({ type: 'showRepos' }),
-    onStartSession: () => send({ type: 'startSession' }),
+    onStartSession: account => send({ type: 'startSession', ...(typeof account === 'string' && account ? { account } : {}) }), // account: a key from the scene's accounts (the neighbour farm's barn)
     onNav: what => send({ type: 'nav', what }),
     onBell: on => { settings.bell = on; send({ type: 'bell', on }); },
     onMotion: still => { settings.still = still; send({ type: 'motion', still }); },

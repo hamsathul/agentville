@@ -297,7 +297,7 @@ const DOING = { plough: 'ploughing and sowing (a big edit)', sprayer: 'spraying 
 const WHERE = { walking: 'walking to the shed', out: 'on the way', work: 'at work', home: 'driving home', parked: 'parked' };
 /** The machine shed's dialog: the machines out (tick's items), who drives each, doing what, where; a click opens the
  *  farmer. The stock (the loader tractor and the combine) is in the shed. */
-export function machinesDialog(items, scene, { esc } = globalThis) {
+export function machinesDialog(items, scene, { esc, title = 'The machine shed', stock = true } = globalThis) {
   const name = id => scene.farmers.find(f => f.id === id)?.name ?? 'a farmer', field = key => scene.fields?.find(f => f.key === key)?.name ?? '';
   const VEH = { tractor: 'the tractor', truck: 'the flatbed truck', combine: 'the combine' };
   const rows = items.filter(i => i.phase !== 'parked').map(i => {
@@ -305,5 +305,5 @@ export function machinesDialog(items, scene, { esc } = globalThis) {
     const how = i.driver || i.phase === 'walking' ? `${esc(DOING[i.job] ?? i.job)}${field(i.field) ? ` in ${esc(field(i.field))}` : ''} · ${esc(WHERE[i.phase] ?? i.phase)}` : 'driving itself home (its farmer was called back)';
     return `<li><button type="button" class="act" data-farm-pick="${esc(i.id)}">Open</button><span><b>${esc(name(i.id))}</b> on ${esc(what)}: ${how}</span></li>`;
   });
-  return { title: 'The machine shed: who is out on a machine', html: `${rows.length ? `<ul class="px-dl">${rows.join('')}</ul>` : '<p class="muted">No machines out just now.</p>'}<p class="muted">In the shed: the loader tractor and the combine. A farmer takes a machine for a heavy step (tests spray, a build mows, an install brings supplies, a push takes crates to the stall, a deploy drives to town), a big edit ploughs, and a compaction brings in the harvest.</p>` };
+  return { title: `${title}: who is out on a machine`, html: `${rows.length ? `<ul class="px-dl">${rows.join('')}</ul>` : '<p class="muted">No machines out just now.</p>'}<p class="muted">${stock ? 'In the shed: the loader tractor and the combine. ' : ''}A farmer takes a machine for a heavy step (tests spray, a build mows, an install brings supplies, a push takes crates to the stall, a deploy drives to town), a big edit ploughs, and a compaction brings in the harvest.</p>` };
 }

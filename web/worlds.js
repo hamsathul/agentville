@@ -91,7 +91,13 @@
     const agent = id => (short(id, ID_MAX) ? agents.find(a => a.id === id) ?? null : null);
     switch (m.type) {
       case 'loaded': return { kind: 'loaded', raw: m.raw === true }; // raw: the world draws itself, and gets the page's corner control
-      case 'ready': case 'leaving': case 'startSession': case 'showRepos': return { kind: m.type };
+      case 'ready': case 'leaving': case 'showRepos': return { kind: m.type };
+      case 'startSession': { // an account the world names (a key of the scene it was sent): its place there, so the page finds the real one
+        if (m.account === undefined) return { kind: 'startSession' };
+        if (!short(m.account, 64)) return null;
+        const at = (ctx.scene?.accounts ?? []).findIndex(a => a?.key === m.account);
+        return at >= 0 ? { kind: 'startSession', accountAt: at } : { kind: 'startSession' };
+      }
       case 'error': return { kind: 'error', message: String(m.message ?? '').slice(0, 300), where: String(m.where ?? '').slice(0, 120) };
       case 'pick': return agent(m.agentId) ? { kind: 'pick', agentId: m.agentId, from: m.from === 'say' ? 'say' : null } : null;
       case 'openDoc': {
@@ -341,7 +347,7 @@
       case 'pick': opts.onPickAgent?.(act.agentId, act.from ? { from: act.from } : undefined); break;
       case 'openDoc': opts.onOpenDoc?.(act.agentId, act.path); break;
       case 'openLink': window.open(act.url, '_blank', 'noopener'); break;
-      case 'startSession': opts.onStartSession?.(); break;
+      case 'startSession': opts.onStartSession?.(act.accountAt !== undefined ? lastSnap?.accounts?.[act.accountAt]?.key : undefined); break; // the session picker, on that account
       case 'showRepos': opts.onShowRepos?.(); break;
       case 'nav': opts.onNav?.(act.what); pushSettings(); break;
       case 'bell': store.set('tracker-bell', act.on ? 'on' : 'off'); opts.onBell?.(act.on); pushSettings(); break;

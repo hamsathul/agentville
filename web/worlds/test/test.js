@@ -46,7 +46,7 @@
       },
       onPickAgent: (id, { from } = {}) => asked(`pick ${id}${from ? ` (from its ${from === 'say' ? 'bubble' : from})` : ''}`),
       onOpenDoc: (agentId, path) => asked(`open ${path}`), onShowRepos: () => asked('show the repos'),
-      onStartSession: () => asked('start a session'), onNav: what => asked(`go to: ${what}`), onBell: on => asked(`bell ${on ? 'on' : 'off'}`),
+      onStartSession: account => asked(account ? `start a session on ${account}` : 'start a session'), onNav: what => asked(`go to: ${what}`), onBell: on => asked(`bell ${on ? 'on' : 'off'}`),
       onMotion: still => asked(`motion ${still ? 'off' : 'on'}`), onNotice: text => asked(String(text)),
       // A broken world's panel offers "Back to the farm": the farm's own test page, at this stop.
       onWorld: w => { if (w?.key && w.key !== key) location.search = `?world=${encodeURIComponent(w.key)}&stop=${encodeURIComponent(s.name)}`; },

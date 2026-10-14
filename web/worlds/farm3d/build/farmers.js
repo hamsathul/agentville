@@ -2,13 +2,13 @@
 // uses (route.js), at the farm's pace (40 px a second, 68 in fast mode); a newcomer walks out of the barn door. On the
 // porch they stand on the deck, in a field on the soil, by the pond in a hammock. Still (Motion off, or reduced
 // motion), or on the first scene, every farmer is simply at its place.
-import { BARN_DOOR, BED, CORR, DECK } from '../layout.js';
-import { walkRoute } from '../route.js';
+import { BARN_DOOR, BED, CORR, CORR_OF, DECK, W, east } from '../layout.js';
+import { landRoute } from '../route.js';
 import { DECK_H } from './buildings.js';
 import { FIGURE_SCALE } from './figurine.js';
 import { SOIL_Y } from './beds.js';
 
-const onDeck = (x, y) => x >= DECK.x0 && x <= DECK.x1 && y >= DECK.y0 - 2 && y <= DECK.y1;
+const onDeckAt = (x, y, ox) => x - ox >= DECK.x0 && x - ox <= DECK.x1 && y >= DECK.y0 - 2 && y <= DECK.y1;
 
 /**
  * route(from, to): a way over the farm round what stands on it (roam.js's), for an errand; null when there is none
@@ -17,14 +17,18 @@ const onDeck = (x, y) => x >= DECK.x0 && x <= DECK.x1 && y >= DECK.y0 - 2 && y <
 export function makeFarmers(THREE, figures, S, { route = () => null } = {}) {
   const group = new THREE.Group();
   const bodies = new Map(); // id → { fig, x, y, path, farmer, face, h, errand }
-  const wayTo = (b, to) => route([b.x, b.y], to) ?? walkRoute([b.x, b.y], to, CORR);
-  let H = 400, beds = [];
+  let H = 400, beds = [], land = { w: W, ox: 0 }; // land: yours alone, or a neighbour's farm too (its offset)
+  /** The lanes and paths of the land, for walkRoute and landRoute: both farms' paths, and the gap between them. */
+  const ways = () => ({ corridors: land.ox ? [...CORR, ...CORR_OF(land.ox)] : CORR, gap: land.ox ? [W, land.ox] : null });
+  const walk = (from, to, door = null) => landRoute(from, to, ways(), door);
+  const wayTo = (b, to) => route([b.x, b.y], to) ?? walk([b.x, b.y], to);
+  const onDeck = (x, y) => onDeckAt(x, y, 0) || (land.ox > 0 && onDeckAt(x, y, land.ox));
   const inBed = (x, y) => beds.some(b => x >= b.x0 - 2 && x <= b.x0 + BED.w + 2 && y >= b.y0 - 2 && y <= b.y0 + BED.d + 2);
   const groundAt = (x, y) => (onDeck(x, y) ? DECK_H : inBed(x, y) ? SOIL_Y : 0);
 
   /** The farmers of a new model. `instant`: no walking (the first scene, or still). */
   function sync(model, { instant }) {
-    H = model.ground.H; beds = model.beds;
+    H = model.ground.H; beds = model.beds; land = model.land ?? { w: W, ox: 0 };
     const seen = new Set();
     let newcomers = 0; // newcomers leave the barn one after another, not in a heap
     for (const f of model.farmers) {
@@ -33,7 +37,7 @@ export function makeFarmers(THREE, figures, S, { route = () => null } = {}) {
       if (!b) {
         const fig = figures.make(f);
         group.add(fig.root);
-        const [sx, sy] = instant ? f.at : BARN_DOOR;
+        const [sx, sy] = instant ? f.at : f.farm ? east(BARN_DOOR, land.ox) : BARN_DOOR; // out of its own farm's barn
         b = { fig, x: sx, y: sy, path: [], face: 0, h: groundAt(sx, sy), target: null, wait: instant ? 0 : 0.45 * newcomers++ };
         bodies.set(f.id, b);
       }
@@ -44,7 +48,7 @@ export function makeFarmers(THREE, figures, S, { route = () => null } = {}) {
       if (!b.target || b.target[0] !== tx || b.target[1] !== ty) {
         b.target = [tx, ty];
         if (instant) { b.x = tx; b.y = ty; b.path = []; b.h = groundAt(tx, ty); b.errand = null; }
-        else if (!b.errand) b.path = walkRoute([b.x, b.y], [tx, ty], CORR); // on an errand: it goes there afterwards
+        else if (!b.errand) b.path = walk([b.x, b.y], [tx, ty]); // on an errand: it goes there afterwards; over the bridge to the other farm
       }
     }
     for (const [id, b] of bodies) if (!seen.has(id)) { b.fig.dispose(); bodies.delete(id); }

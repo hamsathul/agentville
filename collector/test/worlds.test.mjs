@@ -1129,6 +1129,16 @@ test('cast from a world: library kinds, names of 30 or fewer made plain, 12 at m
   assert.equal(check({ type: 'cast', animals: 'cow' }), null);
 });
 
+test('startSession: an account the world names is passed on by its place in the scene sent; an odd one is dropped', async () => {
+  const W = (await page()).worlds, scene = { agents: [], repos: [], accounts: [{ key: 'a1' }, { key: 'a2' }] };
+  const check = m => W.checkMessage(m, { scene, private: true, sentPaths: new Map(), inFlight: 0 });
+  assert.deepEqual(plain(check({ type: 'startSession' })), { kind: 'startSession' });
+  assert.deepEqual(plain(check({ type: 'startSession', account: 'a2' })), { kind: 'startSession', accountAt: 1 });
+  assert.deepEqual(plain(check({ type: 'startSession', account: 'nobody' })), { kind: 'startSession' }, 'unknown: the picker as before');
+  assert.equal(check({ type: 'startSession', account: 7 }), null);
+  assert.equal(check({ type: 'startSession', account: 'x'.repeat(65) }), null);
+});
+
 test('namelessLines drops names (any case, a part of 4 or more, a branch), and short names only as whole words', async () => {
   const W = (await page()).worlds;
   const snap = { agents: [{ name: 'deploy-bot' }, { name: 'ui' }], repos: [{ name: 'api', branch: 'feature/login-fix' }] };

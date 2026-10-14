@@ -26,8 +26,9 @@ const SESS_ORDER = {
   length: (x, y) => (y.size ?? 0) - (x.size ?? 0),
 };
 
-async function openSessions() {
+async function openSessions({ account } = {}) {
   Object.assign(sessView, { q: '', folder: '', model: '', branch: '', account: '', live: '', pick: '' });
+  if (account && snap.accounts?.some(a => a.key === account)) sessView.pick = account; // a world's barn for that account (the 3D farm's neighbour)
   sessView.sort = SESS_ORDER[sessStored('tracker-sess-sort')] ? sessStored('tracker-sess-sort') : 'active';
   sessView.range = sessStored('tracker-sess-range') === 'all' ? 'all' : '30';
   $('sess-status').textContent = '';
