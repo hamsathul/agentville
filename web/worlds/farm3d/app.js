@@ -33,6 +33,7 @@ import { makeCarts } from './build/carts.js';
 import { cartOf, createCarts } from './carts.js';
 import { makePigeons } from './build/pigeons.js';
 import { createTalk } from './talk.js';
+import { createVisits } from './visits.js';
 import { HERDS } from './antics.js';
 import { roamOf } from './roam.js';
 import { guarded } from './guard.js';
@@ -108,7 +109,7 @@ export function start({ el, opts, prefs }) {
   const models = makeModels(THREE), crops = makeCrops(THREE, mats, { load: kind => models.parts(kind), onLoad: (kind, err) => { if (err) report(err, `crops (${kind})`); dirty = true; } }), beds = makeBeds(THREE, mats, shapes, makeWeather(THREE, mats, shapes), crops);
   let farmRoam = null; // the walkable farm (roam.js), for a farmer's errand to an animal
   const farmers = makeFarmers(THREE, makeFigures(THREE, mats, shapes), shapes, { route: (a, b) => farmRoam?.route(a, b, 4) ?? null }), animals = makeAnimals(THREE, mats, shapes), weather = makeWeather(THREE, mats, shapes);
-  const nature = makeNature(THREE, shapes), talk = createTalk();
+  const nature = makeNature(THREE, shapes), talk = createTalk(), visits = createVisits(); // visits: between the farms, with a neighbour's
   animals.setPeople(() => (shownModel()?.farmers ?? []).map(f => farmers.posOf(f.id)).filter(Boolean).map(p => [p.x, p.y, 6])); // the places they pick keep clear of the farmers
   const flock = makeFlock(THREE, mats, shapes, { copy: animals.copy }); // subagents: hens, the Explore dog, the henhouse's eggs
   const cartMeshes = makeCarts(THREE, mats, shapes, { copy: animals.copy }), carts = createCarts(); // the MCP servers' carts, the web calls' carts to town
@@ -126,7 +127,8 @@ export function start({ el, opts, prefs }) {
     for (let i = 0; i < animals.count(); i++) { const a = animals.info(i); if (a?.shown && a.act !== 'play' && a.act !== 'romp') list.push({ i, kind: a.kind, x: a.spot[0], y: a.spot[1] }); } // one at play is busy
     const beds = model?.beds ?? [], season = shownSeason();
     const repoName = key => beds.find(b => b.key === key)?.name ?? null; // a field's name, never its path
-    const people = (shownModel()?.farmers ?? []).filter(f => !f.scarecrow && !farmers.onErrand(f.id)).map(f => ({ id: f.id, name: f.name, state: f.state, x: f.at[0], y: f.at[1], step: STEP_WORDS[f.prop] ?? null, repo: repoName(f.field) }));
+    const guest = visits.now()?.guest; // a farmer on a visit talks there
+    const people = (shownModel()?.farmers ?? []).filter(f => !f.scarecrow && (!farmers.onErrand(f.id) || f.id === guest)).map(f => ({ id: f.id, name: f.name, state: f.state, x: f.at[0], y: f.at[1], step: STEP_WORDS[f.prop] ?? null, repo: repoName(f.field) }));
     const events = beds.filter(b => b.weather === 'rain' || b.weather === 'rainbow').map(b => ({ kind: b.weather === 'rain' ? 'deployFailed' : 'deployOk', repo: b.name }));
     talkScene = { animals: list, farmers: people, facts: { night: night > 0.5, weather: season === 'winter' ? 'snow' : beds.some(b => b.weather === 'rain') ? 'rain' : null, events } };
     talkSceneAt = now;
@@ -577,6 +579,19 @@ export function start({ el, opts, prefs }) {
       else if (opts.still && plays.busy().size) plays.endAll(playCtx);
     });
     if (model) piece('romps', () => romps.tick(rompWorld(), dt, rompCtx)); // and the animals with each other (none while still or hidden)
+    if (model) piece('visits', () => { // a farmer over to the other farm now and then (visits.js), with a neighbour's
+      const at = performance.now(), cur = visits.now();
+      const v = visits.tick({ now: at, still: opts.still, neighbour: Boolean(model.neighbour), farmers: shownModel().farmers.filter(f => !f.scarecrow).map(f => ({ id: f.id, farm: f.farm ?? 0, state: f.state, nap: f.nap, at: f.at, errand: farmers.onErrand(f.id) && f.id !== cur?.guest, followed: f.id === following })) });
+      if (v.start && !farmers.errand(v.start.guest, v.start.to, { face: v.start.face, pose: 'idle', timeout: 120, lanes: true })) visits.cancel(); // along the lanes, over the lane's bridge
+      if (v.end) farmers.endErrand(v.end);
+      const now2 = visits.now();
+      if (now2 && !farmers.onErrand(now2.guest)) visits.cancel(); // its walk was cut short
+      else if (now2 && now2.talkUntil === null && farmers.arrived(now2.guest)) { // there: they talk
+        const ppl = sceneForTalk(at).farmers, g = ppl.find(f => f.id === now2.guest), h = ppl.find(f => f.id === now2.host);
+        visits.arrived(at, g && h ? talk.meet(g, h) * 1000 : 0);
+        dirty = true;
+      }
+    });
     overlay.setTalk(bubblesOn ? [...talk.bubbles().map(b => ({ ...b, key: `${b.conversation}|${b.who}` })), ...plays.bubbles(), ...romps.bubbles()].map(b => {
       const top = typeof b.who === 'number' ? animals.info(b.who)?.top : (h => h && { x: h.x, y: h.y + 0.55, z: h.z })(farmers.headOf(b.who));
       return { key: b.key, text: b.text, toYou: b.toYou, top };
@@ -602,6 +617,9 @@ export function start({ el, opts, prefs }) {
     buildingAt(k) { const b = [...buildings.hits(), ...shed.hits()].find(o => o.userData.hit === k && o.isMesh); if (!b) return null; const p = new THREE.Vector3(); b.getWorldPosition(p); return project({ x: p.x, y: p.y * 1.6, z: p.z }); },
     /** Where a field's bed is in the picture (its middle), in pixels. */
     bedAt(key) { const b = beds.hits().find(o => o.userData.field === key); if (!b) return null; const p = new THREE.Vector3(); b.getWorldPosition(p); return project({ x: p.x, y: 0.5, z: p.z }); },
+    /** A visit now, as soon as there is an idle pair across the farms; and the visit under way ({ guest, host, talkUntil } or null). */
+    visitNow: () => visits.force(),
+    visit: () => visits.now(),
     /** Which farm a farmer lives on: 1 the neighbour's, 0 yours. */
     farmerFarm: id => model?.farmers.find(f => f.id === id)?.farm ?? 0,
     /** The land drawn: its width and the neighbour's offset on the 2D map (0: none), and whether there is a neighbour. */

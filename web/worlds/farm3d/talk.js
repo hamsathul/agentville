@@ -171,6 +171,8 @@ export const VOICES = {
     deployOk: ['{repo} is out, {animal}!', 'Shipped {repo}. Feels good.'],
     reply: ['Ha, fair.', 'Right you are.', 'Can not argue.', 'Good one, {animal}.'],
     you: ['Hi there.'],
+    // a visit from the other farm (visits.js): {animal} is the other farmer
+    visit: ['Morning, neighbour!', 'How are the {repo} fields?', 'Came over to say hi, {animal}.', 'Quiet over your way?', 'Your crops look good, {animal}.'],
   },
 };
 
@@ -222,6 +224,16 @@ export function exchange([a, b], facts, rand) {
   return out;
 }
 
+/** A neighbour's visit (visits.js): the guest greets the host, then they talk in turn (2 to 4 lines). */
+export function visitExchange([guest, host], facts, rand) {
+  const n = 2 + Math.floor(rand() * 3), out = [];
+  for (let k = 0; k < n; k++) {
+    const t = k % 2 ? host : guest, other = k % 2 ? guest : host;
+    out.push({ who: keyOf(t), text: line(t, other, k === 0 ? 'visit' : rand() < 0.6 ? 'reply' : 'visit', facts, rand) });
+  }
+  return out;
+}
+
 const LINE_S = 3.5; // how long a line shows
 const GAP_S = 40; // about how often a conversation starts by itself
 /**
@@ -253,10 +265,10 @@ export function createTalk({ rand = Math.random } = {}) {
     if (na === nb) return ex.lines.map((l, i) => ({ who: keyOf(i % 2 ? b : a), text: String(l.text).slice(0, 60) }));
     return ex.lines.map(l => ({ who: keyOf(l.who === na ? a : b), text: String(l.text).slice(0, 60) }));
   }
-  function begin(a, b) {
+  function begin(a, b, given = null) {
     const ids = new Set([keyOf(a), keyOf(b)]);
     talks = talks.filter(c => !c.ids.some(id => ids.has(id))); // whoever is talking again stops the old one
-    const lines = fresh(a, b) ?? exchange([a, b], facts, rand);
+    const lines = given ?? fresh(a, b) ?? exchange([a, b], facts, rand);
     talks.push({ n: ++seq, lines, ids: [...ids], farmers: [a, b].filter(t => t.id !== undefined).map(t => t.id), to: { [keyOf(a)]: b, [keyOf(b)]: a }, at: 0 });
     if (talks.length > 2) talks.shift();
   }
@@ -278,6 +290,11 @@ export function createTalk({ rand = Math.random } = {}) {
       const [a, b] = pick(pairs.slice(0, 4), rand), [x, y] = rand() < 0.5 ? [a, b] : [b, a];
       begin(x, y);
       return [[x, y]];
+    },
+    /** Two farmers on a visit (visits.js) talk: Haiku's lines if one fits them, else the visit's. Returns how long, in s. */
+    meet(a, b) {
+      begin(a, b, fresh(a, b) ?? visitExchange([a, b], facts, rand));
+      return talks.at(-1).lines.length * LINE_S;
     },
     start(i, scene) {
       facts = scene?.facts ?? facts;

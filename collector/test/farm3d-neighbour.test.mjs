@@ -13,6 +13,8 @@ import { cartOf } from '../../web/worlds/farm3d/carts.js';
 import { BED, SHED_DOOR } from '../../web/worlds/farm3d/layout.js';
 import { roamOf } from '../../web/worlds/farm3d/roam.js';
 import { HERDS, areaOn, makeAnimal, advance } from '../../web/worlds/farm3d/antics.js';
+import { createVisits, VISIT_FIRST_MS, VISIT_GAP_MS, VISIT_NEAR } from '../../web/worlds/farm3d/visits.js';
+import { createTalk, visitExchange } from '../../web/worlds/farm3d/talk.js';
 import { CREEK, FARMSTEAD, GAP, LANE, NEIGHBOUR_X, PORCH_Y, ROAD, SILO_X, W, crossingsOf, east, extentOf, farmAt, farmOf, farmsteadOf, forestOf, landOf, pastureOf, slotTables } from '../../web/worlds/farm3d/layout.js';
 
 const M = makeModel(kit);
@@ -297,4 +299,71 @@ test('a calf picks its places within 6 m of its mother', () => {
     const end = calf.path.length ? calf.path.at(-1) : [calf.tx, calf.ty];
     assert.ok(Math.hypot(end[0] - mum[0], end[1] - mum[1]) <= 48 + 1, `within 6 m of its mother (${end})`);
   }
+});
+
+const idleF = (id, farm, x) => ({ id, farm, state: 'idle', nap: false, at: [x, 300], errand: false, followed: false });
+const pair = () => [idleF('a', 0, 96), idleF('b', 1, 96 + NEIGHBOUR_X)];
+test('visits: none with one farm, while still, or before 2 minutes; then an idle pair across the farms', () => {
+  const v = createVisits({ rand: () => 0 }), fs = pair();
+  assert.deepEqual(v.tick({ now: 0, still: false, neighbour: true, farmers: fs }), {});
+  assert.deepEqual(v.tick({ now: VISIT_FIRST_MS - 1, still: false, neighbour: true, farmers: fs }), {});
+  assert.deepEqual(v.tick({ now: VISIT_FIRST_MS, still: true, neighbour: true, farmers: fs }), {}, 'still');
+  assert.deepEqual(v.tick({ now: VISIT_FIRST_MS, still: false, neighbour: false, farmers: fs }), {}, 'no neighbour');
+  const r = v.tick({ now: VISIT_FIRST_MS, still: false, neighbour: true, farmers: fs });
+  assert.ok(r.start && r.start.guest !== r.start.host);
+  const host = fs.find(f => f.id === r.start.host), guest = fs.find(f => f.id === r.start.guest);
+  assert.notEqual(host.farm, guest.farm, 'across the farms');
+  assert.equal(Math.hypot(r.start.to[0] - host.at[0], r.start.to[1] - host.at[1]), VISIT_NEAR, '1.5 m from its host');
+  assert.deepEqual(r.start.face, host.at);
+});
+test('a visit ends when either stops being idle, and the next waits at least 4 minutes', () => {
+  const v = createVisits({ rand: () => 0 }), fs = pair();
+  v.tick({ now: 0, still: false, neighbour: true, farmers: fs });
+  const { start } = v.tick({ now: VISIT_FIRST_MS, still: false, neighbour: true, farmers: fs });
+  const busy = fs.map(f => (f.id === start.host ? { ...f, state: 'working' } : f));
+  assert.deepEqual(v.tick({ now: VISIT_FIRST_MS + 1000, still: false, neighbour: true, farmers: busy }), { end: start.guest });
+  assert.deepEqual(v.tick({ now: VISIT_FIRST_MS + VISIT_GAP_MS - 1, still: false, neighbour: true, farmers: fs }), {});
+  assert.ok(v.tick({ now: VISIT_FIRST_MS + VISIT_GAP_MS, still: false, neighbour: true, farmers: fs }).start);
+});
+test('a visit talks once the guest arrives, and ends when its talk is over; Motion off ends it', () => {
+  const v = createVisits({ rand: () => 0 }), fs = pair();
+  v.tick({ now: 0, still: false, neighbour: true, farmers: fs });
+  const { start } = v.tick({ now: VISIT_FIRST_MS, still: false, neighbour: true, farmers: fs });
+  v.arrived(VISIT_FIRST_MS + 30000, 10000);
+  assert.deepEqual(v.tick({ now: VISIT_FIRST_MS + 39000, still: false, neighbour: true, farmers: fs }), {});
+  assert.deepEqual(v.tick({ now: VISIT_FIRST_MS + 40000, still: false, neighbour: true, farmers: fs }), { end: start.guest });
+  const w = createVisits({ rand: () => 0 });
+  w.tick({ now: 0, still: false, neighbour: true, farmers: fs });
+  const s2 = w.tick({ now: VISIT_FIRST_MS, still: false, neighbour: true, farmers: fs }).start;
+  assert.deepEqual(w.tick({ now: VISIT_FIRST_MS + 10, still: true, neighbour: true, farmers: fs }), { end: s2.guest });
+  const x = createVisits({ rand: () => 0 });
+  x.tick({ now: 0, still: false, neighbour: true, farmers: fs });
+  const s3 = x.tick({ now: VISIT_FIRST_MS, still: false, neighbour: true, farmers: fs }).start;
+  assert.deepEqual(x.tick({ now: VISIT_FIRST_MS + 10, still: false, neighbour: false, farmers: fs }), { end: s3.guest }, 'the neighbour farm gone');
+});
+test('no visit with no idle pair across the farms (napping, followed, on an errand, or one farm only)', () => {
+  const v = createVisits({ rand: () => 0 });
+  v.tick({ now: 0, still: false, neighbour: true, farmers: [] });
+  for (const fs of [[idleF('a', 0, 96), idleF('c', 0, 120)], [idleF('a', 0, 96), { ...idleF('b', 1, 96 + NEIGHBOUR_X), nap: true }], [idleF('a', 0, 96), { ...idleF('b', 1, 96 + NEIGHBOUR_X), followed: true }], [idleF('a', 0, 96), { ...idleF('b', 1, 96 + NEIGHBOUR_X), errand: true }], [idleF('a', 0, 96), { ...idleF('b', 1, 96 + NEIGHBOUR_X), state: 'stale' }]]) {
+    assert.deepEqual(v.tick({ now: VISIT_FIRST_MS * 10, still: false, neighbour: true, farmers: fs }), {});
+  }
+});
+test("the visit's talk: the guest greets, they take turns, and it lasts its lines (8 s at least)", () => {
+  const lines = visitExchange([{ id: 'a', name: 'agent 1' }, { id: 'b', name: 'agent 2' }], {}, () => 0);
+  assert.ok(lines.length >= 2 && lines[0].who === 'a' && lines[1].who === 'b');
+  assert.ok(lines.every(l => typeof l.text === 'string' && l.text.length && l.text.length <= 60));
+  const t = createTalk({ rand: () => 0 });
+  const secs = t.meet({ id: 'a', name: 'agent 1', state: 'idle', x: 0, y: 0 }, { id: 'b', name: 'agent 2', state: 'idle', x: 12, y: 0 });
+  assert.ok(secs >= 7);
+  assert.equal(t.bubbles()[0].who, 'a');
+  assert.ok(t.busyIds().has('a') && t.busyIds().has('b'));
+});
+
+test("a visit whose guest's walk is cut short is dropped (cancel), and the next waits its gap", () => {
+  const v = createVisits({ rand: () => 0 }), fs = pair();
+  v.tick({ now: 0, still: false, neighbour: true, farmers: fs });
+  v.tick({ now: VISIT_FIRST_MS, still: false, neighbour: true, farmers: fs });
+  v.cancel();
+  assert.equal(v.now(), null);
+  assert.deepEqual(v.tick({ now: VISIT_FIRST_MS + 1000, still: false, neighbour: true, farmers: fs }), {});
 });

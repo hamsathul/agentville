@@ -17,7 +17,7 @@ import { oneLine } from './lib/plain-text.mjs';
 import { ROOT } from './lib/worlds-dir.mjs';
 import { COATS, SPOTS } from '../web/worlds/farm3d/coats.js';
 import { HERDS } from '../web/worlds/farm3d/antics.js';
-import { CREEK, W } from '../web/worlds/farm3d/layout.js';
+import { CREEK, LANE, W } from '../web/worlds/farm3d/layout.js';
 
 // how many animals there are, and which is the frog (the farm numbers them herd by herd)
 const ANIMALS = HERDS.filter(h => !h.only).reduce((n, h) => n + h.n, 0), FROG = HERDS.slice(0, HERDS.findIndex(h => h.kind === 'frog')).reduce((n, h) => n + h.n, 0);
@@ -540,8 +540,27 @@ try {
         sprayer = JSON.parse(await chrome.inFrame('/world/farm3d/', "JSON.stringify(window.__farm3d.machines().find(m => m.id === 'n1') ?? null)"));
         if (sprayer?.phase === 'work') { sprayCalls = (await statsOf(chrome)).calls; break; }
       }
+      // a visit: an idle farmer walks along its lane and over its bridge to an idle one on the other farm, they talk, it
+      // walks home
+      const F = js => chrome.inFrame('/world/farm3d/', js).then(v => JSON.parse(v ?? 'null'));
+      await chrome.inFrame('/world/farm3d/', 'window.__farm3d.visitNow(); true');
+      let visit = null, offBridge = null, reached = false, talked = false, home = false;
+      for (const end = Date.now() + 20_000; Date.now() < end && !visit; await sleep(250)) visit = await F('JSON.stringify(window.__farm3d.visit())');
+      if (visit) {
+        const host = await F(`JSON.stringify(window.__farm3d.posOf(${JSON.stringify(visit.host)}))`);
+        for (const end = Date.now() + 180_000; Date.now() < end && !home; await sleep(200)) {
+          const p = await F(`JSON.stringify(window.__farm3d.posOf(${JSON.stringify(visit.guest)}))`), now = await F('JSON.stringify(window.__farm3d.visit())');
+          if (!p) break;
+          if (p.x > CREEK.x0 && p.x < CREEK.x1 && Math.abs(p.y - LANE) > 12) offBridge ??= [Math.round(p.x), Math.round(p.y)];
+          if (Math.hypot(p.x - host.tx, p.y - host.ty) < 16) reached = true;
+          if (reached && !talked) talked = (await F('JSON.stringify(window.__farm3d.talk())'))?.length > 0;
+          home = reached && !now && !p.moving && Math.hypot(p.x - p.tx, p.y - p.ty) < 1;
+        }
+      }
+      const visitWhy = !visit ? 'no visit started' : !reached ? `${visit.guest} never reached ${visit.host}` : offBridge ? `${visit.guest} crossed the creek off the bridge at ${offBridge}` : !talked ? 'they never talked' : !home ? `${visit.guest} never got home` : null;
       const why = [
         !s && 'no stats',
+        visitWhy,
         s && s.drawn !== 7 && `${s?.drawn} farmers drawn, not 7`,
         s && s.calls > 400 && `${s.calls} draw calls (400 at most)`,
         JSON.stringify(land) !== JSON.stringify({ w: 1808, ox: 952, neighbour: true }) && `the land ${JSON.stringify(land)}`,
@@ -555,7 +574,7 @@ try {
         chrome.errors.length > before && `script errors: ${oneLine(chrome.errors[before]).slice(0, 160)}`,
       ].filter(Boolean);
       if (why.length) bad(`the neighbour farm: ${why.join('; ')}`);
-      else console.log(`  ✓ the neighbour farm: both farms drawn (the land ${land.w} px across), its barn, farmhouse and shed in view, its sign "home", its barn starts a session on zeta, its sprayer works its field (${sprayCalls} draw calls), ${ANIMALS + 3} animals on both farms (an alpaca crossed to yours by a bridge), ${s.drawn} farmers each on its account's farm, ${s.calls} draw calls`);
+      else console.log(`  ✓ the neighbour farm: both farms drawn (the land ${land.w} px across), its barn, farmhouse and shed in view, its sign "home", its barn starts a session on zeta, its sprayer works its field (${sprayCalls} draw calls), ${ANIMALS + 3} animals on both farms (an alpaca crossed to yours by a bridge), ${visit?.guest} visited ${visit?.host} over the bridge and they talked, ${s.drawn} farmers each on its account's farm, ${s.calls} draw calls`);
       // the second account gone: one farm again, the 18 animals, everyone home
       await chrome.js(`window.TrackerFarm.update(${JSON.stringify({ ...NB, accounts: NB.accounts.slice(0, 1) })})`);
       await sleep(1500);

@@ -108,21 +108,23 @@ export function makeFarmers(THREE, figures, S, { route = () => null } = {}) {
   }
   /**
    * An errand: the farmer walks to `to` (a 2D point) round what stands in the way, and stays there facing `face`, in
-   * `pose`, till endErrand; it gives up if it isn't there in `timeout` s. Its state changing calls it back.
+   * `pose`, till endErrand; it gives up if it isn't there in `timeout` s. Its state changing calls it back. `lanes`: by
+   * the lanes and paths there and back (a visit to the other farm: over the lane's bridge), not the shortest way round.
    */
-  function errand(id, to, { face = null, pose = 'idle', timeout = 20 } = {}) {
+  function errand(id, to, { face = null, pose = 'idle', timeout = 20, lanes = false } = {}) {
     const b = bodies.get(id);
     if (!b) return false;
-    b.errand = { to, face, pose, state: b.farmer.state, until: performance.now() + timeout * 1000, arrived: false };
-    b.path = wayTo(b, to);
+    b.errand = { to, face, pose, lanes, state: b.farmer.state, until: performance.now() + timeout * 1000, arrived: false };
+    b.path = lanes ? walk([b.x, b.y], to) : wayTo(b, to);
     return true;
   }
   /** The errand is over: back to its place. */
   function endErrand(id) {
     const b = bodies.get(id);
     if (!b?.errand) return;
+    const lanes = b.errand.lanes;
     b.errand = null;
-    if (b.target) b.path = wayTo(b, b.target);
+    if (b.target) b.path = lanes ? walk([b.x, b.y], b.target) : wayTo(b, b.target);
   }
   /** Where a farmer is on the 2D map, how high it stands, and whether it is walking; null for one not drawn. */
   function posOf(id) {
