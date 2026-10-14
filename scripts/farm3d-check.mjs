@@ -17,10 +17,10 @@ import { oneLine } from './lib/plain-text.mjs';
 import { ROOT } from './lib/worlds-dir.mjs';
 import { COATS, SPOTS } from '../web/worlds/farm3d/coats.js';
 import { HERDS } from '../web/worlds/farm3d/antics.js';
-import { W } from '../web/worlds/farm3d/layout.js';
+import { CREEK, W } from '../web/worlds/farm3d/layout.js';
 
 // how many animals there are, and which is the frog (the farm numbers them herd by herd)
-const ANIMALS = HERDS.reduce((n, h) => n + h.n, 0), FROG = HERDS.slice(0, HERDS.findIndex(h => h.kind === 'frog')).reduce((n, h) => n + h.n, 0);
+const ANIMALS = HERDS.filter(h => !h.only).reduce((n, h) => n + h.n, 0), FROG = HERDS.slice(0, HERDS.findIndex(h => h.kind === 'frog')).reduce((n, h) => n + h.n, 0);
 
 const NOW = Date.UTC(2026, 9, 9, 9, 0); // the tour's moment (web/worlds/test/tour.js)
 const none = async () => ({ status: 404, error: 'none' });
@@ -513,6 +513,28 @@ try {
       // a neighbour's farmer runs tests: its sprayer comes out of its own shed and works its field on its farm
       const testing = { ...NB, agents: NB.agents.map(a => (a.id === 'n1' ? { ...a, now: { tool: 'Bash', step: 'test', summary: 'npm test', startedAt: NOW } } : a)) };
       await chrome.js(`window.TrackerFarm.update(${JSON.stringify(testing)})`);
+      // the animals on both farms (the neighbour's cow, calf and foal too), and one sent over to the other farm, never
+      // standing in the creek but on a crossing
+      let animalsOut = 0;
+      for (const end = Date.now() + 20_000; Date.now() < end && animalsOut !== ANIMALS + 3; await sleep(300)) animalsOut = (await statsOf(chrome)).animals;
+      const farmsOf = JSON.parse(await chrome.inFrame('/world/farm3d/', `JSON.stringify(Array.from({ length: ${ANIMALS + 3} }, (_, i) => window.__farm3d.animal(i)?.farm ?? null))`));
+      const alpaca = HERDS.slice(0, HERDS.findIndex(h => h.kind === 'alpaca')).reduce((n, h) => n + h.n, 0);
+      const sent = await chrome.inFrame('/world/farm3d/', `window.__farm3d.sendAcross(${alpaca})`);
+      const cross = JSON.parse(await chrome.inFrame('/world/farm3d/', 'JSON.stringify(window.__farm3d.crossings())'));
+      let arrived = false, wet = null;
+      for (const end = Date.now() + 120_000; Date.now() < end && !arrived; await sleep(200)) {
+        const a = JSON.parse(await chrome.inFrame('/world/farm3d/', `JSON.stringify(window.__farm3d.animal(${alpaca}))`));
+        const [x, y] = a.spot;
+        if (x > CREEK.x0 && x < CREEK.x1 && !Object.values(cross).some(([y0, y1]) => y >= y0 && y <= y1)) wet ??= [Math.round(x), Math.round(y)];
+        arrived = a.farm === 0;
+      }
+      const herds = [
+        animalsOut !== ANIMALS + 3 && `${animalsOut} animals out, not ${ANIMALS + 3}`,
+        !(farmsOf.includes(0) && farmsOf.includes(1)) && `animals on one farm only (${JSON.stringify(farmsOf)})`,
+        !sent && 'the alpaca could not be sent across',
+        sent && !arrived && 'the alpaca never reached your farm',
+        wet && `the alpaca stood in the creek at ${wet}`,
+      ].filter(Boolean).join('; ');
       let sprayer = null, sprayCalls = 0;
       for (const end = Date.now() + 40_000; Date.now() < end; await sleep(500)) {
         sprayer = JSON.parse(await chrome.inFrame('/world/farm3d/', "JSON.stringify(window.__farm3d.machines().find(m => m.id === 'n1') ?? null)"));
@@ -529,10 +551,17 @@ try {
         barn2 !== 'start a session on zeta' && `the neighbour's barn asked "${barn2}"`,
         !(sprayer?.phase === 'work' && sprayer.field.endsWith('@n') && sprayer.x > 952) && `the neighbour's sprayer: ${JSON.stringify(sprayer && { phase: sprayer.phase, field: sprayer.field, x: Math.round(sprayer.x) })}`,
         sprayCalls > 500 && `${sprayCalls} draw calls with the sprayer out (500 at most)`,
+        herds,
         chrome.errors.length > before && `script errors: ${oneLine(chrome.errors[before]).slice(0, 160)}`,
       ].filter(Boolean);
       if (why.length) bad(`the neighbour farm: ${why.join('; ')}`);
-      else console.log(`  ✓ the neighbour farm: both farms drawn (the land ${land.w} px across), its barn, farmhouse and shed in view, its sign "home", its barn starts a session on zeta, its sprayer works its field (${sprayCalls} draw calls), ${s.drawn} farmers each on its account's farm, ${s.calls} draw calls`);
+      else console.log(`  ✓ the neighbour farm: both farms drawn (the land ${land.w} px across), its barn, farmhouse and shed in view, its sign "home", its barn starts a session on zeta, its sprayer works its field (${sprayCalls} draw calls), ${ANIMALS + 3} animals on both farms (an alpaca crossed to yours by a bridge), ${s.drawn} farmers each on its account's farm, ${s.calls} draw calls`);
+      // the second account gone: one farm again, the 18 animals, everyone home
+      await chrome.js(`window.TrackerFarm.update(${JSON.stringify({ ...NB, accounts: NB.accounts.slice(0, 1) })})`);
+      await sleep(1500);
+      const back = await statsOf(chrome), backLand = JSON.parse(await chrome.inFrame('/world/farm3d/', 'JSON.stringify(window.__farm3d.land())'));
+      if (back.animals !== ANIMALS || backLand.neighbour || chrome.errors.length > before) bad(`the second account gone: ${back.animals} animals (${ANIMALS} wanted), the land ${JSON.stringify(backLand)}${chrome.errors.length > before ? `; script errors: ${oneLine(chrome.errors[before]).slice(0, 160)}` : ''}`);
+      else console.log(`  ✓ the second account gone: one farm again, ${ANIMALS} animals`);
     }
 
     // 5. the plants: Quaternius's trees, bushes and rocks drawn once their models load (the ball trees stand in till

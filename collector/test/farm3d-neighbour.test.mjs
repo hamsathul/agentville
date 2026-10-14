@@ -11,6 +11,8 @@ import { dialogFor } from '../../web/worlds/farm3d/dialogs.js';
 import { createMachines, passesFor } from '../../web/worlds/farm3d/machines.js';
 import { cartOf } from '../../web/worlds/farm3d/carts.js';
 import { BED, SHED_DOOR } from '../../web/worlds/farm3d/layout.js';
+import { roamOf } from '../../web/worlds/farm3d/roam.js';
+import { HERDS, areaOn, makeAnimal, advance } from '../../web/worlds/farm3d/antics.js';
 import { CREEK, FARMSTEAD, GAP, LANE, NEIGHBOUR_X, PORCH_Y, ROAD, SILO_X, W, crossingsOf, east, extentOf, farmAt, farmOf, farmsteadOf, forestOf, landOf, pastureOf, slotTables } from '../../web/worlds/farm3d/layout.js';
 
 const M = makeModel(kit);
@@ -232,4 +234,67 @@ test("a web call's cart to town turns up the road with a neighbour; as before wi
   assert.ok(all.every(c => c.x <= ROAD.mid + 0.5), 'never past the road');
   assert.ok(all.some(c => c.y < LANE - 40), 'up the road');
   assert.ok(all.every(c => c.y === undefined || c.y <= LANE + 4));
+});
+
+const landGround = () => model(two([], [])).ground;
+test('roam: both pastures, the creek in the way but for its three crossings, a way from one pasture to the other', () => {
+  const L = landGround(), R = roamOf(L), c = crossingsOf(L), pa = pastureOf(L), mid = (CREEK.x0 + CREEK.x1) / 2, py = (pa.y0 + pa.y1) / 2;
+  assert.ok(R.inside('pasture', 300, py, 6) && R.inside('pasture@n', 300 + NEIGHBOUR_X, py, 6));
+  assert.ok(!R.inside('pasture', 300 + NEIGHBOUR_X, py, 6), "the neighbour's pasture isn't yours");
+  assert.ok(!R.inside('farm', mid, 300, 4), 'in the creek: no');
+  assert.ok(R.inside('farm', mid, (c.lane[0] + c.lane[1]) / 2, 4), "on the lane's bridge");
+  assert.ok(R.inside('farm', mid, (c.cattle[0] + c.cattle[1]) / 2, 4), 'on the cattle bridge');
+  assert.ok(R.inside('farm', mid, (c.stones[0] + c.stones[1]) / 2, 4), 'on the stepping stones');
+  assert.ok(R.inside('farm', ROAD.mid, 300, 6), 'the road is open ground');
+  assert.ok(!R.clear('farm', [CREEK.x0 - 10, 300], [CREEK.x1 + 10, 300], 4), 'no straight way through the water');
+  const way = R.route([400, py], [400 + NEIGHBOUR_X, py], 9);
+  assert.ok(way?.length, 'a way');
+  let from = [400, py];
+  for (const p of way) { assert.ok(R.clear('farm', from, p, 9), 'every leg walkable'); from = p; }
+  assert.equal(roamOf(model(snap([], [])).ground).areas['pasture@n'], undefined, 'one farm: no neighbour areas');
+});
+
+test('herds: the 18 as before with one farm; with two, each its home farm, and three new ones there', () => {
+  const firstEighteen = HERDS.filter(h => !h.only);
+  assert.equal(firstEighteen.reduce((n, h) => n + h.n, 0), 18);
+  assert.ok(HERDS.findIndex(h => h.only) > HERDS.findLastIndex(h => !h.only), 'the new ones last');
+  const farmOfKind = k => HERDS.find(h => h.kind === k && !h.only).farm ?? 0;
+  assert.deepEqual(['cow', 'bull', 'horse', 'husky'].map(farmOfKind), [0, 0, 0, 0]);
+  assert.deepEqual(['alpaca', 'donkey', 'whitehorse', 'shiba'].map(farmOfKind), [1, 1, 1, 1]);
+  assert.deepEqual(HERDS.filter(h => h.only).map(h => [h.kind, h.scale ?? 1, h.mother ?? null]), [['cow', 1, null], ['cow', 0.6, 'cow'], ['whitehorse', 0.6, 'whitehorse']]);
+  assert.deepEqual([areaOn('pasture', 1), areaOn('pasture', 0), areaOn('edge', 1), areaOn('water', 1), areaOn('home', 1)], ['pasture@n', 'pasture', 'edge', 'water', 'home@n']);
+});
+
+/** An animal's world for antics.js on a land, with the given rolls in turn (the walk's: its pace, then its choices). */
+function walkEnv(R, rolls, neighbour = true, rand = null) {
+  let k = 0;
+  const picked = [];
+  return { picked, e: { rand: () => rolls[k++ % rolls.length], neighbour, farmAt, spot: (area, from, far, r, o) => { picked.push(area); return R.spot(area, rand ?? (() => 0.5), { from, far, r, ...o }); }, inside: (a, x, y, r) => R.inside(a, x, y, r), clear: (a, f, t, r) => R.clear(a, f, t, r), route: (f, t, r) => R.route(f, t, r), resting: false, habitChance: 0, duration: () => 1 } };
+}
+const cowAt = (x, y, farm = 0, o = {}) => { const a = makeAnimal({ kind: 'cow', family: 'hooves', area: 'pasture', walk: 7, run: 40, r: 10, farm, ...o }, x, y, () => 0.5); a.rest = 0; return a; };
+test('a walk: 1 in 6 to the other farm with a neighbour, home 1 in 2 while away, none across without one', () => {
+  const L = landGround(), R = roamOf(L), pa = pastureOf(L), y = (pa.y0 + pa.y1) / 2;
+  const visit = walkEnv(R, [0.5, 0.1, 0.5]); // its pace, then the roll to go across (under 1/6), then the walk's
+  advance(cowAt(300, y), 0.1, visit.e);
+  assert.equal(visit.picked[0], 'pasture@n', "off to the neighbour's pasture");
+  const stay = walkEnv(R, [0.5, 0.5, 0.5]);
+  advance(cowAt(300, y), 0.1, stay.e);
+  assert.ok(!stay.picked[0].endsWith('@n'), 'a roll over 1/6: it stays on its farm');
+  const back = walkEnv(R, [0.5, 0.4]); // away: no roll to go across; the walk's under 1/2: home
+  advance(cowAt(300 + NEIGHBOUR_X, y), 0.1, back.e);
+  assert.equal(back.picked[0], 'pasture', 'away: home on a roll under 1/2');
+  const alone = walkEnv(R, [0.5, 0.1], false);
+  advance(cowAt(300, y), 0.1, alone.e);
+  assert.deepEqual(alone.picked.slice(0, 1), ['home'], 'no neighbour: somewhere else on its farm, never across');
+});
+
+test('a calf picks its places within 6 m of its mother', () => {
+  const L = landGround(), R = roamOf(L), pa = pastureOf(L), y = (pa.y0 + pa.y1) / 2, mum = [400 + NEIGHBOUR_X, y];
+  for (let k = 0; k < 10; k++) {
+    const calf = cowAt(330 + NEIGHBOUR_X, y, 1, { r: 6 });
+    calf.mother = () => mum;
+    advance(calf, 0.1, walkEnv(R, [0.5, 0.9, 0.3], true, Math.random).e);
+    const end = calf.path.length ? calf.path.at(-1) : [calf.tx, calf.ty];
+    assert.ok(Math.hypot(end[0] - mum[0], end[1] - mum[1]) <= 48 + 1, `within 6 m of its mother (${end})`);
+  }
 });

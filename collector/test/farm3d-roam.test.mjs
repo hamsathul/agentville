@@ -25,7 +25,7 @@ const fieldFenceOf = (G, rows) => {
 
 test("the herds: every animal of the pack and the pond's, each with a ground to roam (the frog its lily pads, the fish the water)", () => {
   assert.deepEqual([...new Set(HERDS.map(h => h.kind))].sort(), Object.keys(MODELS).filter(k => !['still', 'person', 'crop', 'vehicle'].includes(MODELS[k].family)).sort());
-  assert.equal(HERDS.reduce((n, h) => n + h.n, 0), 18);
+  assert.equal(HERDS.filter(h => !h.only).reduce((n, h) => n + h.n, 0), 18, 'and three more with a neighbour farm (farm3d-neighbour.test.mjs)');
   for (const h of HERDS) assert.equal(h.area, { frog: 'pond', fish: 'water' }[MODELS[h.kind].family] ?? h.area, h.kind);
   for (const h of HERDS) assert.ok(['pasture', 'yard', 'edge', 'pond', 'water'].includes(h.area), h.kind);
 });
@@ -73,9 +73,9 @@ test('an hour of the farm: they roam it all, the walkways and headlands between 
   for (const rows of [GRID_CONFIG.minRows, GRID_CONFIG.maxRows]) {
     const L = groundOf(rows), roam = roamOf(L), rand = seeded(rows * 11), pa = pastureOf(L), crowns = forestOf(L.H).map(([x, y, r]) => [x, y, r * 1.25]), G = L.GRID;
     const env = { resting: false, rand, habitChance: 0.5, duration: () => 1.2, spot: (area, from, far, r, o) => roam.spot(area, rand, { from, far, r, ...o }), inside: roam.inside, clear: roam.clear, route: roam.route };
-    const herd = HERDS.flatMap(h => Array.from({ length: h.n }, () => {
+    const herd = HERDS.filter(h => !h.only).flatMap(h => Array.from({ length: h.n }, () => { // one farm: the 18, all yours (build/animals.js)
       const [x, y] = roam.spot(h.area, rand, { r: BODY[h.kind] });
-      return makeAnimal({ ...h, family: MODELS[h.kind].family, r: BODY[h.kind] }, x, y, rand);
+      return makeAnimal({ ...h, family: MODELS[h.kind].family, r: BODY[h.kind], farm: 0 }, x, y, rand);
     }));
     const home = new Map(herd.map(a => [a, 0])), away = new Set();
     // the pasture's fence, less its gates, as lines; how far a point is from one

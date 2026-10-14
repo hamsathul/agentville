@@ -9,9 +9,9 @@
 // fish just under the water, a splash where one breaks it. The Animals switch hides them all (not the lily pads).
 import { GLTFLoader } from '../vendor/GLTFLoader.js';
 import { clone as cloneSkinned } from '../vendor/SkeletonUtils.js';
-import { LILY_PADS, PX, WATER } from '../layout.js';
+import { LILY_PADS, PX, WATER, farmAt } from '../layout.js';
 import { MODELS } from '../models/index.js';
-import { ACTS, HERDS, advance, command, forgetWalk, makeAnimal, menuFor, moveOff, perform, placeAt, reachOf, release, stepAside } from '../antics.js';
+import { ACTS, HERDS, advance, areaOn, command, forgetWalk, makeAnimal, menuFor, moveOff, perform, placeAt, reachOf, release, stepAside } from '../antics.js';
 import { roamOf } from '../roam.js';
 import { bakeSkinned } from './bake.js';
 import { COATS, FINISH, SPOTS, spotsOf } from '../coats.js';
@@ -96,12 +96,14 @@ export function makeAnimals(THREE, mats, S) {
   /** One animal: its own copy of the model in a holder that sizes it, its own animation player, and its hit box. */
   function instance(h, t, i) {
     const root = new THREE.Group(), holder = new THREE.Group(), model = cloneSkinned(t.scene);
-    holder.scale.setScalar(t.scale);
+    const k = h.scale ?? 1; // a calf or a foal: smaller
+    holder.scale.setScalar(t.scale * k);
     if (MODELS[h.kind].family === 'fish') holder.scale.x *= PLUMP;
-    holder.position.y = t.lift;
+    holder.position.y = t.lift * k;
     holder.add(model);
     root.add(holder);
     const hit = new THREE.Mesh(t.hit, hidden);
+    hit.scale.setScalar(k);
     hit.userData.animal = i;
     root.add(hit);
     creatures.add(root);
@@ -111,9 +113,9 @@ export function makeAnimals(THREE, mats, S) {
     if (SPOTS[h.kind]) paintSpots(model, h.kind, i + 1);
     let head = null;
     model.traverse(o => { if (!head && o.isBone && /head/i.test(o.name)) head = o; });
-    const spot = roam ? roam.spot(h.area, rand, { r: t.r }) : [0, 0];
-    const a = makeAnimal({ kind: h.kind, family: MODELS[h.kind].family, area: h.area, walk: h.walk, run: h.run, r: t.r }, spot[0], spot[1], rand);
-    return { a, root, holder, model, mixer, actions, head, t, hitBox: hit, wet: null, playing: null, seq: -1, yaw: a.face, placed: Boolean(ground), stick: null };
+    const farm = env.neighbour ? h.farm ?? 0 : 0, spot = roam ? roam.spot(areaOn(h.area, farm), rand, { r: t.r * k }) : [0, 0]; // on its home farm
+    const a = makeAnimal({ kind: h.kind, family: MODELS[h.kind].family, area: h.area, walk: h.walk, run: h.run, r: t.r * k, farm }, spot[0], spot[1], rand);
+    return { a, h, root, holder, model, mixer, actions, head, t, top: t.top * k, hitBox: hit, wet: null, playing: null, seq: -1, yaw: a.face, placed: Boolean(ground), stick: null, off: Boolean(h.only) && !env.neighbour };
   }
   /** A dog's bandana, round its neck bone, so it follows the head as it moves; sized to the dog. */
   function bandana(model, colour, raw, size = 1) {
@@ -231,6 +233,10 @@ export function makeAnimals(THREE, mats, S) {
       const t = await template(h.kind);
       for (let k = 0; k < h.n; k++) animals.push(instance(h, t, animals.length));
     }
+    for (const w of animals) if (w.h.mother) { // a calf, a foal: by its mother, on its farm
+      const mum = animals.find(m => m !== w && m.h.kind === w.h.mother && !m.h.scale && (m.h.farm ?? 0) === (w.h.farm ?? 0));
+      if (mum) w.a.mother = () => [mum.a.x, mum.a.y];
+    }
   }
   let busyFields = [], people = () => []; // the fields machines are working (roam.js setBusy); where the farmers are ([x, y, r])
   /** Who a place picked keeps clear of: the other animals, where they are and where they are going, and the farmers
@@ -238,6 +244,7 @@ export function makeAnimals(THREE, mats, S) {
   const others = from => {
     const out = people();
     for (const w of animals) {
+      if (w.off) continue;
       const a = w.a, to = a.path?.length ? a.path.at(-1) : [a.tx, a.ty];
       if (from && Math.hypot(a.x - from[0], a.y - from[1]) < 1) continue;
       out.push([a.x, a.y, a.r * 0.6]);
@@ -251,15 +258,23 @@ export function makeAnimals(THREE, mats, S) {
     inside: (area, x, y, r) => roam.inside(area, x, y, r),
     clear: (area, from, to, r) => roam.clear(area, from, to, r),
     route: (from, to, r) => roam.route(from, to, r), // a way round, for roaming the farm
+    neighbour: false, farmAt, // with a neighbour farm: now and then over to it (antics.js roamWalk)
     duration: (kind, part) => templates.get(kind)?.clips.get(MODELS[kind].clips[part])?.duration ?? 1,
   };
-  /** Their grounds for a farm (roam.js): the pasture, the yard (off the pond, its trees and things), the forest's edge. */
+  /**
+   * Their grounds for a farm (roam.js): the pasture, the yard (off the pond, its trees and things), the forest's edge.
+   * With a neighbour farm (g.land), each lives on its home farm (antics.js HERDS) and the neighbour's three come out;
+   * without, all are yours and those three stay in.
+   */
   function setGround(g) {
     ground = g; H = g.H;
     for (const w of animals) if (w.a.romp) release(w.a); // a new ground: whatever they did together stops
     roam = roamOf(g);
     roam.setBusy(busyFields);
+    env.neighbour = Boolean(g.land?.ox);
+    for (const w of animals) { w.off = Boolean(w.h.only) && !env.neighbour; w.a.farm = env.neighbour ? w.h.farm ?? 0 : 0; w.a.area = areaOn(w.a.base, w.a.farm); }
     for (const w of animals) { // each on its ground: when the ground changes, or it has just arrived; a walk planned on the old one is dropped
+      if (w.off) continue;
       if (!w.placed || !roam.inside(w.a.area, w.a.x, w.a.y, w.a.r)) { const [x, y] = roam.spot(w.a.area, rand, { r: w.a.r }); placeAt(w.a, x, y); }
       else forgetWalk(w.a);
       w.placed = true;
@@ -315,6 +330,7 @@ export function makeAnimals(THREE, mats, S) {
     let changed = animals.length !== shown;
     shown = animals.length;
     for (const w of animals) {
+      if (w.off) { w.root.visible = false; continue; } // the neighbour's three, with no neighbour
       if (t && w.a.family !== 'frog' && w.a.family !== 'fish') { // its place turned busy (a machine working that field): off it
         const busy = roam.busyAt(w.a.x, w.a.y, reachOf(w.a));
         if (busy && !w.a.leaving) w.a.leaving = moveOff(w.a, env);
@@ -352,20 +368,33 @@ export function makeAnimals(THREE, mats, S) {
     /** In winter the pond is ice: its frog, fish and lily pads are out of sight. */
     setWinter(v) { winter = Boolean(v); },
     /** How many animals are out (0 with the switch off); they arrive as their models load. */
-    count: () => (on ? animals.length : 0),
-    /** How many there will be, once every model has loaded. */
-    total: HERDS.reduce((n, h) => n + h.n, 0),
+    count: () => (on ? animals.filter(w => !w.off).length : 0),
+    /** How many there will be, once every model has loaded: the neighbour's three only with a neighbour farm. */
+    get total() { return HERDS.reduce((n, h) => n + (h.only && !env.neighbour ? 0 : h.n), 0); },
     /** What a click can find: each animal's hit box (none with the switch off). */
     hits: () => (on ? animals.filter(w => w.root.visible).map(w => w.hitBox) : []),
     /** An animal: its kind and name, its menu, what it is doing, where it is on the map, and the point over its head, in the world. */
     info(i) {
       const w = animals[i];
-      if (!w || !on) return null;
+      if (!w || !on || w.off) return null;
       w.root.updateMatrixWorld();
-      return { shown: w.root.visible, kind: w.a.kind, title: MODELS[w.a.kind].title, menu: menuFor(w.a.kind, w.a.family).map(id => ({ id, label: ACTS[id].label })), act: w.a.act, part: w.a.part, spot: [w.a.x, w.a.y], top: { x: w.root.position.x, y: w.t.top + 0.3, z: w.root.position.z } };
+      return { shown: w.root.visible, kind: w.a.kind, title: MODELS[w.a.kind].title, menu: menuFor(w.a.kind, w.a.family).map(id => ({ id, label: ACTS[id].label })), act: w.a.act, part: w.a.part, spot: [w.a.x, w.a.y], top: { x: w.root.position.x, y: w.top + 0.3, z: w.root.position.z } };
     },
     /** Animal i's colours, by colour area, and how metallic its most metallic part is (for the check). */
     coat: i => (animals[i] && on ? coatOf(animals[i]) : null),
+    /**
+     * Animal i walks over to the other farm now (the check): to the same kind of place there, by a way round (over a
+     * bridge or the stones). False when it can't (no neighbour, it doesn't roam, or no way).
+     */
+    sendAcross(i) {
+      const w = animals[i];
+      if (!w || w.off || !env.neighbour || !roam || w.a.family === 'frog' || w.a.family === 'fish' || w.a.act || w.a.romp) return false;
+      const to = roam.spot(areaOn(w.a.base, 1 - farmAt(w.a.x)), rand, { r: w.a.r }), way = to && roam.route([w.a.x, w.a.y], to, reachOf(w.a));
+      if (!way?.length) return false;
+      [w.a.tx, w.a.ty] = way.shift();
+      w.a.path = way; w.a.rest = 0; w.a.hurry = true; // at a trot, so the check needn't wait minutes
+      return true;
+    },
     /** Turns animal i to face a place on the map (one it talks to). */
     face(i, [x, y]) { const w = animals[i]; if (w && Math.hypot(x - w.a.x, y - w.a.y) > 1) w.a.face = Math.atan2(x - w.a.x, y - w.a.y); },
     /** Asks animal i to do act (from its menu). */
@@ -378,7 +407,7 @@ export function makeAnimals(THREE, mats, S) {
     /** Whether animal i has done its steps (it waits, or has nothing to do). */
     settled: i => { const w = animals[i]; return !w || (!w.a.cur && !w.a.queue.length); },
     /** The animals as plays and romps see them: kind, family, where, free (doing nothing asked of it, shown, not resting at night), resting (standing still). */
-    world: () => (on ? animals.map((w, i) => ({ i, kind: w.a.kind, family: w.a.family, area: w.a.area, x: w.a.x, y: w.a.y, run: w.a.run, free: !w.a.act && !w.a.romp && w.root.visible && !w.a.under && !env.resting, resting: !w.a.act && w.a.rest > 0 && !w.a.cur, a: w.a })) : []),
+    world: () => (on ? animals.flatMap((w, i) => (w.off ? [] : [{ i, kind: w.a.kind, family: w.a.family, area: w.a.area, x: w.a.x, y: w.a.y, run: w.a.run, free: !w.a.act && !w.a.romp && w.root.visible && !w.a.under && !env.resting, resting: !w.a.act && w.a.rest > 0 && !w.a.cur, a: w.a }])) : []),
     dispose() { for (const w of animals) w.mixer.stopAllAction(); creatures.clear(); pads.clear(); animals.length = 0; templates.clear(); },
   };
 }

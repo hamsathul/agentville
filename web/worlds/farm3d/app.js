@@ -41,7 +41,7 @@ import { createRomps, partnerFor } from './romps.js';
 
 // what a farmer is doing, as a word, from the tool in its hands (for what it says to the animals)
 const STEP_WORDS = { hoe: 'editing', rake: 'editing', sickle: 'editing', hammer: 'fixing', seeds: 'writing', almanac: 'reading', recipe: 'reading', clipboard: 'planning', blueprint: 'planning', spyglass: 'searching', magnifier: 'searching', pigeon: 'browsing', parcel: 'calling tools', mailbag: 'calling tools', crate: 'committing', cart: 'pushing', barrow: 'pushing', lantern: 'thinking', whistle: 'delegating', can: 'working' };
-import { BED, NEIGHBOUR_X, PX, SHED_DOOR, SILO_Y, STALL, W, east } from './layout.js';
+import { BED, NEIGHBOUR_X, PX, SHED_DOOR, SILO_Y, STALL, W, crossingsOf, east, farmAt } from './layout.js';
 
 const SKIES = ['live', 'day', 'night'], SEASON_MODES = ['live', 'spring', 'summer', 'autumn', 'winter'];
 const FRAME_MS = 1000 / 30; // at most 30 frames a second
@@ -159,7 +159,7 @@ export function start({ el, opts, prefs }) {
     get still() { return opts.still; }, get animalsOn() { return animalsOn; },
     perform: (i, steps, tag) => animals.perform(i, steps, tag), release: i => animals.release(i), settled: i => animals.settled(i),
     fx: (i, kind) => { if (kind === 'hearts') overlay.pop(() => animals.info(i)?.top ?? null, '♥', 'good'); else animals.fx(i, kind); },
-    spot: (area, from, far) => farmRoam?.spot(area, Math.random, { from, far, r: 6 }) ?? null, clear: clearBetween,
+    spot: (area, from, far) => farmRoam?.spot(farmRoam.localArea(area, from?.[0] ?? 0), Math.random, { from, far, r: 6 }) ?? null, clear: clearBetween, // the pasture on the farm it is on
   };
   let snow = null, night = 0, blinkTags = [], gateTop = null; // blinkTags: the stall's tags for pull requests whose checks run; gateTop: over the neighbour's gate sign
 
@@ -651,7 +651,11 @@ export function start({ el, opts, prefs }) {
     /** How many of Haiku's exchanges are waiting to be used. */
     talkStock: () => talk.stock(),
     /** Animal i: its kind, what it is doing, where it is on the 2D map, and where its middle is in the picture, in pixels. */
-    animal: i => { const a = animals.info(i); return a && { kind: a.kind, act: a.act, part: a.part, spot: a.spot, at: project({ x: a.top.x, y: a.top.y * 0.5, z: a.top.z }), coat: animals.coat(i) }; },
+    animal: i => { const a = animals.info(i); return a && { kind: a.kind, act: a.act, part: a.part, spot: a.spot, farm: farmAt(a.spot[0]), at: project({ x: a.top.x, y: a.top.y * 0.5, z: a.top.z }), coat: animals.coat(i) }; },
+    /** Animal i walks over to the other farm now (a neighbour's), over a bridge or the stones: true if it set off. */
+    sendAcross: i => animals.sendAcross(i),
+    /** The creek's crossings ({ lane, cattle, stones }: [from, to] in y), with a neighbour farm. */
+    crossings: () => (model?.neighbour ? crossingsOf(model.ground) : null),
     /** A view to hold: yaw and pitch in degrees, zoom, and a 2D farm point to glide to. */
     view({ yaw, pitch, zoom, at } = {}) {
       rig.hold({ yaw: Number.isFinite(yaw) ? (yaw * Math.PI) / 180 : undefined, pitch: Number.isFinite(pitch) ? (pitch * Math.PI) / 180 : undefined, zoom });

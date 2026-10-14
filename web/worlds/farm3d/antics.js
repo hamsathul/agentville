@@ -6,16 +6,21 @@
 // The pond's are their own: the frog never walks (it sits on a lily pad, hops pad to pad, dives and comes up again),
 // and the fish swim about under the water and now and then leap out. A jump is a step in an arc (lift, in metres).
 
-/** Who lives where, and their pace (2D pixels a second: 8 a metre): walking, and running. */
+/**
+ * Who lives where, and their pace (2D pixels a second: 8 a metre): walking, and running. With a neighbour farm (a second
+ * Claude account's, spec 2026-10-14 neighbour §8) each herd has a home farm (`farm`: 1 the neighbour's, else yours),
+ * and three more live there (`only: 'neighbour'`, last, so the others keep their numbers): a cow, a calf and a foal
+ * (`scale`: smaller; `mother`: the kind it keeps near, on its farm). The pond's and the forest's have no farm.
+ */
 export const HERDS = [
   { kind: 'cow', n: 2, area: 'pasture', walk: 7, run: 40 },
   { kind: 'bull', n: 1, area: 'pasture', walk: 7, run: 40 },
-  { kind: 'alpaca', n: 2, area: 'pasture', walk: 8, run: 40 },
-  { kind: 'donkey', n: 1, area: 'pasture', walk: 8, run: 40 },
+  { kind: 'alpaca', n: 2, area: 'pasture', walk: 8, run: 40, farm: 1 },
+  { kind: 'donkey', n: 1, area: 'pasture', walk: 8, run: 40, farm: 1 },
   { kind: 'horse', n: 1, area: 'pasture', walk: 10, run: 52 },
-  { kind: 'whitehorse', n: 1, area: 'pasture', walk: 10, run: 52 },
+  { kind: 'whitehorse', n: 1, area: 'pasture', walk: 10, run: 52, farm: 1 },
   { kind: 'husky', n: 1, area: 'yard', walk: 12, run: 44, bandana: '#d64545' },
-  { kind: 'shiba', n: 1, area: 'yard', walk: 11, run: 40, bandana: '#3b74d6' },
+  { kind: 'shiba', n: 1, area: 'yard', walk: 11, run: 40, bandana: '#3b74d6', farm: 1 },
   { kind: 'deer', n: 1, area: 'edge', walk: 9, run: 48 },
   { kind: 'stag', n: 1, area: 'edge', walk: 9, run: 48 },
   { kind: 'fox', n: 1, area: 'edge', walk: 11, run: 40 },
@@ -24,7 +29,14 @@ export const HERDS = [
   { kind: 'trout', n: 1, area: 'water', walk: 5, run: 26 },
   { kind: 'koi', n: 1, area: 'water', walk: 5, run: 26 },
   { kind: 'roach', n: 1, area: 'water', walk: 6, run: 28 },
+  { kind: 'cow', n: 1, area: 'pasture', walk: 7, run: 40, farm: 1, only: 'neighbour' },
+  { kind: 'cow', n: 1, area: 'pasture', walk: 7, run: 40, farm: 1, only: 'neighbour', scale: 0.6, mother: 'cow' },
+  { kind: 'whitehorse', n: 1, area: 'pasture', walk: 10, run: 52, farm: 1, only: 'neighbour', scale: 0.6, mother: 'whitehorse' },
 ];
+/** The grounds a farm has of its own (the rest, the pond's and the forest's edge, are the land's). */
+export const FARM_AREAS = new Set(['pasture', 'yard', 'fields', 'home']);
+/** An area's name on a farm: yours as it is, the neighbour's with '@n' (roam.js has both). */
+export const areaOn = (area, farm) => (farm && FARM_AREAS.has(area) ? `${area}@n` : area);
 
 /** Everything an animal can do, by its menu's words. "fly" (a fly bothers it) is a habit only. */
 export const ACTS = {
@@ -121,8 +133,8 @@ function frogSteps(act, env) {
 }
 
 /** A new animal at (x, y): walk and run its speeds in pixels a second, r its size (half its length) in pixels. */
-export function makeAnimal({ kind, family, area, walk = 8, run = 36, r = 0 }, x, y, rand = Math.random) {
-  return { kind, family, area, walk, run, r, romp: null, trail: [], lift: 0, under: false, path: [], pace: 1, looked: false, x, y, tx: x, ty: y, face: rand() * 6.28, rest: rand() * 4, phase: rand() * 6.28, clock: 0, queue: [], cur: null, curT: 0, act: null, home: [x, y], stick: null, part: 'idle', once: false, hold: false, fade: 0.3, timeScale: 1, seq: 0 };
+export function makeAnimal({ kind, family, area, walk = 8, run = 36, r = 0, farm = 0 }, x, y, rand = Math.random) {
+  return { kind, family, area: areaOn(area, farm), base: area, farm, walk, run, r, romp: null, trail: [], lift: 0, under: false, path: [], pace: 1, looked: false, x, y, tx: x, ty: y, face: rand() * 6.28, rest: rand() * 4, phase: rand() * 6.28, clock: 0, queue: [], cur: null, curT: 0, act: null, home: [x, y], stick: null, part: 'idle', once: false, hold: false, fade: 0.3, timeScale: 1, seq: 0 };
 }
 /**
  * Asks it to do something (an act from its menu): whatever it was doing stops, and a stick it carried is dropped. In
@@ -201,18 +213,25 @@ const groundFor = a => (roams(a) ? 'farm' : a.area);
 /**
  * A walk about the farm: mostly a wander near where it is, now and then somewhere else on the farm, and, the longer it
  * has been away from its own ground, the likelier back there. The way there goes round whatever is in it (env.route).
+ * With a neighbour farm (env.neighbour; env.farmAt(x) which farm a place is on): 1 walk in 6 from its own farm goes to
+ * the same kind of place on the other (over a bridge or the stones), and while there 1 in 2 goes home. A young one
+ * (a.mother(): where its mother is) picks its places within 6 m of her.
  */
 function roamWalk(a, env) {
   const atHome = env.inside(a.area, a.x, a.y, 0);
   if (atHome) a.awaySince = null;
   else a.awaySince ??= a.clock;
   const away = atHome ? 0 : a.clock - a.awaySince, rw = reachOf(a);
+  const mine = a.farm ?? 0, here = env.farmAt ? env.farmAt(a.x) : 0, other = env.neighbour ? 1 - mine : null, visiting = other !== null && here !== mine;
   for (let k = 0; k < 4; k++) {
-    const roll = env.rand(), goHome = !atHome && roll < Math.min(0.9, 0.2 + away / 120);
-    const to = goHome ? env.spot(a.area, null, 0, a.r)
-      : roll < 0.15 ? env.spot('farm', null, 0, a.r) // somewhere else on the farm
-        : roll < 0.27 ? env.spot('fields', null, 0, a.r) // among the fields: down a walkway, along a headland
-          : env.spot('farm', [a.x, a.y], 24, a.r, { near: 110, straight: false }); // a wander near where it is
+    const across = other !== null && !visiting && FARM_AREAS.has(a.base) && env.rand() < 1 / 6; // no roll with one farm: as before
+    const roll = env.rand(), goHome = !atHome && roll < (visiting ? 0.5 : Math.min(0.9, 0.2 + away / 120));
+    const to = across ? env.spot(areaOn(a.base, other), null, 0, a.r) // over to the other farm
+      : goHome ? env.spot(a.area, null, 0, a.r)
+        : a.mother ? env.spot('farm', a.mother(), 0, a.r, { near: 33, straight: false }) // by its mother: 33 px each way, within 6 m
+          : roll < 0.15 ? env.spot(areaOn('home', here), null, 0, a.r) // somewhere else on this farm
+            : roll < 0.27 ? env.spot(areaOn('fields', here), null, 0, a.r) // among the fields: down a walkway, along a headland
+              : env.spot('farm', [a.x, a.y], 24, a.r, { near: 110, straight: false }); // a wander near where it is
     const way = to && env.route([a.x, a.y], to, rw);
     if (!way?.length) continue;
     [a.tx, a.ty] = way.shift();

@@ -8,7 +8,8 @@
 // route() finds a way there, round what stands between. A field a machine is working is busy (setBusy): no animal picks
 // a place on it to stop (free), though one may walk across or out. A place picked keeps clear of others (`avoid`) when
 // there is room. Positions are in the 2D farm's pixels. No three.js: build/animals.js uses it, the tests run it.
-import { BED, BUSHES, CORR, FARMSTEAD, GRID_CONFIG, LILY_PADS, NAPS, PASTURE_GATES, POND, SHADE, W, WALKWAY_GATES, WOODPILE, forestEdgeOf, forestOf, orchardOf, pastureOf, rocksOf, CART_RANK } from './layout.js';
+import { BED, BUSHES, CORR, CREEK, FARMSTEAD, GRID_CONFIG, LILY_PADS, NAPS, PASTURE_GATES, POND, SHADE, W, WALKWAY_GATES, WOODPILE, crossingsOf, farmAt, farmsteadOf, forestEdgeOf, forestOf, orchardOf, pastureOf, rocksOf, CART_RANK } from './layout.js';
+import { areaOn } from './antics.js';
 
 const STEP = 2; // how finely a way is checked, in px
 const TRUNK = 4; // a yard tree's trunk, in px: the dogs run under its crown
@@ -35,37 +36,69 @@ export const patchesOf = rows => Array.from({ length: rows * GRID_CONFIG.cols },
   return { x0: s.x0, y0: s.y0, lane: s.lane };
 });
 
-/** The grounds and what stands on them, for a farm L (its GRID, rows and H, as model.js makes it). */
+/**
+ * The grounds and what stands on them, for a farm L (its GRID, rows and H, as model.js makes it; its land with a
+ * neighbour farm). With a neighbour (spec 2026-10-14 neighbour §8) its grounds are '@n' ones (pasture@n, yard@n,
+ * fields@n, home@n: its own farm), `farm` is the whole land, the edge runs along both, and the creek between them is
+ * in the way but for its three crossings (the lane's bridge, the cattle bridge between the pastures, the stones).
+ */
 export function roamOf(L) {
-  const pa = pastureOf(L), y1 = L.GRID.y1;
+  const land = L.land ?? { w: W, ox: 0 }, pa = pastureOf(L), y1 = L.GRID.y1, G = L.GRID;
+  const farms = land.ox ? [0, land.ox] : [0];
+  /** A farm's own grounds, at its offset: inside its pasture's fence; its yard below the henhouse's run, left of the
+   *  fields' fence, over the pasture's; among its fields (their walkways and headlands); the farm itself. */
+  const own = ox => ({
+    pasture: [{ x: pa.x0 + 1 + ox, y: pa.y0 + 1, w: pa.x1 - pa.x0 - 2, h: pa.y1 - pa.y0 - 2 }],
+    yard: [{ x: ox, y: 166, w: 186, h: y1 + 22 - 166 }],
+    fields: [{ x: G.x0 + ox, y: G.y0, w: G.x1 - G.x0, h: G.y1 - G.y0 }],
+    home: [{ x: ox, y: 0, w: W, h: L.H + 22 }],
+  });
   const areas = {
-    pasture: [{ x: pa.x0 + 1, y: pa.y0 + 1, w: pa.x1 - pa.x0 - 2, h: pa.y1 - pa.y0 - 2 }], // inside its fence
-    yard: [{ x: 0, y: 166, w: 186, h: y1 + 22 - 166 }], // under the henhouse's run, left of the fields' fence, over the pasture's
+    ...own(0),
     edge: forestEdgeOf(L),
     water: [{ cx: POND.cx, cy: POND.cy, rx: POND.rx - 3, ry: POND.ry - 3 }], // clear of the bank
     pond: LILY_PADS.map(([cx, cy]) => ({ cx, cy, r: 0.5 })), // the middle of a pad
-    farm: [{ x: 0, y: 0, w: W, h: L.H + 22 }], // the whole farm, for roaming: everything walkable on it
-    fields: [{ x: L.GRID.x0, y: L.GRID.y0, w: L.GRID.x1 - L.GRID.x0, h: L.GRID.y1 - L.GRID.y0 }], // among the fields: their walkways and headlands
+    farm: [{ x: 0, y: 0, w: land.w, h: L.H + 22 }], // the whole land, for roaming: everything walkable on it
   };
-  const near = (x, y, pad) => x > -pad && x < W + pad && y > -pad && y < L.H + 22 + pad;
-  const G = L.GRID;
-  // the pasture's fence, less its gates; the fields' fence, less its gates at the walkways and the farmers' gaps on the
-  // yard's side (as build/buildings.js draws it); inside it, the field patches, with the walkways and headlands between
-  const patches = patchesOf(L.rows ?? 3), lanes = [...new Set(patches.map(p => p.lane))];
-  const fences = [...fenceX(pa.x0, pa.x1, pa.y0, [PASTURE_GATES.top, ...WALKWAY_GATES]), ...fenceX(pa.x0, pa.x1, pa.y1, [PASTURE_GATES.bottom]), [pa.x0, pa.y0, pa.x0, pa.y1], [pa.x1, pa.y0, pa.x1, pa.y1],
-    ...fenceX(G.x0, G.x1, G.y0, WALKWAY_GATES), ...fenceX(G.x0, G.x1, G.y1, WALKWAY_GATES), [G.x1, G.y0, G.x1, G.y1], ...fenceY(G.x0, G.y0, G.y1, lanes.map(y => [y - 4, y + 5]))];
+  if (land.ox) for (const [k, v] of Object.entries(own(land.ox))) areas[areaOn(k, 1)] = v;
+  const near = (x, y, pad) => x > -pad && x < land.w + pad && y > -pad && y < L.H + 22 + pad;
+  // each farm's pasture fence, less its gates (and, with a neighbour, a gate in the sides that face the cattle bridge);
+  // the fields' fence, less its gates at the walkways and the farmers' gaps on the yard's side (as build/buildings.js
+  // draws it); inside it, the field patches, with the walkways and headlands between
+  const patches = patchesOf(L.rows ?? 3), lanes = [...new Set(patches.map(p => p.lane))], cattle = crossingsOf(L).cattle;
+  const fences = farms.flatMap(ox => {
+    const sh = gs => gs.map(([g0, g1]) => [g0 + ox, g1 + ox]);
+    return [...fenceX(pa.x0 + ox, pa.x1 + ox, pa.y0, sh([PASTURE_GATES.top, ...WALKWAY_GATES])), ...fenceX(pa.x0 + ox, pa.x1 + ox, pa.y1, sh([PASTURE_GATES.bottom])),
+      ...fenceY(pa.x0 + ox, pa.y0, pa.y1, land.ox && ox ? [cattle] : []), ...fenceY(pa.x1 + ox, pa.y0, pa.y1, land.ox && !ox ? [cattle] : []),
+      ...fenceX(G.x0 + ox, G.x1 + ox, G.y0, sh(WALKWAY_GATES)), ...fenceX(G.x0 + ox, G.x1 + ox, G.y1, sh(WALKWAY_GATES)), [G.x1 + ox, G.y0, G.x1 + ox, G.y1], ...fenceY(G.x0 + ox, G.y0, G.y1, lanes.map(y => [y - 4, y + 5]))];
+  });
+  /** What stands on a farm at ox (yours: the pond, the woodpile, the orchard and the carts' rank too). */
+  const standing = ox => [
+    ...patches.map(p => patchBox({ x0: p.x0 + ox, y0: p.y0 })), // the fields
+    { x: NAPS[0][0] - 15 + ox, y: NAPS[0][1] - 8, w: 29, h: NAPS.at(-1)[1] - NAPS[0][1] + 16 }, // the hammocks, post to post
+    { cx: SHADE.x + ox, cy: y1 + SHADE.dy - 10, r: TRUNK + 1 }, // the shade tree's trunk stands behind its middle
+    ...BUSHES.map(([cx, cy, r]) => ({ cx: cx + ox, cy, r: r * 1.4 })),
+    ...rocksOf(L).map(([cx, cy, s]) => ({ cx: cx + ox, cy, r: s * 1.4 })),
+    ...farmsteadOf(ox), // the buildings, the deck, the scarecrow patch (yours: the henhouse's run, the stall, the board)
+    ...(ox ? [] : [
+      { cx: POND.cx, cy: POND.cy, rx: POND.rx + 4, ry: POND.ry + 4 }, // the water and its sandy bank
+      { x: WOODPILE[0] - 14, y: WOODPILE[1] - 10, w: 28, h: 20 },
+      ...orchardOf(L).map(([cx, cy]) => ({ cx, cy, r: TRUNK })),
+      { x: CART_RANK.at(-1)[0] - 10, y: CART_RANK[0][1] - 8, w: CART_RANK[0][0] - CART_RANK.at(-1)[0] + 20, h: 16 }, // the row where the tool carts park
+    ]),
+  ];
+  // the creek between the farms: in the way from the forest at the back to the forest at the front, but for its crossings
+  const creek = [];
+  if (land.ox) {
+    const c = crossingsOf(L), gaps = [c.lane, c.cattle, c.stones].sort((p, q) => p[0] - q[0]);
+    let from = -60;
+    for (const [g0, g1] of gaps) { creek.push({ x: CREEK.x0, y: from, w: CREEK.x1 - CREEK.x0, h: g0 - from }); from = g1; }
+    creek.push({ x: CREEK.x0, y: from, w: CREEK.x1 - CREEK.x0, h: L.H + 60 - from });
+  }
   const obstacles = [
-    ...patches.map(patchBox), // the fields
-    { cx: POND.cx, cy: POND.cy, rx: POND.rx + 4, ry: POND.ry + 4 }, // the water and its sandy bank
-    { x: NAPS[0][0] - 15, y: NAPS[0][1] - 8, w: 29, h: NAPS.at(-1)[1] - NAPS[0][1] + 16 }, // the hammocks, post to post
-    { x: WOODPILE[0] - 14, y: WOODPILE[1] - 10, w: 28, h: 20 },
-    { cx: SHADE.x, cy: y1 + SHADE.dy - 10, r: TRUNK + 1 }, // the shade tree's trunk stands behind its middle
-    ...orchardOf(L).map(([cx, cy]) => ({ cx, cy, r: TRUNK })),
-    ...BUSHES.map(([cx, cy, r]) => ({ cx, cy, r: r * 1.4 })),
-    ...rocksOf(L).map(([cx, cy, s]) => ({ cx, cy, r: s * 1.4 })),
-    ...forestOf(L.H).filter(([x, y, r]) => near(x, y, r * 1.25 + 24)).map(([cx, cy, r]) => ({ cx, cy, r: r * 1.25 })), // their crowns: the deer would stand in them
-    ...FARMSTEAD, // the buildings, the deck, the henhouse's run, the stall, the scarecrow patch
-    { x: CART_RANK.at(-1)[0] - 10, y: CART_RANK[0][1] - 8, w: CART_RANK[0][0] - CART_RANK.at(-1)[0] + 20, h: 16 }, // the row where the tool carts park
+    ...farms.flatMap(standing),
+    ...creek,
+    ...forestOf(L.H, land.w).filter(([x, y, r]) => near(x, y, r * 1.25 + 24)).map(([cx, cy, r]) => ({ cx, cy, r: r * 1.25 })), // their crowns: the deer would stand in them
   ];
   const box = (o, x, y, r) => x > o.x - r && x < o.x + o.w + r && y > o.y - r && y < o.y + o.h + r;
   /** Whether a body of size r at (x, y) touches something: a thing on the ground, a field, or a fence. */
@@ -120,7 +153,7 @@ export function roamOf(L) {
    * The way for a body of size r from one place to another on the farm, round whatever stands between: its turning
    * points then the place itself (just the place when the straight way is clear), or null when there is none.
    */
-  const grids = new Map(), cols = Math.ceil(W / CELL) + 1, rows = Math.ceil((L.H + 22) / CELL) + 1;
+  const grids = new Map(), cols = Math.ceil(land.w / CELL) + 1, rows = Math.ceil((L.H + 22) / CELL) + 1;
   function gridFor(r) {
     const size = SIZES.find(c => c >= r) ?? Math.ceil(r);
     if (!grids.has(size)) {
@@ -195,5 +228,7 @@ export function roamOf(L) {
   }
   /** The fields a machine is working now ([{ x0, y0 }]: their corners), busy till the next call. */
   function setBusy(list) { busy = list.map(busyBox); }
-  return { areas, obstacles, inside, free, busyAt, clear, spot, route, setBusy };
+  /** An area on the farm a place is on: 'pasture' at x on the neighbour's farm is 'pasture@n' (romps, plays). */
+  const localArea = (area, x) => areaOn(area, land.ox ? farmAt(x) : 0);
+  return { areas, obstacles, inside, free, busyAt, clear, spot, route, setBusy, localArea };
 }
