@@ -285,3 +285,190 @@ test("crops: sprayed plants are wet, darker and glossier, in their own Instanced
   assert.ok(box.max.y < 0.3, `short: ${box.max.y.toFixed(2)} m`);
   crops.dispose();
 });
+
+/* ---------- the machines' rules (machines.js) ---------- */
+const { machineFor, passesFor, routeBetween, createMachines, HOLD_S, BIG_EDIT, VEHICLE, TOWN_END } = await import('../../web/worlds/farm3d/machines.js');
+const { BED, CORR, LANE, SHED_DOOR, GRID_CONFIG, STALL, W } = await import('../../web/worlds/farm3d/layout.js');
+
+test('which machine: tests, builds, installs, pushes, deploys and big edits; the rest by hand', () => {
+  const f = (step, writes = 0, state = 'working') => machineFor({ state, step, writes, field: '/r' });
+  assert.deepEqual(['test', 'build', 'install', 'push', 'deploy'].map(s => f(s)), ['sprayer', 'mower', 'supplies', 'crates', 'truck']);
+  assert.equal(f('edit', BIG_EDIT), 'plough');
+  assert.equal(f('write', 9), 'plough');
+  assert.equal(f('edit', BIG_EDIT - 1), null);
+  for (const s of ['read', 'search', 'web', 'mcp', 'plan', 'commit', 'lint', 'delete', 'shell', null]) assert.equal(f(s, 99), null, String(s));
+  assert.equal(f('test', 0, 'waiting'), null);
+  assert.equal(machineFor({ state: 'working', step: 'test', writes: 0, field: null }), null, 'no field (the meadow): by hand');
+  assert.deepEqual(VEHICLE, { plough: 'tractor', sprayer: 'tractor', mower: 'tractor', supplies: 'tractor', crates: 'tractor', truck: 'truck', combine: 'combine' });
+});
+
+const bedAt = (c, r = 0) => { const cx = GRID_CONFIG.cx0 + c * GRID_CONFIG.colW, rowTop = GRID_CONFIG.top0 + r * GRID_CONFIG.rowH, s = GRID_CONFIG.slot(cx, rowTop); return { key: `/r/c${c}r${r}`, ...s, cx, rowTop, w: BED.w, d: BED.d }; };
+const inside = (b, y) => y > b.y0 && y < b.y0 + BED.d;
+test("a bed's passes cover it row by row, U-turning outside its ends, entering from the walkway side; two farmers take alternate passes, three share none", () => {
+  const b1 = bedAt(1), p = passesFor(b1, 1, 0), ys = [...new Set(p.map(q => q[1]))].filter(y => inside(b1, y));
+  assert.equal(ys.length, 6);
+  assert.ok(p[0][0] < b1.x0, 'column 1 enters from the left');
+  assert.ok(passesFor(bedAt(0), 1, 0)[0][0] > bedAt(0).x0 + BED.w, 'column 0 from the right');
+  assert.ok(passesFor(bedAt(2), 1, 0)[0][0] < bedAt(2).x0, 'column 2 from the left');
+  for (const [x] of p) assert.ok(x === b1.x0 - 12 || x === b1.x0 + BED.w + 12, `${x}: U-turns 12 px outside the ends`);
+  const rowsIn = q => new Set(q.map(([, y]) => y).filter(y => inside(b1, y)));
+  const a = passesFor(b1, 2, 0), b = passesFor(b1, 2, 1);
+  assert.equal([...rowsIn(a)].filter(y => rowsIn(b).has(y)).length, 0, 'no pass shared');
+  assert.equal(rowsIn(a).size + rowsIn(b).size, 6, 'every row');
+  const three = [0, 1, 2].map(k => passesFor(b1, 3, k));
+  for (let i = 0; i < 3; i++) for (let j = i + 1; j < 3; j++) assert.equal([...rowsIn(three[i])].filter(y => rowsIn(three[j]).has(y)).length, 0, `three: ${i} and ${j}`);
+  assert.equal(new Set(three.map(q => q[0].join())).size, 3, 'three at-rest spots, none the same');
+});
+
+test('the way between the shed and a bed keeps to the lane and the walkways, never across a field', () => {
+  const s = bedAt(0, 1), entry = passesFor(s, 1, 0)[0];
+  const way = routeBetween(SHED_DOOR, entry);
+  for (const [x, y] of way) assert.ok(y === LANE || CORR.includes(x) || y === entry[1], `${x},${y} on the lane, a walkway, or the bed's row`);
+  assert.deepEqual(way.at(-1), entry);
+  const back = routeBetween(entry, SHED_DOOR);
+  for (const [x, y] of back) assert.ok(y === LANE || CORR.includes(x) || y === entry[1], `back: ${x},${y}`);
+  assert.deepEqual(back.at(-1), SHED_DOOR);
+  for (const [x, y] of routeBetween(SHED_DOOR, entry, { lane: LANE + 3 })) assert.ok(y === LANE + 3 || CORR.includes(x) || y === entry[1], `its half of the lane: ${x},${y}`);
+});
+
+/** A farm for the machines' tick: one bed, its farmer where the test puts it. */
+function rig({ beds = [bedAt(1)], still = false } = {}) {
+  const m = createMachines(), farmers = new Map(), boarded = new Set(), bedMap = new Map(beds.map(b => [b.key, b]));
+  let blocked = () => false, t = 0;
+  const ctx = () => ({ farmers, beds: bedMap, boarded: id => boarded.has(id), blocked: (...a) => blocked(...a), still });
+  return {
+    m, farmers, boarded, beds: bedMap,
+    setBlocked: f => { blocked = f; },
+    want: (list, comp = new Set()) => { // the farmers drawn are the ones in the scene
+      for (const id of [...farmers.keys()]) if (!list.some(f => f.id === id)) farmers.delete(id);
+      for (const f of list) farmers.set(f.id, { x: 0, y: 0, state: f.state, field: f.field });
+      return m.want({ farmers: list }, t, comp);
+    },
+    run: (s, dt = 0.1) => { let items = []; for (let n = 0; n < Math.round(s / dt); n++) { t += dt; items = m.tick(dt, ctx()); } return items; },
+    now: () => t,
+  };
+}
+const worker = (id, step, field, over = {}) => ({ id, state: 'working', step, writes: 0, field, ...over });
+
+test("the hold: a machine stays 20 s after its step; another tractor job swaps the implement; a compaction brings the combine, which works its field once", () => {
+  const m = createMachines(), key = '/r/shop';
+  const want = (nowS, step, writes = 0, comp = new Set()) => m.want({ farmers: [worker('a', step, key, { writes })] }, nowS, comp).get('a') ?? null;
+  assert.equal(want(0, 'test').job, 'sprayer');
+  assert.equal(want(5, 'read').job, 'sprayer', 'held');
+  assert.equal(want(5 + HOLD_S + 1, 'read'), null, 'home after the hold');
+  assert.equal(want(40, 'build').job, 'mower');
+  assert.equal(want(41, 'install').job, 'supplies', 'a swap');
+  assert.equal(want(42, 'edit', 1, new Set(['a'])).job, 'combine', 'a compaction: the combine');
+  assert.equal(want(43, 'test').job, 'combine', 'the combine works its field once, whatever the steps');
+  assert.equal(want(44, 'test').field, key);
+});
+
+test('a machine goes out when its farmer has boarded, works its passes in the field, and comes home and parks after the hold', () => {
+  const r = rig(), b = [...r.beds.values()][0], id = 'a';
+  r.want([worker(id, 'test', b.key)]);
+  let [it] = r.run(0.5);
+  assert.deepEqual([it.phase, it.driver, it.moving, it.x, it.y], ['walking', false, false, ...SHED_DOOR], 'it waits in the shed for its farmer');
+  r.boarded.add(id);
+  [it] = r.run(0.2);
+  assert.deepEqual([it.phase, it.driver, it.vehicle, it.implement], ['out', true, 'tractor', 'sprayer']);
+  for (let n = 0; n < 200 && it.phase === 'out'; n++) { r.want([worker(id, 'test', b.key)]); [it] = r.run(0.5); }
+  assert.equal(it.phase, 'work');
+  assert.ok(inside(b, it.y) || Math.abs(it.x - b.cx) > BED.w / 2, 'in its field or at its headland');
+  r.want([worker(id, 'read', b.key)]);
+  [it] = r.run(HOLD_S - 2);
+  r.want([worker(id, 'read', b.key)]);
+  [it] = r.run(1);
+  assert.equal(it.phase, 'work', 'still within the hold');
+  r.run(2);
+  r.want([worker(id, 'read', b.key)]);
+  [it] = r.run(0.2);
+  assert.equal(it.phase, 'home');
+  let items = [];
+  for (let n = 0; n < 200; n++) { r.want([worker(id, 'read', b.key)]); items = r.run(0.5); if (!items.length || items[0].phase === 'parked') break; }
+  assert.ok(!items.length || items[0].phase === 'parked', 'parked');
+  assert.equal(r.run(0.2).length, 0, 'and gone: its farmer released');
+});
+
+test('called back mid-trip: its farmer is wanted (waiting on you), so it gets out and the machine goes home empty', () => {
+  const r = rig(), b = [...r.beds.values()][0];
+  r.want([worker('a', 'test', b.key)]);
+  r.boarded.add('a');
+  let [it] = r.run(1);
+  assert.equal(it.phase, 'out');
+  r.want([worker('a', 'test', b.key, { state: 'waiting' })]);
+  [it] = r.run(0.2);
+  assert.deepEqual([it.phase, it.driver], ['home', false]);
+});
+
+test("its field gone: the machine goes home", () => {
+  const r = rig(), b = [...r.beds.values()][0];
+  r.want([worker('a', 'test', b.key)]);
+  r.boarded.add('a');
+  r.run(1);
+  r.beds.delete(b.key);
+  const [it] = r.run(0.2);
+  assert.equal(it.phase, 'home');
+});
+
+test('a truck job sends the tractor home first; then the truck goes out with its farmer, to town past the lane\'s end', () => {
+  const r = rig(), b = [...r.beds.values()][0];
+  r.want([worker('a', 'test', b.key)]);
+  r.boarded.add('a');
+  r.run(2);
+  r.want([worker('a', 'deploy', b.key)]);
+  let [it] = r.run(0.2);
+  assert.deepEqual([it.phase, it.vehicle], ['home', 'tractor']);
+  for (let n = 0; n < 200 && it.vehicle === 'tractor'; n++) { r.want([worker('a', 'deploy', b.key)]); [it] = r.run(0.5); }
+  assert.deepEqual([it.vehicle, it.phase], ['truck', 'out']);
+  for (let n = 0; n < 200 && it.phase === 'out'; n++) { r.want([worker('a', 'deploy', b.key)]); [it] = r.run(0.5); }
+  assert.ok(it.x > W, `off the map to town: ${it.x}`);
+});
+
+test('the combine cuts its field row by row, once, then goes home', () => {
+  const r = rig(), b = [...r.beds.values()][0];
+  r.want([worker('a', 'edit', b.key)], new Set(['a']));
+  r.boarded.add('a');
+  let it, rows = [];
+  for (let n = 0; n < 600; n++) { r.want([worker('a', 'edit', b.key)]); [it] = r.run(0.5); if (it?.phase === 'work' || it?.phase === 'home') rows.push(it.rowsDone); if (!it || it.phase === 'home') break; }
+  assert.equal(it.vehicle, 'combine');
+  assert.equal(it.phase, 'home');
+  assert.equal(Math.max(...rows), 6, 'six rows cut');
+  assert.deepEqual(rows, [...rows].sort((x, y) => x - y), 'row by row');
+});
+
+test('it stops for something ahead, and after 5 s stopped passes through', () => {
+  const r = rig(), b = [...r.beds.values()][0];
+  r.want([worker('a', 'test', b.key)]);
+  r.boarded.add('a');
+  let [it] = r.run(1);
+  r.setBlocked(() => true);
+  const at = [it.x, it.y];
+  [it] = r.run(1);
+  assert.deepEqual([it.x, it.y, it.moving], [...at, false], 'stopped');
+  [it] = r.run(3);
+  assert.deepEqual([it.x, it.y], at, 'still stopped at 4 s');
+  [it] = r.run(1.5);
+  assert.ok(it.x !== at[0] || it.y !== at[1], 'through after 5 s');
+});
+
+test('Motion off: each machine stands at its work spot with its farmer in the seat; nothing moves', () => {
+  const beds = [bedAt(0), bedAt(1), bedAt(2)], r = rig({ beds, still: true });
+  r.want([worker('a', 'test', beds[0].key), worker('b', 'push', beds[1].key), worker('c', 'deploy', beds[2].key)]);
+  const items = r.run(0.2), by = new Map(items.map(i => [i.id, i]));
+  assert.deepEqual([by.get('a').x, by.get('a').y], passesFor(beds[0], 1, 0)[0]);
+  assert.deepEqual([by.get('b').x, by.get('b').y], [STALL.x + 14, LANE]);
+  assert.deepEqual([by.get('c').x, by.get('c').y], TOWN_END);
+  assert.ok(items.every(i => i.driver && !i.moving && i.phase === 'work'));
+  const again = r.run(2);
+  assert.deepEqual(again.map(i => [i.x, i.y]), items.map(i => [i.x, i.y]), 'nothing moves');
+});
+
+test('a farmer gone from the farm: its machine goes home empty', () => {
+  const r = rig(), b = [...r.beds.values()][0];
+  r.want([worker('a', 'test', b.key)]);
+  r.boarded.add('a');
+  r.run(1);
+  r.want([]);
+  const [it] = r.run(0.2);
+  assert.deepEqual([it.phase, it.driver], ['home', false]);
+});
