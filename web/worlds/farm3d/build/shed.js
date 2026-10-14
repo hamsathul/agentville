@@ -1,12 +1,13 @@
 // The machine shed (spec 2026-10-14 §7): an open-fronted timber shed on the lane past the scarecrow patch, its metal
-// roof sloping to the back, holding a parked tractor and the combine as stock (so the farm has machines even when none
-// are out; one hides while its kind is out). A click on it opens who is out on a machine (machines.js machinesDialog).
+// roof sloping to the back, holding Kenney's loader tractor and the combine as stock (so the farm has machines even when
+// none are out; the combine hides while it is out). A click on it opens who is out on a machine (machines.js
+// machinesDialog).
 import { PX, SHED } from '../layout.js';
 import { disposeTree } from './util.js';
 
 export function makeShed(THREE, mats, S, machines) {
   const group = new THREE.Group(), hitMat = new THREE.MeshBasicMaterial({ visible: false });
-  const stock = { tractor: machines.stock('tractor'), combine: machines.stock('combine') };
+  const stock = { loader: machines.stock('loader'), combine: machines.stock('combine') };
   for (const m of Object.values(stock)) group.add(m.root);
   let built = null, hit = null;
 
@@ -35,17 +36,15 @@ export function makeShed(THREE, mats, S, machines) {
     group.add(g);
     built = g;
     // the stock, parked facing the lane: the tractor in the left bay, the combine in the right
-    stock.tractor.root.position.set(c.x - w / 2 + 1.7, 0.1, c.z - 0.2);
+    stock.loader.root.position.set(c.x - w / 2 + 1.7, 0.1, c.z - 0.2);
     stock.combine.root.position.set(c.x + w / 2 - 2.6, 0.1, c.z - 0.6);
   }
   return {
     group, build,
-    /** Each frame: the stock's model once it loads; a stock machine hides while one of its kind is out. */
+    /** Each frame: the loader's model once it loads; the combine hides while it is out. */
     tick(items) {
-      machines.restock(stock.tractor);
-      const out = kind => items.some(i => i.vehicle === kind && i.phase !== 'walking'); // waiting for its farmer, it is still in the shed
-      stock.tractor.root.visible = !out('tractor');
-      stock.combine.root.visible = !out('combine');
+      machines.restock(stock.loader);
+      stock.combine.root.visible = !items.some(i => i.vehicle === 'combine' && i.phase !== 'walking'); // waiting for its farmer, it is still in the shed
     },
     /** What a click can find: the shed's box (userData.hit: 'shed'). */
     hits: () => (hit ? [hit] : []),

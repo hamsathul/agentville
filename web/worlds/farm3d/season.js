@@ -2,7 +2,7 @@
 // work there; sown on its first write; growing as context fills (the 2D farm's growth stages); ripe at stage 5;
 // sprayed while one of its agents runs tests; cut at a compaction (row by row as the combine passes, `cut`) and sown
 // again; weeds after 30 idle minutes; dry when its agents are all stale. A field already growing when the page opens
-// grows on: the ploughing isn't replayed. A plough passing (`plough`) furrows it row by row and its drill sows it.
+// grows on: the ploughing isn't replayed. A plough passing (`plough`) turns its rows one by one and its drill sows it.
 // Pure: no three.js, no clock of its own (the times it is given need only be steady, not the wall clock's).
 export const IDLE_FALLOW_MS = 30 * 60_000, ROWS = 6;
 export const CUT_WAIT_MS = 30_000, CUT_IDLE_MS = 10_000, CUT_SHOW_MS = 1000; // a harvest waits this long for its combine, which reports at least this often; the last row's stubble shows a moment
@@ -13,7 +13,7 @@ export function createSeasons() {
   let first = true, clock = 0; // the last time it was told
   const lookOf = key => {
     const r = fields.get(key);
-    return r ? { stage: r.stage, growth: r.stage === 'cut' ? r.cutGrowth : r.growth, sprayed: r.sprayed, cutRows: r.cutRows, ploughedRows: r.ploughedRows } : null; // being cut: the rows not yet cut as they stood
+    return r ? { stage: r.stage, growth: r.stage === 'cut' ? r.cutGrowth : r.growth, sprayed: r.sprayed, cutRows: r.cutRows, ploughed: r.ploughed } : null; // being cut: the rows not yet cut as they stood
   };
   /** Whether a field is being harvested: its combine on the way or cutting (heard from in the last 10 s), waited for (30 s
    *  after the compaction), or its last row just cut (a moment of stubble). */
@@ -34,13 +34,13 @@ export function createSeasons() {
       let r = fields.get(b.key);
       if (!r) {
         const growing = first && grow; // the page opens on it already at work
-        r = { stage: 'fallow', base: 'fallow', worked: growing, sown: growing, lastActive: now, cutAt: null, cutRows: 0, ploughedRows: ROWS, comps: new Map(), growth: 0, sprayed: false };
+        r = { stage: 'fallow', base: 'fallow', worked: growing, sown: growing, lastActive: now, cutAt: null, cutRows: 0, ploughed: 0, comps: new Map(), growth: 0, sprayed: false };
         fields.set(b.key, r);
       }
       if (working.length) r.lastActive = now;
       for (const f of here) { // a compaction: the harvest
         const c = comps.get(f.id) ?? 0, was = r.comps.get(f.id);
-        if (was !== undefined && c > was) Object.assign(r, { cutAt: now, cutRows: 0, cutLast: -Infinity, cutDoneAt: Infinity, cutGrowth: r.growth }); // the crop as it stood
+        if (was !== undefined && c > was) Object.assign(r, { cutAt: now, cutRows: 0, cutLast: -Infinity, cutDoneAt: Infinity, cutGrowth: r.growth, ploughed: 0 }); // the crop as it stood; a new season's soil
         r.comps.set(f.id, c);
       }
       if (!r.worked && working.length) r.worked = true;
@@ -48,7 +48,7 @@ export function createSeasons() {
       r.growth = grow ? b.plot.stage : 0;
       r.sprayed = working.some(f => f.prop === 'magnifier'); // test: checking the crops
       if (b.plot.kind === 'dry') { Object.assign(r, { base: 'dry', cutAt: null, cutRows: 0 }); settle(r, now); continue; }
-      if (!working.length && now - r.lastActive >= IDLE_FALLOW_MS) { Object.assign(r, { worked: false, sown: false, base: 'fallow', cutAt: null, cutRows: 0 }); settle(r, now); continue; }
+      if (!working.length && now - r.lastActive >= IDLE_FALLOW_MS) { Object.assign(r, { worked: false, sown: false, base: 'fallow', cutAt: null, cutRows: 0, ploughed: 0 }); settle(r, now); continue; }
       r.base = !r.worked ? 'fallow' : !r.sown ? 'ploughed' : grow && b.plot.stage >= 5 ? 'ripe' : grow && b.plot.stage > 0 ? 'growing' : 'sown';
       settle(r, now);
     }
@@ -80,31 +80,25 @@ export function createSeasons() {
       for (const r of fields.values()) changed = settle(r, now) || changed;
       return changed;
     },
-    /** A plough has furrowed this many of the field's rows (0 as it starts); at six its drill has sown the field. True if
-     *  that changed its look. */
+    /** A plough has passed these rows (their numbers, 0 to 5, any order); they stay turned till a harvest or the field
+     *  lies fallow. Once all six are turned its drill has sown the field. True if that changed its look. */
     plough(key, rows) {
       const r = fields.get(key);
       if (!r) return false;
-      const was = r.ploughedRows;
-      r.ploughedRows = Math.max(0, Math.min(ROWS, rows));
-      if (r.ploughedRows >= ROWS && r.worked) r.sown = true;
-      return r.ploughedRows !== was;
-    },
-    /** The plough left before the end: the field as it was, its rows not sown. True if that changed its look. */
-    ploughStop(key) {
-      const r = fields.get(key);
-      if (!r || r.ploughedRows === ROWS) return false;
-      r.ploughedRows = ROWS;
-      return true;
+      const was = r.ploughed;
+      for (const k of rows) if (k >= 0 && k < ROWS) r.ploughed |= 1 << k;
+      if (r.ploughed === (1 << ROWS) - 1 && r.worked && !r.sown) { r.sown = true; r.base = r.base === 'ploughed' ? 'sown' : r.base; settle(r, clock); }
+      return r.ploughed !== was;
     },
   };
 }
 
 /**
  * What each of a bed's six rows shows for its look (build/beds.js draws it): furrowed soil or not, and its plants:
- * 'crop' (the bed's crop at `stage`), 'seeds', 'stubble', 'weeds', 'dry' or none; `wet` while it is sprayed. Behind a
- * plough passing (rows below `ploughedRows`), furrows and the drill's seeds; behind the combine (below `cutRows`),
- * stubble; the rest as they were. Without a look (the season not kept yet), the plot's, as the 2D farm draws it.
+ * 'crop' (the bed's crop at `stage`), 'seeds', 'stubble', 'weeds', 'dry' or none; `wet` while it is sprayed. A row a
+ * plough has passed (a bit of `ploughed`) shows turned soil, under its crop if it has one; behind the combine (below
+ * `cutRows`), stubble; the rest as they were. Without a look (the season not kept yet), the plot's, as the 2D farm
+ * draws it.
  */
 export function rowsOf(bed, look) {
   const row = (furrow, plants, stage = 0, wet = false) => ({ furrow, plants, stage, wet });
@@ -114,9 +108,9 @@ export function rowsOf(bed, look) {
   switch (look.stage) {
     case 'dry': return all(() => row(false, 'dry'));
     case 'fallow': return all(() => row(false, 'weeds'));
-    case 'ploughed': return all(k => (k < look.ploughedRows ? row(true, null) : row(false, 'weeds')));
+    case 'ploughed': return all(() => row(true, null));
     case 'sown': return all(() => row(true, 'seeds', 0, wet));
     case 'cut': return all(k => (k < look.cutRows ? row(false, 'stubble') : crop()));
-    default: return all(k => (k < look.ploughedRows && look.ploughedRows < ROWS ? row(true, 'seeds', 0, wet) : crop())); // growing, ripe
+    default: return all(k => ({ ...crop(), furrow: Boolean(look.ploughed & (1 << k)) })); // growing, ripe: turned soil under the crop where a plough has passed
   }
 }

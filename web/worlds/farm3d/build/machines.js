@@ -8,13 +8,15 @@ import { MODELS } from '../models/index.js';
 import { repaint } from '../coats.js';
 
 export const SCALE = 1.3; // a touch larger than life, as the farmers are: they are seen from above
-const MODEL_OF = { tractor: 'tractor', truck: 'truckflat' };
+export const MODEL_OF = { tractor: 'tractor', truck: 'truckflat', loader: 'tractorloader' }; // the loader stands in the shed
 const toSrgb = v => (v <= 0.0031308 ? v * 12.92 : 1.055 * v ** (1 / 2.4) - 0.055), toLinear = v => (v <= 0.04045 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4);
 const SKIN = '#e8b08a', CAP = '#3a3a40';
 const FX = { sprayer: { colour: '#ffffff', opacity: 0.45, size: 0.32, width: 7, up: 0.5 }, combine: { colour: '#e2c56a', opacity: 1, size: 0.12, width: 3, up: 1.6 }, mower: { colour: '#7fbf5a', opacity: 1, size: 0.1, width: 2.2, up: 1.2 } };
 const PARTICLES = 12;
 
-export function makeMachines(THREE, mats, S, { gltf }) {
+/** The machines drawn. gltf(kind): a packed model's glTF (build/models.js); onError(err, kind): a model that didn't load,
+ *  told once (a stand-in drives instead). */
+export function makeMachines(THREE, mats, S, { gltf, onError = () => {} }) {
   const group = new THREE.Group();
   const templates = new Map(), asked = new Set(); // model kind → { scene, scale, rear, top, seat, wheels: Map(name → radius) }
   const shown = new Map(); // item id → the machine drawn
@@ -46,7 +48,7 @@ export function makeMachines(THREE, mats, S, { gltf }) {
       scene.traverse(o => { if (/^wheel/.test(o.name) && !wheels.has(o.name)) { const b = new THREE.Box3().setFromObject(o); wheels.set(o.name, ((b.max.y - b.min.y) / 2) * scale); } });
       const rearWheel = [...scene.children].filter(o => /^wheel-back/.test(o.name)).reduce((z, o) => Math.min(z, o.position.z), 0);
       templates.set(kind, { scene, scale, lift: -box.min.y * scale, rear: box.min.z * scale, top: box.max.y * scale, wheels, seat: new THREE.Vector3(0, box.max.y * scale * 0.5, rearWheel * scale * (kind === 'truckflat' ? -1.1 : 0.55)) });
-    }).catch(() => {}); // no model: the stand-in stays
+    }).catch(err => onError(err, kind)); // no model: told once, and the stand-in stays
     return null;
   }
 

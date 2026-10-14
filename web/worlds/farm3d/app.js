@@ -18,7 +18,7 @@ import { makeBuildings } from './build/buildings.js';
 import { makeCrops } from './build/crops.js';
 import { makeModels } from './build/models.js';
 import { createSeasons } from './season.js';
-import { createMachines, machinesDialog } from './machines.js';
+import { createMachines, crewActions, isAhead, machinesDialog } from './machines.js';
 import { makeMachines } from './build/machines.js';
 import { makeShed } from './build/shed.js';
 import { makeWeather } from './build/weather.js';
@@ -114,9 +114,9 @@ export function start({ el, opts, prefs }) {
   let cartItems = [];
   const pigeons = makePigeons(THREE, mats); // notes between agents
   // the machines (machines.js): a farmer whose step needs one walks to the shed, boards it, drives out and back
-  const machineMeshes = makeMachines(THREE, mats, shapes, { gltf: kind => models.gltf(kind) }), shed = makeShed(THREE, mats, shapes, machineMeshes), machines = createMachines();
+  const machineMeshes = makeMachines(THREE, mats, shapes, { gltf: kind => models.gltf(kind), onError: (err, kind) => report(err, `machines (${kind})`) }), shed = makeShed(THREE, mats, shapes, machineMeshes), machines = createMachines();
   const boarded = new Set(), sentToShed = new Set(), compactionsSeen = new Map(); // in a seat; walking to the shed; each agent's compactions so far
-  let machineItems = [], machinesSig = '', ploughing = new Set();
+  let machineItems = [], machinesSig = '';
   /** Who is where and what is happening, for talk.js: refreshed twice a second. */
   let talkScene = null, talkSceneAt = -1e9, castSaid = null;
   function sceneForTalk(now) {
@@ -464,40 +464,26 @@ export function start({ el, opts, prefs }) {
     const pos = new Map(), shirt = new Map(shown.map(f => [f.id, f.shirt]));
     for (const f of shown) { const p = farmers.posOf(f.id); if (p) pos.set(f.id, { x: p.x, y: p.y, state: f.state, field: f.field }); }
     const inField = (x, y) => model.beds.some(b => x >= b.x0 - 14 && x <= b.x0 + BED.w + 14 && y >= b.y0 - 2 && y <= b.y0 + BED.d + 2);
-    const ahead = (x, y, h, ox, oy) => { const dx = ox - x, dy = oy - y, along = dx * Math.cos(h) + dy * Math.sin(h); return along > 2 && along < 24 && Math.abs(dy * Math.cos(h) - dx * Math.sin(h)) < 9; };
-    const blocked = (x, y, h, id) => !inField(x, y) && (shown.some(f => f.id !== id && !boarded.has(f.id) && pos.has(f.id) && ahead(x, y, h, pos.get(f.id).x, pos.get(f.id).y))
-      || animals.world().some(a => ahead(x, y, h, a.x, a.y)) || machineItems.some(o => o.id !== id && ahead(x, y, h, o.x, o.y)));
-    machineItems = machines.tick(dt, { farmers: pos, beds: new Map(model.beds.map(b => [b.key, b])), boarded: id => boarded.has(id), blocked, still: opts.still, now: performance.now() / 1000 });
-    const byId = new Map(machineItems.map(i => [i.id, i]));
-    for (const id of [...boarded]) { // out of the seat: parked, called back, or no machine any more
-      const it = byId.get(id);
-      if (it && it.phase !== 'parked' && (it.driver || it.phase === 'walking')) continue;
-      boarded.delete(id); sentToShed.delete(id);
-      farmers.setDriving(id, null);
-      farmers.endErrand(id);
-    }
-    for (const id of [...sentToShed]) if (!byId.has(id)) { sentToShed.delete(id); farmers.endErrand(id); } // not wanted before it got there
-    for (const it of machineItems) {
-      if (it.phase === 'walking' && !boarded.has(it.id)) { // its farmer goes to the shed, and climbs in at the door
-        if (opts.still || (sentToShed.has(it.id) && farmers.arrived(it.id))) boarded.add(it.id);
-        else if (!sentToShed.has(it.id) && !farmers.onErrand(it.id) && farmers.errand(it.id, SHED_DOOR, { timeout: 45 })) sentToShed.add(it.id);
-      }
-      if (boarded.has(it.id) && !farmers.driving(it.id)) farmers.setDriving(it.id, () => machineMeshes.seatOf(it.id));
-    }
+    const blocked = (x, y, h, id) => !inField(x, y) && (shown.some(f => f.id !== id && !boarded.has(f.id) && pos.has(f.id) && isAhead(x, y, h, pos.get(f.id).x, pos.get(f.id).y))
+      || animals.world().some(a => isAhead(x, y, h, a.x, a.y)) || machineItems.some(o => o.id !== id && o.phase !== 'walking' && isAhead(x, y, h, o.x, o.y))); // one waiting for its farmer is in the shed
+    machineItems = machines.tick(dt, { farmers: pos, beds: new Map(model.beds.map(b => [b.key, b])), boarded: id => boarded.has(id), blocked, still: opts.still, now: performance.now() / 1000, onError: err => report(err, 'a machine') });
+    const act = crewActions(machineItems, { boarded, sent: sentToShed, onErrand: id => farmers.onErrand(id), arrived: id => farmers.arrived(id), still: opts.still });
+    for (const id of act.release) { boarded.delete(id); sentToShed.delete(id); farmers.setDriving(id, null); farmers.endErrand(id); } // out of the seat: parked, called back, or no machine any more
+    for (const id of act.forget) { sentToShed.delete(id); if (!boarded.has(id)) farmers.endErrand(id); } // not wanted before it got there
+    for (const id of act.board) { boarded.add(id); sentToShed.delete(id); }
+    for (const id of act.send) if (farmers.errand(id, SHED_DOOR, { timeout: 45 })) sentToShed.add(id); // to the shed (again, if its walk was cut short)
+    for (const it of machineItems) if (boarded.has(it.id) && !farmers.driving(it.id)) farmers.setDriving(it.id, () => machineMeshes.seatOf(it.id));
     machineMeshes.tick(machineItems, dt, opts.still, id => shirt.get(id) ?? '#9aa0a6');
     shed.tick(machineItems);
-    // the combine's cut (it reports from the moment it is wanted, so its harvest waits for it) and the plough's furrows,
-    // row by row, to the fields' seasons; a plough gone before the end leaves its field as it was
-    const cut = new Map(), ploughed = new Map(), now = performance.now();
+    // the combine's cut (it reports from the moment it is wanted, so its harvest waits for it) and the rows each plough
+    // has turned, to the fields' seasons
+    const cut = new Map(), now = performance.now();
+    let changed = seasons.tick(now);
     for (const it of machineItems) {
       if (it.job === 'combine' && it.phase !== 'parked') cut.set(it.field, (cut.get(it.field) ?? 0) + it.rowsDone);
-      if (it.job === 'plough' && it.phase === 'work') ploughed.set(it.field, (ploughed.get(it.field) ?? 0) + it.rowsDone);
+      if (it.job === 'plough' && it.phase === 'work') changed = seasons.plough(it.field, it.rowsPassed) || changed;
     }
-    let changed = seasons.tick(now);
     for (const [k, n] of cut) changed = seasons.cut(k, n, now) || changed;
-    for (const [k, n] of ploughed) changed = seasons.plough(k, n) || changed;
-    for (const k of ploughing) if (!ploughed.has(k)) changed = seasons.ploughStop(k) || changed;
-    ploughing = new Set(ploughed.keys());
     if (changed) { looks = seasons.looks(); beds.sync(model.beds, model.ground, shownSeason(), looks); dirty = true; }
     const sig = machineItems.map(i => `${i.id}|${i.vehicle}|${i.implement}|${Math.round(i.x)}|${Math.round(i.y)}|${i.driver}|${i.load}`).join();
     if (sig !== machinesSig || (!opts.still && machineItems.some(i => i.phase === 'work'))) { machinesSig = sig; dirty = true; } // a reel turns, mist drifts
@@ -629,7 +615,7 @@ export function start({ el, opts, prefs }) {
     crops: () => crops.stats(),
     /** The machines out (machines.js's items): { id, job, vehicle, implement, load, x, y, heading, moving, driver, phase, field, passRow, rowsDone }. */
     machines: () => machineItems.map(i => ({ ...i })),
-    /** Each field's season (season.js), by its key: { stage, growth, sprayed, cutRows, ploughedRows }. */
+    /** Each field's season (season.js), by its key: { stage, growth, sprayed, cutRows, ploughed (the rows a plough has turned, a bit each) }. */
     seasons: () => Object.fromEntries(looks),
     /** A farmer as drawn: its character, the clip it plays, its shirt's colour (null while the figurine stands in). */
     farmer: id => farmers.info(id),

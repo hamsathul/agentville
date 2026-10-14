@@ -1332,18 +1332,19 @@ patch, the pasture across the front, and the meadow and the forest running on al
   drives the lane and the walkway to its field (`web/worlds/farm3d/machines.js`): Kenney's tractor (red,
   cream wheels) with a sprayer for tests (mist from its boom), a mower for a build, a trailer of sacks
   for an install and of crates to the market stall for a push, and a plough with a seed drill for a
-  big edit (five files or more written in the last 5 minutes), which furrows and sows the field pass
-  by pass; Kenney's flatbed truck with a red flag off to town along the lane for a deploy; and the
+  big edit (five files or more written in the last 5 minutes), which turns the soil row by row as it
+  passes (under the crop, if there is one) and sows the field once every row is turned; Kenney's flatbed truck with a red flag off to town along the lane for a deploy; and the
   combine for a compaction, which cuts its field once. A machine works the rows from the walkway side,
   turning on the headland; two farmers in one field take every other row. It stays out 20 s after its
   step ends, so it doesn't flicker; another tractor step swaps the implement where it is, and a step
-  that needs the truck or the combine sends the tractor home first. On the lane it stops for a farmer,
-  an animal or another machine ahead, and goes on after 5 s. Waiting on you, or your turn, calls the
+  that needs the truck or the combine sends the tractor home first. On the lane it keeps to its half
+  (out on one, home on the other), stops for a farmer, an animal or a machine in its way, and goes on
+  after 5 s. Machines waiting stand apart: in a field, at the stall, in town. Waiting on you, or your turn, calls the
   farmer straight out of it, and the machine drives itself home. Its name tag rides the cab, and a click
   on it opens its farmer. With **Motion** off each machine stands at its work spot, its farmer in the
   seat (the combine's harvest done at once).
-- **The machine shed**: an open-fronted timber shed with a metal roof, a tractor and the combine
-  parked in it (one goes while one of its kind is out). Click it for who is out on which machine,
+- **The machine shed**: an open-fronted timber shed with a metal roof, Kenney's loader tractor and the
+  combine parked in it (the combine goes while it is out). Click it for who is out on which machine,
   doing what and where.
 - **Light and seasons**: the sun crosses the sky by your clock and the windows and lamps glow at night;
   the season follows your 5-hour limit, with blossom in spring, orange leaves in autumn and snow in

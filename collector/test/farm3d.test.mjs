@@ -195,7 +195,7 @@ test('the camera turns to any angle, a 15° step at a time by key or button, and
   assert.equal(Math.round(clampPitch(60 * DEG) / DEG), 60);
   assert.deepEqual(clampTarget({ x: 99, z: -99 }, { x: 25, z: 30 }), { x: 25, z: -30 });
   assert.ok(ZOOMS.includes(1));
-  assert.equal(nextZoom(1, 1), 1.25); assert.equal(nextZoom(3, 1), 4, 'closer than the 2D farm goes: down to one farmer'); assert.equal(nextZoom(6, 1), 6); assert.equal(nextZoom(1.1, 1), 1.25);
+  assert.equal(nextZoom(1, 1), 1.25); assert.equal(nextZoom(3, 1), 4, 'closer than the 2D farm goes: down to one farmer'); assert.equal(nextZoom(6, 1), 8); assert.equal(nextZoom(8, 1), 8); assert.equal(nextZoom(1.1, 1), 1.25);
 });
 
 test('square-on, the porch is at the back, as the 2D farm has it at the top', async () => {

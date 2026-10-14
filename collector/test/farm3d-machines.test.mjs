@@ -14,8 +14,8 @@ import { PAINT, paintClass, repaint } from '../../web/worlds/farm3d/coats.js';
 import { MODELS } from '../../web/worlds/farm3d/models/index.js';
 import { makeModel } from '../../web/worlds/farm3d/model.js';
 import { IDLE_FALLOW_MS, createSeasons, rowsOf } from '../../web/worlds/farm3d/season.js';
-import { BIG_EDIT, HOLD_S, TOWN_END, VEHICLE, createMachines, machineFor, machinesDialog, passesFor, routeBetween } from '../../web/worlds/farm3d/machines.js';
-import { BED, CORR, GRID_CONFIG, LANE, SHED_DOOR, STALL, W } from '../../web/worlds/farm3d/layout.js';
+import { BIG_EDIT, HOLD_S, TOWN_END, VEHICLE, createMachines, crewActions, isAhead, machineFor, machinesDialog, passesFor, routeBetween, STALL_SPOT } from '../../web/worlds/farm3d/machines.js';
+import { BED, CART_RANK, CORR, GRID_CONFIG, LANE, SHED_DOOR, STALL, W } from '../../web/worlds/farm3d/layout.js';
 import { HOME, NOW as TOUR_NOW, agent, kit, repo, snap, toScene, touch } from './farm3d-vm.mjs';
 
 // A 2 × 1 RGBA PNG made here: red, then blue.
@@ -197,7 +197,7 @@ test("a field's season: ploughed when an agent starts, sown on its first write, 
   assert.equal(s.lookOf(key).stage, 'fallow');
   s.update(fm({ ...READ, contextTokens: 10_000 }), at(1e3));
   assert.equal(s.lookOf(key).stage, 'ploughed');
-  assert.equal(s.lookOf(key).ploughedRows, 6, 'ploughed (no plough passing: all its rows furrowed)');
+  assert.equal(s.lookOf(key).ploughed, 0, 'no plough has passed (the season alone furrows it)');
   s.update(fm({ ...EDIT, contextTokens: 10_000 }), at(2e3));
   assert.equal(s.lookOf(key).stage, 'sown');
   s.update(fm({ ...EDIT, contextTokens: 120_000 }), at(3e3));
@@ -226,7 +226,7 @@ test("a field's season: ploughed when an agent starts, sown on its first write, 
 test("a field's season: a field already growing when the page opens grows on (no ploughing replayed); a field a new agent opens later is ploughed first", () => {
   const s = createSeasons();
   s.update(fm({ ...EDIT, contextTokens: 120_000 }), TOUR_NOW);
-  assert.deepEqual([s.lookOf(shop).stage, s.lookOf(shop).ploughedRows], ['growing', 6]);
+  assert.deepEqual([s.lookOf(shop).stage, s.lookOf(shop).ploughed], ['growing', 0]);
   const two = (blogOver) => M3.farmModel(toScene(snap([agent('a1', { ...EDIT, contextTokens: 120_000, touching: [touch(shop)] }), agent('a2', { cwd: `${HOME}/blog`, touching: [touch(`${HOME}/blog`)], ...blogOver })], [repo('shop'), repo('blog')])));
   s.update(two({ ...READ, contextTokens: 120_000 }), TOUR_NOW + 1e3);
   assert.equal(s.lookOf(`${HOME}/blog`).stage, 'ploughed');
@@ -241,15 +241,22 @@ test("a field's season: a compaction cuts it even if no combine comes (Motion of
   assert.equal(s.lookOf(shop).stage, 'sown');
 });
 
-test("a field's season: a plough passing furrows it row by row (the rest as it was), and its drill sows: six rows sow the field", () => {
+test("a field's season: a plough marks the rows it has passed, whichever they are and in whatever order; its drill sows the field once all six are turned; a harvest or 30 idle minutes clears them", () => {
   const s = createSeasons();
   s.update(fm({}, 'idle'), TOUR_NOW);
   s.update(fm({ ...READ, contextTokens: 10_000 }), TOUR_NOW + 1e3);
-  s.plough(shop, 4);
-  assert.deepEqual([s.lookOf(shop).stage, s.lookOf(shop).ploughedRows], ['ploughed', 4]);
-  s.plough(shop, 6);
+  assert.equal(s.plough(shop, [5, 4]), true, 'changed');
+  assert.equal(s.plough(shop, [4]), false, 'the same again: no change');
+  assert.deepEqual([s.lookOf(shop).stage, s.lookOf(shop).ploughed], ['ploughed', 0b110000]);
+  s.plough(shop, [0, 1, 2, 3]);
   s.update(fm({ ...READ, contextTokens: 10_000 }), TOUR_NOW + 2e3);
   assert.equal(s.lookOf(shop).stage, 'sown');
+  s.update(fm({ ...EDIT, contextTokens: 195_000 }), TOUR_NOW + 3e3);
+  s.update(fm({ ...EDIT, contextTokens: 10_000, compactions: 1 }), TOUR_NOW + 4e3);
+  assert.equal(s.lookOf(shop).ploughed, 0, 'a harvest: a new season');
+  s.plough(shop, [2]);
+  s.update(fm({}, 'idle'), TOUR_NOW + 5e3 + IDLE_FALLOW_MS);
+  assert.equal(s.lookOf(shop).ploughed, 0, 'fallow');
 });
 
 test("a field's season: a field gone from the farm is forgotten; an unknown field has no look", () => {
@@ -257,12 +264,12 @@ test("a field's season: a field gone from the farm is forgotten; an unknown fiel
   s.update(fm({ ...EDIT }), TOUR_NOW);
   s.update(M3.farmModel(toScene(snap([], []))), TOUR_NOW + 1e3);
   assert.equal(s.lookOf(shop), null);
-  s.cut(shop, 6); s.plough(shop, 6); // nothing to do: no throw
+  s.cut(shop, 6); s.plough(shop, [0, 1]); // nothing to do: no throw
 });
 
 test("a bed's rows for its season: furrows, seeds, the crop, stubble behind the combine, the plough's furrows and seeds behind it, weeds, dry; wet while sprayed", () => {
   const bed = (kind, stage = 0) => ({ crop: 'corn', plot: { kind, stage } });
-  const look = (stage, over = {}) => ({ stage, growth: 3, sprayed: false, cutRows: 0, ploughedRows: 6, ...over });
+  const look = (stage, over = {}) => ({ stage, growth: 3, sprayed: false, cutRows: 0, ploughed: 0, ...over });
   const kinds = rows => rows.map(r => `${r.furrow ? 'F' : '-'}${r.plants ?? '.'}${r.plants === 'crop' ? r.stage : ''}${r.wet ? 'w' : ''}`).join(' ');
   assert.equal(kinds(rowsOf(bed('grow', 2), null)), '-crop2 -crop2 -crop2 -crop2 -crop2 -crop2', 'no look: the plot, as before');
   assert.equal(kinds(rowsOf(bed('bare'), null)), '-weeds -weeds -weeds -weeds -weeds -weeds');
@@ -271,7 +278,7 @@ test("a bed's rows for its season: furrows, seeds, the crop, stubble behind the 
   assert.equal(kinds(rowsOf(bed('grow'), look('sown'))), 'Fseeds Fseeds Fseeds Fseeds Fseeds Fseeds');
   assert.equal(kinds(rowsOf(bed('grow', 3), look('growing'))), '-crop3 -crop3 -crop3 -crop3 -crop3 -crop3');
   assert.equal(kinds(rowsOf(bed('grow', 3), look('growing', { sprayed: true }))), '-crop3w -crop3w -crop3w -crop3w -crop3w -crop3w');
-  assert.equal(kinds(rowsOf(bed('grow', 3), look('growing', { ploughedRows: 2 }))), 'Fseeds Fseeds -crop3 -crop3 -crop3 -crop3', 'the plough passing');
+  assert.equal(kinds(rowsOf(bed('grow', 3), look('growing', { ploughed: 0b100100 }))), '-crop3 -crop3 Fcrop3 -crop3 -crop3 Fcrop3', 'the plough passing: turned soil under the crop on the rows it passed, no crop lost'); 
   assert.equal(kinds(rowsOf(bed('grow', 0), look('cut', { growth: 5, cutRows: 4 }))), '-stubble -stubble -stubble -stubble -crop5 -crop5', 'the combine passing');
   assert.equal(kinds(rowsOf(bed('dry'), look('dry'))), '-dry -dry -dry -dry -dry -dry');
 });
@@ -466,7 +473,7 @@ test('Motion off: each machine stands at its work spot with its farmer in the se
   r.want([worker('a', 'test', beds[0].key), worker('b', 'push', beds[1].key), worker('c', 'deploy', beds[2].key)]);
   const items = r.run(0.2), by = new Map(items.map(i => [i.id, i]));
   assert.deepEqual([by.get('a').x, by.get('a').y], passesFor(beds[0], 1, 0)[0]);
-  assert.deepEqual([by.get('b').x, by.get('b').y], [STALL.x + 14, LANE]);
+  assert.deepEqual([by.get('b').x, by.get('b').y], STALL_SPOT);
   assert.deepEqual([by.get('c').x, by.get('c').y], TOWN_END);
   assert.ok(items.every(i => i.driver && !i.moving && i.phase === 'work'));
   const again = r.run(2);
@@ -499,17 +506,14 @@ test("the shed's dialog: who is out on which machine, doing what, in which field
   assert.match(empty.html, /driving itself home|on its way home/, 'a machine its farmer left');
 });
 
-test("a field's season: looks() gives every field's look; a plough that stops partway leaves the field as it was (no sowing)", () => {
+test("a field's season: looks() gives every field's look; a plough that stops partway leaves its rows turned, the field not sown", () => {
   const s = createSeasons();
   s.update(fm({}, 'idle'), TOUR_NOW);
   s.update(fm({ ...READ, contextTokens: 10_000 }), TOUR_NOW + 1e3);
   assert.deepEqual([...s.looks().keys()], [shop]);
-  assert.equal(s.plough(shop, 3), true, 'changed');
-  assert.equal(s.plough(shop, 3), false, 'the same again: no change');
-  s.ploughStop(shop);
-  assert.deepEqual([s.lookOf(shop).stage, s.lookOf(shop).ploughedRows], ['ploughed', 6]);
+  s.plough(shop, [0, 1, 2]);
   s.update(fm({ ...READ, contextTokens: 10_000 }), TOUR_NOW + 2e3);
-  assert.equal(s.lookOf(shop).stage, 'ploughed', 'not sown');
+  assert.deepEqual([s.lookOf(shop).stage, s.lookOf(shop).ploughed], ['ploughed', 0b111], 'not sown');
   assert.equal(s.cut(shop, 2), false, 'no harvest under way: nothing to cut');
 });
 
@@ -551,4 +555,145 @@ test('the hold runs out with time, not only when a scene comes: no new scene aft
   assert.notEqual(it.phase, 'home', 'held');
   [it] = r.run(3);
   assert.equal(it.phase, 'home', 'the hold over');
+});
+
+/* ---------- the final review's fixes ---------- */
+const runUntil = (r, list, done, s = 120, comp) => { let items = []; for (let n = 0; n < s * 2; n++) { r.want(list, comp); items = r.run(0.5); if (done(items)) break; } return items; };
+
+test("a tractor job swapped for another in the same field stays in its field: the implement changes where it is, no trip to the lane and back", () => {
+  const b = bedAt(1, 2), r = rig({ beds: [b] });
+  r.boarded.add('a');
+  let [it] = runUntil(r, [worker('a', 'test', b.key)], i => i[0]?.phase === 'work');
+  assert.equal(it.phase, 'work');
+  let lowest = Infinity;
+  for (let n = 0; n < 40; n++) { // 20 s of edit and test, swapping every 4 s
+    r.want([worker('a', n % 16 < 8 ? 'edit' : 'test', b.key, { writes: 9 })]);
+    [it] = r.run(0.5);
+    lowest = Math.min(lowest, it.y);
+  }
+  assert.ok(lowest > b.y0 - 14, `it stayed by its field (up to y ${lowest.toFixed(0)}; the lane is ${LANE}, the field from ${b.y0})`);
+  assert.equal(it.phase, 'work');
+  // a way between two places below the lane by the same walkway never climbs to the lane
+  const way = routeBetween([b.x0 - 12, b.y0 + 6], [b.x0 - 12, b.y0 - 60]);
+  assert.ok(way.every(([, y]) => y > LANE + 20), JSON.stringify(way));
+});
+
+test("the plough reports the rows it has passed, the ones it is on left out till it reaches their end; two ploughs in a field each their own rows", () => {
+  const b = bedAt(1), r = rig({ beds: [b] });
+  r.boarded.add('a');
+  const rowY = k => b.y0 + 6 + k * 12;
+  let it, first = [];
+  for (let n = 0; n < 400; n++) {
+    r.want([worker('a', 'edit', b.key, { writes: 9 })]);
+    [it] = r.run(0.25);
+    if (it.phase !== 'work') continue;
+    if (it.rowsPassed.length === 6) break;
+    first = it.rowsPassed;
+    assert.ok(!it.rowsPassed.includes(it.passRow) || Math.abs(it.x - b.cx) > BED.w / 2, `row ${it.passRow} reported before its end`);
+  }
+  assert.deepEqual([...first].sort(), [0, 1, 2, 3, 4].slice(0, first.length), 'in the order it ploughs them');
+  assert.equal(it.rowsPassed.length, 6);
+  const two = rig({ beds: [b] });
+  two.boarded.add('a'); two.boarded.add('b');
+  let items = [];
+  for (let n = 0; n < 600; n++) { two.want([worker('a', 'edit', b.key, { writes: 9 }), worker('b', 'edit', b.key, { writes: 9 })]); items = two.run(0.25); if (items.length === 2 && items.every(i => i.rowsPassed.length === 3)) break; }
+  const [ra, rb] = ['a', 'b'].map(id => items.find(i => i.id === id).rowsPassed.sort());
+  assert.deepEqual([ra, rb], [[0, 2, 4], [1, 3, 5]]);
+  assert.ok(rowY(5) < b.y0 + BED.d);
+});
+
+test("machines at rest never stand on one another: two at the stall, two unloading in one field, a sprayer and an install in one field, two trucks in town; the stall's spot clear of the walkways", () => {
+  const beds = [bedAt(0), bedAt(1)];
+  const apart = (p, q, d = 30) => Math.hypot(p.x - q.x, p.y - q.y) >= d;
+  // Motion on: two pushes from two fields wait at the stall; two installs in one field unload
+  const r = rig({ beds });
+  for (const id of ['a', 'b', 'c', 'd']) r.boarded.add(id);
+  const crew = [worker('a', 'push', beds[0].key), worker('b', 'push', beds[1].key), worker('c', 'install', beds[1].key), worker('d', 'install', beds[1].key)];
+  let items = runUntil(r, crew, i => i.length === 4 && i.every(x => x.phase === 'work' && !x.moving) && i.filter(x => x.job === 'crates').every(x => !x.load && Math.abs(x.y - LANE) < 4), 200);
+  const by = id => items.find(i => i.id === id);
+  assert.ok(apart(by('a'), by('b')), `the stall: ${JSON.stringify([by('a'), by('b')].map(i => [i.x, i.y]))}`);
+  assert.ok(apart(by('c'), by('d'), 10), `unloading: ${JSON.stringify([by('c'), by('d')].map(i => [i.x, i.y]))}`);
+  for (const c of CORR) assert.ok(Math.abs(by('a').x - c) > 30 && Math.abs(by('b').x - c) > 30, `the stall's spot off the walkway at ${c}`);
+  // Motion off
+  const s = rig({ beds, still: true });
+  s.want([worker('e', 'test', beds[1].key), worker('f', 'install', beds[1].key), worker('g', 'deploy', beds[0].key), worker('h', 'deploy', beds[1].key)]);
+  items = s.run(0.2);
+  const at = id => items.find(i => i.id === id);
+  assert.ok(apart(at('e'), at('f'), 10), 'a sprayer and an install in one field');
+  assert.ok(apart(at('g'), at('h')), 'two trucks in town');
+  for (const id of ['g', 'h']) assert.ok(CART_RANK.every(([x, y]) => Math.hypot(at(id).x - x, at(id).y - y) > 20), 'not on the carts\' rank');
+});
+
+test("what is ahead: within 3 m along a machine's way and close to its line; one on the other half of the lane is not", () => {
+  assert.equal(isAhead(100, 107, 0, 120, 107), true);
+  assert.equal(isAhead(100, 107, 0, 120, 113), false, 'the other half of the lane (6 px aside)');
+  assert.equal(isAhead(100, 107, 0, 90, 107), false, 'behind');
+  assert.equal(isAhead(100, 107, 0, 130, 107), false, 'beyond 3 m');
+  assert.equal(isAhead(100, 107, Math.PI / 2, 100, 120), true, 'down a walkway');
+});
+
+test('seven farmers at work in one field with machines: none throws, each has a row to work (they share when there are more than six)', () => {
+  const b = bedAt(1), crew = Array.from({ length: 8 }, (_, k) => worker(`w${k}`, 'test', b.key));
+  for (const still of [false, true]) {
+    const r = rig({ beds: [b], still });
+    for (const f of crew) r.boarded.add(f.id);
+    const items = runUntil(r, crew, i => i.length === 8 && i.every(x => x.phase === 'work'), 120);
+    assert.equal(items.length, 8, `still ${still}`);
+    for (const it of items) assert.ok(Number.isFinite(it.x) && Number.isFinite(it.y), `${it.id} at ${it.x},${it.y}`);
+  }
+});
+
+test("boarding: a farmer sent to the shed climbs in when it gets there; one whose walk was cut short (a play ended it) is sent again; with Motion off all climb in at once; one out of its machine is let go", () => {
+  const items = [{ id: 'a', phase: 'walking', driver: false }, { id: 'b', phase: 'walking', driver: false }, { id: 'c', phase: 'walking', driver: false }, { id: 'd', phase: 'parked', driver: true }, { id: 'e', phase: 'home', driver: false }];
+  const act = crewActions(items, { boarded: new Set(['d', 'e']), sent: new Set(['a', 'b']), onErrand: id => id === 'a', arrived: id => id === 'a', still: false });
+  assert.deepEqual(act.board, ['a']);
+  assert.deepEqual(act.send.sort(), ['b', 'c'], 'b lost its errand: sent again');
+  assert.deepEqual(act.release.sort(), ['d', 'e']);
+  const still = crewActions([{ id: 'x', phase: 'work', driver: true }], { boarded: new Set(), sent: new Set(), onErrand: () => false, arrived: () => false, still: true });
+  assert.deepEqual([still.board, still.send], [['x'], []]);
+  const gone = crewActions([], { boarded: new Set(), sent: new Set(['z']), onErrand: () => true, arrived: () => false, still: false });
+  assert.deepEqual(gone.forget, ['z'], 'not wanted before it got there');
+});
+
+test("Motion off: a machine its farmer had left, wanted again, is its farmer's again (no driverless machine at work when Motion comes back)", () => {
+  const b = bedAt(1), r = rig({ beds: [b] });
+  r.boarded.add('a');
+  r.want([worker('a', 'test', b.key)]);
+  r.run(2);
+  r.want([worker('a', 'test', b.key, { state: 'waiting' })]); // called back: it gets out
+  let [it] = r.run(0.2);
+  assert.deepEqual([it.phase, it.driver], ['home', false]);
+  r.boarded.delete('a');
+  // the same machines, now with Motion off
+  const ctx = { farmers: new Map([['a', { x: 0, y: 0, state: 'working', field: b.key }]]), beds: new Map([[b.key, b]]), boarded: () => false, blocked: () => false, still: true, now: 100 };
+  r.m.want({ farmers: [worker('a', 'test', b.key)] }, 100, new Set());
+  [it] = r.m.tick(0.1, ctx);
+  assert.equal(it.driver, true, 'with Motion off its farmer is in the seat');
+  [it] = r.m.tick(0.1, { ...ctx, still: false, boarded: () => true });
+  assert.equal(it.driver, true, 'Motion back on: still its farmer driving');
+});
+
+test("a vehicle's model that fails to load is told once, and a stand-in tractor drives instead; the shed's stock is the loader and the combine", async () => {
+  const { makeMachines, MODEL_OF } = await import('../../web/worlds/farm3d/build/machines.js');
+  const { makeShed } = await import('../../web/worlds/farm3d/build/shed.js');
+  const { makeShapes } = await import('../../web/worlds/farm3d/build/shapes.js');
+  const mats = makeMaterials(THREE), S = makeShapes(THREE, mats), told = [];
+  const mm = makeMachines(THREE, mats, S, { gltf: () => Promise.reject(new Error('no model')), onError: (err, kind) => told.push(kind) });
+  mm.setGround(400, () => 0);
+  const item = { id: 'a', vehicle: 'tractor', implement: 'sprayer', job: 'sprayer', x: 100, y: 200, heading: 0, moving: true, phase: 'work', driver: true, load: false };
+  mm.tick([item], 0.1, false);
+  await new Promise(res => setTimeout(res, 0));
+  mm.tick([item, { ...item, id: 'b' }], 0.1, false);
+  assert.deepEqual(told, ['tractor'], 'told once');
+  assert.equal(mm.count(), 2, 'they drive on');
+  assert.equal(MODEL_OF.loader, 'tractorloader');
+  const asked = [];
+  makeShed(THREE, mats, S, { stock: v => { asked.push(v); return { root: new THREE.Group() }; }, restock: () => false });
+  assert.deepEqual(asked.sort(), ['combine', 'loader']);
+});
+
+test('the camera zooms one step closer than before, for the bigger farm', async () => {
+  const { ZOOMS, nextZoom } = await import('../../web/worlds/farm3d/camera.js');
+  assert.equal(ZOOMS.at(-1), 8);
+  assert.equal(nextZoom(6, 1), 8);
 });

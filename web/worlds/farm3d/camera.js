@@ -8,7 +8,7 @@ const DEG = Math.PI / 180;
 export const FOV = 30;
 export const DEFAULT_VIEW = { yaw: 0, pitch: 55 * DEG };
 export const PITCH_MIN = 30 * DEG, PITCH_MAX = 80 * DEG, STEP = 15 * DEG;
-export const ZOOMS = [0.5, 0.75, 1, 1.25, 1.5, 2, 2.5, 3, 4, 5, 6]; // past the 2D farm's 3: close enough to see one farmer
+export const ZOOMS = [0.5, 0.75, 1, 1.25, 1.5, 2, 2.5, 3, 4, 5, 6, 8]; // past the 2D farm's 3: close enough to see one farmer (8 on the bigger farm)
 export const GROUND_HALF = 2000; // how far the ground runs out from the farm, in metres: past every corner of the window
 const MIN_ZOOM = ZOOMS[0], MAX_ZOOM = ZOOMS.at(-1);
 
