@@ -17,6 +17,7 @@ import { makeShapes } from './build/shapes.js';
 import { makeBuildings } from './build/buildings.js';
 import { makeCrops } from './build/crops.js';
 import { makeModels } from './build/models.js';
+import { createSeasons } from './season.js';
 import { makeWeather } from './build/weather.js';
 import { makeBeds } from './build/beds.js';
 import { makeFigures } from './build/figurine.js';
@@ -160,6 +161,8 @@ export function start({ el, opts, prefs }) {
   let animalsOn = prefs.get('animals') !== 'off', bubblesOn = prefs.get('bubbles') !== 'off';
   animals.setOn(animalsOn);
   let keep = { beds: (() => { try { const b = JSON.parse(prefs.get('beds') ?? '{}'); return b && typeof b === 'object' && !Array.isArray(b) ? b : {}; } catch { return {}; } })(), packed: false };
+  const seasons = createSeasons();
+  let looks = new Map(); // each field's season (season.js), as of the last scene
   let model = null, groundKey = '', lampsKey = '', dirty = true, saveTimer = 0, firstScene = true, selected = null;
 
   // The view (its heading and tilt in degrees, and the zoom) is kept, a moment after it stops changing, so a drag
@@ -340,7 +343,7 @@ export function start({ el, opts, prefs }) {
     if (!model) return;
     rebuildGround();
     rebuildBuildings();
-    beds.sync(model.beds, model.ground, shownSeason());
+    beds.sync(model.beds, model.ground, shownSeason(), looks);
   }
 
   function onScene(s) {
@@ -351,6 +354,7 @@ export function start({ el, opts, prefs }) {
     const bedMap = JSON.stringify(model.keep.beds);
     if (bedMap !== JSON.stringify(keep.beds)) prefs.set('beds', bedMap);
     keep = model.keep;
+    looks = piece('seasons', () => seasons.update(model, Date.now())) ?? looks;
     rebuildAll();
     farmers.sync(shownModel(), { instant: firstScene || opts.still });
     piece('hens', () => {
@@ -559,6 +563,8 @@ export function start({ el, opts, prefs }) {
     plants: () => nature.count(),
     /** The crops shown, by crop and what draws them: { corn: { model: 72, code: 0 } }. */
     crops: () => crops.stats(),
+    /** Each field's season (season.js), by its key: { stage, growth, sprayed, cutRows, ploughedRows }. */
+    seasons: () => Object.fromEntries(looks),
     /** A farmer as drawn: its character, the clip it plays, its shirt's colour (null while the figurine stands in). */
     farmer: id => farmers.info(id),
     /** The farmers drawn, by id (stale ones are scarecrows). */

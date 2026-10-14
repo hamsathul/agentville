@@ -2,14 +2,18 @@
 // for a worktree, under a greenhouse), its soil and furrows, its crops at their stage (build/crops.js), weeds when it
 // lies fallow and dry stalks when its farmers are all stale; above it the piles (hay for uncommitted files, crates for
 // unpushed commits, a mailbox when it is behind), a pennant for a branch other than main, a rope with orange flags for
-// a collision, and its weather. An empty bed in the grid is fallow ground: a patch of darker grass.
+// a collision, and its weather. Its season (season.js: ploughed, sown, growing, sprayed, ripe, cut, fallow, dry) says
+// what each row shows (rowsOf): furrowed dark soil, seeds, the crop, stubble, weeds. An empty bed in the grid is fallow
+// ground: a patch of darker grass.
 import { BED, PX, SPOT } from '../layout.js';
+import { rowsOf } from '../season.js';
 import { disposeTree, noise, seasonPalette } from './util.js';
 
 export const SOIL_Y = 0.12; // the soil's top: a field at ground level, a low edging round it (machines drive on)
 const m = v => v / PX;
 /** A bed's plants: 6 rows of 12, 1.5 m apart, in its furrows. */
 export const ROWS = 6, PER_ROW = 12;
+const PLOUGHED = '#5e3d22'; // turned soil
 
 export function makeBeds(THREE, mats, S, weather, crops) {
   const group = new THREE.Group();
@@ -18,13 +22,18 @@ export function makeBeds(THREE, mats, S, weather, crops) {
 
   const shade = (hex, k) => `#${[1, 3, 5].map(i => Math.min(255, Math.round(parseInt(hex.slice(i, i + 2), 16) * k)).toString(16).padStart(2, '0')).join('')}`;
 
-  function buildBed(b, H, winter) {
+  function buildBed(b, H, winter, furrows) {
     const g = new THREE.Group(), P = (x, y) => S.at(x, y, H), fx = [];
     const c = P(b.x0 + BED.w / 2, b.y0 + BED.d / 2), w = m(BED.w), d = m(BED.d), frame = b.worktree ? '#9aa4ad' : b.fence ?? '#c98d4f', soil = b.soil ?? '#7a5230';
     S.box(w + 0.4, 0.08, d + 0.4, frame, c.x, 0, c.z, g); // the edging, in the repo's fence colour
     S.box(w, 0.06, d, soil, c.x, SOIL_Y - 0.06, c.z, g);
-    for (let k = 0; k < ROWS; k++) { // the furrows: a lit ridge under each row of plants
-      const ridge = S.capsule(0.08, w - 0.9, shade(soil, 1.15), c.x, SOIL_Y + 0.02, P(0, b.y0 + 6 + k * 12).z, g);
+    for (let k = 0; k < ROWS; k++) { // the furrows: a lit ridge under each row of plants; a ploughed row dark, turned soil
+      const z = P(0, b.y0 + 6 + k * 12).z;
+      if (furrows[k]) {
+        S.box(w - 0.5, 0.03, m(12) - 0.15, PLOUGHED, c.x, SOIL_Y - 0.015, z, g).castShadow = false;
+        for (const dz of [-0.4, 0.4]) { const r = S.capsule(0.07, w - 0.9, shade(PLOUGHED, 1.25), c.x, SOIL_Y + 0.02, z + dz, g); r.rotation.z = Math.PI / 2; r.scale.z = 0.7; }
+      }
+      const ridge = S.capsule(0.08, w - 0.9, shade(furrows[k] ? PLOUGHED : soil, 1.15), c.x, SOIL_Y + 0.02, z, g);
       ridge.rotation.z = Math.PI / 2; ridge.scale.z = 0.7;
     }
     if (winter && b.plot.kind !== 'grow') S.box(w - 0.45, 0.04, d - 0.45, '#f4f8fb', c.x, SOIL_Y + 0.02, c.z, g); // frost on bare soil
@@ -122,11 +131,16 @@ export function makeBeds(THREE, mats, S, weather, crops) {
     return { obj: g, fx: [], flag: null };
   }
 
-  /** The beds and the empty slots for this ground; the plants to the crop instancer. */
-  function sync(beds, ground, season) {
+  /** The beds and the empty slots for this ground, each bed's rows as its season's look has them (season.js; the
+   *  plot's without one); the plants to the crop instancer. */
+  function sync(beds, ground, season, looks = new Map()) {
     const H = ground.H, winter = Boolean(seasonPalette(season).snow), keep = new Set(), plants = [];
+    const rows = new Map(beds.map(b => [b.key, rowsOf(b, looks.get(b.key) ?? null)]));
     const want = [
-      ...beds.map(b => ({ key: `bed:${b.key}`, sig: JSON.stringify([H, b.cx, b.rowTop, b.x0, b.y0, b.fence, b.soil, b.worktree, b.pennant, b.collision, b.plot.kind, b.piles, b.weather, b.pumps, winter]), make: () => buildBed(b, H, winter) })),
+      ...beds.map(b => {
+        const furrows = rows.get(b.key).map(r => r.furrow);
+        return { key: `bed:${b.key}`, sig: JSON.stringify([H, b.cx, b.rowTop, b.x0, b.y0, b.fence, b.soil, b.worktree, b.pennant, b.collision, b.plot.kind, b.piles, b.weather, b.pumps, winter, furrows]), make: () => buildBed(b, H, winter, furrows) };
+      }),
       ...ground.empty.map(s => ({ key: `fallow:${s.i}`, sig: JSON.stringify([H, s.cx, s.x0, s.y0, season]), make: () => buildFallow(s, H, season) })),
     ];
     for (const { key, sig, make } of want) {
@@ -138,10 +152,11 @@ export function makeBeds(THREE, mats, S, weather, crops) {
     }
     for (const [key, v] of shown) if (!keep.has(key)) { disposeTree(v.obj); shown.delete(key); }
     for (const b of beds) for (let k = 0; k < ROWS; k++) for (let i = 0; i < PER_ROW; i++) {
-      const p = S.at(b.x0 + 6 + i * 12, b.y0 + 6 + k * 12, H), seed = (i * 7 + k * 3) % 5, base = { x: p.x, z: p.z, y: SOIL_Y, busy: b.plot.busy, seed: (i * 13 + k * 7) * 0.37 };
-      if (b.plot.kind === 'grow') plants.push({ ...base, crop: b.crop, stage: Math.max(0, b.plot.stage - (b.plot.stage > 0 && seed === 0 ? 1 : 0)) }); // a few run a stage behind
-      else if (b.plot.kind === 'dry') plants.push({ ...base, crop: 'dry', stage: 0 });
-      else if ((i * 5 + k * 3) % 7 === 0) plants.push({ ...base, crop: 'weeds', stage: 0 });
+      const r = rows.get(b.key)[k], p = S.at(b.x0 + 6 + i * 12, b.y0 + 6 + k * 12, H), seed = (i * 7 + k * 3) % 5, base = { x: p.x, z: p.z, y: SOIL_Y, busy: b.plot.busy, seed: (i * 13 + k * 7) * 0.37, wet: r.wet };
+      if (r.plants === 'crop') plants.push({ ...base, crop: b.crop, stage: Math.max(0, r.stage - (r.stage > 0 && seed === 0 ? 1 : 0)) }); // a few run a stage behind
+      else if (r.plants === 'seeds') plants.push({ ...base, crop: b.crop, stage: 0 });
+      else if (r.plants === 'stubble' || r.plants === 'dry') plants.push({ ...base, crop: r.plants, stage: 0 });
+      else if (r.plants === 'weeds' && (i * 5 + k * 3) % 7 === 0) plants.push({ ...base, crop: 'weeds', stage: 0 });
     }
     crops.sync(plants);
   }

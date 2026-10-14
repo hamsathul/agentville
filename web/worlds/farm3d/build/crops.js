@@ -87,8 +87,9 @@ export function makeCrops(THREE, mats, { load, onLoad = () => {} } = {}) {
   /** The parts of one plant of a crop at a stage, code-built. */
   function template(crop, stage) {
     if (crop === 'weeds') return [blade(0.22, '#4f7f2f', 0.4, 0), blade(0.18, '#4f7f2f', 0.5, 2.1), blade(0.2, '#5d8f3a', 0.45, 4.2)];
+    if (crop === 'stubble') return [stem(0.18, '#c9a46a', 0.02, 0.15), stem(0.14, '#c9a46a', 0.02, -0.25, 0.06), stem(0.16, '#b8925a', 0.02, 0.1, -0.06)]; // behind the combine
     if (crop === 'dry') return [stem(0.3, '#9c7a4a', 0.02, 0.3), stem(0.22, '#9c7a4a', 0.02, -0.4, 0.05), ball(0.03, '#b5925a', 0.1, 0.29, 0)];
-    if (stage <= 0) return [ball(0.1, '#5e3d22', 0, 0, 0, [1.4, 0.5, 1.2], 'lump'), ball(0.035, SEED_COLOR[crop] ?? '#d9b26a', 0, 0.05, 0)];
+    if (stage <= 0) return [ball(0.14, '#8a6040', 0, 0, 0, [1.4, 0.5, 1.2], 'lump'), ball(0.06, SEED_COLOR[crop] ?? '#d9b26a', -0.06, 0.06, 0), ball(0.05, SEED_COLOR[crop] ?? '#d9b26a', 0.07, 0.05, 0.03)]; // a mound, its seeds showing
     if (stage === 1) {
       if (crop === 'wheat' || crop === 'corn') return [blade(3 * U, GL, 0.15), blade(2 * U, GP, 0.4, 2)];
       if (crop === 'carrot') return [blade(2.5 * U, GL, 0.1), blade(2 * U, GP, 0.6, 1), blade(2 * U, GP, 0.6, 4)];
@@ -155,26 +156,28 @@ export function makeCrops(THREE, mats, { load, onLoad = () => {} } = {}) {
   }
 
   const templates = new Map(); // `${crop}|${stage}` → { parts, source: 'model' | 'code' }
-  const meshes = new Map(); // `${crop}|${stage}|${i}` → InstancedMesh
+  const meshes = new Map(); // `${crop}|${stage}|${wet}|${i}` → InstancedMesh (wet: 'w' while sprayed, else '')
+  const wetColor = hex => `#${[1, 3, 5].map(i => Math.round(parseInt(hex.slice(i, i + 2), 16) * 0.78).toString(16).padStart(2, '0')).join('')}`;
   let plants = [], byKey = new Map();
   const plantM = new THREE.Matrix4(), out = new THREE.Matrix4();
   /** The plants to show now: [{ crop, stage, x, z, y, busy, seed }]. */
   function sync(list) {
     plants = list;
     byKey = new Map();
-    for (const p of list) { const k = `${p.crop}|${p.stage}`; if (!byKey.has(k)) byKey.set(k, []); byKey.get(k).push(p); }
-    for (const [k, mesh] of meshes) if (!byKey.has(k.split('|').slice(0, 2).join('|'))) mesh.count = 0;
+    for (const p of list) { const k = `${p.crop}|${p.stage}|${p.wet ? 'w' : ''}`; if (!byKey.has(k)) byKey.set(k, []); byKey.get(k).push(p); }
+    for (const [k, mesh] of meshes) if (!byKey.has(k.split('|').slice(0, 3).join('|'))) mesh.count = 0;
     for (const [k, list2] of byKey) {
-      if (!templates.has(k)) {
-        const [crop, stage] = k.split('|'), model = fromModel(crop, Number(stage));
-        templates.set(k, model ? { parts: model, source: 'model' } : { parts: template(crop, Number(stage)), source: 'code' });
+      const [crop, stage, wet] = k.split('|'), tk = `${crop}|${stage}`;
+      if (!templates.has(tk)) {
+        const model = fromModel(crop, Number(stage));
+        templates.set(tk, model ? { parts: model, source: 'model' } : { parts: template(crop, Number(stage)), source: 'code' });
       }
-      templates.get(k).parts.forEach((pt, i) => {
+      templates.get(tk).parts.forEach((pt, i) => {
         const mk = `${k}|${i}`;
         let mesh = meshes.get(mk);
         if (!mesh || mesh.instanceMatrix.count < list2.length) {
           if (mesh) { group.remove(mesh); mesh.dispose(); }
-          mesh = new THREE.InstancedMesh(geos[pt.geo], mats.std(pt.color), Math.max(16, list2.length));
+          mesh = new THREE.InstancedMesh(geos[pt.geo], wet ? mats.std(wetColor(pt.color), { roughness: 0.3 }) : mats.std(pt.color), Math.max(16, list2.length)); // sprayed: wet, darker and glossy
           mesh.castShadow = true; mesh.receiveShadow = true;
           mesh.frustumCulled = false; // the plants are spread over the whole farm, nearly always in view
           mesh.userData.list = null;
@@ -207,7 +210,7 @@ export function makeCrops(THREE, mats, { load, onLoad = () => {} } = {}) {
   function stats() {
     const out = {};
     for (const [k, list] of byKey) {
-      const crop = k.split('|')[0], t = templates.get(k);
+      const crop = k.split('|')[0], t = templates.get(k.split('|').slice(0, 2).join('|'));
       out[crop] ??= { code: 0, model: 0 };
       out[crop][t.source] += list.length;
     }

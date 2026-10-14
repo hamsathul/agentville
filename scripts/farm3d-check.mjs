@@ -470,6 +470,23 @@ try {
       }
     }
 
+    // 5c. a field's season (season.js): a new field lies fallow, is ploughed when an agent starts work there, and sown
+    // at its first write
+    {
+      await open(chrome, 'everyone');
+      const before = chrome.errors.length, path = '/Users/you/code/meadowbrook';
+      const field = { path, name: 'meadowbrook', branch: 'main', dirty: 0, ahead: 0, behind: 0, lastDeploy: null };
+      const worker = (state, now) => ({ id: 'sow1', kind: 'interactive', name: 'sow1', cwd: path, state, stateReason: 'busy', stateSince: NOW, feed: [], children: [], touching: [{ path: `${path}/a.ts`, mode: 'read', lastAt: NOW, repo: path }], contextTokens: 10_000, now });
+      const stageAfter = async (state, now) => {
+        await chrome.js(`window.TrackerFarm.update(${JSON.stringify({ generatedAt: NOW, collisions: [], settings: { cpuAlertPct: 90 }, repos: [field], agents: [worker(state, now)] })})`);
+        await sleep(700);
+        return JSON.parse(await chrome.inFrame('/world/farm3d/', `JSON.stringify(window.__farm3d.seasons?.()[${JSON.stringify(path)}] ?? null)`))?.stage ?? null;
+      };
+      const seen = [await stageAfter('idle', null), await stageAfter('working', { tool: 'Read', step: 'read', summary: 'a.ts', startedAt: NOW }), await stageAfter('working', { tool: 'Edit', step: 'edit', summary: 'a.ts', startedAt: NOW })];
+      if (seen.join() !== 'fallow,ploughed,sown' || chrome.errors.length > before) bad(`seasons: ${seen.join(' → ')} (fallow → ploughed → sown)${chrome.errors.length > before ? `; script errors: ${oneLine(chrome.errors[before]).slice(0, 160)}` : ''}`);
+      else console.log(`  ✓ seasons: a new field ${seen.join(' → ')}`);
+    }
+
     // 6. the farmers as characters (build/character.js): once loaded, every farmer but a scarecrow is one, in its
     // agent's colour; one waiting on you waves
     {
