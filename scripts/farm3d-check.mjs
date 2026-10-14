@@ -510,6 +510,14 @@ try {
       await clickAt("window.__farm3d.buildingAt('barn2')");
       await sleep(300);
       const barn2 = await chrome.js("document.querySelector('#asked li')?.textContent ?? ''");
+      // a neighbour's farmer runs tests: its sprayer comes out of its own shed and works its field on its farm
+      const testing = { ...NB, agents: NB.agents.map(a => (a.id === 'n1' ? { ...a, now: { tool: 'Bash', step: 'test', summary: 'npm test', startedAt: NOW } } : a)) };
+      await chrome.js(`window.TrackerFarm.update(${JSON.stringify(testing)})`);
+      let sprayer = null, sprayCalls = 0;
+      for (const end = Date.now() + 40_000; Date.now() < end; await sleep(500)) {
+        sprayer = JSON.parse(await chrome.inFrame('/world/farm3d/', "JSON.stringify(window.__farm3d.machines().find(m => m.id === 'n1') ?? null)"));
+        if (sprayer?.phase === 'work') { sprayCalls = (await statsOf(chrome)).calls; break; }
+      }
       const why = [
         !s && 'no stats',
         s && s.drawn !== 7 && `${s?.drawn} farmers drawn, not 7`,
@@ -519,10 +527,12 @@ try {
         astray.length && `on the wrong farm: ${astray.join(', ')} (${JSON.stringify(homes)})`,
         gateText !== 'home' && `the gate's sign says "${gateText}", not "home"`,
         barn2 !== 'start a session on zeta' && `the neighbour's barn asked "${barn2}"`,
+        !(sprayer?.phase === 'work' && sprayer.field.endsWith('@n') && sprayer.x > 952) && `the neighbour's sprayer: ${JSON.stringify(sprayer && { phase: sprayer.phase, field: sprayer.field, x: Math.round(sprayer.x) })}`,
+        sprayCalls > 500 && `${sprayCalls} draw calls with the sprayer out (500 at most)`,
         chrome.errors.length > before && `script errors: ${oneLine(chrome.errors[before]).slice(0, 160)}`,
       ].filter(Boolean);
       if (why.length) bad(`the neighbour farm: ${why.join('; ')}`);
-      else console.log(`  ✓ the neighbour farm: both farms drawn (the land ${land.w} px across), its barn, farmhouse and shed in view, its sign "home", its barn starts a session on zeta, ${s.drawn} farmers each on its account's farm, ${s.calls} draw calls`);
+      else console.log(`  ✓ the neighbour farm: both farms drawn (the land ${land.w} px across), its barn, farmhouse and shed in view, its sign "home", its barn starts a session on zeta, its sprayer works its field (${sprayCalls} draw calls), ${s.drawn} farmers each on its account's farm, ${s.calls} draw calls`);
     }
 
     // 5. the plants: Quaternius's trees, bushes and rocks drawn once their models load (the ball trees stand in till

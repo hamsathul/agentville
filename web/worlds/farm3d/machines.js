@@ -3,7 +3,7 @@
 // step needs one walks to the machine shed, climbs in, drives the lane and the walkway to its field (or to the stall,
 // or off to town), works, and drives home again; with Motion off each stands at its work spot. Pure: no three.js, no
 // clock of its own. build/machines.js draws them; app.js sends the farmers to the shed and tells this who has boarded.
-import { BED, CORR, LANE, LANE_HALF, SHED_DOOR, STALL, W } from './layout.js';
+import { BED, CORR, CORR_OF, LANE, LANE_HALF, ROAD as TOWN_ROAD, SHED_DOOR, STALL, W, east } from './layout.js';
 
 export const HOLD_S = 20; // a machine stays out this long after its step ends, so it doesn't flicker
 export const BIG_EDIT = 5; // distinct files written in the last 5 minutes (scene `writes`) that make an edit a big one
@@ -30,7 +30,7 @@ export function machineFor(f) {
  *  points [x, y] on the 2D map, along its rows and U-turning 12 px outside its ends, from the walkway side (column 0's
  *  walkway is on its right, the others' on their left). */
 export function passesFor(bed, n = 1, k = 0) {
-  const fromRight = bed.cx < CORR[1], near = fromRight ? bed.x0 + BED.w + TURN : bed.x0 - TURN, far = fromRight ? bed.x0 - TURN : bed.x0 + BED.w + TURN;
+  const fromRight = bed.cx - (bed.ox ?? 0) < CORR[1], near = fromRight ? bed.x0 + BED.w + TURN : bed.x0 - TURN, far = fromRight ? bed.x0 - TURN : bed.x0 + BED.w + TURN;
   const m = Math.max(1, Math.min(n, ROWS)), pts = [];
   let flip = false;
   for (let row = k % m; row < ROWS; row += m) {
@@ -104,12 +104,16 @@ export function crewActions(items, { boarded, sent, onErrand, arrived, still }) 
  * them and returns what to draw. ctx: { farmers: Map(id → { x, y, state, field }) of the farmers drawn, beds: Map(key →
  * bed), boarded(id): its farmer is in the seat, blocked(x, y, heading, id): something within 3 m ahead, still: Motion
  * off, now: the time in seconds on want's clock (a hold runs out by it), onError(err): one machine's tick threw (it is
- * dropped, the rest go on) }.
+ * dropped, the rest go on), land: { w, ox } (with a neighbour farm: its machines from its own shed, town up the road) }.
  */
 export function createMachines() {
   const jobs = new Map(); // id → { job, field, lastNeeded (s), needed, combine: the combine's one round of its field }
   const rigs = new Map(); // id → the machine out for that farmer
   let wanted = new Map(), groups = new Map(); // who shares a rest spot: a field's passes, a field's trailers, the stall, town
+  // the land (spec 2026-10-14 neighbour): with a neighbour farm, both farms' walkways, and town up the road between them
+  let land = { w: W, ox: 0 }, corr = CORR;
+  /** A field's farm's shed door: yours, or the neighbour's (each farm's machines live in its own shed). */
+  const doorOf = bed => (bed?.ox ? east(SHED_DOOR, bed.ox) : SHED_DOOR);
 
   function want(model, nowS, compacted = new Set()) {
     const seen = new Set();
@@ -135,14 +139,14 @@ export function createMachines() {
   const stallSpot = id => [STALL_SPOT[0] + place('stall', id)[1] * 64, LANE];
   /** Where a job first goes: its first pass, the bed's end for a trailer, or town. */
   function firstStop(j, bed, id) {
-    if (j.job === 'truck') return [TOWN_X + place('town', id)[1] * 50, LANE];
+    if (j.job === 'truck') return land.ox ? [TOWN_ROAD.mid, -40 - place('town', id)[1] * 50] : [TOWN_X + place('town', id)[1] * 50, LANE]; // with a neighbour, town is up the road
     if (PASS_JOBS.has(j.job)) { const [n, k] = place(`pass|${j.field}`, id); return passesFor(bed, n, k)[0]; }
     return dropSpot(bed, place(`drop|${j.field}`, id)[1]);
   }
   /** Where a machine stands with Motion off: its first pass (every other one at the far end), the bed's end for sacks,
    *  the stall for crates, town's end for the truck; none on another. */
   function restSpot(j, bed, id) {
-    if (j.job === 'truck') return [TOWN_END[0] + place('town', id)[1] * 48, LANE];
+    if (j.job === 'truck') return land.ox ? [TOWN_ROAD.mid, LANE - 40 - place('town', id)[1] * 48] : [TOWN_END[0] + place('town', id)[1] * 48, LANE];
     if (j.job === 'crates') return stallSpot(id);
     if (j.job === 'supplies') return dropSpot(bed, place(`drop|${j.field}`, id)[1]);
     const [n, k] = place(`pass|${j.field}`, id), p = passesFor(bed, n, k);
@@ -168,7 +172,7 @@ export function createMachines() {
   function goHome(r, empty = false) {
     r.phase = 'home';
     r.empty = empty;
-    r.path = routeBetween([r.x, r.y], SHED_DOOR, { lane: LANE - 3 });
+    r.path = routeBetween([r.x, r.y], r.door ?? SHED_DOOR, { lane: LANE - 3, corr });
     r.wait = 0;
   }
   /** A new job for a machine: what it carries and what it has done reset. */
@@ -179,7 +183,7 @@ export function createMachines() {
   function setOff(r, ctx, j) {
     take(r, j);
     Object.assign(r, { phase: 'out', empty: false, done: false });
-    r.path = routeBetween([r.x, r.y], firstStop(j, ctx.beds.get(j.field), r.id), { lane: LANE + 3 });
+    r.path = routeBetween([r.x, r.y], firstStop(j, ctx.beds.get(j.field), r.id), { lane: LANE + 3, corr });
   }
 
   /** One machine's moment; false when it is done with (parked last frame, or no longer wanted before it set off). */
@@ -209,7 +213,7 @@ export function createMachines() {
       else if (j.job !== r.job) { // another tractor job: the implement swaps where it is
         const inField = r.phase === 'work' && PASS_JOBS.has(r.job) && PASS_JOBS.has(j.job);
         take(r, j);
-        if (!inField) { r.phase = 'out'; r.path = routeBetween([r.x, r.y], firstStop(j, bed, id), { lane: LANE + 3 }); } // to the bed's end, or along it to its passes
+        if (!inField) { r.phase = 'out'; r.path = routeBetween([r.x, r.y], firstStop(j, bed, id), { lane: LANE + 3, corr }); } // to the bed's end, or along it to its passes
       }
     } else if (keep && !r.empty && r.vehicle === VEHICLE[j.job] && r.field === j.field && !r.done) { // wanted again on the way home: back out
       setOff(r, ctx, j);
@@ -254,7 +258,7 @@ export function createMachines() {
       } else if (r.job === 'crates') { // loads at the field, takes them to the stall, unloads, waits there
         if (!r.toStall) {
           r.wait += dt;
-          if (r.wait >= WAIT_S) { r.load = true; r.toStall = true; r.path = routeBetween([r.x, r.y], stallSpot(id), { lane: LANE + 3 }); }
+          if (r.wait >= WAIT_S) { r.load = true; r.toStall = true; r.path = routeBetween([r.x, r.y], stallSpot(id), { lane: LANE + 3, corr }); }
         } else if (r.path.length) r.moving = moveBy(ROAD);
         else { r.wait += dt; if (r.wait >= 2 * WAIT_S) r.load = false; }
       } // the truck waits in town while the deploy runs
@@ -271,6 +275,8 @@ export function createMachines() {
 
   function tick(dt, ctx) {
     const items = [];
+    land = ctx.land ?? { w: W, ox: 0 };
+    corr = land.ox ? [...CORR, ...CORR_OF(land.ox)] : CORR;
     if (Number.isFinite(ctx.now)) for (const [id, j] of jobs) if (!j.needed && !j.combine && ctx.now - j.lastNeeded >= HOLD_S) { jobs.delete(id); wanted.delete(id); } // the hold over, whether or not a scene came
     groups = new Map();
     const join = (key, id) => { if (!groups.has(key)) groups.set(key, []); groups.get(key).push(id); };
@@ -280,7 +286,8 @@ export function createMachines() {
     for (const [id, j] of wanted) if (!rigs.has(id)) {
       const bed = ctx.beds.get(j.field), farmer = ctx.farmers.get(id);
       if (!bed || !farmer) continue; // no field to work, or its farmer not drawn: no machine
-      rigs.set(id, { id, job: j.job, field: j.field, vehicle: VEHICLE[j.job], phase: 'walking', x: SHED_DOOR[0], y: SHED_DOOR[1], heading: 0, path: [], passes: null, rowsDone: 0, rowsPassed: new Set(), wait: 0, stopped: 0, ghost: 0, load: j.job === 'supplies', moving: false });
+      const door = doorOf(bed); // its own farm's shed
+      rigs.set(id, { id, job: j.job, field: j.field, vehicle: VEHICLE[j.job], phase: 'walking', x: door[0], y: door[1], door, heading: 0, path: [], passes: null, rowsDone: 0, rowsPassed: new Set(), wait: 0, stopped: 0, ghost: 0, load: j.job === 'supplies', moving: false });
     }
     for (const [id, r] of [...rigs]) {
       try { if (!step(id, r, dt, ctx, items)) rigs.delete(id); }

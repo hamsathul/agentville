@@ -480,12 +480,13 @@ export function start({ el, opts, prefs }) {
     const inField = (x, y) => model.beds.some(b => x >= b.x0 - 14 && x <= b.x0 + BED.w + 14 && y >= b.y0 - 2 && y <= b.y0 + BED.d + 2);
     const blocked = (x, y, h, id) => !inField(x, y) && (shown.some(f => f.id !== id && !boarded.has(f.id) && pos.has(f.id) && isAhead(x, y, h, pos.get(f.id).x, pos.get(f.id).y))
       || animals.world().some(a => isAhead(x, y, h, a.x, a.y)) || machineItems.some(o => o.id !== id && o.phase !== 'walking' && isAhead(x, y, h, o.x, o.y))); // one waiting for its farmer is in the shed
-    machineItems = machines.tick(dt, { farmers: pos, beds: new Map(model.beds.map(b => [b.key, b])), boarded: id => boarded.has(id), blocked, still: opts.still, now: performance.now() / 1000, onError: err => report(err, 'a machine') });
+    machineItems = machines.tick(dt, { farmers: pos, beds: new Map(model.beds.map(b => [b.key, b])), boarded: id => boarded.has(id), blocked, still: opts.still, now: performance.now() / 1000, land: model.land, onError: err => report(err, 'a machine') });
     const act = crewActions(machineItems, { boarded, sent: sentToShed, onErrand: id => farmers.onErrand(id), arrived: id => farmers.arrived(id), still: opts.still });
     for (const id of act.release) { boarded.delete(id); sentToShed.delete(id); farmers.setDriving(id, null); farmers.endErrand(id); } // out of the seat: parked, called back, or no machine any more
     for (const id of act.forget) { sentToShed.delete(id); if (!boarded.has(id)) farmers.endErrand(id); } // not wanted before it got there
     for (const id of act.board) { boarded.add(id); sentToShed.delete(id); }
-    for (const id of act.send) if (farmers.errand(id, SHED_DOOR, { timeout: 45 })) sentToShed.add(id); // to the shed (again, if its walk was cut short)
+    const doorFor = id => (shown.find(f => f.id === id)?.farm ? east(SHED_DOOR, model.land.ox) : SHED_DOOR); // its own farm's shed
+    for (const id of act.send) if (farmers.errand(id, doorFor(id), { timeout: 45 })) sentToShed.add(id); // to the shed (again, if its walk was cut short)
     for (const it of machineItems) if (boarded.has(it.id) && !farmers.driving(it.id)) farmers.setDriving(it.id, () => machineMeshes.seatOf(it.id));
     // the animals keep off a field a machine is working, and trot out of a moving machine's way
     const busy = [...new Set(machineItems.filter(i => i.phase === 'work' && ['plough', 'sprayer', 'mower', 'combine'].includes(i.job)).map(i => i.field))].sort();
@@ -539,7 +540,7 @@ export function start({ el, opts, prefs }) {
       // town and back, on the farm's clock (still with Motion off)
       const road = piece('carts', () => {
         cartItems = carts.tick(model.carts, dt, id => (shownIds.has(id) ? farmers.posOf(id) : null), opts.still, performance.now()); // a duration: the page clock may stand still
-        const r = shown.map(f => { const c = cartOf(f, t); return c && { id: f.id, ...c }; }).filter(Boolean);
+        const r = shown.map(f => { const c = cartOf(f, t, model.land); return c && { id: f.id, ...c }; }).filter(Boolean);
         roadItems = r;
         cartMeshes.tick(cartItems, r, dt, opts.still);
         return r;
@@ -553,7 +554,7 @@ export function start({ el, opts, prefs }) {
       piece('labels', () => overlay.setMovers([
         ...shown.filter(f => f.nap && f.wakeAt).map(f => { const p = farmers.posOf(f.id); return p && !p.moving && { key: `nap:${f.id}`, x: p.x, y: p.y, h: 2, text: `wakes in ${until(f.wakeAt)}`, title: `${f.name} wakes up by itself at ${new Date(f.wakeAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}` }; }).filter(Boolean),
         ...cartItems.filter(c => c.away).map(c => ({ key: `mcp:${c.server}`, x: c.x, y: c.y, h: 2.4, text: cutMid(c.server, 16), title: `${c.server}, an MCP server${c.who && byId.get(c.who) ? `: ${byId.get(c.who).name} is calling it` : ''}` })),
-        ...road.map(r => { const f = shown.find(x => x.id === r.id); return { key: `cart:${r.id}`, x: r.x, y: 114, h: 2.4, text: clip(f.service, 18), title: `${f.name}: ${f.summary || f.service}` }; }),
+        ...road.map(r => { const f = shown.find(x => x.id === r.id); return { key: `cart:${r.id}`, x: r.x, y: r.y ?? 114, h: 2.4, text: clip(f.service, 18), title: `${f.name}: ${f.summary || f.service}` }; }),
       ]));
       if (!opts.still && (cartItems.some(c => c.moving) || road.length)) dirty = true; // still: nothing moves, nothing to draw
       piece('pigeons', () => {

@@ -54,7 +54,7 @@ export function makeCarts(THREE, mats, S, { copy }) {
         keepR.add(r.id);
         let c = roads.get(r.id);
         if (!c) { c = makeCart(null); roads.set(r.id, c); }
-        place(c, r.x, LANE + 4, r.dir, false, false, true, dt, still);
+        place(c, r.x, r.y ?? LANE + 4, r.dir, Boolean(r.along), Boolean(r.along) && r.dir < 0, true, dt, still); // up the road to town, with a neighbour farm
       }
       for (const [k, c] of roads) if (!keepR.has(k)) { drop(c); roads.delete(k); }
     },

@@ -3,7 +3,7 @@
 // Each server called in the last hour (scene.carts, six at most) has a cart in a row at the lane's end; while a farmer
 // calls it, it drives over beside it (onto the lane, along it, down the nearest walkway), stays while the call goes on
 // and 3 s after, then drives home. Pure: build/carts.js draws them.
-import { CART_RANK, CORR as CORRIDORS, LANE as LANE_Y, W } from './layout.js';
+import { CART_RANK, CORR as CORRIDORS, LANE as LANE_Y, ROAD, W } from './layout.js';
 
 /** A cart's way between two places: onto the lane (straight down or up to it, or up the path nearest), along it, then down the path nearest the place, and over to it. */
 export function cartRoute([x, y], [tx, ty], { lane: LANE = LANE_Y, corr: CORR = CORRIDORS } = {}) {
@@ -84,9 +84,15 @@ export function createCarts() {
   };
 }
 
-/** A farmer's cart on the road while a web call goes on (T: the clock, seconds): out to town past the farm's right edge, and back, every 8 s. (A connector's has a cart of its own.) */
-export function cartOf(f, T) {
+/**
+ * A farmer's cart on the road while a web call goes on (T: the clock, seconds): out to town past the farm's right edge,
+ * and back, every 8 s. (A connector's has a cart of its own.) With a neighbour farm (`land.ox`), town is up the road
+ * between the farms: along the lane to the road, then north up it ({ x, y, dir, along }: along while on the road).
+ */
+export function cartOf(f, T, land = null) {
   if (f.state !== 'working' || !f.service || f.step !== 'web' || String(f.tool ?? '').startsWith('mcp__')) return null;
   const ph = (T / 8 + (hashOf(f.id) % 97) / 97) % 1, out = ph < 0.5, t = out ? ph * 2 : (1 - ph) * 2;
-  return { x: Math.round(W - 160 + t * 180), dir: out ? 1 : -1 };
+  if (!land?.ox) return { x: Math.round(W - 160 + t * 180), dir: out ? 1 : -1 };
+  const x0 = W - 160, y0 = LANE_Y + 4, along = ROAD.mid - x0, up = y0 + 30, d = t * (along + up);
+  return d <= along ? { x: Math.round(x0 + d), y: y0, dir: out ? 1 : -1, along: false } : { x: ROAD.mid, y: Math.round(y0 - (d - along)), dir: out ? 1 : -1, along: true };
 }

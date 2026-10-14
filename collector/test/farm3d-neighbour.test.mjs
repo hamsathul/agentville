@@ -8,6 +8,9 @@ import { clampTarget, makeCameraRig } from '../../web/worlds/farm3d/camera.js';
 import { plantsOf } from '../../web/worlds/farm3d/nature.js';
 import { landRoute, walkRoute } from '../../web/worlds/farm3d/route.js';
 import { dialogFor } from '../../web/worlds/farm3d/dialogs.js';
+import { createMachines, passesFor } from '../../web/worlds/farm3d/machines.js';
+import { cartOf } from '../../web/worlds/farm3d/carts.js';
+import { BED, SHED_DOOR } from '../../web/worlds/farm3d/layout.js';
 import { CREEK, FARMSTEAD, GAP, LANE, NEIGHBOUR_X, PORCH_Y, ROAD, SILO_X, W, crossingsOf, east, extentOf, farmAt, farmOf, farmsteadOf, forestOf, landOf, pastureOf, slotTables } from '../../web/worlds/farm3d/layout.js';
 
 const M = makeModel(kit);
@@ -191,4 +194,42 @@ test("the porches' dialogs: yours lists your account's, the neighbour's its own"
   assert.ok(theirs.html.includes('data-farm-pick="b"') && !theirs.html.includes('data-farm-pick="a"'));
   const one = dialogFor('house', { ...e, accounts: [e.accounts[0]] }, { esc, ago });
   assert.ok(one.html.includes('data-farm-pick="a"') && one.html.includes('data-farm-pick="b"'), 'one account: everyone, as before');
+});
+
+test("machines: a neighbour field's machine leaves its own shed, passes its bed from its walkway, and works there", () => {
+  const land = landOf(true), bed = { key: 'r1@n', cx: 296 + land.ox, x0: 296 - BED.w / 2 + land.ox, y0: 180, lane: 242, farm: 1, ox: land.ox };
+  assert.deepEqual(passesFor(bed)[0], [bed.x0 + BED.w + 12, bed.y0 + 6], 'column 0: from its walkway on the right, as on yours');
+  const M2 = createMachines();
+  M2.want({ farmers: [{ id: 'f', state: 'working', field: 'r1@n', step: 'test', writes: 0 }] }, 0, new Set());
+  const ctx = { farmers: new Map([['f', { x: east(SHED_DOOR)[0], y: SHED_DOOR[1], state: 'working', field: 'r1@n' }]]), beds: new Map([['r1@n', bed]]), boarded: () => true, blocked: () => false, still: false, now: 0, land };
+  const [first] = M2.tick(0.1, ctx);
+  assert.ok(Math.abs(first.x - east(SHED_DOOR)[0]) < 10, `out of its own shed (${first.x})`);
+  let it = first;
+  for (let k = 0; k < 400; k++) it = M2.tick(0.1, ctx)[0] ?? it;
+  assert.equal(it.phase, 'work');
+  assert.ok(it.x > land.ox, "it works on the neighbour's farm");
+});
+
+test('with a neighbour the truck goes to town up the road; with Motion off it stands on the road', () => {
+  const land = landOf(true), bed = { key: 'r1', cx: 296, x0: 296 - BED.w / 2, y0: 180, lane: 242 };
+  const M2 = createMachines();
+  M2.want({ farmers: [{ id: 'f', state: 'working', field: 'r1', step: 'deploy', writes: 0 }] }, 0, new Set());
+  const ctx = { farmers: new Map([['f', { x: 300, y: 250, state: 'working', field: 'r1' }]]), beds: new Map([['r1', bed]]), boarded: () => true, blocked: () => false, still: true, now: 0, land };
+  const [it] = M2.tick(0.1, ctx);
+  assert.equal(it.x, ROAD.mid);
+  assert.ok(it.y < LANE, 'north of the junction');
+  const M3 = createMachines();
+  M3.want({ farmers: [{ id: 'f', state: 'working', field: 'r1', step: 'deploy', writes: 0 }] }, 0, new Set());
+  let t = null;
+  for (let k = 0; k < 600; k++) t = M3.tick(0.1, { ...ctx, still: false })[0] ?? t;
+  assert.ok(t.x > ROAD.x0 && t.x < ROAD.x1 && t.y < 0, `driving, it goes up the road out of sight (${t.x}, ${t.y})`);
+});
+
+test("a web call's cart to town turns up the road with a neighbour; as before without", () => {
+  const f = { id: 'x', state: 'working', service: 'example.com', step: 'web', tool: 'WebFetch' };
+  assert.deepEqual(cartOf(f, 3), cartOf(f, 3, landOf(false)));
+  const all = Array.from({ length: 80 }, (_, k) => cartOf(f, k * 0.1, landOf(true)));
+  assert.ok(all.every(c => c.x <= ROAD.mid + 0.5), 'never past the road');
+  assert.ok(all.some(c => c.y < LANE - 40), 'up the road');
+  assert.ok(all.every(c => c.y === undefined || c.y <= LANE + 4));
 });
