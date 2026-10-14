@@ -3,7 +3,7 @@
 // three.js, no DOM. The frame's helpers come in as `kit` (makeGrid, engineScene, tagText, cutMid, lastPart, ago from
 // the SDK; lookFor and pick from the people kit), so Node can test it (collector/test/farm3d.test.mjs pins every copy
 // below against the farm's original).
-import { BED, GRID_CONFIG, SILO_X, SPOT, slotTables } from './layout.js';
+import { BED, GRID_CONFIG, NEIGHBOUR_X, SILO_X, SPOT, farmOf, landOf, slotTables } from './layout.js';
 import { stallOf } from './dialogs.js';
 
 // The states an agent is out and about in (engine.js, ACTIVE).
@@ -134,29 +134,38 @@ export function makeModel({ makeGrid, engineScene, tagText, cutMid, lastPart, ag
     return `${f.name} · ${line}${f.thinking ? 'thinking' : what}${f.kind === 'codex' ? '' : ` · ${Math.round((1 - f.pct) * 100)}% context left`}${f.cost != null ? ` · $${f.cost.toFixed(2)} so far` : ''}${mode ? ` · ${mode}` : ''}${extra}`;
   }
 
+  /** A ground widened to `rows` (both farms have the same rows): its slots, empty plots, fence and height. */
+  function widen(g, rows) {
+    if (g.rows >= rows) return g;
+    const slots = Array.from({ length: rows * grid.cols }, (_, i) => grid.slotAt(i)), used = new Set(g.ST.map(s => s.i));
+    const GRID = GRID_CONFIG.fence(rows);
+    return { ...g, rows, slots, empty: slots.filter(s => !used.has(s.i)), GRID, H: GRID_CONFIG.height(GRID) };
+  }
+  const nKey = key => `${key}@n`; // a repo's field on the neighbour's farm
+
   /**
-   * The farm for a scene. `state` is what the last call returned as `keep` ({ beds, packed }): while you look a
-   * field keeps its bed; the first scene with fields packs them into the first free beds (the engine's way).
+   * One farm's beds and farmers, on a ground laid out for its fields: `ox` how far east it is on the map (0: yours; the
+   * neighbour's NEIGHBOUR_X, its beds and farmers marked farm: 1). `farmers` are the ones living here, their `field`
+   * this farm's key for their repo.
    */
-  function farmModel(sceneV1, { beds = {}, packed = false } = {}) {
-    const e = farmScene(sceneV1);
-    const ground = packed || !e.fields.length ? grid.layoutFor(e.fields, beds) : grid.packedLayout(e.fields, beds);
-    const fieldByKey = new Map(e.fields.map(f => [f.key, f]));
+  function placeFarm(e, fields, farmers, ground, ox) {
+    const fieldByKey = new Map(fields.map(f => [f.key, f])), mark = ox ? { farm: 1 } : {};
     const bedsOut = ground.ST.map(s => {
       const f = fieldByKey.get(s.key), d = f.lastDeploy;
       return {
-        key: s.key, name: f.name, i: s.i, cx: s.cx, rowTop: s.rowTop, lane: s.lane, x0: s.x0, y0: s.y0, w: BED.w, d: BED.d,
+        key: s.key, name: f.name, i: s.i, cx: s.cx + ox, rowTop: s.rowTop, lane: s.lane, x0: s.x0 + ox, y0: s.y0, w: BED.w, d: BED.d,
         crop: f.crop, fence: f.fence, soil: f.soil, worktree: Boolean(f.worktree), pennant: f.pennant, collision: f.collision ?? null,
-        plot: plotState(f, e.farmers),
-        pumps: Math.min(2, e.farmers.filter(a => a.field === s.key).reduce((t, a) => t + (a.jobs ?? 0), 0)), // background commands running here
+        plot: plotState(f, farmers),
+        pumps: Math.min(2, farmers.filter(a => a.field === s.key).reduce((t, a) => t + (a.jobs ?? 0), 0)), // background commands running here
         piles: { hay: Math.min(4, Math.ceil(f.dirty / 3)), crates: Math.min(4, Math.ceil(f.ahead / 4)), mailbox: f.behind > 0, dirty: f.dirty, ahead: f.ahead, behind: f.behind },
         weather: f.weather, deploy: d ? { state: d.state ?? null, label: d.label ?? '' } : null, label: labelOf(f),
-        tip: [f.key, f.branch && `on ${f.branch}`, d?.detail].filter(Boolean).join(' · '),
+        tip: [f.repo ?? f.key, f.branch && `on ${f.branch}`, d?.detail].filter(Boolean).join(' · '),
+        ...(ox ? { repo: f.repo, farm: 1, ox } : {}),
       };
     });
-    const T = slotTables(ground), count = {}, used = new Map(), over = { desk: 0, turn: 0, storage: 0, charge: 0, meadow: 0, nap: 0 }, farmers = [];
+    const T = slotTables(ground), count = {}, used = new Map(), over = { desk: 0, turn: 0, storage: 0, charge: 0, meadow: 0, nap: 0 }, out = [];
     const stOf = new Map(ground.ST.map(s => [s.key, s]));
-    for (const f of e.farmers) {
+    for (const f of farmers) {
       const d = doing(f), s = f.state === 'working' ? stOf.get(f.field) : null;
       let group, at;
       if (s) { // in its bed, at its step's place; the next free one when that is taken
@@ -164,31 +173,61 @@ export function makeModel({ makeGrid, engineScene, tagText, cutMid, lastPart, ag
         if (!used.has(group)) used.set(group, []);
         const u = used.get(group), off = [d?.spot ?? 0, 0, -26, 26, -13, 13].find(o => !u.includes(o)) ?? 0;
         u.push(off);
-        at = [s.cx + off * SPOT, s.lane]; // the 2D farm's offset, stretched to the bigger bed
+        at = [s.cx + ox + off * SPOT, s.lane]; // the 2D farm's offset, stretched to the bigger bed
       } else {
         group = f.state === 'working' ? 'meadow' : f.nap ? 'nap' : f.state === 'waiting' ? 'desk' : f.state === 'turn' ? 'turn' : f.state === 'stale' ? 'storage' : 'charge';
         const i = count[group] ?? 0;
         count[group] = i + 1;
         if (i >= T[group].cap) { over[group] = (over[group] ?? 0) + 1; continue; }
-        at = T[group].at(i);
+        const [x, y] = T[group].at(i);
+        at = [x + ox, y];
       }
       const prop = f.state === 'working' ? d?.prop ?? 'can' : null;
       // its place for the diary, as the farm's slots name it: a bed and the tool in hand there, or the group
       const zone = s ? `st:${s.key}:${d?.prop ?? ''}` : group;
-      farmers.push({
+      out.push({
         id: f.id, name: f.name, state: f.state, kind: f.kind, tag: tagText(f), tip: tipOf(f, fieldByKey), shirt: f.shirt, look: f.look,
         family: f.family ?? null, fast: Boolean(f.fast), thinking: Boolean(f.thinking), nap: Boolean(f.nap), field: f.field ?? null,
         prop, flag: f.state === 'working' && Boolean(d?.flag), action: SWING.has(prop) ? 'swing' : CARRY.has(prop) ? 'carry' : 'hold',
         badge: f.state === 'waiting' ? (f.planAsk ? 'scroll' : '!') : f.state === 'turn' ? (f.question ? '?' : 'basket') : null,
         say: (f.state === 'waiting' ? f.ask : f.said) || '', group, at, scarecrow: f.state === 'stale', zone,
         kids: f.kids ?? [], jobs: f.jobs ?? 0, writes: f.writes ?? 0, wakeAt: f.wakeAt ?? null, service: f.service ?? null, step: f.step ?? null, tool: f.tool ?? null, summary: f.summary ?? '',
+        ...mark,
       });
     }
+    return { beds: bedsOut, farmers: out, over };
+  }
+
+  /**
+   * The farm for a scene. `state` is what the last call returned as `keep` ({ beds, packed, nbeds, npacked }): while
+   * you look a field keeps its bed; the first scene with fields packs them into the first free beds (the engine's way).
+   * With two Claude accounts, the second's sessions live on the neighbour's farm (spec 2026-10-14 neighbour §4): a
+   * repo they work in has a field there too (its key + '@n'), both farms have the same rows, and the neighbour's beds
+   * and farmers come after yours, moved east by NEIGHBOUR_X.
+   */
+  function farmModel(sceneV1, { beds = {}, packed = false, nbeds = {}, npacked = false } = {}) {
+    const e = farmScene(sceneV1), accs = e.accounts ?? [];
+    const lay = (fields, b, p) => (p || !fields.length ? grid.layoutFor(fields, b) : grid.packedLayout(fields, b));
+    const common = { scene: e, mail: e.mail ?? [], henhouse: e.henhouse ?? { eggs: 0, roosting: 0 }, carts: e.carts ?? [], subagents: e.subagents ?? [], season: seasonOf(e.plan), stall: stallOf(e) };
+    if (accs.length < 2) {
+      const ground = lay(e.fields, beds, packed), one = placeFarm(e, e.fields, e.farmers, ground, 0);
+      return { ...common, ground, beds: one.beds, farmers: one.farmers, over: one.over, silos: silosOf(e), land: landOf(false), neighbour: null, keep: { beds: ground.beds ?? beds, packed: packed || e.fields.length > 0 } };
+    }
+    const theirs = new Set(e.farmers.filter(f => farmOf(f, accs) === 1).map(f => f.id));
+    const theirRepos = new Set(e.farmers.filter(f => theirs.has(f.id) && f.field).map(f => f.field));
+    const ourRepos = new Set(e.farmers.filter(f => !theirs.has(f.id) && f.field).map(f => f.field));
+    const homeFields = e.fields.filter(f => ourRepos.has(f.key) || !theirRepos.has(f.key));
+    const nFields = e.fields.filter(f => theirRepos.has(f.key)).map(f => ({ ...f, key: nKey(f.key), main: f.worktree && f.main ? nKey(f.main) : f.main, repo: f.key }));
+    const farmers = e.farmers.map(f => (theirs.has(f.id) && f.field && theirRepos.has(f.field) ? { ...f, field: nKey(f.field) } : f));
+    const g0 = lay(homeFields, beds, packed), g1 = lay(nFields, nbeds, npacked), rows = Math.max(g0.rows, g1.rows);
+    const land = landOf(true), ground = { ...widen(g0, rows), land }, nground = widen(g1, rows);
+    const mine = placeFarm(e, homeFields, farmers.filter(f => !theirs.has(f.id)), ground, 0);
+    const near = placeFarm(e, nFields, farmers.filter(f => theirs.has(f.id)), nground, NEIGHBOUR_X);
     return {
-      scene: e, // the engine scene (engine.js engineScene, with the farm's looks): the panel, the dialogs and the diary read it
-      mail: e.mail ?? [], henhouse: e.henhouse ?? { eggs: 0, roosting: 0 }, carts: e.carts ?? [], subagents: e.subagents ?? [],
-      ground, beds: bedsOut, farmers, over, season: seasonOf(e.plan), silos: silosOf(e), stall: stallOf(e),
-      keep: { beds: ground.beds ?? beds, packed: packed || e.fields.length > 0 },
+      ...common, ground, beds: [...mine.beds, ...near.beds], farmers: [...mine.farmers, ...near.farmers], over: mine.over,
+      silos: [{ x: SILO_X[0], name: accs[0].name, silo: siloOf(accs[0].plan) }, { x: SILO_X[0] + NEIGHBOUR_X, name: accs[1].name, silo: siloOf(accs[1].plan) }],
+      land, neighbour: { ox: NEIGHBOUR_X, key: accs[1].key, name: accs[1].name, ground: nground, over: near.over },
+      keep: { beds: g0.beds ?? beds, packed: packed || homeFields.length > 0, nbeds: g1.beds ?? nbeds, npacked: npacked || nFields.length > 0 },
     };
   }
   return { grid, farmModel, actionOf, growthStage, weatherOf, seasonOf, siloOf };

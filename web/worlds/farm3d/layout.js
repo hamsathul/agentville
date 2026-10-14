@@ -71,33 +71,37 @@ export const WALKWAY_GATES = CORR.slice(1).map(c => [c - FIELD_GATE, c + FIELD_G
  * places), the farmhouse and its deck, the henhouse and its run, the market stall, the notice board, the scarecrow patch.
  */
 export const FARMSTEAD = [
-  { x: BARN.x, y: BARN.front - 45, w: 55, h: 45 },
-  ...SILO_X.map(x => ({ x: x, y: SILO_Y - 10, w: 20, h: 20 })),
-  { x: HOUSE.x + 4, y: PORCH_Y - 52, w: HOUSE.w - 8, h: 42 },
-  { x: DECK.x0, y: DECK.y0, w: DECK.x1 - DECK.x0, h: DECK.y1 - DECK.y0 + 3 },
-  { x: HENHOUSE.x, y: HENHOUSE.y, w: 92, h: 36 },
-  { x: STALL.x - 2, y: STALL.y, w: 34, h: 36 },
-  { x: BOARD.x - 1, y: BOARD.y - 1, w: BOARD.w + 2, h: BOARD.h + 2 },
-  { x: SHED.x, y: SHED.y, w: SHED.w, h: SHED.h },
-  { x: SCARECROWS.x - 2, y: SCARECROWS.y - 2, w: SCARECROWS.w + 4, h: PORCH_Y + 4 - SCARECROWS.y + 2 },
+  { k: 'barn', x: BARN.x, y: BARN.front - 45, w: 55, h: 45 },
+  ...SILO_X.map((x, i) => ({ k: i ? 'silo2' : 'silo', x: x, y: SILO_Y - 10, w: 20, h: 20 })),
+  { k: 'house', x: HOUSE.x + 4, y: PORCH_Y - 52, w: HOUSE.w - 8, h: 42 },
+  { k: 'deck', x: DECK.x0, y: DECK.y0, w: DECK.x1 - DECK.x0, h: DECK.y1 - DECK.y0 + 3 },
+  { k: 'henhouse', x: HENHOUSE.x, y: HENHOUSE.y, w: 92, h: 36 },
+  { k: 'stall', x: STALL.x - 2, y: STALL.y, w: 34, h: 36 },
+  { k: 'board', x: BOARD.x - 1, y: BOARD.y - 1, w: BOARD.w + 2, h: BOARD.h + 2 },
+  { k: 'shed', x: SHED.x, y: SHED.y, w: SHED.w, h: SHED.h },
+  { k: 'scarecrows', x: SCARECROWS.x - 2, y: SCARECROWS.y - 2, w: SCARECROWS.w + 4, h: PORCH_Y + 4 - SCARECROWS.y + 2 },
 ];
 /** The forest's edge, where the deer and the fox come out: a strip of grass between the pasture's fence and the trees. */
-export const forestEdgeOf = L => [{ x: 0, y: pastureOf(L).y1 + 1, w: W, h: L.H + 22 - pastureOf(L).y1 - 1 }];
+export const forestEdgeOf = L => [{ x: 0, y: pastureOf(L).y1 + 1, w: L.land?.w ?? W, h: L.H + 22 - pastureOf(L).y1 - 1 }]; // the land's, with a neighbour
 
 export const MARGIN_X = 48, MARGIN_TOP = 40, MARGIN_BOTTOM = 40; // the forest's ring past the farm's edges
-/** The ground's rectangle for a farm H high: the farm and its forest ring. */
-export const extentOf = H => ({ x0: -MARGIN_X, x1: W + MARGIN_X, y0: -MARGIN_TOP, y1: H + MARGIN_BOTTOM });
+/** The ground's rectangle for a farm H high (and w wide: the land's, with a neighbour): the farm and its forest ring. */
+export const extentOf = (H, w = W) => ({ x0: -MARGIN_X, x1: w + MARGIN_X, y0: -MARGIN_TOP, y1: H + MARGIN_BOTTOM });
 /**
- * The forest's trees round a farm H high, each [x, y, r, n]: round trees just past the farm's edges, a crown r * 1.25
- * across from its middle (build/terrain.js draws them; roam.js keeps the animals out of them), n its own noise.
+ * The forest's trees round a farm H high (and w wide: the land's, with a neighbour), each [x, y, r, n]: round trees
+ * just past the land's edges, a crown r * 1.25 across from its middle (build/terrain.js draws them; roam.js keeps the
+ * animals out of them), n its own noise. With a neighbour, none over the road to town and the creek, which run on
+ * north and south through the forest.
  */
-export function forestOf(H) {
-  const ext = extentOf(H), trees = [];
+export function forestOf(H, w = W) {
+  const ext = extentOf(H, w), trees = [];
   for (let gy = Math.floor((ext.y0 - 20) / 18); gy * 18 < ext.y1 + 10; gy++) for (let gx = Math.floor((ext.x0 - 24) / 20); gx * 20 < ext.x1 + 10; gx++) {
     const n = noise(gx * 31, gy * 17), x = gx * 20 + (n % 13) - 6 + (gy % 2) * 10, y = gy * 18 + ((n >> 4) % 9);
-    if (!(x < -4 || x > W + 4 || y <= 12 || y >= H + 22)) continue;
+    if (!(x < -4 || x > w + 4 || y <= 12 || y >= H + 22)) continue;
     if (x < ext.x0 + 6 || x > ext.x1 - 6 || y < ext.y0 + 6 || y > ext.y1 - 4) continue;
-    trees.push([x, y, 9 + ((n >> 6) % 5), n]);
+    const r = 9 + ((n >> 6) % 5);
+    if (w > W && x + r * 1.25 > ROAD.x0 - 8 && x - r * 1.25 < CREEK.x1 + 8) continue; // the road and the creek
+    trees.push([x, y, r, n]);
   }
   return trees;
 }
@@ -122,3 +126,31 @@ export const signsOf = L => ({
 });
 /** A 2D map point, in metres on the 3D ground. */
 export const toWorld = (x, y, H) => ({ x: (x - W / 2) / PX, z: (y - H / 2) / PX });
+
+/** The neighbour farm (spec 2026-10-14 neighbour §3): your farm's layout moved east past a 12 m gap: a verge, the road
+ *  to town (4 m), a verge, the creek (3 m), a verge. */
+export const GAP = 96, NEIGHBOUR_X = W + GAP;
+export const ROAD = { x0: W + 8, x1: W + 40, mid: W + 24 }, CREEK = { x0: W + 52, x1: W + 76 };
+/** Where the creek can be crossed, [from, to] in y: the lane's bridge, the cattle bridge between the pastures (at their
+ *  middle), the stepping stones at the forest's edge. */
+export function crossingsOf(L) {
+  const pa = pastureOf(L), mid = (pa.y0 + pa.y1) / 2;
+  return { lane: [LANE - LANE_HALF, LANE + LANE_HALF], cattle: [mid - 20, mid + 20], stones: [pa.y1 + 20, pa.y1 + 44] };
+}
+/** Which farm a point on the map is on: the neighbour's (1) past the creek's middle, else yours (0). */
+export const farmAt = x => (x > (CREEK.x0 + CREEK.x1) / 2 ? 1 : 0);
+/** Which farm a session lives on: the neighbour's for the second Claude account's (with two or more), else yours. */
+export const farmOf = (f, accounts) => (accounts?.length >= 2 && f.account != null && f.account === accounts[1].key ? 1 : 0);
+/** The land: your farm alone, or both farms and the gap: its width, and how far east the neighbour is (0: none). */
+export const landOf = neighbour => (neighbour ? { w: NEIGHBOUR_X + W, ox: NEIGHBOUR_X } : { w: W, ox: 0 });
+/** A point ([x, y]) or a shape ({ x }, { cx } or { x0, x1 }) on the neighbour's farm, from your farm's layout. */
+export function east(p, ox = NEIGHBOUR_X) {
+  if (Array.isArray(p)) return [p[0] + ox, p[1], ...p.slice(2)];
+  const o = { ...p };
+  for (const k of ['x', 'x0', 'x1', 'cx']) if (typeof o[k] === 'number') o[k] += ox;
+  return o;
+}
+/** What stands only on your farm: the henhouse, the market stall and the notice board. */
+export const HOME_ONLY = new Set(['henhouse', 'stall', 'board']);
+/** A farm's farmstead (FARMSTEAD's rectangles): yours, or the neighbour's moved east by ox, without what is only yours. */
+export const farmsteadOf = ox => (ox ? FARMSTEAD.filter(o => !HOME_ONLY.has(o.k)).map(o => east(o, ox)) : FARMSTEAD);

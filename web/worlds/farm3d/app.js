@@ -168,7 +168,8 @@ export function start({ el, opts, prefs }) {
   let skyMode = pref('sky', SKIES, 'live'), seasonMode = pref('season', SEASON_MODES, 'live');
   let animalsOn = prefs.get('animals') !== 'off', bubblesOn = prefs.get('bubbles') !== 'off';
   animals.setOn(animalsOn);
-  let keep = { beds: (() => { try { const b = JSON.parse(prefs.get('beds') ?? '{}'); return b && typeof b === 'object' && !Array.isArray(b) ? b : {}; } catch { return {}; } })(), packed: false };
+  const savedBeds = name => { try { const b = JSON.parse(prefs.get(name) ?? '{}'); return b && typeof b === 'object' && !Array.isArray(b) ? b : {}; } catch { return {}; } };
+  let keep = { beds: savedBeds('beds'), packed: false, nbeds: savedBeds('nbeds'), npacked: false }; // yours, and the neighbour's (a second account's)
   const seasons = createSeasons();
   let looks = new Map(); // each field's season (season.js), as of the last scene
   let model = null, groundKey = '', lampsKey = '', dirty = true, saveTimer = 0, firstScene = true, selected = null;
@@ -361,8 +362,9 @@ export function start({ el, opts, prefs }) {
   }
   function applyScene(s) {
     model = M.farmModel(s, keep);
-    const bedMap = JSON.stringify(model.keep.beds);
+    const bedMap = JSON.stringify(model.keep.beds), nbedMap = JSON.stringify(model.keep.nbeds ?? {});
     if (bedMap !== JSON.stringify(keep.beds)) prefs.set('beds', bedMap);
+    if (nbedMap !== JSON.stringify(keep.nbeds ?? {})) prefs.set('nbeds', nbedMap);
     keep = model.keep;
     looks = piece('seasons', () => seasons.update(model, performance.now())) ?? looks; // a duration: the page clock may stand still
     piece('machines', () => { // which farmers want which machine; a compaction (the harvest) brings the combine

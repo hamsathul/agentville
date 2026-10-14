@@ -32,9 +32,9 @@ function load() {
   for (const f of ['scene.js', 'worlds/sdk/pixel.js', 'worlds/sdk/people.js', 'worlds/sdk/props.js', 'worlds/sdk/creatures.js', 'worlds/sdk/animals.js', 'worlds/sdk/engine.js', 'worlds/farm/world.js', 'worlds/test/tour.js']) vm.runInContext(web(f), ctx, { filename: f });
   const g = name => vm.runInContext(name, ctx);
   const kit = { makeGrid: g('makeGrid'), engineScene: g('engineScene'), tagText: g('tagText'), cutMid: g('cutMid'), lastPart: g('lastPart'), ago: g('ago'), lookFor: window.Agentville.people.lookFor, pick: window.Agentville.people.pick };
-  return { kit, g, src: web, farm: window.AgentvilleFarm, toScene: window.AgentvilleScene.toScene, stops: window.AgentvilleTour.stops };
+  return { kit, g, src: web, farm: window.AgentvilleFarm, toScene: window.AgentvilleScene.toScene, privateScene: window.AgentvilleScene.privateScene, stops: window.AgentvilleTour.stops };
 }
-export const { kit, g, src, farm, toScene, stops } = load();
+export const { kit, g, src, farm, toScene, privateScene, stops } = load();
 /** The engine scene of a snapshot, as the 2D farm's hooks get it. */
 export const engineOf = s => g('engineScene')(toScene(s));
 /** A literal (object or array) from a web file's source, by its const name (`const NAME = {…};`), evaluated in a vm. */
