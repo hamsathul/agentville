@@ -165,8 +165,10 @@ It listens on the loopback addresses only (`127.0.0.1`, and `::1` where the mach
   up to things, a frog and three fish in the pond among them (click one to pet it, feed it, throw the
   dogs a stick or send the frog diving), play tag and play-fight with each other, and talk. It has the
   farm's panel and Menu, buildings, close-up, diary, hens, carts and pigeons, and idle farmers play with
-  the animals. It fills the window as the farm does; turn and tilt it as you like, and zoom in to one
-  farmer.
+  the animals. With two Claude accounts, the second has a neighbour farm of its own across the road to
+  town: its own fields, barn (start a session on that account), porch, silo and machines, half the herd
+  and three animals more, and the animals and now and then a visiting farmer cross between the farms. It
+  fills the window as the farm does; turn and tilt it as you like, and zoom in to one farmer.
 - The farm, the factory, the field exercise and the 3D farm are worlds: each runs in a sandboxed frame
   of its own, with no access to the token, and asks the page for the little it needs
   ([docs/worlds.md](docs/worlds.md)). A world from your own folder sees no words or paths until
@@ -693,7 +695,8 @@ own.
 - **What you see.** The top bar shows a plan block for each account, with its email and how many
   sessions it has open on hover, or "Signed out" (checked again each minute until you log in).
   Every agent carries its account's tag. The farm gives the second account a silo of its own, left
-  of the barn (see [The farm](#the-farm)); with three or more, the first two have one.
+  of the barn (see [The farm](#the-farm)); with three or more, the first two have one. The 3D farm
+  gives it a whole neighbour farm, across the road to town ([The 3D farm](#the-3d-farm-prototype)).
 - **Starting.** ＋ Session, ⑂ Fork and Restart in… let you pick the account, each choice with how
   much of its limits it has used. A new session starts on the account its folder's last session
   ran on, a resumed one on the account it last ran on, and a fork on the original's.
@@ -1297,6 +1300,37 @@ the front, and a strip of grass under it where the forest begins.
 
 ![The 3D farm: the farm as a low-poly diorama](docs/farm3d.png)
 
+**A neighbour farm, with two Claude accounts.** The second account's sessions live on a farm of their own,
+east of yours across the road to town and a creek: the same layout, with its own barn, silo (its account's
+week), farmhouse and porch, scarecrow patch, shade tree, hammocks, machine shed and pasture (the henhouse,
+the market stall, the notice board, the orchard and the pond stay yours). A bridge carries the lane over
+the creek, a cattle bridge joins the two pastures, and a sign at its gate gives the account's name
+(`account 2` in privacy mode). The farm opens with both in view.
+
+![The neighbour farm: yours on the left, the second account's across the road and the creek](docs/farm3d-neighbour.png)
+- **Who lives where**: each session's farmer on its account's farm: working in that farm's field for its
+  repo, waiting or done on its porch, idle under its shade tree, stale among its scarecrows. A session
+  moved to the other account (**Move to another account**) walks over the bridge. A third or later
+  account's sessions stay on your farm.
+- **Fields**: a repo the second account works in has a field on its farm; one both accounts work in has a
+  field on each, each growing (and ploughed, sown, cut) from its own farm's work. The repo's own things
+  (its deploy's weather, its piles, its pennant, its greenhouse, a collision's rope) show on both, and
+  either opens the repo's close-up. Both farms have the same rows of plots.
+- **Its barn** opens ＋ Session with the second account picked; its farmhouse lists who is on its porch;
+  its shed, its machines, which come out of it and work its fields (its truck goes up the road to town
+  between the farms, as yours does then, and its crates go to your market stall).
+- **Animals**: the herd splits: the cows, the bull, the brown horse and the husky are yours, the alpacas,
+  the donkey, the white horse and the Shiba the neighbour's, with a cow, a calf and a foal of its own
+  (the young keep near their mothers). Now and then one wanders over to the other farm, by the lane's
+  bridge, the cattle bridge or the stepping stones where the creek meets the forest, and later comes
+  home; the creek is in the way everywhere else. The deer, the stag, the fox and the wolf roam the whole
+  land's edge; the pond's stay in it.
+- **Visits**: now and then (the first a couple of minutes after the farm opens, then every few minutes,
+  one at a time) an idle farmer walks along its lane and over the bridge to an idle farmer on the other
+  farm, and they talk a little before it walks home. Work, a nap, Follow or Motion off ends a visit at
+  once.
+- With one account, nothing of this: one farm, as described below.
+
 **What it shows.** The farmstead (the black barn, the silo with your plan's week as grain and a lamp near
 the limit, the timber farmhouse and its deck, your porch, with string lights, the machine shed on the lane past the
 scarecrows), a field for each repo in the fenced grid, the yard with the henhouse, the pond (clear water over a muddy hollow, lily pads), the hammocks and the shade tree, the scarecrow
@@ -1432,7 +1466,7 @@ patch, the pasture across the front, and the meadow and the forest running on al
   picked in the middle, zoomed in; a drag ends it), Resting (hides the idle and stale farmers), Bubbles,
   Animals, Sky, Season, Motion, Bell, Help and zoom. The page adds no World ▾ / List corner of its own.
 - **Buildings**: the barn starts a session; the farmhouse lists who waits on you on your porch (Open
-  picks one); the silo shows your plan's limits (two silos with two accounts); the henhouse lists the
+  picks one; with a neighbour farm, each farmhouse its own porch); the silo shows your plan's limits (one on each farm with two accounts); the henhouse lists the
   subagents; the market stall lists the pull requests, a crate on its counter for each open one with its
   checks' colour (yellow blinks while they run) and **N PRs** under it; and the notice board by the porch
   shows what each project remembers (its CLAUDE.md and memory, a click opens one in the reader). The same
