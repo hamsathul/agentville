@@ -212,7 +212,7 @@ own pictures (the farm into hats, crops and weather).
   repos: [{ key, name, branch, onMain, dirty, ahead, behind, deploy, collision, worktree, main, project, projectName, prs }],
   agents: [{ id, name, kind, cwd, state, repo, tool, summary, step, contextPct, hot, ask, askKind, question, reply, said,
              colorIndex, color, cost, mode, kids, tasks, compactions, thinking, turn, effort, model, family, fast, planAsk,
-             service, jobs, wakeAt, nap, account }] }
+             service, jobs, writes, wakeAt, nap, account }] }
 ```
 
 Times are milliseconds since 1970, as `Date.now()` gives them.
@@ -302,6 +302,8 @@ for deploys while its deploy runs.
   `fast`: fast mode is on.
 - `service`: where a web or connector call goes (`Gmail`, `github.com`…), or `null`.
 - `jobs`: background commands running.
+- `writes`: how many distinct files the agent wrote in the last 5 minutes (a count, so it stays in a
+  private scene): a big edit's size.
 - `wakeAt`: when it wakes up by itself, or `null`; `nap`: it is a session that will wake up by
   itself (`/loop`), resting until then.
 

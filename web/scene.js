@@ -186,6 +186,7 @@
         account: a.account ?? null, // the key of the Claude account it runs on
         service: a.now?.service ?? null, // where a web or connector call goes
         jobs: (a.children ?? []).filter(c => c.kind === 'bgjob' && c.state === 'running').length, // background commands running
+        writes: new Set((a.touching ?? []).filter(t => t.mode === 'write' && now - t.lastAt < 5 * 60_000).map(t => t.path)).size, // distinct files written lately: a big edit's size
         wakeAt: a.wakeAt ?? null, nap: Boolean(a.wakeAt > now && (a.state === 'yourTurn' || a.state === 'idle') && !a.question), // it comes back by itself (/loop)
       })),
     };

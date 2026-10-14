@@ -159,3 +159,13 @@ test("paint: every machine has its paint, each part by the start of a node the m
     }
   }
 });
+
+/* ---------- writes, from the scene to the 3D farm's farmers (web/scene.js, model.js) ---------- */
+const { kit, toScene, snap, agent, repo, NOW: TOUR_NOW, HOME } = await import('./farm3d-vm.mjs');
+const { makeModel } = await import('../../web/worlds/farm3d/model.js');
+
+test("writes: a farmer carries how many files its agent wrote in the last 5 minutes, a big edit's size", () => {
+  const wrote = n => Array.from({ length: n }, (_, k) => ({ path: `${HOME}/shop/f${k}.ts`, mode: 'write', lastAt: TOUR_NOW - 1000, firstAt: TOUR_NOW - 1000, repo: `${HOME}/shop` }));
+  const m = makeModel(kit).farmModel(toScene(snap([agent('a1', { touching: wrote(6) }), agent('a2')], [repo('shop')])));
+  assert.deepEqual(m.farmers.map(f => [f.id, f.writes]).sort(), [['a1', 6], ['a2', 0]]);
+});

@@ -181,7 +181,7 @@ export function makeModel({ makeGrid, engineScene, tagText, cutMid, lastPart, ag
         prop, flag: f.state === 'working' && Boolean(d?.flag), action: SWING.has(prop) ? 'swing' : CARRY.has(prop) ? 'carry' : 'hold',
         badge: f.state === 'waiting' ? (f.planAsk ? 'scroll' : '!') : f.state === 'turn' ? (f.question ? '?' : 'basket') : null,
         say: (f.state === 'waiting' ? f.ask : f.said) || '', group, at, scarecrow: f.state === 'stale', zone,
-        kids: f.kids ?? [], jobs: f.jobs ?? 0, wakeAt: f.wakeAt ?? null, service: f.service ?? null, step: f.step ?? null, tool: f.tool ?? null, summary: f.summary ?? '',
+        kids: f.kids ?? [], jobs: f.jobs ?? 0, writes: f.writes ?? 0, wakeAt: f.wakeAt ?? null, service: f.service ?? null, step: f.step ?? null, tool: f.tool ?? null, summary: f.summary ?? '',
       });
     }
     return {

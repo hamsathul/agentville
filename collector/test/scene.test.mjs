@@ -173,3 +173,13 @@ test('accounts in the scene: names and plans, never emails; a private scene has 
   assert.doesNotMatch(JSON.stringify(p), /nco|zeta/);
   assert.deepEqual(plain(toScene(snapOf([], []))).accounts, [], 'no accounts in the snapshot: none in the scene');
 });
+
+test('writes: the distinct files an agent wrote in the last 5 minutes (reads and older writes not counted); kept in a private scene', () => {
+  const { toScene, privateScene } = load();
+  const t = (path, mode, ago) => ({ path, mode, lastAt: NOW - ago, firstAt: NOW - ago, repo: '/r' });
+  const a = agent('a1', { touching: [t('/r/a', 'write', 1e3), t('/r/b', 'write', 2e3), t('/r/a', 'write', 3e3), t('/r/c', 'read', 1e3), t('/r/d', 'write', 6 * 60e3)] });
+  const s = toScene(snapOf([a, agent('a2')], [repo('/r')]));
+  assert.equal(s.agents[0].writes, 2);
+  assert.equal(s.agents[1].writes, 0, 'none');
+  assert.equal(privateScene(s).agents[0].writes, 2);
+});
