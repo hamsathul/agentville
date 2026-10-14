@@ -13,6 +13,7 @@ import { LILY_PADS, PX, WATER } from '../layout.js';
 import { MODELS } from '../models/index.js';
 import { ACTS, HERDS, advance, command, forgetWalk, makeAnimal, menuFor, perform, placeAt, release } from '../antics.js';
 import { roamOf } from '../roam.js';
+import { bakeSkinned } from './bake.js';
 import { COATS, FINISH, SPOTS, spotsOf } from '../coats.js';
 
 // Larger than life, as the farmers are (figurine.js): at their true size a cow is a speck from the whole farm's view.
@@ -31,6 +32,7 @@ export function makeAnimals(THREE, mats, S) {
   let winter = false;
   const templates = new Map(); // kind → { scene, clips, scale, lift, raw, box }
   const animals = [], hidden = new THREE.MeshBasicMaterial({ visible: false }), v = new THREE.Vector3();
+  const coatMat = new THREE.MeshStandardMaterial({ vertexColors: true, flatShading: true, ...FINISH }); // every animal's baked coat
   let H = 400, ground = null, roam = null, on = true, started = false, shown = 0;
 
   /** A kind's model, loaded once: its module, the GLB in it, repainted, sized to its height (larger than life) with its feet at 0. */
@@ -44,11 +46,13 @@ export function makeAnimals(THREE, mats, S) {
     const m = MODELS[kind], scale = m.height ? (m.height * BIGGER) / raw : (m.length * BIGGER) / (Math.max(size.x, size.z) || 1); // a fish or a pad by its length
     gltf.scene.traverse(o => { if (o.isMesh) { o.castShadow = true; o.receiveShadow = true; o.frustumCulled = false; } });
     paint(gltf.scene, kind); // its copies share its materials
+    const unbaked = cloneSkinned(gltf.scene); // for a copy in a coat of its own (the Explore dog): painted by colour area
+    const { colours } = bakeSkinned(THREE, gltf.scene, { material: coatMat, apart: o => SPOTS[kind]?.area === o.material.name }); // one draw call an animal; a spotted coat apart, each animal's own
     // what a click finds: a box round it, larger than its body so a small one is easy to hit
     const hit = new THREE.BoxGeometry(Math.max(0.8, size.x * scale * 1.2), size.y * scale * 1.1, Math.max(0.8, size.z * scale * 1.1));
     hit.translate(0, (size.y * scale * 1.1) / 2, (box.min.z + box.max.z) * 0.5 * scale);
     // its size, for where it may go (roam.js): half its length, so it fits whichever way it faces, in 2D px
-    const t = { scene: gltf.scene, clips, scale, lift: -box.min.y * scale, raw, hit, top: size.y * scale, r: (Math.max(size.x, size.z) * scale * PX) / 2 };
+    const t = { scene: gltf.scene, unbaked, colours, clips, scale, lift: -box.min.y * scale, raw, hit, top: size.y * scale, r: (Math.max(size.x, size.z) * scale * PX) / 2 };
     templates.set(kind, t);
     return t;
   }
@@ -76,17 +80,18 @@ export function makeAnimals(THREE, mats, S) {
       o.geometry = geo;
     });
   }
-  /** The colours a model is painted in, by colour area, its most metallic part's metalness, and how much of it is spots. */
-  function coatOf(model) {
-    const colours = {};
+  /** The colours an animal is painted in, by colour area (as its kind's model was baked), its most metallic part's
+   *  metalness, and how much of its spotted coat is spots. */
+  function coatOf(w) {
+    const area = SPOTS[w.a.kind]?.area;
     let metal = 0, spots = 0, faces = 0;
-    model.traverse(o => {
+    w.model.traverse(o => {
       if (!o.isMesh) return;
-      for (const m of [o.material].flat()) { colours[m.name] = `#${m.color.getHexString()}`; metal = Math.max(metal, m.metalness); }
+      for (const m of [o.material].flat()) metal = Math.max(metal, m.metalness);
       const c = o.geometry.attributes.color;
-      if (c) for (let v = 0; v < c.count; v += 3) { faces++; if (c.getX(v) < 0.5) spots++; }
+      if (c && o.material.name === area) for (let v = 0; v < c.count; v += 3) { faces++; if (c.getX(v) < 0.5) spots++; }
     });
-    return { colours, metal, ...(faces ? { spots: spots / faces } : {}) };
+    return { colours: { ...w.t.colours }, metal, ...(faces ? { spots: spots / faces } : {}) };
   }
   /** One animal: its own copy of the model in a holder that sizes it, its own animation player, and its hit box. */
   function instance(h, t, i) {
@@ -131,7 +136,7 @@ export function makeAnimals(THREE, mats, S) {
    * a bandana when given. part(name) plays one of the kind's parts (models/index.js), round and round; tick(dt) moves it.
    */
   async function copy(kind, { size = 1, coat = null, scarf = null } = {}) {
-    const t = await template(kind), root = new THREE.Group(), holder = new THREE.Group(), model = cloneSkinned(t.scene);
+    const t = await template(kind), root = new THREE.Group(), holder = new THREE.Group(), model = cloneSkinned(coat ? t.unbaked : t.scene); // a coat of its own: the model by colour area
     holder.scale.setScalar(t.scale * size);
     holder.position.y = t.lift * size;
     holder.add(model);
@@ -335,7 +340,7 @@ export function makeAnimals(THREE, mats, S) {
       return { shown: w.root.visible, kind: w.a.kind, title: MODELS[w.a.kind].title, menu: menuFor(w.a.kind, w.a.family).map(id => ({ id, label: ACTS[id].label })), act: w.a.act, part: w.a.part, spot: [w.a.x, w.a.y], top: { x: w.root.position.x, y: w.t.top + 0.3, z: w.root.position.z } };
     },
     /** Animal i's colours, by colour area, and how metallic its most metallic part is (for the check). */
-    coat: i => (animals[i] && on ? coatOf(animals[i].model) : null),
+    coat: i => (animals[i] && on ? coatOf(animals[i]) : null),
     /** Turns animal i to face a place on the map (one it talks to). */
     face(i, [x, y]) { const w = animals[i]; if (w && Math.hypot(x - w.a.x, y - w.a.y) > 1) w.a.face = Math.atan2(x - w.a.x, y - w.a.y); },
     /** Asks animal i to do act (from its menu). */

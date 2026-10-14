@@ -509,9 +509,8 @@ try {
 
     // 5b. the crops (build/crops.js): past the sprouts, the models (Quaternius's, Kenney's) once they load, the
     // code-built ones standing in till then; the sunflower stays code-built. And the budget at the busiest stops, the
-    // crops grown: 2 M triangles and 600 draw calls at most (main before the machines: 1.1 M and 484 at everyone, 1.2 M
-    // and 532 at sixteen; the bigger farm's forest and fields 0.4 M more), 700 at steps with its machines out (main: 578
-    // there with none; about 10 a machine)
+    // crops grown: 2 M triangles and 400 draw calls at most (the spec's; each animal one skinned mesh, the farmstead's lit
+    // windows merged by material), 500 at steps with five machines out (about 10 a machine)
     {
       const cropsNow = async () => JSON.parse(await chrome.inFrame('/world/farm3d/', 'JSON.stringify(window.__farm3d.crops?.() ?? {})'));
       const grownAt = async (stop, ripe) => { // ripe: till every crop but the sunflower is its model; else till they settle
@@ -531,7 +530,7 @@ try {
       else console.log(`  ✓ crops: ${grown.map(([k, n]) => `${n.model} ${k}`).join(', ')} from the models`);
       for (const stop of ['everyone', 'sixteen']) {
         const c = await grownAt(stop, false), s = await statsOf(chrome);
-        if (!(s?.triangles <= 2e6 && s?.calls <= 600)) bad(`budget at ${stop}: ${s?.triangles} triangles, ${s?.calls} draw calls (2 M and 600 at most; crops ${JSON.stringify(c)})`);
+        if (!(s?.triangles <= 2e6 && s?.calls <= 400)) bad(`budget at ${stop}: ${s?.triangles} triangles, ${s?.calls} draw calls (2 M and 400 at most; crops ${JSON.stringify(c)})`);
         else console.log(`  ✓ budget at ${stop}: ${(s.triangles / 1e6).toFixed(2)} M triangles, ${s.calls} draw calls`);
       }
       // and with machines out: every step at once (a sprayer, a mower, a trailer of sacks, one of crates, the truck)
@@ -540,7 +539,7 @@ try {
       for (const end = Date.now() + 60_000; Date.now() < end && out.filter(i => i.phase === 'work').length < 4; await sleep(500)) out = JSON.parse(await chrome.inFrame('/world/farm3d/', 'JSON.stringify(window.__farm3d.machines?.() ?? [])'));
       await sleep(400);
       const s = await statsOf(chrome), working = out.filter(i => i.phase === 'work').length;
-      if (working < 4 || !(s?.triangles <= 2e6 && s?.calls <= 700)) bad(`budget with machines out (steps): ${working} at work, ${s?.triangles} triangles, ${s?.calls} draw calls (4 at work; 2 M and 700 at most: main draws 578 here with none)`);
+      if (working < 4 || !(s?.triangles <= 2e6 && s?.calls <= 500)) bad(`budget with machines out (steps): ${working} at work, ${s?.triangles} triangles, ${s?.calls} draw calls (4 at work; 2 M and 500 at most)`);
       else console.log(`  ✓ budget with ${out.length} machines out (steps): ${(s.triangles / 1e6).toFixed(2)} M triangles, ${s.calls} draw calls`);
     }
 

@@ -146,6 +146,7 @@ export function makeMachines(THREE, mats, S, { gltf, onError = () => {} }) {
     S.ball(0.19, SKIN, 0, -0.12, 0, g, 1);
     box(0.38, 0.1, 0.4, CAP, 0, 0.02, 0.02, g);
     box(0.3, 0.04, 0.2, CAP, 0, 0.03, 0.27, g);
+    g.traverse(o => { o.castShadow = false; }); // inside the cab: its shadow would be the cab's
   });
   const bit = new THREE.BoxGeometry(1, 1, 1);
   bit.userData.shared = true;

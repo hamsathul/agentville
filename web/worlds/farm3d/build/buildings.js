@@ -285,8 +285,9 @@ export function makeBuildings(THREE, mats, S) {
     }
 
     // one draw call for the barn (its own, so it can still be clicked), one for the rest
-    for (const o of g.children.filter(c => c.userData.hit || c.userData.plants)) S.bake(o);
+    for (const o of g.children.filter(c => c.userData.hit || c.userData.plants)) { S.bake(o); S.mergeByMaterial(o); }
     S.bake(g, { keep: o => Boolean(o.userData.hit || o.userData.plants) });
+    S.mergeByMaterial(g, { keep: o => Boolean(o.userData.hit || o.userData.plants) }); // the lit windows, the lamps and the glass: a few draw calls
     // What a click finds: a box round each building (invisible, not baked), the 2D farm's buildings by name
     const hitBox = (k, x0, y0, w2, h2, tall) => {
       const a = P(x0 + w2 / 2, y0 + h2 / 2), hb = new THREE.Mesh(new THREE.BoxGeometry(m(w2), tall, m(h2)), hitMat);

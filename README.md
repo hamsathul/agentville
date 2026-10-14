@@ -1465,11 +1465,13 @@ it says that and the Menu's World and List still work. It uses the graphics card
 second, and draws nothing while the page shows its list or the tab is hidden; with **Motion** off (or
 reduced motion) it draws only when something changes. three.js (0.186.1, MIT licence; with its glTF loader
 for the animals) is part of Agentville, in `web/worlds/farm3d/vendor/`, and the models (the animals, the
-plants, the farmers' characters) are in `web/worlds/farm3d/models/` (about 12 MB, packed into JS files
-the world imports and loaded a moment after the farm draws; the eighteen animals, the lily pads and the
-plants add about 290 draw calls and the plants about 700,000 triangles, shadows included; a farmer is two
-draw calls and two for its shadow, with its pin, tool and badges): nothing is downloaded from anywhere, and the world sees the same
-scene as the farm and sends nothing.
+plants, the crops, the machines, the farmers' characters) are in `web/worlds/farm3d/models/` (about 13 MB,
+packed into JS files the world imports and loaded a moment after the farm draws): nothing is downloaded
+from anywhere, and the world sees the same scene as the farm and sends nothing. At the tour's busiest stop
+it makes about 300 draw calls a frame, shadows included: each animal is one (a spotted cow two) and one
+for its shadow, a farmer two and two for its shadow, a machine about ten, and the farmstead's lit windows
+and lamps a few; the plants are about 700,000 triangles. `npm run farm3d-check` holds it to 400 (500 with
+five machines out).
 
 ### Notifications and the bell
 

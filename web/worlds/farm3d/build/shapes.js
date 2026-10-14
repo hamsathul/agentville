@@ -77,6 +77,38 @@ export function makeShapes(THREE, mats) {
       root.add(baked);
       return baked;
     },
+    /**
+     * Meshes under a group that share a material (a glowing window's, a lamp's, the glass's) merged into one mesh each,
+     * where they stood, so a farmstead's forty windows are a few draw calls; the night still lights them, through
+     * their material. Skinned, instanced and kept meshes (`keep(o)`: what is clicked, what moves) stay as they are.
+     */
+    mergeByMaterial(root, { keep = () => false } = {}) {
+      root.updateMatrixWorld(true);
+      const inv = new THREE.Matrix4().copy(root.matrixWorld).invert(), byMat = new Map();
+      const kept = o => { for (let p = o; p && p !== root; p = p.parent) if (keep(p)) return true; return false; };
+      root.traverse(o => {
+        if (!o.isMesh || o.isSkinnedMesh || o.isInstancedMesh || Array.isArray(o.material) || !o.visible || kept(o)) return;
+        if (!byMat.has(o.material)) byMat.set(o.material, []);
+        byMat.get(o.material).push(o);
+      });
+      for (const [material, list] of byMat) {
+        if (list.length < 2) continue;
+        const geos = list.map(o => {
+          const g = (o.geometry.index ? o.geometry.toNonIndexed() : o.geometry.clone()).applyMatrix4(new THREE.Matrix4().multiplyMatrices(inv, o.matrixWorld));
+          for (const k of Object.keys(g.attributes)) if (k !== 'position') g.deleteAttribute(k); // flat shading needs no normals
+          return g;
+        });
+        const P = [];
+        for (const g of geos) { P.push(...g.attributes.position.array); g.dispose(); }
+        const out = new THREE.BufferGeometry();
+        out.setAttribute('position', new THREE.Float32BufferAttribute(P, 3));
+        out.computeBoundingSphere();
+        const merged = new THREE.Mesh(out, material);
+        merged.castShadow = list.some(o => o.castShadow); merged.receiveShadow = list.some(o => o.receiveShadow);
+        for (const o of list) { o.removeFromParent(); if (!o.geometry.userData?.shared) o.geometry.dispose(); }
+        root.add(merged);
+      }
+    },
     /** A one-off geometry (its own, freed with its builder). */
     mesh,
     disposeAll() { for (const g of geos.values()) g.dispose(); geos.clear(); for (const g of units.values()) g.dispose(); units.clear(); },
