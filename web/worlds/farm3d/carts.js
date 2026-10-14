@@ -3,7 +3,7 @@
 // Each server called in the last hour (scene.carts, six at most) has a cart in a row at the lane's end; while a farmer
 // calls it, it drives over beside it (onto the lane, along it, down the nearest walkway), stays while the call goes on
 // and 3 s after, then drives home. Pure: build/carts.js draws them.
-import { CART_RANK, CORR as CORRIDORS, LANE as LANE_Y, ROAD, W } from './layout.js';
+import { CART_RANK, CORR as CORRIDORS, CORR_OF, LANE as LANE_Y, ROAD, W, farmAt } from './layout.js';
 
 /** A cart's way between two places: onto the lane (straight down or up to it, or up the path nearest), along it, then down the path nearest the place, and over to it. */
 export function cartRoute([x, y], [tx, ty], { lane: LANE = LANE_Y, corr: CORR = CORRIDORS } = {}) {
@@ -44,18 +44,21 @@ export const CART_SPEED = 55; // 2D pixels a second
 /** A crate colour for each server, by its name (the people kit's hash). */
 export const CRATES = ['#c9a46a', '#e04a3a', '#3d7be0', '#6cc04a', '#8a5fc0', '#f0b429'];
 export const hashOf = id => { let h = 0; for (const ch of String(id)) h = (h * 31 + ch.charCodeAt(0)) >>> 0; return h; };
-/** Beside a farmer, on the side away from the farm's edge: where it is going rather than where it is, so the cart does not chase it step by step. */
-export const besideOf = b => { const x = Number.isFinite(b.tx) ? b.tx : b.x, y = Number.isFinite(b.ty) ? b.ty : b.y; return [Math.round(x + (x > W - 60 ? -13 : 13)), Math.round(y)]; };
+/** Beside a farmer, on the side away from its farm's edge (`ox`: the farm's offset, the neighbour's): where it is going rather than where it is, so the cart does not chase it step by step. */
+export const besideOf = (b, ox = 0) => { const x = Number.isFinite(b.tx) ? b.tx : b.x, y = Number.isFinite(b.ty) ? b.ty : b.y; return [Math.round(x + (x - ox > W - 60 ? -13 : 13)), Math.round(y)]; };
 
 /**
  * The carts: tick(list (scene.carts: { server, busy }), dt, posOf (a farmer's place, or null when not drawn), snap (Motion
- * off: each where it is going), now) → [{ server, x, y, dir, moving, away (out of its place), crate, who (the caller) }].
+ * off: each where it is going), now, land ({ w, ox }: with a neighbour farm, both farms' walkways: a cart to a neighbour's
+ * farmer goes along the lane, over the bridge and down its walkway)) → [{ server, x, y, dir, moving, away (out of its
+ * place), crate, who (the caller) }].
  */
 export function createCarts() {
   const rankOf = new Map(), carts = new Map(); // server → its place in the row; server → { x, y, path, to, dir, moving, goal, arrivedAt, lastBusy }
   return {
-    tick(list, dt, posOf, snap, now) {
+    tick(list, dt, posOf, snap, now, land = null) {
       list = list ?? [];
+      const ox = land?.ox ?? 0, corr = ox ? [...CORRIDORS, ...CORR_OF(ox)] : CORRIDORS;
       for (const k of [...rankOf.keys()]) if (!list.some(c => c.server === k)) { rankOf.delete(k); carts.delete(k); }
       for (const c of list) if (!rankOf.has(c.server)) { const used = new Set(rankOf.values()); rankOf.set(c.server, CART_RANK.findIndex((_, i) => !used.has(i))); }
       return list.filter(c => rankOf.get(c.server) >= 0).map(c => {
@@ -63,8 +66,8 @@ export function createCarts() {
         let s = carts.get(c.server);
         if (!s) carts.set(c.server, (s = { x: home[0], y: home[1], path: [], to: home, dir: -1 }));
         const b = c.busy ? posOf(c.busy) : null;
-        const goal = cartGoal(s, b ? besideOf(b) : null, home, now);
-        if (goal[0] !== s.to[0] || goal[1] !== s.to[1]) { s.to = goal; s.path = cartRoute([s.x, s.y], goal); }
+        const goal = cartGoal(s, b ? besideOf(b, ox && farmAt(Number.isFinite(b.tx) ? b.tx : b.x) ? ox : 0) : null, home, now);
+        if (goal[0] !== s.to[0] || goal[1] !== s.to[1]) { s.to = goal; s.path = cartRoute([s.x, s.y], goal, { corr }); }
         if (snap) { // no motion: it stands where it is going, facing the farmer (or the farm, in its place)
           [s.x, s.y] = goal;
           s.path = [];

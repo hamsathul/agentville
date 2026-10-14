@@ -44,10 +44,10 @@ export function makeFarmers(THREE, figures, S, { route = () => null } = {}) {
       b.fig.update(f);
       b.farmer = f;
       if (b.errand && f.state !== b.errand.state) endErrand(f.id); // called back: work, or you
-      const [tx, ty] = f.at;
-      if (!b.target || b.target[0] !== tx || b.target[1] !== ty) {
+      const [tx, ty] = f.at, lost = b.x > land.w + 4; // on a farm that's gone (the second account's): at its place at once
+      if (!b.target || b.target[0] !== tx || b.target[1] !== ty || lost) {
         b.target = [tx, ty];
-        if (instant) { b.x = tx; b.y = ty; b.path = []; b.h = groundAt(tx, ty); b.errand = null; }
+        if (instant || lost) { b.x = tx; b.y = ty; b.path = []; b.h = groundAt(tx, ty); b.errand = null; }
         else if (!b.errand) b.path = walk([b.x, b.y], [tx, ty]); // on an errand: it goes there afterwards; over the bridge to the other farm
       }
     }
@@ -138,7 +138,8 @@ export function makeFarmers(THREE, figures, S, { route = () => null } = {}) {
     setDriving(id, seat) {
       const b = bodies.get(id);
       if (!b) return;
-      if (b.seat && !seat && !b.errand && b.target) b.path = wayTo(b, b.target); // out of the machine, its errand over: back to its place
+      if (b.seat && !seat && b.target && b.x > land.w + 4) { [b.x, b.y] = b.target; b.path = []; b.errand = null; b.h = groundAt(b.x, b.y); } // out of a machine on a farm that's gone: at its place at once
+      else if (b.seat && !seat && !b.errand && b.target) b.path = wayTo(b, b.target); // out of the machine, its errand over: back to its place
       b.seat = seat ?? null;
     },
     driving: id => Boolean(bodies.get(id)?.seat),

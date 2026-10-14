@@ -9,7 +9,7 @@ import { plantsOf } from '../../web/worlds/farm3d/nature.js';
 import { landRoute, walkRoute } from '../../web/worlds/farm3d/route.js';
 import { dialogFor } from '../../web/worlds/farm3d/dialogs.js';
 import { createMachines, passesFor } from '../../web/worlds/farm3d/machines.js';
-import { cartOf } from '../../web/worlds/farm3d/carts.js';
+import { cartOf, createCarts } from '../../web/worlds/farm3d/carts.js';
 import { BED, SHED_DOOR } from '../../web/worlds/farm3d/layout.js';
 import { roamOf } from '../../web/worlds/farm3d/roam.js';
 import { HERDS, areaOn, makeAnimal, advance } from '../../web/worlds/farm3d/antics.js';
@@ -366,4 +366,70 @@ test("a visit whose guest's walk is cut short is dropped (cancel), and the next 
   v.cancel();
   assert.equal(v.now(), null);
   assert.deepEqual(v.tick({ now: VISIT_FIRST_MS + 1000, still: false, neighbour: true, farmers: fs }), {});
+});
+
+// The final review's fixes (spec 2026-10-14 neighbour, review c1af5aa..4e970c9)
+test("the route grids over the whole land are quick to build: each body size's first route under 200 ms at six rows", () => {
+  const many = Array.from({ length: 16 }, (_, k) => `n${k}`);
+  const L = model(two(many.map(n => worker(n, `${HOME}/${n}`, 'zeta')), many.map(n => repo(n)))).ground;
+  assert.equal(L.rows, 6);
+  const R = roamOf(L), pa = pastureOf(L), y = (pa.y0 + pa.y1) / 2;
+  for (const r of [5, 7, 9, 11]) { // the animals' reach (antics.js reachOf): 5 to the bull's 11
+    const t0 = performance.now(), way = R.route([60, 200], [300 + NEIGHBOUR_X, y + 30], r), ms = performance.now() - t0; // from your yard: round, through the gates
+    assert.ok(way?.length, `a way for a body of ${r}`);
+    assert.ok(ms < 200, `the first route for a body of ${r} took ${ms.toFixed(0)} ms`);
+  }
+});
+
+test("an MCP cart to a neighbour's farmer goes along the lane, over the bridge and down its walkway: never across a field or the creek", () => {
+  const land = landOf(true), C = createCarts(), farmer = { x: 1196, y: 242, tx: 1196, ty: 242 }, beds = Array.from({ length: 3 }, (_, k) => 296 + k * 204 - BED.w / 2);
+  const seen = [];
+  for (let k = 0; k < 600; k++) seen.push(C.tick([{ server: 'tickets', busy: 'f' }], 0.1, () => farmer, false, k * 100, land)[0]);
+  const last = seen.at(-1);
+  assert.ok(Math.hypot(last.x - farmer.x, last.y - farmer.y) < 20, `beside its farmer (${last.x}, ${last.y})`);
+  for (const c of seen) {
+    if (c.x > CREEK.x0 && c.x < CREEK.x1) assert.ok(Math.abs(c.y - LANE) <= 10, `over the creek off the bridge at ${c.x}, ${c.y}`);
+    for (const x0 of beds) assert.ok(!(c.x > x0 && c.x < x0 + BED.w && c.y > 180 && c.y < 180 + BED.d), `across your field at ${c.x}, ${c.y}`);
+  }
+});
+
+test("a neighbour's worktree field is labelled with its repo's own name, never the '@n' of its key", () => {
+  const WT = `${HOME}/shop-wt`;
+  const repos = [repo('shop'), { ...repo('shop-wt', { branch: 'feature/cart' }), worktree: true, main: SHOP }];
+  const m = model(two([worker('a', WT, 'zeta'), worker('b', SHOP, 'zeta')], repos));
+  const wt = m.beds.find(b => b.key === `${WT}@n`);
+  assert.deepEqual(wt.label, ['shop-wt feature/cart', 'worktree of shop']);
+  assert.equal(wt.i, m.beds.find(b => b.key === `${SHOP}@n`).i + 1, 'still right after its repo');
+  const p = M.farmModel(privateScene(toScene(two([worker('a', WT, 'zeta')], repos))), { beds: {}, packed: false });
+  assert.ok(p.beds.every(b => !b.label.join(' ').includes('@n')), `private: ${JSON.stringify(p.beds.map(b => b.label))}`);
+});
+
+const hbed = { key: 'r1', cx: 704, x0: 704 - BED.w / 2, y0: 180, lane: 242 };
+const nbed = { key: 'r1@n', cx: 296 + NEIGHBOUR_X, x0: 296 - BED.w / 2 + NEIGHBOUR_X, y0: 180, lane: 242, farm: 1, ox: NEIGHBOUR_X };
+/** A neighbour's sprayer out at work in its field, and the context it ran in. */
+function sprayerAtWork() {
+  const M2 = createMachines();
+  M2.want({ farmers: [{ id: 'f', state: 'working', field: 'r1@n', step: 'test', writes: 0 }] }, 0, new Set());
+  const ctx = { farmers: new Map([['f', { x: east(SHED_DOOR)[0], y: SHED_DOOR[1], state: 'working', field: 'r1@n' }]]), beds: new Map([['r1@n', nbed], ['r1', hbed]]), boarded: () => true, blocked: () => false, still: false, now: 0, land: landOf(true) };
+  let it = null;
+  for (let k = 0; k < 600 && it?.phase !== 'work'; k++) it = M2.tick(0.1, ctx)[0] ?? it;
+  assert.equal(it.phase, 'work');
+  return { M2, ctx };
+}
+test('a session moved to your account: its machine goes home to its own shed, and a new one comes out of yours (none crosses the bridge)', () => {
+  const { M2, ctx } = sprayerAtWork();
+  M2.want({ farmers: [{ id: 'f', state: 'working', field: 'r1', step: 'test', writes: 0 }] }, 1, new Set());
+  const moved = { ...ctx, farmers: new Map([['f', { x: SHED_DOOR[0], y: SHED_DOOR[1], state: 'working', field: 'r1' }]]) };
+  let last = null;
+  for (let k = 0; k < 1500; k++) for (const it of M2.tick(0.1, moved)) {
+    assert.ok(!(it.x > W + 4 && it.x < NEIGHBOUR_X - 4), `in the gap at ${it.x.toFixed(0)}, ${it.y.toFixed(0)} (${it.phase})`);
+    last = it;
+  }
+  assert.ok(last && last.x < W && last.phase === 'work', `at work on your farm (${last?.x}, ${last?.phase})`);
+});
+test('the second account gone: its machines go with its farm, and none drives across yours', () => {
+  const { M2, ctx } = sprayerAtWork();
+  M2.want({ farmers: [{ id: 'f', state: 'working', field: 'r1', step: 'test', writes: 0 }] }, 1, new Set());
+  const gone = { ...ctx, farmers: new Map([['f', { x: SHED_DOOR[0], y: SHED_DOOR[1], state: 'working', field: 'r1' }]]), beds: new Map([['r1', hbed]]), land: landOf(false) };
+  for (let k = 0; k < 600; k++) for (const it of M2.tick(0.1, gone)) assert.ok(it.x <= W + 20, `off your farm at ${it.x.toFixed(0)}, ${it.y.toFixed(0)} (${it.phase})`);
 });

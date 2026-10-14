@@ -4,7 +4,7 @@
 // string lights, the henhouse and its run, the market stall, the scarecrow patch, the hammocks, the shade tree, the
 // orchard that comes with more rows, the woodpile and the rock, and the fence round the fields. Snow on the roofs in
 // winter. Rebuilt only when the rows, the season or the silos change.
-import { BARN, BARN_DOOR, BOARD, BUSHES, CORR, CREEK, DECK, NEIGHBOUR_X, HENHOUSE, HOUSE, LANE, LANE_HALF, NAPS, PASTURE_GATES, WALKWAY_GATES, PORCH_Y, PX, SCARECROWS, SHADE, SILO_Y, STALL, W, WOODPILE, crossingsOf, orchardOf, pastureOf, rocksOf } from '../layout.js';
+import { BARN, BARN_DOOR, BOARD, BUSHES, CORR, CREEK, DECK, GATE_SIGN, HENHOUSE, HOUSE, LANE, LANE_HALF, NAPS, PASTURE_GATES, WALKWAY_GATES, PORCH_Y, PX, SCARECROWS, SHADE, SILO_Y, STALL, W, WOODPILE, crossingsOf, orchardOf, pastureOf, rocksOf } from '../layout.js';
 import { disposeTree, seasonPalette } from './util.js';
 import { TAG_COLOURS } from '../dialogs.js';
 
@@ -299,7 +299,7 @@ export function makeBuildings(THREE, mats, S) {
       };
       span([LANE - LANE_HALF - 2, LANE + LANE_HALF + 2]);
       span(cattle);
-      const sp = P(NEIGHBOUR_X - 10, LANE - 16); // the neighbour's gate sign: its name is a label over it (overlay.js)
+      const sp = P(...GATE_SIGN); // the sign with the neighbour's name (a label over it: overlay.js), by the bridge
       for (const dx of [-0.7, 0.7]) S.box(0.1, 1.45, 0.1, dark, sp.x + dx, 0, sp.z, g);
       S.box(1.6, 0.5, 0.08, wood, sp.x, 0.95, sp.z, g);
       gate = { x: sp.x, y: 1.6, z: sp.z };

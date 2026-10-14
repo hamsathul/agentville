@@ -191,6 +191,10 @@ export function createMachines() {
     const j = wanted.get(id), farmer = ctx.farmers.get(id), bed = ctx.beds.get(r.field);
     const keep = j && farmer && ctx.beds.has(j.field);
     r.moving = false;
+    // its farm gone (the second account's), it goes with it; a job on the other farm (a session moved to the other
+    // account) takes that farm's machine: this one goes home to its own shed first, then is put away
+    const door = r.door ?? SHED_DOOR, theirs = keep ? doorOf(ctx.beds.get(j.field)) : door;
+    if ((!land.ox && door[0] > W) || (keep && theirs[0] !== door[0] && (ctx.still || r.phase === 'walking' || r.phase === 'parked'))) return false;
 
     if (ctx.still) { // Motion off: at its work spot, its farmer in the seat; nothing moves
       if (!keep) return false;
@@ -268,7 +272,10 @@ export function createMachines() {
       if (!r.path.length) { r.phase = 'parked'; r.toStall = false; }
     }
     // parked with its farmer still in the seat and a job wanted (another vehicle, another field): off again at once
-    if (r.phase === 'parked' && keep && !r.empty) setOff(r, ctx, j);
+    if (r.phase === 'parked' && keep && !r.empty) {
+      if (doorOf(ctx.beds.get(j.field))[0] !== (r.door ?? SHED_DOOR)[0]) return false; // its job is on the other farm now: that farm's machine goes
+      setOff(r, ctx, j);
+    }
     items.push(itemOf(r, driver));
     return true;
   }

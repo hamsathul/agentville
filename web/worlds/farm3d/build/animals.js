@@ -266,10 +266,10 @@ export function makeAnimals(THREE, mats, S) {
    * With a neighbour farm (g.land), each lives on its home farm (antics.js HERDS) and the neighbour's three come out;
    * without, all are yours and those three stay in.
    */
-  function setGround(g) {
+  function setGround(g, shared = null) {
     ground = g; H = g.H;
     for (const w of animals) if (w.a.romp) release(w.a); // a new ground: whatever they did together stops
-    roam = roamOf(g);
+    roam = shared ?? roamOf(g); // the farm's (app.js's), so the route grids are built once
     roam.setBusy(busyFields);
     env.neighbour = Boolean(g.land?.ox);
     for (const w of animals) { w.off = Boolean(w.h.only) && !env.neighbour; w.a.farm = env.neighbour ? w.h.farm ?? 0 : 0; w.a.area = areaOn(w.a.base, w.a.farm); }

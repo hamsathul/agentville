@@ -505,6 +505,8 @@ try {
       const homes = JSON.parse(await chrome.inFrame('/world/farm3d/', "JSON.stringify(['p1', 'p2', 'n1', 'n2', 'n3', 'n4', 'n5'].map(id => [id, window.__farm3d.farmerFarm(id), window.__farm3d.posOf(id)?.tx ?? null]))"));
       const astray = homes.filter(([id, farm, tx]) => farm !== (id.startsWith('n') && id !== 'n5' ? 1 : 0) || tx === null || (farm ? tx < 952 : tx > 856)).map(([id]) => id);
       const gateText = await chrome.inFrame('/world/farm3d/', "document.querySelector('.f3-gate')?.textContent ?? ''");
+      // the gate's name and the neighbour's silo tag don't cover each other, at 100%
+      const crowded = await chrome.inFrame('/world/farm3d/', `(() => { const g = document.querySelector('.f3-gate')?.getBoundingClientRect(), s = [...document.querySelectorAll('.f3-ov .f3-cnt')].find(e => e.title.startsWith('The silo of home'))?.getBoundingClientRect(); return Boolean(g && s && g.left < s.right && s.left < g.right && g.top < s.bottom && s.top < g.bottom); })()`);
       // its barn starts a session on its account
       const clickAt = js => chrome.inFrame('/world/farm3d/', `(() => { const at = ${js}; if (!at) return false; const c = document.querySelector('.f3-canvas'), b = c.getBoundingClientRect(), o = { bubbles: true, clientX: b.left + at.x, clientY: b.top + at.y, pointerId: 7, button: 0 }; for (const type of ['pointerdown', 'pointerup']) c.dispatchEvent(new PointerEvent(type, o)); return true; })()`);
       await clickAt("window.__farm3d.buildingAt('barn2')");
@@ -519,7 +521,8 @@ try {
       for (const end = Date.now() + 20_000; Date.now() < end && animalsOut !== ANIMALS + 3; await sleep(300)) animalsOut = (await statsOf(chrome)).animals;
       const farmsOf = JSON.parse(await chrome.inFrame('/world/farm3d/', `JSON.stringify(Array.from({ length: ${ANIMALS + 3} }, (_, i) => window.__farm3d.animal(i)?.farm ?? null))`));
       const alpaca = HERDS.slice(0, HERDS.findIndex(h => h.kind === 'alpaca')).reduce((n, h) => n + h.n, 0);
-      const sent = await chrome.inFrame('/world/farm3d/', `window.__farm3d.sendAcross(${alpaca})`);
+      let sent = false; // it refuses while the alpaca is busy (a habit, a romp, a play): again till it is free
+      for (const end = Date.now() + 15_000; Date.now() < end && !sent; await sleep(500)) sent = await chrome.inFrame('/world/farm3d/', `window.__farm3d.sendAcross(${alpaca})`);
       const cross = JSON.parse(await chrome.inFrame('/world/farm3d/', 'JSON.stringify(window.__farm3d.crossings())'));
       let arrived = false, wet = null;
       for (const end = Date.now() + 120_000; Date.now() < end && !arrived; await sleep(200)) {
@@ -567,6 +570,7 @@ try {
         theirs.length && `the neighbour's ${theirs.join(', ')} not in view`,
         astray.length && `on the wrong farm: ${astray.join(', ')} (${JSON.stringify(homes)})`,
         gateText !== 'home' && `the gate's sign says "${gateText}", not "home"`,
+        crowded && "the gate's name covers the neighbour's silo tag",
         barn2 !== 'start a session on zeta' && `the neighbour's barn asked "${barn2}"`,
         !(sprayer?.phase === 'work' && sprayer.field.endsWith('@n') && sprayer.x > 952) && `the neighbour's sprayer: ${JSON.stringify(sprayer && { phase: sprayer.phase, field: sprayer.field, x: Math.round(sprayer.x) })}`,
         sprayCalls > 500 && `${sprayCalls} draw calls with the sprayer out (500 at most)`,
@@ -577,10 +581,12 @@ try {
       else console.log(`  ✓ the neighbour farm: both farms drawn (the land ${land.w} px across), its barn, farmhouse and shed in view, its sign "home", its barn starts a session on zeta, its sprayer works its field (${sprayCalls} draw calls), ${ANIMALS + 3} animals on both farms (an alpaca crossed to yours by a bridge), ${visit?.guest} visited ${visit?.host} over the bridge and they talked, ${s.drawn} farmers each on its account's farm, ${s.calls} draw calls`);
       // the second account gone: one farm again, the 18 animals, everyone home
       await chrome.js(`window.TrackerFarm.update(${JSON.stringify({ ...NB, accounts: NB.accounts.slice(0, 1) })})`);
-      await sleep(1500);
+      await sleep(400); // the neighbour's farmers are on your farm at once: none walks across your fields from a farm that's gone
+      const stranded = JSON.parse(await chrome.inFrame('/world/farm3d/', "JSON.stringify(['n1', 'n2', 'n3', 'n4'].filter(id => (window.__farm3d.posOf(id)?.x ?? 0) > " + W + "))"));
+      await sleep(1100);
       const back = await statsOf(chrome), backLand = JSON.parse(await chrome.inFrame('/world/farm3d/', 'JSON.stringify(window.__farm3d.land())'));
-      if (back.animals !== ANIMALS || backLand.neighbour || chrome.errors.length > before) bad(`the second account gone: ${back.animals} animals (${ANIMALS} wanted), the land ${JSON.stringify(backLand)}${chrome.errors.length > before ? `; script errors: ${oneLine(chrome.errors[before]).slice(0, 160)}` : ''}`);
-      else console.log(`  ✓ the second account gone: one farm again, ${ANIMALS} animals`);
+      if (back.animals !== ANIMALS || backLand.neighbour || stranded.length || chrome.errors.length > before) bad(`the second account gone: ${back.animals} animals (${ANIMALS} wanted), the land ${JSON.stringify(backLand)}${stranded.length ? `, still on the farm that's gone: ${stranded.join(', ')}` : ''}${chrome.errors.length > before ? `; script errors: ${oneLine(chrome.errors[before]).slice(0, 160)}` : ''}`);
+      else console.log(`  ✓ the second account gone: one farm again, ${ANIMALS} animals, its farmers on yours at once`);
     }
 
     // 5. the plants: Quaternius's trees, bushes and rocks drawn once their models load (the ball trees stand in till

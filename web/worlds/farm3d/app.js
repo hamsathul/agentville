@@ -107,7 +107,7 @@ export function start({ el, opts, prefs }) {
   const mats = makeMaterials(THREE), sky = makeSky(THREE, scene3, mats), terrain = makeTerrain(THREE, mats);
   const shapes = makeShapes(THREE, mats), buildings = makeBuildings(THREE, mats, shapes);
   const models = makeModels(THREE), crops = makeCrops(THREE, mats, { load: kind => models.parts(kind), onLoad: (kind, err) => { if (err) report(err, `crops (${kind})`); dirty = true; } }), beds = makeBeds(THREE, mats, shapes, makeWeather(THREE, mats, shapes), crops);
-  let farmRoam = null; // the walkable farm (roam.js), for a farmer's errand to an animal
+  let farmRoam = null, farmRoamKey = ''; // the walkable farm (roam.js), for a farmer's errand to an animal and the animals' ways
   const farmers = makeFarmers(THREE, makeFigures(THREE, mats, shapes), shapes, { route: (a, b) => farmRoam?.route(a, b, 4) ?? null }), animals = makeAnimals(THREE, mats, shapes), weather = makeWeather(THREE, mats, shapes);
   const nature = makeNature(THREE, shapes), talk = createTalk(), visits = createVisits(); // visits: between the farms, with a neighbour's
   animals.setPeople(() => (shownModel()?.farmers ?? []).map(f => farmers.posOf(f.id)).filter(Boolean).map(p => [p.x, p.y, 6])); // the places they pick keep clear of the farmers
@@ -326,12 +326,13 @@ export function start({ el, opts, prefs }) {
     if (key === groundKey) return;
     groundKey = key;
     const ext = terrain.build(model.ground, season);
-    farmRoam = roamOf(model.ground);
+    const roamKey = `${model.ground.rows}|${model.ground.H}|${model.land.w}`; // where things stand: not the season
+    if (roamKey !== farmRoamKey) { farmRoamKey = roamKey; farmRoam = roamOf(model.ground); }
     plays.endAll(playCtx); // a new ground: whoever was at play goes back
     romps.releaseAll(rompCtx);
     nature.build(model.ground, season).then(done => { if (done) { standIns(); dirty = true; } }).catch(err => report(err, 'plants')); // the farm draws first
     sky.setExtent(ext.x, ext.z, ext.center);
-    animals.setGround(model.ground);
+    animals.setGround(model.ground, farmRoam); // one roam for both: its route grids built once
     cartMeshes.setGround(model.ground.H, farmers.groundAt);
     machineMeshes.setGround(model.ground.H, farmers.groundAt);
     shed.build(model.ground.H);
@@ -541,7 +542,7 @@ export function start({ el, opts, prefs }) {
       // the carts: an MCP server's drives to the farmer calling it (one not drawn: it stays home); a web call's goes to
       // town and back, on the farm's clock (still with Motion off)
       const road = piece('carts', () => {
-        cartItems = carts.tick(model.carts, dt, id => (shownIds.has(id) ? farmers.posOf(id) : null), opts.still, performance.now()); // a duration: the page clock may stand still
+        cartItems = carts.tick(model.carts, dt, id => (shownIds.has(id) ? farmers.posOf(id) : null), opts.still, performance.now(), model.land); // a duration: the page clock may stand still
         const r = shown.map(f => { const c = cartOf(f, t, model.land); return c && { id: f.id, ...c }; }).filter(Boolean);
         roadItems = r;
         cartMeshes.tick(cartItems, r, dt, opts.still);

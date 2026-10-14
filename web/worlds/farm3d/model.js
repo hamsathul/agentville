@@ -113,7 +113,7 @@ export function makeModel({ makeGrid, engineScene, tagText, cutMid, lastPart, ag
   function labelOf(f) {
     const branch = f.branch === '(detached)' ? ' ?' : f.branch && !isMain(f.branch) ? ` ${clip(f.branch, 12)}` : '';
     const d = f.lastDeploy;
-    const second = [f.worktree && f.main ? `worktree of ${cutMid(lastPart(f.main), 16)}` : '', d?.label ?? '', f.collision ? '⚠ crowded' : ''].filter(Boolean).join(' ');
+    const second = [f.worktree && f.main ? `worktree of ${cutMid(lastPart(f.mainRepo ?? f.main), 16)}` : '', d?.label ?? '', f.collision ? '⚠ crowded' : ''].filter(Boolean).join(' ');
     return [`${cutMid(f.name ?? lastPart(f.key), 16)}${branch}`, ...(second ? [second] : [])];
   }
   // copied from web/worlds/farm/world.js (the tip hook): the farmer's tooltip
@@ -217,7 +217,7 @@ export function makeModel({ makeGrid, engineScene, tagText, cutMid, lastPart, ag
     const theirRepos = new Set(e.farmers.filter(f => theirs.has(f.id) && f.field).map(f => f.field));
     const ourRepos = new Set(e.farmers.filter(f => !theirs.has(f.id) && f.field).map(f => f.field));
     const homeFields = e.fields.filter(f => ourRepos.has(f.key) || !theirRepos.has(f.key));
-    const nFields = e.fields.filter(f => theirRepos.has(f.key)).map(f => ({ ...f, key: nKey(f.key), main: f.worktree && f.main ? nKey(f.main) : f.main, repo: f.key }));
+    const nFields = e.fields.filter(f => theirRepos.has(f.key)).map(f => ({ ...f, key: nKey(f.key), main: f.worktree && f.main ? nKey(f.main) : f.main, mainRepo: f.main, repo: f.key })); // main: its place beside its repo; mainRepo: its label
     const farmers = e.farmers.map(f => (theirs.has(f.id) && f.field && theirRepos.has(f.field) ? { ...f, field: nKey(f.field) } : f));
     const g0 = lay(homeFields, beds, packed), g1 = lay(nFields, nbeds, npacked), rows = Math.max(g0.rows, g1.rows);
     const land = landOf(true), ground = { ...widen(g0, rows), land }, nground = widen(g1, rows);

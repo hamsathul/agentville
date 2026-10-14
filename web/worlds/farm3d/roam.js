@@ -15,6 +15,7 @@ const STEP = 2; // how finely a way is checked, in px
 const TRUNK = 4; // a yard tree's trunk, in px: the dogs run under its crown
 const WET = new Set(['water', 'pond']); // grounds in the pond: nothing on land is in their way, and the frog jumps
 const CELL = 4; // route()'s grid, in px
+const BUCKET = 32, REACH = 24, MARGIN = 96; // hits()'s buckets: their size, how far round its box a thing is put, how far past the land they run
 const SIZES = [6, 9, 12, 15, 18]; // the bodies route() keeps a grid for: an animal's is the next up
 /** A field patch's ground, kept clear (its piles above it, its pumps and windmill on its left, its edging), and a busy
  *  one's (the machine's turns at its ends too), round a slot's corner (x0, y0). */
@@ -101,11 +102,31 @@ export function roamOf(L) {
     ...forestOf(L.H, land.w).filter(([x, y, r]) => near(x, y, r * 1.25 + 24)).map(([cx, cy, r]) => ({ cx, cy, r: r * 1.25 })), // their crowns: the deer would stand in them
   ];
   const box = (o, x, y, r) => x > o.x - r && x < o.x + o.w + r && y > o.y - r && y < o.y + o.h + r;
-  /** Whether a body of size r at (x, y) touches something: a thing on the ground, a field, or a fence. */
-  const hits = (x, y, r) => obstacles.some(o => (o.rx ? ((x - o.cx) / (o.rx + r)) ** 2 + ((y - o.cy) / (o.ry + r)) ** 2 < 1
+  const touches = (o, x, y, r) => (o.rx ? ((x - o.cx) / (o.rx + r)) ** 2 + ((y - o.cy) / (o.ry + r)) ** 2 < 1
     : o.r !== undefined ? Math.hypot(x - o.cx, y - o.cy) < o.r + r
-      : box(o, x, y, r)))
-    || fences.some(f => toSegment(x, y, f) < r + 1);
+      : box(o, x, y, r));
+  // What stands near each place: the obstacles and fences in buckets of BUCKET px, each in every bucket its box (and
+  // REACH round it) covers, so a body no wider than REACH tests only what is near it, not all of the land's (the route
+  // grids test every cell: with a neighbour farm the land is twice your farm, its obstacles nearly twice as many)
+  const bx0 = -MARGIN, by0 = -MARGIN, bcols = Math.ceil((land.w + 2 * MARGIN) / BUCKET) + 1, brows = Math.ceil((L.H + 22 + 2 * MARGIN) / BUCKET) + 1;
+  const bucketOf = (x, y) => { const i = Math.floor((x - bx0) / BUCKET), j = Math.floor((y - by0) / BUCKET); return i < 0 || j < 0 || i >= bcols || j >= brows ? -1 : j * bcols + i; };
+  function bucketed(list, boxOf) {
+    const cells = Array.from({ length: bcols * brows }, () => []);
+    for (const o of list) {
+      const [x0, y0, x1, y1] = boxOf(o);
+      const i0 = Math.max(0, Math.floor((x0 - REACH - bx0) / BUCKET)), i1 = Math.min(bcols - 1, Math.floor((x1 + REACH - bx0) / BUCKET));
+      const j0 = Math.max(0, Math.floor((y0 - REACH - by0) / BUCKET)), j1 = Math.min(brows - 1, Math.floor((y1 + REACH - by0) / BUCKET));
+      for (let j = j0; j <= j1; j++) for (let i = i0; i <= i1; i++) cells[j * bcols + i].push(o);
+    }
+    return cells;
+  }
+  const near0 = bucketed(obstacles, o => (o.w !== undefined ? [o.x, o.y, o.x + o.w, o.y + o.h] : o.rx !== undefined ? [o.cx - o.rx, o.cy - o.ry, o.cx + o.rx, o.cy + o.ry] : [o.cx - o.r, o.cy - o.r, o.cx + o.r, o.cy + o.r]));
+  const nearF = bucketed(fences, ([x0, y0, x1, y1]) => [Math.min(x0, x1), Math.min(y0, y1), Math.max(x0, x1), Math.max(y0, y1)]);
+  /** Whether a body of size r at (x, y) touches something: a thing on the ground, a field, or a fence. */
+  const hits = (x, y, r) => {
+    const k = r + 1 < REACH ? bucketOf(x, y) : -1; // a wider body, or a place off the land: everything
+    return (k < 0 ? obstacles : near0[k]).some(o => touches(o, x, y, r)) || (k < 0 ? fences : nearF[k]).some(f => toSegment(x, y, f) < r + 1);
+  };
   let busy = []; // the fields a machine is working: setBusy
   /** Whether a body of size r is all inside one of a ground's shapes: a rectangle, an ellipse, or a pad's middle. */
   const within = (a, x, y, r) => (a.w !== undefined ? x - r >= a.x && x + r <= a.x + a.w && y - r >= a.y && y + r <= a.y + a.h

@@ -2,7 +2,7 @@
 // text, in its pixel font), their speech bubbles, the fields' labels and counts, the silos' figures, an animal's menu
 // (what you can ask it to do), and a short Help (the panel and the Menu are hud.js's). Everything is placed each
 // frame from the camera (place(project)).
-import { BED, HENHOUSE, LANE, NEIGHBOUR_X, SPOT, STALL, signsOf } from './layout.js';
+import { BED, GATE_SIGN, HENHOUSE, SPOT, STALL, signsOf } from './layout.js';
 import { henhouseView } from './flock.js';
 import { SENDS } from './play.js';
 
@@ -246,7 +246,7 @@ export function makeOverlay(el, { opts, hooks }) {
       const theirs = key.startsWith('n:'), group = theirs ? key.slice(2) : key, p = (theirs ? nat : at)[group];
       if (p) put(d, project(at3(p[0] + (theirs ? model.neighbour.ox : 0), p[1], p[1] < 90 ? 2.8 : 0.4)));
     }
-    if (gateTag) put(gateTag, project(at3(NEIGHBOUR_X - 10, LANE - 16, 2.0)));
+    if (gateTag) put(gateTag, project(at3(GATE_SIGN[0], GATE_SIGN[1], 0.1)), 2, true); // hanging under the sign's foot, as a field's label hangs under its bed: clear of the silo's tag
     if (empty && model) { const G = model.ground.GRID; put(empty, project(at3((G.x0 + G.x1) / 2, (G.y0 + G.y1) / 2, 0))); }
     // a conversation's bubbles: over the speaker, moved up while they would cover a farmer's own bubble or another
     const keepTalk = new Set();
