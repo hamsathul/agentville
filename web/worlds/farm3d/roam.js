@@ -37,7 +37,7 @@ export function roamOf(L) {
   const G = L.GRID;
   // the pasture's fence, less its gates; the fields, less their walkways (open at the top, to the lane)
   const fences = [...fenceX(pa.x0, pa.x1, pa.y0, [PASTURE_GATES.top]), ...fenceX(pa.x0, pa.x1, pa.y1, [PASTURE_GATES.bottom]), [pa.x0, pa.y0, pa.x0, pa.y1], [pa.x1, pa.y0, pa.x1, pa.y1]];
-  const fields = { x: G.x0 - 2, y: G.y0 - 2, w: G.x1 - G.x0 + 4, h: G.y1 - G.y0 + 4, holes: CORR.slice(1).map(c => ({ x: c - 7, y: G.y0 - 12, w: 14, h: G.y1 - G.y0 + 8 })) };
+  const fields = { x: G.x0 - 2, y: G.y0 - 2, w: G.x1 - G.x0 + 4, h: G.y1 - G.y0 + 4, holes: CORR.slice(1).map(c => ({ x: c - 7, y: G.y0 - 12, w: 14, h: G.y1 - G.y0 + 8 })) }; // down the walkways' middle: room for a dog, not a cow (the machines use the rest)
   const obstacles = [
     { cx: POND.cx, cy: POND.cy, rx: POND.rx + 4, ry: POND.ry + 4 }, // the water and its sandy bank
     { x: NAPS[0][0] - 15, y: NAPS[0][1] - 8, w: 29, h: NAPS.at(-1)[1] - NAPS[0][1] + 16 }, // the hammocks, post to post

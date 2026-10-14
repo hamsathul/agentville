@@ -114,7 +114,7 @@ try {
       })()`));
       let title = '';
       // down its body from over its head (how far depends on how big the farm is drawn): the first point that is the farmer
-      for (const dy of [8, 12, 16, 20, 26]) {
+      for (const dy of [3, 5, 8, 12, 16, 20, 26]) {
         if (r.none || title === r.tip) break;
         await chrome.inFrame('/world/farm3d/', `(() => { const c = document.querySelector('.f3-canvas'), box = c.getBoundingClientRect(); c.dispatchEvent(new PointerEvent('pointermove', { bubbles: true, clientX: box.left + ${r.at?.x ?? 0}, clientY: box.top + ${r.at?.y ?? 0} + ${dy}, pointerId: 1 })); return true; })()`);
         title = '';

@@ -2,7 +2,7 @@
 // uses (route.js), at the farm's pace (40 px a second, 68 in fast mode); a newcomer walks out of the barn door. On the
 // porch they stand on the deck, in a field on the soil, by the pond in a hammock. Still (Motion off, or reduced
 // motion), or on the first scene, every farmer is simply at its place.
-import { BARN_DOOR, CORR, DECK } from '../layout.js';
+import { BARN_DOOR, BED, CORR, DECK } from '../layout.js';
 import { walkRoute } from '../route.js';
 import { DECK_H } from './buildings.js';
 import { FIGURE_SCALE } from './figurine.js';
@@ -19,7 +19,7 @@ export function makeFarmers(THREE, figures, S, { route = () => null } = {}) {
   const bodies = new Map(); // id → { fig, x, y, path, farmer, face, h, errand }
   const wayTo = (b, to) => route([b.x, b.y], to) ?? walkRoute([b.x, b.y], to, CORR);
   let H = 400, beds = [];
-  const inBed = (x, y) => beds.some(b => x >= b.x0 - 2 && x <= b.x0 + 74 && y >= b.y0 - 2 && y <= b.y0 + 36);
+  const inBed = (x, y) => beds.some(b => x >= b.x0 - 2 && x <= b.x0 + BED.w + 2 && y >= b.y0 - 2 && y <= b.y0 + BED.d + 2);
   const groundAt = (x, y) => (onDeck(x, y) ? DECK_H : inBed(x, y) ? SOIL_Y : 0);
 
   /** The farmers of a new model. `instant`: no walking (the first scene, or still). */

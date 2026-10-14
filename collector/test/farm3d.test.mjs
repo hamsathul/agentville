@@ -6,7 +6,7 @@ import assert from 'node:assert/strict';
 import { kit, farm, toScene, stops, plain, NOW, HOME, touch, agent, repo, snap } from './farm3d-vm.mjs';
 import { makeModel } from '../../web/worlds/farm3d/model.js';
 import { walkRoute } from '../../web/worlds/farm3d/route.js';
-import { CORR, DECK, GRID_CONFIG, PX, PORCH_Y, pastureOf, slotTables, toWorld, W } from '../../web/worlds/farm3d/layout.js';
+import { BED, CORR, DECK, GRID_CONFIG, LANE, LANE_HALF, PX, PORCH_Y, SCARECROWS, SHED, SHED_DOOR, SPOT, pastureOf, slotTables, toWorld, W } from '../../web/worlds/farm3d/layout.js';
 
 const M = makeModel(kit);
 const model = (s, state = { beds: {}, packed: false }) => M.farmModel(toScene(s), state);
@@ -42,8 +42,8 @@ test("a working farmer stands in its bed at its step's offset, the next free off
   const s = snap([agent('a', { touching: [touch(shop)] }), agent('b', { now: { tool: 'Read', step: 'read', summary: 'x', startedAt: NOW }, touching: [touch(shop)] }), agent('c', { touching: [touch(shop)] })], [repo('shop')]);
   const m = model(s), bed = m.beds[0], f = id => m.farmers.find(x => x.id === id);
   assert.equal(f('a').field, bed.key);
-  assert.deepEqual(f('a').at, [bed.cx + 26, bed.lane], 'edit: the soil side');
-  assert.deepEqual(f('b').at, [bed.cx - 26, bed.lane], 'read: the reading side');
+  assert.deepEqual(f('a').at, [bed.cx + 26 * SPOT, bed.lane], 'edit: the soil side (the 2D farm\'s offset, the bigger bed\'s)');
+  assert.deepEqual(f('b').at, [bed.cx - 26 * SPOT, bed.lane], 'read: the reading side');
   assert.deepEqual(f('c').at, [bed.cx, bed.lane], 'a second edit: the next free offset');
   assert.equal(f('a').prop, 'hoe');
   assert.equal(f('a').action, 'swing');
@@ -68,19 +68,27 @@ test("beds: each repo in the same bed as on the 2D farm (from an empty bed map),
   for (const b of mine.ST) assert.deepEqual([b.cx, b.rowTop], [GRID_CONFIG.cx0 + (b.i % 3) * GRID_CONFIG.colW, GRID_CONFIG.top0 + Math.floor(b.i / 3) * GRID_CONFIG.rowH], `bed ${b.i} on the 3D map`);
 });
 
-test('the roomier map: 5 m walkways and 5 m between rows, porch places 4 m apart on the deck, a pasture under the fields, all inside the map', () => {
-  const metres = px => px / PX, BED_W = 76, BED_D = 38;
-  assert.ok(metres(GRID_CONFIG.colW - BED_W) >= 5, 'a walkway between two columns of beds');
-  assert.ok(metres(GRID_CONFIG.rowH - BED_D) >= 5, 'the gap between two rows of beds');
+test('the bigger map: 18.5 × 9 m beds, 7 m walkways and headlands, porch places 4 m apart on the deck, a pasture under the fields, all inside the map', () => {
+  const metres = px => px / PX;
+  assert.deepEqual([metres(BED.w), metres(BED.d)], [18.5, 9]);
+  assert.ok(metres(GRID_CONFIG.colW - BED.w) >= 7, 'a walkway between two columns of beds');
+  assert.ok(metres(GRID_CONFIG.rowH - BED.d) >= 7, 'a headland between two rows of beds');
   for (const rows of [3, 4, 6]) {
     const fence = GRID_CONFIG.fence(rows), H = GRID_CONFIG.height(fence), L = { GRID: fence, rows, H }, T = slotTables(L), pasture = pastureOf(L);
+    const first = GRID_CONFIG.slot(GRID_CONFIG.cx0, GRID_CONFIG.top0), last = GRID_CONFIG.slot(GRID_CONFIG.cx0 + 2 * GRID_CONFIG.colW, GRID_CONFIG.top0 + (rows - 1) * GRID_CONFIG.rowH);
+    assert.ok(metres(first.x0 - fence.x0) >= 3.5 && metres(fence.x1 - (last.x0 + BED.w)) >= 3.5, `room to turn at the outer beds (${rows} rows)`);
+    assert.ok(metres(first.y0 - fence.y0) >= 7, 'a headland above the first row');
+    assert.ok(last.y0 + BED.d < fence.y1, 'the last row inside the fence');
     for (const g of ['desk', 'turn']) for (let i = 1; i < T[g].cap; i++) assert.equal(Math.abs(T[g].at(i)[0] - T[g].at(i - 1)[0]) / PX, 4, `${g}: 4 m apart`);
     for (const g of ['desk', 'turn']) for (let i = 0; i < T[g].cap; i++) { const [x, y] = T[g].at(i); assert.ok(x > DECK.x0 && x < DECK.x1 && y > DECK.y0 && y < DECK.y1, `${g} ${i} stands on the deck`); }
-    assert.ok(pasture.y0 > fence.y1 && pasture.y1 < H && pasture.x0 >= 0 && pasture.x1 <= W, `the pasture under the fields, inside the map (${rows} rows)`);
-    assert.ok(metres(pasture.y1 - pasture.y0) >= 12 && metres(pasture.x1 - pasture.x0) >= 50, 'and big enough for a herd');
+    assert.ok(pasture.y0 > fence.y1 && pasture.y1 < H && pasture.x0 >= 0 && pasture.x1 <= W && pasture.x1 > fence.x1, `the pasture under the fields, as wide as the map (${rows} rows)`);
+    assert.ok(metres(pasture.y1 - pasture.y0) >= 12, 'and big enough for a herd');
     for (const [g, t] of Object.entries(T)) for (let i = 0; i < t.cap; i++) { const [x, y] = t.at(i); assert.ok(x > 0 && x < W && y > 0 && y < pasture.y0, `${g} ${i} inside the map, off the pasture`); }
     assert.ok(fence.x1 < W && fence.x0 > CORR[0], 'the fields inside the map, the yard path outside their fence');
+    for (const c of CORR.slice(1)) assert.ok([0, 1, 2].every(k => { const x0 = GRID_CONFIG.cx0 + k * GRID_CONFIG.colW - BED.w / 2; return c < x0 - 20 || c > x0 + BED.w + 20; }), `walkway ${c} clear of every bed`);
   }
+  assert.ok(SHED.x > SCARECROWS.x + SCARECROWS.w && SHED.x + SHED.w < W && SHED.y + SHED.h <= LANE - LANE_HALF, 'the machine shed on the lane, past the scarecrows');
+  assert.deepEqual(SHED_DOOR, [SHED.x + SHED.w / 2, LANE]);
 });
 
 test('a field keeps its bed while you look: the bed map comes back to remember, and the next scene packs no more', () => {
@@ -159,19 +167,19 @@ test('every stop of the tour runs through the model, and each drawn farmer has a
 });
 
 test('walking: along the row to the nearest path, down it, along to the spot; a door first', () => {
-  assert.deepEqual(CORR, [176, 306, 422], "the yard's path, then the walkways between the columns of beds");
+  assert.deepEqual(CORR, [176, 398, 602], "the yard's path, then the 7 m walkways between the columns of beds");
   assert.deepEqual(walkRoute([61, 110], [200, 110], CORR), [[200, 110]]);
-  assert.deepEqual(walkRoute([61, 110], [248, 174], CORR), [[176, 110], [176, 174], [248, 174]]);
-  assert.deepEqual(walkRoute([61, 110], [421, 174], CORR), [[176, 110], [176, 174], [421, 174]], 'a tie between paths: the first, as the engine has it');
-  assert.deepEqual(walkRoute([500, 110], [440, 174], CORR), [[422, 110], [422, 174], [440, 174]]);
-  assert.deepEqual(walkRoute([61, 100], [248, 174], CORR, [61, 110]), [[61, 110], [176, 110], [176, 174], [248, 174]]);
+  assert.deepEqual(walkRoute([61, 110], [296, 232], CORR), [[176, 110], [176, 232], [296, 232]]);
+  assert.deepEqual(walkRoute([61, 110], [398, 232], CORR), [[176, 110], [176, 232], [398, 232]], 'a tie between paths: the first, as the engine has it');
+  assert.deepEqual(walkRoute([700, 110], [640, 232], CORR), [[602, 110], [602, 232], [640, 232]]);
+  assert.deepEqual(walkRoute([61, 100], [296, 232], CORR, [61, 110]), [[61, 110], [176, 110], [176, 232], [296, 232]]);
 });
 
 test('the 2D → 3D mapping: 8 px a metre, centred on the farm', () => {
   assert.deepEqual(toWorld(W / 2, 200, 400), { x: 0, z: 0 });
   assert.deepEqual(toWorld(W, 400, 400), { x: W / 2 / 8, z: 25 });
   assert.deepEqual(toWorld(0, 0, 400), { x: -W / 2 / 8, z: -25 });
-  assert.equal(W / 8, 70, 'the map is 70 m across');
+  assert.equal(W / 8, 107, 'the map is 107 m across (the bigger farm)');
 });
 
 const DEG = Math.PI / 180;

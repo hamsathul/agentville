@@ -1,7 +1,7 @@
 // The minimap, while zoomed in (the engine's, for the 3D farm): the whole farm small in the bottom left corner, seen
 // from above (the beds, the farmstead, the pond, every farmer a dot, red when it waits on you), the part of it in view
 // a yellow outline; a click goes there. At most four drawings a second.
-import { FARMSTEAD, POND, PX, W } from './layout.js';
+import { BED, FARMSTEAD, POND, PX, W } from './layout.js';
 
 /** A point on the ground (metres) as a point on the 2D map (layout.js's toWorld, the other way). */
 export const toMap = ({ x, z }, H) => [x * PX + W / 2, z * PX + H / 2];
@@ -37,7 +37,7 @@ export function makeMinimap(host, { onGo }) {
       ctx.setTransform(s, 0, 0, s, 0, 0);
       ctx.fillStyle = '#5f9a4a'; ctx.fillRect(0, 0, W, H);
       ctx.fillStyle = '#8b5a2b'; for (const b of FARMSTEAD) ctx.fillRect(b.x, b.y, b.w, b.h);
-      ctx.fillStyle = '#7a5230'; for (const b of model.beds) ctx.fillRect(b.x0, b.y0, 74, 36);
+      ctx.fillStyle = '#7a5230'; for (const b of model.beds) ctx.fillRect(b.x0, b.y0, BED.w, BED.d);
       ctx.fillStyle = '#5ab4ff'; ctx.beginPath(); ctx.ellipse(POND.cx, POND.cy, POND.rx, POND.ry, 0, 0, Math.PI * 2); ctx.fill();
       for (const f of model.farmers) {
         const p = posOf(f.id);

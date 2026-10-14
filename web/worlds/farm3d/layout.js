@@ -5,11 +5,16 @@
 // across the front. collector/test/farm3d.test.mjs pins both.
 import { noise } from './build/util.js';
 
-export const W = 560, PX = 8;
-export const COLW = 116, ROWH = 82, MIN_ROWS = 3, MAX_ROWS = 6, MAX_FIELDS = 18;
+export const W = 856, PX = 8;
+export const COLW = 204, ROWH = 132, MIN_ROWS = 3, MAX_ROWS = 6, MAX_FIELDS = 18;
+/**
+ * A field's bed: 18.5 × 9 m at ground level, room for a tractor to work it in passes (spec 2026-10-14 §4); SPOT: the 2D
+ * farm's places in a bed (its step's offset from the middle) stretched to the bigger bed.
+ */
+export const BED = { w: 148, d: 72 }, SPOT = 2;
 export const LANE = 110, LANE_HALF = 10; // the lane in front of the buildings (2.5 m wide)
 export const PORCH_Y = 98; // where farmers stand on the deck (and among the scarecrows)
-export const CORR = [176, 306, 422]; // the paths running down: the yard's, then the walkways between the columns of beds
+export const CORR = [176, 398, 602]; // the paths running down: the yard's, then the 7 m walkways between the columns of beds
 // The farmstead along the back, left to right: a second account's silo, the barn, the silo, the farmhouse on its
 // long deck (your porch), the market stall, the scarecrow patch.
 export const SILO_X = [100, 6]; // the first account's silo beside the barn; a second account's on the barn's other side
@@ -21,6 +26,8 @@ export const DECK = { x0: 150, x1: 362, y0: PORCH_Y - 10, y1: PORCH_Y + 3 }; // 
 export const STALL = { x: 384, y: 62 };
 /** The MCP servers' carts' places: a row on the lane at its end, by the road to town (the 2D farm's RANK, this map's). */
 export const CART_RANK = Array.from({ length: 6 }, (_, i) => [W - 20 - i * 18, LANE]);
+/** The machine shed (spec 2026-10-14 §7): open-fronted on the lane past the scarecrow patch, where the farmers' machines live; its door on the lane. */
+export const SHED = { x: 600, y: 50, w: 72, h: 46 }, SHED_DOOR = [SHED.x + SHED.w / 2, LANE];
 /** The notice board (what your projects remember): by the porch's steps, between the silo and the deck, as the 2D farm has it. */
 export const BOARD = { x: 128, y: 74, w: 16, h: 10 };
 export const SCARECROWS = { x: 430, y: 36, w: 120 };
@@ -41,13 +48,14 @@ export const rocksOf = L => [[120, L.GRID.y1 - 30, 4], [10, L.GRID.y1 - 14, 3], 
 export const orchardOf = L => Array.from({ length: Math.max(0, L.rows - 3) }, (_, k) => [[40, 130 + (k + 3) * ROWH - 30], [130, 130 + (k + 3) * ROWH - 14]]).flat();
 
 export const GRID_CONFIG = {
-  cols: 3, colW: COLW, rowH: ROWH, cx0: 248, top0: 130, minRows: MIN_ROWS, maxRows: MAX_ROWS, max: MAX_FIELDS,
-  slot: (cx, rowTop) => ({ lane: rowTop + 44, x0: cx - 36, y0: rowTop + 12 }),
-  fence: rows => ({ x0: 192, x1: 528, y0: 124, y1: 132 + rows * ROWH }),
+  cols: 3, colW: COLW, rowH: ROWH, cx0: 296, top0: 150, minRows: MIN_ROWS, maxRows: MAX_ROWS, max: MAX_FIELDS,
+  // a 7 m headland above each row of beds (a tractor turns there); a farmer at work stands near its bed's front
+  slot: (cx, rowTop) => ({ lane: rowTop + 30 + BED.d - 10, x0: cx - BED.w / 2, y0: rowTop + 30 }),
+  fence: rows => ({ x0: 192, x1: 808, y0: 124, y1: 150 + rows * ROWH }), // its left side where it was: the yard's way down past the pond and the hammocks
   height: fence => fence.y1 + 204, // the pasture under the fields, and the forest's edge under that
 };
 /** The pasture across the front of the farm, under the fields: the cows, the sheep and the horses graze there. */
-export const pastureOf = L => ({ x0: 16, x1: 544, y0: L.GRID.y1 + 26, y1: L.GRID.y1 + 150 });
+export const pastureOf = L => ({ x0: 16, x1: W - 16, y0: L.GRID.y1 + 26, y1: L.GRID.y1 + 150 });
 /**
  * The pasture's gates, [from, to] along its top fence and its bottom one: a 6 m double gate where the yard's path comes
  * down (wide to its left, so a bull coming down beside the fields fits through), and a 5 m one to the forest.
@@ -65,6 +73,7 @@ export const FARMSTEAD = [
   { x: HENHOUSE.x, y: HENHOUSE.y, w: 92, h: 36 },
   { x: STALL.x - 2, y: STALL.y, w: 34, h: 36 },
   { x: BOARD.x - 1, y: BOARD.y - 1, w: BOARD.w + 2, h: BOARD.h + 2 },
+  { x: SHED.x, y: SHED.y, w: SHED.w, h: SHED.h },
   { x: SCARECROWS.x - 2, y: SCARECROWS.y - 2, w: SCARECROWS.w + 4, h: PORCH_Y + 4 - SCARECROWS.y + 2 },
 ];
 /** The forest's edge, where the deer and the fox come out: a strip of grass between the pasture's fence and the trees. */
@@ -104,7 +113,7 @@ export function slotTables(L) {
 export const signsOf = L => ({
   desk: [200, PORCH_Y - 34, 'waiting'], turn: [312, PORCH_Y - 34, 'your turn'], storage: [490, PORCH_Y - 34, 'stale'],
   charge: [SHADE.x, L.GRID.y1 + 10, 'idle'], meadow: [70, 182, 'in the meadow'], nap: [150, 222, 'napping'],
-  more: [480, L.GRID.y1 + 12, 'more'],
+  more: [W - 80, L.GRID.y1 + 12, 'more'],
 });
 /** A 2D map point, in metres on the 3D ground. */
 export const toWorld = (x, y, H) => ({ x: (x - W / 2) / PX, z: (y - H / 2) / PX });

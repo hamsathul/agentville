@@ -3,11 +3,13 @@
 // lies fallow and dry stalks when its farmers are all stale; above it the piles (hay for uncommitted files, crates for
 // unpushed commits, a mailbox when it is behind), a pennant for a branch other than main, a rope with orange flags for
 // a collision, and its weather. An empty bed in the grid is fallow ground: a patch of darker grass.
-import { PX } from '../layout.js';
+import { BED, PX, SPOT } from '../layout.js';
 import { disposeTree, noise, seasonPalette } from './util.js';
 
-export const SOIL_Y = 0.45; // the soil's top: farmers working in a bed stand this high
+export const SOIL_Y = 0.12; // the soil's top: a field at ground level, a low edging round it (machines drive on)
 const m = v => v / PX;
+/** A bed's plants: 6 rows of 12, 1.5 m apart, in its furrows. */
+export const ROWS = 6, PER_ROW = 12;
 
 export function makeBeds(THREE, mats, S, weather, crops) {
   const group = new THREE.Group();
@@ -18,18 +20,18 @@ export function makeBeds(THREE, mats, S, weather, crops) {
 
   function buildBed(b, H, winter) {
     const g = new THREE.Group(), P = (x, y) => S.at(x, y, H), fx = [];
-    const c = P(b.x0 + 36, b.y0 + 17), w = m(76), d = m(38), frame = b.worktree ? '#9aa4ad' : b.fence ?? '#c98d4f', soil = b.soil ?? '#7a5230';
-    S.rbox(w, SOIL_Y, d, frame, c.x, 0, c.z, g, 0.08);
-    S.box(w - 0.4, 0.06, d - 0.4, soil, c.x, SOIL_Y - 0.04, c.z, g);
-    for (let k = 0; k < 4; k++) { // the furrows: a lit ridge under each row of plants
-      const ridge = S.capsule(0.08, w - 0.9, shade(soil, 1.15), c.x, SOIL_Y + 0.02, P(0, b.y0 + 3 + k * 8).z, g);
+    const c = P(b.x0 + BED.w / 2, b.y0 + BED.d / 2), w = m(BED.w), d = m(BED.d), frame = b.worktree ? '#9aa4ad' : b.fence ?? '#c98d4f', soil = b.soil ?? '#7a5230';
+    S.box(w + 0.4, 0.08, d + 0.4, frame, c.x, 0, c.z, g); // the edging, in the repo's fence colour
+    S.box(w, 0.06, d, soil, c.x, SOIL_Y - 0.06, c.z, g);
+    for (let k = 0; k < ROWS; k++) { // the furrows: a lit ridge under each row of plants
+      const ridge = S.capsule(0.08, w - 0.9, shade(soil, 1.15), c.x, SOIL_Y + 0.02, P(0, b.y0 + 6 + k * 12).z, g);
       ridge.rotation.z = Math.PI / 2; ridge.scale.z = 0.7;
     }
     if (winter && b.plot.kind !== 'grow') S.box(w - 0.45, 0.04, d - 0.45, '#f4f8fb', c.x, SOIL_Y + 0.02, c.z, g); // frost on bare soil
     // the piles, on the bed's top edge
-    const back = P(0, b.rowTop + 4).z;
+    const back = P(0, b.y0 - 6).z;
     if (b.piles.mailbox) {
-      const mb = P(b.cx - 40, 0).x;
+      const mb = P(b.cx - 40 * SPOT, 0).x;
       S.box(0.1, 1.05, 0.1, '#6b4320', mb, 0, back, g);
       S.box(0.62, 0.38, 0.36, '#5f6b7a', mb, 1.0, back, g);
       S.box(0.62, 0.05, 0.36, '#9aa4ad', mb, 1.38, back, g);
@@ -37,20 +39,20 @@ export function makeBeds(THREE, mats, S, weather, crops) {
       S.box(0.04, 0.12, 0.2, '#e04a3a', mb + 0.33, 1.38, back + 0.08, g);
     }
     for (let i = 0; i < b.piles.crates; i++) {
-      const x = P(b.cx - 30 + (i % 2) * 8 + 3, 0).x, y = Math.floor(i / 2) * 0.62;
+      const x = P(b.cx - 30 * SPOT + (i % 2) * 8 + 3, 0).x, y = Math.floor(i / 2) * 0.62;
       S.box(0.82, 0.6, 0.7, '#8b5a2b', x, y, back, g);
       S.box(0.84, 0.06, 0.72, '#c98d4f', x, y + 0.56, back, g);
       S.box(0.08, 0.6, 0.72, '#6b4320', x, y, back, g);
     }
     for (let i = 0; i < b.piles.hay; i++) {
-      const x = P(b.cx + 12 + (i % 3) * 9 + 4, 0).x, y = Math.floor(i / 3) * 0.64;
+      const x = P(b.cx + 12 * SPOT + (i % 3) * 9 + 4, 0).x, y = Math.floor(i / 3) * 0.64;
       S.box(0.95, 0.62, 0.72, '#e9c46a', x, y, back, g);
       for (const dx of [-0.22, 0.22]) S.box(0.05, 0.63, 0.73, '#c9a24a', x + dx, y, back, g);
     }
     // a branch other than main: a pennant on the bed's corner, waving
     let flag = null;
     if (b.pennant) {
-      const p = P(b.x0 + 74, b.y0 - 2);
+      const p = P(b.x0 + BED.w - 2, b.y0 - 2);
       S.cyl(0.035, 0.035, 2.1, '#6b4320', p.x, 0, p.z, g, 6);
       const tri = new THREE.Shape();
       tri.moveTo(0, 0); tri.lineTo(0.75, -0.22); tri.lineTo(0, -0.45); tri.lineTo(0, 0);
@@ -102,7 +104,7 @@ export function makeBeds(THREE, mats, S, weather, crops) {
       fx.push({ object: pump, tick: t => { handle.rotation.z = Math.floor(t * 3 + j) % 2 ? 0.35 : -0.35; } });
     }
     // what a click finds: a box over the bed and its piles (invisible), its field's key on it
-    const hit = new THREE.Mesh(new THREE.BoxGeometry(w, 1.6, d), hitMat);
+    const hit = new THREE.Mesh(new THREE.BoxGeometry(w, 1.6, d), hitMat); // the bed's size
     hit.position.set(c.x, 0.8, c.z);
     hit.userData.field = b.key;
     g.add(hit);
@@ -110,11 +112,11 @@ export function makeBeds(THREE, mats, S, weather, crops) {
     return { obj: g, fx, flag, hit };
   }
   function buildFallow(s, H, season) {
-    const g = new THREE.Group(), P = (x, y) => S.at(x, y, H), pal = seasonPalette(season), c = P(s.x0 + 36, s.y0 + 17);
-    const patch = S.box(m(76), 0.03, m(38), pal.tuft, c.x, 0.03, c.z, g);
+    const g = new THREE.Group(), P = (x, y) => S.at(x, y, H), pal = seasonPalette(season), c = P(s.x0 + BED.w / 2, s.y0 + BED.d / 2);
+    const patch = S.box(m(BED.w), 0.03, m(BED.d), pal.tuft, c.x, 0.03, c.z, g);
     patch.castShadow = false;
-    S.box(m(74), 0.035, m(36), pal.grass[0], c.x, 0.03, c.z, g).castShadow = false;
-    for (let n = 0; n < 14; n++) { const p = P(s.x0 + 3 + (noise(n, s.cx) % 66), s.y0 + 3 + (noise(s.cx, n) % 28)); S.cone(0.05, 0.22, n % 3 ? pal.tuft : pal.blade, p.x, 0.05, p.z, g, 4); }
+    S.box(m(BED.w - 2), 0.035, m(BED.d - 2), pal.grass[0], c.x, 0.03, c.z, g).castShadow = false;
+    for (let n = 0; n < 28; n++) { const p = P(s.x0 + 3 + (noise(n, s.cx) % (BED.w - 8)), s.y0 + 3 + (noise(s.cx, n) % (BED.d - 8))); S.cone(0.05, 0.22, n % 3 ? pal.tuft : pal.blade, p.x, 0.05, p.z, g, 4); }
     S.bake(g);
     group.add(g);
     return { obj: g, fx: [], flag: null };
@@ -135,8 +137,8 @@ export function makeBeds(THREE, mats, S, weather, crops) {
       shown.set(key, { ...make(), sig });
     }
     for (const [key, v] of shown) if (!keep.has(key)) { disposeTree(v.obj); shown.delete(key); }
-    for (const b of beds) for (let k = 0; k < 4; k++) for (let i = 0; i < 9; i++) {
-      const p = S.at(b.x0 + 4 + i * 8, b.y0 + 3 + k * 8, H), seed = (i * 7 + k * 3) % 5, base = { x: p.x, z: p.z, y: SOIL_Y, busy: b.plot.busy, seed: (i * 13 + k * 7) * 0.37 };
+    for (const b of beds) for (let k = 0; k < ROWS; k++) for (let i = 0; i < PER_ROW; i++) {
+      const p = S.at(b.x0 + 6 + i * 12, b.y0 + 6 + k * 12, H), seed = (i * 7 + k * 3) % 5, base = { x: p.x, z: p.z, y: SOIL_Y, busy: b.plot.busy, seed: (i * 13 + k * 7) * 0.37 };
       if (b.plot.kind === 'grow') plants.push({ ...base, crop: b.crop, stage: Math.max(0, b.plot.stage - (b.plot.stage > 0 && seed === 0 ? 1 : 0)) }); // a few run a stage behind
       else if (b.plot.kind === 'dry') plants.push({ ...base, crop: 'dry', stage: 0 });
       else if ((i * 5 + k * 3) % 7 === 0) plants.push({ ...base, crop: 'weeds', stage: 0 });

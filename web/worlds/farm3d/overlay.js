@@ -2,7 +2,7 @@
 // text, in its pixel font), their speech bubbles, the fields' labels and counts, the silos' figures, an animal's menu
 // (what you can ask it to do), and a short Help (the panel and the Menu are hud.js's). Everything is placed each
 // frame from the camera (place(project)).
-import { HENHOUSE, STALL, signsOf } from './layout.js';
+import { BED, HENHOUSE, SPOT, STALL, signsOf } from './layout.js';
 import { henhouseView } from './flock.js';
 import { SENDS } from './play.js';
 
@@ -212,8 +212,8 @@ export function makeOverlay(el, { opts, hooks }) {
     }
     for (const b of model?.beds ?? []) {
       const f = fields.get(b.key);
-      if (f) put(f, project(at3(b.x0 + 36, b.y0 + 38, 0)), 2, true);
-      for (const [k, dx] of [['behind', -40], ['ahead', -24], ['dirty', 24]]) { const c = cnts.get(`${b.key}|${k}`); if (c) put(c, project(at3(b.cx + dx, b.rowTop + 4, 1.4))); }
+      if (f) put(f, project(at3(b.x0 + BED.w / 2, b.y0 + BED.d + 2, 0)), 2, true);
+      for (const [k, dx] of [['behind', -40], ['ahead', -24], ['dirty', 24]]) { const c = cnts.get(`${b.key}|${k}`); if (c) put(c, project(at3(b.cx + dx * SPOT, b.y0 - 6, 1.4))); }
     }
     for (const [x, d] of silos) put(d, project(silo3(Number(x))));
     if (stallTag) put(stallTag, project(at3(STALL.x + 14, STALL.y + 36, 0.2)), 0, true);

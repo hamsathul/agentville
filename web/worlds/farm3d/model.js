@@ -3,7 +3,7 @@
 // three.js, no DOM. The frame's helpers come in as `kit` (makeGrid, engineScene, tagText, cutMid, lastPart, ago from
 // the SDK; lookFor and pick from the people kit), so Node can test it (collector/test/farm3d.test.mjs pins every copy
 // below against the farm's original).
-import { GRID_CONFIG, SILO_X, slotTables } from './layout.js';
+import { BED, GRID_CONFIG, SILO_X, SPOT, slotTables } from './layout.js';
 import { stallOf } from './dialogs.js';
 
 // The states an agent is out and about in (engine.js, ACTIVE).
@@ -145,7 +145,7 @@ export function makeModel({ makeGrid, engineScene, tagText, cutMid, lastPart, ag
     const bedsOut = ground.ST.map(s => {
       const f = fieldByKey.get(s.key), d = f.lastDeploy;
       return {
-        key: s.key, name: f.name, i: s.i, cx: s.cx, rowTop: s.rowTop, lane: s.lane, x0: s.x0, y0: s.y0,
+        key: s.key, name: f.name, i: s.i, cx: s.cx, rowTop: s.rowTop, lane: s.lane, x0: s.x0, y0: s.y0, w: BED.w, d: BED.d,
         crop: f.crop, fence: f.fence, soil: f.soil, worktree: Boolean(f.worktree), pennant: f.pennant, collision: f.collision ?? null,
         plot: plotState(f, e.farmers),
         pumps: Math.min(2, e.farmers.filter(a => a.field === s.key).reduce((t, a) => t + (a.jobs ?? 0), 0)), // background commands running here
@@ -164,7 +164,7 @@ export function makeModel({ makeGrid, engineScene, tagText, cutMid, lastPart, ag
         if (!used.has(group)) used.set(group, []);
         const u = used.get(group), off = [d?.spot ?? 0, 0, -26, 26, -13, 13].find(o => !u.includes(o)) ?? 0;
         u.push(off);
-        at = [s.cx + off, s.lane];
+        at = [s.cx + off * SPOT, s.lane]; // the 2D farm's offset, stretched to the bigger bed
       } else {
         group = f.state === 'working' ? 'meadow' : f.nap ? 'nap' : f.state === 'waiting' ? 'desk' : f.state === 'turn' ? 'turn' : f.state === 'stale' ? 'storage' : 'charge';
         const i = count[group] ?? 0;
