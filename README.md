@@ -157,7 +157,10 @@ It listens on the loopback addresses only (`127.0.0.1`, and `::1` where the mach
   shown hurt. The regimental mascots, a goat in a dress coat, the mess cat and the depot mice, live
   there just for fun.
 - The 3D farm, a prototype: the same live farm as a low-poly diorama in 3D (three.js). Farmers walk
-  the lanes with their tools, crops grow as context fills, the sun follows your clock and the seasons
+  the lanes with their tools and drive machines for the heavy steps (a tractor sprays for tests, mows
+  for builds, ploughs and sows for a big edit, hauls supplies and crates; a truck drives a deploy to
+  town; the combine brings in the harvest at a compaction), each field has its season (ploughed, sown,
+  growing, ripe, cut), real crop models grow as context fills, the sun follows your clock and the seasons
   your 5-hour limit, deploys bring rain or a rainbow, and eighteen animated animals graze, gallop and get
   up to things, a frog and three fish in the pond among them (click one to pet it, feed it, throw the
   dogs a stick or send the frog diving), play tag and play-fight with each other, and talk. It has the
@@ -1283,14 +1286,15 @@ in the list of worlds (**World**). It is a prototype, to see how a farm in 3D fe
 farm's own rules, so every farmer stands where the farm would put it and every repo lies in the bed the
 farm gives it (when both are opened fresh), and it has the farm's panel, Menu, buildings, close-up, diary,
 hens, carts and pigeons, so moving between the worlds you find the same buttons doing the same things. It has more room
-than the farm: 5 m walkways and rows between the fields, farmers 4 m apart on a longer deck, a wider yard,
-a fenced pasture across the front, and a strip of grass under it where the forest begins.
+than the farm: fields 18.5 m by 9 m (six rows of twelve plants), 7 m walkways and headlands between them
+for the machines, farmers 4 m apart on a longer deck, a wider yard, a machine shed, a fenced pasture across
+the front, and a strip of grass under it where the forest begins.
 
 ![The 3D farm: the farm as a low-poly diorama](docs/farm3d.png)
 
 **What it shows.** The farmstead (the black barn, the silo with your plan's week as grain and a lamp near
-the limit, the timber farmhouse and its deck, your porch, with string lights), a raised bed for each repo
-in the fenced grid, the yard with the henhouse, the pond (clear water over a muddy hollow, lily pads), the hammocks and the shade tree, the scarecrow
+the limit, the timber farmhouse and its deck, your porch, with string lights, the machine shed on the lane past the
+scarecrows), a field for each repo in the fenced grid, the yard with the henhouse, the pond (clear water over a muddy hollow, lily pads), the hammocks and the shade tree, the scarecrow
 patch, the pasture across the front, and the meadow and the forest running on all round.
 - **Trees, bushes and rocks**: Quaternius's flat-coloured models (single models, CC0): leafy trees,
   birches and pines in the forest round the farm (pines further out), the shade tree and the orchard,
@@ -1313,9 +1317,34 @@ patch, the pasture across the front, and the meadow and the forest running on al
   Past the sprouts they are models, growing from a third of their size to full: Quaternius's wheat, corn,
   pumpkins (on vines built in code), carrots (their orange tops just showing) and tomatoes (hung on a staked
   plant built in code), and Kenney's cabbage (single models from poly.pizza, CC0); the sunflower is built in
-  code. Until a crop's model loads, a moment after the farm, the plant built in code stands in. Hay, crates and a mailbox for uncommitted files, unpushed commits and commits behind; a pennant for a
+  code. Until a crop's model loads, a moment after the farm, the plant built in code stands in. Hay,
+  crates and a mailbox for uncommitted files, unpushed commits and commits behind; a pennant for a
   branch, a rope with orange flags when two agents write at once, a greenhouse over a worktree; rain over
   a failed deploy, a rainbow over one that worked, a windmill while it runs.
+- **A field's season**, from its agents' work since the page opened (`web/worlds/farm3d/season.js`):
+  weeds while it lies fallow; dark, turned soil (**ploughed**) when an agent starts work there; seed
+  rows (**sown**) at its first edit or write; the crop **growing** as context fills and **ripe** near
+  the limit, as on the farm; the plants wet and dark (**sprayed**) while an agent runs tests; at a
+  compaction the combine **cuts** it row by row, stubble behind it, and it is sown again; weeds after
+  30 idle minutes; dry stalks when its agents are all stale. A field already at work when you open the
+  page grows on as it is.
+- **Machines**: a farmer whose step is heavy walks to the machine shed, climbs into a machine and
+  drives the lane and the walkway to its field (`web/worlds/farm3d/machines.js`): Kenney's tractor (red,
+  cream wheels) with a sprayer for tests (mist from its boom), a mower for a build, a trailer of sacks
+  for an install and of crates to the market stall for a push, and a plough with a seed drill for a
+  big edit (five files or more written in the last 5 minutes), which furrows and sows the field pass
+  by pass; Kenney's flatbed truck with a red flag off to town along the lane for a deploy; and the
+  combine for a compaction, which cuts its field once. A machine works the rows from the walkway side,
+  turning on the headland; two farmers in one field take every other row. It stays out 20 s after its
+  step ends, so it doesn't flicker; another tractor step swaps the implement where it is, and a step
+  that needs the truck or the combine sends the tractor home first. On the lane it stops for a farmer,
+  an animal or another machine ahead, and goes on after 5 s. Waiting on you, or your turn, calls the
+  farmer straight out of it, and the machine drives itself home. Its name tag rides the cab, and a click
+  on it opens its farmer. With **Motion** off each machine stands at its work spot, its farmer in the
+  seat (the combine's harvest done at once).
+- **The machine shed**: an open-fronted timber shed with a metal roof, a tractor and the combine
+  parked in it (one goes while one of its kind is out). Click it for who is out on which machine,
+  doing what and where.
 - **Light and seasons**: the sun crosses the sky by your clock and the windows and lamps glow at night;
   the season follows your 5-hour limit, with blossom in spring, orange leaves in autumn and snow in
   winter. **Sky** and **Season** in the Menu hold one, as on the farm. With **Motion** off the wind
@@ -1754,6 +1783,8 @@ and can do is in [docs/worlds.md](docs/worlds.md).
 | **✨** says no name came, or the ✨ Helper shows a last error | No session is listening with mod 0.8.0 (`/reload-plugins` in it), today's limit is reached (it resets at midnight), or your organisation doesn't allow Haiku (the error says so) |
 | The 3D farm is blank, or says it needs WebGL | The browser has no WebGL here: switch on hardware acceleration (Chrome: Settings → System → Use graphics acceleration when available) and reload, or choose another world. `npm run farm3d-check` checks it in headless Chrome |
 | The 3D farm says it could not load | Its files failed to load (an error strip says which): reload the page. Its Menu's **World** and **List** still work, to choose another world meanwhile |
+| A field in the 3D farm shows simple shapes instead of crops, or a tractor made of boxes | Their models haven't loaded yet (a moment after the farm draws, the first time), or `npm run farm3d-models` hasn't been run since an update that changed them: run it and reload |
+| No machine comes out on the 3D farm for a heavy step | Machines go out for tests, builds, installs, pushes, deploys, a big edit (five files or more written in the last 5 minutes) and a compaction, only for a farmer at work in a field and drawn (not hidden by **Resting**). One waits in the shed while its farmer walks over |
 | The 3D farm's animals stand still when you pick something from an animal's menu | **Motion** is off (or the browser asks for reduced motion): they don't move then, and the menu says so. Switch Motion on in the Menu. The animals come a moment after the farm draws, the first time |
 
 ## Known limits
@@ -1816,7 +1847,7 @@ npm run test:ui             # the dashboard, the farm and other worlds in headle
 npm run kit-sheet           # redraw docs/kits.png, the picture of the people and props kits
 npm run world-shots -- <world>  # a picture of a world at every stop of its test tour (.private/shots/)
 npm run check-world -- <world>  # the test tour run headless against a world: exceptions, loops, creatures, pointers
-npm run farm3d-check        # the 3D farm in headless Chrome: every tour stop drawn with its name tags, the animals and their menus, memory, no WebGL
+npm run farm3d-check        # the 3D farm in headless Chrome: every tour stop drawn with its name tags, the animals and their menus, the crops, the seasons, the machines, the draw budget, memory, no WebGL
 npm run farm3d-models       # make the 3D farm's models again from poly.pizza and kenney.nl (web/worlds/farm3d/models/; needs the network)
 npm run golden              # reference pictures of the list, the farm, the factory and the field exercise on a fixed snapshot,
                             # compared byte for byte (.private/golden/); --record saves them
