@@ -21,7 +21,7 @@ import { contentTypeOf, parseCsv, readXlsx, viewOf } from './sources/previews.mj
 import { repoFiles } from './derive/repo-files.mjs';
 import { checkFiles, checkFolders, pruneUploads, saveFiles, typedPart, withAttachments } from './sources/uploads.mjs';
 import { compactSummary, memoryFiles, scratchpadOf } from './sources/memory.mjs';
-import { EFFORTS, MODELS, MODE_FLAGS, SESSION_ID, accountLaunchEnv, accountPrefix, claudeCommand, claudeLaunch, closeTerminalScript, forkCommand, forkLaunch, listSessions, projectsOf, shellQuote, terminalScript } from './sources/sessions.mjs';
+import { EFFORTS, MODELS, MODE_FLAGS, SESSION_ID, STAY_OPEN, accountLaunchEnv, accountPrefix, claudeCommand, claudeLaunch, closeTerminalScript, forkCommand, forkLaunch, listSessions, projectsOf, shellQuote, terminalScript } from './sources/sessions.mjs';
 import { appendRewind, cutTranscript, pruneForks, restorePoint } from './sources/fork.mjs';
 import { MAX_NOTE_CHARS, createNotes } from './sources/notes.mjs';
 import { createHeld } from './sources/held.mjs';
@@ -1634,7 +1634,7 @@ export async function startCollector({ root, system = null, claudeDir = join(hom
       const checked = mcpChecked ?? await claudeMcp();
       if (body?.op === 'login') {
         if (!checked.servers?.some(s => s.name === body.name)) return { ok: false, error: 'That server is not in the list.' };
-        return openTerminal({ line: `cd ~ && exec claude mcp login ${shellQuote(body.name)}`, spec: { cwd: home, args: ['mcp', 'login', body.name] } });
+        return openTerminal({ line: `cd ~ && claude mcp login ${shellQuote(body.name)}${STAY_OPEN}`, spec: { cwd: home, args: ['mcp', 'login', body.name] } });
       }
       if (body?.op !== 'remove') return { ok: false, error: 'Sign in or remove.' };
       const local = body.project !== undefined && checked.projects?.some(p => p.project === body.project && p.names.includes(body.name));

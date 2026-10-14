@@ -1,10 +1,11 @@
 // Past sessions to resume, read from ~/.claude/projects, and the terminal window that starts one.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdirSync, mkdtempSync, utimesSync, writeFileSync } from 'node:fs';
+import { spawnSync } from 'node:child_process';
+import { chmodSync, mkdirSync, mkdtempSync, utimesSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
-import { accountLaunchEnv, accountPrefix, claudeCommand, claudeLaunch, closeTerminalScript, forkCommand, forkLaunch, listSessions, projectsOf, terminalScript } from '../sources/sessions.mjs';
+import { delimiter, join } from 'node:path';
+import { STAY_OPEN, accountLaunchEnv, accountPrefix, claudeCommand, claudeLaunch, closeTerminalScript, forkCommand, forkLaunch, listSessions, projectsOf, terminalScript } from '../sources/sessions.mjs';
 
 const NOW = Date.parse('2026-10-07T12:00:00Z');
 const DAY = 86_400_000;
@@ -92,33 +93,59 @@ test('projects are the folders sessions ran in, newest first, one each', () => {
   assert.deepEqual(projects, [{ cwd: '/code/api', name: 'api', at: 5, sessions: 2 }, { cwd: '/code/app', name: 'app', at: 4, sessions: 1 }]);
 });
 
-test('the command cds into the folder (quoted) and starts or resumes claude in its place, so the window closes when it ends', () => {
-  assert.equal(claudeCommand('/code/my app'), "cd '/code/my app' && exec claude");
-  assert.equal(claudeCommand("/code/it's", ID(1)), `cd '/code/it'\\''s' && exec claude --resume ${ID(1)}`);
+test('the command cds into the folder (quoted) and starts or resumes claude, then closes the window, unless claude failed', () => {
+  assert.equal(claudeCommand('/code/my app'), `cd '/code/my app' && claude${STAY_OPEN}`);
+  assert.equal(claudeCommand("/code/it's", ID(1)), `cd '/code/it'\\''s' && claude --resume ${ID(1)}${STAY_OPEN}`);
   assert.throws(() => claudeCommand('/code/app', 'x; rm -rf ~'));
 });
 
+test("the window closes when claude exits cleanly, and stays open with a note when it fails or the folder can't be entered", () => {
+  assert.equal(STAY_OPEN, " && exit; echo; echo 'Agentville: Claude Code stopped or could not start. The reason is above; this window stays open so you can read it.'");
+  const dir = mkdtempSync(join(tmpdir(), 'tracker-window-'));
+  const bin = join(dir, 'bin');
+  mkdirSync(bin);
+  writeFileSync(join(bin, 'claude'), '#!/bin/sh\necho "claude ran in $(basename "$PWD") on ${CLAUDE_CONFIG_DIR:-the first account}: $*"\nexit "${STUB_EXIT:-0}"\n');
+  chmodSync(join(bin, 'claude'), 0o755);
+  mkdirSync(join(dir, 'my app'));
+  const env = { PATH: [bin, '/usr/bin', '/bin'].join(delimiter), HOME: dir, CLAUDE_CONFIG_DIR: '/elsewhere' };
+  const line = claudeCommand(join(dir, 'my app'), ID(1), 'plan', { account: { dir: '/h/.claude', first: true } });
+  // `; echo shell-goes-on` stands for the prompt a terminal window's shell shows next: reached only when the line did not exit.
+  const shells = [['sh', ['-c']], ['bash', ['--norc', '--noprofile', '-c']], ['zsh', ['-f', '-c']], ['fish', ['--no-config', '-c']]]
+    .filter(([sh]) => spawnSync('/bin/sh', ['-c', `command -v ${sh}`]).status === 0);
+  assert.ok(shells.length >= 3, 'sh, bash and zsh at least');
+  for (const [sh, flags] of shells) {
+    const go = (l, stubExit) => spawnSync(sh, [...flags, `${l}; echo shell-goes-on`], { env: { ...env, STUB_EXIT: String(stubExit) }, encoding: 'utf8' });
+    const ok = go(line, 0);
+    assert.equal(ok.stdout, `claude ran in my app on the first account: --resume ${ID(1)} --permission-mode plan\n`, `${sh}: a clean exit closes the window: ${ok.stderr}`);
+    assert.equal(ok.status, 0, sh);
+    const failed = go(line, 1);
+    assert.equal(failed.stdout, `claude ran in my app on the first account: --resume ${ID(1)} --permission-mode plan\n\nAgentville: Claude Code stopped or could not start. The reason is above; this window stays open so you can read it.\nshell-goes-on\n`, `${sh}: a failure leaves the shell, with a note`);
+    const noFolder = go(claudeCommand(join(dir, 'gone')), 0);
+    assert.match(noFolder.stdout, /^\nAgentville: Claude Code stopped or could not start\.[^\n]*\nshell-goes-on\n$/, `${sh}: no folder, no claude, the window stays`);
+  }
+});
+
 test('a permission mode goes on the command line; bypass is the dangerous flag', () => {
-  assert.equal(claudeCommand('/code/app', undefined, 'plan'), "cd '/code/app' && exec claude --permission-mode plan");
-  assert.equal(claudeCommand('/code/app', ID(2), 'acceptEdits'), `cd '/code/app' && exec claude --resume ${ID(2)} --permission-mode acceptEdits`);
-  assert.equal(claudeCommand('/code/app', undefined, 'auto'), "cd '/code/app' && exec claude --permission-mode auto");
-  assert.equal(claudeCommand('/code/app', undefined, 'bypassPermissions'), "cd '/code/app' && exec claude --dangerously-skip-permissions");
-  assert.equal(claudeCommand('/code/app', undefined, 'default'), "cd '/code/app' && exec claude");
+  assert.equal(claudeCommand('/code/app', undefined, 'plan'), `cd '/code/app' && claude --permission-mode plan${STAY_OPEN}`);
+  assert.equal(claudeCommand('/code/app', ID(2), 'acceptEdits'), `cd '/code/app' && claude --resume ${ID(2)} --permission-mode acceptEdits${STAY_OPEN}`);
+  assert.equal(claudeCommand('/code/app', undefined, 'auto'), `cd '/code/app' && claude --permission-mode auto${STAY_OPEN}`);
+  assert.equal(claudeCommand('/code/app', undefined, 'bypassPermissions'), `cd '/code/app' && claude --dangerously-skip-permissions${STAY_OPEN}`);
+  assert.equal(claudeCommand('/code/app', undefined, 'default'), `cd '/code/app' && claude${STAY_OPEN}`);
   assert.throws(() => claudeCommand('/code/app', undefined, 'yolo; rm -rf ~'));
 });
 
 test('a restored session resumes with your message back in its prompt box, read from a file by the shell', () => {
   assert.equal(claudeCommand('/code/app', ID(1), 'plan', { prefillFile: '/t/forks/f-3/prompt.txt' }),
-    `cd '/code/app' && exec claude --resume ${ID(1)} --permission-mode plan --prefill "$(cat '/t/forks/f-3/prompt.txt')"`);
+    `cd '/code/app' && claude --resume ${ID(1)} --permission-mode plan --prefill "$(cat '/t/forks/f-3/prompt.txt')"${STAY_OPEN}`);
 });
 
 test('a fork resumes the cut copy as a new session, named as a fork, its prompt box filled from a file by the shell', () => {
   assert.equal(forkCommand('/code/my app', '/t/forks/f-1/s.jsonl', 'plan', { model: 'sonnet', effort: 'high', name: "Bob's work (fork)" }),
-    `cd '/code/my app' && exec claude --resume '/t/forks/f-1/s.jsonl' --fork-session --name 'Bob'\\''s work (fork)' --permission-mode plan --model 'sonnet' --effort high`);
+    `cd '/code/my app' && claude --resume '/t/forks/f-1/s.jsonl' --fork-session --name 'Bob'\\''s work (fork)' --permission-mode plan --model 'sonnet' --effort high${STAY_OPEN}`);
   assert.equal(forkCommand('/code/app', '/t/forks/f-2/s.jsonl', 'default', { prefillFile: '/t/forks/f-2/prompt.txt' }),
-    `cd '/code/app' && exec claude --resume '/t/forks/f-2/s.jsonl' --fork-session --prefill "$(cat '/t/forks/f-2/prompt.txt')"`);
+    `cd '/code/app' && claude --resume '/t/forks/f-2/s.jsonl' --fork-session --prefill "$(cat '/t/forks/f-2/prompt.txt')"${STAY_OPEN}`);
   assert.equal(forkCommand('/code/app', '/t/forks/f-4/s.jsonl', 'default', { sessionId: '6f1c2a3b-0000-4000-8000-000000000002' }),
-    `cd '/code/app' && exec claude --resume '/t/forks/f-4/s.jsonl' --fork-session --session-id 6f1c2a3b-0000-4000-8000-000000000002`); // its id chosen here, so its notes can go with it
+    `cd '/code/app' && claude --resume '/t/forks/f-4/s.jsonl' --fork-session --session-id 6f1c2a3b-0000-4000-8000-000000000002${STAY_OPEN}`); // its id chosen here, so its notes can go with it
   assert.throws(() => forkCommand('/code/app', '/t/s.jsonl', 'default', { sessionId: "x'; rm -rf ~" }), /session id/);
   assert.throws(() => forkCommand('/code/app', 'relative.jsonl'), /transcript/);
   assert.throws(() => forkCommand('/code/app', '/t/s.jsonl', 'yolo'));
@@ -152,12 +179,12 @@ test('the terminal script gets the command as an argument, never inside the scri
 });
 
 test('commands on an account: none with one, env -u for the first, the folder quoted for another', () => {
-  assert.equal(claudeCommand('/w', undefined, 'default'), "cd '/w' && exec claude");
-  assert.equal(claudeCommand('/w', undefined, 'default', { account: { dir: '/h/.claude', first: true } }), "cd '/w' && exec env -u CLAUDE_CONFIG_DIR claude");
+  assert.equal(claudeCommand('/w', undefined, 'default'), `cd '/w' && claude${STAY_OPEN}`);
+  assert.equal(claudeCommand('/w', undefined, 'default', { account: { dir: '/h/.claude', first: true } }), `cd '/w' && env -u CLAUDE_CONFIG_DIR claude${STAY_OPEN}`);
   const id = '11111111-2222-3333-4444-555555555555';
   assert.equal(claudeCommand('/w', id, 'plan', { account: { dir: "/h/it's/.claude-zeta", first: false } }),
-    `cd '/w' && exec env CLAUDE_CONFIG_DIR='/h/it'\\''s/.claude-zeta' claude --resume ${id} --permission-mode plan`);
-  assert.match(forkCommand('/w', '/f/x.jsonl', 'default', { account: { dir: '/h/.claude-zeta', first: false } }), /^cd '\/w' && exec env CLAUDE_CONFIG_DIR='\/h\/.claude-zeta' claude --resume '\/f\/x.jsonl' --fork-session$/);
+    `cd '/w' && env CLAUDE_CONFIG_DIR='/h/it'\\''s/.claude-zeta' claude --resume ${id} --permission-mode plan${STAY_OPEN}`);
+  assert.match(forkCommand('/w', '/f/x.jsonl', 'default', { account: { dir: '/h/.claude-zeta', first: false } }), /^cd '\/w' && env CLAUDE_CONFIG_DIR='\/h\/.claude-zeta' claude --resume '\/f\/x.jsonl' --fork-session && exit; /);
   assert.throws(() => accountPrefix({ dir: 'relative', first: false }), /not an account folder/);
   assert.throws(() => accountPrefix({ dir: '/h/.claude-zeta/', first: false }), /not an account folder/);
   assert.equal(accountPrefix(null), '');

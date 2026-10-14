@@ -157,13 +157,25 @@ export function accountLaunchEnv(account) {
 }
 
 /**
+ * What ends every line a new terminal window's shell runs: the window closes when Claude exits
+ * cleanly; when it fails, or the folder can't be entered, the shell stays, under the reason and a
+ * note. Not `exec` (Claude in the shell's place): a failure closed the window then, taking the
+ * reason with it. The same in zsh, bash and fish, so no exit code (fish has no `$?`). End session's
+ * SIGTERM ends Claude with 143, so its shell stays too, until endSession closes the window by its tty.
+ */
+export const STAY_OPEN = ` && exit; echo; echo ${shellQuote('Agentville: Claude Code stopped or could not start. The reason is above; this window stays open so you can read it.')}`;
+
+/** The line for a new terminal window: cd into the folder, run `command` there (see STAY_OPEN). */
+const windowLine = (cwd, command) => `cd ${shellQuote(cwd)} && ${command}${STAY_OPEN}`;
+
+/**
  * The shell line that starts Claude Code in a folder (or resumes a session there) in a permission
  * mode, with a model and effort for this session only (flags, not your saved defaults), on `account`
- * (see accountPrefix). `exec` puts Claude in the shell's place, so its window closes when it ends.
+ * (see accountPrefix), in a window that closes when it ends (see STAY_OPEN).
  */
 export function claudeCommand(cwd, resume, mode = 'default', { model = 'default', effort, prefillFile, account = null } = {}) {
   if (resume !== undefined && !SESSION_ID.test(resume)) throw new Error('not a session id');
-  return `cd ${shellQuote(cwd)} && exec ${accountPrefix(account)}claude${resume ? ` --resume ${resume}` : ''}${startFlags(mode, { model, effort })}${prefillFlag(prefillFile)}`;
+  return windowLine(cwd, `${accountPrefix(account)}claude${resume ? ` --resume ${resume}` : ''}${startFlags(mode, { model, effort })}${prefillFlag(prefillFile)}`);
 }
 
 /**
@@ -175,7 +187,7 @@ export function claudeCommand(cwd, resume, mode = 'default', { model = 'default'
 export function forkCommand(cwd, copy, mode = 'default', { model = 'default', effort, name, prefillFile, sessionId, account = null } = {}) {
   if (!isAbsolute(copy) || !copy.endsWith('.jsonl')) throw new Error('not a transcript copy');
   if (sessionId !== undefined && !SESSION_ID.test(sessionId)) throw new Error('not a session id');
-  return `cd ${shellQuote(cwd)} && exec ${accountPrefix(account)}claude --resume ${shellQuote(copy)} --fork-session${sessionId ? ` --session-id ${sessionId}` : ''}${name ? ` --name ${shellQuote(name)}` : ''}${startFlags(mode, { model, effort })}${prefillFlag(prefillFile)}`;
+  return windowLine(cwd, `${accountPrefix(account)}claude --resume ${shellQuote(copy)} --fork-session${sessionId ? ` --session-id ${sessionId}` : ''}${name ? ` --name ${shellQuote(name)}` : ''}${startFlags(mode, { model, effort })}${prefillFlag(prefillFile)}`);
 }
 
 /**

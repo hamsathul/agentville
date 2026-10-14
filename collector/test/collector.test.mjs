@@ -8,6 +8,7 @@ import { tmpdir } from 'node:os';
 import { basename, dirname, join } from 'node:path';
 import { startCollector } from '../collector.mjs';
 import { parsePs } from '../sources/ps.mjs';
+import { STAY_OPEN } from '../sources/sessions.mjs';
 import { platformFor } from '../platform/index.mjs';
 
 test('collector serves a waiting agent from a fixture ~/.claude and survives a bad config edit', async () => {
@@ -616,14 +617,14 @@ test("a session's conversation is forked at one of its messages into a new sessi
     const command = launched[0].at(-1);
     const copy = command.match(/--resume '([^']+)'/)[1];
     const forkId = command.match(/--session-id ([0-9a-f-]{36}) /)?.[1];
-    assert.equal(command, `cd '${work}' && exec claude --resume '${copy}' --fork-session --session-id ${forkId} --name 'releaser (fork)' --permission-mode plan --model 'sonnet'`);
+    assert.equal(command, `cd '${work}' && claude --resume '${copy}' --fork-session --session-id ${forkId} --name 'releaser (fork)' --permission-mode plan --model 'sonnet'${STAY_OPEN}`);
     assert.notEqual(forkId, SID);
     assert.deepEqual(handle.getNotes(forkId).notes.map(n => n.text), ['ask about the changelog'], 'the fork has a copy of its notes');
     assert.ok(copy.startsWith(join(root, 'state', 'forks')), 'the copy is kept in the tracker\'s own state');
     assert.equal(readFileSync(copy, 'utf8'), `${lines.slice(0, 2).join('\n')}\n`, 'up to and including that reply');
     assert.equal(readFileSync(join(dir, `${SID}.jsonl`), 'utf8'), `${lines.join('\n')}\n`, 'the original is untouched');
     assert.deepEqual(await handle.actions.fork({ agentId: SID, at: 'p-2' }), { ok: true, terminal: 'iTerm' });
-    const prefill = launched[1].at(-1).match(/--prefill "\$\(cat '([^']+)'\)"$/)[1];
+    const prefill = launched[1].at(-1).match(/--prefill "\$\(cat '([^']+)'\)" && exit; /)[1];
     assert.equal(readFileSync(prefill, 'utf8'), 'Ship it', 'forked from your message: it goes in the new prompt box');
     for (const body of [{ agentId: SID, at: 'nope' }, { agentId: SID, at: 'p-1' }, { agentId: SID }, { agentId: 'nobody', at: 'r-1' }, { agentId: SID, at: 'r-1', mode: 'yolo' }, { agentId: SID, at: 'r-1', model: 'gpt-5' }, null]) {
       assert.equal((await handle.actions.fork(body)).ok, false, JSON.stringify(body));
@@ -713,8 +714,8 @@ test('a session is restored to before one of your messages: ended, its files and
     assert.deepEqual(calls(), [`1 --resume ${SID} --rewind-files p-2`], 'its files put back from Claude Code\'s own snapshots');
     assert.equal(readFileSync(transcript, 'utf8'), `${lines.join('\n')}\n${marker}\n`, "the conversation: /rewind's row added, nothing removed");
     const command = launched.at(-1);
-    const prefill = command.match(/--prefill "\$\(cat '([^']+)'\)"$/)[1];
-    assert.equal(command, `cd '${work}' && exec claude --resume ${SID} --permission-mode plan --prefill "$(cat '${prefill}')"`, 'resumed as itself');
+    const prefill = command.match(/--prefill "\$\(cat '([^']+)'\)" && exit; /)[1];
+    assert.equal(command, `cd '${work}' && claude --resume ${SID} --permission-mode plan --prefill "$(cat '${prefill}')"${STAY_OPEN}`, 'resumed as itself');
     assert.equal(readFileSync(prefill, 'utf8'), 'Ship it', 'with your message back in the prompt box');
     // Conversation only: no files touched. Code only: no row added, nothing in the prompt box.
     alive = true;
@@ -727,7 +728,7 @@ test('a session is restored to before one of your messages: ended, its files and
     assert.deepEqual(await handle.actions.restore({ agentId: SID, at: 'p-2', what: 'code' }), { ok: true, terminal: 'iTerm', files: true });
     assert.equal(calls().length, 2);
     assert.equal(readFileSync(transcript, 'utf8'), `${lines.join('\n')}\n`);
-    assert.equal(launched.at(-1), `cd '${work}' && exec claude --resume ${SID}`);
+    assert.equal(launched.at(-1), `cd '${work}' && claude --resume ${SID}${STAY_OPEN}`);
     // No snapshots for that message: with both, the conversation is still restored; code alone fails, and it is resumed as it was.
     writeFileSync(outcome, 'No file checkpoint found for this message.');
     alive = true;
@@ -738,7 +739,7 @@ test('a session is restored to before one of your messages: ended, its files and
     const failed = await handle.actions.restore({ agentId: SID, at: 'p-2', what: 'code' });
     assert.equal(failed.ok, false);
     assert.match(failed.error, /files could not be restored \(No file checkpoint found for this message\.\)\. It was resumed as it was/);
-    assert.equal(launched.at(-1), `cd '${work}' && exec claude --resume ${SID}`);
+    assert.equal(launched.at(-1), `cd '${work}' && claude --resume ${SID}${STAY_OPEN}`);
     // A session that won't end is left as it is.
     unlinkSync(outcome);
     alive = true;
@@ -784,12 +785,12 @@ test('a session starts or resumes in a terminal only in a listed folder, or from
     }
     assert.equal(launched.length, 0);
     assert.deepEqual(await handle.actions.start({ resume: PAST }), { ok: true, terminal: 'iTerm' });
-    assert.equal(launched[0].at(-1), `cd '${work}' && exec claude --resume ${PAST}`);
+    assert.equal(launched[0].at(-1), `cd '${work}' && claude --resume ${PAST}${STAY_OPEN}`);
     assert.deepEqual(await handle.actions.start({ cwd: work }), { ok: true, terminal: 'iTerm' });
-    assert.equal(launched[1].at(-1), `cd '${work}' && exec claude`);
+    assert.equal(launched[1].at(-1), `cd '${work}' && claude${STAY_OPEN}`);
     assert.match(launched[1].join('\n'), /tell application "iTerm"/);
     assert.deepEqual(await handle.actions.start({ cwd: work, model: 'opus[1m]', effort: 'high' }), { ok: true, terminal: 'iTerm' });
-    assert.equal(launched[2].at(-1), `cd '${work}' && exec claude --model 'opus[1m]' --effort high`, 'a model and effort for this session only, quoted for the shell');
+    assert.equal(launched[2].at(-1), `cd '${work}' && claude --model 'opus[1m]' --effort high${STAY_OPEN}`, 'a model and effort for this session only, quoted for the shell');
     for (const body of [{ cwd: work, model: 'gpt-5' }, { cwd: work, effort: 'turbo' }, { cwd: work, model: "sonnet'; rm -rf ~; '" }]) assert.equal((await handle.actions.start(body)).ok, false, JSON.stringify(body));
   } finally {
     await handle.stop();
@@ -840,7 +841,7 @@ test('a new session starts in any folder of yours, made first if it is new, and 
     assert.match((await handle.actions.start({ cwd: '~/code/new app' })).error, /doesn't exist/);
     assert.deepEqual(await handle.actions.mkdir({ path: '~/code/new app' }), { ok: true, path: join(home, 'code', 'new app') });
     assert.deepEqual(await handle.actions.start({ cwd: '~/code/new app', mode: 'plan', model: 'sonnet' }), { ok: true, terminal: 'Terminal' });
-    assert.equal(launched.at(-1), `cd '${join(home, 'code', 'new app')}' && exec claude --permission-mode plan --model 'sonnet'`);
+    assert.equal(launched.at(-1), `cd '${join(home, 'code', 'new app')}' && claude --permission-mode plan --model 'sonnet'${STAY_OPEN}`);
     // (on Windows "/etc/x" is a folder of the current drive, and a drive is an allowed place: it would be made)
     for (const body of [...(process.platform === 'win32' ? [] : [{ path: '/etc/x' }]), { path: '~/../x' }, {}, null]) assert.equal((await handle.actions.mkdir(body)).ok, false, JSON.stringify(body));
     // (and "/" there is the root of the current drive, which is an allowed place)
@@ -881,7 +882,7 @@ test('a session is ended (SIGTERM, then its window closed by its tty) or restart
     assert.equal(launched[0].at(-1), '/dev/ttys012');
     alive = true;
     assert.deepEqual(await handle.actions.restart({ agentId: LIVE, mode: 'bypassPermissions' }), { ok: true, terminal: 'iTerm' });
-    assert.equal(launched.at(-1).at(-1), `cd '${work}' && exec claude --resume ${LIVE} --dangerously-skip-permissions`);
+    assert.equal(launched.at(-1).at(-1), `cd '${work}' && claude --resume ${LIVE} --dangerously-skip-permissions${STAY_OPEN}`);
     alive = true;
     procs.kill = (pid, sig) => signals.push([pid, sig]); // this one will not stop
     const before = launched.length;
@@ -1124,7 +1125,7 @@ test("Claude Code's setup for the ⚙ dialog: plugins with their costs, MCP serv
     assert.equal((await handle.actions.mcp({ name: 'plugin:alpha:extra', op: 'remove' })).ok, false, "a plugin's server is the plugin's");
     assert.equal((await handle.actions.mcp({ name: 'ghost', op: 'login' })).ok, false);
     assert.deepEqual(await handle.actions.mcp({ name: 'mine', op: 'login' }), { ok: true, terminal: 'Terminal' });
-    assert.equal(launched.at(-1), "cd ~ && exec claude mcp login 'mine'");
+    assert.equal(launched.at(-1), `cd ~ && claude mcp login 'mine'${STAY_OPEN}`);
     assert.deepEqual(await handle.actions.mcp({ name: 'mine', op: 'remove' }), { ok: true });
     assert.deepEqual(await handle.actions.mcp({ name: 'local1', op: 'remove', project }), { ok: true });
     const logged = claude.log().split('\n');

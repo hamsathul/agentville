@@ -253,6 +253,9 @@ cp config.example.json config.json   # then edit; it is re-read when you save it
 - **Automation.** The first time you start, resume or end a session from the dashboard, macOS
   asks to let the tracker control Terminal (or iTerm). Allow it, or later under System Settings →
   Privacy & Security → Automation.
+- **Files and folders.** A session in your Desktop, Documents or iCloud Drive needs your terminal
+  app to have access to that folder (Full Disk Access, or Files and Folders). Without it, Claude
+  can't start there, and its window stays open to say so (see Troubleshooting).
 - **Notifications.** Allow notifications if macOS asks. The page's bell asks the browser
   separately, the first time you switch it on.
 
@@ -592,7 +595,9 @@ before you updated, run `/reload-plugins` in it.
     Each past session and folder shows the account it last ran on, and the filters include
     **Account**.
   - It opens a new Terminal or iTerm window (the `terminal` setting), and the window closes when
-    Claude exits. On Windows it opens a Windows Terminal tab, or a console window without it.
+    Claude exits. If Claude can't start or stops with an error, the window stays open with the
+    reason and a note from Agentville under it. On Windows it opens a Windows Terminal tab, or a
+    console window without it.
 - **⑂ Fork** on any message in the conversation (in the side panel or ⤢ Read all; it shows when you
   point at the message) starts a new session from the conversation at that point, in a new terminal
   window. The original session is left as it is and can keep working.
@@ -1763,6 +1768,7 @@ and can do is in [docs/worlds.md](docs/worlds.md).
 | The dashboard doesn't load | `agent-tracker status`, then `agent-tracker logs` (on Windows, `bin\agent-tracker.cmd status`, then `logs`: `logs\collector.log` and `logs\task.log`). Check that nothing else uses the port |
 | The log says "Not starting: a required dependency is missing" | `node collector/index.mjs --check` names it, with the fix. Required are only Node 22+ and the system's own tools (`osascript` and `ps` on a Mac, Windows PowerShell on Windows) |
 | ＋ Session, Resume or Fork fails, and the log says Claude Code was not found | The service looks on its own PATH: nvm's Node folder, Homebrew's, the system's, then `~/.local/bin` (on Windows: yours, then `.local\bin`, npm's, Git's and the GitHub CLI's). The service doesn't see what you set in your shell: on a Mac, link `claude` into `~/.local/bin` (`ln -s "$(command -v claude)" ~/.local/bin/claude`), then `agent-tracker restart`; on Windows, `setx TRACKER_CLAUDE_BIN <its full path>`, then `bin\agent-tracker.cmd restart` |
+| A session's window says "Claude Code stopped or could not start", above Claude's "An unknown error occurred, possibly due to low max file descriptors" | Your terminal app can't read the session's folder. macOS guards Desktop, Documents and iCloud Drive, and `ls` in that folder says "Operation not permitted" too; raising the file limit doesn't help. In System Settings › Privacy & Security › Full Disk Access (or Files and Folders), switch iTerm or Terminal off and on again, even if it already shows as on; if that isn't enough, quit the terminal app and reopen it. Then resume the session. A folder outside those three (`~/projects`, say) isn't affected |
 | Windows: the collector won't start, and its log says "failed to start" with an `icacls` error (or "could not make … private") | Its folder is on a drive without access lists (FAT, exFAT, some network drives), where the token can't be kept private. Move Agentville under your user folder on the system drive |
 | Windows: `--check` says Agentville is outside your user folder | Others who sign in to the PC may be able to change its files, and `bin\run-collector.ps1` runs at your logon: move it under `C:\Users\<you>` |
 | Windows: answers from the dashboard do nothing in a session | The mod needs 0.9.2 there: `/reload-plugins` in that session |

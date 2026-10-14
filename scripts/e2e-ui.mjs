@@ -16,6 +16,7 @@ import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { startCollector } from '../collector/collector.mjs';
 import { readPs } from '../collector/sources/ps.mjs';
+import { STAY_OPEN } from '../collector/sources/sessions.mjs';
 import { openChrome } from './lib/cdp.mjs';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
@@ -509,7 +510,7 @@ try {
   const forked = await until("!document.getElementById('fork-dlg').open && /Forking ui-asker/.test(document.getElementById('notice').textContent)") ? launched.at(-1) : '';
   const copy = /--resume '([^']+)'/.exec(forked)?.[1] ?? '';
   const forkId = /--session-id ([0-9a-f-]{36}) /.exec(forked)?.[1] ?? '';
-  check(forked === `cd '${repo}' && exec claude --resume '${copy}' --fork-session --session-id ${forkId} --name 'ui-asker (fork)' --model 'haiku'` && readFileSync(copy, 'utf8').trim().split('\n').at(-1).includes('"ui-r1"'),
+  check(forked === `cd '${repo}' && claude --resume '${copy}' --fork-session --session-id ${forkId} --name 'ui-asker (fork)' --model 'haiku'${STAY_OPEN}` && readFileSync(copy, 'utf8').trim().split('\n').at(-1).includes('"ui-r1"'),
     `confirmed, a terminal resumes a copy of the conversation cut at that reply as a new session (got ${forked})`);
   const forkNotes = existsSync(join(state, 'notes', `${forkId}.json`)) ? JSON.parse(readFileSync(join(state, 'notes', `${forkId}.json`), 'utf8')).notes.map(n => n.text) : [];
   check(forkNotes.join('|') === 'Ask about the frost|Water the beans', `the fork has a copy of the notes (got ${JSON.stringify(forkNotes)})`);
@@ -1226,13 +1227,13 @@ try {
   await js("(() => { const f = document.getElementById('sess-filter'); f.value = 'harvest'; f.dispatchEvent(new Event('input', { bubbles: true })); })()");
   check(await until("document.querySelectorAll('#sessions [data-sess-resume]').length === 1"), 'the filter narrows the list');
   await js("document.querySelector('#sessions [data-sess-resume]').click()");
-  check(await until('!document.getElementById(\'sessions\').open') && launched.at(-1) === `cd '${repo}' && exec claude --resume ${PAST}`, `Resume opens a terminal running claude --resume in the session's folder (got ${JSON.stringify(launched)})`);
+  check(await until('!document.getElementById(\'sessions\').open') && launched.at(-1) === `cd '${repo}' && claude --resume ${PAST}${STAY_OPEN}`, `Resume opens a terminal running claude --resume in the session's folder (got ${JSON.stringify(launched)})`);
   check(await until("/Opened a new Terminal window/.test(document.getElementById('notice').textContent)"), 'the page says the terminal opened');
   await js("document.getElementById('sessions-open').click()");
   await until("!!document.querySelector('#sessions [data-sess-new]')");
   await js("(() => { const m = document.getElementById('sess-mode'); m.value = 'plan'; m.dispatchEvent(new Event('change', { bubbles: true })); document.getElementById('sess-model').value = 'sonnet'; document.getElementById('sess-effort').value = 'high'; })()");
   await js("document.querySelector('#sessions [data-sess-new]').click()");
-  check(await until('!document.getElementById(\'sessions\').open') && launched.at(-1) === `cd '${repo}' && exec claude --permission-mode plan --model 'sonnet' --effort high`, `New session opens a terminal running claude in the folder, in the mode, model and effort you picked (got ${launched.at(-1)})`);
+  check(await until('!document.getElementById(\'sessions\').open') && launched.at(-1) === `cd '${repo}' && claude --permission-mode plan --model 'sonnet' --effort high${STAY_OPEN}`, `New session opens a terminal running claude in the folder, in the mode, model and effort you picked (got ${launched.at(-1)})`);
   // A folder you haven't worked in: typed, with suggestions and Tab, or made, then started in.
   const places = realpathSync.native(temp); // the place this run allows (your home folder and drives, really)
   await js("document.getElementById('sessions-open').click()");
@@ -1256,7 +1257,7 @@ try {
   await js("document.getElementById('confirm-yes').click()");
   check(await until("!document.getElementById('sess-dir-new').disabled") && existsSync(join(places, 'new crop', 'field')), 'confirmed, it makes the folder and the one above it');
   await js("document.getElementById('sess-dir-new').click()");
-  check(await until("!document.getElementById('sessions').open") && launched.at(-1) === `cd '${join(places, 'new crop', 'field')}' && exec claude --permission-mode plan --model 'sonnet' --effort high`, `＋ New starts there, in the mode, model and effort picked (got ${launched.at(-1)})`);
+  check(await until("!document.getElementById('sessions').open") && launched.at(-1) === `cd '${join(places, 'new crop', 'field')}' && claude --permission-mode plan --model 'sonnet' --effort high${STAY_OPEN}`, `＋ New starts there, in the mode, model and effort picked (got ${launched.at(-1)})`);
   check(await until("/trust the folder/.test(document.getElementById('notice').textContent)"), 'and says Claude Code may ask there whether to trust it');
 
   console.log('Back to the list');
@@ -1354,7 +1355,7 @@ try {
     check(await until(`[...document.querySelectorAll('#sessions [data-sess-resume="${A.past}"]')].length === 1`), 'and the past session to resume');
     await js("(s => { s.value = 'home'; s.dispatchEvent(new Event('change', { bubbles: true })); })(document.getElementById('sess-account'))");
     await js(`document.querySelector('#sessions [data-sess-resume="${A.past}"]').click()`);
-    check(await until("!document.getElementById('sessions').open") && acctLaunched.at(-1) === `cd '${field}' && exec env CLAUDE_CONFIG_DIR='${homeDir}' claude --resume ${A.past}`, `Resume on home runs it with home's config folder (got ${JSON.stringify(acctLaunched.at(-1))})`);
+    check(await until("!document.getElementById('sessions').open") && acctLaunched.at(-1) === `cd '${field}' && env CLAUDE_CONFIG_DIR='${homeDir}' claude --resume ${A.past}${STAY_OPEN}`, `Resume on home runs it with home's config folder (got ${JSON.stringify(acctLaunched.at(-1))})`);
     await js("document.getElementById('view-farm').click()");
     check(await until("document.getElementById('main').dataset.view === 'farm'") && await funtil("[...document.querySelectorAll('.px-lab')].some(l => l.title.startsWith('The silo of home')) && [...document.querySelectorAll('.px-lab')].some(l => l.title.startsWith('The silo of work'))"), `the farm has a silo for each account (tags: ${await fjs("[...document.querySelectorAll('.px-lab.cnt')].map(l => l.title.slice(0, 40)).join(' | ')")})`);
     await shot('two-accounts-farm');
