@@ -1,8 +1,9 @@
-# The 3D farm's animals
+# The 3D farm's models
 
-Made into this folder by `scripts/farm3d-animals.mjs`: each model with every animation once (the pack holds two
-copies), its normals, texture coordinates and textures dropped, its animation keys thinned and its data packed again
-(scripts/lib/glb.mjs); nothing else changed. On the farm, `../coats.js` repaints them as they load: lighter colours
+Made into this folder by `scripts/farm3d-animals.mjs` (`npm run farm3d-models`): each model with every animation
+once (the pack holds two copies), its normals, texture coordinates and textures dropped, its animation keys thinned and
+its data packed again (scripts/lib/glb.mjs); the Car Kit's palette texture baked into a colour per vertex first;
+nothing else changed. On the farm, `../coats.js` repaints them as they load: lighter colours
 and the farm's matte finish.
 
 ## Animated Animal Pack, by Quaternius
@@ -55,6 +56,11 @@ Licence: **CC0 (public domain)**, https://creativecommons.org/publicdomain/zero/
 - Wood Log with Moss (on the farm: the log), https://poly.pizza/m/nwsYvcI0bC, https://static.poly.pizza/5283865a-f61a-4787-b02d-28b5b76df7b9.glb
 - Mushroom (on the farm: the mushroom), https://poly.pizza/m/db1tjMhmiA, https://static.poly.pizza/c30dcc3b-c43d-4ce8-9b2d-6dd942b81fd7.glb
 - Flowers (on the farm: the flowers), https://poly.pizza/m/dOO6kMDd8L, https://static.poly.pizza/1c2f8472-750c-4169-b2d7-573b0a4f8ba6.glb
+- Wheat (on the farm: the wheat), https://poly.pizza/m/lPspzfC8Pu, https://static.poly.pizza/799054f9-931b-4c31-8811-b5199bf94e59.glb
+- Corn (on the farm: the corn), https://poly.pizza/m/IhhB7kGaAQ, https://static.poly.pizza/89af1f9b-305a-40a0-8c7a-e2ad81a529b9.glb
+- Pumpkin (on the farm: the pumpkin), https://poly.pizza/m/bvLvqnU1jX, https://static.poly.pizza/49202ae4-62ac-4035-9726-1834228e7d08.glb
+- Carrot (on the farm: the carrot), https://poly.pizza/m/l4YmYv8hFK, https://static.poly.pizza/fe46376d-6648-4a39-b1db-0d23f6464bde.glb
+- Tomato (on the farm: the tomato), https://poly.pizza/m/ByggGxctjw, https://static.poly.pizza/b6127a55-27db-41e1-bee3-e74827ba8f53.glb
 
 ## Ultimate Modular Men Pack, by Quaternius
 
@@ -78,3 +84,21 @@ Licence: **CC0 (public domain)**, https://creativecommons.org/publicdomain/zero/
 - Animated Woman (on the farm: the woman), https://poly.pizza/m/nIItLV9nxS, https://static.poly.pizza/46d6db5a-3c9f-4238-8cdf-8eb7194498dc.glb
 - Animated Woman (on the farm: the womancasual), https://poly.pizza/m/qJ2gsTUBHL, https://static.poly.pizza/ba7a1955-ea51-4cb9-a561-188bdef0a6c7.glb
 - Adventurer (on the farm: the womanadventurer), https://poly.pizza/m/ZwF0K7WBmu, https://static.poly.pizza/69689495-028d-4b81-8678-792338a5693e.glb
+
+## Single models, by Kenney
+
+Kenney: https://poly.pizza/u/Kenney
+
+Licence: **CC0 (public domain)**, https://creativecommons.org/publicdomain/zero/1.0/ (no credit is required; it is given with thanks)
+
+- Cabbage (on the farm: the cabbage), https://poly.pizza/m/6urnIRBhzr, https://static.poly.pizza/0b83e9ba-43be-4b28-8d21-7adfb3500997.glb
+
+## Car Kit, by Kenney
+
+https://kenney.nl/assets/car-kit (Kenney: https://kenney.nl)
+
+Licence: **CC0 (public domain)**, https://creativecommons.org/publicdomain/zero/1.0/ (no credit is required; it is given with thanks)
+
+- Tractor (on the farm: the tractor), https://kenney.nl/media/pages/assets/car-kit/1a312ec241-1775131960/kenney_car-kit.zip (tractor.glb)
+- Tractor (shovel) (on the farm: the tractorloader), https://kenney.nl/media/pages/assets/car-kit/1a312ec241-1775131960/kenney_car-kit.zip (tractor-shovel.glb)
+- Truck (flat) (on the farm: the truckflat), https://kenney.nl/media/pages/assets/car-kit/1a312ec241-1775131960/kenney_car-kit.zip (truck-flat.glb)

@@ -16,6 +16,7 @@ import { makeTerrain } from './build/terrain.js';
 import { makeShapes } from './build/shapes.js';
 import { makeBuildings } from './build/buildings.js';
 import { makeCrops } from './build/crops.js';
+import { makeModels } from './build/models.js';
 import { makeWeather } from './build/weather.js';
 import { makeBeds } from './build/beds.js';
 import { makeFigures } from './build/figurine.js';
@@ -100,7 +101,7 @@ export function start({ el, opts, prefs }) {
   const scene3 = new THREE.Scene(), camera = new THREE.PerspectiveCamera(30, 1, 0.5, 400);
   const mats = makeMaterials(THREE), sky = makeSky(THREE, scene3, mats), terrain = makeTerrain(THREE, mats);
   const shapes = makeShapes(THREE, mats), buildings = makeBuildings(THREE, mats, shapes);
-  const crops = makeCrops(THREE, mats), beds = makeBeds(THREE, mats, shapes, makeWeather(THREE, mats, shapes), crops);
+  const models = makeModels(THREE), crops = makeCrops(THREE, mats, { load: kind => models.parts(kind), onLoad: (kind, err) => { if (err) report(err, `crops (${kind})`); dirty = true; } }), beds = makeBeds(THREE, mats, shapes, makeWeather(THREE, mats, shapes), crops);
   let farmRoam = null; // the walkable farm (roam.js), for a farmer's errand to an animal
   const farmers = makeFarmers(THREE, makeFigures(THREE, mats, shapes), shapes, { route: (a, b) => farmRoam?.route(a, b, 4) ?? null }), animals = makeAnimals(THREE, mats, shapes), weather = makeWeather(THREE, mats, shapes);
   const nature = makeNature(THREE, shapes), talk = createTalk();
@@ -556,6 +557,8 @@ export function start({ el, opts, prefs }) {
     dialog: () => ({ open: overlay.dialogOpen(), title: document.querySelector('.px-dlg-title')?.textContent ?? '' }),
     /** The plants drawn, by kind (none until their models have loaded). */
     plants: () => nature.count(),
+    /** The crops shown, by crop and what draws them: { corn: { model: 72, code: 0 } }. */
+    crops: () => crops.stats(),
     /** A farmer as drawn: its character, the clip it plays, its shirt's colour (null while the figurine stands in). */
     farmer: id => farmers.info(id),
     /** The farmers drawn, by id (stale ones are scarecrows). */

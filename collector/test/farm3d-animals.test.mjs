@@ -43,12 +43,14 @@ const PACK = 'https://poly.pizza/bundle/Animated-Animal-Pack-ILAPXeUYiS';
 const KINDS = ['alpaca', 'bull', 'cow', 'deer', 'donkey', 'fox', 'horse', 'husky', 'shiba', 'stag', 'whitehorse', 'wolf'];
 const POND_KINDS = ['frog', 'koi', 'lilypad', 'roach', 'trout'];
 const PERSON_KINDS = ['beach', 'business', 'casual', 'farmer', 'hoodie', 'woman', 'womanadventurer', 'womancasual', 'worker'];
+const CROP_KINDS = ['cabbage', 'carrot', 'corn', 'pumpkin', 'tomato', 'wheat'];
+const VEHICLE_KINDS = ['tractor', 'tractorloader', 'truckflat'];
 const NATURE_KINDS = ['autumntree', 'birch', 'birchdead', 'birchsnow', 'bush', 'bushberries', 'bushsnow', 'deadtreesnow', 'flowers', 'log', 'mushroom', 'pine', 'pineautumn', 'pinesnow', 'rockmoss', 'rocks', 'rocksnow', 'stump', 'tree', 'tree2'];
 
 test("the models: all twelve of Quaternius's Animated Animal Pack, each with every one of its animations, slimmed", async () => {
   const { MODELS } = await import('../../web/worlds/farm3d/models/index.js');
   const { readGlb } = await import('../../scripts/lib/glb.mjs');
-  assert.deepEqual(Object.keys(MODELS).sort(), [...KINDS, ...POND_KINDS, ...NATURE_KINDS, ...PERSON_KINDS].sort());
+  assert.deepEqual(Object.keys(MODELS).sort(), [...KINDS, ...POND_KINDS, ...NATURE_KINDS, ...PERSON_KINDS, ...CROP_KINDS, ...VEHICLE_KINDS].sort());
   let total = 0;
   for (const kind of Object.keys(MODELS)) total += (await import(`../../web/worlds/farm3d/models/${kind}.js`)).default.length;
   for (const kind of KINDS) {
@@ -74,7 +76,7 @@ test("the models: all twelve of Quaternius's Animated Animal Pack, each with eve
     assert.ok(m.height > 0.4 && m.height < 2.2, `${kind}: ${m.height} m`);
     assert.ok(glb.length < 420 * 1024, `${kind}: ${Math.round(glb.length / 1024)} KB, slimmed`);
   }
-  assert.ok(total < 12.5 * 1024 * 1024, `all the animals, the pond's, the plants and the farmers: ${Math.round(total / 1024)} KB served`);
+  assert.ok(total < 13.5 * 1024 * 1024, `all the animals, the pond's, the plants, the farmers, the crops and the machines: ${Math.round(total / 1024)} KB served`); // the crops and the machines (0.4 MB) load only when a field or a machine needs them
   assert.ok(MODELS.horse.height > MODELS.cow.height && MODELS.cow.height > MODELS.donkey.height && MODELS.donkey.height > MODELS.wolf.height && MODELS.wolf.height > MODELS.husky.height && MODELS.husky.height > MODELS.fox.height, 'sizes that make sense side by side');
 });
 
@@ -114,6 +116,32 @@ test("the farm's plants: Quaternius's flat-coloured trees, bushes, rocks and thi
     assert.ok(glb.length < 160 * 1024, `${kind}: ${Math.round(glb.length / 1024)} KB`);
   }
   for (const [kind, snowy] of [['pine', 'pinesnow'], ['bush', 'bushsnow'], ['birch', 'birchsnow'], ['rockmoss', 'rocksnow']]) assert.ok(MODELS[kind] && MODELS[snowy], `${kind} has a winter`);
+});
+
+test("the crops and the machines: Quaternius's and Kenney's crops, flat-coloured; Kenney's Car Kit with its texture baked into colours, its wheels named; CC0, still, slimmed", async () => {
+  const { MODELS } = await import('../../web/worlds/farm3d/models/index.js');
+  const { readGlb } = await import('../../scripts/lib/glb.mjs');
+  for (const kind of [...CROP_KINDS, ...VEHICLE_KINDS]) {
+    const m = MODELS[kind], glb = Buffer.from((await import(`../../web/worlds/farm3d/models/${kind}.js`)).default, 'base64'), { json } = readGlb(glb);
+    assert.match(m.licence, /^CC0/, kind);
+    assert.ok(!json.animations && !json.skins && !json.images && !json.textures, `${kind}: no animation, skeleton or texture`);
+    assert.ok(glb.length < 120 * 1024, `${kind}: ${Math.round(glb.length / 1024)} KB`);
+    const size = m.height ?? m.length;
+    if (CROP_KINDS.includes(kind)) {
+      assert.equal(m.family, 'crop', kind);
+      assert.equal(m.author, kind === 'cabbage' ? 'Kenney' : 'Quaternius', kind);
+      assert.match(m.page, /^https:\/\/poly\.pizza\/m\//, kind);
+      assert.ok(size >= 0.1 && size <= 2, `${kind}: ${size} m`);
+    } else {
+      assert.equal(m.family, 'vehicle', kind);
+      assert.equal(m.author, 'Kenney', kind);
+      assert.equal(m.pack, 'Car Kit', kind);
+      assert.ok(size >= 3 && size <= 5, `${kind}: ${size} m`);
+      assert.equal(m.wheels.length, 4, kind);
+      for (const w of m.wheels) assert.ok(json.nodes.some(n => n.name === w), `${kind}: its wheel ${w}`);
+      assert.ok(json.meshes.every(mesh => mesh.primitives.every(p => p.attributes.COLOR_0 !== undefined)), `${kind}: every face its colour`);
+    }
+  }
 });
 
 test("the farmers' characters: Quaternius's modular men and women (CC0), each with only the clips the farm's poses use, and a shirt for the agent's colour", async () => {
@@ -179,9 +207,9 @@ test("their colours: the farm's matte finish, and every colour area but the eyes
   const { COATS, FINISH } = await import('../../web/worlds/farm3d/coats.js');
   const { readGlb } = await import('../../scripts/lib/glb.mjs');
   assert.deepEqual(FINISH, { roughness: 0.85, metalness: 0 }, "build/materials.js's std(): no metal");
-  assert.deepEqual(Object.keys(COATS).sort(), [...KINDS, ...POND_KINDS, ...NATURE_KINDS].sort());
+  assert.deepEqual(Object.keys(COATS).sort(), [...KINDS, ...POND_KINDS, ...NATURE_KINDS, ...CROP_KINDS].sort());
   const linear = v => (v <= 0.04045 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4), lum = ([r, g, b]) => 0.2126 * r + 0.7152 * g + 0.0722 * b;
-  for (const kind of [...KINDS, ...POND_KINDS, ...NATURE_KINDS]) {
+  for (const kind of [...KINDS, ...POND_KINDS, ...NATURE_KINDS, ...CROP_KINDS]) {
     const { json } = readGlb(Buffer.from((await import(`../../web/worlds/farm3d/models/${kind}.js`)).default, 'base64'));
     const own = new Map(json.materials.map(m => [m.name, m.pbrMetallicRoughness.baseColorFactor]));
     for (const [name, hex] of Object.entries(COATS[kind])) {
@@ -231,6 +259,8 @@ test("the models' credit: LICENSE.md names the pack, its author, its licence and
   const section = readme.slice(readme.indexOf('### The 3D farm (prototype)'), readme.indexOf('### Notifications and the bell'));
   assert.match(section, /Quaternius.{0,200}Animated Animal Pack.{0,200}CC0/s);
   assert.match(section, /frog.{0,300}fish.{0,300}lily pad|lily pad.{0,300}frog.{0,300}fish/is, "the pond's models too");
+  assert.match(section, /wheat.{0,300}(Quaternius|Kenney).{0,300}cabbage|cabbage.{0,300}Kenney/is, 'the crops too');
+  assert.match(section, /Kenney.{0,200}Car Kit.{0,200}CC0/s, "and Kenney's Car Kit");
   assert.ok(!/Farm Animal Pack|CC BY/.test(section), 'the README credits only the one pack');
 });
 
@@ -251,7 +281,7 @@ function run(a, secs, env) {
 
 test("antics: every animal's menu and habits give every one of its clips a part; playing dead and headbutts are asked for, never habits", async () => {
   const { MODELS } = await import('../../web/worlds/farm3d/models/index.js');
-  for (const [kind, m] of Object.entries(MODELS).filter(([, m]) => !['still', 'person'].includes(m.family))) {
+  for (const [kind, m] of Object.entries(MODELS).filter(([, m]) => !['still', 'person', 'crop', 'vehicle'].includes(m.family))) {
     const menu = menuFor(kind, m.family), habits = Object.keys(habitsOf(kind, m.family));
     const always = { frog: ['idle'], fish: ['walk', 'idle'] }[m.family] ?? ['walk', 'idle', 'eat']; // what it does when not up to anything
     const parts = new Set([...always, ...[...menu, ...habits].flatMap(act => PARTS_OF(stepsFor(act, makeAnimal({ kind, family: m.family, area: 'yard' }, 0, 0), world())))]);

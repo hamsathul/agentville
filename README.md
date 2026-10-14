@@ -1309,8 +1309,11 @@ patch, the pasture across the front, and the meadow and the forest running on al
   bed. Idle: under the shade tree. Stale: a scarecrow. Waking up by itself (`/loop`): lying in a
   hammock. A newcomer walks out of the barn and along the lanes to its place. Until a character's model
   loads, a moment after the farm, a little figurine stands in.
-- **Fields**: crops grow from seed to ripe as context fills (seven crops, one per repo, as on the farm);
-  hay, crates and a mailbox for uncommitted files, unpushed commits and commits behind; a pennant for a
+- **Fields**: crops grow from seed to ripe as context fills (seven crops, one per repo, as on the farm).
+  Past the sprouts they are models, growing from a third of their size to full: Quaternius's wheat, corn,
+  pumpkins (on vines built in code), carrots (their orange tops just showing) and tomatoes (hung on a staked
+  plant built in code), and Kenney's cabbage (single models from poly.pizza, CC0); the sunflower is built in
+  code. Until a crop's model loads, a moment after the farm, the plant built in code stands in. Hay, crates and a mailbox for uncommitted files, unpushed commits and commits behind; a pennant for a
   branch, a rope with orange flags when two agents write at once, a greenhouse over a worktree; rain over
   a failed deploy, a rainbow over one that worked, a windmill while it runs.
 - **Light and seasons**: the sun crosses the sky by your clock and the windows and lamps glow at night;
@@ -1372,8 +1375,9 @@ patch, the pasture across the front, and the meadow and the forest running on al
     farmer who could. The frog's: Talk, Hop, Catch a fly, Dive and Play dead; a fish's: Talk, Play and
     Leap. Esc or a click elsewhere shuts it. With **Motion** off they stand still and the menu says so.
   - They load just after the farm (a moment's pause the first time), and **Animals** in the Menu hides
-    them (not the lily pads). `web/worlds/farm3d/models/LICENSE.md` lists each model, and
-    `npm run farm3d-animals` makes them again from poly.pizza.
+    them (not the lily pads). `web/worlds/farm3d/models/LICENSE.md` lists each model (with Kenney's
+    Car Kit, CC0, from kenney.nl: a tractor, a loader and a flatbed truck, their palette baked into
+    colours), and `npm run farm3d-models` makes them again from poly.pizza and kenney.nl.
 - **The panel and the Menu** are the other worlds' (the farm's, the factory's, the field exercise's), in
   the farm's words. Top left, the panel: what the sessions cost, the harvests (compactions), the season,
   the count cards (waiting on you with the oldest, working with subagents, your turn with asks, idle and
@@ -1813,7 +1817,7 @@ npm run kit-sheet           # redraw docs/kits.png, the picture of the people an
 npm run world-shots -- <world>  # a picture of a world at every stop of its test tour (.private/shots/)
 npm run check-world -- <world>  # the test tour run headless against a world: exceptions, loops, creatures, pointers
 npm run farm3d-check        # the 3D farm in headless Chrome: every tour stop drawn with its name tags, the animals and their menus, memory, no WebGL
-npm run farm3d-animals      # make the 3D farm's animals again from poly.pizza (web/worlds/farm3d/models/; needs the network)
+npm run farm3d-models       # make the 3D farm's models again from poly.pizza and kenney.nl (web/worlds/farm3d/models/; needs the network)
 npm run golden              # reference pictures of the list, the farm, the factory and the field exercise on a fixed snapshot,
                             # compared byte for byte (.private/golden/); --record saves them
 claude plugin test mod      # the Claude Code mod

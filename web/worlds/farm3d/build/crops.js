@@ -1,12 +1,25 @@
 // The crops, as the 2D farm grows them (web/worlds/farm/world.js, drawCrop): seven crops, each in six stages from a
 // seed in its mound to ripe, plus the weeds of a fallow bed and the dry stalks of one whose farmers are all stale.
-// Every plant of one crop and stage shares one InstancedMesh per part, across the whole farm, so a full farm of
-// 648 plants is a few dozen draw calls. Plants sway in the wind, a little more where a farmer is working.
+// From stage 2 a crop is its model (models/: Quaternius's and Kenney's, CC0) once that has loaded, growing from 30% to
+// full size; the tomato is a code-built plant hung with model fruit, the sunflower code-built; the seeds and sprouts
+// are code-built, and so is any crop until its model loads (or if it doesn't). Every plant of one crop and stage
+// shares one InstancedMesh per part, across the whole farm, so a full farm of 1,296 plants is a few dozen draw calls.
+// Plants sway in the wind, a little more where a farmer is working.
 const G = '#3f9b3a', GL = '#6cc04a', GP = '#8fd16a'; // stem, leaf, pale leaf
 const SEED_COLOR = { wheat: '#d9b26a', corn: '#f2d14b', carrot: '#c98d4f', cabbage: '#6b4320', sunflower: '#3a3a40', tomato: '#f4d58d', pumpkin: '#f1e4c3' };
 const U = 1 / 8 * 1.15; // a 2D pixel of plant height, in metres (a touch taller: they are seen from above)
+/** A ripe crop's size in metres: the tall ones by height (the carrot's leaves above the soil), the rest by width, a
+ *  touch bigger than life so a field reads from the farm's height; and the stage its model comes in at (the fruit, for
+ *  the pumpkin and the tomato). */
+const RIPE = { wheat: { h: 9 * U, from: 2 }, corn: { h: 10 * U, from: 2 }, carrot: { h: 7 * U, from: 2 }, cabbage: { w: 0.7, from: 2 }, pumpkin: { w: 0.75, from: 4 }, tomato: { w: 0.18, from: 4 } };
+const GROWN = { 2: 0.3, 3: 0.55, 4: 0.8, 5: 1 }; // a model's share of its ripe size, by stage
+const FRUIT = { 4: 0.7, 5: 1 }; // the pumpkin's and the tomato's, which come in at 4
+/** The colours a crop's model takes before it is ripe, by colour area and stage. */
+const UNRIPE = { wheat: { 2: { Yellow: '#8fc25a' }, 3: { Yellow: '#a9cf62' }, 4: { Yellow: '#cdd27a' } }, corn: { 2: { Yellow: '#8fc25a' }, 3: { Yellow: '#cdd27a' } }, tomato: { 4: { DarkRed: '#f0a040' } } };
 
-export function makeCrops(THREE, mats) {
+/** The crops. `load(kind)` (build/models.js) resolves a model's parts ({ geometry, color, name }) and its box;
+ *  `onLoad(kind, err)` hears when one has loaded (and is shown) or failed. */
+export function makeCrops(THREE, mats, { load, onLoad = () => {} } = {}) {
   const group = new THREE.Group();
   const geos = {
     stem: new THREE.CylinderGeometry(0.5, 0.5, 1, 5).translate(0, 0.5, 0), // a unit stem, from the ground up
@@ -24,7 +37,54 @@ export function makeCrops(THREE, mats) {
   const leaf = (len, color, y, turn, w = 0.12, tilt = 0.35) => part('leaf', color, [Math.cos(turn) * len * 0.45, y, -Math.sin(turn) * len * 0.45], [len, 0.04, w], [0, turn, tilt]);
   const ball = (r, color, x, y, z, [sx, sy, sz] = [1, 1, 1], geo = 'ball') => part(geo, color, [x, y, z], [r * 2 * sx, r * 2 * sy, r * 2 * sz]);
 
-  /** The parts of one plant of a crop at a stage. */
+  const models = new Map(); // crop → { ready, failed, parts, box }
+  /** A crop's model, asked for once: null until it has loaded (and if it doesn't). */
+  function modelOf(crop) {
+    if (!load) return null;
+    if (!models.has(crop)) {
+      const m = { ready: false };
+      models.set(crop, m);
+      Promise.resolve().then(() => load(crop)).then(t => {
+        t.parts.forEach((p, n) => { geos[`model:${crop}:${n}`] = p.geometry; });
+        Object.assign(m, t, { ready: true });
+        for (const k of [...templates.keys()]) if (k.startsWith(`${crop}|`)) templates.delete(k);
+        for (const [k, mesh] of [...meshes]) if (k.startsWith(`${crop}|`)) { group.remove(mesh); mesh.dispose(); meshes.delete(k); }
+        sync(plants);
+        onLoad(crop);
+      }, err => { m.failed = true; onLoad(crop, err); }); // the code-built crop stays
+    }
+    const m = models.get(crop);
+    return m.ready ? m : null;
+  }
+  /** A model's parts, placed: at `[x, y, z]` (its foot on the soil, or its middle with `middle`), `k` times its size. */
+  function placed(crop, t, k, [x, y, z], { stage, middle = false } = {}) {
+    const b = t.box, foot = middle ? -(b.min.y + b.max.y) / 2 : -b.min.y, recolour = UNRIPE[crop]?.[stage] ?? {};
+    return t.parts.map((p, n) => ({ geo: `model:${crop}:${n}`, color: recolour[p.name] ?? p.color, m: new THREE.Matrix4().compose(v.set(x - ((b.min.x + b.max.x) / 2) * k, y + foot * k, z - ((b.min.z + b.max.z) / 2) * k), q.identity(), s.set(k, k, k)) }));
+  }
+  /** One plant from its model, if it has loaded; null for the code-built one. */
+  function fromModel(crop, stage) {
+    const r = RIPE[crop];
+    if (!r || stage < r.from) return null;
+    const t = modelOf(crop);
+    if (!t) return null;
+    const b = t.box, height = b.max.y - b.min.y, width = Math.max(b.max.x - b.min.x, b.max.z - b.min.z);
+    switch (crop) {
+      case 'carrot': { // planted: its leaves above the soil, the orange shoulder just showing
+        const k = (r.h * GROWN[stage]) / (b.max.y || height);
+        return placed(crop, t, k, [0, 0.03 + b.min.y * k, 0], { stage });
+      }
+      case 'pumpkin': // on its vine's leaves
+        return [...template(crop, 3).filter(p => p.geo === 'leaf'), ...placed(crop, t, (r.w * FRUIT[stage]) / width, [0, 0, 0.06], { stage })];
+      case 'tomato': { // the code-built plant, hung with model fruit
+        const h = [0, 0, 3, 5, 6, 7][stage] * U, k = (r.w * FRUIT[stage]) / width;
+        const fruit = [[-0.11, h * 0.6, 0.09], [0.1, h * 0.35, 0.08], [0.02, h * 0.8, 0.12]].flatMap(at => placed(crop, t, k, at, { stage, middle: true }));
+        return [...template(crop, stage).filter(p => p.geo !== 'ball'), ...fruit];
+      }
+      default: return placed(crop, t, r.h ? (r.h * GROWN[stage]) / height : (r.w * GROWN[stage]) / width, [0, 0, 0], { stage });
+    }
+  }
+
+  /** The parts of one plant of a crop at a stage, code-built. */
   function template(crop, stage) {
     if (crop === 'weeds') return [blade(0.22, '#4f7f2f', 0.4, 0), blade(0.18, '#4f7f2f', 0.5, 2.1), blade(0.2, '#5d8f3a', 0.45, 4.2)];
     if (crop === 'dry') return [stem(0.3, '#9c7a4a', 0.02, 0.3), stem(0.22, '#9c7a4a', 0.02, -0.4, 0.05), ball(0.03, '#b5925a', 0.1, 0.29, 0)];
@@ -94,19 +154,22 @@ export function makeCrops(THREE, mats) {
     }
   }
 
-  const templates = new Map(); // `${crop}|${stage}` → parts
+  const templates = new Map(); // `${crop}|${stage}` → { parts, source: 'model' | 'code' }
   const meshes = new Map(); // `${crop}|${stage}|${i}` → InstancedMesh
-  let plants = [];
+  let plants = [], byKey = new Map();
   const plantM = new THREE.Matrix4(), out = new THREE.Matrix4();
   /** The plants to show now: [{ crop, stage, x, z, y, busy, seed }]. */
   function sync(list) {
     plants = list;
-    const byKey = new Map();
+    byKey = new Map();
     for (const p of list) { const k = `${p.crop}|${p.stage}`; if (!byKey.has(k)) byKey.set(k, []); byKey.get(k).push(p); }
     for (const [k, mesh] of meshes) if (!byKey.has(k.split('|').slice(0, 2).join('|'))) mesh.count = 0;
     for (const [k, list2] of byKey) {
-      if (!templates.has(k)) { const [crop, stage] = k.split('|'); templates.set(k, template(crop, Number(stage))); }
-      templates.get(k).forEach((pt, i) => {
+      if (!templates.has(k)) {
+        const [crop, stage] = k.split('|'), model = fromModel(crop, Number(stage));
+        templates.set(k, model ? { parts: model, source: 'model' } : { parts: template(crop, Number(stage)), source: 'code' });
+      }
+      templates.get(k).parts.forEach((pt, i) => {
         const mk = `${k}|${i}`;
         let mesh = meshes.get(mk);
         if (!mesh || mesh.instanceMatrix.count < list2.length) {
@@ -140,6 +203,16 @@ export function makeCrops(THREE, mats) {
       mesh.instanceMatrix.needsUpdate = true;
     }
   }
-  function dispose() { for (const mesh of meshes.values()) mesh.dispose(); meshes.clear(); for (const g of Object.values(geos)) g.dispose(); }
-  return { group, sync, tick, dispose, count: () => plants.length };
+  /** The plants shown now, by crop and what draws them: { corn: { model: 72, code: 0 } }. */
+  function stats() {
+    const out = {};
+    for (const [k, list] of byKey) {
+      const crop = k.split('|')[0], t = templates.get(k);
+      out[crop] ??= { code: 0, model: 0 };
+      out[crop][t.source] += list.length;
+    }
+    return out;
+  }
+  function dispose() { for (const mesh of meshes.values()) mesh.dispose(); meshes.clear(); for (const [k, g] of Object.entries(geos)) if (!k.startsWith('model:')) g.dispose(); } // a model's geometry is its loader's
+  return { group, sync, tick, dispose, stats, count: () => plants.length };
 }

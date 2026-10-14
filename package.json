@@ -13,6 +13,7 @@
     "check-world": "node scripts/check-world.mjs",
     "farm3d-check": "node scripts/farm3d-check.mjs",
     "farm3d-animals": "node scripts/farm3d-animals.mjs",
+    "farm3d-models": "node scripts/farm3d-animals.mjs",
     "kit-sheet": "node scripts/kit-sheet.mjs",
     "demo": "node scripts/demo-video.mjs",
     "demo:many": "node scripts/demo-many.mjs",

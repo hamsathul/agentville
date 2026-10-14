@@ -1,17 +1,22 @@
 #!/usr/bin/env node
 // The 3D farm's animals: the twelve animated models of Quaternius's Animated Animal Pack on poly.pizza (CC0), for the
 // pond his frog, three of his fish and a lily pad, his flat-coloured trees, bushes, rocks and forest-floor things for
-// the farm's plants (CC0, single models on poly.pizza), and for the farmers ten of his modular men and women. Downloads
+// the farm's plants (CC0, single models on poly.pizza), for the farmers ten of his modular men and women, the fields'
+// crops (his wheat, corn, pumpkin, carrot and tomato, Kenney's cabbage; CC0 on poly.pizza), and the machines Kenney's
+// Car Kit (CC0, kenney.nl: a tractor, a loader tractor, a flatbed truck; its palette texture baked into colours, as a
+// world's frame can't load an image: scripts/lib/png.mjs, unzip.mjs, glb.mjs bakeTexture). Downloads
 // each (a GLB, by its pinned id), keeps every animation once (the pack holds two copies) and fails if one goes unused,
 // drops what the farm's flat shading doesn't use (normals, texture coordinates, textures), packs what is left small
 // (scripts/lib/glb.mjs), and writes it to web/worlds/farm3d/models/<kind>.js (a world's frame can't fetch a model file:
 // the world imports it), with models/index.js (each animal's height, family and clips) and models/LICENSE.md (the
 // credit). Needs the network. No dependencies.
 //
-//   npm run farm3d-animals
+//   npm run farm3d-models (or farm3d-animals, its old name)
 import { mkdirSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { readGlb, trimGlb } from './lib/glb.mjs';
+import { bakeTexture, readGlb, trimGlb } from './lib/glb.mjs';
+import { readPng } from './lib/png.mjs';
+import { readZip } from './lib/unzip.mjs';
 import { ROOT } from './lib/worlds-dir.mjs';
 
 const QUATERNIUS = { author: 'Quaternius', authorUrl: 'https://poly.pizza/u/Quaternius', licence: 'CC0 (public domain)', licenceUrl: 'https://creativecommons.org/publicdomain/zero/1.0/' };
@@ -90,6 +95,19 @@ export const MODELS = [
   kind, title, id, page: `https://poly.pizza/m/${page}`, height: 1.95, family: 'person', clips: PERSON, ...QUATERNIUS,
   pack: `Ultimate Modular ${sex} Pack`, packUrl: sex === 'Men' ? 'https://poly.pizza/bundle/Ultimate-Modular-Men-Pack-ZiH8muWqwQ' : 'https://poly.pizza/bundle/Ultimate-Modular-Women-Pack-aCBDXDdTNN',
 })));
+/** The fields' crops (spec 2026-10-14 §5): each its size as grown on the farm, in metres. */
+const KENNEY = { author: 'Kenney', authorUrl: 'https://poly.pizza/u/Kenney', licence: 'CC0 (public domain)', licenceUrl: 'https://creativecommons.org/publicdomain/zero/1.0/', pack: null, packUrl: null };
+MODELS.push(...[
+  ['wheat', 'Wheat', '799054f9-931b-4c31-8811-b5199bf94e59', 'lPspzfC8Pu', { height: 1.1 }, QUATERNIUS],
+  ['corn', 'Corn', '89af1f9b-305a-40a0-8c7a-e2ad81a529b9', 'IhhB7kGaAQ', { height: 1.9 }, QUATERNIUS],
+  ['pumpkin', 'Pumpkin', '49202ae4-62ac-4035-9726-1834228e7d08', 'bvLvqnU1jX', { length: 0.7 }, QUATERNIUS],
+  ['carrot', 'Carrot', 'fe46376d-6648-4a39-b1db-0d23f6464bde', 'l4YmYv8hFK', { length: 0.6 }, QUATERNIUS],
+  ['tomato', 'Tomato', 'b6127a55-27db-41e1-bee3-e74827ba8f53', 'ByggGxctjw', { length: 0.12 }, QUATERNIUS],
+  ['cabbage', 'Cabbage', '0b83e9ba-43be-4b28-8d21-7adfb3500997', '6urnIRBhzr', { length: 0.6 }, KENNEY],
+].map(([kind, title, id, page, size, who]) => ({ kind, title, id, page: `https://poly.pizza/m/${page}`, ...size, family: 'crop', clips: {}, ...who, pack: null, packUrl: null })));
+/** The machines (spec 2026-10-14 §7): Kenney's Car Kit, from its zip on kenney.nl; each its length on the farm in metres. */
+const CAR_KIT = { author: 'Kenney', authorUrl: 'https://kenney.nl', licence: 'CC0 (public domain)', licenceUrl: 'https://creativecommons.org/publicdomain/zero/1.0/', pack: 'Car Kit', packUrl: 'https://kenney.nl/assets/car-kit' };
+const VEHICLES = [['tractor', 'Tractor', 'tractor.glb', 3.2], ['tractorloader', 'Tractor (shovel)', 'tractor-shovel.glb', 3.4], ['truckflat', 'Truck (flat)', 'truck-flat.glb', 4.6]];
 const dir = join(ROOT, 'web', 'worlds', 'farm3d', 'models');
 mkdirSync(dir, { recursive: true });
 for (const f of readdirSync(dir)) if (f.endsWith('.js')) rmSync(join(dir, f)); // what the last run wrote, so a dropped animal goes too
@@ -113,16 +131,42 @@ export default '${glb.toString('base64')}';
   credits.get(group).models.push(`${m.title} (on the farm: the ${m.kind}), ${m.page ? `${m.page}, ` : ''}${source}`);
   console.log(`  ✓ ${m.kind}: ${(original.length / 1024).toFixed(0)} KB → ${(glb.length / 1024).toFixed(0)} KB, ${keep.length} clips`);
 }
-writeFileSync(join(dir, 'index.js'), `// The 3D farm's animals and the pond's: for each, its model's credit, its size on the farm in metres (an animal's
-// height; a fish's or a lily pad's length), its family (hooves, paws, frog, fish, or still) and its clips by what the
-// farm does with them, from the models in this folder. Made by scripts/farm3d-animals.mjs: don't edit by hand.
+// Kenney's Car Kit: its zip from its page, its licence read, each model's palette texture baked into colours
+{
+  const page = await (await fetch(CAR_KIT.packUrl)).text(), zipUrl = page.match(/https:\/\/kenney\.nl\/media\/[^"']*car-kit[^"']*\.zip/)?.[0];
+  if (!zipUrl) throw new Error(`no zip on ${CAR_KIT.packUrl}`);
+  const res = await fetch(zipUrl);
+  if (!res.ok) throw new Error(`Car Kit: ${res.status} from kenney.nl`);
+  const files = readZip(Buffer.from(await res.arrayBuffer())), licence = files.get('License.txt')?.toString() ?? '';
+  if (!/CC0|Creative Commons Zero|public domain/i.test(licence)) throw new Error("Car Kit: its License.txt doesn't say CC0");
+  const png = readPng(files.get('Models/GLB format/Textures/colormap.png'));
+  for (const [kind, title, file, length] of VEHICLES) {
+    const raw = files.get(`Models/GLB format/${file}`);
+    if (!raw) throw new Error(`Car Kit: no ${file}`);
+    const baked = bakeTexture(readGlb(raw), png), glb = trimGlb(baked, []), wheels = (baked.json.nodes ?? []).map(n => n.name).filter(n => /^wheel/.test(n ?? ''));
+    const m = { kind, title, ...CAR_KIT, page: CAR_KIT.packUrl, length, family: 'vehicle', clips: {}, wheels };
+    writeFileSync(join(dir, `${kind}.js`), `// ${title}, by ${m.author}, from ${m.pack} (${m.packUrl}), ${m.licence}: see LICENSE.md beside this file.
+// Made by scripts/farm3d-animals.mjs (npm run farm3d-animals) from ${zipUrl} (${file}, its texture baked into colours): don't edit by hand. A GLB, base64.
+export default '${glb.toString('base64')}';
+`);
+    manifest[kind] = { title, author: m.author, licence: m.licence, pack: m.pack, page: m.page, source: `${zipUrl} (${file})`, length, family: 'vehicle', clips: {}, wheels };
+    if (!credits.has(m.packUrl)) credits.set(m.packUrl, { ...m, models: [] });
+    credits.get(m.packUrl).models.push(`${title} (on the farm: the ${kind}), ${zipUrl} (${file})`);
+    console.log(`  ✓ ${kind}: ${(raw.length / 1024).toFixed(0)} KB → ${(glb.length / 1024).toFixed(0)} KB, ${wheels.length} wheels`);
+  }
+}
+writeFileSync(join(dir, 'index.js'), `// The 3D farm's models: for each, its credit, its size on the farm in metres (an animal's or a crop's height; a
+// fish's, a lily pad's, a crop's or a machine's length), its family (hooves, paws, frog, fish, still, person, crop or
+// vehicle), its clips by what the farm does with them, and a machine's wheels. Made by scripts/farm3d-animals.mjs:
+// don't edit by hand.
 export const MODELS = ${JSON.stringify(manifest, null, 2)};
 `);
-writeFileSync(join(dir, 'LICENSE.md'), `# The 3D farm's animals
+writeFileSync(join(dir, 'LICENSE.md'), `# The 3D farm's models
 
-Made into this folder by \`scripts/farm3d-animals.mjs\`: each model with every animation once (the pack holds two
-copies), its normals, texture coordinates and textures dropped, its animation keys thinned and its data packed again
-(scripts/lib/glb.mjs); nothing else changed. On the farm, \`../coats.js\` repaints them as they load: lighter colours
+Made into this folder by \`scripts/farm3d-animals.mjs\` (\`npm run farm3d-models\`): each model with every animation
+once (the pack holds two copies), its normals, texture coordinates and textures dropped, its animation keys thinned and
+its data packed again (scripts/lib/glb.mjs); the Car Kit's palette texture baked into a colour per vertex first;
+nothing else changed. On the farm, \`../coats.js\` repaints them as they load: lighter colours
 and the farm's matte finish.
 
 ${[...credits.values()].map(c => `## ${c.pack ?? 'Single models'}, by ${c.author}

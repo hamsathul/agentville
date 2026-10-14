@@ -1,6 +1,6 @@
-// The 3D farm's animals in the farm's colours. The models (models/, Quaternius's) come darker than the rest of the farm
-// and partly metallic, which with nothing round them to reflect makes them darker still. build/animals.js repaints each
-// as it loads: every part in the farm's own matte, faceted finish (FINISH, build/materials.js's std()), and each colour
+// The 3D farm's animals, plants and crops in the farm's colours, and its machines' paint (PAINT, at the end). The
+// models (models/, Quaternius's) come darker than the rest of the farm and partly metallic, which with nothing round
+// them to reflect makes them darker still. build/animals.js repaints each as it loads: every part in the farm's own matte, faceted finish (FINISH, build/materials.js's std()), and each colour
 // area of a model (a material, by its name in the model) in the colour here, lighter and warmer than the model's own but
 // the same animal: the fox stays orange. An area not named keeps the model's colour: the eyes. sRGB hex. The cows are
 // white with black spots (SPOTS): each her own, painted on her coat's faces, so they move with her.
@@ -49,6 +49,13 @@ export const COATS = {
   log: { Wood: '#8a6448', Green: '#6c9a50', Mushroom_Top: '#b7795c', Mushroom_Bottom: '#e6d6c8', DarkGreen: '#55884a' },
   mushroom: { White: '#f0eee8', LightRed: '#d0503f' },
   flowers: { Green: '#5e9a45', Cyan: '#f2c94c', Yellow: '#f5e08a' },
+  // the crops (build/crops.js), ripe: their green a bed's, not their model's olive; before that crops.js's UNRIPE
+  wheat: { Yellow: '#e2c56a' },
+  corn: { Green: '#6fa64a', Yellow: '#ecc94e' },
+  pumpkin: { Brown: '#8a6a40', Orange: '#ee8a2a' },
+  carrot: { Orange: '#f08a2e', DarkGreen: '#4f9a3a' },
+  tomato: { DarkRed: '#e0473a', DarkGreen: '#4f8a3a' },
+  cabbage: { green: '#a6dc8c', _defaultMat: '#ffffff' }, // _defaultMat: a few faces underneath, kept white
 };
 
 /** Spotted coats: the colour area the spots are on, their colour, and how much of it they cover. */
@@ -93,3 +100,34 @@ export const SHIRTS = {
   womancasual: { material: 'White', meshes: ['Casual_Body'] },
   womanadventurer: { material: 'LightGreen', meshes: ['Adventurer_Body'] },
 };
+
+/**
+ * The machines' paint (build/machines.js). Kenney's Car Kit comes blue-grey, each face's colour baked from its palette
+ * (scripts/lib/glb.mjs bakeTexture): each colour is repainted by the part it is on (the start of its node's name:
+ * body, wheel, shovel) and what it looks like (paintClass: the kit's blue-grey paint, a tyre's dark grey, near white),
+ * keeping its shade; a lamp, a stripe and a part not named keep their own. A red tractor with cream wheels, a yellow
+ * loader, a green flatbed. sRGB hex.
+ */
+export const PAINT = {
+  tractor: { body: { paint: '#c8432f', pale: '#f4ecd8' }, wheel: { paint: '#f4ecd8', tyre: '#2a2a2e' } },
+  tractorloader: { body: { paint: '#e2a83a', pale: '#f4ecd8' }, shovel: { paint: '#9a9da3' }, wheel: { tyre: '#2a2a2e' } },
+  truckflat: { body: { paint: '#3f7d3a' }, wheel: { paint: '#d8d2c4', tyre: '#2a2a2e' } },
+};
+const SHADE_OF = { paint: 0x80, tyre: 0x3a, pale: 0xee }; // each look's middling grey: a colour's shade is its own over this
+
+/** What a colour of the Car Kit's (sRGB, 0 to 255) looks like: 'paint', 'tyre', 'pale', or null (a lamp, a stripe). */
+export function paintClass([r, g, b]) {
+  const max = Math.max(r, g, b), min = Math.min(r, g, b);
+  if (max < 0x50) return 'tyre';
+  if (min >= 0xd0) return 'pale';
+  if (b >= r && b >= g && g >= r && max - min <= 0x48) return 'paint'; // the kit's blue-grey, light or dark
+  return null;
+}
+
+/** A Car Kit colour (sRGB, 0 to 255) on a machine's part (its node's name), repainted in the farm's: PAINT. */
+export function repaint(kind, node, rgb) {
+  const part = Object.keys(PAINT[kind] ?? {}).find(p => node?.startsWith(p)), look = part && paintClass(rgb), to = look && PAINT[kind][part][look];
+  if (!to) return rgb;
+  const shade = Math.min(1.25, Math.max(0.7, (rgb[0] + rgb[1] + rgb[2]) / 3 / SHADE_OF[look]));
+  return [1, 3, 5].map(i => Math.min(255, Math.round(parseInt(to.slice(i, i + 2), 16) * shade)));
+}

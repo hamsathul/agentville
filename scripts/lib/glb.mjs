@@ -74,6 +74,39 @@ function numbers({ array, a }) {
 const PARTS = { rotation: 4, translation: 3, scale: 3 };
 const top = array => { let m = -Infinity; for (const x of array) if (x > m) m = x; return m; };
 
+const toLinear = v => (v <= 0.04045 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4); // an image's sRGB to glTF's linear colours
+/**
+ * A model whose colours come from a palette texture (Kenney's kits: every face's UVs point into one small image) with
+ * those colours baked in: each vertex gets the texture's colour at its UVs as COLOR_0 (linear, as glTF's colours are,
+ * in 16 bits, normalised), the materials go white, and the texture goes. A world's frame can't load an image; a colour
+ * per vertex needs none.
+ */
+export function bakeTexture({ json, bin }, png) {
+  const j = structuredClone(json), chunks = [Buffer.from(bin)];
+  let offset = bin.length;
+  for (const m of j.meshes) for (const p of m.primitives) {
+    const mat = j.materials?.[p.material];
+    if (!mat?.pbrMetallicRoughness?.baseColorTexture || p.attributes.TEXCOORD_0 === undefined) continue;
+    const uv = numbers(readAccessor(j, bin, p.attributes.TEXCOORD_0)), n = uv.length / 2, colors = new Uint16Array(n * 4);
+    for (let i = 0; i < n; i++) {
+      const x = Math.min(png.width - 1, Math.max(0, Math.floor(uv[i * 2] * png.width))), y = Math.min(png.height - 1, Math.max(0, Math.floor(uv[i * 2 + 1] * png.height)));
+      for (let c = 0; c < 4; c++) colors[i * 4 + c] = Math.round((c < 3 ? toLinear(png.rgba[(y * png.width + x) * 4 + c] / 255) : png.rgba[(y * png.width + x) * 4 + c] / 255) * 65535);
+    }
+    const pad = (4 - (offset % 4)) % 4;
+    if (pad) { chunks.push(Buffer.alloc(pad)); offset += pad; }
+    j.bufferViews.push({ buffer: 0, byteOffset: offset, byteLength: colors.length, target: 34962 });
+    chunks.push(Buffer.from(colors.buffer));
+    offset += colors.length;
+    j.accessors.push({ bufferView: j.bufferViews.length - 1, componentType: 5123, normalized: true, count: n, type: 'VEC4' }); // 16 bits: linear darks need them
+    p.attributes.COLOR_0 = j.accessors.length - 1;
+  }
+  for (const mat of j.materials ?? []) if (mat.pbrMetallicRoughness?.baseColorTexture) { delete mat.pbrMetallicRoughness.baseColorTexture; mat.pbrMetallicRoughness.baseColorFactor = [1, 1, 1, 1]; }
+  for (const k of ['textures', 'images', 'samplers']) delete j[k];
+  const out = Buffer.concat(chunks);
+  j.buffers = [{ byteLength: out.length }];
+  return { json: j, bin: out };
+}
+
 /**
  * The model with only what the farm uses, packed small: the clips it plays (one copy each, named without the
  * armature's prefix), each channel's keys thinned (thinKeys) and its rotations in 16-bit integers; no normals, texture

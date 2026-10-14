@@ -1,6 +1,7 @@
-// The 3D farm's animals and the pond's: for each, its model's credit, its size on the farm in metres (an animal's
-// height; a fish's or a lily pad's length), its family (hooves, paws, frog, fish, or still) and its clips by what the
-// farm does with them, from the models in this folder. Made by scripts/farm3d-animals.mjs: don't edit by hand.
+// The 3D farm's models: for each, its credit, its size on the farm in metres (an animal's or a crop's height; a
+// fish's, a lily pad's, a crop's or a machine's length), its family (hooves, paws, frog, fish, still, person, crop or
+// vehicle), its clips by what the farm does with them, and a machine's wheels. Made by scripts/farm3d-animals.mjs:
+// don't edit by hand.
 export const MODELS = {
   "cow": {
     "title": "Cow",
@@ -802,5 +803,122 @@ export const MODELS = {
       "kick": "Kick_Right",
       "point": "Idle_Gun_Pointing"
     }
+  },
+  "wheat": {
+    "title": "Wheat",
+    "author": "Quaternius",
+    "licence": "CC0 (public domain)",
+    "pack": null,
+    "page": "https://poly.pizza/m/lPspzfC8Pu",
+    "source": "https://static.poly.pizza/799054f9-931b-4c31-8811-b5199bf94e59.glb",
+    "height": 1.1,
+    "family": "crop",
+    "clips": {}
+  },
+  "corn": {
+    "title": "Corn",
+    "author": "Quaternius",
+    "licence": "CC0 (public domain)",
+    "pack": null,
+    "page": "https://poly.pizza/m/IhhB7kGaAQ",
+    "source": "https://static.poly.pizza/89af1f9b-305a-40a0-8c7a-e2ad81a529b9.glb",
+    "height": 1.9,
+    "family": "crop",
+    "clips": {}
+  },
+  "pumpkin": {
+    "title": "Pumpkin",
+    "author": "Quaternius",
+    "licence": "CC0 (public domain)",
+    "pack": null,
+    "page": "https://poly.pizza/m/bvLvqnU1jX",
+    "source": "https://static.poly.pizza/49202ae4-62ac-4035-9726-1834228e7d08.glb",
+    "length": 0.7,
+    "family": "crop",
+    "clips": {}
+  },
+  "carrot": {
+    "title": "Carrot",
+    "author": "Quaternius",
+    "licence": "CC0 (public domain)",
+    "pack": null,
+    "page": "https://poly.pizza/m/l4YmYv8hFK",
+    "source": "https://static.poly.pizza/fe46376d-6648-4a39-b1db-0d23f6464bde.glb",
+    "length": 0.6,
+    "family": "crop",
+    "clips": {}
+  },
+  "tomato": {
+    "title": "Tomato",
+    "author": "Quaternius",
+    "licence": "CC0 (public domain)",
+    "pack": null,
+    "page": "https://poly.pizza/m/ByggGxctjw",
+    "source": "https://static.poly.pizza/b6127a55-27db-41e1-bee3-e74827ba8f53.glb",
+    "length": 0.12,
+    "family": "crop",
+    "clips": {}
+  },
+  "cabbage": {
+    "title": "Cabbage",
+    "author": "Kenney",
+    "licence": "CC0 (public domain)",
+    "pack": null,
+    "page": "https://poly.pizza/m/6urnIRBhzr",
+    "source": "https://static.poly.pizza/0b83e9ba-43be-4b28-8d21-7adfb3500997.glb",
+    "length": 0.6,
+    "family": "crop",
+    "clips": {}
+  },
+  "tractor": {
+    "title": "Tractor",
+    "author": "Kenney",
+    "licence": "CC0 (public domain)",
+    "pack": "Car Kit",
+    "page": "https://kenney.nl/assets/car-kit",
+    "source": "https://kenney.nl/media/pages/assets/car-kit/1a312ec241-1775131960/kenney_car-kit.zip (tractor.glb)",
+    "length": 3.2,
+    "family": "vehicle",
+    "clips": {},
+    "wheels": [
+      "wheel-front-right",
+      "wheel-front-left",
+      "wheel-back-right",
+      "wheel-back-left"
+    ]
+  },
+  "tractorloader": {
+    "title": "Tractor (shovel)",
+    "author": "Kenney",
+    "licence": "CC0 (public domain)",
+    "pack": "Car Kit",
+    "page": "https://kenney.nl/assets/car-kit",
+    "source": "https://kenney.nl/media/pages/assets/car-kit/1a312ec241-1775131960/kenney_car-kit.zip (tractor-shovel.glb)",
+    "length": 3.4,
+    "family": "vehicle",
+    "clips": {},
+    "wheels": [
+      "wheel-back-left",
+      "wheel-back-right",
+      "wheel-front-left",
+      "wheel-front-right"
+    ]
+  },
+  "truckflat": {
+    "title": "Truck (flat)",
+    "author": "Kenney",
+    "licence": "CC0 (public domain)",
+    "pack": "Car Kit",
+    "page": "https://kenney.nl/assets/car-kit",
+    "source": "https://kenney.nl/media/pages/assets/car-kit/1a312ec241-1775131960/kenney_car-kit.zip (truck-flat.glb)",
+    "length": 4.6,
+    "family": "vehicle",
+    "clips": {},
+    "wheels": [
+      "wheel-front-left",
+      "wheel-front-right",
+      "wheel-back-right",
+      "wheel-back-left"
+    ]
   }
 };

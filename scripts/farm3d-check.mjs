@@ -442,6 +442,34 @@ try {
       else console.log(`  ✓ wind: the trees sway, ${storm.strength / calm1.strength}× harder while a field rains`);
     }
 
+    // 5b. the crops (build/crops.js): past the sprouts, the models (Quaternius's, Kenney's) once they load, the
+    // code-built ones standing in till then; the sunflower stays code-built. And the budget at the busiest stops, the
+    // crops grown: 2 M triangles and 600 draw calls at most (main before the machines: 1.1 M and 484 at everyone, 1.2 M
+    // and 532 at sixteen; the bigger farm's forest and fields 0.4 M more)
+    {
+      const cropsNow = async () => JSON.parse(await chrome.inFrame('/world/farm3d/', 'JSON.stringify(window.__farm3d.crops?.() ?? {})'));
+      const grownAt = async (stop, ripe) => { // ripe: till every crop but the sunflower is its model; else till they settle
+        await open(chrome, stop);
+        let c = {}, was = '', since = Date.now();
+        for (const end = Date.now() + 20_000; Date.now() < end; await sleep(250)) {
+          c = await cropsNow();
+          const grown = Object.entries(c).filter(([k]) => !['weeds', 'dry', 'sunflower'].includes(k));
+          if (ripe && grown.length && grown.every(([, n]) => n.model > 0 && n.code === 0)) break;
+          if (JSON.stringify(c) !== was) { was = JSON.stringify(c); since = Date.now(); }
+          else if (!ripe && Date.now() - since > 2500) break;
+        }
+        return c;
+      };
+      const ripe = await grownAt('context-high', true), grown = Object.entries(ripe).filter(([k]) => !['weeds', 'dry', 'sunflower'].includes(k));
+      if (!grown.length || !grown.every(([, n]) => n.model > 0 && n.code === 0)) bad(`crops: ${JSON.stringify(ripe)} at context-high (its crop from its model, once loaded)`);
+      else console.log(`  ✓ crops: ${grown.map(([k, n]) => `${n.model} ${k}`).join(', ')} from the models`);
+      for (const stop of ['everyone', 'sixteen']) {
+        const c = await grownAt(stop, false), s = await statsOf(chrome);
+        if (!(s?.triangles <= 2e6 && s?.calls <= 600)) bad(`budget at ${stop}: ${s?.triangles} triangles, ${s?.calls} draw calls (2 M and 600 at most; crops ${JSON.stringify(c)})`);
+        else console.log(`  ✓ budget at ${stop}: ${(s.triangles / 1e6).toFixed(2)} M triangles, ${s.calls} draw calls`);
+      }
+    }
+
     // 6. the farmers as characters (build/character.js): once loaded, every farmer but a scarecrow is one, in its
     // agent's colour; one waiting on you waves
     {
