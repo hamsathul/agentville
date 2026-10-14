@@ -4,6 +4,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { kit, toScene, privateScene, NOW, HOME, touch, agent, repo, snap } from './farm3d-vm.mjs';
 import { makeModel } from '../../web/worlds/farm3d/model.js';
+import { clampTarget, makeCameraRig } from '../../web/worlds/farm3d/camera.js';
 import { CREEK, FARMSTEAD, GAP, LANE, NEIGHBOUR_X, PORCH_Y, ROAD, SILO_X, W, crossingsOf, east, extentOf, farmAt, farmOf, farmsteadOf, forestOf, landOf, pastureOf, slotTables } from '../../web/worlds/farm3d/layout.js';
 
 const M = makeModel(kit);
@@ -127,4 +128,24 @@ test('private mode: keys a1, a2, the neighbour named account 2, its fields keyed
   assert.equal(m.neighbour.name, 'account 2');
   assert.equal(m.neighbour.key, 'a2');
   assert.ok(m.beds.some(b => /^r\d+@n$/.test(b.key)));
+});
+
+test('the camera keeps its target over the land round its middle, and at 100% the middle is in the middle', () => {
+  const c = { x: 60, z: 0 }, half = { x: 113, z: 50 };
+  assert.deepEqual(clampTarget({ x: 400, z: 0 }, half, c), { x: 173, z: 0 });
+  assert.deepEqual(clampTarget({ x: -400, z: 0 }, half, c), { x: -53, z: 0 });
+  assert.deepEqual(clampTarget({ x: 400, z: 0 }, half), { x: 113, z: 0 }, 'no centre: round the origin, as before');
+  const camera = { position: { set() {} }, lookAt() {}, updateProjectionMatrix() {}, clearViewOffset() {}, setViewOffset() {} };
+  const hadDoc = 'document' in globalThis, doc = globalThis.document;
+  globalThis.document = { addEventListener() {}, removeEventListener() {} }; // the rig's keys
+  const rig = makeCameraRig(null, camera, { addEventListener() {}, clientHeight: 800 });
+  if (hadDoc) globalThis.document = doc; else delete globalThis.document;
+  rig.setFrame(1280, 800);
+  rig.setFarm({ centre: c, half, points: [{ x: -53, y: 0, z: -50 }, { x: 173, y: 0, z: 50 }] });
+  rig.reset();
+  assert.deepEqual(rig.state().target, c);
+  rig.setZoom(3);
+  rig.glideTo({ x: 500, z: 0 });
+  for (let k = 0; k < 20; k++) rig.update(0.1);
+  assert.equal(rig.state().target.x, 173, 'panned no further than the land');
 });

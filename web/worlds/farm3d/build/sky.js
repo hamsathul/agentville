@@ -22,11 +22,12 @@ export function makeSky(THREE, scene, mats) {
   scene.background = new THREE.Color(DAY.sky);
   scene.fog = new THREE.Fog(DAY.sky, 120, 260);
   const lamps = [];
-  let extent = { x: 30, z: 30 }, last = '';
+  let extent = { x: 30, z: 30 }, centre = { x: 0, z: 0 }, last = '';
   const c = (a, b, t) => new THREE.Color(a).lerp(new THREE.Color(b), t);
-  /** The farm's size, so the shadow covers it all. */
-  function setExtent(x, z) {
+  /** The farm's size (the land's, with a neighbour farm) and its middle, so the shadow covers it all. */
+  function setExtent(x, z, c = { x: 0, z: 0 }) {
     extent = { x, z };
+    centre = { x: c.x, z: c.z };
     const r = Math.hypot(x, z) + 4;
     Object.assign(sun.shadow.camera, { left: -r, right: r, top: r, bottom: -r, near: 1, far: r * 4 });
     sun.shadow.camera.updateProjectionMatrix();
@@ -64,8 +65,8 @@ export function makeSky(THREE, scene, mats) {
     const t = light > 0.02 ? Math.min(1, Math.max(0, (hour - 5.5) / 14.5)) : ((hour + 24 - 19.5) % 24) / 10.5;
     const tt = Math.min(1, Math.max(0, t)), r = Math.hypot(extent.x, extent.z) * 1.6 + 20;
     const elev = Math.max(0.35, Math.sin(tt * Math.PI) * 1.05);
-    sun.position.set(Math.cos(Math.PI * (1 - tt)) * r * 0.8, Math.sin(elev) * r, r * 0.45);
-    sun.target.position.set(0, 0, 0);
+    sun.position.set(centre.x + Math.cos(Math.PI * (1 - tt)) * r * 0.8, Math.sin(elev) * r, centre.z + r * 0.45);
+    sun.target.position.set(centre.x, 0, centre.z);
     for (const l of lamps) l.intensity = 9 * Math.max(0, night - 0.25);
     mats.setNight(Math.min(1, Math.max(0, (night - 0.2) / 0.6)));
     return night;

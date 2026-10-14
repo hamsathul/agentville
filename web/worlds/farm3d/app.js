@@ -320,7 +320,7 @@ export function start({ el, opts, prefs }) {
 
   /** The ground is rebuilt when the bed rows or the season shown change. */
   function rebuildGround() {
-    const season = shownSeason(), key = `${model.ground.rows}|${season}`;
+    const season = shownSeason(), key = `${model.ground.rows}|${season}|${model.land.w}`; // the land: a neighbour's farm too
     if (key === groundKey) return;
     groundKey = key;
     const ext = terrain.build(model.ground, season);
@@ -328,7 +328,7 @@ export function start({ el, opts, prefs }) {
     plays.endAll(playCtx); // a new ground: whoever was at play goes back
     romps.releaseAll(rompCtx);
     nature.build(model.ground, season).then(done => { if (done) { standIns(); dirty = true; } }).catch(err => report(err, 'plants')); // the farm draws first
-    sky.setExtent(ext.x, ext.z);
+    sky.setExtent(ext.x, ext.z, ext.center);
     animals.setGround(model.ground);
     cartMeshes.setGround(model.ground.H, farmers.groundAt);
     machineMeshes.setGround(model.ground.H, farmers.groundAt);
@@ -337,10 +337,10 @@ export function start({ el, opts, prefs }) {
     // snow falling over the whole farm in winter
     if (snow) { snow.object.removeFromParent(); snow.object.geometry.dispose(); snow = null; }
     if (season === 'winter') { snow = weather.snowfall(ext.x, ext.z); snow.object.position.set(ext.center.x, 0, ext.center.z); scene3.add(snow.object); }
-    // pan over the farm, and fit the farm itself to the window (the forest and the meadow run past its edges), its
-    // buildings' height at the back
-    const hx = W / 2 / PX, hz = model.ground.H / 2 / PX, edge = 1.5;
-    rig.setFarm({ half: { x: hx, z: hz }, points: [-1, 1].flatMap(sx => [-1, 1].flatMap(sz => [0, sz < 0 ? 8 : 2].map(y => ({ x: sx * (hx + edge), y, z: sz * (hz + edge) })))) });
+    // pan over the land, and fit it to the window (the forest and the meadow run past its edges), its buildings' height
+    // at the back: your farm, or both farms and the road between (its middle east of yours)
+    const land = model.land, hx = land.w / 2 / PX, hz = model.ground.H / 2 / PX, edge = 1.5, centre = { x: (land.w / 2 - W / 2) / PX, z: 0 };
+    rig.setFarm({ centre, half: { x: hx, z: hz }, points: [-1, 1].flatMap(sx => [-1, 1].flatMap(sz => [0, sz < 0 ? 8 : 2].map(y => ({ x: centre.x + sx * (hx + edge), y, z: sz * (hz + edge) })))) });
   }
   /** The farmstead and the yard: rebuilt when the rows, the season or the silos change. */
   function rebuildBuildings() {
@@ -590,6 +590,8 @@ export function start({ el, opts, prefs }) {
     buildingAt(k) { const b = [...buildings.hits(), ...shed.hits()].find(o => o.userData.hit === k && o.isMesh); if (!b) return null; const p = new THREE.Vector3(); b.getWorldPosition(p); return project({ x: p.x, y: p.y * 1.6, z: p.z }); },
     /** Where a field's bed is in the picture (its middle), in pixels. */
     bedAt(key) { const b = beds.hits().find(o => o.userData.field === key); if (!b) return null; const p = new THREE.Vector3(); b.getWorldPosition(p); return project({ x: p.x, y: 0.5, z: p.z }); },
+    /** The land drawn: its width and the neighbour's offset on the 2D map (0: none), and whether there is a neighbour. */
+    land: () => (model ? { ...model.land, neighbour: Boolean(model.neighbour) } : null),
     /** The fields drawn, by key. */
     bedKeys: () => (model?.beds ?? []).map(b => b.key),
     /** A play starts now (for the check): every idle farmer counts as idle long enough. */

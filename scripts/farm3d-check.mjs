@@ -487,6 +487,30 @@ try {
       else console.log(`  ✓ animals: ${ANIMALS} out once loaded (the frog and the fish too), in coats.js's colours with no metal, the cow spotted; a click opens one's menu (the frog's its own, the husky's has Throw a stick), Hop sets the cow hopping, Talk makes it say something (none shown with Bubbles off), Haiku's talk reaches it, Esc shuts it; none after the Animals switch`);
     }
 
+    // 4c. the neighbour farm (spec 2026-10-14 neighbour): two Claude accounts, the second's sessions on a farm of their
+    // own east of yours across the road and the creek: the land drawn, within the drawing budget
+    {
+      await open(chrome, 'everyone');
+      const before = chrome.errors.length, R = name => ({ path: `/Users/you/code/${name}`, name, branch: 'main', dirty: 0, ahead: 0, behind: 0, lastDeploy: null });
+      const on = (id, state, repo, acc, over = {}) => person(id, state, { account: acc, ...(repo ? { cwd: `/Users/you/code/${repo}`, touching: [{ path: `/Users/you/code/${repo}/f.ts`, mode: 'write', lastAt: NOW, repo: `/Users/you/code/${repo}` }] } : {}), ...over });
+      const NB = { generatedAt: NOW, collisions: [], settings: { cpuAlertPct: 90 }, repos: [R('shop'), R('blog'), R('api')], accounts: [account('main', 'work'), account('zeta', 'home')], agents: [
+        on('p1', 'working', 'shop', 'main'), on('p2', 'waiting', null, 'main'), on('n1', 'working', 'shop', 'zeta'), on('n2', 'working', 'blog', 'zeta'),
+        on('n3', 'waiting', null, 'zeta'), on('n4', 'idle', null, 'zeta'), on('n5', 'idle', null, 'main'),
+      ] };
+      await chrome.js(`window.TrackerFarm.update(${JSON.stringify(NB)})`);
+      await sleep(1200);
+      const s = await statsOf(chrome), land = JSON.parse(await chrome.inFrame('/world/farm3d/', 'JSON.stringify(window.__farm3d.land())'));
+      const why = [
+        !s && 'no stats',
+        s && s.drawn !== 7 && `${s?.drawn} farmers drawn, not 7`,
+        s && s.calls > 400 && `${s.calls} draw calls (400 at most)`,
+        JSON.stringify(land) !== JSON.stringify({ w: 1808, ox: 952, neighbour: true }) && `the land ${JSON.stringify(land)}`,
+        chrome.errors.length > before && `script errors: ${oneLine(chrome.errors[before]).slice(0, 160)}`,
+      ].filter(Boolean);
+      if (why.length) bad(`the neighbour farm: ${why.join('; ')}`);
+      else console.log(`  ✓ the neighbour farm: both farms drawn (the land ${land.w} px across), ${s.drawn} farmers, ${s.calls} draw calls`);
+    }
+
     // 5. the plants: Quaternius's trees, bushes and rocks drawn once their models load (the ball trees stand in till
     // then), the season's: snow on the pines in winter
     {

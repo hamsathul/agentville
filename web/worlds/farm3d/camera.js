@@ -19,8 +19,8 @@ export function stepYaw(yaw, dir) {
   const at = yaw / STEP, eps = 1e-6;
   return (dir > 0 ? Math.floor(at + eps) + 1 : Math.ceil(at - eps) - 1) * STEP;
 }
-/** A target point kept over the farm: within ±half on each axis. */
-export const clampTarget = ({ x, z }, half) => ({ x: Math.max(-half.x, Math.min(half.x, x)), z: Math.max(-half.z, Math.min(half.z, z)) });
+/** A target point kept over the farm: within ±half on each axis of its middle (the land's, with a neighbour farm). */
+export const clampTarget = ({ x, z }, half, c = { x: 0, z: 0 }) => ({ x: Math.max(c.x - half.x, Math.min(c.x + half.x, x)), z: Math.max(c.z - half.z, Math.min(c.z + half.z, z)) });
 /** The next zoom step up (dir 1) or down (-1) from a zoom, which may lie between two steps. */
 export function nextZoom(zoom, dir) {
   if (dir > 0) return ZOOMS.find(z => z > zoom + 1e-6) ?? MAX_ZOOM;
@@ -90,13 +90,13 @@ export function holdBox(kept, now) {
 const ease = t => (t < 0.5 ? 2 * t * t : 1 - (-2 * t + 2) ** 2 / 2);
 
 /**
- * The rig: `farm` is { half: { x, z }, points } (the farm's half extent, to pan over, and the corners to fit), set
+ * The rig: `farm` is { centre, half: { x, z }, points } (the land's middle and half extent, to pan over, and the corners to fit), set
  * with setFarm when the ground changes. `onChange({ yaw, pitch, zoom, distance })` runs after the view moves (to
  * draw, to place the haze and to save the view).
  */
 export function makeCameraRig(THREE, camera, dom, { yaw = DEFAULT_VIEW.yaw, pitch = DEFAULT_VIEW.pitch, zoom = 1, onChange = () => {} } = {}) {
   const state = { yaw: Number.isFinite(yaw) ? yaw : DEFAULT_VIEW.yaw, pitch: clampPitch(Number.isFinite(pitch) ? pitch : DEFAULT_VIEW.pitch), zoom: Math.min(MAX_ZOOM, Math.max(MIN_ZOOM, zoom || 1)), target: { x: 0, z: 0 }, fit: 60 };
-  let farm = { half: { x: 25, z: 20 }, points: [] }, anim = null, glide = null;
+  let farm = { centre: { x: 0, z: 0 }, half: { x: 25, z: 20 }, points: [] }, anim = null, glide = null;
   let frame = { W: 1, H: 1 }, clear = null; // the window, and the part of it the farm is fitted to at 100% (clear of the panel)
   const aspect = () => (clear ? clear.w / clear.h : frame.W / frame.H);
   let follow = null; // Follow: { get() → the farmer's point or null, off() } while the view keeps a farmer in the middle
@@ -116,7 +116,7 @@ export function makeCameraRig(THREE, camera, dom, { yaw = DEFAULT_VIEW.yaw, pitc
     if (clear) camera.setViewOffset(clear.w, clear.h, -clear.x, -clear.y, frame.W, frame.H); else camera.clearViewOffset();
     camera.updateProjectionMatrix();
   }
-  const keep = () => { state.target = clampTarget(state.target, farm.half); if (state.zoom <= 1) state.target = { x: 0, z: 0 }; };
+  const keep = () => { state.target = clampTarget(state.target, farm.half, farm.centre); if (state.zoom <= 1) state.target = { ...farm.centre }; };
   const view = () => ({ yaw: state.yaw, pitch: state.pitch, zoom: state.zoom, distance: distance() });
   function changed() { refit(); keep(); place(); onChange(view()); }
   const rig = {
@@ -125,8 +125,9 @@ export function makeCameraRig(THREE, camera, dom, { yaw = DEFAULT_VIEW.yaw, pitc
     /** The part of the window the farm is fitted to at 100% ({ x, y, w, h }: clearRect's), or null for all of it. */
     setClear(r) { clear = r; changed(); },
     /** The distance that fits the whole farm in a picture of this shape, from the view's heading and tilt. */
-    fitFor: a => (farm.points.length ? fitDistance(farm.points, { yaw: state.yaw, pitch: state.pitch, fov: FOV * DEG, aspect: a, target: { x: 0, y: 0, z: 0 } }) : 60),
-    setFarm(f) { farm = f; changed(); },
+    fitFor: a => (farm.points.length ? fitDistance(farm.points, { yaw: state.yaw, pitch: state.pitch, fov: FOV * DEG, aspect: a, target: { x: farm.centre.x, y: 0, z: farm.centre.z } }) : 60),
+    /** The farm to fit and pan over: { centre (its middle; the origin unless given), half, points }. */
+    setFarm(f) { farm = { centre: { x: 0, z: 0 }, ...f }; changed(); },
     /** Turns 15° one way (dir 1 or -1), easing over a moment. */
     turn(dir) { const from = state.yaw; anim = { from, to: stepYaw(anim ? anim.to : from, dir), t: 0 }; },
     /** Back to square-on, the whole farm in view. */
@@ -134,7 +135,7 @@ export function makeCameraRig(THREE, camera, dom, { yaw = DEFAULT_VIEW.yaw, pitc
     setZoom(z) { state.zoom = Math.min(MAX_ZOOM, Math.max(MIN_ZOOM, z)); changed(); },
     zoomBy(dir) { if (dir === 0) rig.reset(); else rig.setZoom(nextZoom(state.zoom, dir)); },
     /** Glides to a point; from the whole farm, in to 150% too (at 100% the view can't move off the middle). */
-    glideTo({ x, z }) { if (state.zoom < 1.5) { state.zoom = 1.5; changed(); } glide = { from: { ...state.target }, to: clampTarget({ x, z }, farm.half), t: 0 }; },
+    glideTo({ x, z }) { if (state.zoom < 1.5) { state.zoom = 1.5; changed(); } glide = { from: { ...state.target }, to: clampTarget({ x, z }, farm.half, farm.centre), t: 0 }; },
     /**
      * Follow: keeps the farmer get() points at in the middle (zoomed in to 200% at least), till a pan, ⌂, or get()
      * finding none (its farmer gone) turns it off, when off() is called; null turns it off quietly.
@@ -158,7 +159,7 @@ export function makeCameraRig(THREE, camera, dom, { yaw = DEFAULT_VIEW.yaw, pitc
       if (glide) {
         glide.t = Math.min(1, glide.t + dt / 0.6);
         const k = ease(glide.t);
-        state.target = clampTarget({ x: glide.from.x + (glide.to.x - glide.from.x) * k, z: glide.from.z + (glide.to.z - glide.from.z) * k }, farm.half);
+        state.target = clampTarget({ x: glide.from.x + (glide.to.x - glide.from.x) * k, z: glide.from.z + (glide.to.z - glide.from.z) * k }, farm.half, farm.centre);
         if (glide.t >= 1) glide = null;
         place();
         moving = true;
@@ -167,7 +168,7 @@ export function makeCameraRig(THREE, camera, dom, { yaw = DEFAULT_VIEW.yaw, pitc
         const p = follow.get();
         if (!p || state.zoom <= 1) unfollow(); // its farmer went, or you zoomed out to the whole farm (which stays in the middle)
         else {
-          const to = clampTarget(followStep(state.target, p, still ? 0 : dt), farm.half); // still: there at once
+          const to = clampTarget(followStep(state.target, p, still ? 0 : dt), farm.half, farm.centre); // still: there at once
           if (Math.hypot(to.x - state.target.x, to.z - state.target.z) > 1e-4) { state.target = to; place(); moving = true; }
         }
       }
@@ -216,7 +217,7 @@ export function makeCameraRig(THREE, camera, dom, { yaw = DEFAULT_VIEW.yaw, pitc
     const perPx = (2 * distance() * Math.tan((FOV * DEG) / 2)) / Math.max(1, clear?.h ?? dom.clientHeight); // the picture's height is the clear part's
     const sy = Math.sin(state.yaw), cy = Math.cos(state.yaw), sp = Math.sin(state.pitch);
     // right on the screen is the camera's right; up on the screen is away from the camera, along the ground
-    state.target = clampTarget({ x: state.target.x - dx * perPx * cy - (dy * perPx * sy) / sp, z: state.target.z + dx * perPx * sy - (dy * perPx * cy) / sp }, farm.half);
+    state.target = clampTarget({ x: state.target.x - dx * perPx * cy - (dy * perPx * sy) / sp, z: state.target.z + dx * perPx * sy - (dy * perPx * cy) / sp }, farm.half, farm.centre);
     place();
     onChange(view());
   });
