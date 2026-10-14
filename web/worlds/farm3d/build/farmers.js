@@ -54,6 +54,14 @@ export function makeFarmers(THREE, figures, S, { route = () => null } = {}) {
     let walking = false;
     for (const b of bodies.values()) {
       const f = b.farmer;
+      const seat = b.seat?.();
+      b.fig.root.visible = !seat;
+      if (seat) { // in a machine's seat (build/machines.js draws it seated): where the machine is, not walking
+        [b.x, b.y] = seat.at;
+        b.path = [];
+        b.fig.root.position.set(seat.x, seat.y - 1.4, seat.z);
+        continue;
+      }
       if (still && b.path.length) { [b.x, b.y] = b.target; b.path = []; }
       let moving = false;
       if (b.wait > 0) b.wait -= dt;
@@ -85,10 +93,12 @@ export function makeFarmers(THREE, figures, S, { route = () => null } = {}) {
     }
     return walking;
   }
-  /** Where a farmer's head is now (for its tag), in metres; null for one not drawn. */
+  /** Where a farmer's head is now (for its tag), in metres; null for one not drawn. In a machine: over its seat. */
   function headOf(id) {
     const b = bodies.get(id);
     if (!b) return null;
+    const seat = b.seat?.();
+    if (seat) return { x: seat.x, y: seat.y + 0.45, z: seat.z };
     const p = b.fig.root.position, top = (b.farmer.nap ? 1.4 : b.farmer.scarecrow ? 2.15 : 1.95) * FIGURE_SCALE;
     return { x: p.x, y: p.y + top, z: p.z };
   }
@@ -117,13 +127,22 @@ export function makeFarmers(THREE, figures, S, { route = () => null } = {}) {
   }
   return {
     group, sync, tick, headOf, posOf, errand, endErrand,
+    /** A farmer drives: `seat()` says where its seat is ({ x, y, z } its head in metres, `at` the machine on the 2D map),
+     *  or null; its body hides while it sits in the machine. null gets it out, where the machine is. */
+    setDriving(id, seat) {
+      const b = bodies.get(id);
+      if (!b) return;
+      if (b.seat && !seat && !b.errand && b.target) b.path = wayTo(b, b.target); // out of the machine, its errand over: back to its place
+      b.seat = seat ?? null;
+    },
+    driving: id => Boolean(bodies.get(id)?.seat),
     onErrand: id => Boolean(bodies.get(id)?.errand),
     arrived: id => Boolean(bodies.get(id)?.errand?.arrived),
     /** What it does where its errand took it (idle; nap beside an animal). */
     setPose(id, pose) { const e = bodies.get(id)?.errand; if (e) e.pose = pose; },
     /** How high the ground is at a 2D point: the deck, a bed's soil, or the ground (for what walks with a farmer). */
     groundAt: (x, y) => groundAt(x, y),
-    hits: () => [...bodies.values()].map(b => b.fig.root),
+    hits: () => [...bodies.values()].filter(b => !b.seat).map(b => b.fig.root), // one driving: its machine is hit instead
     select(id) { for (const [k, b] of bodies) b.fig.setSelected(k === id); },
     count: () => bodies.size,
     /** A farmer's character, what it plays and its shirt (for the check); null while its figurine stands in. */

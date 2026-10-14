@@ -17,6 +17,7 @@ import { oneLine } from './lib/plain-text.mjs';
 import { ROOT } from './lib/worlds-dir.mjs';
 import { COATS, SPOTS } from '../web/worlds/farm3d/coats.js';
 import { HERDS } from '../web/worlds/farm3d/antics.js';
+import { W } from '../web/worlds/farm3d/layout.js';
 
 // how many animals there are, and which is the frog (the farm numbers them herd by herd)
 const ANIMALS = HERDS.reduce((n, h) => n + h.n, 0), FROG = HERDS.slice(0, HERDS.findIndex(h => h.kind === 'frog')).reduce((n, h) => n + h.n, 0);
@@ -366,6 +367,70 @@ try {
       else console.log('  ✓ Motion off: the cart to town stands still and the farm stops drawing');
     }
 
+    // 3l. the machines (machines.js, build/machines.js): four agents in four fields at once. A big edit (6 files written
+    // lately: scene.js's `writes`) sends its farmer out on the tractor with the plough; tests, the sprayer (its field
+    // sprayed); a deploy, the truck off to town; a compaction, the combine, which cuts its field row by row and leaves it
+    // sown. A read: the plough comes home and parks. The shed's dialog says who is out; with Motion off nothing moves.
+    {
+      await open(chrome, 'one');
+      const before = chrome.errors.length, home = '/Users/you/code/';
+      const field = n => ({ path: home + n, name: n, branch: 'main', dirty: 0, ahead: 0, behind: 0, lastDeploy: null });
+      const wrote = n => Array.from({ length: 6 }, (_, k) => ({ path: `${home}${n}/f${k}.ts`, mode: 'write', lastAt: NOW - 1000, firstAt: NOW - 60_000, repo: home + n }));
+      const doing = (id, n, step, tool, over = {}) => ({ id, kind: 'interactive', name: id, cwd: home + n, state: 'working', stateReason: 'busy', stateSince: NOW, feed: [], children: [], touching: [{ path: `${home}${n}/a.ts`, mode: 'read', lastAt: NOW, repo: home + n }], contextTokens: 60_000, compactions: 0, now: { tool, step, summary: 'x', startedAt: NOW }, ...over });
+      const scene = (a1Step, a4) => ({ generatedAt: NOW, collisions: [], settings: { cpuAlertPct: 90 }, repos: ['ploughland', 'sprayfield', 'roadtown', 'harvest'].map(field), agents: [
+        a1Step === 'edit' ? doing('m1', 'ploughland', 'edit', 'Edit', { touching: wrote('ploughland') }) : doing('m1', 'ploughland', 'read', 'Read'),
+        doing('m2', 'sprayfield', 'test', 'Bash'), doing('m3', 'roadtown', 'deploy', 'Bash'), doing('m4', 'harvest', 'edit', 'Edit', a4)] });
+      const feed = s2 => chrome.js(`window.TrackerFarm.update(${JSON.stringify(s2)})`);
+      const machinesNow = async () => JSON.parse(await chrome.inFrame('/world/farm3d/', 'JSON.stringify(window.__farm3d.machines?.() ?? null)'));
+      const seasonsNow = async () => JSON.parse(await chrome.inFrame('/world/farm3d/', 'JSON.stringify(window.__farm3d.seasons?.() ?? {})'));
+      await feed(scene('edit', { contextTokens: 190_000, compactions: 0 }));
+      await sleep(1500);
+      await feed(scene('edit', { contextTokens: 10_000, compactions: 1 })); // the harvest: a compaction
+      const seen = { plough: false, sprayer: false, sprayed: false, town: false, combine: false, cut: 0, sown: false };
+      for (const end = Date.now() + 90_000; Date.now() < end && !(seen.plough && seen.sprayer && seen.sprayed && seen.town && seen.combine && seen.sown); await sleep(500)) {
+        const items = await machinesNow(), by = id => items?.find(i => i.id === id), se = await seasonsNow();
+        if (!items) break;
+        seen.plough ||= by('m1')?.vehicle === 'tractor' && by('m1')?.implement === 'plough' && by('m1')?.phase === 'work';
+        seen.sprayer ||= by('m2')?.implement === 'sprayer' && by('m2')?.phase === 'work';
+        seen.sprayed ||= Boolean(se[home + 'sprayfield']?.sprayed);
+        seen.town ||= by('m3')?.vehicle === 'truck' && by('m3').x > W;
+        seen.combine ||= by('m4')?.vehicle === 'combine' && by('m4')?.phase === 'work';
+        seen.cut = Math.max(seen.cut, se[home + 'harvest']?.cutRows ?? 0);
+        seen.sown ||= seen.cut >= 6 && se[home + 'harvest']?.stage === 'sown';
+        if (seen.cut >= 6 && !seen.sown) await feed(scene('edit', { contextTokens: 10_000, compactions: 1 })); // a scene now and then, as the dashboard sends them
+      }
+      // the shed's dialog: who is out
+      const clickAt = js => chrome.inFrame('/world/farm3d/', `(() => { const at = ${js}; if (!at) return false; const c = document.querySelector('.f3-canvas'), b = c.getBoundingClientRect(), o = { bubbles: true, clientX: b.left + at.x, clientY: b.top + at.y, pointerId: 7, button: 0 }; for (const type of ['pointerdown', 'pointerup']) c.dispatchEvent(new PointerEvent(type, o)); return true; })()`);
+      await chrome.inFrame('/world/farm3d/', "window.__farm3d.view({ zoom: 1 }); true");
+      await sleep(600);
+      await clickAt("window.__farm3d.buildingAt('shed')");
+      await sleep(400);
+      const shed = JSON.parse(await chrome.inFrame('/world/farm3d/', "JSON.stringify({ ...window.__farm3d.dialog(), body: document.querySelector('dialog.px-dlg')?.textContent ?? '' })"));
+      await chrome.inFrame('/world/farm3d/', "document.querySelector('dialog.px-dlg')?.close(); true");
+      // Motion off: every machine stands still
+      await chrome.inFrame('/world/farm3d/', "document.querySelector('[data-farm-menu]').click(); document.querySelector('[data-farm-motion]').click(); document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' })); true");
+      await sleep(600);
+      const stillA = await machinesNow();
+      await sleep(1000);
+      const stillB = await machinesNow();
+      await chrome.inFrame('/world/farm3d/', "document.querySelector('[data-farm-menu]').click(); document.querySelector('[data-farm-motion]').click(); document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' })); true"); // back on
+      // a read: the plough comes home and parks (its hold, 20 s, then the drive home)
+      await feed(scene('read', { contextTokens: 10_000, compactions: 1 }));
+      let parked = false;
+      for (const end = Date.now() + 60_000; Date.now() < end && !parked; await sleep(500)) { const it = (await machinesNow())?.find(i => i.id === 'm1'); parked = !it || it.phase === 'parked'; }
+      const why = [
+        !seen.plough && 'no tractor ploughing for the big edit', !seen.sprayer && 'no sprayer at work for the tests', !seen.sprayed && 'the tests\' field never sprayed',
+        !seen.town && 'no truck off to town for the deploy', !seen.combine && 'no combine at work after the compaction', seen.cut < 6 && `the combine cut ${seen.cut} rows of 6`, !seen.sown && 'the harvested field not sown again',
+        shed.title !== 'The machine shed: who is out on a machine' && `the shed's dialog: "${shed.title}"`, !/m1|m2|m3|m4/.test(shed.body) && 'the shed\'s dialog names no one out',
+        !(stillA?.length && stillA.every(i => !i.moving)) && `machines moving with Motion off: ${JSON.stringify(stillA?.filter(i => i.moving).map(i => i.id))}`,
+        stillA && stillB && JSON.stringify(stillA.map(i => [i.id, i.x, i.y])) !== JSON.stringify(stillB.map(i => [i.id, i.x, i.y])) && 'they moved with Motion off',
+        !parked && 'the plough never came home after the read',
+        chrome.errors.length > before && `script errors: ${oneLine(chrome.errors[before]).slice(0, 160)}`,
+      ].filter(Boolean);
+      if (why.length) bad(`machines: ${why.join('; ')}`);
+      else console.log('  ✓ machines: the plough for a big edit, the sprayer (its field sprayed), the truck to town, the combine cutting six rows and the field sown again; the shed says who is out; still with Motion off; the plough home after the read');
+    }
+
     // 4. the animals: the twelve of Quaternius's Animated Animal Pack and the pond's frog and fish, all out once their
     // models have loaded (they load after the farm has drawn), in the farm's colours (coats.js) with no metal, the cows
     // spotted; clicking one opens its menu (the frog's its own), a pick from it sets it going and shuts the menu, Esc
@@ -502,10 +567,11 @@ try {
       else console.log(`  ✓ characters: ${seen.length} farmers as ${[...new Set(seen.map(f => f.character))].join(', ')}, ${waving.length} waving; ${stats.calls} draw calls`);
     }
 
-    // 7. memory: the busiest stop, an empty one, an MCP call (a cart and its pony), subagents (hens, the Explore dog) and a
-    // note (a pigeon), swapped 300 times; the geometry and the textures held come back to the same
+    // 7. memory: the busiest stop, an empty one, an MCP call (a cart and its pony), subagents (hens, the Explore dog), a
+    // note (a pigeon) and every step (machines going out), swapped 300 times; the geometry and the textures held come
+    // back to the same
     await open(chrome, 'everyone');
-    const frames = JSON.parse(await chrome.js("JSON.stringify(['everyone', 'nobody', 'mcp', 'nobody', 'subagents', 'nobody', 'pigeon'].map(n => window.AgentvilleTour.stops.find(s => s.name === n).frames[0]))"));
+    const frames = JSON.parse(await chrome.js("JSON.stringify(['everyone', 'nobody', 'mcp', 'nobody', 'subagents', 'nobody', 'pigeon', 'nobody', 'steps'].map(n => window.AgentvilleTour.stops.find(s => s.name === n).frames[0]))")); // steps: machines going out (a sprayer, a mower, supplies, crates, the truck)
     await chrome.js(`window.__f3frames = ${JSON.stringify(frames)}`);
     for (const f of frames) { await chrome.js(`window.TrackerFarm.update(${JSON.stringify(f)})`); await sleep(1500); } // every model loaded once first
     await chrome.js('window.TrackerFarm.update(window.__f3frames[0])');

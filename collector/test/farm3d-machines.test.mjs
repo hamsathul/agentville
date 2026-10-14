@@ -6,7 +6,17 @@ import assert from 'node:assert/strict';
 import { crc32, deflateRawSync, deflateSync } from 'node:zlib';
 import { readPng } from '../../scripts/lib/png.mjs';
 import { readZip } from '../../scripts/lib/unzip.mjs';
-import { bakeTexture } from '../../scripts/lib/glb.mjs';
+import { bakeTexture, readGlb, trimGlb } from '../../scripts/lib/glb.mjs';
+import * as THREE from '../../web/worlds/farm3d/vendor/three.module.js';
+import { makeCrops } from '../../web/worlds/farm3d/build/crops.js';
+import { makeMaterials } from '../../web/worlds/farm3d/build/materials.js';
+import { PAINT, paintClass, repaint } from '../../web/worlds/farm3d/coats.js';
+import { MODELS } from '../../web/worlds/farm3d/models/index.js';
+import { makeModel } from '../../web/worlds/farm3d/model.js';
+import { IDLE_FALLOW_MS, createSeasons, rowsOf } from '../../web/worlds/farm3d/season.js';
+import { BIG_EDIT, HOLD_S, TOWN_END, VEHICLE, createMachines, machineFor, machinesDialog, passesFor, routeBetween } from '../../web/worlds/farm3d/machines.js';
+import { BED, CORR, GRID_CONFIG, LANE, SHED_DOOR, STALL, W } from '../../web/worlds/farm3d/layout.js';
+import { HOME, NOW as TOUR_NOW, agent, kit, repo, snap, toScene, touch } from './farm3d-vm.mjs';
 
 // A 2 × 1 RGBA PNG made here: red, then blue.
 function png2x1() {
@@ -81,6 +91,19 @@ test("bake: a face takes the colour its texture coordinates point at; the textur
   assert.equal(out.json.materials[0].pbrMetallicRoughness.baseColorTexture, undefined);
   assert.deepEqual(colorsOf(bakeTexture(triangleWithUv([0.25, 0.5]), readPng(png2x1()))).slice(0, 3).map(Math.round), [255, 0, 0]);
 });
+test('bake: each mesh keeps its own colours (two meshes, one red and one blue, packed one after the other)', async () => {
+  const a = triangleWithUv([0.25, 0.5]), b = triangleWithUv([0.75, 0.5]);
+  const off = a.bin.length, json = structuredClone(a.json);
+  json.bufferViews.push(...b.json.bufferViews.map(v => ({ ...v, byteOffset: v.byteOffset + off })));
+  json.accessors.push(...b.json.accessors.map(x => ({ ...x, bufferView: x.bufferView + 2 })));
+  json.meshes.push({ primitives: [{ attributes: { POSITION: 2, TEXCOORD_0: 3 }, material: 0 }] });
+  json.nodes.push({ mesh: 1 }); json.scenes[0].nodes.push(1);
+  const bin = Buffer.concat([a.bin, b.bin]);
+  json.buffers = [{ byteLength: bin.length }];
+  const back = readGlb(trimGlb(bakeTexture({ json, bin }, readPng(png2x1())), [])); // baked, then packed as the model script does
+  const colourOf = m => { const g = { json: back.json, bin: back.bin }, j2 = structuredClone(g.json); j2.meshes = [g.json.meshes[m]]; return colorsOf({ json: j2, bin: g.bin }).slice(0, 3).map(Math.round); };
+  assert.deepEqual([colourOf(0), colourOf(1)], [[255, 0, 0], [0, 0, 255]]);
+});
 test("bake: the colours are glTF's, linear: a texel's sRGB is undone (so a mid grey isn't drawn pale), finely enough for the darks", () => {
   const out = colorsOf(bakeTexture(triangleWithUv([0.5, 0.5]), readPng(png1x1([128, 54, 13, 255])))).slice(0, 3);
   const linear = v => 255 * ((v / 255 + 0.055) / 1.055) ** 2.4;
@@ -88,9 +111,6 @@ test("bake: the colours are glTF's, linear: a texel's sRGB is undone (so a mid g
 });
 
 /* ---------- the crops instancer (build/crops.js) ---------- */
-const THREE = await import('../../web/worlds/farm3d/vendor/three.module.js');
-const { makeCrops } = await import('../../web/worlds/farm3d/build/crops.js');
-const { makeMaterials } = await import('../../web/worlds/farm3d/build/materials.js');
 /** A bed of 6 × 12 plants of one crop at one stage, as beds.js lists them. */
 const bedOf = (crop, stage) => Array.from({ length: 72 }, (_, n) => ({ crop, stage, x: (n % 12) * 1.5, z: Math.floor(n / 12) * 1.5, y: 0.12, busy: false, seed: n * 0.37 }));
 const settle = () => new Promise(r => setTimeout(r, 0));
@@ -122,7 +142,6 @@ test("crops: the seeds and sprouts (stages 0 and 1) and the sunflower stay code-
 });
 
 /* ---------- the machines' paint (coats.js) ---------- */
-const { PAINT, paintClass, repaint } = await import('../../web/worlds/farm3d/coats.js');
 const hex = rgb => '#' + rgb.map(x => x.toString(16).padStart(2, '0')).join('');
 
 test("paint: the Car Kit's colours sorted by what they look like: its blue-grey paint, a tyre's dark grey, near white; a lamp or a stripe is none of them", () => {
@@ -146,8 +165,6 @@ test("paint: a red tractor with cream wheels and dark tyres, a green flatbed; ea
 });
 
 test("paint: every machine has its paint, each part by the start of a node the model has", async () => {
-  const { MODELS } = await import('../../web/worlds/farm3d/models/index.js');
-  const { readGlb } = await import('../../scripts/lib/glb.mjs');
   const vehicles = Object.entries(MODELS).filter(([, m]) => m.family === 'vehicle').map(([k]) => k);
   assert.deepEqual(Object.keys(PAINT).sort(), vehicles.sort());
   for (const kind of vehicles) {
@@ -161,8 +178,6 @@ test("paint: every machine has its paint, each part by the start of a node the m
 });
 
 /* ---------- writes, from the scene to the 3D farm's farmers (web/scene.js, model.js) ---------- */
-const { kit, toScene, snap, agent, repo, NOW: TOUR_NOW, HOME } = await import('./farm3d-vm.mjs');
-const { makeModel } = await import('../../web/worlds/farm3d/model.js');
 
 test("writes: a farmer carries how many files its agent wrote in the last 5 minutes, a big edit's size", () => {
   const wrote = n => Array.from({ length: n }, (_, k) => ({ path: `${HOME}/shop/f${k}.ts`, mode: 'write', lastAt: TOUR_NOW - 1000, firstAt: TOUR_NOW - 1000, repo: `${HOME}/shop` }));
@@ -171,8 +186,6 @@ test("writes: a farmer carries how many files its agent wrote in the last 5 minu
 });
 
 /* ---------- a field's season (season.js) ---------- */
-const { createSeasons, IDLE_FALLOW_MS } = await import('../../web/worlds/farm3d/season.js');
-const { touch } = await import('./farm3d-vm.mjs');
 const M3 = makeModel(kit), shop = `${HOME}/shop`;
 const fm = (over, state = 'working') => M3.farmModel(toScene(snap([agent('a1', { state, touching: [touch(shop)], ...over })], [repo('shop')])));
 const step = (tool, s) => ({ now: { tool, step: s, summary: 'x', startedAt: TOUR_NOW } });
@@ -247,7 +260,6 @@ test("a field's season: a field gone from the farm is forgotten; an unknown fiel
   s.cut(shop, 6); s.plough(shop, 6); // nothing to do: no throw
 });
 
-const { rowsOf } = await import('../../web/worlds/farm3d/season.js');
 test("a bed's rows for its season: furrows, seeds, the crop, stubble behind the combine, the plough's furrows and seeds behind it, weeds, dry; wet while sprayed", () => {
   const bed = (kind, stage = 0) => ({ crop: 'corn', plot: { kind, stage } });
   const look = (stage, over = {}) => ({ stage, growth: 3, sprayed: false, cutRows: 0, ploughedRows: 6, ...over });
@@ -287,8 +299,6 @@ test("crops: sprayed plants are wet, darker and glossier, in their own Instanced
 });
 
 /* ---------- the machines' rules (machines.js) ---------- */
-const { machineFor, passesFor, routeBetween, createMachines, HOLD_S, BIG_EDIT, VEHICLE, TOWN_END } = await import('../../web/worlds/farm3d/machines.js');
-const { BED, CORR, LANE, SHED_DOOR, GRID_CONFIG, STALL, W } = await import('../../web/worlds/farm3d/layout.js');
 
 test('which machine: tests, builds, installs, pushes, deploys and big edits; the rest by hand', () => {
   const f = (step, writes = 0, state = 'working') => machineFor({ state, step, writes, field: '/r' });
@@ -335,7 +345,7 @@ test('the way between the shed and a bed keeps to the lane and the walkways, nev
 function rig({ beds = [bedAt(1)], still = false } = {}) {
   const m = createMachines(), farmers = new Map(), boarded = new Set(), bedMap = new Map(beds.map(b => [b.key, b]));
   let blocked = () => false, t = 0;
-  const ctx = () => ({ farmers, beds: bedMap, boarded: id => boarded.has(id), blocked: (...a) => blocked(...a), still });
+  const ctx = () => ({ farmers, beds: bedMap, boarded: id => boarded.has(id), blocked: (...a) => blocked(...a), still, now: t });
   return {
     m, farmers, boarded, beds: bedMap,
     setBlocked: f => { blocked = f; },
@@ -471,4 +481,74 @@ test('a farmer gone from the farm: its machine goes home empty', () => {
   r.want([]);
   const [it] = r.run(0.2);
   assert.deepEqual([it.phase, it.driver], ['home', false]);
+});
+
+const esc = s => String(s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
+test("the shed's dialog: who is out on which machine, doing what, in which field; the stock in the shed; none out", () => {
+  const scene = { farmers: [{ id: 'a', name: 'Ada <3' }, { id: 'b', name: 'Bo' }], fields: [{ key: '/r/shop', name: 'shop' }, { key: '/r/blog', name: 'blog' }] };
+  const d = machinesDialog([{ id: 'a', job: 'sprayer', vehicle: 'tractor', phase: 'work', field: '/r/shop', driver: true }, { id: 'b', job: 'combine', vehicle: 'combine', phase: 'out', field: '/r/blog', driver: true }], scene, { esc });
+  assert.equal(d.title, 'The machine shed: who is out on a machine');
+  assert.match(d.html, /Ada &lt;3/);
+  assert.match(d.html, /tractor.{0,80}sprayer.{0,120}running tests.{0,80}shop/s);
+  assert.match(d.html, /combine.{0,120}harvest.{0,120}blog/is);
+  assert.match(d.html, /data-farm-pick="a"/, 'a click opens the farmer');
+  const none = machinesDialog([], scene, { esc });
+  assert.match(none.html, /No machines out just now/);
+  assert.match(none.html, /tractor.{0,40}combine/s, 'the stock in the shed');
+  const empty = machinesDialog([{ id: 'a', job: 'sprayer', vehicle: 'tractor', phase: 'home', field: '/r/shop', driver: false }], scene, { esc });
+  assert.match(empty.html, /driving itself home|on its way home/, 'a machine its farmer left');
+});
+
+test("a field's season: looks() gives every field's look; a plough that stops partway leaves the field as it was (no sowing)", () => {
+  const s = createSeasons();
+  s.update(fm({}, 'idle'), TOUR_NOW);
+  s.update(fm({ ...READ, contextTokens: 10_000 }), TOUR_NOW + 1e3);
+  assert.deepEqual([...s.looks().keys()], [shop]);
+  assert.equal(s.plough(shop, 3), true, 'changed');
+  assert.equal(s.plough(shop, 3), false, 'the same again: no change');
+  s.ploughStop(shop);
+  assert.deepEqual([s.lookOf(shop).stage, s.lookOf(shop).ploughedRows], ['ploughed', 6]);
+  s.update(fm({ ...READ, contextTokens: 10_000 }), TOUR_NOW + 2e3);
+  assert.equal(s.lookOf(shop).stage, 'ploughed', 'not sown');
+  assert.equal(s.cut(shop, 2), false, 'no harvest under way: nothing to cut');
+});
+
+test("a field's season: a combine still cutting after 30 s keeps its field cut; one that stops reporting for 10 s leaves it sown; tick() says so between scenes", () => {
+  const s = createSeasons(), at = ms => TOUR_NOW + ms;
+  s.update(fm({ ...EDIT, contextTokens: 195_000 }), at(0));
+  s.update(fm({ ...EDIT, contextTokens: 10_000, compactions: 1 }), at(1e3));
+  s.cut(shop, 1, at(25e3));
+  s.cut(shop, 3, at(35e3));
+  assert.equal(s.tick(at(36e3)), false, 'nothing changed');
+  assert.equal(s.lookOf(shop).stage, 'cut', 'still being cut at 36 s');
+  assert.equal(s.tick(at(46e3)), true, 'the combine went quiet: changed');
+  assert.equal(s.lookOf(shop).stage, 'sown');
+  // six rows cut: stubble a moment, then sown, without a new scene
+  s.update(fm({ ...EDIT, contextTokens: 10_000, compactions: 2 }), at(50e3));
+  s.cut(shop, 6, at(60e3));
+  assert.equal(s.tick(at(60.5e3)), false);
+  assert.equal(s.lookOf(shop).stage, 'cut');
+  assert.equal(s.tick(at(61.2e3)), true);
+  assert.deepEqual([s.lookOf(shop).stage, s.lookOf(shop).cutRows], ['sown', 0]);
+});
+
+test('Motion off: the combine cuts its field at once (all six rows) and is done; its farmer gets out', () => {
+  const r = rig({ still: true }), b = [...r.beds.values()][0];
+  r.want([worker('a', 'edit', b.key)], new Set(['a']));
+  const [it] = r.run(0.1);
+  assert.deepEqual([it.vehicle, it.phase, it.rowsDone], ['combine', 'work', 6]);
+  r.want([worker('a', 'edit', b.key)]);
+  assert.equal(r.run(0.1).length, 0, 'done: nothing out');
+});
+
+test('the hold runs out with time, not only when a scene comes: no new scene after the read, and the machine still goes home', () => {
+  const r = rig(), b = [...r.beds.values()][0];
+  r.want([worker('a', 'test', b.key)]);
+  r.boarded.add('a');
+  r.run(5);
+  r.want([worker('a', 'read', b.key)]); // the last scene for a while
+  let [it] = r.run(HOLD_S - 6);
+  assert.notEqual(it.phase, 'home', 'held');
+  [it] = r.run(3);
+  assert.equal(it.phase, 'home', 'the hold over');
 });

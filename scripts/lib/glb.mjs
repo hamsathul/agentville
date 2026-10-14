@@ -94,9 +94,9 @@ export function bakeTexture({ json, bin }, png) {
     }
     const pad = (4 - (offset % 4)) % 4;
     if (pad) { chunks.push(Buffer.alloc(pad)); offset += pad; }
-    j.bufferViews.push({ buffer: 0, byteOffset: offset, byteLength: colors.length, target: 34962 });
+    j.bufferViews.push({ buffer: 0, byteOffset: offset, byteLength: colors.byteLength, target: 34962 });
     chunks.push(Buffer.from(colors.buffer));
-    offset += colors.length;
+    offset += colors.byteLength;
     j.accessors.push({ bufferView: j.bufferViews.length - 1, componentType: 5123, normalized: true, count: n, type: 'VEC4' }); // 16 bits: linear darks need them
     p.attributes.COLOR_0 = j.accessors.length - 1;
   }

@@ -56,7 +56,8 @@ export function routeBetween([x, y], [tx, ty], { lane = LANE, corr = CORR } = {}
  * The machines from moment to moment. `want(model, nowS, compacted)` (each scene) says which farmers want which machine
  * (`compacted`: the ids whose agent compacted since the last scene: the combine); `tick(dt, ctx)` (each frame) moves
  * them and returns what to draw. ctx: { farmers: Map(id → { x, y, state, field }) of the farmers drawn, beds: Map(key →
- * bed), boarded(id): its farmer is in the seat, blocked(x, y, heading, id): something within 3 m ahead, still: Motion off }.
+ * bed), boarded(id): its farmer is in the seat, blocked(x, y, heading, id): something within 3 m ahead, still: Motion
+ * off, now: the time in seconds on want's clock (a hold runs out by it) }.
  */
 export function createMachines() {
   const jobs = new Map(); // id → { job, field, lastNeeded (s), combine: the combine's one round of its field }
@@ -72,8 +73,9 @@ export function createMachines() {
       if (compacted.has(f.id) && f.field) { j = { job: 'combine', field: f.field, lastNeeded: nowS, combine: true }; jobs.set(f.id, j); continue; }
       if (j?.combine) continue; // the combine works its field once, whatever the steps do
       const need = machineFor(f);
-      if (need) jobs.set(f.id, { job: need, field: f.field, lastNeeded: nowS, combine: false });
+      if (need) jobs.set(f.id, { job: need, field: f.field, lastNeeded: nowS, combine: false, needed: true });
       else if (j && nowS - j.lastNeeded >= HOLD_S) jobs.delete(f.id);
+      else if (j) j.needed = false; // held: tick lets it go when the hold is over
     }
     for (const id of [...jobs.keys()]) if (!seen.has(id)) jobs.delete(id);
     wanted = new Map([...jobs].map(([id, j]) => [id, { job: j.job, field: j.field }]));
@@ -113,6 +115,7 @@ export function createMachines() {
 
   function tick(dt, ctx) {
     const items = [];
+    if (Number.isFinite(ctx.now)) for (const [id, j] of jobs) if (!j.needed && !j.combine && ctx.now - j.lastNeeded >= HOLD_S) { jobs.delete(id); wanted.delete(id); } // the hold over, whether or not a scene came
     // farmers working passes in the same field share its rows
     const crews = new Map();
     for (const [id, j] of wanted) if (PASS_JOBS.has(j.job)) { if (!crews.has(j.field)) crews.set(j.field, []); crews.get(j.field).push(id); }
@@ -135,6 +138,7 @@ export function createMachines() {
         const [n, k] = crewOf(id, j.field);
         [r.x, r.y] = j.job === 'truck' ? TOWN_END : spotOf(j.job, ctx.beds.get(j.field), n, k);
         Object.assign(r, { job: j.job, field: j.field, vehicle: VEHICLE[j.job], phase: 'work', path: [], passes: null, passRow: null, load: j.job === 'supplies' || j.job === 'crates' });
+        if (j.job === 'combine') { r.rowsDone = ROWS; jobs.delete(id); wanted.delete(id); } // its harvest at once: nothing moves to cut it row by row
         items.push(itemOf(r, true));
         continue;
       }
@@ -207,4 +211,20 @@ export function createMachines() {
   }
   const itemOf = (r, driver) => ({ id: r.id, job: r.job, vehicle: r.vehicle, implement: VEHICLE[r.job] === 'tractor' ? r.job : null, load: Boolean(r.load), x: r.x, y: r.y, heading: r.heading, moving: r.moving, driver, phase: r.phase, field: r.field, passRow: r.phase === 'work' ? r.passRow ?? null : null, rowsDone: r.rowsDone ?? 0 });
   return { want, tick, jobs: () => new Map(wanted) };
+}
+
+/** What each job is, in the shed's dialog. */
+const DOING = { plough: 'ploughing and sowing (a big edit)', sprayer: 'spraying (running tests)', mower: 'mowing (a build)', supplies: 'bringing supplies (an install)', crates: 'taking crates to the stall (a push)', truck: 'driving to town (a deploy)', combine: 'harvesting (a compaction)' };
+const WHERE = { walking: 'walking to the shed', out: 'on the way', work: 'at work', home: 'driving home', parked: 'parked' };
+/** The machine shed's dialog: the machines out (tick's items), who drives each, doing what, where; a click opens the
+ *  farmer. The stock (a tractor and the combine) is always in. */
+export function machinesDialog(items, scene, { esc } = globalThis) {
+  const name = id => scene.farmers.find(f => f.id === id)?.name ?? 'a farmer', field = key => scene.fields?.find(f => f.key === key)?.name ?? '';
+  const VEH = { tractor: 'the tractor', truck: 'the flatbed truck', combine: 'the combine' };
+  const rows = items.filter(i => i.phase !== 'parked').map(i => {
+    const what = `${VEH[i.vehicle] ?? i.vehicle}${i.vehicle === 'tractor' ? ` with the ${i.job === 'supplies' || i.job === 'crates' ? 'trailer' : i.job}` : ''}`;
+    const how = i.driver || i.phase === 'walking' ? `${esc(DOING[i.job] ?? i.job)}${field(i.field) ? ` in ${esc(field(i.field))}` : ''} · ${esc(WHERE[i.phase] ?? i.phase)}` : 'driving itself home (its farmer was called back)';
+    return `<li><button type="button" class="act" data-farm-pick="${esc(i.id)}">Open</button><span><b>${esc(name(i.id))}</b> on ${esc(what)}: ${how}</span></li>`;
+  });
+  return { title: 'The machine shed: who is out on a machine', html: `${rows.length ? `<ul class="px-dl">${rows.join('')}</ul>` : '<p class="muted">No machines out just now.</p>'}<p class="muted">In the shed: a tractor and the combine. A farmer takes a machine for a heavy step (tests spray, a build mows, an install brings supplies, a push takes crates to the stall, a deploy drives to town), a big edit ploughs, and a compaction brings in the harvest.</p>` };
 }

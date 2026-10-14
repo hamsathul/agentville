@@ -18,6 +18,9 @@ import { makeBuildings } from './build/buildings.js';
 import { makeCrops } from './build/crops.js';
 import { makeModels } from './build/models.js';
 import { createSeasons } from './season.js';
+import { createMachines, machinesDialog } from './machines.js';
+import { makeMachines } from './build/machines.js';
+import { makeShed } from './build/shed.js';
 import { makeWeather } from './build/weather.js';
 import { makeBeds } from './build/beds.js';
 import { makeFigures } from './build/figurine.js';
@@ -38,7 +41,7 @@ import { createRomps, partnerFor } from './romps.js';
 
 // what a farmer is doing, as a word, from the tool in its hands (for what it says to the animals)
 const STEP_WORDS = { hoe: 'editing', rake: 'editing', sickle: 'editing', hammer: 'fixing', seeds: 'writing', almanac: 'reading', recipe: 'reading', clipboard: 'planning', blueprint: 'planning', spyglass: 'searching', magnifier: 'searching', pigeon: 'browsing', parcel: 'calling tools', mailbag: 'calling tools', crate: 'committing', cart: 'pushing', barrow: 'pushing', lantern: 'thinking', whistle: 'delegating', can: 'working' };
-import { PX, SILO_Y, STALL, W } from './layout.js';
+import { BED, PX, SHED_DOOR, SILO_Y, STALL, W } from './layout.js';
 
 const SKIES = ['live', 'day', 'night'], SEASON_MODES = ['live', 'spring', 'summer', 'autumn', 'winter'];
 const FRAME_MS = 1000 / 30; // at most 30 frames a second
@@ -110,6 +113,10 @@ export function start({ el, opts, prefs }) {
   const cartMeshes = makeCarts(THREE, mats, shapes, { copy: animals.copy }), carts = createCarts(); // the MCP servers' carts, the web calls' carts to town
   let cartItems = [];
   const pigeons = makePigeons(THREE, mats); // notes between agents
+  // the machines (machines.js): a farmer whose step needs one walks to the shed, boards it, drives out and back
+  const machineMeshes = makeMachines(THREE, mats, shapes, { gltf: kind => models.gltf(kind) }), shed = makeShed(THREE, mats, shapes, machineMeshes), machines = createMachines();
+  const boarded = new Set(), sentToShed = new Set(), compactionsSeen = new Map(); // in a seat; walking to the shed; each agent's compactions so far
+  let machineItems = [], machinesSig = '', ploughing = new Set();
   /** Who is where and what is happening, for talk.js: refreshed twice a second. */
   let talkScene = null, talkSceneAt = -1e9, castSaid = null;
   function sceneForTalk(now) {
@@ -124,7 +131,7 @@ export function start({ el, opts, prefs }) {
     talkSceneAt = now;
     return talkScene;
   }
-  scene3.add(terrain.group, buildings.group, beds.group, crops.group, farmers.group, animals.group, nature.group, flock.group, cartMeshes.group, pigeons.group);
+  scene3.add(terrain.group, buildings.group, beds.group, crops.group, farmers.group, animals.group, nature.group, flock.group, cartMeshes.group, pigeons.group, machineMeshes.group, shed.group);
   /** The ball trees, bushes and rocks stand in until the plants' models are drawn. */
   const standIns = () => { const on = !nature.ready(); terrain.setForest(on); buildings.setPlants(on); };
   const diary = createDiary();
@@ -322,6 +329,8 @@ export function start({ el, opts, prefs }) {
     sky.setExtent(ext.x, ext.z);
     animals.setGround(model.ground);
     cartMeshes.setGround(model.ground.H, farmers.groundAt);
+    machineMeshes.setGround(model.ground.H, farmers.groundAt);
+    shed.build(model.ground.H);
     animals.setWinter(season === 'winter'); // the pond is ice: its frog, fish and lily pads out of sight
     // snow falling over the whole farm in winter
     if (snow) { snow.object.removeFromParent(); snow.object.geometry.dispose(); snow = null; }
@@ -354,7 +363,12 @@ export function start({ el, opts, prefs }) {
     const bedMap = JSON.stringify(model.keep.beds);
     if (bedMap !== JSON.stringify(keep.beds)) prefs.set('beds', bedMap);
     keep = model.keep;
-    looks = piece('seasons', () => seasons.update(model, Date.now())) ?? looks;
+    looks = piece('seasons', () => seasons.update(model, performance.now())) ?? looks; // a duration: the page clock may stand still
+    piece('machines', () => { // which farmers want which machine; a compaction (the harvest) brings the combine
+      const compacted = new Set();
+      for (const f of model.scene.farmers) { const c = f.compactions ?? 0, was = compactionsSeen.get(f.id); if (was !== undefined && c > was) compacted.add(f.id); compactionsSeen.set(f.id, c); }
+      machines.want(shownModel(), performance.now() / 1000, compacted); // a duration: the page clock may stand still
+    });
     rebuildAll();
     farmers.sync(shownModel(), { instant: firstScene || opts.still });
     piece('hens', () => {
@@ -386,8 +400,8 @@ export function start({ el, opts, prefs }) {
     // the nearest of each kind under the pointer, then the engine's order: a farmer, an animal, a building, a field
     const first = (list, deep, of) => { let o = ray.intersectObjects(list, deep)[0]?.object; while (o && of(o) === undefined) o = o.parent; return o ? of(o) : undefined; };
     return clickOrder([
-      { id: first(farmers.hits(), true, o => o.userData.id) }, { animal: first(animals.hits(), false, o => o.userData.animal) },
-      { building: first(buildings.hits(), true, o => o.userData.hit) }, { field: first(beds.hits(), false, o => o.userData.field) },
+      { id: first([...farmers.hits(), ...machineMeshes.hits()], true, o => o.userData.id) }, { animal: first(animals.hits(), false, o => o.userData.animal) },
+      { building: first([...buildings.hits(), ...shed.hits()], true, o => o.userData.hit) }, { field: first(beds.hits(), false, o => o.userData.field) },
     ]);
   }
   // A field's close-up: the engine's (makeField, a global in the frame), with what it needs to know of the 3D farm.
@@ -405,6 +419,7 @@ export function start({ el, opts, prefs }) {
     if (k === 'barn') { opts.onStartSession(); return; }
     if (!model) return;
     if (k === 'board') { void openBoard(); return; }
+    if (k === 'shed') { overlay.openDialog(machinesDialog(machineItems, model.scene, { esc })); return; }
     overlay.openDialog(dialogFor(k, model.scene, { esc, ago }));
   }
   /** The notice board: each project's CLAUDE.md and memory, read from one of its sessions (the engine's openBoard). */
@@ -439,6 +454,54 @@ export function start({ el, opts, prefs }) {
       canvas.title = hit?.id ? model?.farmers.find(f => f.id === hit.id)?.tip ?? '' : hit?.animal !== undefined ? `The ${animals.info(hit.animal)?.title.toLowerCase() ?? 'animal'}: click for what you can ask it to do` : hit?.building ? buildingTip(hit.building) : hit?.field ? fieldTip(hit.field) : '';
     });
   });
+
+  /**
+   * The machines, each frame (machines.js): who boards (a farmer at the shed door; at once with Motion off), who gets
+   * out (parked, or called back), where each is; the combine's and the plough's rows to the fields' seasons. A machine
+   * on the lane or a walkway stops for a farmer, an animal or another machine within 3 m ahead (not in its field).
+   */
+  function tickMachines(dt, shown) {
+    const pos = new Map(), shirt = new Map(shown.map(f => [f.id, f.shirt]));
+    for (const f of shown) { const p = farmers.posOf(f.id); if (p) pos.set(f.id, { x: p.x, y: p.y, state: f.state, field: f.field }); }
+    const inField = (x, y) => model.beds.some(b => x >= b.x0 - 14 && x <= b.x0 + BED.w + 14 && y >= b.y0 - 2 && y <= b.y0 + BED.d + 2);
+    const ahead = (x, y, h, ox, oy) => { const dx = ox - x, dy = oy - y, along = dx * Math.cos(h) + dy * Math.sin(h); return along > 2 && along < 24 && Math.abs(dy * Math.cos(h) - dx * Math.sin(h)) < 9; };
+    const blocked = (x, y, h, id) => !inField(x, y) && (shown.some(f => f.id !== id && !boarded.has(f.id) && pos.has(f.id) && ahead(x, y, h, pos.get(f.id).x, pos.get(f.id).y))
+      || animals.world().some(a => ahead(x, y, h, a.x, a.y)) || machineItems.some(o => o.id !== id && ahead(x, y, h, o.x, o.y)));
+    machineItems = machines.tick(dt, { farmers: pos, beds: new Map(model.beds.map(b => [b.key, b])), boarded: id => boarded.has(id), blocked, still: opts.still, now: performance.now() / 1000 });
+    const byId = new Map(machineItems.map(i => [i.id, i]));
+    for (const id of [...boarded]) { // out of the seat: parked, called back, or no machine any more
+      const it = byId.get(id);
+      if (it && it.phase !== 'parked' && (it.driver || it.phase === 'walking')) continue;
+      boarded.delete(id); sentToShed.delete(id);
+      farmers.setDriving(id, null);
+      farmers.endErrand(id);
+    }
+    for (const id of [...sentToShed]) if (!byId.has(id)) { sentToShed.delete(id); farmers.endErrand(id); } // not wanted before it got there
+    for (const it of machineItems) {
+      if (it.phase === 'walking' && !boarded.has(it.id)) { // its farmer goes to the shed, and climbs in at the door
+        if (opts.still || (sentToShed.has(it.id) && farmers.arrived(it.id))) boarded.add(it.id);
+        else if (!sentToShed.has(it.id) && !farmers.onErrand(it.id) && farmers.errand(it.id, SHED_DOOR, { timeout: 45 })) sentToShed.add(it.id);
+      }
+      if (boarded.has(it.id) && !farmers.driving(it.id)) farmers.setDriving(it.id, () => machineMeshes.seatOf(it.id));
+    }
+    machineMeshes.tick(machineItems, dt, opts.still, id => shirt.get(id) ?? '#9aa0a6');
+    shed.tick(machineItems);
+    // the combine's cut (it reports from the moment it is wanted, so its harvest waits for it) and the plough's furrows,
+    // row by row, to the fields' seasons; a plough gone before the end leaves its field as it was
+    const cut = new Map(), ploughed = new Map(), now = performance.now();
+    for (const it of machineItems) {
+      if (it.job === 'combine' && it.phase !== 'parked') cut.set(it.field, (cut.get(it.field) ?? 0) + it.rowsDone);
+      if (it.job === 'plough' && it.phase === 'work') ploughed.set(it.field, (ploughed.get(it.field) ?? 0) + it.rowsDone);
+    }
+    let changed = seasons.tick(now);
+    for (const [k, n] of cut) changed = seasons.cut(k, n, now) || changed;
+    for (const [k, n] of ploughed) changed = seasons.plough(k, n) || changed;
+    for (const k of ploughing) if (!ploughed.has(k)) changed = seasons.ploughStop(k) || changed;
+    ploughing = new Set(ploughed.keys());
+    if (changed) { looks = seasons.looks(); beds.sync(model.beds, model.ground, shownSeason(), looks); dirty = true; }
+    const sig = machineItems.map(i => `${i.id}|${i.vehicle}|${i.implement}|${Math.round(i.x)}|${Math.round(i.y)}|${i.driver}|${i.load}`).join();
+    if (sig !== machinesSig || (!opts.still && machineItems.some(i => i.phase === 'work'))) { machinesSig = sig; dirty = true; } // a reel turns, mist drifts
+  }
 
   /* ---------- the frame loop: at most 30 a second; none while hidden; while still, only when something changed ---------- */
   const v = new THREE.Vector3();
@@ -477,6 +540,7 @@ export function start({ el, opts, prefs }) {
         cartMeshes.tick(cartItems, r, dt, opts.still);
         return r;
       }) ?? [];
+      piece('machines', () => tickMachines(dt, shown));
       piece('minimap', () => {
         const zoomed = rig.state().zoom > 1.01;
         minimap.show(zoomed);
@@ -530,7 +594,7 @@ export function start({ el, opts, prefs }) {
     stats: () => ({ frame: renderer.info.render.frame, calls: renderer.info.render.calls, triangles: renderer.info.render.triangles, geometries: renderer.info.memory.geometries, textures: renderer.info.memory.textures, farmers: farmers.count(), drawn: shownModel()?.farmers.length ?? 0, ...flock.count(), ...cartMeshes.count(), tags: overlay.count(), beds: model?.beds.length ?? 0, animals: animals.count() }),
     screenOf: id => { const h = farmers.headOf(id); return h ? project(h) : null; }, // where a farmer's head is in the picture, in pixels
     /** Where a building's click box is in the picture (its upper part, clear of who stands in front), in pixels. */
-    buildingAt(k) { const b = buildings.hits().find(o => o.userData.hit === k && o.isMesh); if (!b) return null; const p = new THREE.Vector3(); b.getWorldPosition(p); return project({ x: p.x, y: p.y * 1.6, z: p.z }); },
+    buildingAt(k) { const b = [...buildings.hits(), ...shed.hits()].find(o => o.userData.hit === k && o.isMesh); if (!b) return null; const p = new THREE.Vector3(); b.getWorldPosition(p); return project({ x: p.x, y: p.y * 1.6, z: p.z }); },
     /** Where a field's bed is in the picture (its middle), in pixels. */
     bedAt(key) { const b = beds.hits().find(o => o.userData.field === key); if (!b) return null; const p = new THREE.Vector3(); b.getWorldPosition(p); return project({ x: p.x, y: 0.5, z: p.z }); },
     /** The fields drawn, by key. */
@@ -563,6 +627,8 @@ export function start({ el, opts, prefs }) {
     plants: () => nature.count(),
     /** The crops shown, by crop and what draws them: { corn: { model: 72, code: 0 } }. */
     crops: () => crops.stats(),
+    /** The machines out (machines.js's items): { id, job, vehicle, implement, load, x, y, heading, moving, driver, phase, field, passRow, rowsDone }. */
+    machines: () => machineItems.map(i => ({ ...i })),
     /** Each field's season (season.js), by its key: { stage, growth, sprayed, cutRows, ploughedRows }. */
     seasons: () => Object.fromEntries(looks),
     /** A farmer as drawn: its character, the clip it plays, its shirt's colour (null while the figurine stands in). */
