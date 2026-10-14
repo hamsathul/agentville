@@ -18,7 +18,7 @@ import { makeBuildings } from './build/buildings.js';
 import { makeCrops } from './build/crops.js';
 import { makeModels } from './build/models.js';
 import { createSeasons } from './season.js';
-import { createMachines, crewActions, isAhead, machinesDialog } from './machines.js';
+import { createMachines, crewActions, inPathOf, isAhead, machinesDialog } from './machines.js';
 import { makeMachines } from './build/machines.js';
 import { makeShed } from './build/shed.js';
 import { makeWeather } from './build/weather.js';
@@ -109,6 +109,7 @@ export function start({ el, opts, prefs }) {
   let farmRoam = null; // the walkable farm (roam.js), for a farmer's errand to an animal
   const farmers = makeFarmers(THREE, makeFigures(THREE, mats, shapes), shapes, { route: (a, b) => farmRoam?.route(a, b, 4) ?? null }), animals = makeAnimals(THREE, mats, shapes), weather = makeWeather(THREE, mats, shapes);
   const nature = makeNature(THREE, shapes), talk = createTalk();
+  animals.setPeople(() => (shownModel()?.farmers ?? []).map(f => farmers.posOf(f.id)).filter(Boolean).map(p => [p.x, p.y, 6])); // the places they pick keep clear of the farmers
   const flock = makeFlock(THREE, mats, shapes, { copy: animals.copy }); // subagents: hens, the Explore dog, the henhouse's eggs
   const cartMeshes = makeCarts(THREE, mats, shapes, { copy: animals.copy }), carts = createCarts(); // the MCP servers' carts, the web calls' carts to town
   let cartItems = [];
@@ -116,7 +117,7 @@ export function start({ el, opts, prefs }) {
   // the machines (machines.js): a farmer whose step needs one walks to the shed, boards it, drives out and back
   const machineMeshes = makeMachines(THREE, mats, shapes, { gltf: kind => models.gltf(kind), onError: (err, kind) => report(err, `machines (${kind})`) }), shed = makeShed(THREE, mats, shapes, machineMeshes), machines = createMachines();
   const boarded = new Set(), sentToShed = new Set(), compactionsSeen = new Map(); // in a seat; walking to the shed; each agent's compactions so far
-  let machineItems = [], machinesSig = '';
+  let machineItems = [], machinesSig = '', busySig = '';
   /** Who is where and what is happening, for talk.js: refreshed twice a second. */
   let talkScene = null, talkSceneAt = -1e9, castSaid = null;
   function sceneForTalk(now) {
@@ -473,6 +474,10 @@ export function start({ el, opts, prefs }) {
     for (const id of act.board) { boarded.add(id); sentToShed.delete(id); }
     for (const id of act.send) if (farmers.errand(id, SHED_DOOR, { timeout: 45 })) sentToShed.add(id); // to the shed (again, if its walk was cut short)
     for (const it of machineItems) if (boarded.has(it.id) && !farmers.driving(it.id)) farmers.setDriving(it.id, () => machineMeshes.seatOf(it.id));
+    // the animals keep off a field a machine is working, and trot out of a moving machine's way
+    const busy = [...new Set(machineItems.filter(i => i.phase === 'work' && ['plough', 'sprayer', 'mower', 'combine'].includes(i.job)).map(i => i.field))].sort();
+    if (busy.join() !== busySig) { busySig = busy.join(); animals.setBusy(model.beds.filter(b => busy.includes(b.key)).map(b => ({ x0: b.x0, y0: b.y0 }))); }
+    if (!opts.still) for (const it of machineItems) if (it.moving) for (const a of animals.world()) if (a.free && inPathOf(it, a.x, a.y)) animals.aside(a.i, it);
     machineMeshes.tick(machineItems, dt, opts.still, id => shirt.get(id) ?? '#9aa0a6');
     shed.tick(machineItems);
     // the combine's cut (it reports from the moment it is wanted, so its harvest waits for it) and the rows each plough

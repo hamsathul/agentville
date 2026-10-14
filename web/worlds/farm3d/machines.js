@@ -68,6 +68,15 @@ export function isAhead(x, y, heading, ox, oy) {
   return along > 2 && along < AHEAD && Math.abs(dy * Math.cos(heading) - dx * Math.sin(heading)) < ASIDE;
 }
 
+/** Whether something at (x, y) is in a moving machine's way, to step aside: within 5 m ahead and 1.75 m of its line.
+ *  The point on its line beside it (what to step away from), or null. */
+export function inPathOf(m, x, y) {
+  if (!m.moving) return null;
+  const c = Math.cos(m.heading), s = Math.sin(m.heading), along = (x - m.x) * c + (y - m.y) * s;
+  if (along < 2 || along > 40 || Math.abs((y - m.y) * c - (x - m.x) * s) > 14) return null;
+  return [m.x + c * along, m.y + s * along];
+}
+
 /**
  * Who climbs in and who gets out, for tick's items (app.js does it): a farmer sent to the shed boards when it gets
  * there; one not sent yet, or whose walk there was cut short (a play ended its errand), is sent (again), unless it is

@@ -1364,12 +1364,20 @@ patch, the pasture across the front, and the meadow and the forest running on al
   shake off, a gallop and a leap, the donkey kicking up its heels, the bull and the stag butting the
   air, the dogs running laps and pouncing, the fox mousing. At night they stand and rest.
   - **They roam the whole farm**: the yard, the pasture, the lane, round the buildings, the forest's edge,
-    and (the small ones) the walkways between the beds, through the pasture's two gates (one where the
-    yard's path comes down, one to the forest). Mostly a wander near where they are, now and then
-    somewhere else on the farm, and the longer one has been away, the likelier it heads home, so the
-    herds spread out without piling up. A walk finds its way round what stands in it, never into water,
-    a tree, a bed, a building, the deck, the henhouse's run or the scarecrow patch, never through a
-    fence, and a gallop comes back the way it went (`web/worlds/farm3d/roam.js`).
+    and among the fields, down the walkways and along the headlands between them (never onto a field),
+    through the gates in the fences: the pasture's (where the yard's path comes down, one to the forest,
+    and one up into each walkway) and the fields' (at the top and bottom of each walkway). Mostly a
+    wander near where they are, now and then somewhere else on the farm or among the fields, and the
+    longer one has been away, the likelier it heads home. A place one picks keeps clear of the other
+    animals and of the farmers where there is room, so the herds spread out without piling up. A walk
+    finds its way round what stands in it, never into water, a tree, a field, a building, the deck, the
+    henhouse's run or the scarecrow patch, never through a fence, and a gallop comes back the way it
+    went (`web/worlds/farm3d/roam.js`).
+  - **They give way to the machines**: none stops on a field a machine is working (or its ends, where the
+    machine turns), and one standing there walks off; one in a moving machine's way trots clear of it,
+    into a headland or back out of a walkway too narrow to pass in. One busy with what you asked of it,
+    or at play, stays, and the machine waits for it, as it waits for a farmer (5 s, then it goes on).
+    Farmers and animals still walk through each other.
   - **The pond**: Quaternius's lily pads (two in flower), his frog and three of his fish (single models,
     CC0). A trout, a koi and a roach swim just under the surface and now and then leap out with a
     splash; the frog sits on a pad, hops pad to pad, snaps at flies, and dives, to come up on a pad a

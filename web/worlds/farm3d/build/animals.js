@@ -11,7 +11,7 @@ import { GLTFLoader } from '../vendor/GLTFLoader.js';
 import { clone as cloneSkinned } from '../vendor/SkeletonUtils.js';
 import { LILY_PADS, PX, WATER } from '../layout.js';
 import { MODELS } from '../models/index.js';
-import { ACTS, HERDS, advance, command, forgetWalk, makeAnimal, menuFor, perform, placeAt, release } from '../antics.js';
+import { ACTS, HERDS, advance, command, forgetWalk, makeAnimal, menuFor, moveOff, perform, placeAt, reachOf, release, stepAside } from '../antics.js';
 import { roamOf } from '../roam.js';
 import { bakeSkinned } from './bake.js';
 import { COATS, FINISH, SPOTS, spotsOf } from '../coats.js';
@@ -232,9 +232,22 @@ export function makeAnimals(THREE, mats, S) {
       for (let k = 0; k < h.n; k++) animals.push(instance(h, t, animals.length));
     }
   }
+  let busyFields = [], people = () => []; // the fields machines are working (roam.js setBusy); where the farmers are ([x, y, r])
+  /** Who a place picked keeps clear of: the other animals, where they are and where they are going, and the farmers
+   *  (the one asking, at `from`, is left out). */
+  const others = from => {
+    const out = people();
+    for (const w of animals) {
+      const a = w.a, to = a.path?.length ? a.path.at(-1) : [a.tx, a.ty];
+      if (from && Math.hypot(a.x - from[0], a.y - from[1]) < 1) continue;
+      out.push([a.x, a.y, a.r * 0.6]);
+      if (to && Number.isFinite(to[0]) && Math.hypot(to[0] - a.x, to[1] - a.y) > 1) out.push([to[0], to[1], a.r * 0.6]);
+    }
+    return out;
+  };
   const env = {
     resting: false, rand, habitChance: HABIT_CHANCE,
-    spot: (area, from, far, r, o) => roam.spot(area, rand, { from, far, r, ...o }),
+    spot: (area, from, far, r, o) => roam.spot(area, rand, { from, far, r, avoid: others(from), ...o }), // clear of the others where there is room
     inside: (area, x, y, r) => roam.inside(area, x, y, r),
     clear: (area, from, to, r) => roam.clear(area, from, to, r),
     route: (from, to, r) => roam.route(from, to, r), // a way round, for roaming the farm
@@ -245,6 +258,7 @@ export function makeAnimals(THREE, mats, S) {
     ground = g; H = g.H;
     for (const w of animals) if (w.a.romp) release(w.a); // a new ground: whatever they did together stops
     roam = roamOf(g);
+    roam.setBusy(busyFields);
     for (const w of animals) { // each on its ground: when the ground changes, or it has just arrived; a walk planned on the old one is dropped
       if (!w.placed || !roam.inside(w.a.area, w.a.x, w.a.y, w.a.r)) { const [x, y] = roam.spot(w.a.area, rand, { r: w.a.r }); placeAt(w.a, x, y); }
       else forgetWalk(w.a);
@@ -301,6 +315,11 @@ export function makeAnimals(THREE, mats, S) {
     let changed = animals.length !== shown;
     shown = animals.length;
     for (const w of animals) {
+      if (t && w.a.family !== 'frog' && w.a.family !== 'fish') { // its place turned busy (a machine working that field): off it
+        const busy = roam.busyAt(w.a.x, w.a.y, reachOf(w.a));
+        if (busy && !w.a.leaving) w.a.leaving = moveOff(w.a, env);
+        else if (!busy) w.a.leaving = false;
+      }
       if (t) advance(w.a, dt, env);
       const fresh = w.a.seq !== w.seq;
       if (fresh) play(w);
@@ -323,6 +342,12 @@ export function makeAnimals(THREE, mats, S) {
   }
   return {
     group, setGround, tick, copy,
+    /** The fields machines are working now ([{ x0, y0 }]): the animals keep off them (and walk off). */
+    setBusy(list) { busyFields = list; roam?.setBusy(list); },
+    /** Where the farmers are, for places the animals pick to keep clear of: () => [[x, y, r]]. */
+    setPeople(fn) { people = fn; },
+    /** A machine coming animal i's way (m: { x, y, heading }): it trots clear, if it is getting about by itself. */
+    aside(i, m) { const w = animals[i]; return Boolean(w && on && roam && (w.a.hurry || stepAside(w.a, m, env))); }, // already trotting clear: on it goes
     setOn(v) { on = v; creatures.visible = v; if (!v) for (const w of animals) if (w.a.romp) release(w.a); }, // hidden: no one stays in a play
     /** In winter the pond is ice: its frog, fish and lily pads are out of sight. */
     setWinter(v) { winter = Boolean(v); },

@@ -3,16 +3,22 @@
 // the trees, bushes and rocks, the woodpile, the hammocks), for a body of a given size; and in the pond, the water
 // for the fish (clear of its bank) and the lily pads for the frog, which jumps between them. An animal is a circle as wide
 // as it is long (r, half its length, in px), so it fits whichever way it faces, and it goes only where the straight
-// way there is clear. The animals roam the whole farm (`farm`: everything walkable on it, round the buildings, the
-// fields but their walkways, and through the pasture's gates in its fence), and route() finds a way there, round what
-// stands between. Positions are in the 2D farm's pixels. No three.js: build/animals.js uses it, the tests run it.
-import { BUSHES, CORR, FARMSTEAD, LILY_PADS, NAPS, PASTURE_GATES, POND, SHADE, W, WOODPILE, forestEdgeOf, forestOf, orchardOf, pastureOf, rocksOf, CART_RANK } from './layout.js';
+// way there is clear. The animals roam the whole farm (`farm`: everything walkable on it, round the buildings, between
+// the fields along their walkways and headlands, in through the gates of the fields' fence and the pasture's), and
+// route() finds a way there, round what stands between. A field a machine is working is busy (setBusy): no animal picks
+// a place on it to stop (free), though one may walk across or out. A place picked keeps clear of others (`avoid`) when
+// there is room. Positions are in the 2D farm's pixels. No three.js: build/animals.js uses it, the tests run it.
+import { BED, BUSHES, CORR, FARMSTEAD, GRID_CONFIG, LILY_PADS, NAPS, PASTURE_GATES, POND, SHADE, W, WALKWAY_GATES, WOODPILE, forestEdgeOf, forestOf, orchardOf, pastureOf, rocksOf, CART_RANK } from './layout.js';
 
 const STEP = 2; // how finely a way is checked, in px
 const TRUNK = 4; // a yard tree's trunk, in px: the dogs run under its crown
 const WET = new Set(['water', 'pond']); // grounds in the pond: nothing on land is in their way, and the frog jumps
 const CELL = 4; // route()'s grid, in px
 const SIZES = [6, 9, 12, 15, 18]; // the bodies route() keeps a grid for: an animal's is the next up
+/** A field patch's ground, kept clear (its piles above it, its pumps and windmill on its left, its edging), and a busy
+ *  one's (the machine's turns at its ends too), round a slot's corner (x0, y0). */
+const patchBox = ({ x0, y0 }) => ({ x: x0 - 14, y: y0 - 12, w: BED.w + 22, h: BED.d + 18 });
+const busyBox = ({ x0, y0 }) => ({ x: x0 - 26, y: y0 - 12, w: BED.w + 52, h: BED.d + 20 });
 
 /** How far (x, y) is from a line from (x0, y0) to (x1, y1). */
 function toSegment(x, y, [x0, y0, x1, y1]) {
@@ -21,6 +27,13 @@ function toSegment(x, y, [x0, y0, x1, y1]) {
 }
 /** A fence from (a, y) to (b, y), less its gates ([from, to] in x), as the lines left. */
 const fenceX = (a, b, y, gates) => { const out = []; let from = a; for (const [g0, g1] of gates.slice().sort((p, q) => p[0] - q[0])) { out.push([from, y, g0, y]); from = g1; } out.push([from, y, b, y]); return out; };
+/** The same for a fence from (x, a) to (x, b), its gaps in y. */
+const fenceY = (x, a, b, gaps) => fenceX(a, b, x, gaps).map(([p, , q]) => [x, p, x, q]);
+/** Every field patch of a farm of `rows` (a bed's or an empty slot's): its corner and its farmers' lane, as model.js lays them. */
+export const patchesOf = rows => Array.from({ length: rows * GRID_CONFIG.cols }, (_, k) => {
+  const cx = GRID_CONFIG.cx0 + (k % GRID_CONFIG.cols) * GRID_CONFIG.colW, s = GRID_CONFIG.slot(cx, GRID_CONFIG.top0 + Math.floor(k / GRID_CONFIG.cols) * GRID_CONFIG.rowH);
+  return { x0: s.x0, y0: s.y0, lane: s.lane };
+});
 
 /** The grounds and what stands on them, for a farm L (its GRID, rows and H, as model.js makes it). */
 export function roamOf(L) {
@@ -32,13 +45,17 @@ export function roamOf(L) {
     water: [{ cx: POND.cx, cy: POND.cy, rx: POND.rx - 3, ry: POND.ry - 3 }], // clear of the bank
     pond: LILY_PADS.map(([cx, cy]) => ({ cx, cy, r: 0.5 })), // the middle of a pad
     farm: [{ x: 0, y: 0, w: W, h: L.H + 22 }], // the whole farm, for roaming: everything walkable on it
+    fields: [{ x: L.GRID.x0, y: L.GRID.y0, w: L.GRID.x1 - L.GRID.x0, h: L.GRID.y1 - L.GRID.y0 }], // among the fields: their walkways and headlands
   };
   const near = (x, y, pad) => x > -pad && x < W + pad && y > -pad && y < L.H + 22 + pad;
   const G = L.GRID;
-  // the pasture's fence, less its gates; the fields, less their walkways (open at the top, to the lane)
-  const fences = [...fenceX(pa.x0, pa.x1, pa.y0, [PASTURE_GATES.top]), ...fenceX(pa.x0, pa.x1, pa.y1, [PASTURE_GATES.bottom]), [pa.x0, pa.y0, pa.x0, pa.y1], [pa.x1, pa.y0, pa.x1, pa.y1]];
-  const fields = { x: G.x0 - 2, y: G.y0 - 2, w: G.x1 - G.x0 + 4, h: G.y1 - G.y0 + 4, holes: CORR.slice(1).map(c => ({ x: c - 7, y: G.y0 - 12, w: 14, h: G.y1 - G.y0 + 8 })) }; // down the walkways' middle: room for a dog, not a cow (the machines use the rest)
+  // the pasture's fence, less its gates; the fields' fence, less its gates at the walkways and the farmers' gaps on the
+  // yard's side (as build/buildings.js draws it); inside it, the field patches, with the walkways and headlands between
+  const patches = patchesOf(L.rows ?? 3), lanes = [...new Set(patches.map(p => p.lane))];
+  const fences = [...fenceX(pa.x0, pa.x1, pa.y0, [PASTURE_GATES.top, ...WALKWAY_GATES]), ...fenceX(pa.x0, pa.x1, pa.y1, [PASTURE_GATES.bottom]), [pa.x0, pa.y0, pa.x0, pa.y1], [pa.x1, pa.y0, pa.x1, pa.y1],
+    ...fenceX(G.x0, G.x1, G.y0, WALKWAY_GATES), ...fenceX(G.x0, G.x1, G.y1, WALKWAY_GATES), [G.x1, G.y0, G.x1, G.y1], ...fenceY(G.x0, G.y0, G.y1, lanes.map(y => [y - 4, y + 5]))];
   const obstacles = [
+    ...patches.map(patchBox), // the fields
     { cx: POND.cx, cy: POND.cy, rx: POND.rx + 4, ry: POND.ry + 4 }, // the water and its sandy bank
     { x: NAPS[0][0] - 15, y: NAPS[0][1] - 8, w: 29, h: NAPS.at(-1)[1] - NAPS[0][1] + 16 }, // the hammocks, post to post
     { x: WOODPILE[0] - 14, y: WOODPILE[1] - 10, w: 28, h: 20 },
@@ -51,12 +68,12 @@ export function roamOf(L) {
     { x: CART_RANK.at(-1)[0] - 10, y: CART_RANK[0][1] - 8, w: CART_RANK[0][0] - CART_RANK.at(-1)[0] + 20, h: 16 }, // the row where the tool carts park
   ];
   const box = (o, x, y, r) => x > o.x - r && x < o.x + o.w + r && y > o.y - r && y < o.y + o.h + r;
-  /** Whether a body of size r at (x, y) touches something: a thing on the ground, a fence, or the fields (but in a walkway). */
+  /** Whether a body of size r at (x, y) touches something: a thing on the ground, a field, or a fence. */
   const hits = (x, y, r) => obstacles.some(o => (o.rx ? ((x - o.cx) / (o.rx + r)) ** 2 + ((y - o.cy) / (o.ry + r)) ** 2 < 1
     : o.r !== undefined ? Math.hypot(x - o.cx, y - o.cy) < o.r + r
       : box(o, x, y, r)))
-    || fences.some(f => toSegment(x, y, f) < r + 1)
-    || (box(fields, x, y, r) && !fields.holes.some(h => x - r >= h.x && x + r <= h.x + h.w && y >= h.y && y <= h.y + h.h));
+    || fences.some(f => toSegment(x, y, f) < r + 1);
+  let busy = []; // the fields a machine is working: setBusy
   /** Whether a body of size r is all inside one of a ground's shapes: a rectangle, an ellipse, or a pad's middle. */
   const within = (a, x, y, r) => (a.w !== undefined ? x - r >= a.x && x + r <= a.x + a.w && y - r >= a.y && y + r <= a.y + a.h
     : a.rx !== undefined ? a.rx > r && a.ry > r && ((x - a.cx) / (a.rx - r)) ** 2 + ((y - a.cy) / (a.ry - r)) ** 2 <= 1
@@ -65,6 +82,10 @@ export function roamOf(L) {
   function inside(area, x, y, r = 0) {
     return Boolean(areas[area]?.some(a => within(a, x, y, r))) && (WET.has(area) || !hits(x, y, r));
   }
+  /** Whether a body of size r at (x, y) would stop on a busy field (one a machine is working, or its ends). */
+  const busyAt = (x, y, r = 0) => busy.some(o => box(o, x, y, r));
+  /** Whether a body of size r may stop at (x, y): inside its ground, and not on a busy field. */
+  const free = (area, x, y, r = 0) => inside(area, x, y, r) && !busyAt(x, y, r);
   /** Whether a body of size r can go in a straight line from one place to another (the frog jumps: always). */
   function clear(area, [x0, y0], [x1, y1], r = 0) {
     if (area === 'pond') return true;
@@ -75,22 +96,25 @@ export function roamOf(L) {
   /**
    * A free place on a ground for a body of size r. From somewhere: one it can walk to in a straight line (unless
    * `straight` is false: route() finds the way), at least far away if it can find one (else the farthest it found; else
-   * where it is), and within `near` of it if that is given.
+   * where it is), and within `near` of it if that is given; never on a busy field, and clear of each of `avoid` ([x, y,
+   * r]: another animal, a farmer) when it can be (`strict`: always, else null).
    */
-  function spot(area, rand, { from, far = 0, near: within2 = Infinity, straight = true, r = 0 } = {}) {
-    const rects = areas[area];
-    let best = null, bestD = -1;
+  function spot(area, rand, { from, far = 0, near: within2 = Infinity, straight = true, r = 0, avoid = [], strict = false } = {}) {
+    const rects = areas[area], crowded = (x, y) => avoid.some(([ox, oy, or]) => Math.hypot(x - ox, y - oy) < r + or + 4);
+    let best = null, bestD = -1, squeezed = null; // the farthest found; one on top of another, if that is all there is
     for (let i = 0; i < 40; i++) {
       const a = rects[Math.floor(rand() * rects.length)], u = rand(), v = rand();
       let [x, y] = a.w !== undefined ? [a.x + r + u * Math.max(0, a.w - 2 * r), a.y + r + v * Math.max(0, a.h - 2 * r)]
         : a.rx !== undefined ? [a.cx + (u * 2 - 1) * (a.rx - r), a.cy + (v * 2 - 1) * (a.ry - r)] : [a.cx, a.cy];
       if (from && Number.isFinite(within2)) [x, y] = [from[0] + (u * 2 - 1) * within2, from[1] + (v * 2 - 1) * within2]; // somewhere near: within that of it
-      if (!inside(area, x, y, r) || (from && straight && !clear(area, from, [x, y], r))) continue;
+      if (!free(area, x, y, r) || (from && straight && !clear(area, from, [x, y], r))) continue;
+      if (crowded(x, y)) { squeezed ??= [x, y]; continue; }
       const d = from ? Math.hypot(x - from[0], y - from[1]) : 0;
       if (d >= far) return [x, y];
       if (d > bestD) { best = [x, y]; bestD = d; }
     }
-    return best ?? (from ? [...from] : rects[0].w !== undefined ? [rects[0].x + rects[0].w / 2, rects[0].y + rects[0].h / 2] : [rects[0].cx, rects[0].cy]);
+    if (strict) return best;
+    return best ?? squeezed ?? (from ? [...from] : rects[0].w !== undefined ? [rects[0].x + rects[0].w / 2, rects[0].y + rects[0].h / 2] : [rects[0].cx, rects[0].cy]);
   }
   /**
    * The way for a body of size r from one place to another on the farm, round whatever stands between: its turning
@@ -169,5 +193,7 @@ export function roamOf(L) {
     if (clear('farm', out.at(-1), to, r)) out.push(to);
     return out;
   }
-  return { areas, obstacles, inside, clear, spot, route };
+  /** The fields a machine is working now ([{ x0, y0 }]: their corners), busy till the next call. */
+  function setBusy(list) { busy = list.map(busyBox); }
+  return { areas, obstacles, inside, free, busyAt, clear, spot, route, setBusy };
 }

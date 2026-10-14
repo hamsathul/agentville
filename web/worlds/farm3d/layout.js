@@ -61,6 +61,11 @@ export const pastureOf = L => ({ x0: 16, x1: W - 16, y0: L.GRID.y1 + 26, y1: L.G
  * down (wide to its left, so a bull coming down beside the fields fits through), and a 5 m one to the forest.
  */
 export const PASTURE_GATES = { top: [CORR[0] - 36, CORR[0] + 14], bottom: [W / 2 - 20, W / 2 + 20] };
+/** Half a gate between the pasture and the fields and at the top of each walkway, in px: 5 m, a cow or a tractor. */
+export const FIELD_GATE = 20;
+/** The gates at each walkway ([from, to] in x): in the fields' fence at the lane and at the pasture, and in the
+ *  pasture's fence across from them, so the herds walk up from the pasture into the walkways. */
+export const WALKWAY_GATES = CORR.slice(1).map(c => [c - FIELD_GATE, c + FIELD_GATE]);
 /**
  * What stands on the farm that an animal walks round (2D pixels, rectangles): the barn, the silos (both accounts'
  * places), the farmhouse and its deck, the henhouse and its run, the market stall, the notice board, the scarecrow patch.

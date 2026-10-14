@@ -4,7 +4,7 @@
 // string lights, the henhouse and its run, the market stall, the scarecrow patch, the hammocks, the shade tree, the
 // orchard that comes with more rows, the woodpile and the rock, and the fence round the fields. Snow on the roofs in
 // winter. Rebuilt only when the rows, the season or the silos change.
-import { BARN, BARN_DOOR, BOARD, BUSHES, CORR, DECK, HENHOUSE, HOUSE, NAPS, PASTURE_GATES, PORCH_Y, PX, SCARECROWS, SHADE, SILO_Y, STALL, WOODPILE, orchardOf, pastureOf, rocksOf } from '../layout.js';
+import { BARN, BARN_DOOR, BOARD, BUSHES, CORR, DECK, HENHOUSE, HOUSE, NAPS, PASTURE_GATES, WALKWAY_GATES, PORCH_Y, PX, SCARECROWS, SHADE, SILO_Y, STALL, WOODPILE, orchardOf, pastureOf, rocksOf } from '../layout.js';
 import { disposeTree, seasonPalette } from './util.js';
 import { TAG_COLOURS } from '../dialogs.js';
 
@@ -258,15 +258,16 @@ export function makeBuildings(THREE, mats, S) {
       }
     }
 
-    /* ---------- the fence round the fields: open at the walkways and where each row meets the yard's path ---------- */
+    /* ---------- the fence round the fields: gates where the walkways meet the lane and the pasture (5 m: a cow, a
+       tractor), and open where each row meets the yard's path ---------- */
     const { GRID } = ground, lanes = [...new Set(ground.slots.map(s => s.lane))];
-    fence(GRID.x0, GRID.y0, GRID.x1 + 2, GRID.y0, CORR.slice(1).map(c => [c - 7, c + 7]));
-    fence(GRID.x0, GRID.y1, GRID.x1 + 2, GRID.y1);
+    fence(GRID.x0, GRID.y0, GRID.x1 + 2, GRID.y0, WALKWAY_GATES);
+    fence(GRID.x0, GRID.y1, GRID.x1 + 2, GRID.y1, WALKWAY_GATES);
     fence(GRID.x0, GRID.y0, GRID.x0, GRID.y1, lanes.map(y => [y - 4, y + 5]));
     fence(GRID.x1, GRID.y0, GRID.x1, GRID.y1);
     // the pasture across the front: a fence all round, a gate where the yard's path comes down
     const pa = pastureOf(ground);
-    fence(pa.x0, pa.y0, pa.x1, pa.y0, [PASTURE_GATES.top]); // gates: up to the yard's path, and down to the forest (the animals roam)
+    fence(pa.x0, pa.y0, pa.x1, pa.y0, [PASTURE_GATES.top, ...WALKWAY_GATES]); // gates: up to the yard's path, up into the walkways, and down to the forest (the animals roam)
     fence(pa.x0, pa.y1, pa.x1, pa.y1, [PASTURE_GATES.bottom]);
     fence(pa.x0, pa.y0, pa.x0, pa.y1);
     fence(pa.x1, pa.y0, pa.x1, pa.y1);

@@ -2,7 +2,7 @@
 // the fences, their bodies and not just their middles, whatever they get up to (antics.js), on every size of farm.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { CORR, FARMSTEAD, GRID_CONFIG, LILY_PADS, PASTURE_GATES, POND, forestOf, pastureOf } from '../../web/worlds/farm3d/layout.js';
+import { BED, CORR, FARMSTEAD, GRID_CONFIG, LILY_PADS, PASTURE_GATES, POND, WALKWAY_GATES, forestOf, pastureOf } from '../../web/worlds/farm3d/layout.js';
 import { roamOf } from '../../web/worlds/farm3d/roam.js';
 import { HERDS, advance, command, makeAnimal, menuFor, reachOf } from '../../web/worlds/farm3d/antics.js';
 import { MODELS } from '../../web/worlds/farm3d/models/index.js';
@@ -12,6 +12,16 @@ const seeded = seed => () => { seed = (seed * 16807) % 2147483647; return seed /
 // each animal's half-length on the farm in 2D px (8 a metre), as build/animals.js measures it from its model, rounded up
 const BODY = { cow: 16, bull: 18, alpaca: 9, donkey: 10, horse: 14, whitehorse: 14, husky: 7, shiba: 6, deer: 10, stag: 11, fox: 8, wolf: 12, frog: 3, trout: 4, koi: 4, roach: 4 };
 const inPond = (x, y, r) => ((x - POND.cx) / (POND.rx + r)) ** 2 + ((y - POND.cy) / (POND.ry + r)) ** 2 < 1;
+/** Every field patch of a farm of `rows` (a bed or an empty slot): the grid's slots, as model.js lays them. */
+const patchesOf = rows => Array.from({ length: rows * 3 }, (_, k) => { const cx = GRID_CONFIG.cx0 + (k % 3) * GRID_CONFIG.colW, s = GRID_CONFIG.slot(cx, GRID_CONFIG.top0 + Math.floor(k / 3) * GRID_CONFIG.rowH); return { x0: s.x0, y0: s.y0, lane: s.lane }; });
+/** A fence along y from x0 to x1, less its gates, as lines. */
+const alongX = (x0, x1, y, gates) => { const out = []; let from = x0; for (const [a, b] of [...gates].sort((p, q) => p[0] - q[0])) { out.push([from, y, a, y]); from = b; } out.push([from, y, x1, y]); return out; };
+/** The fence round the fields as lines: gates 5 m wide where the walkways meet the lane and the pasture, the farmers' gaps on the yard's side. */
+const fieldFenceOf = (G, rows) => {
+  const lanes = [...new Set(patchesOf(rows).map(p => p.lane))].sort((a, b) => a - b);
+  const left = []; let fy = G.y0; for (const y of lanes) { left.push([G.x0, fy, G.x0, y - 4]); fy = y + 5; } left.push([G.x0, fy, G.x0, G.y1]);
+  return [...alongX(G.x0, G.x1, G.y0, WALKWAY_GATES), ...alongX(G.x0, G.x1, G.y1, WALKWAY_GATES), ...left, [G.x1, G.y0, G.x1, G.y1]];
+};
 
 test("the herds: every animal of the pack and the pond's, each with a ground to roam (the frog its lily pads, the fish the water)", () => {
   assert.deepEqual([...new Set(HERDS.map(h => h.kind))].sort(), Object.keys(MODELS).filter(k => !['still', 'person', 'crop', 'vehicle'].includes(MODELS[k].family)).sort());
@@ -59,7 +69,7 @@ test('every ground has room for its biggest animal on every size of farm, the fo
   }
 });
 
-test('an hour of the farm: they roam it all, by habit or asked, and no body touches the water, a tree, a building, a bed or a fence (but at its gates)', () => {
+test('an hour of the farm: they roam it all, the walkways and headlands between the fields too, by habit or asked, and no body touches the water, a tree, a building, a field or a fence (but at its gates)', () => {
   for (const rows of [GRID_CONFIG.minRows, GRID_CONFIG.maxRows]) {
     const L = groundOf(rows), roam = roamOf(L), rand = seeded(rows * 11), pa = pastureOf(L), crowns = forestOf(L.H).map(([x, y, r]) => [x, y, r * 1.25]), G = L.GRID;
     const env = { resting: false, rand, habitChance: 0.5, duration: () => 1.2, spot: (area, from, far, r, o) => roam.spot(area, rand, { from, far, r, ...o }), inside: roam.inside, clear: roam.clear, route: roam.route };
@@ -69,7 +79,8 @@ test('an hour of the farm: they roam it all, by habit or asked, and no body touc
     }));
     const home = new Map(herd.map(a => [a, 0])), away = new Set();
     // the pasture's fence, less its gates, as lines; how far a point is from one
-    const fenceLines = [[pa.x0, pa.y0, PASTURE_GATES.top[0], pa.y0], [PASTURE_GATES.top[1], pa.y0, pa.x1, pa.y0], [pa.x0, pa.y1, PASTURE_GATES.bottom[0], pa.y1], [PASTURE_GATES.bottom[1], pa.y1, pa.x1, pa.y1], [pa.x0, pa.y0, pa.x0, pa.y1], [pa.x1, pa.y0, pa.x1, pa.y1]];
+    const fenceLines = [...alongX(pa.x0, pa.x1, pa.y0, [PASTURE_GATES.top, ...WALKWAY_GATES]), [pa.x0, pa.y1, PASTURE_GATES.bottom[0], pa.y1], [PASTURE_GATES.bottom[1], pa.y1, pa.x1, pa.y1], [pa.x0, pa.y0, pa.x0, pa.y1], [pa.x1, pa.y0, pa.x1, pa.y1], ...fieldFenceOf(G, rows)];
+    const patches = patchesOf(rows), big = new Set(['cow', 'bull', 'alpaca', 'donkey', 'horse', 'whitehorse', 'deer', 'stag']), among = new Set();
     const toLine = (x, y, [x0, y0, x1, y1]) => { const dx = x1 - x0, dy = y1 - y0, t = Math.max(0, Math.min(1, ((x - x0) * dx + (y - y0) * dy) / (dx * dx + dy * dy))); return Math.hypot(x - x0 - t * dx, y - y0 - t * dy); };
     let acts = 0, ticks = 0;
     for (let t = 0; t < 3600; t += 0.1) {
@@ -87,16 +98,18 @@ test('an hour of the farm: they roam it all, by habit or asked, and no body touc
         for (const [tx, ty, tr] of crowns) assert.ok(Math.hypot(x - tx, y - ty) > tr + r - 1, `${where}: in a tree`);
         for (const f of fenceLines) assert.ok(toLine(x, y, f) > r - 1, `${where}: through the pasture's fence`);
         for (const b of FARMSTEAD) assert.ok(!(x > b.x - r + 1 && x < b.x + b.w + r - 1 && y > b.y - r + 1 && y < b.y + b.h + r - 1), `${where}: in a building`);
-        if (x > G.x0 && x < G.x1 && y > G.y0 + r && y < G.y1) assert.ok(CORR.slice(1).some(c => Math.abs(x - c) + r <= 8), `${where}: in the fields`);
+        for (const p of patches) assert.ok(!(x > p.x0 - r + 1 && x < p.x0 + BED.w + r - 1 && y > p.y0 - r + 1 && y < p.y0 + BED.d + r - 1), `${where}: on a field`);
+        if (x > G.x0 && x < G.x1 && y > G.y0 && y < G.y1 && big.has(a.kind)) among.add(a.kind); // the walkways and headlands, between the fields
       }
     }
     assert.ok(acts > 500, `${acts} things asked of them`);
+    assert.ok(among.size >= 2, `${rows} rows: big animals among the fields: ${[...among].join(', ') || 'none'}`);
     assert.ok(away.size >= 4, `${away.size} roamed off their own ground`);
     for (const [a, n] of home) if (a.area !== 'pond' && a.area !== 'water') assert.ok(n / ticks > 0.2, `${rows} rows: the ${a.kind} at home ${(100 * n / ticks).toFixed(0)}% of the time`);
   }
 });
 
-test('a way round: from the yard into the pasture through its gate, on to the forest through the other; a Shiba fits a walkway a cow does not', () => {
+test('a way round: from the yard into the pasture through its gate, on to the forest through the other; from the pasture up into a walkway through the gates between them, a cow as well as a Shiba', () => {
   const L = groundOf(4), roam = roamOf(L), rand = seeded(8), pa = pastureOf(L), G = L.GRID;
   const walk = (from, path, r) => { let at = from; for (const p of path) { assert.ok(roam.clear('farm', at, p, r), `${at} → ${p}`); at = p; } return at; };
   const crossed = (from, path, fy) => { let at = from; for (const p of path) { if ((at[1] - fy) * (p[1] - fy) <= 0) return at[0] + ((fy - at[1]) / (p[1] - at[1] || 1)) * (p[0] - at[0]); at = p; } return null; };
@@ -111,9 +124,14 @@ test('a way round: from the yard into the pasture through its gate, on to the fo
   assert.ok(out?.length);
   const x1 = crossed(pasture, out, pa.y1);
   assert.ok(x1 > PASTURE_GATES.bottom[0] && x1 < PASTURE_GATES.bottom[1], `through the bottom gate (at ${x1})`);
-  const walkway = [CORR[1], G.y0 + 60], lane = [CORR[1], 112];
-  assert.ok(roam.route(lane, walkway, shiba)?.length, 'the Shiba fits the walkway');
-  assert.equal(roam.route(lane, walkway, cow), null, 'the cow does not');
+  const walkway = [CORR[1] - 4, G.y1 - 100], grazing = [CORR[1] + 60, pa.y0 + 50];
+  assert.ok(roam.route(grazing, walkway, shiba)?.length, 'the Shiba fits the walkway');
+  const way = roam.route(grazing, walkway, cow);
+  assert.ok(way?.length, 'and so does the cow');
+  walk(grazing, way, cow);
+  for (const fy of [pa.y0, G.y1]) { const xg = crossed(grazing, way, fy); assert.ok(Math.abs(xg - CORR[1]) < 20, `through the gate at ${fy} (at ${xg})`); }
+  const headland = [500, GRID_CONFIG.top0 + GRID_CONFIG.rowH + 4];
+  assert.ok(roam.inside('farm', headland[0], headland[1], cow), 'a headland between two rows of fields has room for a cow');
 });
 
 test('left alone they wander: walks bend, paces and rests spread, and two days differ', () => {
@@ -188,4 +206,23 @@ test("the wind's clock wraps without a jump: every speed in the sway repeats a w
   assert.ok(speeds.length >= 3, `${speeds}`);
   for (const w of speeds) { const turns = (w * WIND_PERIOD) / (2 * Math.PI); assert.ok(Math.abs(turns - Math.round(turns)) < 1e-9, `${w} rad/s: ${turns} turns`); }
   assert.match(src, /% WIND_PERIOD/, 'the clock wraps');
+});
+
+test('a field a machine is working is busy: no animal picks a place on it or its headland ends, and it is free again after', () => {
+  const L = groundOf(3), roam = roamOf(L), rand = seeded(21), [p] = patchesOf(3).slice(4, 5), cow = 10;
+  roam.setBusy([p]);
+  const onIt = ([x, y]) => x > p.x0 - 26 && x < p.x0 + BED.w + 26 && y > p.y0 - 12 && y < p.y0 + BED.d + 8;
+  assert.equal(roam.free('farm', p.x0 - 30, p.y0 + 30, cow), false, 'its walkway end: not a place to stop');
+  assert.equal(roam.inside('farm', p.x0 - 30, p.y0 + 30, cow), true, 'though one may walk through (or out)');
+  for (let k = 0; k < 300; k++) assert.ok(!onIt(roam.spot('farm', rand, { from: [p.x0 - 20, p.y0 - 30], near: 80, straight: false, r: cow })), 'a place picked near it');
+  roam.setBusy([]);
+  assert.equal(roam.free('farm', p.x0 - 30, p.y0 + 30, cow), true, 'free again');
+});
+
+test('a place picked keeps clear of others (animals, farmers) when there is room', () => {
+  const L = groundOf(3), roam = roamOf(L), rand = seeded(5), others = [[120, 230, 16], [140, 240, 6], [100, 250, 14]];
+  for (let k = 0; k < 200; k++) {
+    const [x, y] = roam.spot('yard', rand, { r: 12, avoid: others });
+    for (const [ox, oy, or] of others) assert.ok(Math.hypot(x - ox, y - oy) >= 12 + or + 4 - 1e-9, `${x.toFixed(0)},${y.toFixed(0)} on one at ${ox},${oy}`);
+  }
 });

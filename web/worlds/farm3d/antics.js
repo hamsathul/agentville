@@ -160,13 +160,13 @@ export function perform(a, steps, env, tag) {
 }
 /** Lets it go after a play or a romp: it rests a moment where it is, then goes about as before. */
 export function release(a) {
-  Object.assign(a, { romp: null, act: null, queue: [], cur: null, tx: a.x, ty: a.y, path: [], trail: [], stick: null });
+  Object.assign(a, { romp: null, act: null, queue: [], cur: null, tx: a.x, ty: a.y, path: [], trail: [], stick: null, hurry: false });
   a.rest = 1 + Math.random() * 2;
 }
 
 /** Puts it somewhere new (its ground moved): whatever it was doing and the walk it was on are forgotten. */
 export function placeAt(a, x, y) {
-  Object.assign(a, { x, y, tx: x, ty: y, path: [], looked: false, queue: [], cur: null, act: null, stick: null, home: [x, y], trail: [], lift: 0, under: false });
+  Object.assign(a, { x, y, tx: x, ty: y, path: [], looked: false, queue: [], cur: null, act: null, stick: null, home: [x, y], trail: [], lift: 0, under: false, hurry: false });
 }
 /** Its ground changed under it, though it is still on it: the walk it was on was checked against the old one, so it stops there. */
 export function forgetWalk(a) {
@@ -211,7 +211,8 @@ function roamWalk(a, env) {
     const roll = env.rand(), goHome = !atHome && roll < Math.min(0.9, 0.2 + away / 120);
     const to = goHome ? env.spot(a.area, null, 0, a.r)
       : roll < 0.15 ? env.spot('farm', null, 0, a.r) // somewhere else on the farm
-        : env.spot('farm', [a.x, a.y], 24, a.r, { near: 110, straight: false }); // a wander near where it is
+        : roll < 0.27 ? env.spot('fields', null, 0, a.r) // among the fields: down a walkway, along a headland
+          : env.spot('farm', [a.x, a.y], 24, a.r, { near: 110, straight: false }); // a wander near where it is
     const way = to && env.route([a.x, a.y], to, rw);
     if (!way?.length) continue;
     [a.tx, a.ty] = way.shift();
@@ -254,6 +255,32 @@ function awayFrom(a, other, far, env) {
     if (env.inside(ground, to[0], to[1], r) && (!env.clear || env.clear(ground, [a.x, a.y], to, r))) return to;
   }
   return [a.x, a.y];
+}
+/**
+ * A machine coming its way (m: { x, y, heading }, as machines.js inPathOf found it): it walks to the nearest free place
+ * clear of the machine's way ahead (a headland, or back out of a walkway too narrow to pass in), giving up the walk it
+ * was on. Only one getting about by itself (not doing what it was asked, at play or with another, nor the frog or a
+ * fish); true if it set off.
+ */
+export function stepAside(a, m, env) {
+  if (a.act || a.romp || a.cur || a.queue.length || !roams(a)) return false;
+  const c = Math.cos(m.heading), s = Math.sin(m.heading), way = [];
+  for (let d = -8; d <= 72; d += 8) way.push([m.x + c * d, m.y + s * d, 14]); // its way ahead, a tractor's width round it
+  const r = reachOf(a), to = env.spot('farm', [a.x, a.y], 0, r, { near: 64, straight: false, avoid: way, strict: true }), there = to && env.route([a.x, a.y], to, r);
+  if (!there?.length) return false;
+  [a.tx, a.ty] = there.shift();
+  Object.assign(a, { path: there, rest: 0, looked: false, hurry: true });
+  return true;
+}
+/** Its place turned busy (a machine working the field it stands by): it walks to a free place near (roam.js free),
+ *  round what is in the way. Only one getting about by itself, as stepAside; true if it set off. */
+export function moveOff(a, env) {
+  if (a.act || a.romp || a.cur || a.queue.length || !roams(a)) return false;
+  const to = env.spot('farm', [a.x, a.y], 30, a.r, { near: 120, straight: false }), way = to && env.route([a.x, a.y], to, reachOf(a));
+  if (!way?.length) return false;
+  [a.tx, a.ty] = way.shift();
+  Object.assign(a, { path: way, rest: 0, looked: false });
+  return true;
 }
 /** Starts the next step: where it goes is settled now; a stick step happens at once. */
 function begin(a, env) {
@@ -336,21 +363,22 @@ export function advance(a, dt, env) {
     return;
   }
   if (a.family === 'frog') { a.rest = 3 + env.rand() * 6; habit(a, env); return; } // it never walks: it sits, then gets up to something
-  if (go(a, [a.tx, a.ty], a.walk * a.pace, dt)) {
+  if (go(a, [a.tx, a.ty], a.hurry ? a.run * 0.6 : a.walk * a.pace, dt)) { // out of a machine's way: a trot
     if (a.path.length) { // a bend: now and then a look round first, then on to the next point
-      if (!a.looked && env.rand() < 0.25) { a.looked = true; a.queue = [{ part: 'look' }]; begin(a, env); return; }
+      if (!a.looked && !a.hurry && env.rand() < 0.25) { a.looked = true; a.queue = [{ part: 'look' }]; begin(a, env); return; }
       a.looked = false;
       [a.tx, a.ty] = a.path.shift();
-      show(a, 'walk');
+      show(a, a.hurry ? 'run' : 'walk');
       return;
     }
+    a.hurry = false;
     planWalk(a, env);
     a.rest = env.rand() < 0.2 ? 0 : restFor(env.rand); // now and then it strolls straight on
     if (a.rest > 0 && env.rand() < env.habitChance) { habit(a, env); return; }
     show(a, a.rest > 0 ? 'idle' : 'walk');
     return;
   }
-  show(a, 'walk');
+  show(a, a.hurry ? 'run' : 'walk');
 }
 /** Gets up to something of its own. */
 function habit(a, env) {
