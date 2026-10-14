@@ -41,7 +41,7 @@ import { createRomps, partnerFor } from './romps.js';
 
 // what a farmer is doing, as a word, from the tool in its hands (for what it says to the animals)
 const STEP_WORDS = { hoe: 'editing', rake: 'editing', sickle: 'editing', hammer: 'fixing', seeds: 'writing', almanac: 'reading', recipe: 'reading', clipboard: 'planning', blueprint: 'planning', spyglass: 'searching', magnifier: 'searching', pigeon: 'browsing', parcel: 'calling tools', mailbag: 'calling tools', crate: 'committing', cart: 'pushing', barrow: 'pushing', lantern: 'thinking', whistle: 'delegating', can: 'working' };
-import { BED, PX, SHED_DOOR, SILO_Y, STALL, W } from './layout.js';
+import { BED, NEIGHBOUR_X, PX, SHED_DOOR, SILO_Y, STALL, W, east } from './layout.js';
 
 const SKIES = ['live', 'day', 'night'], SEASON_MODES = ['live', 'spring', 'summer', 'autumn', 'winter'];
 const FRAME_MS = 1000 / 30; // at most 30 frames a second
@@ -161,7 +161,7 @@ export function start({ el, opts, prefs }) {
     fx: (i, kind) => { if (kind === 'hearts') overlay.pop(() => animals.info(i)?.top ?? null, '♥', 'good'); else animals.fx(i, kind); },
     spot: (area, from, far) => farmRoam?.spot(area, Math.random, { from, far, r: 6 }) ?? null, clear: clearBetween,
   };
-  let snow = null, night = 0, blinkTags = []; // blinkTags: the stall's tags for pull requests whose checks run
+  let snow = null, night = 0, blinkTags = [], gateTop = null; // blinkTags: the stall's tags for pull requests whose checks run; gateTop: over the neighbour's gate sign
 
   // The world's own settings, kept by the page.
   const pref = (name, allowed, fallback) => (allowed.includes(prefs.get(name)) ? prefs.get(name) : fallback);
@@ -333,6 +333,7 @@ export function start({ el, opts, prefs }) {
     cartMeshes.setGround(model.ground.H, farmers.groundAt);
     machineMeshes.setGround(model.ground.H, farmers.groundAt);
     shed.build(model.ground.H);
+    if (model.neighbour) shed.build(model.ground.H, model.neighbour.ox); else shed.drop(NEIGHBOUR_X); // the neighbour's own shed
     animals.setWinter(season === 'winter'); // the pond is ice: its frog, fish and lily pads out of sight
     // snow falling over the whole farm in winter
     if (snow) { snow.object.removeFromParent(); snow.object.geometry.dispose(); snow = null; }
@@ -344,7 +345,8 @@ export function start({ el, opts, prefs }) {
   }
   /** The farmstead and the yard: rebuilt when the rows, the season or the silos change. */
   function rebuildBuildings() {
-    const info = buildings.build(model.ground, shownSeason(), model.silos.map(({ x, name, silo }) => ({ x, name, silo: silo && { fill: silo.fill, lamp: silo.lamp } })), { crates: model.stall.crates });
+    const info = buildings.build(model.ground, shownSeason(), model.silos.map(({ x, name, silo }) => ({ x, name, silo: silo && { fill: silo.fill, lamp: silo.lamp } })), { crates: model.stall.crates }, model.neighbour && { ox: model.neighbour.ox, name: model.neighbour.name });
+    gateTop = info.gate ?? null; // the neighbour's gate sign: its name over it (overlay.js)
     blinkTags = info.blink ?? [];
     standIns();
     const lk = JSON.stringify(info.lamps);
@@ -354,8 +356,10 @@ export function start({ el, opts, prefs }) {
     if (!model) return;
     rebuildGround();
     rebuildBuildings();
-    beds.sync(model.beds, model.ground, shownSeason(), looks);
+    beds.sync(model.beds, groundWithPlots(), shownSeason(), looks);
   }
+  /** The ground for the beds: with a neighbour, its empty plots too (moved east, keyed apart from yours). */
+  const groundWithPlots = () => (model.neighbour ? { ...model.ground, empty: [...model.ground.empty, ...model.neighbour.ground.empty.map(sl => ({ ...east(sl, model.neighbour.ox), i: `n${sl.i}` }))] } : model.ground);
 
   function onScene(s) {
     try { applyScene(s); } catch (err) { report(err, 'scene'); }
@@ -454,7 +458,7 @@ export function start({ el, opts, prefs }) {
       overlay.setHover(hit?.id ?? null);
       canvas.style.cursor = hit ? 'pointer' : '';
       // a farmer's tooltip, as its name tag has it (what it is doing, its context, its cost…); the barn's
-      canvas.title = hit?.id ? model?.farmers.find(f => f.id === hit.id)?.tip ?? '' : hit?.animal !== undefined ? `The ${animals.info(hit.animal)?.title.toLowerCase() ?? 'animal'}: click for what you can ask it to do` : hit?.building ? buildingTip(hit.building) : hit?.field ? fieldTip(hit.field) : '';
+      canvas.title = hit?.id ? model?.farmers.find(f => f.id === hit.id)?.tip ?? '' : hit?.animal !== undefined ? `The ${animals.info(hit.animal)?.title.toLowerCase() ?? 'animal'}: click for what you can ask it to do` : hit?.building ? buildingTip(hit.building, { neighbour: model?.neighbour?.name }) : hit?.field ? fieldTip(hit.field) : '';
     });
   });
 
@@ -491,7 +495,7 @@ export function start({ el, opts, prefs }) {
       if (it.job === 'plough' && it.phase === 'work') changed = seasons.plough(it.field, it.rowsPassed) || changed;
     }
     for (const [k, n] of cut) changed = seasons.cut(k, n, now) || changed;
-    if (changed) { looks = seasons.looks(); beds.sync(model.beds, model.ground, shownSeason(), looks); dirty = true; }
+    if (changed) { looks = seasons.looks(); beds.sync(model.beds, groundWithPlots(), shownSeason(), looks); dirty = true; }
     const sig = machineItems.map(i => `${i.id}|${i.vehicle}|${i.implement}|${Math.round(i.x)}|${Math.round(i.y)}|${i.driver}|${i.load}`).join();
     if (sig !== machinesSig || (!opts.still && machineItems.some(i => i.phase === 'work'))) { machinesSig = sig; dirty = true; } // a reel turns, mist drifts
   }

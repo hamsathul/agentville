@@ -500,15 +500,17 @@ try {
       await chrome.js(`window.TrackerFarm.update(${JSON.stringify(NB)})`);
       await sleep(1200);
       const s = await statsOf(chrome), land = JSON.parse(await chrome.inFrame('/world/farm3d/', 'JSON.stringify(window.__farm3d.land())'));
+      const theirs = JSON.parse(await chrome.inFrame('/world/farm3d/', "JSON.stringify(['barn2', 'house2', 'shed2'].filter(k => !window.__farm3d.buildingAt(k)?.visible))")); // its buildings, in view
       const why = [
         !s && 'no stats',
         s && s.drawn !== 7 && `${s?.drawn} farmers drawn, not 7`,
         s && s.calls > 400 && `${s.calls} draw calls (400 at most)`,
         JSON.stringify(land) !== JSON.stringify({ w: 1808, ox: 952, neighbour: true }) && `the land ${JSON.stringify(land)}`,
+        theirs.length && `the neighbour's ${theirs.join(', ')} not in view`,
         chrome.errors.length > before && `script errors: ${oneLine(chrome.errors[before]).slice(0, 160)}`,
       ].filter(Boolean);
       if (why.length) bad(`the neighbour farm: ${why.join('; ')}`);
-      else console.log(`  ✓ the neighbour farm: both farms drawn (the land ${land.w} px across), ${s.drawn} farmers, ${s.calls} draw calls`);
+      else console.log(`  ✓ the neighbour farm: both farms drawn (the land ${land.w} px across), its barn, farmhouse and shed in view, ${s.drawn} farmers, ${s.calls} draw calls`);
     }
 
     // 5. the plants: Quaternius's trees, bushes and rocks drawn once their models load (the ball trees stand in till

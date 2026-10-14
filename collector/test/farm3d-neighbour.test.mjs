@@ -5,6 +5,7 @@ import assert from 'node:assert/strict';
 import { kit, toScene, privateScene, NOW, HOME, touch, agent, repo, snap } from './farm3d-vm.mjs';
 import { makeModel } from '../../web/worlds/farm3d/model.js';
 import { clampTarget, makeCameraRig } from '../../web/worlds/farm3d/camera.js';
+import { plantsOf } from '../../web/worlds/farm3d/nature.js';
 import { CREEK, FARMSTEAD, GAP, LANE, NEIGHBOUR_X, PORCH_Y, ROAD, SILO_X, W, crossingsOf, east, extentOf, farmAt, farmOf, farmsteadOf, forestOf, landOf, pastureOf, slotTables } from '../../web/worlds/farm3d/layout.js';
 
 const M = makeModel(kit);
@@ -148,4 +149,19 @@ test('the camera keeps its target over the land round its middle, and at 100% th
   rig.glideTo({ x: 500, z: 0 });
   for (let k = 0; k < 20; k++) rig.update(0.1);
   assert.equal(rig.state().target.x, 173, 'panned no further than the land');
+});
+
+test("the plants: the neighbour's shade tree, bushes and rocks; the forest round the land; no orchard there", () => {
+  const m = model(two([], [])), P = plantsOf(m.ground, 'summer');
+  const shade = P.filter(p => p.role === 'shade');
+  assert.equal(shade.length, 2);
+  assert.equal(shade[1].x - shade[0].x, NEIGHBOUR_X);
+  assert.ok(P.some(p => p.role === 'bush' && p.x > NEIGHBOUR_X));
+  assert.ok(P.some(p => p.role === 'rock' && p.x > NEIGHBOUR_X));
+  assert.ok(P.some(p => p.role === 'forest' && p.x > landOf(true).w), 'the forest past the neighbour');
+  assert.ok(!P.some(p => p.role === 'orchard' && p.x > W), 'the orchard is yours');
+  assert.ok(!P.some(p => p.x > ROAD.x0 - 4 && p.x < CREEK.x1 + 4 && p.y > 0 && p.y < m.ground.H), 'nothing on the road or in the creek');
+  assert.ok(!P.some(p => p.role === 'forest' && p.x > W + 4 && p.x < NEIGHBOUR_X - 4 && p.y > 12 && p.y < m.ground.H + 22), 'no forest between the farms');
+  const one = plantsOf(model(snap([], [])).ground, 'summer');
+  assert.equal(one.filter(p => p.role === 'shade').length, 1, 'one farm: one shade tree');
 });

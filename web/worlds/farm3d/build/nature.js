@@ -60,7 +60,7 @@ export function makeNature(THREE, S) {
   function build(ground, season) {
     want = { ground, season };
     const plants = plantsOf(ground, season), kinds = [...new Set(plants.map(p => p.kind))];
-    const key = `${ground.rows}|${ground.H}|${season}`;
+    const key = `${ground.rows}|${ground.H}|${season}|${ground.land?.w ?? ''}`; // and the land: a neighbour's farm too
     if (kinds.every(k => templates.has(k))) { draw(plants, key); return Promise.resolve(true); }
     return Promise.all(kinds.map(template)).then(() => {
       if (want.ground !== ground || want.season !== season) return false; // a newer farm asked meanwhile
