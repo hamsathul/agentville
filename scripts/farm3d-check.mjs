@@ -605,8 +605,16 @@ try {
       if (orchard?.trees !== 6) why.push(`the orchard has ${orchard?.trees} trees, not 6`);
       else if (!signText.includes(`${first.name} 6`)) why.push(`the orchard's sign reads "${signText}", not "${first.name} 6"`);
       else got.push(`the orchard: 6 trees, "${first.name} 6"`);
+      // the task fence: an agent at work with five tasks, two done: five stakes, two flags, a lantern
+      const worker = merged.agents.find(a => a.state === 'working'); // a1, at work in its repo (its folder)
+      const tasked = { ...merged, agents: merged.agents.map(a => ({ ...a, tasks: a === worker ? { done: 2, total: 5, current: 'x' } : null })) };
+      await chrome.js(`window.TrackerFarm.update(${JSON.stringify(tasked)})`);
+      await sleep(900);
+      const fence = await F('JSON.stringify(window.__farm3d.fence())');
+      if (JSON.stringify(fence) !== JSON.stringify({ stakes: 5, flags: 2, lanterns: 1 })) why.push(`the task fence ${JSON.stringify(fence)}, not 5 stakes, 2 flags, a lantern`);
+      else got.push('the task fence: 5 stakes, 2 flags, a lantern');
       const st = await statsOf(chrome);
-      if (st.calls > 400) why.push(`${st.calls} draw calls with the orchard (400 at most)`);
+      if (st.calls > 400) why.push(`${st.calls} draw calls with the orchard and a fence (400 at most)`);
       if (chrome.errors.length > before) why.push(`script errors: ${oneLine(chrome.errors[before]).slice(0, 160)}`);
       if (why.length) bad(`alive: ${why.join('; ')}`);
       else console.log(`  ✓ alive: ${got.join('; ')}; ${st.calls} draw calls`);

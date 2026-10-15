@@ -7,6 +7,7 @@ import { makeModel } from '../../web/worlds/farm3d/model.js';
 import { fruitOf, orchardOf } from '../../web/worlds/farm3d/orchard.js';
 import { plantsOf } from '../../web/worlds/farm3d/nature.js';
 import { roamOf } from '../../web/worlds/farm3d/roam.js';
+import { fenceOf } from '../../web/worlds/farm3d/fence.js';
 import { PASTURE_GATES, W, pastureOf } from '../../web/worlds/farm3d/layout.js';
 
 const M = makeModel(kit);
@@ -59,4 +60,35 @@ test("the orchard's fruit: red in summer, orange in autumn, blossom in spring, n
   assert.equal(fruitOf(trees, 'winter').at.length, 0);
   for (const p of f.at.slice(0, 6)) assert.ok(Math.hypot(p.x - 100, p.y - 700) <= 3 * 8 * 0.5 && p.h > 2.5 && p.h < 5, `in the full tree's crown (${JSON.stringify(p)})`);
   for (const p of f.at.slice(6)) assert.ok(p.h < 2.2, 'lower on a sapling');
+});
+
+const tasks = (done, total) => ({ done, total, current: null });
+test('the task fence: a stake per task along the front of its bed, a flag on each done one, a lantern while it works', () => {
+  const m = model(snap([worker('a', SHOP, null, { tasks: tasks(2, 5) })], [repo('shop')]));
+  const bed = m.beds[0], f = fenceOf(m.beds, m.farmers, m.scene.farmers);
+  assert.equal(f.length, 5);
+  assert.deepEqual(f.map(s => s.x), [0, 1, 2, 3, 4].map(j => bed.x0 + 4 + j * 6));
+  assert.ok(f.every(s => s.y === bed.y0 + bed.d + 3 && s.key === bed.key));
+  assert.deepEqual(f.map(s => s.done), [true, true, false, false, false]);
+  assert.deepEqual(f.map(s => s.lantern), [false, false, true, false, false]);
+  assert.equal(f[0].colour, m.farmers[0].shirt);
+});
+test('the task fence: past 20 tasks a stake stands for several; a row per agent, three at most', () => {
+  const big = model(snap([worker('a', SHOP, null, { tasks: tasks(30, 45) })], [repo('shop')]));
+  const f = fenceOf(big.beds, big.farmers, big.scene.farmers);
+  assert.equal(f.length, 15, '45 tasks: 3 a stake');
+  assert.equal(f.filter(s => s.done).length, 10, 'a stake is done when all its tasks are');
+  const four = model(snap(['a', 'b', 'c', 'd'].map(id => worker(id, SHOP, null, { tasks: tasks(0, 2) })), [repo('shop')]));
+  const bed = four.beds[0], rows = [...new Set(fenceOf(four.beds, four.farmers, four.scene.farmers).map(s => s.y))].sort((x, y) => x - y);
+  assert.deepEqual(rows, [3, 7, 11].map(k => bed.y0 + bed.d + k));
+});
+test('the task fence: none for a stale agent, one outside any repo, or one with no list; no lantern while idle; on the neighbour bed', () => {
+  const m = model(snap([agent('s', { state: 'stale', now: null, cwd: SHOP, touching: [touch(SHOP)], tasks: tasks(1, 3) }), agent('o', { cwd: '/elsewhere', tasks: tasks(0, 2) }), worker('n', SHOP, null, { tasks: null }), agent('i', { state: 'idle', now: null, cwd: SHOP, touching: [touch(SHOP)], tasks: tasks(1, 3) })], [repo('shop')]));
+  const f = fenceOf(m.beds, m.farmers, m.scene.farmers);
+  assert.equal(f.length, 3, "only the idle one's");
+  assert.ok(f.every(st => !st.lantern));
+  const t2 = model(two([worker('z', SHOP, 'zeta', { tasks: tasks(1, 2) })], [repo('shop')]));
+  const f2 = fenceOf(t2.beds, t2.farmers, t2.scene.farmers);
+  assert.equal(f2.length, 2);
+  assert.ok(f2.every(st => st.key === `${SHOP}@n`));
 });

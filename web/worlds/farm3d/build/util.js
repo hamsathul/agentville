@@ -33,3 +33,28 @@ export function disposeTree(obj) {
   obj.traverse(o => { if (o.geometry && !o.geometry.userData?.shared) o.geometry.dispose(); });
   obj.removeFromParent();
 }
+/**
+ * An instanced mesh that grows as needed (doubling): `use(n)` makes room for n and shows the first n; `at(i, matrix,
+ * color?)` places one; `flush()` sends them. One draw call however many; never casts a shadow (the small things moving each frame).
+ */
+export function makePool(THREE, parent, geometry, material, cap = 16) {
+  let mesh = null;
+  function make(n) {
+    if (mesh) { parent.remove(mesh); mesh.dispose(); }
+    mesh = new THREE.InstancedMesh(geometry, material, n);
+    mesh.castShadow = false;
+    mesh.frustumCulled = false; // its instances spread over the land
+    mesh.count = 0;
+    parent.add(mesh);
+  }
+  make(cap);
+  return {
+    /** Room for n, the first n shown: call before placing them (a pool that grows starts afresh). */
+    use(n) { if (n > mesh.instanceMatrix.count) make(Math.max(n, mesh.instanceMatrix.count * 2)); mesh.count = n; },
+    at(i, matrix, color) { mesh.setMatrixAt(i, matrix); if (color) mesh.setColorAt(i, color); },
+    /** The places (and colours) set: to the graphics card. */
+    flush() { mesh.instanceMatrix.needsUpdate = true; if (mesh.instanceColor) mesh.instanceColor.needsUpdate = true; },
+    shown: () => mesh.count,
+    get mesh() { return mesh; },
+  };
+}

@@ -21,6 +21,8 @@ import { createSeasons } from './season.js';
 import { createMachines, crewActions, inPathOf, isAhead, machinesDialog } from './machines.js';
 import { makeMachines } from './build/machines.js';
 import { makeShed } from './build/shed.js';
+import { makeFence } from './build/fence.js';
+import { fenceOf } from './fence.js';
 import { makeWeather } from './build/weather.js';
 import { makeBeds } from './build/beds.js';
 import { makeFigures } from './build/figurine.js';
@@ -134,6 +136,8 @@ export function start({ el, opts, prefs }) {
     talkSceneAt = now;
     return talkScene;
   }
+  const fence = makeFence(THREE, mats, shapes); // agents' task lists, along their fields
+  scene3.add(fence.group);
   scene3.add(terrain.group, buildings.group, beds.group, crops.group, farmers.group, animals.group, nature.group, flock.group, cartMeshes.group, pigeons.group, machineMeshes.group, shed.group);
   /** The ball trees, bushes and rocks stand in until the plants' models are drawn. */
   const standIns = () => { const on = !nature.ready(); terrain.setForest(on); buildings.setPlants(on); };
@@ -391,6 +395,7 @@ export function start({ el, opts, prefs }) {
       machines.want(shownModel(), performance.now() / 1000, compacted); // a duration: the page clock may stand still
     });
     rebuildAll();
+    piece('fence', () => fence.sync(fenceOf(model.beds, shownModel().farmers, model.scene.farmers), model.ground.H));
     farmers.sync(shownModel(), { instant: firstScene || opts.still });
     piece('hens', () => {
       flock.sync(new Map(shownModel().farmers.map(f => [f.id, f.kids])), id => farmers.posOf(id));
@@ -634,6 +639,8 @@ export function start({ el, opts, prefs }) {
     visit: () => visits.now(),
     /** Which farm a farmer lives on: 1 the neighbour's, 0 yours. */
     farmerFarm: id => model?.farmers.find(f => f.id === id)?.farm ?? 0,
+    /** The task fence: how many stakes, flags and lanterns. */
+    fence: () => fence.count(),
     /** The merge orchard: its trees and its signs' words. */
     orchard: () => (model ? { trees: model.orchard.trees.length, signs: model.orchard.signs.map(s => `${s.name} ${s.count}`) } : null),
     /** The land drawn: its width and the neighbour's offset on the 2D map (0: none), and whether there is a neighbour. */
