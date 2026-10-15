@@ -12,6 +12,7 @@ import { createMachines, passesFor } from '../../web/worlds/farm3d/machines.js';
 import { cartOf, createCarts } from '../../web/worlds/farm3d/carts.js';
 import { BED, SHED_DOOR } from '../../web/worlds/farm3d/layout.js';
 import { roamOf } from '../../web/worlds/farm3d/roam.js';
+import { combinesOut } from '../../web/worlds/farm3d/build/shed.js';
 import { HERDS, areaOn, makeAnimal, advance } from '../../web/worlds/farm3d/antics.js';
 import { createVisits, VISIT_FIRST_MS, VISIT_GAP_MS, VISIT_NEAR } from '../../web/worlds/farm3d/visits.js';
 import { createTalk, visitExchange } from '../../web/worlds/farm3d/talk.js';
@@ -432,4 +433,13 @@ test('the second account gone: its machines go with its farm, and none drives ac
   M2.want({ farmers: [{ id: 'f', state: 'working', field: 'r1', step: 'test', writes: 0 }] }, 1, new Set());
   const gone = { ...ctx, farmers: new Map([['f', { x: SHED_DOOR[0], y: SHED_DOOR[1], state: 'working', field: 'r1' }]]), beds: new Map([['r1', hbed]]), land: landOf(false) };
   for (let k = 0; k < 600; k++) for (const it of M2.tick(0.1, gone)) assert.ok(it.x <= W + 20, `off your farm at ${it.x.toFixed(0)}, ${it.y.toFixed(0)} (${it.phase})`);
+});
+
+test("each farm's shed keeps its own combine: it leaves only while that farm's combine is out", () => {
+  const oxOf = i => (i.field.endsWith('@n') ? 952 : 0);
+  const it = (field, phase, vehicle = 'combine') => ({ id: field, vehicle, phase, field });
+  assert.deepEqual([...combinesOut([], oxOf)], [], 'none out: both parked');
+  assert.deepEqual([...combinesOut([it('shop', 'work')], oxOf)], [0], 'yours out: the neighbour\'s stays');
+  assert.deepEqual([...combinesOut([it('shop@n', 'out')], oxOf)], [952], "the neighbour's out: yours stays");
+  assert.deepEqual([...combinesOut([it('shop@n', 'walking'), it('blog', 'work', 'tractor')], oxOf)], [], 'waiting for its farmer it is still in the shed; a tractor is no combine');
 });

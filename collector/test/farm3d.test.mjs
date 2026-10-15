@@ -6,7 +6,7 @@ import assert from 'node:assert/strict';
 import { kit, farm, toScene, stops, plain, NOW, HOME, touch, agent, repo, snap } from './farm3d-vm.mjs';
 import { makeModel } from '../../web/worlds/farm3d/model.js';
 import { walkRoute } from '../../web/worlds/farm3d/route.js';
-import { BED, CORR, DECK, GRID_CONFIG, LANE, LANE_HALF, PX, PORCH_Y, SCARECROWS, SHED, SHED_DOOR, SPOT, pastureOf, slotTables, toWorld, W } from '../../web/worlds/farm3d/layout.js';
+import { BED, CORR, DECK, GRID_CONFIG, LANE, LANE_HALF, PX, PORCH_Y, SCARECROWS, SHED, SHED_DOOR, SPOT, STALL, pastureOf, signsOf, slotTables, toWorld, W } from '../../web/worlds/farm3d/layout.js';
 
 const M = makeModel(kit);
 const model = (s, state = { beds: {}, packed: false }) => M.farmModel(toScene(s), state);
@@ -26,7 +26,7 @@ test("each state goes to the 2D farm's place (its group, in order, with its room
   assert.equal(at('w4'), undefined, 'a fourth waiting farmer is not drawn');
   assert.equal(m.over.desk, 1);
   assert.deepEqual([at('t1'), at('t2')], [[344, PORCH_Y], [312, PORCH_Y]], 'turn: the porch, right');
-  assert.deepEqual(at('s1'), [446, PORCH_Y]);
+  assert.deepEqual(at('s1'), [442, PORCH_Y], 'stale: the scarecrow patch, front left');
   assert.equal(m.over.storage, 1);
   assert.ok(m.farmers.find(f => f.id === 's1').scarecrow);
   const y = m.ground.GRID.y1 - 6;
@@ -89,6 +89,22 @@ test('the bigger map: 18.5 × 9 m beds, 7 m walkways and headlands, porch places
   }
   assert.ok(SHED.x > SCARECROWS.x + SCARECROWS.w && SHED.x + SHED.w < W && SHED.y + SHED.h <= LANE - LANE_HALF, 'the machine shed on the lane, past the scarecrows');
   assert.deepEqual(SHED_DOOR, [SHED.x + SHED.w / 2, LANE]);
+});
+
+test('the scarecrow patch is small, by the stall: its four in two staggered rows, apart enough to read their tags', () => {
+  const metres = px => px / PX, L = { GRID: GRID_CONFIG.fence(3), rows: 3, H: GRID_CONFIG.height(GRID_CONFIG.fence(3)) }, T = slotTables(L).storage;
+  const x0 = SCARECROWS.x, x1 = SCARECROWS.x + SCARECROWS.w, y0 = SCARECROWS.y, y1 = PORCH_Y + 4;
+  assert.ok(metres(x1 - x0) <= 9 && metres(y1 - y0) <= 5, `about 8 × 4 m (${metres(x1 - x0)} × ${metres(y1 - y0)} m)`);
+  const gap = metres(x0 - (STALL.x + 32));
+  assert.ok(gap >= 0.5 && gap <= 3, `beside the market stall (${gap} m from it)`);
+  const spots = Array.from({ length: T.cap }, (_, i) => T.at(i));
+  assert.equal(spots.length, 4, "the 2D farm's room of four");
+  for (const [x, y] of spots) assert.ok(x > x0 + 4 && x < x1 - 4 && y > y0 + 4 && y <= y1, `${x},${y} on the patch`);
+  assert.equal(new Set(spots.map(s => s[1])).size, 2, 'two rows');
+  assert.equal(new Set(spots.map(s => s[0])).size, 4, 'staggered: none right behind another');
+  for (let i = 0; i < 4; i++) for (let j = i + 1; j < 4; j++) assert.ok(metres(Math.hypot(spots[i][0] - spots[j][0], spots[i][1] - spots[j][1])) >= 2.5, `spots ${i} and ${j} at least 2.5 m apart`);
+  const [sx] = signsOf(L).storage;
+  assert.ok(sx > x0 && sx < x1, 'the "+N stale" sign at the patch');
 });
 
 test('a field keeps its bed while you look: the bed map comes back to remember, and the next scene packs no more', () => {

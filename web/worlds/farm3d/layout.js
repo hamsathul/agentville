@@ -30,7 +30,8 @@ export const CART_RANK = Array.from({ length: 6 }, (_, i) => [W - 20 - i * 18, L
 export const SHED = { x: 600, y: 50, w: 72, h: 46 }, SHED_DOOR = [SHED.x + SHED.w / 2, LANE];
 /** The notice board (what your projects remember): by the porch's steps, between the silo and the deck, as the 2D farm has it. */
 export const BOARD = { x: 128, y: 74, w: 16, h: 10 };
-export const SCARECROWS = { x: 430, y: 36, w: 120 };
+/** The scarecrow patch, where stale farmers stand: small (8.5 × 4.5 m) beside the market stall, its back at y, its front at the porch's line. */
+export const SCARECROWS = { x: 432, y: 66, w: 68 };
 // The yard on the left: the henhouse and its run, the pond, the hammocks, the shade tree, a woodpile, bushes, rocks.
 export const HENHOUSE = { x: 10, y: 122 };
 export const POND = { cx: 70, cy: 262, rx: 40, ry: 17 };
@@ -112,7 +113,7 @@ export function slotTables(L) {
   return {
     desk: { cap: 3, at: i => [168 + 32 * i, PORCH_Y] }, // waiting on you: the porch's left
     turn: { cap: 3, at: i => [344 - 32 * i, PORCH_Y] }, // its turn ended: the porch's right
-    storage: { cap: 4, at: i => [446 + 30 * i, PORCH_Y] }, // stale: the scarecrows
+    storage: { cap: 4, at: i => [[442, PORCH_Y], [474, PORCH_Y], [458, PORCH_Y - 16], [490, PORCH_Y - 16]][i] }, // stale: the scarecrows, two staggered rows
     charge: { cap: 4, at: i => [[96, y], [64, y + 3], [128, y + 3], [32, y + 6]][i] }, // idle: under the shade tree
     meadow: { cap: MEADOW.length, at: i => MEADOW[i] },
     nap: { cap: NAPS.length, at: i => NAPS[i] },
@@ -120,7 +121,7 @@ export function slotTables(L) {
 }
 /** Where the "+N" signs stand for farmers beyond a place's room, and the words they say. */
 export const signsOf = L => ({
-  desk: [200, PORCH_Y - 34, 'waiting'], turn: [312, PORCH_Y - 34, 'your turn'], storage: [490, PORCH_Y - 34, 'stale'],
+  desk: [200, PORCH_Y - 34, 'waiting'], turn: [312, PORCH_Y - 34, 'your turn'], storage: [466, PORCH_Y - 40, 'stale'],
   charge: [SHADE.x, L.GRID.y1 + 10, 'idle'], meadow: [70, 182, 'in the meadow'], nap: [150, 222, 'napping'],
   more: [W - 80, L.GRID.y1 + 12, 'more'],
 });

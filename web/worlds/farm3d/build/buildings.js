@@ -217,7 +217,7 @@ export function makeBuildings(THREE, mats, S) {
         stubble.forEach((p, i) => st.setMatrixAt(i, m4.makeTranslation(p.x, 0.18, p.z)));
         g.add(st);
         fence(sx0 - 2, sy0, sx0 + sw + 2, sy0);
-        const bale = S.cyl(0.42, 0.42, 0.9, '#e9c46a', 0, 0, 0, g, 12), hb = P(SCARECROWS.x + SCARECROWS.w - 12, SCARECROWS.y + 14);
+        const bale = S.cyl(0.42, 0.42, 0.9, '#e9c46a', 0, 0, 0, g, 12), hb = P(SCARECROWS.x + 8, SCARECROWS.y + 6); // in the back corner, clear of the back row
         bale.rotation.z = Math.PI / 2; bale.position.set(hb.x, 0.42, hb.z);
       }
 

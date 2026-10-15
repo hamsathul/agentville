@@ -1320,8 +1320,9 @@ the creek, a cattle bridge joins the two pastures, and a sign at its gate gives 
   (its deploy's weather, its piles, its pennant, its greenhouse, a collision's rope) show on both, and
   either opens the repo's close-up. Both farms have the same rows of plots.
 - **Its barn** opens ＋ Session with the second account picked; its farmhouse lists who is on its porch;
-  its shed, its machines, which come out of it and work its fields (its truck goes up the road to town
-  between the farms, as yours does then, and its crates go to your market stall).
+  its shed, with a loader and a combine of its own parked in it, and its machines, which come out of it and
+  work its fields (its truck goes up the road to town between the farms, as yours does then, and its crates
+  go to your market stall).
 - **Animals**: the herd splits: the cows, the bull, the brown horse and the husky are yours, the alpacas,
   the donkey, the white horse and the Shiba the neighbour's, with a cow, a calf and a foal of its own
   (the young keep near their mothers). Now and then one wanders over to the other farm, by the lane's
@@ -1336,8 +1337,8 @@ the creek, a cattle bridge joins the two pastures, and a sign at its gate gives 
 
 **What it shows.** The farmstead (the black barn, the silo with your plan's week as grain and a lamp near
 the limit, the timber farmhouse and its deck, your porch, with string lights, the machine shed on the lane past the
-scarecrows), a field for each repo in the fenced grid, the yard with the henhouse, the pond (clear water over a muddy hollow, lily pads), the hammocks and the shade tree, the scarecrow
-patch, the pasture across the front, and the meadow and the forest running on all round.
+scarecrows), a field for each repo in the fenced grid, the yard with the henhouse, the pond (clear water over a muddy hollow, lily pads), the hammocks and the shade tree, the small
+scarecrow patch beside the market stall (room for four, in two staggered rows), the pasture across the front, and the meadow and the forest running on all round.
 - **Trees, bushes and rocks**: Quaternius's flat-coloured models (single models, CC0): leafy trees,
   birches and pines in the forest round the farm (pines further out), the shade tree and the orchard,
   the yard's bushes (some with berries) and mossy rocks, and stumps, logs, mushrooms and flowers under
@@ -1386,7 +1387,8 @@ patch, the pasture across the front, and the meadow and the forest running on al
   on it opens its farmer. With **Motion** off each machine stands at its work spot, its farmer in the
   seat (the combine's harvest done at once).
 - **The machine shed**: an open-fronted timber shed with a metal roof, Kenney's loader tractor and the
-  combine parked in it (the combine goes while it is out). Click it for who is out on which machine,
+  combine parked in it (the combine goes while it is out); the neighbour farm's shed has its own pair. Click it
+  for who is out on which machine,
   doing what and where.
 - **Light and seasons**: the sun crosses the sky by your clock and the windows and lamps glow at night;
   the season follows your 5-hour limit, with blossom in spring, orange leaves in autumn and snow in

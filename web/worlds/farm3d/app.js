@@ -561,7 +561,7 @@ export function start({ el, opts, prefs }) {
     if (busy.join() !== busySig) { busySig = busy.join(); animals.setBusy(model.beds.filter(b => busy.includes(b.key)).map(b => ({ x0: b.x0, y0: b.y0 }))); }
     if (!opts.still) for (const it of machineItems) if (it.moving) for (const a of animals.world()) if (a.free && inPathOf(it, a.x, a.y)) animals.aside(a.i, it);
     machineMeshes.tick(machineItems, dt, opts.still, id => shirt.get(id) ?? '#9aa0a6');
-    shed.tick(machineItems);
+    shed.tick(machineItems, i => model.beds.find(b => b.key === i.field)?.ox ?? 0); // each farm's combine from its own shed
     // the combine's cut (it reports from the moment it is wanted, so its harvest waits for it) and the rows each plough
     // has turned, to the fields' seasons
     const cut = new Map(), now = performance.now();
@@ -729,6 +729,8 @@ export function start({ el, opts, prefs }) {
     tourNow: () => tour.force(),
     touring: () => tour.touring(),
     viewNow: () => rig.view(),
+    /** The machines parked in each shed: { [ox]: { loader, combine } }. */
+    shedStock: () => shed.parked(),
     /** The sound: 'off', 'waiting' (on, before a click) or 'running'. */
     sound: () => sound.state(),
     /** Holds the season shown (live, spring, summer, autumn, winter), as the Season switch does. */

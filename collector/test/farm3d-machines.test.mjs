@@ -688,8 +688,12 @@ test("a vehicle's model that fails to load is told once, and a stand-in tractor 
   assert.equal(mm.count(), 2, 'they drive on');
   assert.equal(MODEL_OF.loader, 'tractorloader');
   const asked = [];
-  makeShed(THREE, mats, S, { stock: v => { asked.push(v); return { root: new THREE.Group() }; }, restock: () => false });
-  assert.deepEqual(asked.sort(), ['combine', 'loader']);
+  const shed = makeShed(THREE, mats, S, { stock: v => { asked.push(v); return { root: new THREE.Group() }; }, restock: () => false });
+  shed.build(400); shed.build(400, 952); shed.build(400); // yours, the neighbour's, yours again (a rebuild)
+  assert.deepEqual(asked.sort(), ['combine', 'combine', 'loader', 'loader'], 'each shed its own loader and combine, made once');
+  assert.deepEqual(Object.keys(shed.parked()).sort(), ['0', '952']);
+  shed.drop(952);
+  assert.deepEqual(shed.parked(), { 0: { loader: true, combine: true } }, "the neighbour's shed and its stock go with it");
 });
 
 test('the camera zooms one step closer than before, for the bigger farm', async () => {

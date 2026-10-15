@@ -501,6 +501,7 @@ try {
       await sleep(1200);
       const s = await statsOf(chrome), land = JSON.parse(await chrome.inFrame('/world/farm3d/', 'JSON.stringify(window.__farm3d.land())'));
       const theirs = JSON.parse(await chrome.inFrame('/world/farm3d/', "JSON.stringify(['barn2', 'house2', 'shed2'].filter(k => !window.__farm3d.buildingAt(k)?.visible))")); // its buildings, in view
+      const parked = JSON.parse(await chrome.inFrame('/world/farm3d/', 'JSON.stringify(window.__farm3d.shedStock())')); // a loader and a combine in each shed
       // who lives where: the second account's on its farm (where each is going), the first's on yours
       const homes = JSON.parse(await chrome.inFrame('/world/farm3d/', "JSON.stringify(['p1', 'p2', 'n1', 'n2', 'n3', 'n4', 'n5'].map(id => [id, window.__farm3d.farmerFarm(id), window.__farm3d.posOf(id)?.tx ?? null]))"));
       const astray = homes.filter(([id, farm, tx]) => farm !== (id.startsWith('n') && id !== 'n5' ? 1 : 0) || tx === null || (farm ? tx < 952 : tx > 856)).map(([id]) => id);
@@ -568,6 +569,7 @@ try {
         s && s.calls > 400 && `${s.calls} draw calls (400 at most)`,
         JSON.stringify(land) !== JSON.stringify({ w: 1808, ox: 952, neighbour: true }) && `the land ${JSON.stringify(land)}`,
         theirs.length && `the neighbour's ${theirs.join(', ')} not in view`,
+        JSON.stringify(parked) !== JSON.stringify({ 0: { loader: true, combine: true }, 952: { loader: true, combine: true } }) && `the sheds' parked machines ${JSON.stringify(parked)} (a loader and a combine in each)`,
         astray.length && `on the wrong farm: ${astray.join(', ')} (${JSON.stringify(homes)})`,
         gateText !== 'home' && `the gate's sign says "${gateText}", not "home"`,
         crowded && "the gate's name covers the neighbour's silo tag",
@@ -578,7 +580,7 @@ try {
         chrome.errors.length > before && `script errors: ${oneLine(chrome.errors[before]).slice(0, 160)}`,
       ].filter(Boolean);
       if (why.length) bad(`the neighbour farm: ${why.join('; ')}`);
-      else console.log(`  ✓ the neighbour farm: both farms drawn (the land ${land.w} px across), its barn, farmhouse and shed in view, its sign "home", its barn starts a session on zeta, its sprayer works its field (${sprayCalls} draw calls), ${ANIMALS + 3} animals on both farms (an alpaca crossed to yours by a bridge), ${visit?.guest} visited ${visit?.host} over the bridge and they talked, ${s.drawn} farmers each on its account's farm, ${s.calls} draw calls`);
+      else console.log(`  ✓ the neighbour farm: both farms drawn (the land ${land.w} px across), its barn, farmhouse and shed in view (a loader and a combine parked in each shed), its sign "home", its barn starts a session on zeta, its sprayer works its field (${sprayCalls} draw calls), ${ANIMALS + 3} animals on both farms (an alpaca crossed to yours by a bridge), ${visit?.guest} visited ${visit?.host} over the bridge and they talked, ${s.drawn} farmers each on its account's farm, ${s.calls} draw calls`);
       // the second account gone: one farm again, the 18 animals, everyone home
       await chrome.js(`window.TrackerFarm.update(${JSON.stringify({ ...NB, accounts: NB.accounts.slice(0, 1) })})`);
       await sleep(400); // the neighbour's farmers are on your farm at once: none walks across your fields from a farm that's gone
