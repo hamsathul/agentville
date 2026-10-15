@@ -553,7 +553,8 @@ export async function startCollector({ root, system = null, claudeDir = join(hom
         const slug = cfg.deployRepos[r.path] ?? await githubSlugOf(r.path);
         if (!slug) { prs.delete(r.path); continue; }
         asked++;
-        prs.set(r.path, await pullRequestsOf(slug));
+        const got = await pullRequestsOf(slug);
+        prs.set(r.path, { ...got, recent: got.recent ?? prs.get(r.path)?.recent ?? [] }); // a failed 90-day query keeps the last good one (the 3D farm's orchard)
       } catch (err) { failed = err; }
     }
     if (failed) markFail('prs', failed); else if (asked) markOk('prs');

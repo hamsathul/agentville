@@ -152,7 +152,7 @@ test('a private scene: no words and no paths; names, states, tools and numbers s
   assert.match(api.project, /^p\d+$/);
   assert.equal(api.project, web.project);
   assert.deepEqual(api.deploy, { state: 'failed', label: null, detail: null, url: null, source: null });
-  assert.deepEqual(api.prs, { open: [{ number: 4, checks: 'ok', draft: false }], merged: [] });
+  assert.deepEqual(api.prs, { open: [{ number: 4, checks: 'ok', draft: false }], merged: [], recent: [] }); // recent: the last 90 days' merged (numbers and times), the 3D farm's orchard
   assert.equal(api.onMain, false);
   assert.equal(JSON.parse(JSON.stringify(privateScene(s))).repos[0].key, api.key, 'the same stand-in next time');
 });

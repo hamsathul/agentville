@@ -229,7 +229,7 @@
         ...r, key: standIn(r.key, 'r'), main: standIn(r.main, 'r'), branch: null, project: standIn(r.project, 'p'),
         name: `repo ${num(standIn(r.key, 'r'))}`, projectName: r.project ? `project ${num(standIn(r.project, 'p'))}` : null,
         deploy: r.deploy ? { state: r.deploy.state, label: null, detail: null, url: null, source: null, ...(r.deploy.run ? { run: true } : {}) } : null,
-        prs: r.prs ? { open: (r.prs.open ?? []).map(p => ({ number: p.number, checks: p.checks, draft: p.draft })), merged: (r.prs.merged ?? []).map(p => ({ number: p.number, at: p.at })) } : null,
+        prs: r.prs ? { open: (r.prs.open ?? []).map(p => ({ number: p.number, checks: p.checks, draft: p.draft })), merged: (r.prs.merged ?? []).map(p => ({ number: p.number, at: p.at })), recent: (r.prs.recent ?? []).map(p => ({ number: p.number, at: p.at })) } : null,
       })),
       agents: s.agents.map(a => ({
         ...a, name: labels.get(a.id), cwd: null, repo: standIn(a.repo, 'r'), summary: '', ask: '', question: null, reply: '', said: '', service: null, account: accountKey(a.account),

@@ -50,15 +50,22 @@ export function checksOf(rollup) {
 }
 
 const clipTitle = t => (typeof t === 'string' ? t.slice(0, 120) : '');
-/** A repo's open pull requests (with their checks) and the last few merged: { open, merged }. */
-export async function pullRequests(repo, runner = run) {
+/**
+ * A repo's open pull requests (with their checks), the last few merged, and the merged of the last 90 days (numbers and
+ * times, newest first, 200 at most; null when that query fails): { open, merged, recent }. The 3D farm's orchard.
+ */
+export async function pullRequests(repo, runner = run, now = Date.now()) {
   const res = await runner('gh', ['pr', 'list', '-R', repo, '--state', 'open', '--limit', '10', '--json', 'number,title,url,isDraft,headRefName,statusCheckRollup'], { timeoutMs: 20000 });
   if (res.code !== 0) throw new Error(`gh pr list failed for ${repo}: ${res.stderr.trim().slice(0, 200)}`);
   const merged = await runner('gh', ['pr', 'list', '-R', repo, '--state', 'merged', '--limit', '3', '--json', 'number,title,url,mergedAt'], { timeoutMs: 20000 });
   const list = text => { try { const v = JSON.parse(text); return Array.isArray(v) ? v : []; } catch { return []; } };
+  const since = new Date(now - 90 * 86_400_000).toISOString().slice(0, 10);
+  const recentRes = await runner('gh', ['pr', 'list', '-R', repo, '--state', 'merged', '--search', `merged:>=${since}`, '--limit', '200', '--json', 'number,mergedAt'], { timeoutMs: 20000 });
+  const recent = recentRes.code === 0 ? list(recentRes.stdout).map(p => ({ number: p.number, at: Date.parse(p.mergedAt) || 0 })).filter(p => Number.isInteger(p.number) && p.at).sort((a, b) => b.at - a.at) : null;
   return {
     open: list(res.stdout).map(p => ({ number: p.number, title: clipTitle(p.title), url: typeof p.url === 'string' ? p.url : undefined, draft: p.isDraft === true, branch: typeof p.headRefName === 'string' ? p.headRefName : undefined, checks: checksOf(p.statusCheckRollup) })),
     merged: merged.code === 0 ? list(merged.stdout).map(p => ({ number: p.number, title: clipTitle(p.title), url: typeof p.url === 'string' ? p.url : undefined, at: Date.parse(p.mergedAt) || undefined })) : [],
+    recent,
   };
 }
 

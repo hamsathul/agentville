@@ -267,7 +267,7 @@ for deploys while its deploy runs.
 - `project`: an id for grouping repos that sit side by side in one folder (that folder's path, with forward slashes also on Windows, drive
   first: `C:/Users/me/shop`; in a private scene a stand-in, `p1`, `p2`…), or `null`; `projectName`: its label. A repo's `key` and `main`
   are native paths (`C:\Users\me\shop\api` on Windows): take a folder's name from the last part after either separator.
-- `prs`: its pull requests, from `gh`, or `null`: `{ open: [{ number, title, url, draft, branch, checks }], merged: [{ number, title, url, at }] }`,
+- `prs`: its pull requests, from `gh`, or `null`: `{ open: [{ number, title, url, draft, branch, checks }], merged: [{ number, title, url, at }], recent: [{ number, at }] }` (`recent`: those merged in the last 90 days, newest first, 200 at most: the 3D farm's orchard),
   with `checks` `ok`, `failed`, `running` or `null`.
 
 **Each agent** (`agents`)
@@ -1423,7 +1423,7 @@ whole scene (`private: false`). On the test page the tour's stop decides instead
   open) and `name` is `repo N` to match (`r3` is `repo 3`); `project` is a stand-in (`p1`, …) and
   `projectName` is `project N` to match (`null` when there is no project); `branch` is `null` (`onMain` stays);
   `deploy` is `{ state, label: null, detail: null, url: null, source: null }` (and `run`, if there);
-  `prs` is `{ open: [{ number, checks, draft }], merged: [{ number, at }] }`.
+  `prs` is `{ open: [{ number, checks, draft }], merged: [{ number, at }], recent: [{ number, at }] }`.
 - `subagents[].label` and `mail[].text` are `''`; `chrome.errors` is `[]`.
 
 Why numbers and no names: a world can reach a host it names (see "The gaps"), so what a private

@@ -74,3 +74,18 @@ test('pull requests: the open ones with their checks, and the last merged', asyn
   assert.ok(calls.every(c => c.includes('-R o/r')));
   await assert.rejects(pullRequests('o/r', async () => ({ code: 1, stdout: '', stderr: 'not logged in' })), /gh pr list failed/);
 });
+
+test("pull requests: the merged of the last 90 days, newest first; null when that query fails", async () => {
+  const now = Date.parse('2026-10-15T12:00:00Z'), calls = [];
+  const runner = async (cmd, args) => {
+    calls.push(args.join(' '));
+    if (args.includes('open')) return { code: 0, stdout: '[]', stderr: '' };
+    if (args.includes('--search')) return { code: 0, stdout: JSON.stringify([{ number: 4, mergedAt: '2026-10-01T10:00:00Z' }, { number: 7, mergedAt: '2026-10-14T10:00:00Z' }]), stderr: '' };
+    return { code: 0, stdout: '[]', stderr: '' };
+  };
+  const prs = await pullRequests('o/r', runner, now);
+  assert.deepEqual(prs.recent, [{ number: 7, at: Date.parse('2026-10-14T10:00:00Z') }, { number: 4, at: Date.parse('2026-10-01T10:00:00Z') }]);
+  assert.ok(calls.some(c => c.includes('--search merged:>=2026-07-17') && c.includes('--limit 200')), calls.join('\n'));
+  const failing = async (cmd, args) => (args.includes('--search') ? { code: 1, stdout: '', stderr: 'rate limit' } : { code: 0, stdout: '[]', stderr: '' });
+  assert.equal((await pullRequests('o/r', failing, now)).recent, null);
+});
