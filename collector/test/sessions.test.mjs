@@ -99,7 +99,8 @@ test('the command cds into the folder (quoted) and starts or resumes claude, the
   assert.throws(() => claudeCommand('/code/app', 'x; rm -rf ~'));
 });
 
-test("the window closes when claude exits cleanly, and stays open with a note when it fails or the folder can't be entered", () => {
+// the line runs in a Mac (or Linux) terminal's shell: Windows starts a session from claudeLaunch, and has no /bin/sh
+test("the window closes when claude exits cleanly, and stays open with a note when it fails or the folder can't be entered", { skip: process.platform === 'win32' ? 'a Mac and Linux shell line' : false }, () => {
   assert.equal(STAY_OPEN, " && exit; echo; echo 'Agentville: Claude Code stopped or could not start. The reason is above; this window stays open so you can read it.'");
   const dir = mkdtempSync(join(tmpdir(), 'tracker-window-'));
   const bin = join(dir, 'bin');
