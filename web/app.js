@@ -716,8 +716,17 @@ async function changeHeld(agentId, change) {
   if (!r.ok) notice(`Waiting messages: ${r.error}`);
   const got = heldCache.get(agentId);
   if (got) got.rev = 0; // read them again with the next snapshot
-  render();
+  renderKeepingFocus(); // the answer can come after you've gone on typing in a box
   return r;
+}
+/** Draws the page now, then puts you back in the box you were typing in (drawn again), the cursor where it was. */
+function renderKeepingFocus() {
+  const el = isInUse() ? document.activeElement : null, id = el?.id, at = [el?.selectionStart, el?.selectionEnd];
+  render();
+  const again = id ? document.getElementById(id) : null;
+  if (!again || again === document.activeElement) return;
+  again.focus();
+  try { if (at[0] != null) again.setSelectionRange(at[0], at[1]); } catch { /* not a text box */ }
 }
 document.addEventListener('change', e => {
   const t = e.target;

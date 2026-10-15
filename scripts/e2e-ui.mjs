@@ -456,12 +456,14 @@ try {
   // ui-asker waits on you mid-turn: what you send waits for its turn to end, under the box; ⚡ sends one at once
   const sendHeldNow = async () => { await until("!!document.querySelector('#center-body [data-held-now]')"); await js("document.querySelector('#center-body [data-held-now]').click()"); };
   check(await until("/Waiting to send \\(1\\)/.test(document.getElementById('center-body').textContent) && /First line/.test(document.querySelector('#center-body .held-text')?.textContent ?? '')") && received.length === 0, 'Enter while it is mid-turn holds the message under the box: Waiting to send');
-  await sendHeldNow();
+  // ⚡ Send now, and straight back into the message box: its answer comes after, and draws the pane again
+  await until("!!document.querySelector('#center-body [data-held-now]')");
+  await js("document.querySelector('#center-body [data-held-now]').click(); document.getElementById('msg-text').focus(); true");
   for (let i = 0; i < 40 && !received.length; i++) await sleep(150);
   check(received[0] === 'First line\nsecond line', `⚡ Send now sends it (got ${JSON.stringify(received)})`);
   check(await until("document.getElementById('msg-text')?.value === ''"), 'the message box clears once it is sent');
-  // ⚡ Send now draws the pane again when its answer comes (its button disabled till then): not between the focus and the ↑ below
-  await until("![...document.querySelectorAll('#center-body [data-held-now]')].some(b => b.disabled)");
+  await until("![...document.querySelectorAll('#center-body [data-held-now]')].some(b => b.disabled)"); // its answer is back: the pane drawn again
+  check(await js("document.activeElement?.id === 'msg-text'"), `Send now's answer, drawn after you went back into the message box, leaves you in it (focus on ${JSON.stringify(await js("document.activeElement?.id || document.activeElement?.tagName"))})`);
   const arrow = async (name, code) => { for (const type of ['keyDown', 'keyUp']) await send('Input.dispatchKeyEvent', { type, key: name, code: name, windowsVirtualKeyCode: code }); };
   await js("document.getElementById('msg-text').focus()"); // sending leaves the box (so the page can update): back in it
   await arrow('ArrowUp', 38);

@@ -360,8 +360,8 @@ These need the mod in that session.
 - **Messages to a working session wait.** Sent while it is busy (working, or waiting on you in the
   middle of a turn), a message goes into **Waiting to send** under the box instead, until the turn
   ends. There, each one has **✕** (don't send it), **Edit** (change it in place) and **⚡ Send now**
-  (send it at once: Claude Code hands it to Claude at its next step, so it can steer the turn).
-  When the turn ends, the first one goes out, and the next waits until that turn ends too; tick
+  (send it at once: Claude Code hands it to Claude at its next step, so it can steer the turn; you
+  can go on typing in a box meanwhile, and stay in it when the answer comes). When the turn ends, the first one goes out, and the next waits until that turn ends too; tick
   **Send together** to send all of them as one message instead. A session that is gone for two
   minutes with messages still waiting gets them as notes on it (a very long one is cut to a note's
   4,000 characters). (Prompts you type in
