@@ -26,6 +26,7 @@ import { fenceOf } from './fence.js';
 import { makeLife } from './build/life.js';
 import { SCARE_PX, beesFor, createCrows } from './life.js';
 import { cloudsFor, dimFor, headlightsOn, smokeFarms } from './mood.js';
+import { createSnowballs, leafPilesOf } from './seasonplay.js';
 import { makeWeather } from './build/weather.js';
 import { makeBeds } from './build/beds.js';
 import { makeFigures } from './build/figurine.js';
@@ -114,7 +115,7 @@ export function start({ el, opts, prefs }) {
   const shapes = makeShapes(THREE, mats), buildings = makeBuildings(THREE, mats, shapes);
   const models = makeModels(THREE), crops = makeCrops(THREE, mats, { load: kind => models.parts(kind), onLoad: (kind, err) => { if (err) report(err, `crops (${kind})`); dirty = true; } }), beds = makeBeds(THREE, mats, shapes, makeWeather(THREE, mats, shapes), crops);
   let farmRoam = null, farmRoamKey = ''; // the walkable farm (roam.js), for a farmer's errand to an animal and the animals' ways
-  const farmers = makeFarmers(THREE, makeFigures(THREE, mats, shapes), shapes, { route: (a, b) => farmRoam?.route(a, b, 4) ?? null }), animals = makeAnimals(THREE, mats, shapes), weather = makeWeather(THREE, mats, shapes);
+  const farmers = makeFarmers(THREE, makeFigures(THREE, mats, shapes), shapes, { route: (a, b) => farmRoam?.route(a, b, 4) ?? null }), animals = makeAnimals(THREE, mats, shapes, { onFx: (kind, x, y) => { if (kind === 'leaves') life.leaves(x, y); } }), weather = makeWeather(THREE, mats, shapes);
   const nature = makeNature(THREE, shapes), talk = createTalk(), visits = createVisits(); // visits: between the farms, with a neighbour's
   animals.setPeople(() => (shownModel()?.farmers ?? []).map(f => farmers.posOf(f.id)).filter(Boolean).map(p => [p.x, p.y, 6])); // the places they pick keep clear of the farmers
   const flock = makeFlock(THREE, mats, shapes, { copy: animals.copy }); // subagents: hens, the Explore dog, the henhouse's eggs
@@ -142,6 +143,8 @@ export function start({ el, opts, prefs }) {
   }
   const fence = makeFence(THREE, mats, shapes); // agents' task lists, along their fields
   const life = makeLife(THREE, mats, shapes), crows = createCrows(); // fireflies, bees, crows (life.js)
+  const snowballs = createSnowballs(); // winter's snowball fights (seasonplay.js)
+  let leafPiles = [], fightIds = new Set(), thrown = new Set(), landed = new Set(), balls = []; // autumn's piles; the fight under way: who, which throws are off and down, the balls in the air
   scene3.add(fence.group, life.group);
   scene3.add(terrain.group, buildings.group, beds.group, crops.group, farmers.group, animals.group, nature.group, flock.group, cartMeshes.group, pigeons.group, machineMeshes.group, shed.group);
   /** The ball trees, bushes and rocks stand in until the plants' models are drawn. */
@@ -369,8 +372,10 @@ export function start({ el, opts, prefs }) {
     if (key === plantsKey) return;
     plantsKey = key;
     nature.build(model.ground, shownSeason(), trees).then(done => { if (done) { standIns(); dirty = true; } }).catch(err => report(err, 'plants')); // the farm draws first
-    const roamKey = `${model.ground.rows}|${model.ground.H}|${model.land.w}|${treesKey}`; // where things stand: not the season
-    if (roamKey !== farmRoamKey) { farmRoamKey = roamKey; farmRoam = roamOf(model.ground, { orchard: trees }); }
+    leafPiles = shownSeason() === 'autumn' ? leafPilesOf(model.ground) : []; // the dogs dive into them
+    animals.setPiles(leafPiles);
+    const roamKey = `${model.ground.rows}|${model.ground.H}|${model.land.w}|${treesKey}|${leafPiles.length}`; // where things stand: not the season (but autumn's piles)
+    if (roamKey !== farmRoamKey) { farmRoamKey = roamKey; farmRoam = roamOf(model.ground, { orchard: trees, piles: leafPiles }); }
     animals.setGround(model.ground, farmRoam); // one roam for both: its route grids built once
   }
   /** The farmstead and the yard: rebuilt when the rows, the season or the silos change. */
@@ -627,7 +632,25 @@ export function start({ el, opts, prefs }) {
       crows.update(looks, model.beds, performance.now());
       const near = ([x, y]) => (shownModel().farmers.some(f => { const p = farmers.posOf(f.id); return p && Math.hypot(p.x - x, p.y - y) < SCARE_PX; }) || machineItems.some(i => Math.hypot(i.x - x, i.y - y) < SCARE_PX));
       const smoke = smokeFarms(shownModel().farmers).map(farm => flues[farm]).filter(Boolean);
-      if (life.tick(t, dt, { night, season: shownSeason(), bees: beesFor(model.beds, looks, night, shownSeason()), flocks: crows.flocks(near), clouds: cloudsFor(waitingN), dim: dimFor(waitingN), smoke, machines: machineItems, headlights: headlightsOn(night) }) && !opts.still) dirty = true;
+      if (life.tick(t, dt, { night, season: shownSeason(), bees: beesFor(model.beds, looks, night, shownSeason()), flocks: crows.flocks(near), clouds: cloudsFor(waitingN), dim: dimFor(waitingN), smoke, machines: machineItems, headlights: headlightsOn(night), piles: leafPiles, balls }) && !opts.still) dirty = true;
+    });
+    if (model) piece('snowballs', () => { // winter: now and then two idle farmers throw snowballs at each other
+      const nowMs = performance.now(), fs = shownModel().farmers.filter(f => !f.scarecrow).map(f => ({ id: f.id, farm: f.farm ?? 0, state: f.state, nap: f.nap, errand: farmers.onErrand(f.id) && !fightIds.has(f.id), followed: f.id === following, at: f.at }));
+      const r = snowballs.tick({ now: nowMs, still: opts.still, winter: shownSeason() === 'winter', farmers: fs });
+      if (r.start) { // the two turn to each other where they stand
+        fightIds = new Set([r.start.a, r.start.b]); thrown = new Set(); landed = new Set();
+        for (const [me, other] of [[r.start.a, r.start.b], [r.start.b, r.start.a]]) { const p = farmers.posOf(me), o = farmers.posOf(other); if (p && o) farmers.errand(me, [p.x, p.y], { face: [o.x, o.y], pose: 'idle', timeout: 60 }); }
+      }
+      if (r.end) { for (const id of fightIds) farmers.endErrand(id); fightIds = new Set(); }
+      const fight = snowballs.fight();
+      balls = [];
+      if (fight) fight.throws.forEach((th, k) => {
+        const u = (nowMs - th.at) / 800;
+        if (u < 0) return;
+        if (!thrown.has(k)) { thrown.add(k); farmers.setPose(th.from, 'wave'); if (k === 1 || k === 4) overlay.pop(() => (h => h && { ...h, y: h.y + 0.5 })(farmers.headOf(th.from)), ['Got you!', 'Missed me!', 'Ha!', 'Cold!'][(k + fight.throws.length) % 4], 'good'); }
+        if (u <= 1) { const a = farmers.headOf(th.from), b = farmers.headOf(th.to); if (a && b) balls.push({ a, b, u }); }
+        else if (!landed.has(k)) { landed.add(k); const b = farmers.headOf(th.to); if (b) life.puff(b); farmers.setPose(th.from, 'idle'); }
+      });
     });
     if (model) piece('tour', () => { // left alone, the camera goes round the farm; any input puts the view back
       const r = tour.tick(performance.now(), { on: tourOn, still: opts.still, shown: !document.hidden && el.clientWidth > 0, dialog: overlay.dialogOpen(), world: tourWorld() });
@@ -683,6 +706,11 @@ export function start({ el, opts, prefs }) {
     tourNow: () => tour.force(),
     touring: () => tour.touring(),
     viewNow: () => rig.view(),
+    /** Holds the season shown (live, spring, summer, autumn, winter), as the Season switch does. */
+    holdSeason: m => { if (!SEASON_MODES.includes(m)) return false; seasonMode = m; prefs.set('season', m); rebuildAll(); dirty = true; return true; },
+    /** A snowball fight as soon as there is a pair (winter); a dog diving into a leaf pile now (autumn): true if one set off. */
+    snowballNow: () => snowballs.force(),
+    pileNow: () => { const w = animals.world().find(x => (x.kind === 'husky' || x.kind === 'shiba') && x.free); return w ? animals.habitNow(w.i, 'pile') : false; },
     /** The small life out now: fireflies, bees, crows (and, as they come, clouds, smoke, headlights, piles, leaves, snowballs). */
     life: () => life.count(),
     /** The task fence: how many stakes, flags and lanterns. */

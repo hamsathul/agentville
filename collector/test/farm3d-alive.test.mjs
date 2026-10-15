@@ -12,6 +12,8 @@ import { createTour, TOUR_IDLE_MS, SHOT_MS } from '../../web/worlds/farm3d/tour.
 import { makeCameraRig } from '../../web/worlds/farm3d/camera.js';
 import { beesFor, createCrows, firefliesOn, fireflyRects } from '../../web/worlds/farm3d/life.js';
 import { cloudsFor, dimFor, headlightsOn, smokeFarms } from '../../web/worlds/farm3d/mood.js';
+import { createSnowballs, leafPilesOf, SNOW_FIRST_MS, SNOW_GAP_MS } from '../../web/worlds/farm3d/seasonplay.js';
+import { habitsOf, stepsFor } from '../../web/worlds/farm3d/antics.js';
 import { PASTURE_GATES, W, pastureOf } from '../../web/worlds/farm3d/layout.js';
 
 const M = makeModel(kit);
@@ -195,4 +197,49 @@ test('mood: clouds by how many wait on you, the sky dims at three; smoke from ea
   assert.deepEqual([headlightsOn(0.6), headlightsOn(0.4)], [true, false]);
   const m = model(two([agent('w', { state: 'waiting', now: null, account: 'zeta' }), agent('i', { state: 'idle', now: null })], []));
   assert.deepEqual(smokeFarms(m.farmers), [1], "the neighbour's porch has someone, yours doesn't");
+});
+
+const idleF = (id, farm, x) => ({ id, farm, state: 'idle', nap: false, errand: false, followed: false, at: [x, 520] });
+test('snowball fights: winter only, after a minute, two idle farmers on one farm, 6 to 8 throws in turn, 3 minutes apart', () => {
+  const sb = createSnowballs({ rand: () => 0 }), fs = [idleF('a', 0, 96), idleF('b', 0, 128), idleF('c', 1, 1048)];
+  assert.deepEqual(sb.tick({ now: 0, still: false, winter: true, farmers: fs }), {});
+  assert.deepEqual(sb.tick({ now: SNOW_FIRST_MS, still: false, winter: false, farmers: fs }), {}, 'not in summer');
+  const r = sb.tick({ now: SNOW_FIRST_MS, still: false, winter: true, farmers: fs });
+  assert.deepEqual([r.start.a, r.start.b].sort(), ['a', 'b'], 'the two on the same farm');
+  const f = sb.fight();
+  assert.ok(f.throws.length >= 6 && f.throws.length <= 8);
+  f.throws.forEach((t, k) => { assert.equal(t.from, k % 2 ? f.b : f.a); assert.equal(t.at, SNOW_FIRST_MS + 500 + k * 2000); });
+  assert.deepEqual(sb.tick({ now: SNOW_FIRST_MS + 1000, still: false, winter: true, farmers: fs.map(x => (x.id === 'a' ? { ...x, state: 'working' } : x)) }), { end: true });
+  assert.equal(sb.fight(), null);
+  assert.deepEqual(sb.tick({ now: SNOW_FIRST_MS + SNOW_GAP_MS - 1, still: false, winter: true, farmers: fs }), {});
+  assert.ok(sb.tick({ now: SNOW_FIRST_MS + SNOW_GAP_MS, still: false, winter: true, farmers: fs }).start);
+});
+test('snowball fights end when winter ends, Motion goes off, or the throws are done; none without a pair', () => {
+  const fs = [idleF('a', 0, 96), idleF('b', 0, 128)];
+  for (const [label, ctx] of [['winter ends', { still: false, winter: false }], ['Motion off', { still: true, winter: true }]]) {
+    const sb = createSnowballs({ rand: () => 0 });
+    sb.tick({ now: 0, still: false, winter: true, farmers: fs });
+    sb.tick({ now: SNOW_FIRST_MS, still: false, winter: true, farmers: fs });
+    assert.deepEqual(sb.tick({ now: SNOW_FIRST_MS + 10, farmers: fs, ...ctx }), { end: true }, label);
+  }
+  const sb = createSnowballs({ rand: () => 0 });
+  sb.tick({ now: 0, still: false, winter: true, farmers: fs });
+  sb.tick({ now: SNOW_FIRST_MS, still: false, winter: true, farmers: fs });
+  const lastThrow = sb.fight().throws.at(-1).at;
+  assert.deepEqual(sb.tick({ now: lastThrow + 1600, still: false, winter: true, farmers: fs }), { end: true }, 'done');
+  const none = createSnowballs({ rand: () => 0 });
+  none.tick({ now: 0, still: false, winter: true, farmers: [] });
+  assert.deepEqual(none.tick({ now: SNOW_FIRST_MS * 2, still: false, winter: true, farmers: [idleF('a', 0, 96), idleF('c', 1, 1048), { ...idleF('d', 0, 50), nap: true }] }), {}, 'no two free on one farm');
+});
+test('leaf piles: three in each yard, on open ground; the dogs dive into one, only with piles', () => {
+  const m = model(two([], [])), piles = leafPilesOf(m.ground), R = roamOf(m.ground);
+  assert.equal(piles.length, 6);
+  assert.equal(leafPilesOf(model(snap([], [])).ground).length, 3, 'one farm: three');
+  for (const [x, y] of piles) assert.ok(R.inside(x < W ? 'yard' : 'yard@n', x, y, 8), `${x},${y} in its yard`);
+  assert.equal(habitsOf('husky', 'paws', { piles: 0 }).pile ?? 0, 0);
+  assert.ok(habitsOf('husky', 'paws', { piles: 3 }).pile > 0);
+  assert.equal(habitsOf('cow', 'hooves', { piles: 3 }).pile ?? 0, 0, 'dogs only');
+  assert.ok(stepsFor('pile', { kind: 'husky', family: 'paws' }, { rand: () => 0.5 }).some(st => st.fx === 'leaves'));
+  assert.ok(R.inside('farm', piles[0][0], piles[0][1], 2), 'without them given, open ground');
+  assert.ok(!roamOf(m.ground, { piles }).inside('farm', piles[0][0], piles[0][1], 2), 'given, in the way');
 });

@@ -660,6 +660,26 @@ try {
       if (!(mood?.headlights >= 2)) why.push(`no headlights on a machine at night (${mood?.headlights})`);
       if (moodCalls > 500) why.push(`${moodCalls} draw calls with the mood and machines out (500 at most)`);
       if (mood?.clouds === 6 && mood?.smoke > 0 && mood?.headlights >= 2) got.push(`6 clouds, chimney smoke, ${mood.headlights / 2} machine(s) with headlights at night (${moodCalls} draw calls)`);
+      // seasonal play: in winter two idle farmers throw snowballs; in autumn three leaf piles, and a dog dives into one
+      await open(chrome, 'everyone');
+      await sleep(600);
+      const idle2 = { ...base, agents: base.agents.map(a => (a.id === 'a7' ? { ...a, state: 'idle', now: null } : a)) };
+      await chrome.js(`window.TrackerFarm.update(${JSON.stringify(idle2)})`);
+      await chrome.inFrame('/world/farm3d/', "window.__farm3d.holdSeason('winter'); window.__farm3d.snowballNow(); true");
+      let snow = 0;
+      for (const end = Date.now() + 12_000; Date.now() < end && !snow; await sleep(150)) snow = (await F('JSON.stringify(window.__farm3d.life())')).snowballs;
+      if (!snow) why.push('no snowball in the air in winter with two idle farmers');
+      else got.push('a snowball fight in winter');
+      await chrome.inFrame('/world/farm3d/', "window.__farm3d.holdSeason('autumn'); true");
+      await sleep(1200);
+      const autumn = await F('JSON.stringify(window.__farm3d.life())');
+      let dived = false, leafs = 0;
+      for (const end = Date.now() + 8000; Date.now() < end && !dived; await sleep(500)) dived = await F('JSON.stringify(window.__farm3d.pileNow())');
+      for (const end = Date.now() + 25_000; Date.now() < end && !leafs; await sleep(200)) leafs = (await F('JSON.stringify(window.__farm3d.life())')).leaves;
+      if (autumn.piles !== 3) why.push(`${autumn.piles} leaf piles in autumn, not 3`);
+      else if (!dived || !leafs) why.push(`no dog dived into a leaf pile (set off ${dived}, leaves ${leafs})`);
+      else got.push('3 leaf piles in autumn, a dog dived in');
+      await chrome.inFrame('/world/farm3d/', "window.__farm3d.holdSeason('live'); true");
       if (chrome.errors.length > before) why.push(`script errors: ${oneLine(chrome.errors[before]).slice(0, 160)}`);
       if (why.length) bad(`alive: ${why.join('; ')}`);
       else console.log(`  ✓ alive: ${got.join('; ')}; ${st.calls} draw calls`);

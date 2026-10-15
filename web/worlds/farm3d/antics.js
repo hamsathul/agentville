@@ -68,7 +68,8 @@ export function menuFor(kind, family) {
   return ['pet', 'talk', 'play', 'feed', 'run', 'leap', 'hop', ...own, 'sniff', 'look', 'dead'];
 }
 /** Its habits, each with how often it picks it. Never playing dead (only when asked), never fetching (it needs you). */
-export function habitsOf(kind, family) {
+/** Its habits, each with how often it picks it (`piles`: how many leaf piles lie about: the dogs dive into them). */
+export function habitsOf(kind, family, { piles = 0 } = {}) {
   if (family === 'frog') return { hop: 3, snap: 2, dive: 1 };
   if (family === 'fish') return { leap: 1 };
   const h = { look: 3, sniff: 2, hop: 1, fly: 1, run: 1 };
@@ -77,15 +78,15 @@ export function habitsOf(kind, family) {
   if (kind === 'donkey') h.kick = 2;
   if (['horse', 'whitehorse', 'cow'].includes(kind)) h.kick = 0.5;
   if (['bull', 'stag'].includes(kind)) h.headbutt = 1;
-  if (DOGS.includes(kind)) Object.assign(h, { run: 3, hop: 2, pounce: 1.5 });
+  if (DOGS.includes(kind)) Object.assign(h, { run: 3, hop: 2, pounce: 1.5, ...(piles > 0 ? { pile: 2 } : {}) });
   if (kind === 'fox') Object.assign(h, { pounce: 2, sniff: 3 });
   if (kind === 'wolf') Object.assign(h, { look: 2, pounce: 0.5 });
   if (family === 'paws') h.feed = 0.5;
   return h;
 }
-function pickHabit(a, rand) {
-  const h = habitsOf(a.kind, a.family), total = Object.values(h).reduce((n, w) => n + w, 0);
-  let r = rand() * total;
+function pickHabit(a, env) {
+  const h = habitsOf(a.kind, a.family, { piles: env.piles?.length ?? 0 }), total = Object.values(h).reduce((n, w) => n + w, 0);
+  let r = env.rand() * total;
   for (const [act, w] of Object.entries(h)) if ((r -= w) < 0) return act;
   return 'look';
 }
@@ -108,6 +109,7 @@ export function stepsFor(act, a, env, { habit = false } = {}) {
     case 'kick': return [{ part: 'kick' }];
     case 'headbutt': return [{ part: 'headbutt' }];
     case 'pounce': return [{ part: 'headlow', secs: 1.2 }, { part: 'pounce' }];
+    case 'pile': return [{ part: 'run', to: 'pile' }, { part: 'leap', to: 'pileIn', jump: 0.8, secs: 0.8 }, { fx: 'leaves' }, { part: 'idle', secs: 1.2 }, { part: 'run', to: 'near' }]; // into a leaf pile (autumn)
     case 'fetch': return [{ stick: 'throw' }, { part: 'idle', secs: 0.6 }, { part: 'run', to: 'stick' }, { part: 'headlow', secs: 0.5 }, { stick: 'pick' }, { part: 'run', to: 'home' }, { stick: 'drop' }, { part: 'hop' }];
     case 'sniff': return [{ part: 'headlow', secs: 4 }];
     case 'look': return [{ part: 'look' }];
@@ -308,6 +310,7 @@ function begin(a, env) {
     if (s.stick === 'throw') { a.stick = { at: env.spot(groundFor(a), [a.x, a.y], 60, reachOf(a)), from: [a.x, a.y], held: false, t: 0 }; continue; }
     if (s.stick === 'pick') { if (a.stick) a.stick.held = true; continue; }
     if (s.stick === 'drop') { a.stick = null; continue; }
+    if (s.fx) { env.fx?.(a, s.fx); continue; } // something to see where it is (the leaves bursting)
     if (s.face) { const [fx, fy] = Array.isArray(s.face) ? s.face : [s.face.x, s.face.y]; if (Math.hypot(fx - a.x, fy - a.y) > 0.5) a.face = Math.atan2(fx - a.x, fy - a.y); continue; } // turns to it at once
     if (s.flee) s.to = awayFrom(a, s.flee, s.far ?? 60, env); // away from the other, the clearest way
     if (s.meet) { const dx = a.x - s.meet.x, dy = a.y - s.meet.y, d = Math.hypot(dx, dy) || 1, gap = s.gap ?? 16; s.to = [s.meet.x + (dx / d) * gap, s.meet.y + (dy / d) * gap]; } // a gap short of the other
@@ -320,6 +323,11 @@ function begin(a, env) {
     else if (s.to === 'pad') s.to = env.spot('pond', [a.x, a.y], 8, a.r);
     else if (s.to === 'water') s.to = env.spot('water', [a.x, a.y], 8, a.r);
     else if (s.to === 'near') s.to = env.spot(a.area, [a.x, a.y], 16, a.r);
+    else if (s.to === 'pile') { // the nearest leaf pile's edge, on its side (none left: it stays)
+      const p = (env.piles ?? []).reduce((best, q) => (!best || Math.hypot(q[0] - a.x, q[1] - a.y) < Math.hypot(best[0] - a.x, best[1] - a.y) ? q : best), null);
+      a.pileAt = p;
+      s.to = p ? [p[0] + (a.x < p[0] ? -12 : 12), p[1]] : [a.x, a.y];
+    } else if (s.to === 'pileIn') s.to = a.pileAt ?? [a.x, a.y];
     s.len = s.secs ?? (s.chase ? 6 : s.to && s.jump === undefined ? 20 : env.duration(a.kind, s.part) + (s.hold ?? 0));
     if (s.jump !== undefined) { // in an arc, from here to there, in its time: facing there
       s.from = [a.x, a.y];
@@ -401,7 +409,7 @@ export function advance(a, dt, env) {
 }
 /** Gets up to something of its own. */
 function habit(a, env) {
-  const act = pickHabit(a, env.rand);
+  const act = pickHabit(a, env);
   a.queue = stepsFor(act, a, env, { habit: true });
   a.act = act;
   a.home = [a.x, a.y];

@@ -25,7 +25,8 @@ const POND_KINDS = new Set(['frog', 'fish']); // the pond's families: under the 
 const baseOf = w => (w.a.family === 'frog' ? WATER.y + 0.05 : w.a.family === 'fish' ? WATER.y - 0.05 - w.t.top : 0);
 const PLUMP = 1.8; // a fish is as thin as a fish: a little plumper, it shows from above
 
-export function makeAnimals(THREE, mats, S) {
+/** onFx(kind, x, y): something to see where an animal is (the leaves bursting from a pile a dog dives into). */
+export function makeAnimals(THREE, mats, S, { onFx = () => {} } = {}) {
   const group = new THREE.Group(), loader = new GLTFLoader(), rand = Math.random; // a different wander every time
   const creatures = new THREE.Group(), pads = new THREE.Group(), splashes = []; // the Animals switch hides the creatures, not the pads
   group.add(creatures, pads);
@@ -259,6 +260,7 @@ export function makeAnimals(THREE, mats, S) {
     clear: (area, from, to, r) => roam.clear(area, from, to, r),
     route: (from, to, r) => roam.route(from, to, r), // a way round, for roaming the farm
     neighbour: false, farmAt, // with a neighbour farm: now and then over to it (antics.js roamWalk)
+    piles: [], fx: (a, kind) => onFx(kind, a.x, a.y), // autumn's leaf piles (the dogs dive in), and what that looks like
     duration: (kind, part) => templates.get(kind)?.clips.get(MODELS[kind].clips[part])?.duration ?? 1,
   };
   /**
@@ -395,6 +397,10 @@ export function makeAnimals(THREE, mats, S) {
       w.a.path = way; w.a.rest = 0; w.a.hurry = true; // at a trot, so the check needn't wait minutes
       return true;
     },
+    /** Autumn's leaf piles ([[x, y]]: seasonplay.js leafPilesOf; [] the rest of the year): the dogs' `pile` habit. */
+    setPiles(list) { env.piles = list; },
+    /** Animal i gets up to `act` now, as a habit (the check: a dog's `pile`). False when it can't (busy, hidden). */
+    habitNow(i, act) { const w = animals[i]; if (!w || w.off || !on || w.a.romp || w.a.act) return false; command(w.a, act, env); return true; },
     /** Turns animal i to face a place on the map (one it talks to). */
     face(i, [x, y]) { const w = animals[i]; if (w && Math.hypot(x - w.a.x, y - w.a.y) > 1) w.a.face = Math.atan2(x - w.a.x, y - w.a.y); },
     /** Asks animal i to do act (from its menu). */

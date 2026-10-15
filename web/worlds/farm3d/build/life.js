@@ -6,7 +6,7 @@ import { PX, W } from '../layout.js';
 import { makePool, noise } from './util.js';
 import { SOIL_Y } from './beds.js';
 
-const FIREFLIES = 60, BEES_PER_BED = 6, FLY_OFF_S = 3, CLOUDS = 6, PUFFS = 3, SMOKE = 8, SMOKE_S = 5;
+const FIREFLIES = 60, BEES_PER_BED = 6, FLY_OFF_S = 3, CLOUDS = 6, PUFFS = 3, SMOKE = 8, SMOKE_S = 5, LEAVES = 30, LEAF_S = 2, PUFF_S = 0.6;
 
 export function makeLife(THREE, mats, S) {
   const group = new THREE.Group(), m4 = new THREE.Matrix4(), q = new THREE.Quaternion(), e = new THREE.Euler(), pos = new THREE.Vector3(), scale = new THREE.Vector3();
@@ -19,6 +19,11 @@ export function makeLife(THREE, mats, S) {
   const smoke = makePool(THREE, group, new THREE.SphereGeometry(0.32, 6, 5), mats.std('#d9d9d9', { opacity: 0.55 }), SMOKE * 2);
   const lamps = makePool(THREE, group, new THREE.SphereGeometry(0.11, 6, 4), mats.basic('#fff6d0'), 20);
   const cones = makePool(THREE, group, new THREE.CircleGeometry(1, 16).rotateX(-Math.PI / 2), mats.basic('#fff3c0', { opacity: 0.2 }), 10);
+  const piles = makePool(THREE, group, new THREE.SphereGeometry(0.7, 8, 5).scale(1, 0.35, 1), mats.std('#c8681a'), 6);
+  const leaves = makePool(THREE, group, new THREE.PlaneGeometry(0.16, 0.12), mats.std('#e09a3a', { side: THREE.DoubleSide }), LEAVES * 2);
+  const balls = makePool(THREE, group, new THREE.SphereGeometry(0.1, 8, 6), mats.std('#ffffff'), 8);
+  const snowPuffs = makePool(THREE, group, new THREE.SphereGeometry(0.07, 6, 4), mats.std('#f4f8fb'), 24);
+  const bursts = [], puffsAt = []; // leaf bursts { x, z, t0 } and snow puffs { x, y, z, t0 }, on the frame clock
   let H = 400, LW = W, seeds = [], counts = { fireflies: 0, bees: 0, crows: 0, clouds: 0, smoke: 0, headlights: 0 }, last = new Map(), leaving = new Map(), clock = 0;
   let shownClouds = 0; // eased toward the wanted count: new clouds fade in, extra ones fade out
   /** Where the fireflies live on a ground (fireflyRects'), a place each, by noise (the same every time). */
@@ -117,8 +122,41 @@ export function makeLife(THREE, mats, S) {
       cones.at(j, m4.compose(pos.set(p.x + fx * 4.2, 0.06, p.z + fz * 4.2), q.setFromEuler(e.set(0, -m.heading + Math.PI / 2, 0)), scale.set(1.6, 1, 3)));
     });
     lamps.flush(); cones.flush();
-    counts = { fireflies: on ? seeds.length : 0, bees: nb, crows: n, clouds: nc, smoke: flues.length * SMOKE, headlights: ms.length * 2 };
-    return on || nb > 0 || n > 0 || nc > 0 || flues.length > 0 || ms.length > 0; // something moved
+    // autumn's leaf piles, and the leaves a dog sends flying (thrown up and out, falling back over 2 s)
+    const ps = s.piles ?? [];
+    piles.use(ps.length);
+    ps.forEach(([x, y], i) => place(piles, i, x, y, 0.05));
+    piles.flush();
+    for (let i = bursts.length - 1; i >= 0; i--) if (clock - bursts[i].t0 > LEAF_S) bursts.splice(i, 1);
+    leaves.use(bursts.length * LEAVES);
+    bursts.forEach((b, j) => {
+      const u = clock - b.t0;
+      for (let k = 0; k < LEAVES; k++) {
+        const a = k * 0.21 + j, sp = 1.2 + (k % 5) * 0.35, h = Math.max(0.05, 0.4 + (2.6 + (k % 4) * 0.4) * u - 2.6 * u * u);
+        leaves.at(j * LEAVES + k, m4.compose(pos.set(b.x + Math.cos(a) * sp * u, h, b.z + Math.sin(a) * sp * u), q.setFromEuler(e.set(u * 6 + k, u * 4, k)), scale.set(1, 1, 1)));
+      }
+    });
+    leaves.flush();
+    // snowballs in the air (s.balls: { a, b, u }: from a to b in the world, u of the way), and the puffs where they land
+    const bs = s.balls ?? [];
+    balls.use(bs.length);
+    bs.forEach((b, i) => balls.at(i, m4.makeTranslation(b.a.x + (b.b.x - b.a.x) * b.u, b.a.y + (b.b.y - b.a.y) * b.u + Math.sin(Math.PI * b.u) * 1.8, b.a.z + (b.b.z - b.a.z) * b.u)));
+    balls.flush();
+    for (let i = puffsAt.length - 1; i >= 0; i--) if (clock - puffsAt[i].t0 > PUFF_S) puffsAt.splice(i, 1);
+    snowPuffs.use(puffsAt.length * 6);
+    puffsAt.forEach((p, j) => {
+      const u = (clock - p.t0) / PUFF_S;
+      for (let k = 0; k < 6; k++) snowPuffs.at(j * 6 + k, m4.compose(pos.set(p.x + Math.cos(k) * u * 0.6, p.y + Math.sin(k * 2) * u * 0.3, p.z + Math.sin(k) * u * 0.6), q.identity(), scale.set(1 - u, 1 - u, 1 - u)));
+    });
+    snowPuffs.flush();
+    counts = { fireflies: on ? seeds.length : 0, bees: nb, crows: n, clouds: nc, smoke: flues.length * SMOKE, headlights: ms.length * 2, piles: ps.length, leaves: bursts.length * LEAVES, snowballs: bs.length };
+    return on || nb > 0 || n > 0 || nc > 0 || flues.length > 0 || ms.length > 0 || bursts.length > 0 || bs.length > 0 || puffsAt.length > 0; // something moved
   }
-  return { group, setGround, tick, count: () => ({ ...counts }) };
+  return {
+    group, setGround, tick, count: () => ({ ...counts }),
+    /** Leaves burst from a pile at (x, y) on the map (a dog dived in). */
+    leaves(x, y) { const p = S.at(x, y, H); bursts.push({ x: p.x, z: p.z, t0: clock }); },
+    /** A snowball lands at a point in the world: a puff of snow. */
+    puff(p) { puffsAt.push({ x: p.x, y: p.y, z: p.z, t0: clock }); },
+  };
 }
