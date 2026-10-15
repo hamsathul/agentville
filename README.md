@@ -167,8 +167,11 @@ It listens on the loopback addresses only (`127.0.0.1`, and `::1` where the mach
   farm's panel and Menu, buildings, close-up, diary, hens, carts and pigeons, and idle farmers play with
   the animals. With two Claude accounts, the second has a neighbour farm of its own across the road to
   town: its own fields, barn (start a session on that account), porch, silo and machines, half the herd
-  and three animals more, and the animals and now and then a visiting farmer cross between the farms. It
-  fills the window as the farm does; turn and tilt it as you like, and zoom in to one farmer.
+  and three animals more, and the animals and now and then a visiting farmer cross between the farms.
+  Agents' task lists stand as fences of flags along their fields, merged pull requests grow an orchard,
+  and the farm lives: fireflies, bees, crows, clouds while agents wait on you, chimney smoke, headlights,
+  snowball fights and leaf piles, an optional soundscape, and a tour when you leave it alone. It fills the
+  window as the farm does; turn and tilt it as you like, and zoom in to one farmer.
 - The farm, the factory, the field exercise and the 3D farm are worlds: each runs in a sandboxed frame
   of its own, with no access to the token, and asks the page for the little it needs
   ([docs/worlds.md](docs/worlds.md)). A world from your own folder sees no words or paths until
@@ -1389,6 +1392,34 @@ patch, the pasture across the front, and the meadow and the forest running on al
   the season follows your 5-hour limit, with blossom in spring, orange leaves in autumn and snow in
   winter. **Sky** and **Season** in the Menu hold one, as on the farm. With **Motion** off the wind
   stops too.
+![The 3D farm alive: clouds while an agent waits on you, task fences along the fields, the orchard of merges along the front](docs/farm3d-alive.png)
+
+- **The task fence**: an agent with a task list has a row of stakes along the front of its field, one per
+  task (20 at most; past that a stake stands for several), a flag in the agent's colour on each done one,
+  and a lantern on the one in progress while it works. A row for each agent in the field, three at most.
+- **The orchard**: along the front of your farm, between the pasture and the forest, a fruit tree for
+  each pull request merged in the last 90 days, a block per repo under a sign with its count ("shop 14"),
+  the newest 80 at most. A merge plants a sapling that grows to a full tree over two weeks; blossom in
+  spring, apples in summer, orange in autumn, bare in winter.
+- **The tour**: left alone for 3 minutes (no mouse, wheel or key on the farm, nobody picked from the
+  page), the camera goes round the farm, a shot every 12 seconds, gliding in and slowly circling: who is
+  waiting on you, a machine at work, the busiest field, the neighbour farm, an animal up to something,
+  and every fifth shot the whole land. Any input stops it and puts your view back exactly. **Tour** in
+  the Menu (on by default) turns it off.
+- **Small life**: fireflies drift and blink over the pastures and the yards at night (not in winter);
+  bees loop over the fields grown well (four at most); crows come down on a harvested field and stay
+  till two minutes after it is sown again, flying off when a farmer or a machine comes near.
+- **The mood**: clouds gather over the land as farmers wait on you (two for one, four for two, six for
+  three or more, when the sky dims a little too) and drift away once you've answered; smoke rises from
+  a farmhouse's chimney while its porch has someone on it; at night the machines drive with glowing
+  headlamps and a pool of light ahead.
+- **Seasonal play**: in winter two idle farmers on one farm now and then have a snowball fight (it stops
+  the moment either is needed); in autumn three leaf piles lie in each yard, and the dogs race over and
+  dive in, sending the leaves flying.
+- **Sound** (off by default; **Sound** in the Menu): wind (stronger in rain), birdsong by day, crickets
+  at night, rain while a field rains and a tractor's hum while machines drive, all made in the page
+  (no sound files). Browsers play sound only after a click, so it starts on the switch's click (left on,
+  at the first click in the farm), and it goes quiet while the tab is hidden.
 - **Animals**, just for fun, never for data: all twelve of Quaternius's
   [Animated Animal Pack](https://poly.pizza/bundle/Animated-Animal-Pack-ILAPXeUYiS) (CC0), each playing
   its own animations, and repainted to match the farm: lighter, warmer colours in the farm's matte
@@ -1464,7 +1495,7 @@ patch, the pasture across the front, and the meadow and the forest running on al
   it; folded, it has the whole window. Top right, **↺ ↻ ⌂** and the **Menu**: the dashboard's buttons
   (List, World, Session, Claude Code, Sidebar, Broadcast, Chats, Theme), then Follow (keeps the farmer you
   picked in the middle, zoomed in; a drag ends it), Resting (hides the idle and stale farmers), Bubbles,
-  Animals, Sky, Season, Motion, Bell, Help and zoom. The page adds no World ▾ / List corner of its own.
+  Animals, Tour, Sound, Sky, Season, Motion, Bell, Help and zoom. The page adds no World ▾ / List corner of its own.
 - **Buildings**: the barn starts a session; the farmhouse lists who waits on you on your porch (Open
   picks one; with a neighbour farm, each farmhouse its own porch); the silo shows your plan's limits (one on each farm with two accounts); the henhouse lists the
   subagents; the market stall lists the pull requests, a crate on its counter for each open one with its
@@ -1640,7 +1671,8 @@ and can do is in [docs/worlds.md](docs/worlds.md).
 
 - Everything stays on your computer. The collector listens on the loopback addresses only
   (`127.0.0.1`, and `::1` where the machine has it; both take the same token and checks) and sends
-  nothing anywhere. The exception is `gh`, which asks GitHub about your own repos.
+  nothing anywhere. The exception is `gh`, which asks GitHub about your own repos (their deploys, their open
+  pull requests, and the numbers and times of those merged in the last 90 days, for the 3D farm's orchard).
 - The `state/` folder, where the dashboard leaves answers and messages for your sessions and keeps
   its token, is made readable only by you at every start, before the token is made in it; a token
   found readable by others is made private again. "Readable only by you" is mode 0600/0700 on a Mac,
