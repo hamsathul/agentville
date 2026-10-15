@@ -1399,12 +1399,15 @@ patch, the pasture across the front, and the meadow and the forest running on al
   and a lantern on the one in progress while it works. A row for each agent in the field, three at most.
 - **The orchard**: along the front of your farm, between the pasture and the forest, a fruit tree for
   each pull request merged in the last 90 days, a block per repo under a sign with its count ("shop 14"),
-  the newest 80 at most. A merge plants a sapling that grows to a full tree over two weeks; blossom in
+  the newest 80 at most (when the blocks don't fit, the oldest trees go first, so each repo keeps its
+  newest). A merge plants a sapling that grows to a full tree over two weeks; blossom in
   spring, apples in summer, orange in autumn, bare in winter.
-- **The tour**: left alone for 3 minutes (no mouse, wheel or key on the farm, nobody picked from the
-  page), the camera goes round the farm, a shot every 12 seconds, gliding in and slowly circling: who is
+- **The tour**: left alone for 3 minutes (no mouse moving or clicking, no wheel or key on the farm, no
+  new pick from the page; not while Follow keeps a farmer in view, or a dialog, a field's close-up or
+  Help is open), the camera goes round the farm, a shot every 12 seconds, gliding in and slowly circling: who is
   waiting on you, a machine at work, the busiest field, the neighbour farm, an animal up to something,
-  and every fifth shot the whole land. Any input stops it and puts your view back exactly. **Tour** in
+  and every fifth shot the whole land. Any input stops it and puts your view back exactly (the click that
+  stops it does nothing else); coming back to the tab, or from the List view, counts as input. **Tour** in
   the Menu (on by default) turns it off.
 - **Small life**: fireflies drift and blink over the pastures and the yards at night (not in winter);
   bees loop over the fields grown well (four at most); crows come down on a harvested field and stay
@@ -1419,7 +1422,7 @@ patch, the pasture across the front, and the meadow and the forest running on al
 - **Sound** (off by default; **Sound** in the Menu): wind (stronger in rain), birdsong by day, crickets
   at night, rain while a field rains and a tractor's hum while machines drive, all made in the page
   (no sound files). Browsers play sound only after a click, so it starts on the switch's click (left on,
-  at the first click in the farm), and it goes quiet while the tab is hidden.
+  at the first click in the farm), and it goes quiet while the tab is hidden or the page shows its list.
 - **Animals**, just for fun, never for data: all twelve of Quaternius's
   [Animated Animal Pack](https://poly.pizza/bundle/Animated-Animal-Pack-ILAPXeUYiS) (CC0), each playing
   its own animations, and repainted to match the farm: lighter, warmer colours in the farm's matte

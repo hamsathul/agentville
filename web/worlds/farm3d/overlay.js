@@ -359,6 +359,7 @@ export function makeOverlay(el, { opts, hooks }) {
     dialogOpen: () => dlg.open,
     /** Help: opened, shut, or (no argument) the other way round. */
     help(on = !help) { openHelp(on); },
+    helpOpen: () => Boolean(help),
     /** The animal whose menu is open, or null. */
     petOpen: () => pet?.i ?? null,
     /** What is being said now: [{ key, text, top (the point over the speaker, in the world), toYou }] (none with Bubbles off). */

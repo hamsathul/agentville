@@ -27,7 +27,7 @@ import { makeLife } from './build/life.js';
 import { SCARE_PX, beesFor, createCrows } from './life.js';
 import { cloudsFor, dimFor, headlightsOn, smokeFarms } from './mood.js';
 import { createSnowballs, leafPilesOf } from './seasonplay.js';
-import { makeSound, mixOf } from './sound.js';
+import { makeSound, mixOf, shouldPlay } from './sound.js';
 import { makeWeather } from './build/weather.js';
 import { makeBeds } from './build/beds.js';
 import { makeFigures } from './build/figurine.js';
@@ -184,7 +184,7 @@ export function start({ el, opts, prefs }) {
   let animalsOn = prefs.get('animals') !== 'off', bubblesOn = prefs.get('bubbles') !== 'off', tourOn = prefs.get('tour') !== 'off';
   const tour = createTour(); // left alone for 3 minutes, the camera goes round the farm (tour.js)
   const sound = makeSound(window.AudioContext ?? window.webkitAudioContext); // the soundscape (sound.js): off by default
-  let soundOn = prefs.get('sound') === 'on', soundAt = -1e9;
+  let soundOn = prefs.get('sound') === 'on', soundAt = -1e9, soundMade = false; // made: a click has started it once
   let tourFrom = null; // the view before the tour: put back when it stops
   animals.setOn(animalsOn);
   const savedBeds = name => { try { const b = JSON.parse(prefs.get(name) ?? '{}'); return b && typeof b === 'object' && !Array.isArray(b) ? b : {}; } catch { return {}; } };
@@ -260,7 +260,7 @@ export function start({ el, opts, prefs }) {
       if (what === 'season') { seasonMode = SEASON_MODES[(SEASON_MODES.indexOf(seasonMode) + 1) % SEASON_MODES.length]; prefs.set('season', seasonMode); rebuildAll(); }
       if (what === 'animals') { animalsOn = !animalsOn; prefs.set('animals', animalsOn ? 'on' : 'off'); if (!animalsOn) { plays.endAll(playCtx); romps.releaseAll(rompCtx); } animals.setOn(animalsOn); if (!animalsOn) overlay.closePet(); }
       if (what === 'tour') { tourOn = !tourOn; prefs.set('tour', tourOn ? 'on' : 'off'); }
-      if (what === 'sound' && sound.available) { soundOn = !soundOn; prefs.set('sound', soundOn ? 'on' : 'off'); if (soundOn) sound.enable(); else sound.disable(); } // the click is the gesture a browser wants
+      if (what === 'sound' && sound.available) { soundOn = !soundOn; prefs.set('sound', soundOn ? 'on' : 'off'); if (soundOn) { sound.enable(); soundMade = true; } else sound.disable(); } // the click is the gesture a browser wants
       if (what === 'bubbles') { bubblesOn = !bubblesOn; prefs.set('bubbles', bubblesOn ? 'on' : 'off'); if (model) overlay.sync(shownModel(), { bubblesOn, near: near() }); }
       dirty = true;
     },
@@ -337,13 +337,22 @@ export function start({ el, opts, prefs }) {
     dirty = true;
   };
   new ResizeObserver(resize).observe(el);
-  // someone is here: any pointer, wheel or key on the farm (or the page's pick, in select) stops the tour and puts the view back
+  // someone is here: any pointer (moving too), wheel or key in the frame (or a new pick from the page, in select) stops
+  // the tour and puts the view back; the press that stops it on the farm picks nothing (pointerup below)
   const touched = () => tour.touch(performance.now());
-  for (const type of ['pointerdown', 'wheel', 'keydown']) el.addEventListener(type, touched, { capture: true, passive: true });
-  document.addEventListener('keydown', touched, { capture: true });
-  // the sound left on: it starts at the first click in the farm (browsers play nothing before one); quiet while hidden
-  el.addEventListener('pointerdown', () => { if (soundOn && sound.state() !== 'running') sound.enable(); }, { capture: true, passive: true });
-  document.addEventListener('visibilitychange', () => { if (document.hidden) { if (sound.state() !== 'off') sound.disable(); } else if (soundOn && sound.state() === 'off') sound.enable(); });
+  for (const type of ['pointerdown', 'pointermove', 'wheel', 'keydown']) document.addEventListener(type, touched, { capture: true, passive: true });
+  let swallow = false;
+  canvas.addEventListener('pointerdown', () => { swallow = tour.press(performance.now()); }, { capture: true, passive: true });
+  // the sound left on: it starts at the first click in the farm (browsers play nothing before one); quiet while the tab
+  // is hidden or the page shows its list (no event reaches the frame then: a look each second)
+  el.addEventListener('pointerdown', () => { if (soundOn && sound.state() !== 'running') { sound.enable(); soundMade = true; } }, { capture: true, passive: true });
+  const syncSound = () => {
+    const want = shouldPlay({ on: soundOn, hidden: document.hidden, shown: el.clientWidth > 0 });
+    if (!want && sound.state() !== 'off') sound.disable();
+    else if (want && soundMade && sound.state() === 'off') sound.enable();
+  };
+  document.addEventListener('visibilitychange', syncSound);
+  setInterval(syncSound, 1000);
   resize();
 
   /** The ground is rebuilt when the bed rows or the season shown change. */
@@ -506,6 +515,7 @@ export function start({ el, opts, prefs }) {
     if (h) rig.glideTo({ x: h.x, z: h.z });
   }
   canvas.addEventListener('pointerup', e => {
+    if (swallow) { swallow = false; return; } // the press stopped the tour: nothing more
     if (rig.wasDrag() || e.button !== 0) return;
     const hit = hitAt(e);
     if (hit?.id) pickFarmer(hit.id);
@@ -664,8 +674,8 @@ export function start({ el, opts, prefs }) {
       sound.setMix(mixOf({ night, wind: nature.wind().strength, raining: model.beds.some(b => b.weather === 'rain'), moving: machineItems.filter(i => i.moving).length, still: opts.still }));
     });
     if (model) piece('tour', () => { // left alone, the camera goes round the farm; any input puts the view back
-      const r = tour.tick(performance.now(), { on: tourOn, still: opts.still, shown: !document.hidden && el.clientWidth > 0, dialog: overlay.dialogOpen(), world: tourWorld() });
-      if (r.start) { tourFrom = rig.view(); if (following) setFollow(false); }
+      const r = tour.tick(performance.now(), { on: tourOn, still: opts.still, shown: !document.hidden && el.clientWidth > 0, dialog: overlay.dialogOpen() || overlay.helpOpen() || field.isOpen(), follow: Boolean(following), world: tourWorld() });
+      if (r.start) tourFrom = rig.view();
       if (r.shot) { if (r.shot.at) { rig.glideTo(shapes.at(r.shot.at[0], r.shot.at[1], model.ground.H)); rig.setZoom(r.shot.zoom); } else rig.reset(); }
       if (r.stop && tourFrom) { rig.restore(tourFrom); tourFrom = null; }
       if (tour.touring()) { rig.hold({ yaw: rig.state().yaw + 0.05 * dt }); dirty = true; }
@@ -704,6 +714,8 @@ export function start({ el, opts, prefs }) {
   window.__farm3d = {
     stats: () => ({ frame: renderer.info.render.frame, calls: renderer.info.render.calls, triangles: renderer.info.render.triangles, geometries: renderer.info.memory.geometries, textures: renderer.info.memory.textures, farmers: farmers.count(), drawn: shownModel()?.farmers.length ?? 0, ...flock.count(), ...cartMeshes.count(), tags: overlay.count(), beds: model?.beds.length ?? 0, animals: animals.count() }),
     screenOf: id => { const h = farmers.headOf(id); return h ? project(h) : null; }, // where a farmer's head is in the picture, in pixels
+    /** What a click at a point in the picture (pixels) would hit: { id } | { animal } | { building } | { field } | null. */
+    hitAt: (x, y) => { const r = canvas.getBoundingClientRect(); return hitAt({ clientX: r.left + x, clientY: r.top + y }) ?? null; },
     /** Where a building's click box is in the picture (its upper part, clear of who stands in front), in pixels. */
     buildingAt(k) { const b = [...buildings.hits(), ...shed.hits()].find(o => o.userData.hit === k && o.isMesh); if (!b) return null; const p = new THREE.Vector3(); b.getWorldPosition(p); return project({ x: p.x, y: p.y * 1.6, z: p.z }); },
     /** Where a field's bed is in the picture (its middle), in pixels. */
@@ -793,7 +805,7 @@ export function start({ el, opts, prefs }) {
   return {
     scene: onScene,
     select(id) {
-      tour.touch(performance.now()); // a pick from the page: someone is here
+      tour.pick(id, performance.now()); // a new pick from the page: someone is here (it sends the same with each snapshot)
       selected = id ?? null;
       if (following && following !== selected) setFollow(false); // picking nobody, or another, ends Follow
       farmers.select(selected); overlay.setSelected(selected); refreshHud(); dirty = true;

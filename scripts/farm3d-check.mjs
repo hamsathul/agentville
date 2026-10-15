@@ -614,6 +614,8 @@ try {
       if (JSON.stringify(fence) !== JSON.stringify({ stakes: 5, flags: 2, lanterns: 1 })) why.push(`the task fence ${JSON.stringify(fence)}, not 5 stakes, 2 flags, a lantern`);
       else got.push('the task fence: 5 stakes, 2 flags, a lantern');
       // the tour: left alone it goes round the farm; a real click stops it and puts the view back exactly
+      await chrome.js('window.TrackerFarm.select(null); true');
+      await sleep(300);
       const v0 = await F('JSON.stringify(window.__farm3d.viewNow())');
       await chrome.inFrame('/world/farm3d/', 'window.__farm3d.tourNow(); true');
       let touring = false, moved = false;
@@ -622,6 +624,9 @@ try {
         const v = await F('JSON.stringify(window.__farm3d.viewNow())');
         moved = JSON.stringify(v) !== JSON.stringify(v0);
       }
+      // the page re-sends its pick with every snapshot (every 3 s): the same pick again is nobody there
+      for (let k = 0; k < 3; k++) { await chrome.js('window.TrackerFarm.select(null); true'); await sleep(300); }
+      if (touring && !(await F('JSON.stringify(window.__farm3d.touring())'))) why.push('the page sending the same pick again stopped the tour');
       const box = JSON.parse(await chrome.js("JSON.stringify(document.querySelector('iframe').getBoundingClientRect())"));
       const cx = Math.round(box.left + box.width - 40), cy = Math.round(box.top + box.height - 40); // grass at the frame's bottom right
       for (const type of ['mouseMoved', 'mousePressed', 'mouseReleased']) await chrome.send('Input.dispatchMouseEvent', { type, x: cx, y: cy, button: 'left', clickCount: 1 });
@@ -631,6 +636,42 @@ try {
       if (!touring || !moved) why.push(`the tour didn't start (touring ${touring}, the view moved ${moved})`);
       else if (!stopped || round(v1) !== round(v0)) why.push(`a click didn't stop the tour and put the view back (${round(v1)} vs ${round(v0)})`);
       else got.push('the tour started, a click stopped it and put the view back');
+      const tourAgain = async () => { await chrome.inFrame('/world/farm3d/', 'window.__farm3d.tourNow(); true'); let on = false; for (const end = Date.now() + 3000; Date.now() < end && !on; await sleep(150)) on = await F('JSON.stringify(window.__farm3d.touring())'); return on; };
+      // the mouse moving over the farm is someone there too
+      if (await tourAgain()) {
+        await chrome.inFrame('/world/farm3d/', "(() => { const c = document.querySelector('.f3-canvas'), b = c.getBoundingClientRect(); c.dispatchEvent(new PointerEvent('pointermove', { bubbles: true, clientX: b.left + 30, clientY: b.top + b.height - 30, pointerId: 1 })); return true; })()");
+        await sleep(400);
+        if (await F('JSON.stringify(window.__farm3d.touring())')) why.push('the mouse moving over the farm left the tour running');
+      } else why.push("tourNow didn't start the tour again");
+      // the click that stops the tour picks nothing (here on a farmer: it would pick it otherwise)
+      if (await tourAgain()) {
+        const asked = Number(await chrome.js("String(document.querySelectorAll('#asked li').length)"));
+        const hit = JSON.parse(await chrome.inFrame('/world/farm3d/', `(() => {
+          const m = window.__farm3d, c = document.querySelector('.f3-canvas'), b = c.getBoundingClientRect();
+          for (const id of m.farmerIds()) for (const dy of [3, 5, 8, 12, 16, 20, 26]) {
+            const p = m.screenOf(id); if (!p?.visible) break;
+            if (m.hitAt(p.x, p.y + dy)?.id !== id) continue;
+            const o = { bubbles: true, clientX: b.left + p.x, clientY: b.top + p.y + dy, pointerId: 7, button: 0 };
+            for (const type of ['pointerdown', 'pointerup']) c.dispatchEvent(new PointerEvent(type, o));
+            return JSON.stringify(id);
+          }
+          return 'null';
+        })()`));
+        await sleep(500);
+        const asks = await chrome.js("JSON.stringify([...document.querySelectorAll('#asked li')].map(l => l.textContent))").then(JSON.parse);
+        if (!hit) why.push('no farmer in view to click during the tour');
+        else if (await F('JSON.stringify(window.__farm3d.touring())')) why.push(`a click on ${hit} left the tour running`);
+        else if (asks.length > asked) why.push(`the click that stopped the tour also asked "${asks[0]}"`);
+        else got.push(`a click on ${hit} stopped the tour and picked nothing`);
+      } else why.push("tourNow didn't start the tour a third time");
+      // nor while a field's close-up is open
+      await chrome.inFrame('/world/farm3d/', "document.querySelector('.f3-field')?.click(); true");
+      await sleep(400);
+      await chrome.inFrame('/world/farm3d/', 'window.__farm3d.tourNow(); true');
+      await sleep(800);
+      if (await F('JSON.stringify(window.__farm3d.touring())')) why.push("the tour ran over a field's close-up");
+      await chrome.inFrame('/world/farm3d/', "document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' })); true");
+      await sleep(200);
       const st = await statsOf(chrome);
       if (st.calls > 400) why.push(`${st.calls} draw calls with the orchard and a fence (400 at most)`);
       // wildlife: none by day here; fireflies at night; bees over a well-grown field
@@ -694,6 +735,14 @@ try {
       await realClick('[data-farm-sound]');
       let soundOn = '';
       for (const end = Date.now() + 3000; Date.now() < end && soundOn !== 'running'; await sleep(200)) soundOn = await F('JSON.stringify(window.__farm3d.sound())');
+      // the page's List view hides the farm: quiet till it shows again
+      await chrome.js("document.querySelector('iframe').style.display = 'none'; true");
+      let listed = '';
+      for (const end = Date.now() + 3000; Date.now() < end && listed !== 'off'; await sleep(200)) listed = await F('JSON.stringify(window.__farm3d.sound())');
+      await chrome.js("document.querySelector('iframe').style.display = ''; true");
+      let back = '';
+      for (const end = Date.now() + 3000; Date.now() < end && back !== 'running'; await sleep(200)) back = await F('JSON.stringify(window.__farm3d.sound())');
+      if (listed !== 'off' || back !== 'running') why.push(`the sound with the farm hidden: ${listed}, shown again: ${back} (not off, running)`);
       await realClick('[data-farm-sound]');
       await sleep(300);
       const soundOff = await F('JSON.stringify(window.__farm3d.sound())');
@@ -798,6 +847,9 @@ try {
     // back to the same
     await open(chrome, 'everyone');
     const frames = JSON.parse(await chrome.js("JSON.stringify(['everyone', 'nobody', 'mcp', 'nobody', 'subagents', 'nobody', 'pigeon', 'nobody', 'steps'].map(n => window.AgentvilleTour.stops.find(s => s.name === n).frames[0]))")); // steps: machines going out (a sprayer, a mower, supplies, crates, the truck)
+    // and the orchard coming and going, in summer (its fruit on the trees)
+    frames.push({ ...frames[0], repos: frames[0].repos.map((r, i) => (i ? r : { ...r, prs: { open: [], merged: [], recent: Array.from({ length: 6 }, (_, k) => ({ number: k + 1, at: NOW - k * 4 * 86_400_000 })) } })) });
+    await chrome.inFrame('/world/farm3d/', "window.__farm3d.holdSeason('summer'); true");
     await chrome.js(`window.__f3frames = ${JSON.stringify(frames)}`);
     for (const f of frames) { await chrome.js(`window.TrackerFarm.update(${JSON.stringify(f)})`); await sleep(1500); } // every model loaded once first
     await chrome.js('window.TrackerFarm.update(window.__f3frames[0])');
@@ -807,8 +859,9 @@ try {
     await chrome.js('window.TrackerFarm.update(window.__f3frames[0])');
     await sleep(800);
     const { geometries: g1, textures: t1 } = await statsOf(chrome);
+    await chrome.inFrame('/world/farm3d/', "window.__farm3d.holdSeason('live'); true");
     if (Math.abs(g1 - g0) > 5 || t1 - t0 > 3) bad(`memory: ${g0} geometries and ${t0} textures before 300 scene swaps, ${g1} and ${t1} after`);
-    else console.log(`  ✓ memory: ${g0} geometries and ${t0} textures before 300 scene swaps (carts, hens, dogs, pigeons coming and going), ${g1} and ${t1} after`);
+    else console.log(`  ✓ memory: ${g0} geometries and ${t0} textures before 300 scene swaps (carts, hens, dogs, pigeons, the orchard's fruit coming and going), ${g1} and ${t1} after`);
   } finally { await chrome.close(); }
 
   // 6. no WebGL: the plain panel, the world started all the same, and no error

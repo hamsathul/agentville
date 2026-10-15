@@ -4,6 +4,10 @@
 const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
 export const MASTER = 0.35;
 const LAYERS = ['wind', 'birds', 'crickets', 'rain', 'engine'];
+/** The crickets' level: base ± depth, swung by a 28 Hz square (from silence to loud: a chirp, not a steady tone). */
+export const CRICKETS = { base: 0.5, depth: 0.5, rate: 28 };
+/** Whether the sound plays: the switch on, the tab shown and the farm in view (the page's List view hides it). */
+export const shouldPlay = ({ on, hidden, shown }) => Boolean(on && !hidden && shown);
 
 /**
  * Each layer's volume (0–1) for the moment: night (0 by day … 1), wind (its strength: 1 calm, more in rain), raining
@@ -36,10 +40,10 @@ export function makeSound(Ctx) {
     const rainHiss = ctx.createBiquadFilter();
     rainHiss.type = 'highpass'; rainHiss.frequency.value = 2500;
     noise().connect(rainHiss); rainHiss.connect(gains.rain);
-    // crickets: a high tone, its level pulsed by a 28 Hz square
+    // crickets: a high tone, its level pulsed by a square (CRICKETS)
     const tone = ctx.createOscillator(), pulse = ctx.createGain(), lfo = ctx.createOscillator(), depth = ctx.createGain();
-    tone.frequency.value = 4600; pulse.gain.value = 0;
-    lfo.type = 'square'; lfo.frequency.value = 28; depth.gain.value = 0.5;
+    tone.frequency.value = 4600; pulse.gain.value = CRICKETS.base;
+    lfo.type = 'square'; lfo.frequency.value = CRICKETS.rate; depth.gain.value = CRICKETS.depth;
     tone.connect(pulse); pulse.connect(gains.crickets); lfo.connect(depth); depth.connect(pulse.gain);
     tone.start(); lfo.start();
     // the engine: a low sawtooth through a lowpass, wobbling a little

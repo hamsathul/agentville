@@ -37,7 +37,7 @@ function sway(material, wind) {
 export function makeNature(THREE, S) {
   const group = new THREE.Group(), loader = new GLTFLoader(), templates = new Map(), loads = new Map();
   const wind = { time: { value: 0 }, strength: { value: 1 } }; // shared by every swaying material
-  let built = null, want = null, drawnKey = '';
+  let built = null, want = null, drawnKey = '', fruitLook = null; // the fruit's sphere and paint: made once, a redraw sets its colour
   /** A kind's model, loaded once: its parts (geometry, painted material, place in the model) and its size. */
   function template(kind) {
     if (!loads.has(kind)) loads.set(kind, (async () => {
@@ -96,7 +96,9 @@ export function makeNature(THREE, S) {
     // the merge orchard's fruit (orchard.js fruitOf): one instanced mesh, none in winter
     const fruit = fruitOf(want.orchard ?? [], want.season);
     if (fruit.at.length) {
-      const f = new THREE.InstancedMesh(new THREE.SphereGeometry(0.13, 6, 5), new THREE.MeshStandardMaterial({ color: fruit.colour, roughness: 0.6, metalness: 0 }), fruit.at.length);
+      fruitLook ??= { geometry: new THREE.SphereGeometry(0.13, 6, 5), material: new THREE.MeshStandardMaterial({ roughness: 0.6, metalness: 0 }) };
+      fruitLook.material.color.set(fruit.colour);
+      const f = new THREE.InstancedMesh(fruitLook.geometry, fruitLook.material, fruit.at.length);
       fruit.at.forEach((p, i) => { const at = S.at(p.x, p.y, want.ground.H); f.setMatrixAt(i, m4.makeTranslation(at.x, p.h, at.z)); });
       f.castShadow = false;
       f.computeBoundingSphere();

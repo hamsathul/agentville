@@ -14,7 +14,7 @@ import { beesFor, createCrows, firefliesOn, fireflyRects } from '../../web/world
 import { cloudsFor, dimFor, headlightsOn, smokeFarms } from '../../web/worlds/farm3d/mood.js';
 import { createSnowballs, leafPilesOf, SNOW_FIRST_MS, SNOW_GAP_MS } from '../../web/worlds/farm3d/seasonplay.js';
 import { habitsOf, stepsFor } from '../../web/worlds/farm3d/antics.js';
-import { makeSound, mixOf } from '../../web/worlds/farm3d/sound.js';
+import { CRICKETS, makeSound, mixOf, shouldPlay } from '../../web/worlds/farm3d/sound.js';
 import { PASTURE_GATES, W, pastureOf } from '../../web/worlds/farm3d/layout.js';
 
 const M = makeModel(kit);
@@ -283,4 +283,43 @@ test('sound: without Web Audio it is not available; with it, nothing is made unt
   assert.equal(sound.state(), 'off');
   sound.enable();
   assert.equal(made, 1, 'one context, reused');
+});
+
+// The final review's fixes
+test('the tour: a pick from the page counts only when it changes (the page re-sends it every few seconds)', () => {
+  const t = createTour(); t.touch(0); t.pick('a', 0);
+  for (let k = 1; k <= 60; k++) t.pick('a', k * 3000); // the same pick, every 3 s, as the page re-renders
+  assert.ok(t.tick(TOUR_IDLE_MS, tctx({ world: world({ busiest: [1, 1] }) })).start, 'still idle');
+  const u = createTour(); u.touch(0); u.pick('a', 0); u.pick('b', TOUR_IDLE_MS - 1000);
+  assert.deepEqual(u.tick(TOUR_IDLE_MS, tctx()), {}, 'a new pick: someone is here');
+});
+test('the tour: a press that stops it says so (its click picks nothing); one with no tour, not', () => {
+  const t = createTour(); t.touch(0);
+  assert.equal(t.press(1000), false, 'no tour: the click goes through');
+  t.tick(TOUR_IDLE_MS + 1000, tctx({ world: world({ busiest: [1, 1] }) }));
+  assert.ok(t.touring());
+  assert.equal(t.press(TOUR_IDLE_MS + 1100), true, 'the press stopped the tour');
+  assert.deepEqual(t.tick(TOUR_IDLE_MS + 1150, tctx()), { stop: true });
+});
+test('the tour: coming back after a while away counts as activity; not while Follow keeps a farmer in view', () => {
+  const t = createTour(); t.touch(0);
+  t.tick(1000, tctx());
+  assert.deepEqual(t.tick(TOUR_IDLE_MS * 2, tctx()), {}, 'back after 6 minutes with the farm out of sight: no tour at once');
+  let r = {};
+  for (let now = TOUR_IDLE_MS * 2 + 1000; now <= TOUR_IDLE_MS * 3 + 1000 && !r.start; now += 1000) r = t.tick(now, tctx());
+  assert.ok(r.start, 'three idle minutes after coming back, it starts');
+  const f = createTour(); f.touch(0);
+  assert.deepEqual(f.tick(TOUR_IDLE_MS, tctx({ follow: true, world: world({ busiest: [1, 1] }) })), {}, 'Follow on: no tour');
+});
+test('sound plays only with the switch on, the tab shown and the farm in view; the crickets pulse from silence', () => {
+  assert.deepEqual([shouldPlay({ on: true, hidden: false, shown: true }), shouldPlay({ on: true, hidden: true, shown: true }), shouldPlay({ on: true, hidden: false, shown: false }), shouldPlay({ on: false, hidden: false, shown: true })], [true, false, false, false]);
+  assert.ok(CRICKETS.base >= CRICKETS.depth, 'the gain swings from silence to loud, never below zero (a steady tone otherwise)');
+});
+test('the orchard: with many repos the oldest trees go first, never a whole repo with its newest', () => {
+  const five = model(snap([], ['a', 'b', 'c', 'd', 'e'].map((n, j) => withMerges(n, Array.from({ length: 20 }, (_, k) => k * 2 + j * 0.1)))));
+  assert.deepEqual(five.orchard.signs.map(s => s.name), ['a', 'b', 'c', 'd', 'e'], 'every repo has its block');
+  assert.ok(five.orchard.trees.length <= 80);
+  for (const n of ['a', 'b', 'c', 'd', 'e']) assert.ok(five.orchard.trees.some(t => t.key === `${HOME}/${n}` && t.size === 0.4), `${n}'s newest merge has its sapling`);
+  const mixed = model(snap([], [withMerges('old', Array.from({ length: 78 }, (_, k) => 30 + k * 0.5)), withMerges('new', [0, 1, 2, 3, 4])]));
+  assert.equal(mixed.orchard.trees.filter(t => t.key === `${HOME}/new`).length, 5, 'the new repo keeps all its trees');
 });
