@@ -460,6 +460,8 @@ try {
   for (let i = 0; i < 40 && !received.length; i++) await sleep(150);
   check(received[0] === 'First line\nsecond line', `⚡ Send now sends it (got ${JSON.stringify(received)})`);
   check(await until("document.getElementById('msg-text')?.value === ''"), 'the message box clears once it is sent');
+  // ⚡ Send now draws the pane again when its answer comes (its button disabled till then): not between the focus and the ↑ below
+  await until("![...document.querySelectorAll('#center-body [data-held-now]')].some(b => b.disabled)");
   const arrow = async (name, code) => { for (const type of ['keyDown', 'keyUp']) await send('Input.dispatchKeyEvent', { type, key: name, code: name, windowsVirtualKeyCode: code }); };
   await js("document.getElementById('msg-text').focus()"); // sending leaves the box (so the page can update): back in it
   await arrow('ArrowUp', 38);
