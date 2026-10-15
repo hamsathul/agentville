@@ -633,6 +633,20 @@ try {
       else got.push('the tour started, a click stopped it and put the view back');
       const st = await statsOf(chrome);
       if (st.calls > 400) why.push(`${st.calls} draw calls with the orchard and a fence (400 at most)`);
+      // wildlife: none by day here; fireflies at night; bees over a well-grown field
+      const dayLife = await F('JSON.stringify(window.__farm3d.life())');
+      if (dayLife.fireflies) why.push(`${dayLife.fireflies} fireflies by day`);
+      await open(chrome, 'night');
+      await sleep(1500);
+      const nightLife = await F('JSON.stringify(window.__farm3d.life())'), nightCalls = (await statsOf(chrome)).calls;
+      if (!(nightLife.fireflies > 0)) why.push('no fireflies at night');
+      else got.push(`${nightLife.fireflies} fireflies at night (${nightCalls} draw calls)`);
+      if (nightCalls > 400) why.push(`${nightCalls} draw calls at night (400 at most)`);
+      await open(chrome, 'context-high');
+      await sleep(1500);
+      const beeLife = await F('JSON.stringify(window.__farm3d.life())');
+      if (!(beeLife.bees > 0)) why.push('no bees over the grown field');
+      else got.push(`${beeLife.bees} bees over the grown field`);
       if (chrome.errors.length > before) why.push(`script errors: ${oneLine(chrome.errors[before]).slice(0, 160)}`);
       if (why.length) bad(`alive: ${why.join('; ')}`);
       else console.log(`  ✓ alive: ${got.join('; ')}; ${st.calls} draw calls`);

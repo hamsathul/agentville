@@ -23,6 +23,8 @@ import { makeMachines } from './build/machines.js';
 import { makeShed } from './build/shed.js';
 import { makeFence } from './build/fence.js';
 import { fenceOf } from './fence.js';
+import { makeLife } from './build/life.js';
+import { SCARE_PX, beesFor, createCrows } from './life.js';
 import { makeWeather } from './build/weather.js';
 import { makeBeds } from './build/beds.js';
 import { makeFigures } from './build/figurine.js';
@@ -138,7 +140,8 @@ export function start({ el, opts, prefs }) {
     return talkScene;
   }
   const fence = makeFence(THREE, mats, shapes); // agents' task lists, along their fields
-  scene3.add(fence.group);
+  const life = makeLife(THREE, mats, shapes), crows = createCrows(); // fireflies, bees, crows (life.js)
+  scene3.add(fence.group, life.group);
   scene3.add(terrain.group, buildings.group, beds.group, crops.group, farmers.group, animals.group, nature.group, flock.group, cartMeshes.group, pigeons.group, machineMeshes.group, shed.group);
   /** The ball trees, bushes and rocks stand in until the plants' models are drawn. */
   const standIns = () => { const on = !nature.ready(); terrain.setForest(on); buildings.setPlants(on); };
@@ -341,6 +344,7 @@ export function start({ el, opts, prefs }) {
     plays.endAll(playCtx); // a new ground: whoever was at play goes back
     romps.releaseAll(rompCtx);
     plantsKey = ''; // the plants and the roam afresh (rebuildPlants)
+    life.setGround(model.ground);
     sky.setExtent(ext.x, ext.z, ext.center);
     cartMeshes.setGround(model.ground.H, farmers.groundAt);
     machineMeshes.setGround(model.ground.H, farmers.groundAt);
@@ -615,6 +619,11 @@ export function start({ el, opts, prefs }) {
       else if (opts.still && plays.busy().size) plays.endAll(playCtx);
     });
     if (model) piece('romps', () => romps.tick(rompWorld(), dt, rompCtx)); // and the animals with each other (none while still or hidden)
+    if (model) piece('life', () => { // fireflies at night, bees over the grown fields, crows on a harvested one
+      crows.update(looks, model.beds, performance.now());
+      const near = ([x, y]) => (shownModel().farmers.some(f => { const p = farmers.posOf(f.id); return p && Math.hypot(p.x - x, p.y - y) < SCARE_PX; }) || machineItems.some(i => Math.hypot(i.x - x, i.y - y) < SCARE_PX));
+      if (life.tick(t, dt, { night, season: shownSeason(), bees: beesFor(model.beds, looks, night, shownSeason()), flocks: crows.flocks(near) }) && !opts.still) dirty = true;
+    });
     if (model) piece('tour', () => { // left alone, the camera goes round the farm; any input puts the view back
       const r = tour.tick(performance.now(), { on: tourOn, still: opts.still, shown: !document.hidden && el.clientWidth > 0, dialog: overlay.dialogOpen(), world: tourWorld() });
       if (r.start) { tourFrom = rig.view(); if (following) setFollow(false); }
@@ -669,6 +678,8 @@ export function start({ el, opts, prefs }) {
     tourNow: () => tour.force(),
     touring: () => tour.touring(),
     viewNow: () => rig.view(),
+    /** The small life out now: fireflies, bees, crows (and, as they come, clouds, smoke, headlights, piles, leaves, snowballs). */
+    life: () => life.count(),
     /** The task fence: how many stakes, flags and lanterns. */
     fence: () => fence.count(),
     /** The merge orchard: its trees and its signs' words. */

@@ -10,6 +10,7 @@ import { roamOf } from '../../web/worlds/farm3d/roam.js';
 import { fenceOf } from '../../web/worlds/farm3d/fence.js';
 import { createTour, TOUR_IDLE_MS, SHOT_MS } from '../../web/worlds/farm3d/tour.js';
 import { makeCameraRig } from '../../web/worlds/farm3d/camera.js';
+import { beesFor, createCrows, firefliesOn, fireflyRects } from '../../web/worlds/farm3d/life.js';
 import { PASTURE_GATES, W, pastureOf } from '../../web/worlds/farm3d/layout.js';
 
 const M = makeModel(kit);
@@ -142,4 +143,43 @@ test('the camera: a view taken is put back exactly', () => {
   assert.notDeepEqual(rig.view(), v);
   rig.restore(v);
   assert.deepEqual(rig.view(), v);
+});
+
+test('fireflies: at night only, never in winter; over both farms with a neighbour', () => {
+  assert.deepEqual([firefliesOn(0.9, 'summer'), firefliesOn(0.5, 'summer'), firefliesOn(0.9, 'winter')], [true, false, false]);
+  const one = fireflyRects(model(snap([], [])).ground), both = fireflyRects(model(two([], [])).ground);
+  assert.ok(one.length > 0 && both.length === one.length * 2 && both.some(r => r.x > W));
+  assert.ok(one.every(r => r.w > 0 && r.h > 0));
+});
+test('bees: over growing or ripe beds at stage 3 or more, four at most, by day, not in winter', () => {
+  const beds = Array.from({ length: 7 }, (_, k) => ({ key: `b${k}`, x0: k * 200, y0: 180, cx: k * 200 + 74, w: 148, d: 72 }));
+  const looks = new Map(beds.map((b, k) => [b.key, { stage: k === 6 ? 'sown' : k === 5 ? 'ripe' : 'growing', growth: k === 5 ? 5 : k }]));
+  assert.deepEqual(beesFor(beds, looks, 0, 'summer').map(b => b.key), ['b5', 'b4', 'b3']);
+  assert.deepEqual(beesFor(beds, looks, 0.9, 'summer'), []);
+  assert.deepEqual(beesFor(beds, looks, 0, 'winter'), []);
+  const many = new Map(beds.map(b => [b.key, { stage: 'ripe', growth: 5 }]));
+  assert.equal(beesFor(beds, many, 0, 'summer').length, 4);
+  assert.deepEqual(beesFor(beds, many, 0, 'summer')[0], { key: 'b0', x: 74, y: 216 });
+});
+test('crows: on a cut bed and 2 minutes after; off when a farmer or a machine comes near, till the next harvest', () => {
+  const bed = { key: 'b', x0: 200, y0: 180, w: 148, d: 72, cx: 274 }, c = createCrows();
+  c.update(new Map([['b', { stage: 'growing' }]]), [bed], 0);
+  assert.deepEqual(c.flocks(() => false), []);
+  c.update(new Map([['b', { stage: 'cut' }]]), [bed], 1000);
+  const [fl] = c.flocks(() => false);
+  assert.deepEqual([fl.key, fl.x, fl.y], ['b', 274, 216]);
+  assert.ok(fl.n >= 3 && fl.n <= 5);
+  c.update(new Map([['b', { stage: 'sown' }]]), [bed], 2000);
+  c.update(new Map([['b', { stage: 'sown' }]]), [bed], 2000 + 119_000);
+  assert.equal(c.flocks(() => false).length, 1, 'still 2 minutes after');
+  c.update(new Map([['b', { stage: 'sown' }]]), [bed], 2000 + 121_000);
+  assert.deepEqual(c.flocks(() => false), []);
+  c.update(new Map([['b', { stage: 'cut' }]]), [bed], 300_000);
+  assert.deepEqual(c.flocks(() => true), [], 'scared off');
+  assert.deepEqual(c.flocks(() => false), [], 'and they stay off');
+  c.update(new Map([['b', { stage: 'sown' }]]), [bed], 310_000);
+  c.update(new Map([['b', { stage: 'cut' }]]), [bed], 600_000);
+  assert.equal(c.flocks(() => false).length, 1, 'back at the next harvest');
+  c.update(new Map(), [], 700_000);
+  assert.deepEqual(c.flocks(() => false), [], 'its field gone');
 });
