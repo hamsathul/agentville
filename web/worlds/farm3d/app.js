@@ -27,6 +27,7 @@ import { makeLife } from './build/life.js';
 import { SCARE_PX, beesFor, createCrows } from './life.js';
 import { cloudsFor, dimFor, headlightsOn, smokeFarms } from './mood.js';
 import { createSnowballs, leafPilesOf } from './seasonplay.js';
+import { makeSound, mixOf } from './sound.js';
 import { makeWeather } from './build/weather.js';
 import { makeBeds } from './build/beds.js';
 import { makeFigures } from './build/figurine.js';
@@ -182,6 +183,8 @@ export function start({ el, opts, prefs }) {
   let skyMode = pref('sky', SKIES, 'live'), seasonMode = pref('season', SEASON_MODES, 'live');
   let animalsOn = prefs.get('animals') !== 'off', bubblesOn = prefs.get('bubbles') !== 'off', tourOn = prefs.get('tour') !== 'off';
   const tour = createTour(); // left alone for 3 minutes, the camera goes round the farm (tour.js)
+  const sound = makeSound(window.AudioContext ?? window.webkitAudioContext); // the soundscape (sound.js): off by default
+  let soundOn = prefs.get('sound') === 'on', soundAt = -1e9;
   let tourFrom = null; // the view before the tour: put back when it stops
   animals.setOn(animalsOn);
   const savedBeds = name => { try { const b = JSON.parse(prefs.get(name) ?? '{}'); return b && typeof b === 'object' && !Array.isArray(b) ? b : {}; } catch { return {}; } };
@@ -257,6 +260,7 @@ export function start({ el, opts, prefs }) {
       if (what === 'season') { seasonMode = SEASON_MODES[(SEASON_MODES.indexOf(seasonMode) + 1) % SEASON_MODES.length]; prefs.set('season', seasonMode); rebuildAll(); }
       if (what === 'animals') { animalsOn = !animalsOn; prefs.set('animals', animalsOn ? 'on' : 'off'); if (!animalsOn) { plays.endAll(playCtx); romps.releaseAll(rompCtx); } animals.setOn(animalsOn); if (!animalsOn) overlay.closePet(); }
       if (what === 'tour') { tourOn = !tourOn; prefs.set('tour', tourOn ? 'on' : 'off'); }
+      if (what === 'sound' && sound.available) { soundOn = !soundOn; prefs.set('sound', soundOn ? 'on' : 'off'); if (soundOn) sound.enable(); else sound.disable(); } // the click is the gesture a browser wants
       if (what === 'bubbles') { bubblesOn = !bubblesOn; prefs.set('bubbles', bubblesOn ? 'on' : 'off'); if (model) overlay.sync(shownModel(), { bubblesOn, near: near() }); }
       dirty = true;
     },
@@ -314,7 +318,7 @@ export function start({ el, opts, prefs }) {
   function refreshHud() {
     const sc = model?.scene ?? { farmers: [] };
     hud.render({
-      zoom: rig.state().zoom, skyMode, seasonMode, still: opts.still, animals: animalsOn, bubbles: bubblesOn, tour: tourOn ? 'on' : 'off',
+      zoom: rig.state().zoom, skyMode, seasonMode, still: opts.still, animals: animalsOn, bubbles: bubblesOn, tour: tourOn ? 'on' : 'off', sound: sound.available ? (soundOn ? 'on' : 'off') : 'unavailable',
       follow: Boolean(following), canFollow: Boolean(selected && farmers.headOf(selected)),
       restingHidden: restingShown ? null : sc.farmers.filter(resting).length, scene: sc, season: model?.season ?? 'summer',
     });
@@ -337,6 +341,9 @@ export function start({ el, opts, prefs }) {
   const touched = () => tour.touch(performance.now());
   for (const type of ['pointerdown', 'wheel', 'keydown']) el.addEventListener(type, touched, { capture: true, passive: true });
   document.addEventListener('keydown', touched, { capture: true });
+  // the sound left on: it starts at the first click in the farm (browsers play nothing before one); quiet while hidden
+  el.addEventListener('pointerdown', () => { if (soundOn && sound.state() !== 'running') sound.enable(); }, { capture: true, passive: true });
+  document.addEventListener('visibilitychange', () => { if (document.hidden) { if (sound.state() !== 'off') sound.disable(); } else if (soundOn && sound.state() === 'off') sound.enable(); });
   resize();
 
   /** The ground is rebuilt when the bed rows or the season shown change. */
@@ -652,6 +659,10 @@ export function start({ el, opts, prefs }) {
         else if (!landed.has(k)) { landed.add(k); const b = farmers.headOf(th.to); if (b) life.puff(b); farmers.setPose(th.from, 'idle'); }
       });
     });
+    if (model && soundOn && now - soundAt > 1000) piece('sound', () => { // each layer's volume, once a second
+      soundAt = now;
+      sound.setMix(mixOf({ night, wind: nature.wind().strength, raining: model.beds.some(b => b.weather === 'rain'), moving: machineItems.filter(i => i.moving).length, still: opts.still }));
+    });
     if (model) piece('tour', () => { // left alone, the camera goes round the farm; any input puts the view back
       const r = tour.tick(performance.now(), { on: tourOn, still: opts.still, shown: !document.hidden && el.clientWidth > 0, dialog: overlay.dialogOpen(), world: tourWorld() });
       if (r.start) { tourFrom = rig.view(); if (following) setFollow(false); }
@@ -706,6 +717,8 @@ export function start({ el, opts, prefs }) {
     tourNow: () => tour.force(),
     touring: () => tour.touring(),
     viewNow: () => rig.view(),
+    /** The sound: 'off', 'waiting' (on, before a click) or 'running'. */
+    sound: () => sound.state(),
     /** Holds the season shown (live, spring, summer, autumn, winter), as the Season switch does. */
     holdSeason: m => { if (!SEASON_MODES.includes(m)) return false; seasonMode = m; prefs.set('season', m); rebuildAll(); dirty = true; return true; },
     /** A snowball fight as soon as there is a pair (winter); a dog diving into a leaf pile now (autumn): true if one set off. */

@@ -132,7 +132,7 @@ try {
       await sleep(600);
       const before = chrome.errors.length;
       const WANT = ['[data-farm-nav="list"]', '[data-farm-nav="worlds"]', '[data-farm-nav="session"]', '[data-farm-nav="setup"]', '[data-farm-nav="side"]', '[data-farm-nav="broadcast"]', '[data-farm-nav="chats"]', '[data-farm-nav="theme"]',
-        '[data-farm-follow]', '[data-farm-resting]', '[data-farm-bubbles]', '[data-farm-animals]', '[data-farm-sky]', '[data-farm-season]', '[data-farm-motion]', '[data-farm-bell]', '[data-farm-help]', '[data-farm-zoom="1"]', '[data-f3-turn="-1"]', '[data-f3-reset]'];
+        '[data-farm-follow]', '[data-farm-resting]', '[data-farm-bubbles]', '[data-farm-animals]', '[data-farm-tour]', '[data-farm-sound]', '[data-farm-sky]', '[data-farm-season]', '[data-farm-motion]', '[data-farm-bell]', '[data-farm-help]', '[data-farm-zoom="1"]', '[data-f3-turn="-1"]', '[data-f3-reset]'];
       const hud = JSON.parse(await chrome.inFrame('/world/farm3d/', `JSON.stringify({ stats: Boolean(document.querySelector('.px-stats .px-brand[data-farm-panel]')), kpis: document.querySelectorAll('.px-kpi').length, gauges: document.querySelectorAll('.px-gauge').length, missing: ${JSON.stringify(WANT)}.filter(q => !document.querySelector(q)) })`));
       const corner = await chrome.js("Boolean(document.querySelector('.world-corner'))");
       // at 100% no farmer is under the panel: the farm is fitted beside it or below it
@@ -680,6 +680,26 @@ try {
       else if (!dived || !leafs) why.push(`no dog dived into a leaf pile (set off ${dived}, leaves ${leafs})`);
       else got.push('3 leaf piles in autumn, a dog dived in');
       await chrome.inFrame('/world/farm3d/', "window.__farm3d.holdSeason('live'); true");
+      // the Sound switch: a real click (the gesture browsers want) starts it; another stops it
+      const realClick = async sel => {
+        const r = JSON.parse(await chrome.inFrame('/world/farm3d/', `JSON.stringify(document.querySelector('${sel}')?.getBoundingClientRect() ?? null)`)), fb = JSON.parse(await chrome.js("JSON.stringify(document.querySelector('iframe').getBoundingClientRect())"));
+        if (!r) return false;
+        const x = Math.round(fb.left + r.left + r.width / 2), y = Math.round(fb.top + r.top + r.height / 2);
+        for (const type of ['mouseMoved', 'mousePressed', 'mouseReleased']) await chrome.send('Input.dispatchMouseEvent', { type, x, y, button: 'left', clickCount: 1 });
+        return true;
+      };
+      await chrome.inFrame('/world/farm3d/', "document.querySelector('[data-farm-menu]').click(); true");
+      await sleep(300);
+      const soundBefore = await F('JSON.stringify(window.__farm3d.sound())');
+      await realClick('[data-farm-sound]');
+      let soundOn = '';
+      for (const end = Date.now() + 3000; Date.now() < end && soundOn !== 'running'; await sleep(200)) soundOn = await F('JSON.stringify(window.__farm3d.sound())');
+      await realClick('[data-farm-sound]');
+      await sleep(300);
+      const soundOff = await F('JSON.stringify(window.__farm3d.sound())');
+      await chrome.inFrame('/world/farm3d/', "document.querySelector('[data-farm-menu]')?.click(); true");
+      if (soundBefore !== 'off' || soundOn !== 'running' || soundOff !== 'off') why.push(`the Sound switch: ${soundBefore} → ${soundOn} → ${soundOff}, not off → running → off`);
+      else got.push('Sound on (running) and off');
       if (chrome.errors.length > before) why.push(`script errors: ${oneLine(chrome.errors[before]).slice(0, 160)}`);
       if (why.length) bad(`alive: ${why.join('; ')}`);
       else console.log(`  ✓ alive: ${got.join('; ')}; ${st.calls} draw calls`);

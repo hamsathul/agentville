@@ -14,6 +14,7 @@ import { beesFor, createCrows, firefliesOn, fireflyRects } from '../../web/world
 import { cloudsFor, dimFor, headlightsOn, smokeFarms } from '../../web/worlds/farm3d/mood.js';
 import { createSnowballs, leafPilesOf, SNOW_FIRST_MS, SNOW_GAP_MS } from '../../web/worlds/farm3d/seasonplay.js';
 import { habitsOf, stepsFor } from '../../web/worlds/farm3d/antics.js';
+import { makeSound, mixOf } from '../../web/worlds/farm3d/sound.js';
 import { PASTURE_GATES, W, pastureOf } from '../../web/worlds/farm3d/layout.js';
 
 const M = makeModel(kit);
@@ -242,4 +243,44 @@ test('leaf piles: three in each yard, on open ground; the dogs dive into one, on
   assert.ok(stepsFor('pile', { kind: 'husky', family: 'paws' }, { rand: () => 0.5 }).some(st => st.fx === 'leaves'));
   assert.ok(R.inside('farm', piles[0][0], piles[0][1], 2), 'without them given, open ground');
   assert.ok(!roamOf(m.ground, { piles }).inside('farm', piles[0][0], piles[0][1], 2), 'given, in the way');
+});
+
+test('the sound mix: birds by day, crickets at night, wind stronger in rain, rain, the engine by machines; quiet with Motion off', () => {
+  const day = mixOf({ night: 0, wind: 1, raining: false, moving: 0, still: false });
+  assert.ok(day.birds > 0 && day.crickets === 0 && day.rain === 0 && day.engine === 0 && day.wind > 0);
+  const night = mixOf({ night: 1, wind: 1, raining: false, moving: 0, still: false });
+  assert.ok(night.birds === 0 && night.crickets > 0);
+  const storm = mixOf({ night: 0, wind: 2.2, raining: true, moving: 5, still: false });
+  assert.ok(storm.wind > day.wind && storm.rain > 0);
+  assert.equal(storm.engine, mixOf({ night: 0, wind: 1, raining: false, moving: 3, still: false }).engine, 'three machines at most');
+  assert.ok(mixOf({ night: 0, wind: 1, raining: false, moving: 1, still: false }).engine > 0);
+  assert.deepEqual(mixOf({ night: 0, wind: 1, raining: true, moving: 2, still: true }), { wind: 0.15, birds: 0, crickets: 0, rain: 0, engine: 0 });
+});
+test('sound: without Web Audio it is not available; with it, nothing is made until enable(); off, waiting or running', () => {
+  assert.equal(makeSound(undefined).available, false);
+  let made = 0;
+  const param = () => ({ value: 0, setValueAtTime() {}, setTargetAtTime() {}, linearRampToValueAtTime() {}, exponentialRampToValueAtTime() {} });
+  const node = extra => ({ connect() { return this; }, disconnect() {}, start() {}, stop() {}, ...extra });
+  class FakeCtx {
+    constructor() { made++; this.state = 'suspended'; this.currentTime = 0; this.destination = {}; this.sampleRate = 8000; }
+    createGain() { return node({ gain: param() }); }
+    createBiquadFilter() { return node({ type: '', frequency: param(), Q: param() }); }
+    createBuffer(c, n) { return { getChannelData: () => new Float32Array(n) }; }
+    createBufferSource() { return node({ buffer: null, loop: false }); }
+    createOscillator() { return node({ type: '', frequency: param() }); }
+    resume() { this.state = 'running'; return Promise.resolve(); }
+    suspend() { this.state = 'suspended'; return Promise.resolve(); }
+  }
+  const sound = makeSound(FakeCtx);
+  assert.ok(sound.available);
+  assert.equal(made, 0);
+  assert.equal(sound.state(), 'off');
+  sound.enable();
+  assert.equal(made, 1);
+  assert.equal(sound.state(), 'running');
+  sound.setMix(mixOf({ night: 0, wind: 1, raining: true, moving: 1, still: false }));
+  sound.disable();
+  assert.equal(sound.state(), 'off');
+  sound.enable();
+  assert.equal(made, 1, 'one context, reused');
 });
