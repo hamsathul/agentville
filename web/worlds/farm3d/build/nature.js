@@ -5,6 +5,7 @@
 import { GLTFLoader } from '../vendor/GLTFLoader.js';
 import { COATS, FINISH } from '../coats.js';
 import { WIND_PERIOD, plantsOf } from '../nature.js';
+import { fruitOf } from '../orchard.js';
 
 const STILL = new Set(['rockmoss', 'rocksnow', 'rocks', 'stump', 'log']); // what the wind doesn't move
 /**
@@ -57,13 +58,14 @@ export function makeNature(THREE, S) {
     return loads.get(kind);
   }
   /** Draws the plants for a farm and a season, once their models have loaded (at once if they have). */
-  function build(ground, season) {
-    want = { ground, season };
-    const plants = plantsOf(ground, season), kinds = [...new Set(plants.map(p => p.kind))];
-    const key = `${ground.rows}|${ground.H}|${season}|${ground.land?.w ?? ''}`; // and the land: a neighbour's farm too
+  /** Draws the plants for a farm, a season and the merge orchard's trees (orchard.js), once their models have loaded. */
+  function build(ground, season, orchard = []) {
+    want = { ground, season, orchard };
+    const plants = plantsOf(ground, season, orchard), kinds = [...new Set(plants.map(p => p.kind))];
+    const key = `${ground.rows}|${ground.H}|${season}|${ground.land?.w ?? ''}|${orchard.map(t => `${t.x},${t.y},${t.size}`).join(';')}`; // and the land, and the orchard
     if (kinds.every(k => templates.has(k))) { draw(plants, key); return Promise.resolve(true); }
     return Promise.all(kinds.map(template)).then(() => {
-      if (want.ground !== ground || want.season !== season) return false; // a newer farm asked meanwhile
+      if (want.ground !== ground || want.season !== season || want.orchard !== orchard) return false; // a newer farm asked meanwhile
       draw(plants, key);
       return true;
     });
@@ -90,6 +92,16 @@ export function makeNature(THREE, S) {
         Object.assign(mesh.userData, { kind, first: part === t.parts[0] });
         g.add(mesh);
       }
+    }
+    // the merge orchard's fruit (orchard.js fruitOf): one instanced mesh, none in winter
+    const fruit = fruitOf(want.orchard ?? [], want.season);
+    if (fruit.at.length) {
+      const f = new THREE.InstancedMesh(new THREE.SphereGeometry(0.13, 6, 5), new THREE.MeshStandardMaterial({ color: fruit.colour, roughness: 0.6, metalness: 0 }), fruit.at.length);
+      fruit.at.forEach((p, i) => { const at = S.at(p.x, p.y, want.ground.H); f.setMatrixAt(i, m4.makeTranslation(at.x, p.h, at.z)); });
+      f.castShadow = false;
+      f.computeBoundingSphere();
+      Object.assign(f.userData, { kind: 'fruit', first: true });
+      g.add(f);
     }
     group.add(g);
     built = g;

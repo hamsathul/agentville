@@ -174,7 +174,7 @@ export function start({ el, opts, prefs }) {
   let keep = { beds: savedBeds('beds'), packed: false, nbeds: savedBeds('nbeds'), npacked: false }; // yours, and the neighbour's (a second account's)
   const seasons = createSeasons();
   let looks = new Map(); // each field's season (season.js), as of the last scene
-  let model = null, groundKey = '', lampsKey = '', dirty = true, saveTimer = 0, firstScene = true, selected = null;
+  let model = null, groundKey = '', plantsKey = '', lampsKey = '', dirty = true, saveTimer = 0, firstScene = true, selected = null;
 
   // The view (its heading and tilt in degrees, and the zoom) is kept, a moment after it stops changing, so a drag
   // sends one message, not fifty. The haze follows the camera's distance: the far meadow fades, the farm never does.
@@ -326,13 +326,10 @@ export function start({ el, opts, prefs }) {
     if (key === groundKey) return;
     groundKey = key;
     const ext = terrain.build(model.ground, season);
-    const roamKey = `${model.ground.rows}|${model.ground.H}|${model.land.w}`; // where things stand: not the season
-    if (roamKey !== farmRoamKey) { farmRoamKey = roamKey; farmRoam = roamOf(model.ground); }
     plays.endAll(playCtx); // a new ground: whoever was at play goes back
     romps.releaseAll(rompCtx);
-    nature.build(model.ground, season).then(done => { if (done) { standIns(); dirty = true; } }).catch(err => report(err, 'plants')); // the farm draws first
+    plantsKey = ''; // the plants and the roam afresh (rebuildPlants)
     sky.setExtent(ext.x, ext.z, ext.center);
-    animals.setGround(model.ground, farmRoam); // one roam for both: its route grids built once
     cartMeshes.setGround(model.ground.H, farmers.groundAt);
     machineMeshes.setGround(model.ground.H, farmers.groundAt);
     shed.build(model.ground.H);
@@ -346,6 +343,19 @@ export function start({ el, opts, prefs }) {
     const land = model.land, hx = land.w / 2 / PX, hz = model.ground.H / 2 / PX, edge = 1.5, centre = { x: (land.w / 2 - W / 2) / PX, z: 0 };
     rig.setFarm({ centre, half: { x: hx, z: hz }, points: [-1, 1].flatMap(sx => [-1, 1].flatMap(sz => [0, sz < 0 ? 8 : 2].map(y => ({ x: centre.x + sx * (hx + edge), y, z: sz * (hz + edge) })))) });
   }
+  /**
+   * The plants (the forest, the yard's, the merge orchard's: build/nature.js) and where the animals may go (roam.js):
+   * rebuilt with the ground, and when the orchard's trees change (a merge, a tree grown a size).
+   */
+  function rebuildPlants() {
+    const trees = model.orchard?.trees ?? [], treesKey = trees.map(t => `${t.x},${t.y},${t.size}`).join(';'), key = `${groundKey}|${treesKey}`;
+    if (key === plantsKey) return;
+    plantsKey = key;
+    nature.build(model.ground, shownSeason(), trees).then(done => { if (done) { standIns(); dirty = true; } }).catch(err => report(err, 'plants')); // the farm draws first
+    const roamKey = `${model.ground.rows}|${model.ground.H}|${model.land.w}|${treesKey}`; // where things stand: not the season
+    if (roamKey !== farmRoamKey) { farmRoamKey = roamKey; farmRoam = roamOf(model.ground, { orchard: trees }); }
+    animals.setGround(model.ground, farmRoam); // one roam for both: its route grids built once
+  }
   /** The farmstead and the yard: rebuilt when the rows, the season or the silos change. */
   function rebuildBuildings() {
     const info = buildings.build(model.ground, shownSeason(), model.silos.map(({ x, name, silo }) => ({ x, name, silo: silo && { fill: silo.fill, lamp: silo.lamp } })), { crates: model.stall.crates }, model.neighbour && { ox: model.neighbour.ox, name: model.neighbour.name });
@@ -358,6 +368,7 @@ export function start({ el, opts, prefs }) {
   function rebuildAll() {
     if (!model) return;
     rebuildGround();
+    rebuildPlants();
     rebuildBuildings();
     beds.sync(model.beds, groundWithPlots(), shownSeason(), looks);
   }
@@ -623,6 +634,8 @@ export function start({ el, opts, prefs }) {
     visit: () => visits.now(),
     /** Which farm a farmer lives on: 1 the neighbour's, 0 yours. */
     farmerFarm: id => model?.farmers.find(f => f.id === id)?.farm ?? 0,
+    /** The merge orchard: its trees and its signs' words. */
+    orchard: () => (model ? { trees: model.orchard.trees.length, signs: model.orchard.signs.map(s => `${s.name} ${s.count}`) } : null),
     /** The land drawn: its width and the neighbour's offset on the 2D map (0: none), and whether there is a neighbour. */
     land: () => (model ? { ...model.land, neighbour: Boolean(model.neighbour) } : null),
     /** The fields drawn, by key. */

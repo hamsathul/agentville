@@ -20,8 +20,9 @@ export function seasonal(kind, season, n = 0) {
 }
 const turnOf = n => ((n * 2.39996) % (Math.PI * 2));
 
-/** Every plant and stone on a farm L (its GRID, rows and H; its land, with a neighbour farm) in a season. */
-export function plantsOf(L, season) {
+/** Every plant and stone on a farm L (its GRID, rows and H; its land, with a neighbour farm) in a season; `orchard`:
+ *  the merge orchard's trees (orchard.js), each a fruit tree its size. */
+export function plantsOf(L, season, orchard = []) {
   const land = L.land ?? { w: W, ox: 0 }, out = [], H = L.H, forest = forestOf(H, land.w), farms = land.ox ? [0, land.ox] : [0];
   const corridor = x => land.ox && x > ROAD.x0 - 8 && x < CREEK.x1 + 8; // the road to town and the creek: nothing on them
   for (const [x, y, r, n] of forest) {
@@ -32,6 +33,7 @@ export function plantsOf(L, season) {
   // each farm's shade tree, bushes and rocks (yours, and the neighbour's in its yard by the road); the orchard is yours
   for (const ox of farms) out.push({ kind: seasonal('tree', season, 3), x: SHADE.x + ox, y: L.GRID.y1 + SHADE.dy - 10, w: 5.5, h: 6, turn: 0.6, role: 'shade' });
   for (const [x, y] of orchardOf(L)) out.push({ kind: seasonal('tree2', season, x + y), x, y, w: 3, h: 5, turn: turnOf(x + y), role: 'orchard' });
+  for (const t of orchard) out.push({ kind: seasonal('tree2', season, t.x + t.y), x: t.x, y: t.y, w: 3 * t.size, h: 5 * t.size, turn: turnOf(t.x * 3 + t.y), role: 'merge' }); // the merge orchard
   for (const ox of farms) for (const [x, y, r] of BUSHES) out.push({ kind: seasonal((x + y) % 2 ? 'bushberries' : 'bush', season), x: x + ox, y, w: (r * 2.8) / PX, h: 2, turn: turnOf(x), role: 'bush' });
   for (const ox of farms) for (const [x, y, s] of rocksOf(L)) out.push({ kind: seasonal('rockmoss', season), x: x + ox, y, w: (s * 2.8) / PX, h: 2, turn: turnOf(y), role: 'rock' });
   // the forest floor: in front of every third tree along the bottom edge and down the yard's side, under its fringe

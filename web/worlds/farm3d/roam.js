@@ -43,7 +43,7 @@ export const patchesOf = rows => Array.from({ length: rows * GRID_CONFIG.cols },
  * fields@n, home@n: its own farm), `farm` is the whole land, the edge runs along both, and the creek between them is
  * in the way but for its three crossings (the lane's bridge, the cattle bridge between the pastures, the stones).
  */
-export function roamOf(L) {
+export function roamOf(L, { orchard = [] } = {}) {
   const land = L.land ?? { w: W, ox: 0 }, pa = pastureOf(L), y1 = L.GRID.y1, G = L.GRID;
   const farms = land.ox ? [0, land.ox] : [0];
   /** A farm's own grounds, at its offset: inside its pasture's fence; its yard below the henhouse's run, left of the
@@ -99,6 +99,7 @@ export function roamOf(L) {
   const obstacles = [
     ...farms.flatMap(standing),
     ...creek,
+    ...orchard.map(t => ({ cx: t.x, cy: t.y, r: TRUNK })), // the merge orchard's trunks (orchard.js)
     ...forestOf(L.H, land.w).filter(([x, y, r]) => near(x, y, r * 1.25 + 24)).map(([cx, cy, r]) => ({ cx, cy, r: r * 1.25 })), // their crowns: the deer would stand in them
   ];
   const box = (o, x, y, r) => x > o.x - r && x < o.x + o.w + r && y > o.y - r && y < o.y + o.h + r;

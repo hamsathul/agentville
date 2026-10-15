@@ -91,7 +91,7 @@ export function makeOverlay(el, { opts, hooks }) {
   const movers = new Map(); let moverItems = []; // labels on things that move: a cart out of its place, a cart to town, a hammock's countdown
   let pops = []; // words that rise and fade over something: { el, at() (its point in the world, or null), born }
   const POP_COLOURS = { good: '#8ef0a0', warn: '#ffd166', dim: '#c9b48a' };
-  const tags = new Map(), says = new Map(), fields = new Map(), cnts = new Map(), silos = new Map(), signs = new Map(), talks = new Map();
+  const tags = new Map(), says = new Map(), fields = new Map(), cnts = new Map(), silos = new Map(), signs = new Map(), talks = new Map(), orchardTags = new Map(); // orchardTags: the merge orchard's signs
   let talkItems = []; // what the animals and farmers are saying to each other now (talk.js), each over its speaker
   // Farmers beyond a place's room aren't drawn: a sign says how many, in the 2D farm's words (web/worlds/farm/world.js,
   // labels), by the place (layout.js, signsOf); and fields beyond the grid's 18 beds.
@@ -190,6 +190,17 @@ export function makeOverlay(el, { opts, hooks }) {
       }
     }
     prune(signs, keepSign);
+    // the merge orchard's signs: each repo's block, its name and how many merged in the last 90 days
+    const keepOrchard = new Set();
+    for (const o of m.orchard?.signs ?? []) {
+      keepOrchard.add(o.key);
+      const d = keyed(orchardTags, o.key, () => { const e = document.createElement('div'); e.className = 'f3-cnt f3-orchard'; return e; });
+      const h = pxt(`${o.name} ${o.count}`, '#5a3a1a', null);
+      if (d.dataset.html !== h) { d.innerHTML = h; d.dataset.html = h; }
+      d.title = `${o.name}: ${o.count} pull request${o.count === 1 ? '' : 's'} merged in the last 90 days`;
+      d.dataset.x = o.x; d.dataset.y = o.y;
+    }
+    prune(orchardTags, keepOrchard);
     // the neighbour's gate sign: its account's name
     if (m.neighbour && !gateTag) { gateTag = document.createElement('div'); gateTag.className = 'f3-cnt f3-gate'; ov.append(gateTag); }
     else if (!m.neighbour && gateTag) { gateTag.remove(); gateTag = null; }
@@ -246,7 +257,8 @@ export function makeOverlay(el, { opts, hooks }) {
       const theirs = key.startsWith('n:'), group = theirs ? key.slice(2) : key, p = (theirs ? nat : at)[group];
       if (p) put(d, project(at3(p[0] + (theirs ? model.neighbour.ox : 0), p[1], p[1] < 90 ? 2.8 : 0.4)));
     }
-    if (gateTag) put(gateTag, project(at3(GATE_SIGN[0], GATE_SIGN[1], 0.1)), 2, true); // hanging under the sign's foot, as a field's label hangs under its bed: clear of the silo's tag
+    if (gateTag) put(gateTag, project(at3(GATE_SIGN[0], GATE_SIGN[1], 0.1)), 2, true);
+    for (const d of orchardTags.values()) put(d, project(at3(Number(d.dataset.x), Number(d.dataset.y), 0.1)), 2, true); // under its block's first tree // hanging under the sign's foot, as a field's label hangs under its bed: clear of the silo's tag
     if (empty && model) { const G = model.ground.GRID; put(empty, project(at3((G.x0 + G.x1) / 2, (G.y0 + G.y1) / 2, 0))); }
     // a conversation's bubbles: over the speaker, moved up while they would cover a farmer's own bubble or another
     const keepTalk = new Set();

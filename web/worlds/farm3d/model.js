@@ -5,6 +5,7 @@
 // below against the farm's original).
 import { BED, GRID_CONFIG, NEIGHBOUR_X, SILO_X, SPOT, farmOf, landOf, slotTables } from './layout.js';
 import { stallOf } from './dialogs.js';
+import { orchardOf } from './orchard.js';
 
 // The states an agent is out and about in (engine.js, ACTIVE).
 const ACTIVE = new Set(['waiting', 'working', 'turn']);
@@ -142,6 +143,7 @@ export function makeModel({ makeGrid, engineScene, tagText, cutMid, lastPart, ag
     return { ...g, rows, slots, empty: slots.filter(s => !used.has(s.i)), GRID, H: GRID_CONFIG.height(GRID) };
   }
   const nKey = key => `${key}@n`; // a repo's field on the neighbour's farm
+  const bedOrder = beds => [...beds].sort((a, b) => a.i - b.i).map(b => b.key); // the orchard's blocks in the beds' order
 
   /**
    * One farm's beds and farmers, on a ground laid out for its fields: `ox` how far east it is on the map (0: yours; the
@@ -211,7 +213,7 @@ export function makeModel({ makeGrid, engineScene, tagText, cutMid, lastPart, ag
     const common = { scene: e, mail: e.mail ?? [], henhouse: e.henhouse ?? { eggs: 0, roosting: 0 }, carts: e.carts ?? [], subagents: e.subagents ?? [], season: seasonOf(e.plan), stall: stallOf(e) };
     if (accs.length < 2) {
       const ground = lay(e.fields, beds, packed), one = placeFarm(e, e.fields, e.farmers, ground, 0);
-      return { ...common, ground, beds: one.beds, farmers: one.farmers, over: one.over, silos: silosOf(e), land: landOf(false), neighbour: null, keep: { beds: ground.beds ?? beds, packed: packed || e.fields.length > 0 } };
+      return { ...common, ground, beds: one.beds, farmers: one.farmers, over: one.over, silos: silosOf(e), land: landOf(false), neighbour: null, orchard: orchardOf(e.fields, ground, sceneV1?.generatedAt ?? Date.now(), bedOrder(one.beds)), keep: { beds: ground.beds ?? beds, packed: packed || e.fields.length > 0 } };
     }
     const theirs = new Set(e.farmers.filter(f => farmOf(f, accs) === 1).map(f => f.id));
     const theirRepos = new Set(e.farmers.filter(f => theirs.has(f.id) && f.field).map(f => f.field));
@@ -226,7 +228,7 @@ export function makeModel({ makeGrid, engineScene, tagText, cutMid, lastPart, ag
     return {
       ...common, ground, beds: [...mine.beds, ...near.beds], farmers: [...mine.farmers, ...near.farmers], over: mine.over,
       silos: [{ x: SILO_X[0], name: accs[0].name, silo: siloOf(accs[0].plan) }, { x: SILO_X[0] + NEIGHBOUR_X, name: accs[1].name, silo: siloOf(accs[1].plan) }],
-      land, neighbour: { ox: NEIGHBOUR_X, key: accs[1].key, name: accs[1].name, ground: nground, over: near.over },
+      land, neighbour: { ox: NEIGHBOUR_X, key: accs[1].key, name: accs[1].name, ground: nground, over: near.over }, orchard: orchardOf(e.fields, ground, sceneV1?.generatedAt ?? Date.now(), bedOrder(mine.beds)), // the orchard: yours
       keep: { beds: g0.beds ?? beds, packed: packed || homeFields.length > 0, nbeds: g1.beds ?? nbeds, npacked: npacked || nFields.length > 0 },
     };
   }

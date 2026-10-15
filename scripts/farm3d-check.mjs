@@ -589,6 +589,29 @@ try {
       else console.log(`  ✓ the second account gone: one farm again, ${ANIMALS} animals, its farmers on yours at once`);
     }
 
+    // 4d. alive (spec 2026-10-15 alive): the orchard of merged pull requests, and the rest as they come
+    {
+      await open(chrome, 'everyone');
+      await sleep(600);
+      const before = chrome.errors.length, why = [], got = [];
+      const F = js => chrome.inFrame('/world/farm3d/', js).then(v => JSON.parse(v ?? 'null'));
+      const base = JSON.parse(await chrome.js("JSON.stringify(window.AgentvilleTour.stops.find(s => s.name === 'everyone').frames[0])"));
+      const DAY = 86_400_000, first = base.repos[0];
+      const merged = { ...base, repos: base.repos.map((r, i) => (i ? r : { ...r, prs: { open: [], merged: [], recent: Array.from({ length: 6 }, (_, k) => ({ number: k + 1, at: NOW - k * 4 * DAY })) } })) };
+      await chrome.js(`window.TrackerFarm.update(${JSON.stringify(merged)})`);
+      let orchard = null;
+      for (const end = Date.now() + 15_000; Date.now() < end && orchard?.trees !== 6; await sleep(300)) orchard = await F('JSON.stringify(window.__farm3d.orchard())');
+      const signText = await chrome.inFrame('/world/farm3d/', "[...document.querySelectorAll('.f3-orchard')].map(e => e.textContent).join(' | ')");
+      if (orchard?.trees !== 6) why.push(`the orchard has ${orchard?.trees} trees, not 6`);
+      else if (!signText.includes(`${first.name} 6`)) why.push(`the orchard's sign reads "${signText}", not "${first.name} 6"`);
+      else got.push(`the orchard: 6 trees, "${first.name} 6"`);
+      const st = await statsOf(chrome);
+      if (st.calls > 400) why.push(`${st.calls} draw calls with the orchard (400 at most)`);
+      if (chrome.errors.length > before) why.push(`script errors: ${oneLine(chrome.errors[before]).slice(0, 160)}`);
+      if (why.length) bad(`alive: ${why.join('; ')}`);
+      else console.log(`  ✓ alive: ${got.join('; ')}; ${st.calls} draw calls`);
+    }
+
     // 5. the plants: Quaternius's trees, bushes and rocks drawn once their models load (the ball trees stand in till
     // then), the season's: snow on the pines in winter
     {
