@@ -647,6 +647,19 @@ try {
       const beeLife = await F('JSON.stringify(window.__farm3d.life())');
       if (!(beeLife.bees > 0)) why.push('no bees over the grown field');
       else got.push(`${beeLife.bees} bees over the grown field`);
+      // the mood: three waiting on you gather six clouds, and the porch's chimney smokes; at night a machine's headlights
+      await open(chrome, 'night');
+      await sleep(600);
+      const moody = { ...base, agents: base.agents.map((a, i) => (i < 3 ? { ...a, state: 'waiting', stateReason: 'permission', ask: 'Run it?', now: null } : a.state === 'working' ? { ...a, now: { tool: 'Bash', step: 'test', summary: 'npm test', startedAt: NOW } } : a)) };
+      await chrome.js(`window.TrackerFarm.update(${JSON.stringify(moody)})`);
+      let mood = null;
+      for (const end = Date.now() + 40_000; Date.now() < end && !(mood?.clouds === 6 && mood?.smoke > 0 && mood?.headlights >= 2); await sleep(500)) mood = await F('JSON.stringify(window.__farm3d.life())');
+      const moodCalls = (await statsOf(chrome)).calls;
+      if (mood?.clouds !== 6) why.push(`${mood?.clouds} clouds for three waiting, not 6`);
+      if (!(mood?.smoke > 0)) why.push('no smoke from the chimney with someone on the porch');
+      if (!(mood?.headlights >= 2)) why.push(`no headlights on a machine at night (${mood?.headlights})`);
+      if (moodCalls > 500) why.push(`${moodCalls} draw calls with the mood and machines out (500 at most)`);
+      if (mood?.clouds === 6 && mood?.smoke > 0 && mood?.headlights >= 2) got.push(`6 clouds, chimney smoke, ${mood.headlights / 2} machine(s) with headlights at night (${moodCalls} draw calls)`);
       if (chrome.errors.length > before) why.push(`script errors: ${oneLine(chrome.errors[before]).slice(0, 160)}`);
       if (why.length) bad(`alive: ${why.join('; ')}`);
       else console.log(`  ✓ alive: ${got.join('; ')}; ${st.calls} draw calls`);

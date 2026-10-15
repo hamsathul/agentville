@@ -25,6 +25,7 @@ import { makeFence } from './build/fence.js';
 import { fenceOf } from './fence.js';
 import { makeLife } from './build/life.js';
 import { SCARE_PX, beesFor, createCrows } from './life.js';
+import { cloudsFor, dimFor, headlightsOn, smokeFarms } from './mood.js';
 import { makeWeather } from './build/weather.js';
 import { makeBeds } from './build/beds.js';
 import { makeFigures } from './build/figurine.js';
@@ -171,7 +172,7 @@ export function start({ el, opts, prefs }) {
     fx: (i, kind) => { if (kind === 'hearts') overlay.pop(() => animals.info(i)?.top ?? null, '♥', 'good'); else animals.fx(i, kind); },
     spot: (area, from, far) => farmRoam?.spot(farmRoam.localArea(area, from?.[0] ?? 0), Math.random, { from, far, r: 6 }) ?? null, clear: clearBetween, // the pasture on the farm it is on
   };
-  let snow = null, night = 0, blinkTags = [], gateTop = null; // blinkTags: the stall's tags for pull requests whose checks run; gateTop: over the neighbour's gate sign
+  let snow = null, night = 0, blinkTags = [], gateTop = null, flues = [], waitingN = 0; // flues: each farmhouse's chimney top; waitingN: farmers waiting on you (the mood) // blinkTags: the stall's tags for pull requests whose checks run; gateTop: over the neighbour's gate sign
 
   // The world's own settings, kept by the page.
   const pref = (name, allowed, fallback) => (allowed.includes(prefs.get(name)) ? prefs.get(name) : fallback);
@@ -376,6 +377,7 @@ export function start({ el, opts, prefs }) {
   function rebuildBuildings() {
     const info = buildings.build(model.ground, shownSeason(), model.silos.map(({ x, name, silo }) => ({ x, name, silo: silo && { fill: silo.fill, lamp: silo.lamp } })), { crates: model.stall.crates }, model.neighbour && { ox: model.neighbour.ox, name: model.neighbour.name });
     gateTop = info.gate ?? null; // the neighbour's gate sign: its name over it (overlay.js)
+    flues = info.flues ?? [];
     blinkTags = info.blink ?? [];
     standIns();
     const lk = JSON.stringify(info.lamps);
@@ -418,6 +420,8 @@ export function start({ el, opts, prefs }) {
       machines.want(shownModel(), performance.now() / 1000, compacted); // a duration: the page clock may stand still
     });
     rebuildAll();
+    waitingN = model.scene.farmers.filter(f => f.state === 'waiting').length;
+    sky.setMood(dimFor(waitingN)); // the sky dims while three or more wait on you
     piece('fence', () => fence.sync(fenceOf(model.beds, shownModel().farmers, model.scene.farmers), model.ground.H));
     farmers.sync(shownModel(), { instant: firstScene || opts.still });
     piece('hens', () => {
@@ -622,7 +626,8 @@ export function start({ el, opts, prefs }) {
     if (model) piece('life', () => { // fireflies at night, bees over the grown fields, crows on a harvested one
       crows.update(looks, model.beds, performance.now());
       const near = ([x, y]) => (shownModel().farmers.some(f => { const p = farmers.posOf(f.id); return p && Math.hypot(p.x - x, p.y - y) < SCARE_PX; }) || machineItems.some(i => Math.hypot(i.x - x, i.y - y) < SCARE_PX));
-      if (life.tick(t, dt, { night, season: shownSeason(), bees: beesFor(model.beds, looks, night, shownSeason()), flocks: crows.flocks(near) }) && !opts.still) dirty = true;
+      const smoke = smokeFarms(shownModel().farmers).map(farm => flues[farm]).filter(Boolean);
+      if (life.tick(t, dt, { night, season: shownSeason(), bees: beesFor(model.beds, looks, night, shownSeason()), flocks: crows.flocks(near), clouds: cloudsFor(waitingN), dim: dimFor(waitingN), smoke, machines: machineItems, headlights: headlightsOn(night) }) && !opts.still) dirty = true;
     });
     if (model) piece('tour', () => { // left alone, the camera goes round the farm; any input puts the view back
       const r = tour.tick(performance.now(), { on: tourOn, still: opts.still, shown: !document.hidden && el.clientWidth > 0, dialog: overlay.dialogOpen(), world: tourWorld() });

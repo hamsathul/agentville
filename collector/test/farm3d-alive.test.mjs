@@ -11,6 +11,7 @@ import { fenceOf } from '../../web/worlds/farm3d/fence.js';
 import { createTour, TOUR_IDLE_MS, SHOT_MS } from '../../web/worlds/farm3d/tour.js';
 import { makeCameraRig } from '../../web/worlds/farm3d/camera.js';
 import { beesFor, createCrows, firefliesOn, fireflyRects } from '../../web/worlds/farm3d/life.js';
+import { cloudsFor, dimFor, headlightsOn, smokeFarms } from '../../web/worlds/farm3d/mood.js';
 import { PASTURE_GATES, W, pastureOf } from '../../web/worlds/farm3d/layout.js';
 
 const M = makeModel(kit);
@@ -182,4 +183,16 @@ test('crows: on a cut bed and 2 minutes after; off when a farmer or a machine co
   assert.equal(c.flocks(() => false).length, 1, 'back at the next harvest');
   c.update(new Map(), [], 700_000);
   assert.deepEqual(c.flocks(() => false), [], 'its field gone');
+});
+
+test('mood: clouds by how many wait on you, the sky dims at three; smoke from each farm with someone on its porch; headlights at night', () => {
+  assert.deepEqual([0, 1, 2, 3, 7].map(cloudsFor), [0, 2, 4, 6, 6]);
+  assert.deepEqual([0, 2, 3].map(dimFor), [0, 0, 0.15]);
+  assert.deepEqual(smokeFarms([{ group: 'desk' }, { group: 'charge' }]), [0]);
+  assert.deepEqual(smokeFarms([{ group: 'turn', farm: 1 }]), [1]);
+  assert.deepEqual(smokeFarms([{ group: 'desk' }, { group: 'turn', farm: 1 }, { group: 'desk' }]), [0, 1]);
+  assert.deepEqual(smokeFarms([]), []);
+  assert.deepEqual([headlightsOn(0.6), headlightsOn(0.4)], [true, false]);
+  const m = model(two([agent('w', { state: 'waiting', now: null, account: 'zeta' }), agent('i', { state: 'idle', now: null })], []));
+  assert.deepEqual(smokeFarms(m.farmers), [1], "the neighbour's porch has someone, yours doesn't");
 });

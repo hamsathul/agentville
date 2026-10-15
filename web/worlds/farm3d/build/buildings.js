@@ -66,7 +66,7 @@ export function makeBuildings(THREE, mats, S) {
       }
     }
 
-    const siloTops = [], cattle = crossingsOf(ground).cattle;
+    const siloTops = [], flues = [], cattle = crossingsOf(ground).cattle; // flues: each farm's chimney top, yours first
     let porch = null;
     const canopy = pal.canopy, plants = new THREE.Group(); // stand-ins until build/nature.js has drawn the models
     plants.userData.plants = true;
@@ -137,6 +137,7 @@ export function makeBuildings(THREE, mats, S) {
           slab.position.y = y; slab.rotation.z = -0.055;
         }
         const flue = P(HOUSE.x + 114, front);
+      flues.push({ x: flue.x, y: wallH + 2.25, z: z - 0.8 }); // its chimney's top (smoke: build/life.js), this farm's
         S.cyl(0.22, 0.22, 2.1, '#8a8f96', flue.x, wallH, z - 0.8, g, 10);
         S.cyl(0.3, 0.3, 0.12, '#5f6b7a', flue.x, wallH + 2.1, z - 0.8, g, 10);
         // the deck: wide boards, a slim steel railing open at the steps, a planter of grasses at each end
@@ -363,7 +364,7 @@ export function makeBuildings(THREE, mats, S) {
       });
     }
     const barnDoor = P(BARN_DOOR[0], BARN.front + 2);
-    const info = { porch, siloTops, blink, gate, lamps: [...porch.lamps, { x: barnDoor.x, y: 3.2, z: barnDoor.z + 0.6, color: '#ffe0a0', distance: 9 }] };
+    const info = { porch, siloTops, blink, gate, flues, lamps: [...porch.lamps, { x: barnDoor.x, y: 3.2, z: barnDoor.z + 0.6, color: '#ffe0a0', distance: 9 }] };
     g.userData.info = info;
     group.add(g);
     built = g;

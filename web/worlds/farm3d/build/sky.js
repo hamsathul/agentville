@@ -22,7 +22,7 @@ export function makeSky(THREE, scene, mats) {
   scene.background = new THREE.Color(DAY.sky);
   scene.fog = new THREE.Fog(DAY.sky, 120, 260);
   const lamps = [];
-  let extent = { x: 30, z: 30 }, centre = { x: 0, z: 0 }, last = '';
+  let extent = { x: 30, z: 30 }, centre = { x: 0, z: 0 }, last = '', mood = 0; // mood: how much the sky dims (agents waiting on you)
   const c = (a, b, t) => new THREE.Color(a).lerp(new THREE.Color(b), t);
   /** The farm's size (the land's, with a neighbour farm) and its middle, so the shadow covers it all. */
   function setExtent(x, z, c = { x: 0, z: 0 }) {
@@ -47,20 +47,20 @@ export function makeSky(THREE, scene, mats) {
   }
   /** The light for this hour ({ phase, light, hour } from skyAt). Returns the night factor, 0 by day … 1 at night. */
   function set({ phase, light, hour }) {
-    const key = `${phase}|${light.toFixed(2)}|${Math.round(hour * 4)}`;
+    const key = `${phase}|${light.toFixed(2)}|${Math.round(hour * 4)}|${mood}`;
     const night = Math.round((1 - light) * 100) / 100;
     if (key === last) return night;
     last = key;
     // between day and night the light passes through dusk's warm colours
     const warm = phase === 'dusk' || phase === 'dawn' ? 1 - Math.abs(light - 0.5) * 2 : 0;
     const pick = k => c(c(NIGHT[k], DAY[k], light), DUSK[k], warm * 0.8);
-    const skyC = pick('sky');
+    const skyC = pick('sky').lerp(new THREE.Color('#8a96a3'), mood * 2); // greyer while agents wait on you
     scene.background.copy(skyC);
     scene.fog.color.copy(skyC);
     hemi.color.copy(pick('hemiSky')); hemi.groundColor.copy(pick('hemiGround'));
-    hemi.intensity = NIGHT.hemi + (DAY.hemi - NIGHT.hemi) * light;
+    hemi.intensity = (NIGHT.hemi + (DAY.hemi - NIGHT.hemi) * light) * (1 - mood);
     sun.color.copy(pick('sun'));
-    sun.intensity = NIGHT.sunI + (DAY.sunI - NIGHT.sunI) * light - warm * 0.6;
+    sun.intensity = (NIGHT.sunI + (DAY.sunI - NIGHT.sunI) * light - warm * 0.6) * (1 - mood);
     // the sun crosses from the left to the right, high at midday, a little in front of the farm; the moon the same way by night
     const t = light > 0.02 ? Math.min(1, Math.max(0, (hour - 5.5) / 14.5)) : ((hour + 24 - 19.5) % 24) / 10.5;
     const tt = Math.min(1, Math.max(0, t)), r = Math.hypot(extent.x, extent.z) * 1.6 + 20;
@@ -71,5 +71,7 @@ export function makeSky(THREE, scene, mats) {
     mats.setNight(Math.min(1, Math.max(0, (night - 0.2) / 0.6)));
     return night;
   }
-  return { set, setExtent, setLamps };
+  /** The sky and the light dimmed by k (0 … 0.15: mood.js dimFor), from the next set(). */
+  function setMood(k) { if (k !== mood) { mood = k; last = ''; } }
+  return { set, setExtent, setLamps, setMood };
 }
