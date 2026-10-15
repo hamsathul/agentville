@@ -8,6 +8,8 @@ import { fruitOf, orchardOf } from '../../web/worlds/farm3d/orchard.js';
 import { plantsOf } from '../../web/worlds/farm3d/nature.js';
 import { roamOf } from '../../web/worlds/farm3d/roam.js';
 import { fenceOf } from '../../web/worlds/farm3d/fence.js';
+import { createTour, TOUR_IDLE_MS, SHOT_MS } from '../../web/worlds/farm3d/tour.js';
+import { makeCameraRig } from '../../web/worlds/farm3d/camera.js';
 import { PASTURE_GATES, W, pastureOf } from '../../web/worlds/farm3d/layout.js';
 
 const M = makeModel(kit);
@@ -91,4 +93,53 @@ test('the task fence: none for a stale agent, one outside any repo, or one with 
   const f2 = fenceOf(t2.beds, t2.farmers, t2.scene.farmers);
   assert.equal(f2.length, 2);
   assert.ok(f2.every(st => st.key === `${SHOP}@n`));
+});
+
+const world = (o = {}) => ({ waiting: [], machine: null, busiest: null, neighbour: null, animal: null, ...o });
+const tctx = (o = {}) => ({ on: true, still: false, shown: true, dialog: false, world: world(), ...o });
+test('the tour: starts after 3 idle minutes, not while still, hidden, with a dialog or the switch off', () => {
+  for (const off of [{ on: false }, { still: true }, { shown: false }, { dialog: true }]) {
+    const t = createTour(); t.touch(0);
+    assert.deepEqual(t.tick(TOUR_IDLE_MS + 1, tctx({ ...off, world: world({ busiest: [300, 200] }) })), {});
+  }
+  const t = createTour(); t.touch(0);
+  assert.deepEqual(t.tick(TOUR_IDLE_MS - 1, tctx({ world: world({ busiest: [300, 200] }) })), {});
+  const r = t.tick(TOUR_IDLE_MS, tctx({ world: world({ busiest: [300, 200] }) }));
+  assert.ok(r.start && r.shot.kind === 'busiest');
+  assert.deepEqual(r.shot.at, [300, 200]);
+});
+test('the tour: waiting farmers first, then machine, busiest, neighbour, animal; empty kinds skipped; every fifth the whole land', () => {
+  const t = createTour(); t.touch(0);
+  const w = world({ waiting: [[168, 98]], machine: [600, 250], busiest: [300, 200], animal: [400, 650] });
+  const kinds = [];
+  for (let k = 0; k < 6; k++) kinds.push(t.tick(TOUR_IDLE_MS + k * SHOT_MS, tctx({ world: w })).shot?.kind);
+  assert.deepEqual(kinds, ['waiting', 'machine', 'busiest', 'animal', 'whole', 'waiting']);
+  const empty = createTour(); empty.touch(0);
+  assert.equal(empty.tick(TOUR_IDLE_MS, tctx()).shot.kind, 'whole', 'nothing to show: the whole land');
+});
+test('the tour: any touch stops it; Motion off or the switch off stops it', () => {
+  for (const stopper of [t => { t.touch(TOUR_IDLE_MS + 10); return tctx(); }, () => tctx({ still: true }), () => tctx({ on: false })]) {
+    const t = createTour(); t.touch(0);
+    t.tick(TOUR_IDLE_MS, tctx({ world: world({ busiest: [1, 1] }) }));
+    assert.ok(t.touring());
+    assert.deepEqual(t.tick(TOUR_IDLE_MS + 20, stopper(t)), { stop: true });
+    assert.ok(!t.touring());
+  }
+  const f = createTour(); f.touch(1e12); f.force();
+  assert.ok(f.tick(1e12 + 1, tctx()).start, 'force: now');
+});
+test('the camera: a view taken is put back exactly', () => {
+  const camera = { position: { set() {} }, lookAt() {}, updateProjectionMatrix() {}, clearViewOffset() {}, setViewOffset() {} };
+  const hadDoc = 'document' in globalThis, doc = globalThis.document;
+  globalThis.document = { addEventListener() {}, removeEventListener() {} };
+  const rig = makeCameraRig(null, camera, { addEventListener() {}, clientHeight: 800 });
+  if (hadDoc) globalThis.document = doc; else delete globalThis.document;
+  rig.setFrame(1280, 800);
+  rig.setFarm({ half: { x: 60, z: 50 }, points: [{ x: -60, y: 0, z: -50 }, { x: 60, y: 0, z: 50 }] });
+  rig.setZoom(2.5); rig.glideTo({ x: 10, z: 5 }); for (let k = 0; k < 20; k++) rig.update(0.1);
+  const v = rig.view();
+  rig.zoomBy(1); rig.turn(1); rig.glideTo({ x: -30, z: 20 }); for (let k = 0; k < 20; k++) rig.update(0.1);
+  assert.notDeepEqual(rig.view(), v);
+  rig.restore(v);
+  assert.deepEqual(rig.view(), v);
 });

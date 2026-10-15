@@ -36,6 +36,7 @@ import { cartOf, createCarts } from './carts.js';
 import { makePigeons } from './build/pigeons.js';
 import { createTalk } from './talk.js';
 import { createVisits } from './visits.js';
+import { createTour } from './tour.js';
 import { HERDS } from './antics.js';
 import { roamOf } from './roam.js';
 import { guarded } from './guard.js';
@@ -44,7 +45,7 @@ import { createRomps, partnerFor } from './romps.js';
 
 // what a farmer is doing, as a word, from the tool in its hands (for what it says to the animals)
 const STEP_WORDS = { hoe: 'editing', rake: 'editing', sickle: 'editing', hammer: 'fixing', seeds: 'writing', almanac: 'reading', recipe: 'reading', clipboard: 'planning', blueprint: 'planning', spyglass: 'searching', magnifier: 'searching', pigeon: 'browsing', parcel: 'calling tools', mailbag: 'calling tools', crate: 'committing', cart: 'pushing', barrow: 'pushing', lantern: 'thinking', whistle: 'delegating', can: 'working' };
-import { BED, NEIGHBOUR_X, PX, SHED_DOOR, SILO_Y, STALL, W, crossingsOf, east, farmAt } from './layout.js';
+import { BED, HOUSE, NEIGHBOUR_X, PORCH_Y, PX, SHED_DOOR, SILO_Y, STALL, W, crossingsOf, east, farmAt } from './layout.js';
 
 const SKIES = ['live', 'day', 'night'], SEASON_MODES = ['live', 'spring', 'summer', 'autumn', 'winter'];
 const FRAME_MS = 1000 / 30; // at most 30 frames a second
@@ -172,7 +173,9 @@ export function start({ el, opts, prefs }) {
   // The world's own settings, kept by the page.
   const pref = (name, allowed, fallback) => (allowed.includes(prefs.get(name)) ? prefs.get(name) : fallback);
   let skyMode = pref('sky', SKIES, 'live'), seasonMode = pref('season', SEASON_MODES, 'live');
-  let animalsOn = prefs.get('animals') !== 'off', bubblesOn = prefs.get('bubbles') !== 'off';
+  let animalsOn = prefs.get('animals') !== 'off', bubblesOn = prefs.get('bubbles') !== 'off', tourOn = prefs.get('tour') !== 'off';
+  const tour = createTour(); // left alone for 3 minutes, the camera goes round the farm (tour.js)
+  let tourFrom = null; // the view before the tour: put back when it stops
   animals.setOn(animalsOn);
   const savedBeds = name => { try { const b = JSON.parse(prefs.get(name) ?? '{}'); return b && typeof b === 'object' && !Array.isArray(b) ? b : {}; } catch { return {}; } };
   let keep = { beds: savedBeds('beds'), packed: false, nbeds: savedBeds('nbeds'), npacked: false }; // yours, and the neighbour's (a second account's)
@@ -246,6 +249,7 @@ export function start({ el, opts, prefs }) {
       if (what === 'sky') { skyMode = SKIES[(SKIES.indexOf(skyMode) + 1) % SKIES.length]; prefs.set('sky', skyMode); lastSky = -Infinity; }
       if (what === 'season') { seasonMode = SEASON_MODES[(SEASON_MODES.indexOf(seasonMode) + 1) % SEASON_MODES.length]; prefs.set('season', seasonMode); rebuildAll(); }
       if (what === 'animals') { animalsOn = !animalsOn; prefs.set('animals', animalsOn ? 'on' : 'off'); if (!animalsOn) { plays.endAll(playCtx); romps.releaseAll(rompCtx); } animals.setOn(animalsOn); if (!animalsOn) overlay.closePet(); }
+      if (what === 'tour') { tourOn = !tourOn; prefs.set('tour', tourOn ? 'on' : 'off'); }
       if (what === 'bubbles') { bubblesOn = !bubblesOn; prefs.set('bubbles', bubblesOn ? 'on' : 'off'); if (model) overlay.sync(shownModel(), { bubblesOn, near: near() }); }
       dirty = true;
     },
@@ -303,7 +307,7 @@ export function start({ el, opts, prefs }) {
   function refreshHud() {
     const sc = model?.scene ?? { farmers: [] };
     hud.render({
-      zoom: rig.state().zoom, skyMode, seasonMode, still: opts.still, animals: animalsOn, bubbles: bubblesOn,
+      zoom: rig.state().zoom, skyMode, seasonMode, still: opts.still, animals: animalsOn, bubbles: bubblesOn, tour: tourOn ? 'on' : 'off',
       follow: Boolean(following), canFollow: Boolean(selected && farmers.headOf(selected)),
       restingHidden: restingShown ? null : sc.farmers.filter(resting).length, scene: sc, season: model?.season ?? 'summer',
     });
@@ -322,6 +326,10 @@ export function start({ el, opts, prefs }) {
     dirty = true;
   };
   new ResizeObserver(resize).observe(el);
+  // someone is here: any pointer, wheel or key on the farm (or the page's pick, in select) stops the tour and puts the view back
+  const touched = () => tour.touch(performance.now());
+  for (const type of ['pointerdown', 'wheel', 'keydown']) el.addEventListener(type, touched, { capture: true, passive: true });
+  document.addEventListener('keydown', touched, { capture: true });
   resize();
 
   /** The ground is rebuilt when the bed rows or the season shown change. */
@@ -375,6 +383,17 @@ export function start({ el, opts, prefs }) {
     rebuildPlants();
     rebuildBuildings();
     beds.sync(model.beds, groundWithPlots(), shownSeason(), looks);
+  }
+  /** What the tour can show now (tour.js): farmers waiting on you, a machine at work, the busiest field, the neighbour's farmhouse, an animal at something. */
+  function tourWorld() {
+    const fs = shownModel()?.farmers ?? [], counts = new Map();
+    for (const f of fs) if (f.state === 'working' && f.field) counts.set(f.field, (counts.get(f.field) ?? 0) + 1);
+    const top = [...counts].sort((a, b) => b[1] - a[1])[0], bed = top && model.beds.find(b => b.key === top[0]);
+    const m = machineItems.find(i => i.phase === 'work'), a = animals.world().find(w => w.a?.act || w.a?.romp);
+    return {
+      waiting: fs.filter(f => f.state === 'waiting').map(f => f.at), machine: m ? [m.x, m.y] : null, busiest: bed ? [bed.cx, bed.lane] : null,
+      neighbour: model.neighbour ? [HOUSE.x + HOUSE.w / 2 + model.neighbour.ox, PORCH_Y] : null, animal: a ? [a.x, a.y] : null,
+    };
   }
   /** The ground for the beds: with a neighbour, its empty plots too (moved east, keyed apart from yours). */
   const groundWithPlots = () => (model.neighbour ? { ...model.ground, empty: [...model.ground.empty, ...model.neighbour.ground.empty.map(sl => ({ ...east(sl, model.neighbour.ox), i: `n${sl.i}` }))] } : model.ground);
@@ -596,6 +615,13 @@ export function start({ el, opts, prefs }) {
       else if (opts.still && plays.busy().size) plays.endAll(playCtx);
     });
     if (model) piece('romps', () => romps.tick(rompWorld(), dt, rompCtx)); // and the animals with each other (none while still or hidden)
+    if (model) piece('tour', () => { // left alone, the camera goes round the farm; any input puts the view back
+      const r = tour.tick(performance.now(), { on: tourOn, still: opts.still, shown: !document.hidden && el.clientWidth > 0, dialog: overlay.dialogOpen(), world: tourWorld() });
+      if (r.start) { tourFrom = rig.view(); if (following) setFollow(false); }
+      if (r.shot) { if (r.shot.at) { rig.glideTo(shapes.at(r.shot.at[0], r.shot.at[1], model.ground.H)); rig.setZoom(r.shot.zoom); } else rig.reset(); }
+      if (r.stop && tourFrom) { rig.restore(tourFrom); tourFrom = null; }
+      if (tour.touring()) { rig.hold({ yaw: rig.state().yaw + 0.05 * dt }); dirty = true; }
+    });
     if (model) piece('visits', () => { // a farmer over to the other farm now and then (visits.js), with a neighbour's
       const at = performance.now(), cur = visits.now();
       const v = visits.tick({ now: at, still: opts.still, neighbour: Boolean(model.neighbour), farmers: shownModel().farmers.filter(f => !f.scarecrow).map(f => ({ id: f.id, farm: f.farm ?? 0, state: f.state, nap: f.nap, at: f.at, errand: farmers.onErrand(f.id) && f.id !== cur?.guest, followed: f.id === following })) });
@@ -639,6 +665,10 @@ export function start({ el, opts, prefs }) {
     visit: () => visits.now(),
     /** Which farm a farmer lives on: 1 the neighbour's, 0 yours. */
     farmerFarm: id => model?.farmers.find(f => f.id === id)?.farm ?? 0,
+    /** The tour now (as if left alone long enough); whether it runs; the camera's view (yaw, pitch, zoom, target). */
+    tourNow: () => tour.force(),
+    touring: () => tour.touring(),
+    viewNow: () => rig.view(),
     /** The task fence: how many stakes, flags and lanterns. */
     fence: () => fence.count(),
     /** The merge orchard: its trees and its signs' words. */
@@ -706,6 +736,7 @@ export function start({ el, opts, prefs }) {
   return {
     scene: onScene,
     select(id) {
+      tour.touch(performance.now()); // a pick from the page: someone is here
       selected = id ?? null;
       if (following && following !== selected) setFollow(false); // picking nobody, or another, ends Follow
       farmers.select(selected); overlay.setSelected(selected); refreshHud(); dirty = true;

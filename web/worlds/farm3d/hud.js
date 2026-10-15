@@ -33,9 +33,28 @@ export const FARM3D_WORDS = {
 };
 
 const TURN = '<span class="f3-turn"><button type="button" data-f3-turn="-1" title="Turn the farm 15° (Q). Or right-drag (or Shift-drag) to turn and tilt it as you like" aria-label="Turn left">↺</button><button type="button" data-f3-turn="1" title="Turn the farm 15° the other way (E)" aria-label="Turn right">↻</button><button type="button" data-f3-reset title="Back to square-on, the whole farm in view" aria-label="Reset the view">⌂</button></span>';
-/** The panel and Menu (panelHud, the engine's: a global in the frame, passed in), the turn buttons before the Menu. */
+export const TOUR_TIP = 'The tour: left alone for 3 minutes, the camera goes round the farm (who waits on you, the machines, the busiest field, the animals); any key or click stops it and puts the view back';
+export const SOUND_TIP = "The farm's sounds: wind, birds or crickets, rain and tractors (made in the page, no files). Starts on a click";
+export const SOUND_NONE = "Sound needs Web Audio, which this browser doesn't have here";
+/** The 3D farm's own switches (Tour, Sound: p.tour 'on'|'off', p.sound 'on'|'off'|'unavailable'), in the engine's switch markup. */
+function ownSwitches(p, words) {
+  const px = globalThis.pxImg, q = t => t.replace(/&/g, '&amp;').replace(/"/g, '&quot;');
+  const sw = (attr, icon, name, state, title, disabled = false) => `<button type="button" ${attr}${disabled ? ' disabled' : ''} title="${q(title)}">${p.iconImg(icon)}${px(name, words.toolColor, null)}<span class="px-mi-s">${px(state, words.toolStateColor, null)}</span><span class="px-sr">${name}: ${state}</span></button>`;
+  let out = '';
+  if (p.tour !== undefined) out += sw('data-farm-tour', 'tour', 'Tour', p.tour, TOUR_TIP);
+  if (p.sound !== undefined) out += sw('data-farm-sound', 'sound', 'Sound', p.sound === 'unavailable' ? 'off' : p.sound, p.sound === 'unavailable' ? SOUND_NONE : SOUND_TIP, p.sound === 'unavailable');
+  return out;
+}
+/**
+ * The panel and Menu (panelHud, the engine's: a global in the frame, passed in), the turn buttons before the Menu, and
+ * the 3D farm's own switches (Tour, Sound) after Animals (or before Sky) when given.
+ */
 export function hudHtml(panelHud, p, words = FARM3D_WORDS) {
-  return panelHud(p, words).replace('<div class="px-nav">', `<div class="px-nav">${TURN}`);
+  let h = panelHud(p, words).replace('<div class="px-nav">', `<div class="px-nav">${TURN}`);
+  const own = ownSwitches(p, words);
+  if (!own) return h;
+  const animals = h.indexOf('data-farm-animals'), at = animals >= 0 ? h.indexOf('</button>', animals) + '</button>'.length : h.indexOf('<button type="button" data-farm-sky');
+  return at > 0 ? h.slice(0, at) + own + h.slice(at) : h;
 }
 /** A count card: the first farmer in that state (the engine's rule), or null. */
 export const firstIn = (farmers, state) => farmers.find(f => f.state === state)?.id ?? null;
@@ -83,6 +102,8 @@ export function makeHud(host, { opts, prefs, hooks, iconImg }) {
     else if (b.matches('[data-farm-motion]')) opts.onMotion(!opts.still);
     else if (b.matches('[data-farm-animals]')) hooks.cycle('animals');
     else if (b.matches('[data-farm-bubbles]')) hooks.cycle('bubbles');
+    else if (b.matches('[data-farm-tour]')) hooks.cycle('tour');
+    else if (b.matches('[data-farm-sound]')) hooks.cycle('sound');
     else if (b.dataset.farmZoom !== undefined) hooks.zoom(Number(b.dataset.farmZoom));
     hooks.refresh();
   });

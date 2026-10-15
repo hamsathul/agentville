@@ -29,11 +29,17 @@ export const ICONS = {
 export const ICON_PAL = { k: '#4e3626', w: '#ffffff', y: '#f0b429', s: '#f4ecd8', r: '#e04a3a', g: '#3f9b3a', o: '#c8681a', b: '#a9dcf7' };
 
 /** HTML for one of the icons, drawn with the frame's makeSprite (pixel.js); none without a DOM. */
+/** The 3D farm's own icons (the 2D farm has none of these switches): the tour's camera, Sound's speaker. */
+export const OWN_ICONS = {
+  tour: ['.........', '..kk.....', 'kkkkkkkk.', 'kwwkkwwk.', 'kwkyykwk.', 'kwkyykwk.', 'kwwkkwwk.', 'kkkkkkkk.', '.........'],
+  sound: ['....k....', '...kk..k.', 'kkkyk.k..', 'kyyyk..k.', 'kyyyk..k.', 'kkkyk.k..', '...kk..k.', '....k....', '.........'],
+};
 export function makeIconImg(makeSprite) {
   const urls = new Map();
   return name => {
-    if (typeof document === 'undefined' || !ICONS[name]) return '';
-    if (!urls.has(name)) urls.set(name, makeSprite(ICONS[name], ICON_PAL).toDataURL());
+    const icon = ICONS[name] ?? OWN_ICONS[name];
+    if (typeof document === 'undefined' || !icon) return '';
+    if (!urls.has(name)) urls.set(name, makeSprite(icon, ICON_PAL).toDataURL());
     return `<i class="px-ico" aria-hidden="true" style="background-image:url(${urls.get(name)})"></i>`;
   };
 }

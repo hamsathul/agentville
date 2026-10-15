@@ -175,6 +175,10 @@ export function makeCameraRig(THREE, camera, dom, { yaw = DEFAULT_VIEW.yaw, pitc
       return moving;
     },
     state: () => ({ ...view(), target: { ...state.target } }),
+    /** The view as it stands, to put back later (the tour): { yaw, pitch, zoom, target }. */
+    view: () => ({ yaw: state.yaw, pitch: state.pitch, zoom: state.zoom, target: { ...state.target } }),
+    /** Puts a view back (rig.view()'s), at once. */
+    restore(v) { anim = null; glide = null; unfollow(); state.yaw = v.yaw; state.pitch = clampPitch(v.pitch); state.zoom = Math.min(MAX_ZOOM, Math.max(MIN_ZOOM, v.zoom)); state.target = { ...v.target }; changed(); },
     /** Holds a view (for the browser check's pictures). */
     hold({ yaw: y, pitch: p, zoom: z } = {}) { anim = null; if (Number.isFinite(y)) state.yaw = y; if (Number.isFinite(p)) state.pitch = clampPitch(p); if (Number.isFinite(z)) state.zoom = Math.min(MAX_ZOOM, Math.max(MIN_ZOOM, z)); changed(); },
   };

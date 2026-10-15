@@ -613,6 +613,24 @@ try {
       const fence = await F('JSON.stringify(window.__farm3d.fence())');
       if (JSON.stringify(fence) !== JSON.stringify({ stakes: 5, flags: 2, lanterns: 1 })) why.push(`the task fence ${JSON.stringify(fence)}, not 5 stakes, 2 flags, a lantern`);
       else got.push('the task fence: 5 stakes, 2 flags, a lantern');
+      // the tour: left alone it goes round the farm; a real click stops it and puts the view back exactly
+      const v0 = await F('JSON.stringify(window.__farm3d.viewNow())');
+      await chrome.inFrame('/world/farm3d/', 'window.__farm3d.tourNow(); true');
+      let touring = false, moved = false;
+      for (const end = Date.now() + 5000; Date.now() < end && !(touring && moved); await sleep(250)) {
+        touring = await F('JSON.stringify(window.__farm3d.touring())');
+        const v = await F('JSON.stringify(window.__farm3d.viewNow())');
+        moved = JSON.stringify(v) !== JSON.stringify(v0);
+      }
+      const box = JSON.parse(await chrome.js("JSON.stringify(document.querySelector('iframe').getBoundingClientRect())"));
+      const cx = Math.round(box.left + box.width - 40), cy = Math.round(box.top + box.height - 40); // grass at the frame's bottom right
+      for (const type of ['mouseMoved', 'mousePressed', 'mouseReleased']) await chrome.send('Input.dispatchMouseEvent', { type, x: cx, y: cy, button: 'left', clickCount: 1 });
+      await sleep(500);
+      const v1 = await F('JSON.stringify(window.__farm3d.viewNow())'), stopped = !(await F('JSON.stringify(window.__farm3d.touring())'));
+      const round = v => JSON.stringify(v, (k, x) => (typeof x === 'number' ? Math.round(x * 1000) / 1000 : x));
+      if (!touring || !moved) why.push(`the tour didn't start (touring ${touring}, the view moved ${moved})`);
+      else if (!stopped || round(v1) !== round(v0)) why.push(`a click didn't stop the tour and put the view back (${round(v1)} vs ${round(v0)})`);
+      else got.push('the tour started, a click stopped it and put the view back');
       const st = await statsOf(chrome);
       if (st.calls > 400) why.push(`${st.calls} draw calls with the orchard and a fence (400 at most)`);
       if (chrome.errors.length > before) why.push(`script errors: ${oneLine(chrome.errors[before]).slice(0, 160)}`);
