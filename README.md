@@ -1392,6 +1392,7 @@ patch, the pasture across the front, and the meadow and the forest running on al
   the season follows your 5-hour limit, with blossom in spring, orange leaves in autumn and snow in
   winter. **Sky** and **Season** in the Menu hold one, as on the farm. With **Motion** off the wind
   stops too.
+
 ![The 3D farm alive: clouds while an agent waits on you, task fences along the fields, the orchard of merges along the front](docs/farm3d-alive.png)
 
 - **The task fence**: an agent with a task list has a row of stakes along the front of its field, one per
@@ -1872,6 +1873,9 @@ and can do is in [docs/worlds.md](docs/worlds.md).
 | A field in the 3D farm shows simple shapes instead of crops, or a tractor made of boxes | Their models haven't loaded yet (a moment after the farm draws, the first time), or `npm run farm3d-models` hasn't been run since an update that changed them: run it and reload |
 | No machine comes out on the 3D farm for a heavy step | Machines go out for tests, builds, installs, pushes, deploys, a big edit (five files or more written in the last 5 minutes) and a compaction, only for a farmer at work in a field and drawn (not hidden by **Resting**). One waits in the shed while its farmer walks over |
 | The 3D farm's animals stand still when you pick something from an animal's menu | **Motion** is off (or the browser asks for reduced motion): they don't move then, and the menu says so. Switch Motion on in the Menu. The animals come a moment after the farm draws, the first time |
+| The 3D farm's camera moves by itself | That's the tour: left alone for 3 minutes, it goes round the farm. Any mouse move, click, wheel or key on the farm stops it and puts your view back; **Tour** in the Menu turns it off |
+| The 3D farm's orchard is empty, or a repo has no trees | It grows from pull requests merged in the last 90 days, read with `gh`: `gh auth status`, and the repo's `origin` must be on GitHub. It holds the newest 80 trees at most; with many repos, the oldest trees go first |
+| The 3D farm's **Sound** is on and silent | Browsers play sound only after a click: click once in the farm. It goes quiet while the tab is hidden or the page shows its list, and with **Motion** off only a soft wind plays |
 
 ## Known limits
 
